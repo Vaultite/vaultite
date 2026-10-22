@@ -2,7 +2,7 @@
 // kinds of file asked, set up in its settings sheet.
 import { useState } from "react"
 import {
-  CHIP_TINTS, ChipValuesEditor, chipValues, get, getStore, Group, isHidden, notify, notifyError, openPluginSettings, patch, PropertyChip, Section, SettingRow,
+  CHIP_TINTS, ChipValuesEditor, chipValues, get, getStore, Group, isHidden, notify, openPluginSettings, optimistic, patch, PropertyChip, Section, SettingRow,
   Switch, useStore, type ChipValue, type FileHead, type Store,
 } from "@vaultite"
 import type { PropChip, PropSummary } from "./types"
@@ -26,7 +26,9 @@ const saved = (c: Chip): PropChip => ({
   key: c.key, values: c.values,
   ...(c.types.length ? { types: c.types } : {}), ...(c.statusBar ? { status_bar: true } : {}), ...(c.showUnset ? {} : { show_unset: false }),
 })
-const save = (list: Chip[]) => patch("config/plugin/properties", { chips: list.length ? list.map(saved) : null }).catch((e) => notifyError(e, "Couldn't save it"))
+/** Shown at once (the store), then saved; a failure brings the saved ones back and says so. */
+const save = (list: Chip[]) => optimistic((s) => ({ ...s, propertyChips: list.map(saved) }),
+  () => patch("config/plugin/properties", { chips: list.length ? list.map(saved) : null }), "Couldn't save it").then(() => {}, () => {})
 
 /** Asked of this file: a Markdown file in the vault, of one of its kinds (a plain note is `note`) when it has some. */
 const asks = (c: Chip, f: FileHead) => /\.md$/i.test(f.path) && !isHidden(f.path) && (!c.types.length || c.types.includes(f.type ?? "note"))

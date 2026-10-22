@@ -76,7 +76,7 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
       el.style.height = el.style.opacity = el.style.transition = ""
       place(0)
       setShown([])
-    }, 100)
+    }, 250) // (past a removal's fold, core/leaving.ts: a row taken off is gone by then)
     setTimeout(() => { Promise.resolve().then(a.run).then(back, back) }, 200)
   }
 

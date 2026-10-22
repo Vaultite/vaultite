@@ -91,7 +91,7 @@ for (const [name, [tier, d]] of found) {
 
 // Nothing of the plugin API runs while an app plugin's module loads: the core behind it may not have run yet (the Dock
 // icon plugin once threw then and the app never started). Vault plugins load later; agentPlugin reads only its args.
-const AT_LOAD = new Set(["agentPlugin", "cell", "definePlugin", "devicePref", "pluginSettings"])
+const AT_LOAD = new Set(["agentPlugin", "cell", "definePlugin", "devicePref", "pluginSettings", "removals"])
 type Node = { type: string; start: number; [k: string]: unknown }
 const INSIDE = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ClassBody"])
 function loadTimeProblems(file: string, rel: string): string[] {

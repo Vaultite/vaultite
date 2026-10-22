@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Bot, ChevronDown, ChevronRight, ChevronsUpDown, Ellipsis, EyeOff, Fingerprint, Globe, LogOut, Pin, Plus, Settings2 } from "lucide-react"
 import {
-  Button, confirmDialog, currentWorkspace, dotIcon, Group, HeadingButton, isViewOpen, menuBelow, menuFor, notifyError, openView, PageHeader, plural, scopedState, Section,
+  Button, confirmDialog, currentWorkspace, dotIcon, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, scopedState, Section,
   SettingRow, SidebarHeading, SidebarRow, useScopedState, useWorkspaceVersion, webPages, workspaceList, type MenuItem, type SidebarCtx, type WebSite,
 } from "@vaultite"
 import { SiteIcon, siteIcon } from "./icons"
@@ -48,7 +48,12 @@ function useAllLogins(): Logins[] {
   ]
 }
 
-/** The sites of `prof` (drawn afresh for another), asked again when a page done loading may have signed in or out. */
+/** Sites signed out of from here, per set of logins: gone at once, back if it fails. */
+const leavingIn = new Map<string, ReturnType<typeof removals>>()
+const signingOut = (prof: string) => leavingIn.get(prof) ?? leavingIn.set(prof, removals()).get(prof)!
+
+/** The sites of `prof` (drawn afresh for another), asked again when a page done loading may have signed in or out; the
+ *  ones signed out of from here gone at once (`leaving`: a row's while it folds away). */
 function useSites(prof: string) {
   const [sites, setSites] = useState<WebSite[] | null>(null)
   useEffect(() => {
@@ -62,8 +67,16 @@ function useSites(prof: string) {
     })
     return () => { gone = true; off(); clearTimeout(timer) }
   }, [prof])
-  return { sites: sites?.filter((s) => !s.other) ?? null, others: sites?.filter((s) => s.other) ?? [],
+  const { list, leaving } = signingOut(prof).use(sites, (s) => s.site)
+  return { sites: list?.filter((s) => !s.other) ?? null, others: list?.filter((s) => s.other) ?? [], leaving,
     refresh: () => void webPages?.sites?.(prof).then(setSites, () => {}) }
+}
+
+/** Forget sites in a set of logins: their rows go at once; the list is asked again once it's done. */
+function forget(l: Logins, names: string[], failed: string, done: () => void) {
+  const web = webPages
+  if (!web?.forget) return
+  void signingOut(l.prof).remove(names, () => Promise.all(names.map((n) => web.forget!(l.prof, n))), failed).then(done)
 }
 
 async function signOut(l: Logins, s: WebSite, done: () => void) {
@@ -72,9 +85,7 @@ async function signOut(l: Logins, s: WebSite, done: () => void) {
     body: `${s.account ? `${s.account} will be signed out` : "Its logins go"} in ${l.name}: the site's cookies and what it keeps in the browser are deleted. Open pages of it reload.`,
     confirm: "Sign out", danger: true,
   })
-  if (!ok) return
-  try { await webPages?.forget?.(l.prof, s.site) } catch (e) { notifyError(e, "Couldn't sign out") }
-  done()
+  if (ok) forget(l, [s.site], "Couldn't sign out", done)
 }
 
 /** Clear the trackers' cookies (and storage), after showing which. */
@@ -85,9 +96,7 @@ async function clearTrackers(l: Logins, others: WebSite[], done: () => void) {
     body: `Cookies these sites left while you were on other sites' pages (ad and analytics networks, not logins of yours): ${names.join(", ")}. Their cookies and storage are deleted.`,
     confirm: "Clear", danger: true,
   })
-  if (!ok) return
-  try { for (const n of names) await webPages?.forget?.(l.prof, n) } catch (e) { notifyError(e, "Couldn't clear them") }
-  done()
+  if (ok) forget(l, names, "Couldn't clear them", done)
 }
 
 const Dot = ({ color }: { color: string }) => <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: color }} />
@@ -96,7 +105,8 @@ const trackersTip = (others: WebSite[]) => `Cookies from sites you didn't open, 
 
 /** A set of logins' sites, as sidebar rows (the panel) or setting rows (the settings). */
 function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sidebar" | "settings"; openPage?: Open }) {
-  const { sites, others, refresh } = useSites(l.prof)
+  const { sites, others, leaving, refresh } = useSites(l.prof)
+  const trackersLeaving = others.length && others.every((s) => leaving(s.site) === "") ? "" : undefined
   const containers = useContainers()
   const can = useCanLock()
   const c = l.container ? containers.find((x) => x.id === l.container) : undefined
@@ -113,7 +123,7 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
         {unfolded && (
           <div className="pb-1.5" data-web-sites>
             {(sites ?? []).map((s) => (
-              <div key={s.site} className={row} data-web-site={s.site}>
+              <div key={s.site} className={row} data-web-site={s.site} data-leaving={leaving(s.site)}>
                 <SiteIcon host={s.site} className="size-4 shrink-0 text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 items-baseline gap-2"><span className="truncate">{s.site}</span>
                   {s.account && <span className="min-w-0 truncate text-[13px] text-muted-foreground">{s.account}</span>}</span>
@@ -121,7 +131,7 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
               </div>
             ))}
             {others.length > 0 && (
-              <div className={row} data-web-trackers={String(others.length)}>
+              <div className={row} data-web-trackers={String(others.length)} data-leaving={trackersLeaving}>
                 <EyeOff className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
                 <span className="min-w-0 flex-1 truncate" data-tip={trackersTip(others)} data-tip-trunc="">{plural(others.length, "tracker")}
                   <span className="ml-2 text-[13px] text-muted-foreground">cookies other sites' pages left</span></span>
@@ -149,7 +159,7 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
       {rows.map((s) => (
         <SidebarRow key={s.site} icon={siteIcon(`https://${s.site}/`)} label={<SiteLabel s={s} />} open
           tip={[s.site, s.account, always.includes(s.site) && c ? `always opens in ${c.name}` : ""].filter(Boolean).join(": ")}
-          data-web-site={s.site} onClick={() => open(`https://${s.site}/`)} more
+          data-web-site={s.site} data-leaving={always.includes(s.site) ? undefined : leaving(s.site)} onClick={() => open(`https://${s.site}/`)} more
           swipe={() => sites?.some((x) => x.site === s.site) ? [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(l, s, refresh) }] : []}
           onContextMenu={menuFor(() => menu(s))}>
           {always.includes(s.site) && <Pin aria-hidden data-web-always="" className="mr-1 size-3 shrink-0 text-tertiary group-hover/row:hidden" strokeWidth={2} />}
@@ -157,7 +167,7 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
       ))}
       {sites && !rows.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">No sites yet</p>}
       {others.length > 0 && (
-        <SidebarRow icon={EyeOff} label={plural(others.length, "tracker")} open data-web-trackers={String(others.length)} tip={trackersTip(others)}
+        <SidebarRow icon={EyeOff} label={plural(others.length, "tracker")} open data-web-trackers={String(others.length)} data-leaving={trackersLeaving} tip={trackersTip(others)}
           onClick={() => void clearTrackers(l, others, refresh)}>
           <span className="mr-1 text-[11px] text-tertiary">Clear</span>
         </SidebarRow>

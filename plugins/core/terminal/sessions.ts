@@ -96,9 +96,12 @@ async function running(ids: string[]) {
   return Object.assign(keep, { unknown })
 }
 
-/** What to ask before ending these sessions for good, or null when nothing but a shell runs in them. */
+/** What to ask before ending these sessions for good, or null when nothing but a shell runs in them. The live list
+ *  saying they run something asks at once; only "nothing runs" is made sure of with the server (ending kills it). */
 async function confirmEnd(ids: string[]) {
-  const busyOnes = (await running(ids)).map((r) => r.label)
+  const seen = ws?.readyState === WebSocket.OPEN ? ids.map(sessionById) : []
+  const known = seen.length > 0 && seen.every((s) => s && busy(s))
+  const busyOnes = known ? seen.map((s) => labelOf(s!)) : (await running(ids)).map((r) => r.label)
   if (!busyOnes.length) return null
   const one = busyOnes.length === 1
   return {
@@ -110,13 +113,14 @@ async function confirmEnd(ids: string[]) {
 }
 
 const socketFor = (id: string, q = "") => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}${q}`
-/** Sessions being ended here: their tabs closing isn't news (tabClosed). */
+/** Sessions being ended here: their tabs closing isn't news (tabClosed), and lists leave them out at once. */
 const ending = new Set<string>()
 /** End a session for good: its shell and whatever runs in it. */
 function endSession(id: string) {
   letGo(id)
   ending.add(id)
   setTimeout(() => ending.delete(id), 5000)
+  if (now.list?.some((s) => s.id === id)) put({ list: now.list })
   const sock = new WebSocket(socketFor(id, "?end=1"))
   sock.onerror = () => sock.close()
 }
@@ -181,7 +185,12 @@ type Sessions = { list: Session[] | null; refused: string }
 let now: Sessions = { list: null, refused: "" }
 const listeners = new Set<() => void>()
 let ws: WebSocket | null = null, timer = 0, tries = 0
-const put = (next: Partial<Sessions>) => { now = { ...now, ...next }; listeners.forEach((f) => f()); tick() }
+const put = (next: Partial<Sessions>) => {
+  if (next.list && ending.size) next = { ...next, list: next.list.filter((s) => !ending.has(s.id)) }
+  now = { ...now, ...next }
+  listeners.forEach((f) => f())
+  tick()
+}
 // While a cache drains, the list is told again every 15 s, so icons and bars follow the clock between the server's lists.
 let ticking = 0
 function tick() {

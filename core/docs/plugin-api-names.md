@@ -74,7 +74,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
 - `BrowseSource`: A source of plugins to install in Get plugins (Setup's Plugins tab; a host's: another app's plugins).
-- `Button({ look, size, className, type, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
+- `Button({ look, size, className, type, busy, disabled, children, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
 - `canDropTab(item, d)`: Would that drop (in a list of a pane's tabs drawn elsewhere: the Tabs panel) change anything?
@@ -428,6 +428,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
 - `registerCanvas(c)`: A canvas came on screen: registered until it goes (the returned function).
 - `reload()`
+- `removals()`: Items taken off a list before the write that removes them is done: one per source (a module's, shared by every list drawing it), with keys unique in it.
 - `reorder(keys, moving, index)`: What a drop at slot `index` of `keys` (slotAt) leaves: their `order`, with `moving` there (those not among them come in as one INCOMING), the key it goes `before` (null: the end), and whether…
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
@@ -570,6 +571,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
+- `useBusy()`: A slow action of a button's: `busy` while it runs (`<Button busy>`: it shows it and takes no second press).
+- `useChosen(value)`: A value the user just changed (a switch, a name), shown at once over `value`, the source's: until the source says the same or moves on, or the old one again when the write fails (saying `failed`).
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.
 - `useCommandList()`
 - `useCommands(make, deps)`: Register commands while a component is mounted (again whenever `deps` change).

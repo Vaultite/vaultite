@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, GitCompareArrows, RotateCcw } from "lucide-react"
 import {
   AmbientButton, Button, capitalize, cn, DiffRows, fmtAgo, fmtStamp, folderOf, Loading, notify, notifyError, op, openFile, openView, plural, post, put,
-  readFile, stem, textDiff, useLive, type DiffLine, type FileHead,
+  readFile, removals, stem, textDiff, useBusy, useLive, type DiffLine, type FileHead,
 } from "@vaultite"
 import { argOf, reviewFileView, reviewView, useReview, type Pending } from "./open"
 
@@ -15,39 +15,41 @@ const names = (by: string[]) => (by.length <= 2 ? by.join(" and ") : `${by.slice
 /** "ChatGPT edited", "Claude and Codex created". */
 const whoDid = (f: Pending) => `${names(f.by)} ${f.created ? "created" : "edited"}`
 
+/** Files kept or reverted from here: their cards go at once, back if it fails or on Undo. */
+const reviewed = removals()
+
 /** What undoes a keep: the marks as they were, and the labels put back. */
-async function unkeep(u: Undo) {
+async function unkeep(u: Undo, paths: string[]) {
+  reviewed.back(paths)
   await post("review/marks", { was: u.was })
   for (const r of u.relabeled ?? []) await op("provenance.set", { path: r.path, origin: r.was })
 }
 
 async function keepFile(path: string) {
-  try {
-    const r = await op<Undo & { kept: string[] }>("review.keep", { path })
-    notify(`Kept ${stem(path)}`, { action: { label: "Undo", run: () => void unkeep(r).catch((e) => notifyError(e, "Couldn't undo it")) } })
-  } catch (e) { notifyError(e, "Couldn't keep it") }
+  let r: Undo & { kept: string[] } = { was: {}, kept: [] }
+  if (!await reviewed.remove(path, async () => { r = await op<Undo & { kept: string[] }>("review.keep", { path }) }, "Couldn't keep it")) return
+  notify(`Kept ${stem(path)}`, { action: { label: "Undo", run: () => void unkeep(r, [path]).catch((e) => notifyError(e, "Couldn't undo it")) } })
 }
 
-async function keepAll(by: string | undefined, n: number) {
-  try {
-    const r = await op<Undo & { kept: string[] }>("review.keep", { all: true, ...(by ? { by } : {}) })
-    notify(`Kept ${plural(r.kept.length || n, "file")}`, { action: { label: "Undo", run: () => void unkeep(r).catch((e) => notifyError(e, "Couldn't undo it")) } })
-  } catch (e) { notifyError(e, "Couldn't keep them") }
+async function keepAll(by: string | undefined, paths: string[]) {
+  let r: Undo & { kept: string[] } = { was: {}, kept: [] }
+  if (!await reviewed.remove(paths, async () => { r = await op<Undo & { kept: string[] }>("review.keep", { all: true, ...(by ? { by } : {}) }) }, "Couldn't keep them")) return
+  notify(`Kept ${plural(r.kept.length || paths.length, "file")}`, { action: { label: "Undo", run: () => void unkeep(r, paths).catch((e) => notifyError(e, "Couldn't undo it")) } })
 }
 
 type Reverted = { reverted: { path: string; archived?: string; text?: string; was?: string }[]; was: Record<string, number | null> }
 async function revertFile(path: string) {
-  try {
-    const r = await op<Reverted>("review.revert", { path })
-    const f = r.reverted[0]
-    if (!f) return
-    const undo = async () => {
-      if (f.archived) await op("archive.restore", { path: f.archived })
-      else await put("file", { path, text: f.was, base: f.text })
-      await post("review/marks", { was: r.was })
-    }
-    notify(`${f.archived ? "Archived" : "Reverted"} ${stem(path)}`, { action: { label: "Undo", run: () => void undo().catch((e) => notifyError(e, "Couldn't undo it")) } })
-  } catch (e) { notifyError(e, "Couldn't revert it") }
+  let r: Reverted = { reverted: [], was: {} }
+  if (!await reviewed.remove(path, async () => { r = await op<Reverted>("review.revert", { path }) }, "Couldn't revert it")) return
+  const f = r.reverted[0]
+  if (!f) return
+  const undo = async () => {
+    reviewed.back([path])
+    if (f.archived) await op("archive.restore", { path: f.archived })
+    else await put("file", { path, text: f.was, base: f.text })
+    await post("review/marks", { was: r.was })
+  }
+  notify(`${f.archived ? "Archived" : "Reverted"} ${stem(path)}`, { action: { label: "Undo", run: () => void undo().catch((e) => notifyError(e, "Couldn't undo it")) } })
 }
 
 /** One file's change: before the AI's first unreviewed change against now, a few lines around each change. */
@@ -55,7 +57,7 @@ function FileDiff({ path, onDone }: { path: string; onDone?: () => void }) {
   const { data: d } = useLive<Detail>(`review/file?path=${encodeURIComponent(path)}`, undefined, (p) => p === path)
   const [now, setNow] = useState<string | null>(null)
   const [lines, setLines] = useState<DiffLine[] | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [keeping, runKeep] = useBusy(), [reverting, runRevert] = useBusy()
   useEffect(() => {
     let live = true
     readFile(path).then((f) => { if (live) setNow(f.text) }, () => { if (live) setNow("") })
@@ -70,7 +72,7 @@ function FileDiff({ path, onDone }: { path: string; onDone?: () => void }) {
   }, [base, now])
   if (!d) return <Loading className="px-4 py-3" />
   if (!d.pending) return <p className="px-4 py-3 text-[15px] text-muted-foreground md:text-[13px]">Nothing left to review here.</p>
-  const act = (fn: () => Promise<void>) => async () => { setBusy(true); await fn(); setBusy(false); onDone?.() }
+  const act = (run: typeof runKeep, fn: () => Promise<void>) => () => { if (!keeping && !reverting) void run(fn)?.then(() => onDone?.()) }
   const note = "px-4 text-[15px] leading-[20px] text-muted-foreground md:text-[13px] md:leading-[18px]"
   return (
     <div className="border-t-[0.5px] border-border pt-3 pb-3" data-review-diff>
@@ -91,11 +93,11 @@ function FileDiff({ path, onDone }: { path: string; onDone?: () => void }) {
         </>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2 px-3 md:px-4">
-        <Button look="primary" disabled={busy} onClick={act(() => keepFile(path))} data-review-keep className="max-md:h-11">
+        <Button look="primary" busy={keeping} disabled={reverting} onClick={act(runKeep, () => keepFile(path))} data-review-keep className="max-md:h-11">
           <Check className="size-4" strokeWidth={2.25} />Keep
         </Button>
         {d.base && (
-          <Button disabled={busy} onClick={act(() => revertFile(path))} data-review-revert className="max-md:h-11">
+          <Button busy={reverting} disabled={keeping} onClick={act(runRevert, () => revertFile(path))} data-review-revert className="max-md:h-11">
             {d.created ? <Archive className="size-4" strokeWidth={2.25} /> : <RotateCcw className="size-4" strokeWidth={2.25} />}{d.created ? "Archive" : "Revert"}
           </Button>
         )}
@@ -113,11 +115,11 @@ function Size({ f }: { f: Pending }) {
 }
 
 /** A file to review: its name and who changed it, unfolding to its diff. */
-function FileCard({ f, open, toggle }: { f: Pending; open: boolean; toggle: () => void }) {
+function FileCard({ f, open, toggle, leaving }: { f: Pending; open: boolean; toggle: () => void; leaving?: "" }) {
   const folder = folderOf(f.path)
   const Chevron = open ? ChevronDown : ChevronRight
   return (
-    <section data-review-file={f.path} className="overflow-hidden rounded-[10px] border-[0.5px] border-border bg-card md:rounded-[8px]">
+    <section data-review-file={f.path} data-leaving={leaving} className="overflow-hidden rounded-[10px] border-[0.5px] border-border bg-card md:rounded-[8px]">
       <button type="button" onClick={toggle} aria-expanded={open}
         className="flex min-h-14 w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left hover:bg-foreground/[0.03] md:min-h-12 md:px-4">
         <Chevron className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
@@ -137,7 +139,7 @@ function FileCard({ f, open, toggle }: { f: Pending; open: boolean; toggle: () =
 export function ReviewView({ arg }: { arg: string }) {
   const by = arg ? argOf(arg) : undefined
   const { data, error } = useLive<{ files: Pending[] }>(`review${by ? `?by=${encodeURIComponent(by)}` : ""}`, undefined, true, 60_000)
-  const files = data?.files ?? null
+  const { list: files, leaving } = reviewed.use(data?.files, (f) => f.path)
   // The first one unfolded, as a PR's first file is in sight.
   const [open, setOpen] = useState<Set<string> | null>(null)
   if (open === null && files?.length) setOpen(new Set([files[0].path]))
@@ -147,7 +149,7 @@ export function ReviewView({ arg }: { arg: string }) {
       <div className="mb-1 flex items-center gap-2">
         <h1 className="flex-1 text-[22px] leading-[28px] font-bold max-md:hidden">{by ? `${capitalize(by)}'s changes` : "Review AI changes"}</h1>
         {!!files?.length && (
-          <Button size="small" onClick={() => void keepAll(by, files.length)} data-review-keep-all className="max-md:ml-auto max-md:h-9">
+          <Button size="small" onClick={() => void keepAll(by, files.map((f) => f.path))} data-review-keep-all className="max-md:ml-auto max-md:h-9">
             <CheckCheck className="size-3.5" strokeWidth={2.25} />Keep all
           </Button>
         )}
@@ -163,7 +165,7 @@ export function ReviewView({ arg }: { arg: string }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {files.map((f) => <FileCard key={f.path} f={f} open={!!open?.has(f.path)} toggle={() => toggle(f.path)} />)}
+          {files.map((f) => <FileCard key={f.path} f={f} open={!!open?.has(f.path)} toggle={() => toggle(f.path)} leaving={leaving(f.path)} />)}
         </div>
       )}
     </div>

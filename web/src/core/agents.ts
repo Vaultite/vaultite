@@ -125,8 +125,15 @@ export type Place = { agent: Agent | null; machine: string; machineLabel: string
 
 /** Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one
  *  that's online with the Terminal plugin on (and the agent's plugin, for an agent). */
-export async function places(): Promise<Place[]> {
-  const ms = await fetchMachines()
+export function places(): Promise<Place[]> {
+  // (a menu of them opens at once from the last answer, asked again behind it: only the first one waits)
+  asking ??= askPlaces().then((l) => (lastPlaces = l)).finally(() => { asking = null })
+  return lastPlaces ? Promise.resolve(lastPlaces) : asking
+}
+let lastPlaces: Place[] | null = null, lastMachines: Machine[] | null = null
+let asking: Promise<Place[]> | null = null
+async function askPlaces(): Promise<Place[]> {
+  const ms = lastMachines = await fetchMachines()
   const where = [{ machine: "", label: ms.find((m) => m.self)?.label ?? "This machine", plugins: null as string[] | null },
     ...otherMachines(ms, "terminal").map((m) => ({ machine: m.id, label: m.label, plugins: m.plugins ?? [] }))]
   const agents = agentsOn()
@@ -162,7 +169,7 @@ export async function choosePlace(opts: { agent?: string; split?: boolean } = {}
 
 /** Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there. */
 export async function chooseDefaultPlace() {
-  const all = await places(), ms = await fetchMachines()
+  const all = await places(), ms = lastMachines ?? await fetchMachines()
   const h = getDefaultPlace(), desk = currentWorkspace()
   const isDefault = (p: Place) => {
     const at = defaultPlaceOf(p.agent?.name ?? null, ms, h)

@@ -2,7 +2,7 @@
 // player; Done files it away as the inbox's Done does.
 import { useState, type MouseEvent } from "react"
 import { BookOpen, Check, CheckCheck, Globe, ListVideo, Pause, Play, RotateCcw } from "lucide-react"
-import { cn, Empty, fmtAgo, isArchived, List, menuFor, notifyError, op, openFile, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type SwipeAction } from "@vaultite"
+import { cn, Empty, fmtAgo, isArchived, List, menuFor, op, openFile, optimistic, Panel, rawUrl, resolver, Row, Segmented, SwipeRow, type Store, type SwipeAction } from "@vaultite"
 import { leftText, shelfOf, type Place, type Shelf } from "./shelves"
 import { getNow, pictureOf, playFile, markDone, useNow, usePlaces, useTick } from "./now"
 
@@ -86,7 +86,9 @@ function QueueRow({ e, place }: { e: Entry; place?: Place }) {
   const d = playing && Number.isFinite(now!.el.duration) ? now!.el.duration : place?.d
   const live: Place | undefined = playing ? { t, d, at: Date.now() } : place
   const pct = d && t > 5 && !place?.done ? Math.min(100, (t / d) * 100) : null
-  const done = () => op("inbox.done", { path: e.note }).catch((err) => notifyError(err, "Couldn't mark it done"))
+  // (it leaves the queue at once: the store, which the next refresh replaces)
+  const done = () => optimistic((s) => (s.inbox ? { ...s, inbox: s.inbox.map((r) => (r.id === e.id ? { ...r, status: "done" } : r)) } : s),
+    () => op("inbox.done", { path: e.note }), "Couldn't mark it done").catch(() => {})
   const toggle = () => {
     if (!e.media) return
     if (playing) { if (now!.el.paused) void now!.el.play(); else now!.el.pause() } else playFile(e.media, e.note)

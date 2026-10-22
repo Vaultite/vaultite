@@ -34,6 +34,12 @@ export function extensionPageName(url: string) {
 export const popupOpen = cell("")
 export const popupChanged = (ext: string, open: boolean) => { if (open) popupOpen.set(ext); else if (popupOpen.get() === ext) popupOpen.set("") }
 
+/** Change an extension on screen at once, then in the engine; a failure asks for the list again and says `failed`. */
+export function changeExtension(id: string, change: Partial<Ext>, write: () => Promise<unknown>, failed: string) {
+  list.update((l) => l && l.map((x) => (x.id === id ? { ...x, ...change } : x)))
+  void write().catch((e) => { refresh(); notifyError(e, failed) })
+}
+
 export function useExtensions() {
   useEffect(() => { if (list.get() === null) refresh() }, [])
   return list.use((l) => l)

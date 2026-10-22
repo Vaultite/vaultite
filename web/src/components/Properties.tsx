@@ -3,11 +3,10 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
-import { stampMs } from "@/core/data"
+import { optimistic, stampMs } from "@/core/data"
 import { editorSettings, PROPERTIES_SHOWN, showPropertiesAs } from "@/core/editorPrefs"
 import { op } from "@/core/http"
 import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumber, type PropKind } from "@/core/frontmatter"
-import { notifyError } from "@/core/notify"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
 import { keepPropsOpen, propsOpen } from "@/core/viewstate"
@@ -105,7 +104,13 @@ function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; t
   const Icon = ICONS[declared ?? (stamp ? "datetime" : propKind(v))]
   const label = declared ? `${k}: ${LABELS[declared].toLowerCase()}` : `${k}: no type set`
   if (readOnly) return <span className="grid size-8 shrink-0 place-items-center text-tertiary" aria-hidden><Icon className="size-4" strokeWidth={2} /></span>
-  const set = (type: PropType | "none") => op("property.type", { key: k, type }).catch((e) => notifyError(e, "Couldn't set its type"))
+  // (the icon changes at once: the store, which the next refresh replaces)
+  const set = (type: PropType | "none") => optimistic((s) => {
+    const was = s.propertyTypes ?? { types: {}, own: [] }, other = (x: string) => x.toLowerCase() !== k.toLowerCase()
+    const types: PropTypes = Object.fromEntries(Object.entries(was.types).filter(([x]) => other(x)))
+    if (type !== "none") types[k] = type
+    return { ...s, propertyTypes: { types, own: [...was.own.filter(other), ...(type === "none" ? [] : [k])] } }
+  }, () => op("property.type", { key: k, type }), "Couldn't set its type").catch(() => {})
   const own = !!types?.own.some((x) => x.toLowerCase() === k.toLowerCase())
   const open = (e: MouseEvent) => menuBelow(e, [
     { label: `The type of ${k} in every file`, caption: true, run: () => {} },

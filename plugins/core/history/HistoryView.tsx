@@ -69,9 +69,13 @@ export function HistoryView({ path }: { path: string }) {
   const changes = lines ? lines.filter((l) => l.kind !== "same").length : 0
   const kept = useKeptCount(`history:${path}`, versions?.length)
 
+  const [restoring, setRestoring] = useState(false)
+  // (the file shows as the version at once, so a second press has nothing to restore; a failure puts it back)
   const restore = async () => {
-    if (text === null || !v) return
+    if (text === null || !v || restoring) return
     const before = now
+    setRestoring(true)
+    setNow(text)
     try {
       if (before === null) await post("file", { path, text })  // it was deleted: it comes back
       else await put("file", { path, text, base: before })
@@ -82,7 +86,7 @@ export function HistoryView({ path }: { path: string }) {
         },
       })
       load()
-    } catch (e) { notifyError(e) }
+    } catch (e) { setNow(before); notifyError(e, "Couldn't restore it") } finally { setRestoring(false) }
   }
 
   const labels = [...new Set((versions ?? []).flatMap((x) => (x.label ? [x.label] : [])))]
@@ -123,7 +127,7 @@ export function HistoryView({ path }: { path: string }) {
                 className="flex h-8 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3 text-[15px] font-medium hover:bg-foreground/[0.1] disabled:opacity-40 md:h-7 md:rounded-[6px] md:text-[13px]">
                 <Copy className="size-3.5" strokeWidth={2.25} />Copy
               </button>
-              <button type="button" disabled={text === null || (lines !== null && !changes)} onClick={restore}
+              <button type="button" disabled={text === null || restoring || (lines !== null && !changes)} onClick={() => void restore()}
                 className="flex h-8 cursor-pointer items-center gap-1.5 rounded-[8px] bg-primary px-3 text-[15px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 md:h-7 md:rounded-[6px] md:text-[13px]">
                 <RotateCcw className="size-3.5" strokeWidth={2.25} />Restore
               </button>

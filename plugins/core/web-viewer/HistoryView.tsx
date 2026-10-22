@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Copy, Globe, Search, Trash2 } from "lucide-react"
 import {
-  Button, choose, confirmDialog, dateText, FilterField, fmtDay, fmtLongDay, iso, menuFor, notify, notifyError, plural, rowMenu,
+  Button, cell, choose, confirmDialog, dateText, FilterField, fmtDay, fmtLongDay, iso, menuFor, notify, notifyError, plural, removals, rowMenu,
   selectClick, selectedAttr, SidebarHeading, SidebarRow, useSelectable, useSelected, type MenuItem,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -32,25 +32,30 @@ function byDay(visits: Visit[]): Day[] {
   return days
 }
 
+/** Rows removed from here: gone at once, back if it fails or on Undo. A whole range cleared: hidden from `cleared`. */
+const removing = removals()
+const cleared = cell<number | null>(null)
+
 /** Put back what was removed, from a toast's Undo. */
-const undoable = (text: string, gone: Removed[]) => {
+const undoable = (text: string, gone: Removed[], keys: string[]) => {
   if (!gone.length) return
-  notify(text, { action: { label: "Undo", run: () => restoreVisits(gone).then(() => {}) } })
+  notify(text, { action: { label: "Undo", run: () => { removing.back(keys); return restoreVisits(gone).then(() => {}) } } })
 }
 const pages = (n: number) => plural(n, "page")
 
-export async function removeRows(rows: Pick<Row, "ids">[]) {
-  try {
-    const gone = await removeVisits({ visits: rows.flatMap((r) => r.ids) })
-    undoable(`Removed ${pages(rows.length)} from history`, gone)
-  } catch (e) { notifyError(e, "Couldn't remove them from history") }
+function removeRows(rows: Pick<Row, "ids" | "key">[]) {
+  const keys = rows.map((r) => r.key)
+  let gone: Removed[] = []
+  void removing.remove(keys, async () => { gone = await removeVisits({ visits: rows.flatMap((r) => r.ids) }) }, "Couldn't remove them from history")
+    .then((ok) => ok && undoable(`Removed ${pages(rows.length)} from history`, gone, keys))
 }
 
-export async function forgetSite(host: string) {
-  try {
-    const gone = await removeSite(host)
-    undoable(gone.length ? `Removed ${host} from history` : `No history of ${host}`, gone)
-  } catch (e) { notifyError(e, `Couldn't remove ${host} from history`) }
+/** Remove a site's history (`rows`: the ones of it shown, which go at once). */
+function forgetSite(host: string, rows: Row[]) {
+  const keys = rows.map((r) => r.key)
+  let gone: Removed[] = []
+  void removing.remove(keys, async () => { gone = await removeSite(host) }, `Couldn't remove ${host} from history`)
+    .then((ok) => ok && undoable(gone.length ? `Removed ${host} from history` : `No history of ${host}`, gone, keys))
 }
 
 const RANGES: { id: string; label: string; ms: number | null }[] = [
@@ -73,10 +78,12 @@ export function askClear() {
         confirm: "Clear", danger: true,
       })
       if (!ok) return
+      const since = r.ms ? Date.now() - r.ms : null
+      cleared.set(since ?? 0)
       try {
-        const n = await clearHistory(r.ms ? Date.now() - r.ms : null, null)
+        const n = await clearHistory(since, null)
         notify(n ? `Cleared ${plural(n, "visit")}` : "Nothing to clear")
-      } catch (e) { notifyError(e, "Couldn't clear the history") }
+      } catch (e) { notifyError(e, "Couldn't clear the history") } finally { cleared.set(null) }
     },
   })
 }
@@ -119,13 +126,19 @@ export function HistoryView({ openPage, onImport }: { openPage: (url: string) =>
     return () => io.disconnect()
   }, [loadMore])
 
-  const days = useMemo(() => byDay(visits ?? []), [visits])
+  const all = useMemo(() => byDay(visits ?? []), [visits])
+  const since = cleared.use()
+  const { list: kept, leaving } = removing.use(useMemo(() => all.flatMap((d) => d.rows), [all]), (r) => r.key)
+  const days = useMemo(() => {
+    const keep = new Set(kept)
+    return all.map((d) => ({ ...d, rows: d.rows.filter((r) => keep.has(r) && (since === null || r.at < since)) })).filter((d) => d.rows.length)
+  }, [all, kept, since])
   const rows = useMemo(() => new Map(days.flatMap((d) => d.rows.map((r) => [r.key, r] as const))), [days])
   useSelectable(HISTORY_LIST, { noun: ["page", "pages"], menu: (keys) => {
     const picked = keys.flatMap((k) => rows.get(k) ?? [])
     return [
       { label: `Open ${pages(picked.length)}`, icon: Globe, run: () => { for (const r of picked) openPage(r.url) } },
-      { label: "Remove from history", icon: Trash2, danger: true, sep: true, run: () => void removeRows(picked) },
+      { label: "Remove from history", icon: Trash2, danger: true, sep: true, run: () => removeRows(picked) },
     ]
   } })
 
@@ -136,7 +149,7 @@ export function HistoryView({ openPage, onImport }: { openPage: (url: string) =>
         <FilterField value={q} onChange={setQ} placeholder="Search history" />
         <Button look="quiet" size="small" onClick={askClear} data-web-clear-history>Clear browsing history…</Button>
       </div>
-      {visits && !visits.length && (
+      {visits && !days.length && (
         <div className="px-1.5 pt-6 text-[13px] text-muted-foreground" data-web-history-empty>
           {text ? `Nothing in the history matches "${text}".` : "No history yet. The pages you visit are kept here, on this computer."}
           {!text && onImport && <Button look="secondary" size="small" className="ml-2" onClick={onImport}>Import from another browser…</Button>}
@@ -147,7 +160,7 @@ export function HistoryView({ openPage, onImport }: { openPage: (url: string) =>
           <section key={d.day} data-web-history-day={d.day}>
             <SidebarHeading title={dayTitle(d.day)} open />
             <div className="flex flex-col gap-px">
-              {d.rows.map((r) => <HistoryRow key={r.key} row={r} openPage={openPage} filter={setQ} />)}
+              {d.rows.map((r) => <HistoryRow key={r.key} row={r} openPage={openPage} filter={setQ} leaving={leaving(r.key)} siteRows={(h) => [...rows.values()].filter((x) => (x.host || hostOf(x.url)) === h)} />)}
             </div>
           </section>
         ))}
@@ -162,18 +175,20 @@ function dayTitle(day: string) {
   return name === "Today" || name === "Yesterday" ? `${name} · ${fmtLongDay(day)}` : fmtLongDay(day)
 }
 
-function HistoryRow({ row: r, openPage, filter }: { row: Row; openPage: (url: string) => void; filter: (q: string) => void }) {
+function HistoryRow({ row: r, openPage, filter, leaving, siteRows }: { row: Row; openPage: (url: string) => void; filter: (q: string) => void; leaving?: ""
+  /** The rows shown of a site (what removing it takes off at once). */
+  siteRows: (host: string) => Row[] }) {
   const picked = useSelected(HISTORY_LIST, r.key)
   const host = hostOf(r.url)
   const own = (): MenuItem[] => [
     { label: "Open", icon: Globe, run: () => openPage(r.url) },
     { label: "Copy link", icon: Copy, run: () => void navigator.clipboard.writeText(r.url) },
     { label: `More from ${host}`, icon: Search, run: () => filter(host) },
-    { label: "Remove from history", icon: Trash2, danger: true, sep: true, run: () => void removeRows([r]) },
-    { label: `Remove all of ${host}`, icon: Trash2, danger: true, run: () => void forgetSite(r.host || host) },
+    { label: "Remove from history", icon: Trash2, danger: true, sep: true, run: () => removeRows([r]) },
+    { label: `Remove all of ${host}`, icon: Trash2, danger: true, run: () => forgetSite(r.host || host, siteRows(r.host || host)) },
   ]
   return (
-    <SidebarRow icon={siteIcon(r.url)} open tip={r.url} data-select-key={r.key} data-web-history-row={r.url} {...selectedAttr(picked)}
+    <SidebarRow icon={siteIcon(r.url)} open tip={r.url} data-select-key={r.key} data-web-history-row={r.url} data-leaving={leaving} {...selectedAttr(picked)}
       label={(
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="truncate">{r.title || host}</span>

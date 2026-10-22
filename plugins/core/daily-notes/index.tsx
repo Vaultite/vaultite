@@ -10,7 +10,7 @@ function DayBlock({ store, options }: BlockCtx) {
   const base = typeof options.date === "string" && ISO.test(options.date) ? options.date : today()
   const [date, setDate] = useState(base)
   useEffect(() => setDate(base), [base])
-  const { day, error, start, started } = useDay(date)
+  const { day, error, start, started, starting } = useDay(date)
   const name = dayName(date)
   return (
     <Panel title={heading || "Daily note"} icon={CalendarDays}
@@ -26,7 +26,7 @@ function DayBlock({ store, options }: BlockCtx) {
         : !day.exists ? (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <Empty>No note for {inSentence(name)} yet.</Empty>
-            <Button look="quiet" size="small" className="-mr-2" onClick={start}>Start it</Button>
+            <Button look="quiet" size="small" className="-mr-2" busy={starting} onClick={start}>Start it</Button>
           </div>
         )
         : <FileEditor key={day.path} path={day.path} store={store} section={heading || undefined} autoFocus={started}

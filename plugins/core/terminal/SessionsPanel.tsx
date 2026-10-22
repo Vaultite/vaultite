@@ -39,7 +39,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       className={needs ? "font-semibold" : undefined}
       data-where={where}
       data-machine={s.machine}
-      swipe={() => [{ label: "End", icon: X, danger: true, run: () => void endForGood(s.id) }]}
+      swipe={() => [{ label: "End", icon: X, danger: true, run: () => endForGood(s.id), removes: true }]}
       onContextMenu={menuFor(() => menuOf(s, a))}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody

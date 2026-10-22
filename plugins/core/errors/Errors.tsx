@@ -2,7 +2,7 @@
 // every 10 s while the page shows.
 import { useState } from "react"
 import { AlertTriangle } from "lucide-react"
-import { Bar, cn, confirmDialog, copyText, del, Empty, fmtAgo, fmtStamp, List, Loading, notify, notifyError, Panel, plural, Segmented, useKeptCount, useLive } from "@vaultite"
+import { Bar, cn, confirmDialog, copyText, del, Empty, fmtAgo, fmtStamp, List, Loading, notify, notifyError, Panel, plural, removals, Segmented, useKeptCount, useLive } from "@vaultite"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList } from "./model"
 
 export const TINT = "var(--errors, var(--red))"
@@ -13,6 +13,9 @@ const KIND: Record<string, string> = {
   rejection: "unhandled rejection", stale: "an older build (reloaded)", error: "logged", fatal: "ended the server",
   shown: "told in a toast or a page", plugin: "a plugin couldn't start",
 }
+/** Errors forgotten from here: gone at once, back if it fails. */
+const forgetting = removals()
+
 const whereOf = (g: ErrorGroup) => (g.source === "app" ? `App${g.devices.length ? ` (${g.devices.join(", ")})` : ""}` : "Server")
 
 /** Everything about one time, as text: what Copy puts on the clipboard (for a bug report or an agent). */
@@ -52,7 +55,7 @@ function Detail({ g, onForgot }: { g: ErrorGroup; onForgot: () => void }) {
       </div>
       <div className="-ml-2 flex gap-1">
         <button type="button" className={linkBtn} onClick={() => copyText(report(g, events)).then(() => notify("Copied the error", { id: "copied" }), (err) => notifyError(err))}>Copy</button>
-        <button type="button" className={linkBtn} onClick={() => del(`errors/${g.id}`).then(onForgot, (err) => notifyError(err, "Couldn't forget it"))}>Forget</button>
+        <button type="button" className={linkBtn} onClick={() => void forgetting.remove(g.id, () => del(`errors/${g.id}`), "Couldn't forget it").then((ok) => ok && onForgot())}>Forget</button>
       </div>
     </div>
   )
@@ -85,10 +88,10 @@ function Skeleton({ count }: { count: number }) {
   )
 }
 
-function GroupRow({ g, open, onToggle, onForgot }: { g: ErrorGroup; open: boolean; onToggle: () => void; onForgot: () => void }) {
+function GroupRow({ g, open, onToggle, onForgot, leaving }: { g: ErrorGroup; open: boolean; onToggle: () => void; onForgot: () => void; leaving?: "" }) {
   const bad = g.fatal > 0 || g.kind === "stopped" || g.kind === "boot"
   return (
-    <div data-error={g.id}>
+    <div data-error={g.id} data-leaving={leaving}>
       <button type="button" onClick={onToggle} aria-expanded={open}
         className={cn(row, "hover:bg-foreground/[0.03]")}>
         <AlertTriangle className={cn("mt-[3px] size-4 shrink-0", bad ? "text-[var(--red)]" : g.kind === "stale" ? "text-tertiary" : "text-[var(--orange)]")} strokeWidth={2} />
@@ -114,29 +117,30 @@ export function ErrorsList({ options = {} }: { options?: Record<string, unknown>
   const reload = () => setAsked((n) => n + 1)
   const { data, error } = useLive<ErrorList>(`errors?limit=${limit}${source ? `&source=${source}` : ""}`, asked, undefined, 10_000)
   const [open, setOpen] = useState<string | null>(null)
+  const { list: groups, leaving } = forgetting.use(data?.groups, (g) => g.id)
   const rows = useKeptCount(`errors:${limit}:${source ?? "all"}`, data?.groups.length)
   const title = typeof options.title === "string" && options.title ? options.title : "Errors"
   const clearAll = async () => {
     if (!(await confirmDialog({ title: "Forget every error?", body: "The errors kept on this machine are deleted. New ones are still recorded.", confirm: "Forget all", danger: true }))) return
-    del("errors").then(reload, (e) => notifyError(e, "Couldn't forget them"))
+    void forgetting.remove((groups ?? []).map((g) => g.id), () => del("errors"), "Couldn't forget them").then(reload)
   }
   const action = (
     <div className="flex items-center gap-2">
       {!fixed && <Segmented label="Where" value={filter} onChange={setFilter}
         options={[{ value: "all", label: "All" }, { value: "app", label: "App" }, { value: "server", label: "Server" }]} />}
-      {!!data?.groups.length && <button type="button" className={linkBtn} onClick={() => void clearAll()}>Clear</button>}
+      {!!groups?.length && <button type="button" className={linkBtn} onClick={() => void clearAll()}>Clear</button>}
     </div>
   )
   return (
     <Panel title={title} icon={AlertTriangle} tint={TINT} action={action}>
-      {!data ? (error || !rows ? <Loading error={error && "Couldn't read the errors."} /> : <Skeleton count={rows} />) : !data.groups.length ? (
+      {!data ? (error || !rows ? <Loading error={error && "Couldn't read the errors."} /> : <Skeleton count={rows} />) : !groups?.length ? (
         <Empty>No errors{source ? ` in the ${source}` : ""}. When the app or the server hits one, it's here.</Empty>
       ) : (
         <>
           <p className="mb-1 text-[13px] text-muted-foreground">{data.total} kind{data.total === 1 ? "" : "s"} of error, {data.events} time{data.events === 1 ? "" : "s"}{data.total > data.groups.length ? ` (the latest ${data.groups.length})` : ""}</p>
           <List>
-            {data.groups.map((g) => <GroupRow key={g.id} g={g} open={open === g.id} onToggle={() => setOpen(open === g.id ? null : g.id)}
-              onForgot={() => { setOpen(null); reload() }} />)}
+            {groups.map((g) => <GroupRow key={g.id} g={g} open={open === g.id} onToggle={() => setOpen(open === g.id ? null : g.id)}
+              onForgot={() => { setOpen(null); reload() }} leaving={leaving(g.id)} />)}
           </List>
         </>
       )}

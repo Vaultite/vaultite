@@ -433,6 +433,9 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 .dot-in.breathe { animation: dot-in 180ms ease-out, breathe 2.2s ease-in-out infinite; }
 .dot-ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: dot-ping 1s ease-out; }
 @media (prefers-reduced-motion: reduce) { .dot-in, .dot-ping::after { animation: none; } }
+/* A row taken off its list (core/leaving.ts) folds away before it goes: its height to nothing, fading. */
+@keyframes leave { to { height: 0; min-height: 0; padding-block: 0; margin-block: 0; border-width: 0; opacity: 0; } }
+[data-leaving] { interpolate-size: allow-keywords; overflow: hidden; pointer-events: none; animation: leave 180ms cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
 /* (a component layer: a utility on it wins, rounded-full) */
 @layer components {

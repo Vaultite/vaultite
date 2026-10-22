@@ -2,7 +2,7 @@
 // into it and following the file (see index.tsx). No components here: they're in Numbers.tsx.
 import { Copy, LayoutPanelLeft, Pencil, Plus, Settings2, Trash2 } from "lucide-react"
 import {
-  cell, del, devicePref, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
+  cell, del, devicePref, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
   type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
@@ -297,15 +297,32 @@ export function sync() {
 /** What goes: a tab (by id), a whole pane (by its group's id: all its tabs) or files to open there (vault paths). */
 export type Sent = { tab: string } | { group: string } | { open: string[] }
 let moving = false
+
+/** The layout without a tab, or a pane's tabs (its pane goes): what shows while their move is on its way. */
+function without(l: TabLayout, what: { tab: string } | { group: string }): TabLayout {
+  const drop = (n: TabLayout["root"]): TabLayout["root"] => {
+    if ("kids" in n) return { ...n, kids: n.kids.map(drop) }
+    if ("group" in what) return n.id === what.group ? { ...n, tabs: [] } : n
+    const i = n.tabs.findIndex((t) => t.id === what.tab)
+    if (i < 0) return n
+    const tabs = n.tabs.filter((t) => t.id !== what.tab)
+    return { ...n, tabs, active: n.active === what.tab ? tabs[Math.min(i, tabs.length - 1)]?.id ?? "" : n.active }
+  }
+  return { ...l, root: drop(l.root) }
+}
+
 /** Send a tab, pane or files to workspace n (dropped on its number), through the server so every device on either
- *  follows; this device puts the result in place itself, so nothing stale of its own is saved over it. */
+ *  follows; what goes leaves here at once (unless it's all there is), and the server's result is put in place. */
 export async function sendTo(n: number, what: Sent) {
-  if (!slots()) return
+  if (!slots() || moving) return
   const from = current()
   if (!from || from === n) return
   if (timer) saveTabs()
-  await writing
   moving = true
+  const before = getTabLayout()
+  const gone = "open" in what ? null : without(before, what)
+  if (gone && panesOf(gone.root).some((g) => g.tabs.length)) apply(gone, true)
+  await writing
   try {
     const r = await post<{ tabs: { id: string }[]; group?: string; workspaces: unknown[] }>("workspaces/move", { ...("open" in what ? {} : { from }), to: n, ...what })
     local = unusedIfBlank(r.workspaces)
@@ -319,6 +336,7 @@ export async function sendTo(n: number, what: Sent) {
     notify(r.tabs.length ? ("open" in what ? `Opened in ${named(n)}` : `Moved to ${named(n)}`) : `Already open in ${named(n)}`,
       back ? { action: { label: "Undo", run: () => void bringBack(n, from, back) } } : undefined)
   } catch (e) {
+    if (gone) apply(before, true)
     notifyError(e, "open" in what ? "Couldn't open it there" : "Couldn't move it")
   } finally {
     moving = false

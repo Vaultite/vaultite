@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Calendar1, ChevronLeft, ChevronRight } from "lucide-react"
 import {
   addDays, Button, Empty, FileEditor, fmtDay, fmtLongDay, HeadingButton, Loading, notifyError, op, openFile, scopedState, SidebarHeading,
-  today, useLive, useScopedState, type SidebarCtx, type Store,
+  today, useBusy, useLive, useScopedState, type SidebarCtx, type Store,
 } from "@vaultite"
 
 export const ISO = /^\d{4}-\d\d-\d\d$/
@@ -27,10 +27,10 @@ export function useDay(date: string) {
   const day = data?.date === date ? data : null
   at.current = day?.path ?? null
   const [started, setStarted] = useState<string | null>(null)
-  const start = async () => {
-    try { await op("daily-note.open", { date }); setStarted(date) } catch (e) { notifyError(e, `Couldn't start ${whose(date)} note`) }
-  }
-  return { day, error, start, started: started === date }
+  const [busy, run] = useBusy()
+  const start = () => void run(() => op("daily-note.open", { date }).then(() => setStarted(date), (e) => notifyError(e, `Couldn't start ${whose(date)} note`)))
+  // (busy from the press until the note is there to write in)
+  return { day, error, start, started: started === date, starting: busy || (started === date && !!day && !day.exists) }
 }
 
 /** Today's date, changing at midnight (setting the same date again draws nothing). */
@@ -62,7 +62,7 @@ export const DailyPanel = ({ store, open, flyout }: SidebarCtx) => (open ? <DayP
 /** `jot`: opened from the rail, to write in at once. */
 function DayPanel({ store, jot }: { store: Store; jot?: boolean }) {
   const { date, now, show } = useShownDay()
-  const { day, error, start, started } = useDay(date)
+  const { day, error, start, started, starting } = useDay(date)
   return (
     <div className="flex shrink-0 flex-col" data-daily-panel={date}>
       <SidebarHeading title={dayName(date)} open>
@@ -73,9 +73,9 @@ function DayPanel({ store, jot }: { store: Store; jot?: boolean }) {
       </SidebarHeading>
       {!day ? <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">{error ? "Couldn't find the daily note." : ""}</p>
         : !day.exists ? (
-          <button type="button" onClick={start} data-daily-start
-            className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
-            No note for {inSentence(dayName(date))} yet. Start it
+          <button type="button" onClick={start} disabled={starting} aria-busy={starting || undefined} data-daily-start
+            className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground disabled:cursor-progress">
+            {starting ? <span className="shimmer">Starting {whose(date)} note…</span> : <>No note for {inSentence(dayName(date))} yet. Start it</>}
           </button>
         )
         : <FileEditor key={day.path} path={day.path} store={store} autoFocus={started || jot} className="pr-1 pl-1.5 text-[13px] leading-[1.5]" />}
@@ -86,7 +86,7 @@ function DayPanel({ store, jot }: { store: Store; jot?: boolean }) {
 /** The panel as a tab (view:daily-note), to keep in a split: the same day, a page's size. */
 export function DailyView({ store }: { store: Store }) {
   const { date, now, show } = useShownDay()
-  const { day, error, start, started } = useDay(date)
+  const { day, error, start, started, starting } = useDay(date)
   return (
     <div className="pb-10" data-daily-view={date}>
       <div className="mb-3 flex items-center gap-1">
@@ -99,7 +99,7 @@ export function DailyView({ store }: { store: Store }) {
         : !day.exists ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Empty>No note for {inSentence(dayName(date))} yet.</Empty>
-            <Button look="quiet" size="small" onClick={start}>Start it</Button>
+            <Button look="quiet" size="small" busy={starting} onClick={start}>Start it</Button>
           </div>
         )
         : <FileEditor key={day.path} path={day.path} store={store} autoFocus={started} />}

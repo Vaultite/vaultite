@@ -14,6 +14,9 @@
   or bottom sheets. An unsaved form asks before closing (`useSheetGuard`).
 - The app draws its own dialogs, tooltips and menus, never the browser's (`alert`, `confirm`, `prompt`, `title=`,
   context menu). Feedback: `notify()` / `notifyError()`, one line, one action at most, nothing on autosave.
+- A tap shows its effect at once; the write catches up (`core/leaving.ts`). What it takes away folds off its list
+  (`removals()`: the row's `data-leaving`), what it changes shows changed (`optimistic()` for the store, `useChosen`
+  otherwise), and only what must wait says it's working (`useBusy`, `<Button busy>`). A failure puts it back and says so.
 - An error never shows its exception's text (`e.message`, `String(e)`): `notifyError(e, "Couldn't …")` or
   `errorText(e, …)` say what failed and the reason a person can act on (`core/plainerror.ts`); a bug's text goes to
   Errors, behind Details or `ErrorDetails`. What can be

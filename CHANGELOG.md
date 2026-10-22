@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Answered at once**: what you do shows straight away instead of after the server replies. Forgetting a device,
+  signing out of a site, disconnecting an app, removing history, errors, extensions or reviewed files fold their rows
+  away; switches and names change as you set them; slow actions (Restore, Start it, Keep) say they're working and take
+  no second press. A machine's menu and "Choose where…" open at once. What fails comes back and says why.
 - ⌘A selects only what you're in, never the whole window: a menu's filter is a real field (⌘A, ⌥⌫, paste and
   dictation work in it), a field being renamed keeps ⌘A for its text, a note in reading view selects its text, and the
   sidebars and bars select nothing.

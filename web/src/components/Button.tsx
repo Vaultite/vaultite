@@ -14,9 +14,15 @@ const BUTTON_LOOK = {
 type ButtonLook = { look?: keyof typeof BUTTON_LOOK; size?: keyof typeof BUTTON_SIZE }
 /** A button's classes, for a link drawn as one. */
 export const buttonClass = ({ look = "secondary", size = "normal" }: ButtonLook = {}, className?: string) => cn(BUTTON, BUTTON_SIZE[size], BUTTON_LOOK[look], className)
-/** A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it. */
-export function Button({ look, size, className, type = "button", ...rest }: ButtonLook & ButtonHTMLAttributes<HTMLButtonElement> & Record<`data-${string}`, unknown>) {
-  return <button type={type} className={buttonClass({ look, size }, className)} {...rest} />
+/** A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it. `busy`: its action is
+ *  running (useBusy): its label shimmers, undimmed, and it takes no second press. */
+export function Button({ look, size, className, type = "button", busy, disabled, children, ...rest }: ButtonLook & { busy?: boolean } & ButtonHTMLAttributes<HTMLButtonElement> & Record<`data-${string}`, unknown>) {
+  return (
+    <button type={type} className={buttonClass({ look, size }, cn(busy && "cursor-progress disabled:cursor-progress disabled:opacity-100", className))}
+      disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
+      {busy ? <span className="shimmer inline-flex items-center gap-1.5">{children}</span> : children}
+    </button>
+  )
 }
 
 /** An icon button in a panel's heading or a row: its label is its tooltip unless `tip` says otherwise. */

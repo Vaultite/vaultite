@@ -259,18 +259,20 @@ export async function voiceNote() {
  *  went. The server writes the transcript, so it lands even if this page is closed meanwhile. */
 export async function transcribe(audio: string, note?: string) {
   const file = audio.split("/").pop()!
+  // (said at once, before the server takes the job: the same toast follows it)
+  const id = `transcribe-${audio}`
+  notify(`Transcribing ${file}…`, { id, duration: Infinity })
   let job: Job
   try {
     job = await post<Job>("audio-recorder/transcribe", { path: audio, note })
   } catch (e) {
+    dismissNotice(id)
     if (note || !/no note embeds/.test(String(e))) { notifyError(e, `Couldn't transcribe ${file}`); return }
     // No note has it yet: a new one, with it.
     const made = await createFile(newNoteFolder(getStore(), currentFile()), stem(file).replace(/\.[^.]+$/, ""), `![[${file}]]\n`)
     openFile(made.path)
     return transcribe(audio, made.path)
   }
-  const id = `transcribe-${job.id}`
-  notify(`Transcribing ${file}…`, { id, duration: Infinity })
   for (;;) {
     await new Promise((r) => setTimeout(r, 2000))
     try { job = await get<Job>(`audio-recorder/jobs/${job.id}`) } catch { continue }

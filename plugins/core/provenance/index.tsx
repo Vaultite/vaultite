@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Bot } from "lucide-react"
 import {
-  choose, ChipValuesEditor, chipLabel, chipValues, currentFile, definePlugin, getStore, Group, isHidden, notifyError, op, patch, PropertyChip,
+  choose, ChipValuesEditor, chipLabel, chipValues, currentFile, definePlugin, getStore, Group, isHidden, notifyError, op, optimistic, patch, PropertyChip,
   Section, setProperty, useLive, useStore, type ChipValue, type FileHead, type Store,
 } from "@vaultite"
 import "./types"
@@ -75,7 +75,8 @@ function pick() {
 function SettingsPanel({ store }: { store: Store }) {
   const values = valuesOf(store)
   const defaults = chipValues(store.provenance?.defaults)
-  const save = (v: ChipValue[] | null) => patch("config/plugin/provenance", { values: v }).catch((e) => notifyError(e, "Couldn't save it"))
+  const save = (v: ChipValue[] | null) => optimistic((s) => ({ ...s, provenance: { values: v ?? defaults, defaults: s.provenance?.defaults ?? [], labelUser: s.provenance?.labelUser } }),
+    () => patch("config/plugin/provenance", { values: v }), "Couldn't save it").catch(() => {})
   const custom = JSON.stringify(values) !== JSON.stringify(defaults)
   return (
     <Section title="Values">

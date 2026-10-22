@@ -112,6 +112,8 @@ export { useViewsVersion, viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
 // A value module state keeps, that hooks and subscribers follow (safe while a module loads).
 export { cell, type Cell } from "@/core/signal"
+/** Taps answered at once: rows taken off a list before the write is done, a button's slow action, a value just chosen. */
+export { removals, useBusy, useChosen } from "@/core/leaving"
 export { setTextSize, stepTextSize, textSize, useTextSize, useTextSizeWheel, type TextSizeKind } from "@/core/textsize"
 export { addKeys, appShortcut, beginKeys, cancelKeys, commandKeys, keyCaps, keyHint, modifiedSteps, runShortcut, typingIn, useCommandKeys, useCommands, usePendingKeys } from "@/core/commands"
 export { isLinux, isMac, modKey, revealLabel, showLabel } from "@/core/platform"

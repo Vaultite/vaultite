@@ -8,7 +8,7 @@ import {
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
-import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPanel, KIND_ICON, LiveDot, openHere, tabItems, useDevices } from "./devices"
+import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPanel, KIND_ICON, LiveDot, openHere, tabItems, useDevices, useLeaving } from "./devices"
 
 // The open tabs as a list in the sidebar, pane by pane, so the tab bar can be off (`tabBar`); under them the other
 // devices' tabs (plugin.ts), to open here.
@@ -202,22 +202,23 @@ function OtherDevices({ store }: { store: Store }) {
   const info = useTabLabels(store)
   const shown = settings.use().other_devices !== false
   const list = (useDevices(store) ?? []).filter(inPanel)
+  const leaving = useLeaving()
   if (!shown || !list.length) return null
   return (
     <div className="mt-2 flex flex-col gap-px" data-keylist data-device-tabs>
       {list.map((d: Device) => (
-        <div key={d.id} className="flex flex-col gap-px" data-device={d.id} data-live={d.live ? "" : undefined}>
+        <div key={d.id} className="flex flex-col gap-px" data-device={d.id} data-live={d.live ? "" : undefined} data-leaving={leaving.device(d)}>
           <DeviceHeading d={d} />
           {d.tabs.map((t) => {
             const i = info({ id: `${d.id}:${t.to}`, to: t.to })
             const label = t.to.startsWith("file:") ? i.label : t.label || i.label
             return (
-              <div key={t.to} onContextMenu={menuFor(() => tabItems(d, t))}>
+              <div key={t.to} onContextMenu={menuFor(() => tabItems(d, t))} data-leaving={leaving.tab(d, t)}>
                 <SidebarRow icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} label={label} open
                   swipe={d.live ? () => [{ label: "Close there", icon: X, danger: true, run: () => closeOn(d, [t]), removes: true }] : undefined}
                   onClick={(e) => { e.preventDefault(); openHere(t) }}>
                   {d.live && <HeadingButton icon={X} label={`Close on ${deviceName(d)}`} tip={`Close on ${deviceName(d)}`} className="hidden group-hover/row:grid" data-no-drag
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeOn(d, [t]) }} />}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); void closeOn(d, [t]) }} />}
                 </SidebarRow>
               </div>
             )

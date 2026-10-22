@@ -2,8 +2,13 @@
 // Extensions tab, and "Add to Vaultite" on a Web Store page. What's installed is this Mac's: code run on every site.
 import { forwardRef, useEffect, useState, type FormEvent, type MouseEvent } from "react"
 import { ArrowDownToLine, Download, FolderOpen, Lock, MoreHorizontal, Pin, PinOff, Plus, Puzzle, RefreshCw, Settings2, Trash2, type LucideIcon, type LucideProps } from "lucide-react"
-import { Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, Switch, type MenuItem } from "@vaultite"
-import { addExtension, engine, extensionsChanged, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
+import { Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, removals, Switch, type MenuItem } from "@vaultite"
+import { addExtension, changeExtension, engine, extensionsChanged, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
+
+/** Extensions removed from here: gone at once, back if it fails. */
+const removing = removals()
+/** Pin an extension's button to the bar, or take it off: at once in the list (which the bar follows), then the engine. */
+const pin = (b: { id: string; pinned: boolean }) => changeExtension(b.id, { pinned: !b.pinned }, () => engine("ext:pin", b.id, !b.pinned), b.pinned ? "Couldn't unpin it" : "Couldn't pin it")
 
 /** An extension's button as one page shows it (its badge and icon may be that page's own). */
 type Button = { id: string; name: string; pinned: boolean; title: string; icon: string; badge: string; badgeColor: string; badgeTextColor: string; popup: boolean; enabled: boolean }
@@ -63,7 +68,7 @@ export function ExtensionButtons({ bar, className }: { bar: ExtensionBar; classN
   return (
     <>
       {storeId && <StoreButton id={storeId} exts={exts} />}
-      {bar.buttons.filter((b) => b.pinned).map((b) => (
+      {bar.buttons.filter((b) => exts?.find((x) => x.id === b.id)?.pinned ?? b.pinned).map((b) => (
         <button key={b.id} type="button" aria-label={b.title} data-tip={b.title} data-ext-button={b.id} disabled={!b.enabled}
           onClick={(e) => bar.click(b, e.currentTarget)}
           onContextMenu={(e) => { e.preventDefault(); menuBelow(e, buttonMenu(b)) }}
@@ -81,7 +86,7 @@ export function ExtensionButtons({ bar, className }: { bar: ExtensionBar; classN
 }
 
 const buttonMenu = (b: { id: string; name: string; pinned: boolean }): MenuItem[] => [
-  { label: b.pinned ? "Unpin from the bar" : "Pin to the bar", icon: b.pinned ? PinOff : Pin, run: () => void engine("ext:pin", b.id, !b.pinned).catch((e) => notifyError(e, "Couldn't pin it")) },
+  { label: b.pinned ? "Unpin from the bar" : "Pin to the bar", icon: b.pinned ? PinOff : Pin, run: () => pin(b) },
   { label: "Extensions", icon: Puzzle, run: () => openExtensions() },
 ]
 
@@ -101,7 +106,7 @@ function StoreButton({ id, exts }: { id: string; exts: Ext[] | null }) {
 // ---------- the Extensions view ----------
 
 export function ExtensionsView({ openPage }: { openPage: (url: string) => void }) {
-  const exts = useExtensions()
+  const { list: exts, leaving } = removing.use(useExtensions(), (x) => x.id)
   const [typed, setTyped] = useState("")
   const [busy, setBusy] = useState("")
   const [others, setOthers] = useState<Other[] | null>(null)
@@ -135,7 +140,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   }
   const remove = async (x: Ext) => {
     if (!await confirmDialog({ title: `Remove ${x.name}?`, body: "It's removed from every web page, with its settings and what it kept.", confirm: "Remove", danger: true })) return
-    run(x.id, () => engine("ext:remove", x.id), "Couldn't remove it")
+    void removing.remove(x.id, () => engine("ext:remove", x.id), `Couldn't remove ${x.name}`)
   }
   const bring = async (x: Ext, from: Ext["settingsFrom"][number]) => {
     if (!await confirmDialog({ title: `Use ${from.browser}'s settings for ${x.name}?`, confirm: "Use them",
@@ -147,7 +152,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
     // (a browser's profile named only when that browser has it in more than one)
     ...x.settingsFrom.map((f) => ({ label: `Settings from ${f.browser}${x.settingsFrom.filter((g) => g.browser === f.browser).length > 1 ? ` (${f.name})` : ""}`,
       icon: ArrowDownToLine, run: () => void bring(x, f) })),
-    { label: x.pinned ? "Unpin from the bar" : "Pin to the bar", icon: x.pinned ? PinOff : Pin, run: () => void engine("ext:pin", x.id, !x.pinned) },
+    { label: x.pinned ? "Unpin from the bar" : "Pin to the bar", icon: x.pinned ? PinOff : Pin, run: () => pin(x) },
     ...(x.managed ? [] : [{ label: "Remove", icon: Trash2, danger: true, sep: true, run: () => void remove(x) }]),
   ])
   const line = "truncate text-[13px] leading-[18px] md:text-[12px] md:leading-[16px]"
@@ -170,7 +175,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
         <Panel className="py-1">
           <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
             {exts.map((x) => (
-              <div key={x.id} className="flex min-h-12 items-center gap-3 py-1.5" data-ext-row={x.id}>
+              <div key={x.id} className="flex min-h-12 items-center gap-3 py-1.5" data-ext-row={x.id} data-leaving={leaving(x.id)}>
                 <span className={cn("grid size-8 shrink-0 place-items-center", !x.on && "opacity-45")}>
                   {x.icon ? <img src={x.icon} alt="" draggable={false} className="size-7 object-contain" /> : <Puzzle className="size-5 text-muted-foreground" strokeWidth={2} />}
                 </span>
@@ -193,7 +198,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
                 </button>
                 {x.managed
                   ? <span className="grid size-7 shrink-0 place-items-center text-muted-foreground" data-tip="Always on" data-ext-managed><Lock className="size-4" strokeWidth={2} /></span>
-                  : <Switch on={x.on} disabled={busy === x.id} label={x.name} onChange={(on) => run(x.id, () => engine("ext:on", x.id, on), on ? "Couldn't turn it on" : "Couldn't turn it off")} />}
+                  : <Switch on={x.on} disabled={busy === x.id} label={x.name} onChange={(on) => changeExtension(x.id, { on }, () => engine("ext:on", x.id, on), on ? "Couldn't turn it on" : "Couldn't turn it off")} />}
               </div>
             ))}
           </div>

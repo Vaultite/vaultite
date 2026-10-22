@@ -2,7 +2,7 @@
 // (access, activity, rename, disconnect); RemoteAccess is Vaultite Cloud and the addresses. Polls, faster while connecting.
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
-import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, Row, Section, Segmented, SettingRow, SheetHead, Switch, useEnabled, useKeptCount, useLive } from "@vaultite"
+import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
 
 type Access = "read" | "write"
 /** `actor`: the name Activity gives what it does. */
@@ -25,6 +25,9 @@ const askers = new Set<() => void>()
 const askAgain = () => { asked++; askers.forEach((f) => f()) }
 const onAsk = (f: () => void) => { askers.add(f); return () => { askers.delete(f) } }
 
+/** Connections disconnected from here: gone at once, back if it fails. */
+const disconnecting = removals()
+
 function useConnections() {
   const version = useSyncExternalStore(onAsk, () => asked)
   const [fast, setFast] = useState(false)
@@ -32,7 +35,9 @@ function useConnections() {
   if (live.data) lastState = live.data
   const connecting = live.data?.cloud.state === "connecting" || !!live.data?.finishing?.length || !!live.data?.waiting
   if (connecting !== fast) setFast(connecting)
-  return { ...live, reload: askAgain }
+  const { list, leaving } = disconnecting.use(live.data?.connections, (c) => c.id)
+  const data = live.data && list && list !== live.data.connections ? { ...live.data, connections: list } : live.data
+  return { ...live, data, leaving, reload: askAgain }
 }
 
 /** The code field; in an app's sheet (`as`), the connection takes that app's name, whatever it signs in as. */
@@ -109,10 +114,10 @@ const CLOUD_INTRO = "Gives your vault an address on vaultite.app, so AI apps on 
 /** Vaultite Cloud, last on the page: signed out, a sign-in; else its state, the addresses and sign out. */
 function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
   const { cloud } = data
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
   const run = async (id: string) => {
-    setBusy(true)
-    try { await op<Cloud>(id); onDone() } catch (e) { notifyError(e) } finally { setBusy(false) }
+    setBusy(id)
+    try { await op<Cloud>(id); onDone() } catch (e) { notifyError(e) } finally { setBusy(null) }
   }
   const signOut = async () => {
     if (!(await confirmDialog({ title: "Sign out of Vaultite Cloud?", body: "Apps connected through its address can't reach your vault until you sign in again.", confirm: "Sign out", danger: true }))) return
@@ -123,8 +128,10 @@ function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
       {cloud.state === "off" ? <CloudSignIn cloud={cloud} onDone={onDone} intro={CLOUD_INTRO} /> : (
         <Group>
           <SettingRow label={CLOUD_STATE[cloud.state]} sub={cloud.state === "connected" ? `Signed in as ${cloud.handle}` : cloud.message || `Signed in as ${cloud.handle}`} data-cloud-state={cloud.state}>
-            {cloud.state === "replaced" && <button type="button" disabled={busy} onClick={() => void run("mcp.cloud-sign-in")} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-primary hover:bg-foreground/[0.05]" data-cloud-take-over>Use this machine</button>}
-            <button type="button" disabled={busy} onClick={() => void signOut()} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-destructive hover:bg-foreground/[0.05]" data-cloud-sign-out>Sign out</button>
+            {cloud.state === "replaced" && <button type="button" disabled={!!busy} aria-busy={busy === "mcp.cloud-sign-in" || undefined} onClick={() => void run("mcp.cloud-sign-in")} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-primary hover:bg-foreground/[0.05] disabled:cursor-default" data-cloud-take-over>
+              {busy === "mcp.cloud-sign-in" ? <span className="shimmer">Taking over…</span> : "Use this machine"}</button>}
+            <button type="button" disabled={!!busy} aria-busy={busy === "mcp.cloud-sign-out" || undefined} onClick={() => void signOut()} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-destructive hover:bg-foreground/[0.05] disabled:cursor-default" data-cloud-sign-out>
+              {busy === "mcp.cloud-sign-out" ? <span className="shimmer">Signing out…</span> : "Sign out"}</button>
           </SettingRow>
           {cloud.url && <SettingRow label="MCP address" sub={<code className="break-all text-[12px]">{cloud.url}</code>} chevron={Copy} onClick={() => void copyAddress(cloud.url!)} data-cloud-url />}
         </Group>
@@ -136,11 +143,8 @@ function CloudSection({ data, onDone }: { data: State; onDone: () => void }) {
 
 /** Connect: the whole app at the handle's address, for its owner, while this Mac is on. */
 function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: boolean; onDone: () => void }) {
-  const [busy, setBusy] = useState(false)
-  const turn = async (on: boolean) => {
-    setBusy(true)
-    try { await post("mcp/connect", { ownerTools: on }); onDone() } catch (e) { notifyError(e) } finally { setBusy(false) }
-  }
+  const [tools, choose] = useChosen(ownerTools)
+  const turn = (on: boolean) => choose(on, () => post("mcp/connect", { ownerTools: on }).then(onDone), "Couldn't change it")
   return (
     <Section title="Open from anywhere">
       <p className="pb-2 text-[15px] leading-[20px]" data-connect-app>
@@ -149,7 +153,7 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
       <Group>
         <SettingRow label="Address" sub={<code className="break-all text-[12px]">{app}</code>} chevron={ExternalLink} onClick={() => openWebLink(app)} data-connect-url />
         <SettingRow label="Terminals and coding agents" sub="Off: over this address the app doesn't run anything on this Mac">
-          <Switch on={ownerTools} onChange={(on) => void turn(on)} label="Terminals and coding agents over this address" disabled={busy} />
+          <Switch on={tools} onChange={turn} label="Terminals and coding agents over this address" />
         </SettingRow>
       </Group>
     </Section>
@@ -359,7 +363,7 @@ function Waiting({ data, onDone }: { data: State; onDone: () => void }) {
 /** Everything about AI apps: a sign-in waiting for its code, then a row per app (connected: its page; else its steps),
  *  any other app connected, and the generic setup. */
 export function AiApps() {
-  const { data, error, reload } = useConnections()
+  const { data, error, leaving, reload } = useConnections()
   const rows = useKeptCount("mcp:connections", data ? APPS.length + 1 + Math.max(0, data.connections.length - 1) : undefined)
   if (error && !data) return <Loading error={error} />
   const intro = <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
@@ -386,7 +390,7 @@ export function AiApps() {
           ))}
           {others.map((c) => {
             const app = appOf(c)
-            return <Row key={c.id} lead={<AppMark icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint : undefined} />} title={c.name} meta={connectedMeta(c)} onOpen={() => open(c)} data-connection={c.id} data-app-connected />
+            return <Row key={c.id} lead={<AppMark icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint : undefined} />} title={c.name} meta={connectedMeta(c)} onOpen={() => open(c)} data-connection={c.id} data-app-connected data-leaving={leaving(c.id)} />
           })}
           <SignInRows data={data} lead />
           <Row lead={<AppMark icon={Plus} />} title="Another app" meta="Any app that takes a remote MCP server" onOpen={() => openDetail(detailPath(SETUP_DETAIL, "other"))} data-guide-for="other" />
@@ -440,15 +444,16 @@ function useReviewCount(by: string) {
 
 function NameField({ c, onDone }: { c: Connection; onDone: () => void }) {
   const [typed, setTyped] = useState<string | null>(null)
-  const save = async () => {
+  const [named, choose] = useChosen(c.name)
+  const save = () => {
     const name = typed?.trim()
     setTyped(null)
-    if (!name || name === c.name) return
-    try { await patch(`mcp/connections/${encodeURIComponent(c.id)}`, { name }); onDone() } catch (e) { notifyError(e) }
+    if (!name || name === named) return
+    choose(name, () => patch(`mcp/connections/${encodeURIComponent(c.id)}`, { name }).then(onDone), "Couldn't rename it")
   }
   return (
-    <input aria-label="Name" value={typed ?? c.name} onChange={(e) => setTyped(e.target.value)} maxLength={80} spellCheck={false} data-connection-name
-      onBlur={() => void save()} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { setTyped(null); e.currentTarget.blur() } }}
+    <input aria-label="Name" value={typed ?? named} onChange={(e) => setTyped(e.target.value)} maxLength={80} spellCheck={false} data-connection-name
+      onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { setTyped(null); e.currentTarget.blur() } }}
       className="h-8 w-full min-w-0 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[16px] outline-none focus:border-primary sm:w-52 md:h-7 md:text-[14px]" />
   )
 }
@@ -483,7 +488,9 @@ function ConnectionPage({ c, onDone }: { c: Connection; onDone: () => void }) {
   }
   const disconnect = async () => {
     if (!(await confirmDialog({ title: `Disconnect ${c.name}?`, body: "It can't read or write your vault until you connect it again.", confirm: "Disconnect", danger: true }))) return
-    try { await del(`mcp/connections/${encodeURIComponent(c.id)}`); notify(`Disconnected ${c.name}`); onDone(); backDetail() } catch (e) { notifyError(e) }
+    backDetail()
+    const ok = await disconnecting.remove(c.id, () => del(`mcp/connections/${encodeURIComponent(c.id)}`), `Couldn't disconnect ${c.name}`)
+    if (ok) { notify(`Disconnected ${c.name}`); onDone() }
   }
   const events = activity.data?.events ?? []
   return (

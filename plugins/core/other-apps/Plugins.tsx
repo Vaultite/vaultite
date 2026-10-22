@@ -30,10 +30,19 @@ export function OtherPlugins() {
     setBusy(key)
     try { await run(); setN((x) => x + 1) } catch (e) { notifyError(e, `Couldn't ${what}`) } finally { setBusy(null) }
   }
-  const use = (r: Row, w: string) => act(r.id, async () => {
-    const u = await op<Used>("other-apps.use", { id: r.id, with: w })
-    if (u.off.length) notify(`${r.name}: turned off ${u.off.join(" and ")}, so only one draws it`)
-  }, `change ${r.name}`)
+  const use = (r: Row, w: string) => {
+    const write = async () => {
+      const u = await op<Used>("other-apps.use", { id: r.id, with: w })
+      if (u.off.length) notify(`${r.name}: turned off ${u.off.join(" and ")}, so only one draws it`)
+    }
+    // Picked at once when it's here already; one from the directory installs first, and Allow it asks, so they show
+    // they're busy instead.
+    if (w === "original" ? r.original === "waiting" : w !== "none" && !r.here.some((h) => h.id === w)) return act(r.id, write, `change ${r.name}`)
+    setRows((l) => l && l.map((x) => (x.id !== r.id ? x : {
+      ...x, original: w === "original" ? "on" : x.original && "off", here: x.here.map((h) => ({ ...h, on: h.id === w })),
+    })))
+    return write().catch((e) => notifyError(e, `Couldn't change ${r.name}`)).finally(() => setN((x) => x + 1))
+  }
   const idle = rows.filter((r) => !usedBy(r)).length
   // (a switch takes the toggle's width when any row has a toggle, so the controls line up)
   const wide = rows.some((r) => r.here[0] ?? r.directory[0])
@@ -57,7 +66,7 @@ export function OtherPlugins() {
           return (
             <SettingRow key={r.id} label={r.name} data-obsidian-plugin={r.id} sub={r.original === "waiting" ? <>
               {status(r)} <button type="button" disabled={busy === r.id} onClick={() => void use(r, "original")} data-obsidian-allow
-                className="cursor-pointer font-medium text-primary hover:underline disabled:cursor-default disabled:opacity-50">Allow it</button>
+                className="cursor-pointer font-medium text-primary hover:underline disabled:cursor-default">{busy === r.id ? <span className="shimmer">Allowing…</span> : "Allow it"}</button>
             </> : status(r)}>
               <div className={cn("flex shrink-0 justify-end", wide && "w-[190px] max-md:w-[170px]")}>
                 {alt ? (
@@ -65,7 +74,7 @@ export function OtherPlugins() {
                     options={[{ value: alt.id, label: "Vaultite's" }, { value: "original", label: "Original" }]}
                     onChange={(v) => { if (v !== now && busy !== r.id) void use(r, v) }} />
                 ) : (
-                  <Switch on={!!now} disabled={busy === r.id} label={`Run ${r.name}`} onChange={(on) => void use(r, on ? "original" : "none")} />
+                  <Switch on={!!now} label={`Run ${r.name}`} onChange={(on) => void use(r, on ? "original" : "none")} />
                 )}
               </div>
             </SettingRow>

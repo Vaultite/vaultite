@@ -2,7 +2,7 @@
 // by step with the page as it was after each, kept on this Mac a fortnight (electron/browser/agent.ts).
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bot, ChevronLeft, ChevronRight, Globe, Pause, Play } from "lucide-react"
-import { Button, cn, dateText, FilterField, notifyError, selectTab, SidebarHeading, SidebarRow, usePane, webPages } from "@vaultite"
+import { Button, cn, dateText, FilterField, notifyError, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, webPages } from "@vaultite"
 import { hostOf } from "./address"
 
 type Run = { run: string; by: string; task: string; summary: string; steps: number; start: number; end: number; title: string; url: string }
@@ -86,15 +86,16 @@ export function ReplaysView() {
 /** A tab an agent is at work in: its page as it is now, who, what for and its last step. */
 function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => void }) {
   const show = () => { if (l.appTab) selectTab(l.appTab) }
-  const pause = () => void Promise.resolve(webPages?.engine?.("agents:pause", l.tab, !l.paused)).catch((e) => notifyError(e, "Couldn't pause it"))
+  const [paused, choose] = useChosen(!!l.paused)
+  const pause = () => choose(!paused, () => Promise.resolve(webPages?.engine?.("agents:pause", l.tab, !paused)), paused ? "Couldn't resume it" : "Couldn't pause it")
   return (
     <div className="flex min-w-0 overflow-hidden rounded-[8px] border-[0.5px] border-border bg-card" data-web-live={l.tab}>
       <button type="button" onClick={show} aria-label={`Show ${l.title || hostOf(l.url)}`} disabled={!l.appTab}
         className="relative block aspect-[16/10] w-[42%] max-w-[240px] shrink-0 cursor-pointer self-start overflow-hidden border-r-[0.5px] border-border bg-muted">
         {l.shot ? <img src={l.shot} alt="" className="size-full object-cover object-top" />
           : <Globe className="absolute top-1/2 left-1/2 size-7 -translate-1/2 text-tertiary" strokeWidth={1.5} />}
-        {(l.paused || l.asking) && (
-          <span className="absolute top-2 left-2 rounded-[6px] bg-background/90 px-1.5 py-0.5 text-[11px] font-medium">{l.paused ? "Paused" : "Needs you"}</span>
+        {(paused || l.asking) && (
+          <span className="absolute top-2 left-2 rounded-[6px] bg-background/90 px-1.5 py-0.5 text-[11px] font-medium">{paused ? "Paused" : "Needs you"}</span>
         )}
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 pt-2 pb-2">
@@ -105,8 +106,8 @@ function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => vo
         <span className="truncate text-[12px] text-tertiary">{l.asking ?? (l.step && l.at ? `${said(l.step)} · ${time(l.at)}` : hostOf(l.url))}</span>
         <div className="mt-auto flex flex-wrap items-center gap-1 pt-1.5">
           <Button look="secondary" size="small" onClick={show} disabled={!l.appTab}>Show tab</Button>
-          <Button look="quiet" size="small" onClick={pause} data-web-live-pause={l.paused ? "resume" : "pause"}>
-            {l.paused ? <Play className="size-3.5" strokeWidth={2.25} /> : <Pause className="size-3.5" strokeWidth={2.25} />}{l.paused ? "Resume" : "Pause"}
+          <Button look="quiet" size="small" onClick={pause} data-web-live-pause={paused ? "resume" : "pause"}>
+            {paused ? <Play className="size-3.5" strokeWidth={2.25} /> : <Pause className="size-3.5" strokeWidth={2.25} />}{paused ? "Resume" : "Pause"}
           </Button>
           {l.run && <Button look="quiet" size="small" onClick={() => replay(l.run!)}>Steps</Button>}
         </div>

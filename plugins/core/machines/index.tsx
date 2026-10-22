@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react"
 import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
-  canRunAgents, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, places,
+  canRunAgents, cell, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, places,
   SidebarHeading, SidebarRow,
   useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
@@ -20,9 +20,14 @@ const about = (m: Machine) => m.online
 /** A machine's menu: a terminal or an agent there, and its app in the browser. */
 const hasTerminal = (m: Machine) => canRunAgents() && m.online && (m.self || !!m.plugins?.includes("terminal"))
 
+/** Machines whose file access is being revoked: their row says so till it's done. */
+const revoking = cell(new Set<string>())
+const marking = (id: string, on: boolean) => revoking.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
+
 async function revokeMachine(m: Machine) {
   if (!await confirmDialog({ title: `Revoke ${m.label}?`, body: "Its file agent will disconnect. You can enroll it again later.", confirm: "Revoke" })) return
-  try { await op("machines.revoke", { id: m.id }); notify("File access revoked") } catch (e) { notifyError(e) }
+  marking(m.id, true)
+  try { await op("machines.revoke", { id: m.id }); notify("File access revoked") } catch (e) { notifyError(e, "Couldn't revoke it") } finally { marking(m.id, false) }
 }
 
 
@@ -54,13 +59,14 @@ function machineContextMenu(e: MouseEvent, m: Machine) {
 }
 
 function MachineRow({ m }: { m: Machine }) {
+  const going = revoking.use((s) => s.has(m.id))
   return (
     <button type="button" onClick={(e) => void machineMenu(e, m)} onContextMenu={(e) => machineContextMenu(e, m)} data-machine={m.id}
       className="relative isolate flex min-h-11 w-full cursor-pointer items-center gap-3 py-2 text-left before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]">
       <span className="size-2 shrink-0 rounded-full" style={{ background: dot(m) }} data-tip={m.online ? "Online" : "Offline"} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] leading-[20px]">{m.label}</div>
-        <div className="truncate text-[13px] text-muted-foreground">{about(m)}</div>
+        <div className="truncate text-[13px] text-muted-foreground">{going ? <span className="shimmer">Revoking file access…</span> : about(m)}</div>
       </div>
     </button>
   )
