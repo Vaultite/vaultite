@@ -71,8 +71,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   `agents` setting says what agents may do in its pages (`read`, or `act`; unset: nothing, as in tabs in no container);
   the user can pause agents in a tab. Pages' scripts never run for agents, nor see what agents do:
   `vau browser evaluate <tab> "<expression>"` (Act only) runs in a world of its own, which sees the DOM, not the page's
-  scripts. Where only the user can go on (a sign-in, a captcha), `vau browser ask <tab> "<what to do>"` brings the tab
-  to the front with that and a Done button in its bar, and tells their Inbox (their phone too); `vau browser wait <tab>
+  scripts. A site asking for a passkey shows a QR code in the tab for the user's phone. Where only the user can go on (a
+  sign-in, a passkey, a captcha), `vau browser ask <tab> "<what to do>"` brings the tab to the front with that and a
+  Done button in its bar, and tells their Inbox (their phone too); `vau browser wait <tab>
   --helped` waits for Done. "Show agents in the browser": the tabs agents are at work in now, each a live picture with
   Show tab and Pause, then past runs searched by agent, task or summary; each agent's steps are kept on the Mac for 14
   days, with pictures, to replay (never what's typed into a password field).

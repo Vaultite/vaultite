@@ -8,6 +8,7 @@ import "./default.ts"
 import "./adblock.ts"
 import "./picker.ts"
 import "./sitestyles.ts"
+import "./passkeys.ts"
 import "./history.ts"
 import "./import.ts"
 // (in this order: extensions' request hooks go after Shields')

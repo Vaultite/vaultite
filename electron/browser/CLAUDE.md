@@ -9,7 +9,10 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - What a feature keeps is this Mac's (userData), never the vault's; what the user chooses (settings, lists) is the
   web-viewer plugin's settings, which the app hands the engine.
 - Pages are web content: never a preload with Node, never `nodeIntegration`; anything run in a page runs in an
-  isolated world.
+  isolated world. The one exception is passkeys-preload.cjs: navigator.credentials is called in the main world, so it
+  replaces it there, holding only the bridge's two functions (no global); passkeys.ts takes the origin from Chromium.
+- Passkeys come from a phone over FIDO's hybrid transport (hybrid.ts), since Electron has no WebAuthn UI and a Mac's own
+  (iCloud Keychain, Touch ID) needs Apple's browser entitlement: the phone signs with its passkeys, the app only relays.
 - Electron takes one `webRequest` listener per event and session, so the engine holds them: a feature adds a hook
   (`onRequest`), in import order (Shields first: what it blocks, extensions never see). Electron listens only for events
   some hook's `on` wants; one that changes says `requestsChanged`. Requests go through hooks synchronously while they

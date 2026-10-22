@@ -17,7 +17,8 @@ import { argOf, containerById, profileIn, ruleFor, splitArg } from "./containers
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
-import { agentNews, bookmark, helpAsks, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
+import { Passkey } from "./Passkey"
+import { agentNews, bookmark, helpAsks, passkeyAsks, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -69,8 +70,10 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const [saving, setSaving] = useState(false)
   useEnabled() // (other plugins' buttons, as they're switched)
   // What the effects below read without starting again.
-  const live = useRef({ arg, state, setArg, setTabArg, error: false })
-  useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error } })
+  /** A passkey it asked for: drawn in its place till the phone answers. */
+  const passkey = passkeyAsks.use((m) => (id ? m.get(id) : undefined))
+  const live = useRef({ arg, state, setArg, setTabArg, error: false, passkey: false })
+  useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error, passkey: !!passkey } })
   // In its player (a window of its own): the tab says so, and nothing here places the page.
   const away = !!state.player
 
@@ -197,7 +200,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     }
     const step = async () => {
       const r = pageArea(el.getBoundingClientRect())
-      const show = !live.current.error && r.width >= 2 && r.height >= 2
+      const show = !live.current.error && !live.current.passkey && r.width >= 2 && r.height >= 2
       // (where it was, and nothing changed since: nor did what covers it)
       if (!dirty && show && at && sameRect(at, r)) return
       if (dirty === "hits" || !sameRect(at, r)) hits = show ? hitCover(el, r) : null
@@ -267,7 +270,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     }
   }, [id, web, away])
   // (an error's note in the box: the page goes, and comes back with a retry)
-  useEffect(() => kick.current?.(), [state.error])
+  useEffect(() => kick.current?.(), [state.error, !!passkey])
 
   const inside = containerById(container)
   const ext = useExtensionBar(id, state.url)
@@ -316,6 +319,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab)} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
+        {passkey && <Passkey ask={passkey} />}
         {state.error && <Problem error={state.error} url={state.url || arg} onRetry={() => void web.go(id, "reload")} />}
         {locked && inside && <Locked name={inside.name} unlock={() => void Promise.resolve(web.engine?.("lock:unlock", profileIn(container), inside.name))
           .then((ok) => { if (ok === true) setLocked(false) }, (e) => notifyError(e, "Couldn't unlock it"))} />}

@@ -14,7 +14,7 @@ import { ReplaysView } from "./Replays"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, passkeyAsks, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
@@ -131,6 +131,18 @@ function Background() {
       helpAsks.update((a) => { const next = new Map(a); if (on) next.set(id, { by: String(m.by ?? "An agent"), reason: String(m.reason ?? "") }); else next.delete(id); return next })
       // (shown, so the user sees what's asked where it's asked)
       if (on && typeof m.tab === "string" && m.tab) selectTab(m.tab)
+    }
+    // A page asked for a passkey: its QR code over it, the tab shown (a request in a hidden tab is refused, but the tab may
+    // have gone behind since).
+    else if (m.type === "engine:passkey" && typeof m.id === "number" && typeof m.ask === "number") {
+      const id = m.id, ask = m.ask, state = String(m.state ?? "")
+      passkeyAsks.update((a) => {
+        const next = new Map(a)
+        if (state === "done") { if (next.get(id)?.ask === ask) next.delete(id) }
+        else next.set(id, { ask, state, qr: String(m.qr ?? ""), site: String(m.site ?? ""), create: !!m.create })
+        return next
+      })
+      if (state === "scan" && typeof m.tab === "string" && m.tab) selectTab(m.tab)
     }
     else if (m.type === "engine:agent:acting" && typeof m.id === "number") {
       const id = m.id

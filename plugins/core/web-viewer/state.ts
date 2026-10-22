@@ -75,6 +75,10 @@ export const agentNews = cell(new Map<number, AgentNews>())
 export const pausedPages = cell(new Set<number>())
 /** What an agent asked the user to do in a page (sign in, a check), by the page's id, till they say it's done. */
 export const helpAsks = cell(new Map<number, { by: string; reason: string }>())
+/** A page waiting on a passkey from a phone (electron/browser/passkeys.ts), by the page's id: its QR code while it's to be
+ *  scanned, then how it's going. */
+export type PasskeyAsk = { ask: number; state: string; qr: string; site: string; create: boolean }
+export const passkeyAsks = cell(new Map<number, PasskeyAsk>())
 
 /** A page on screen (WebPage.tsx): what the desktop app's events about it reach. */
 export type Shown = {
