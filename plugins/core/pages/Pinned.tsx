@@ -1,12 +1,13 @@
 // The pinned pages (sidebar, drawer, view:pages): drag to reorder, onto a pane to open, elsewhere in the sidebar to
 // unpin; drop a file to pin it. The list is the sidebar's (types.ts): the current workspace's with Workspaces on.
-import { Fragment, useEffect, useId, useRef } from "react"
+import { useEffect, useId, useRef } from "react"
 import { ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
   checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isDesktop, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings, showInTree,
-  openItem, openView, pastEnd, PIN_SEARCH, placePin, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, startDrag, stem, useDrag, useDropHit,
-  useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
+  INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
+  useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
+  type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
 import { currentPins, isPinned, pin, pinMany, pinManyNoted, pinnable, pinNoted, shownEntries, viewPin, type PinEntry } from "./types"
@@ -41,31 +42,12 @@ function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
   if (e.kind === "view") return openView(e.target, { newTab: opts.newTab })
   openView(`search/${e.query}`, { newTab: opts.newTab })
 }
-/** Where a drop lands: before a page (null: the end; `known`: already pinned, so only its place changes), its line
- *  across the list at `y` (tiles: down the grid at `x`, `h` tall), or `out` of the list, elsewhere in the sidebar. */
-type PinDrop = { before: string | null; y: number; x?: number; h?: number; known: boolean } | { out: true }
+/** Where a drop lands: before a page (null: the end; `known`: already pinned, so only its place changes), or `out` of
+ *  the list, elsewhere in the sidebar; and the pages' `order` that leaves, which the list makes way for (core/slide.ts). */
+type PinDrop = ({ before: string | null; known: boolean } | { out: true }) & { order: string[] }
 
 /** The plugin's settings: `show`, how the open sidebar draws the list (manifest.json). */
 const settings = pluginSettings<{ show?: "list" | "tiles" }>("pages")
-
-/** Where a drop at (x, y) lands among tiles, as offsets in `nav`: before the first tile of the pointer's row whose
- *  middle is right of it, its line in the gap left of it; past a row's last tile, the line is right of that one. */
-function tileDrop(nav: HTMLElement, x: number, y: number) {
-  const tiles = [...nav.querySelectorAll<HTMLElement>("[data-pin]")].map((el) => ({ el, b: el.getBoundingClientRect() }))
-  const box = nav.getBoundingClientRect()
-  const gap = tiles.length > 1 ? Math.max(0, tiles[1].b.left - tiles[0].b.right) : 0
-  const first = tiles.find((t) => y < t.b.bottom + gap)
-  if (!first) {
-    const last = tiles[tiles.length - 1]
-    return { before: null, x: last.b.right - box.left + gap / 2, y: last.b.top - box.top, h: last.b.height }
-  }
-  const row = tiles.filter((t) => Math.abs(t.b.top - first.b.top) < 1)
-  const next = row.find((t) => x < t.b.left + t.b.width / 2)
-  const end = row[row.length - 1]
-  const after = tiles[tiles.indexOf(end) + 1]
-  return { before: next ? next.el.dataset.pin! : after?.el.dataset.pin ?? null,
-    x: (next ? next.b.left - gap / 2 : end.b.right + gap / 2) - box.left, y: first.b.top - box.top, h: first.b.height }
-}
 
 /** The list's menu (Pinned pages ▸): the shown ones ticked, then More ▸ with unpinned pages, the file on screen and the
  *  plugins' main views (Inbox, Graph view); a `checklist`, redrawn after each click. Same-named ones say their folders. */
@@ -122,47 +104,43 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
   // Tiles only in the open sidebar: the rail, a phone's drawer and the Pinned tab keep the list.
   const tiles = settings.use().show === "tiles" && open && !!panel && !phone && !flyout
   const list = useRef<HTMLElement>(null)
+  const box = useRef<HTMLDivElement>(null)
   const d = useDrag()
   const dragging = !!d && canPin(d.item)
   // Each list its own target (the sidebar's, and one in a Pinned tab); only the sidebar's unpins what leaves it.
   const target = `${PINS}:${useId()}`
   const hit = useDropHit<PinDrop>(target)
-  const line = hit && "y" in hit ? hit : null
   useDropTarget<PinDrop>(target, (item, x, y, el) => {
-    const nav = list.current
-    if (!el || !nav || !canPin(item)) return null
-    const rows = [...nav.querySelectorAll<HTMLElement>("[data-pin]")]
+    const nav = list.current, inner = box.current
+    if (!el || !nav || !inner || !canPin(item)) return null
+    const rows = [...inner.children].filter((r): r is HTMLElement => r instanceof HTMLElement && !!r.dataset.slide && r.dataset.slide !== INCOMING)
+    const keys = rows.map((r) => r.dataset.slide!), moving = pinsOf(item)
     const last = rows[rows.length - 1]
     // Just under the list is its end, not out of it: unpinning takes leaving it for good.
     if (!nav.contains(el) && !(last && pastEnd(nav, last, x, y, el))) {
-      return item.from === "pin" && el.closest("aside") && el.closest("aside") === nav.closest("aside") ? { out: true } : null
+      return item.from === "pin" && el.closest("aside") && el.closest("aside") === nav.closest("aside") ? { out: true, order: keys.filter((k) => !moving.includes(k)) } : null
     }
     // (in a pinned folder's files, the tree's own drags move things there: its own target)
     if (item.from === "tree" && el.closest("[data-pin-tree]")) return null
-    const top = nav.getBoundingClientRect().top
-    const next = rows.find((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2 })
-    const grid = nav.hasAttribute("data-pin-tiles") && last ? tileDrop(nav, x, y) : null
-    const before = grid ? grid.before : next?.dataset.pin ?? null
+    const { order, before, same } = reorder(keys, moving, slotAt(inner, rows, x, y, tiles ? "wrap" : "y"))
+    // (its own place: nothing to do)
+    if (same) return null
     const all = currentPins(store)
-    const keys = pinsOf(item)
-    const known = keys.every((k) => all.includes(k))
-    // Its own place (just before itself, or before the one after it): nothing to do.
-    if (known && keys.length === 1 && placePin(all, item.path!, true, before).join("\n") === all.join("\n")) return null
-    if (grid) return { ...grid, known }
-    const end = last ? last.getBoundingClientRect().bottom - top : 2
-    return { before, y: next ? next.getBoundingClientRect().top - top - 1 : end, known }
+    return { before, order, known: moving.every((k) => all.includes(k)) }
   }, (item, h) => {
     const keys = pinsOf(item)
     // (a view dropped here keeps its name now: a conversation's, which its tab loses once it ends)
     if (keys.length === 1) void pin(keys[0], !("out" in h), "out" in h ? undefined : h.before, item.from !== "pin" && item.to?.startsWith("view:") ? viewPin(item.to)?.label : undefined)
     else if ("out" in h) void pinManyNoted(keys, false)
-    // (Placed before the first one after them that isn't among them.)
-    else void pinMany(keys, true, h.before && keys.includes(h.before) ? currentPins(store).slice(currentPins(store).indexOf(h.before)).find((k) => !keys.includes(k)) ?? null : h.before)
+    else void pinMany(keys, true, h.before)
   }, {
     // Words only for what changes more than the order: pinning a file, unpinning a page.
     hint: (h) => ("out" in h ? "Unpin" : h.known ? undefined : desk ? `Pin in ${desk.label}` : "Pin"),
     weak: (h) => "out" in h,
   })
+  // Dragged over, the pages make way for what's dragged (one leaving to be unpinned: the rest close up).
+  const order = dragging && hit ? hit.order : null
+  useSlide(box, order, tiles ? "wrap" : "y")
   const picks = useSelectedKeys(SELECT)
   useSelectable(SELECT, { noun: ["page", "pages"], menu: (keys) => {
     const shown = shownEntries(store).filter((e) => keys.includes(e.key) && e.kind !== "folder")
@@ -208,7 +186,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
       openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane })
     }
     return (
-      <Fragment key={id}>
+      // (a folder with its files under it slides as one)
+      <div key={id} data-slide={id} className={cn(unfold && "flex flex-col gap-px")}>
       <div onPointerDown={(e) => {
         if (file) openingSoon(file, true)
         const keys = selectionFor(SELECT, id, false)
@@ -232,7 +211,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
           onClick={click} />}
       </div>
       {unfold && <FileTree store={store} folder={id} header={false} active={current} pane={pane} />}
-      </Fragment>
+      </div>
     )
   }
   return (
@@ -241,10 +220,12 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
       data-pin-tiles={tiles ? "" : undefined}
       className={cn("relative shrink-0", dragging && !pages.length && "min-h-8 rounded-[6px] border border-dashed border-border")}>
       {/* Tiles: as many to a row as fit at least 11 units wide (four in a sidebar of the default width). */}
-      <div className={tiles ? "grid grid-cols-[repeat(auto-fill,minmax(--spacing(11),1fr))] gap-1.5" : "flex flex-col gap-px"} data-select-list={SELECT}>{pages.map(row)}</div>
-      {line && (line.x === undefined
-        ? <div aria-hidden data-pin-line className="pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary" style={{ top: line.y }} />
-        : <div aria-hidden data-pin-line className="pointer-events-none absolute w-0.5 rounded-full bg-primary" style={{ left: line.x - 1, top: line.y, height: line.h }} />)}
+      <div ref={box} className={cn("relative", tiles ? "grid grid-cols-[repeat(auto-fill,minmax(--spacing(11),1fr))] gap-1.5" : "flex flex-col gap-px")}
+        data-select-list={SELECT}>
+        {pages.map(row)}
+        {/* Where what comes from elsewhere would be pinned. */}
+        {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="h-7" />}
+      </div>
     </nav>
   )
 }

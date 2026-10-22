@@ -20,6 +20,7 @@ import { FileTree } from "@/components/FileTree"
 import { Drawn, Guard } from "@/components/Guard"
 import { Badged, IconAction, type Dot } from "@/components/kit"
 import { cn, space } from "@/lib/utils"
+import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
 
@@ -28,9 +29,9 @@ import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { PanelFold, SidebarHeading }
 
 const PANELS = "panels"
-/** Where a dragged panel would land in a sidebar (core/sidebars.ts Place): before panel `before` (null: the end); `y`:
- *  the line, in the panels' box. */
-type PanelDrop = { before: string | null; y: number }
+/** Where a dragged panel would land in a sidebar (core/sidebars.ts Place): before panel `before` (null: the end), and
+ *  the panels' `order` that leaves, which they make way for (core/slide.ts). */
+type PanelDrop = { before: string | null; order: string[] }
 /** Which sidebar this is drawn in: the rail's tooltips and flyouts open away from its edge. */
 const SidebarSide = createContext<Side>("left")
 
@@ -71,18 +72,17 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     if (x < b.left || x > b.right || y < b.top || y > b.bottom) { edge.stop(); return null }
     edge.near(el, y)
     const rows = [...el.querySelectorAll<HTMLElement>(":scope > [data-panel]")]
-    if (!rows.length) return { before: null, y: 2 }
-    // The gaps: above each panel, and below the last; the nearest one wins.
-    const edges = [...rows.map((r) => r.getBoundingClientRect().top), rows[rows.length - 1].getBoundingClientRect().bottom]
-    const i = edges.reduce((best, e, j) => (Math.abs(y - e) < Math.abs(y - edges[best]) ? j : best), 0)
-    // Its own place (just above or below itself): nothing to do.
-    const mine = rows.findIndex((r) => r.dataset.panel === key)
-    if (item.from === "panel" && mine >= 0 && (i === mine || i === mine + 1)) return null
-    return { before: rows[i]?.dataset.panel ?? null, y: Math.max(1, edges[i] - b.top + el.scrollTop - 1) }
+    const { order, before, same } = reorder(rows.map((r) => r.dataset.panel!), [key], slotAt(el, rows, x, y, "y"))
+    // (its own place: nothing to do; a pane's tab of it still goes, closing)
+    return same && item.from === "panel" ? null : { before, order }
   }, (item, h) => {
     dockPanel(draggedPanel(item)!, { side, before: h.before })
     dropped(item)
   }, { hint: () => intoHint(side), end: edge.stop })
+
+  // Dragged over, the panels make way for the one dragged (its dividers out of the way meanwhile).
+  const making = hit && ctx.open && panels.length ? hit.order : null
+  useSlide(box, making, "y")
 
   const [flying, setFlying] = useState<string | null>(null)
   useEffect(() => { if (ctx.open) setFlying(null) }, [ctx.open])
@@ -109,7 +109,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     // units between any two panels; and the last one ends 2 units above the vault's bar.
     <SidebarSide.Provider value={side}>
     <div ref={box} data-sidebar-body={side} data-scroll={own ? "panels" : "sidebar"}
-      className={cn("relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]")}>
+      className={cn("relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
+        making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
         const { key, panel } = p
         const folded = setup.collapsed.includes(key)
@@ -117,7 +118,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
         const divider = own && !folded && panels.slice(i + 1).some((q) => !setup.collapsed.includes(q.key))
         return (
           <Fragment key={key}>
-          <div data-panel={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
+          <div data-panel={key} data-slide={key} data-collapsed={folded || undefined} onContextMenu={menuFor(() => panelMenu(key, side))}
             onPointerDown={(e) => {
               const t = e.target as HTMLElement
               // With a `view`, dropped on a pane it opens as a tab. A button that is itself the
@@ -160,7 +161,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
           Drag panels here
         </div>
       )}
-      {hit && panels.length > 0 && <div aria-hidden data-panel-line className="pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-primary" style={{ top: hit.y }} />}
+      {/* Where one from the other sidebar, or a pane's tab, would go: a heading's room. */}
+      {making?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} data-slide-fixed className="absolute inset-x-1 top-0 h-7" />}
     </div>
     </SidebarSide.Provider>
   )

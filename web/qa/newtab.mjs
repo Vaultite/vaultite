@@ -108,7 +108,7 @@ try {
   await page.click("text=Undo")
   check("Reset: Undo brings the page back", await until(() => same(saved().actions, ["file:new", "terminal:open"])), saved())
 
-  // Dragging: a section by its title, a button by itself (core/drag.ts: press, move 5px, drop at the line).
+  // Dragging: a section by its title, a button by itself (core/drag.ts: press, move 5px, drop where they make way).
   writeFileSync(file, JSON.stringify({ sections: ["core:actions", "core:changed"], actions: ["file:new", "switcher:open", "palette:open"] }, null, 2) + "\n")
   await until(async () => same(await sections(), ["core:actions", "core:changed"]))
   const drag = async (from, to, below) => {
@@ -118,13 +118,13 @@ try {
     await page.mouse.move(a.x + 26, a.y + a.height / 2 + 6, { steps: 3 })
     await page.mouse.move(b.x + 20, below ? b.y + b.height + 2 : b.y + 2, { steps: 8 })
     await wait(100)
-    const line = !!(await page.$("[data-pane] [data-newtab-line]"))
+    const way = !!(await page.$("[data-pane] [data-drop-preview]"))
     await page.mouse.up()
-    return line
+    return way
   }
   check("a section has its title, the buttons too", /Buttons/.test(await page.textContent("[data-pane] [data-newtab-section='core:actions'] [data-panel-handle]")))
-  const line = await drag("[data-pane] [data-newtab-section='core:changed'] [data-panel-handle]", "[data-pane] [data-newtab-section='core:actions']", false)
-  check("drag: a line where the section would go", line)
+  const way = await drag("[data-pane] [data-newtab-section='core:changed'] [data-panel-handle]", "[data-pane] [data-newtab-section='core:actions']", false)
+  check("drag: the sections make way", way)
   check("drag: a section dragged by its title above another", await until(() => same(saved().sections, ["core:changed", "core:actions"])), saved())
   await drag("[data-pane] [data-newtab-action='palette:open']", "[data-pane] [data-newtab-action='file:new']", false)
   check("drag: a button dragged above another; nothing ran", await until(() => same(saved().actions, ["palette:open", "file:new", "switcher:open"])) && !(await page.$("[role=dialog][aria-label*='ommand']")), saved())

@@ -927,14 +927,21 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("drops: a tab dropped into a folded group is put away there, the tab on screen staying", runs() === "a,b(Work),d(Work),e(orange-),c(orange-)" && ws.activeTab().id === "a", runs())
   sp.moveTabTo("c", "g0", 5, null); ts.foldSet(s2, false)
   // What the bar draws while dragging: the tabs as the drop would leave them.
+  const sl: Any = await web("core/slide.ts")
   const order = (item: Any, d: Any) => { const p = dr.previewIn(pane(), item, d); return p && dr.previewOrder(pane(), p).map((k: string) => k === `set:${s1}` ? "[Work]" : k === `set:${s2}` ? "[orange]" : k).join(",") }
   check("drop preview: a tab dragged into a group's end shows there, its name before them",
     order({ from: "tab", tab: "c" }, { kind: "bar", group: "g0", index: 3, set: s1 }) === "a,[Work],b,d,c,[orange],e", order({ from: "tab", tab: "c" }, { kind: "bar", group: "g0", index: 3, set: s1 }))
   check("drop preview: a file from elsewhere makes room where it'd open; a drop elsewhere changes nothing here",
-    order({ from: "tree", to: "file:z.md" }, { kind: "bar", group: "g0", index: 1, set: null }) === `a,${dr.INCOMING},[Work],b,d,[orange],e,c`
+    order({ from: "tree", to: "file:z.md" }, { kind: "bar", group: "g0", index: 1, set: null }) === `a,${sl.INCOMING},[Work],b,d,[orange],e,c`
     && order({ from: "tab", tab: "c" }, { kind: "pane", group: "g0", zone: "left" }) === null)
   check("drop preview: a whole group dragged moves with its name", order({ from: "tabset", tabset: s1 }, { kind: "bar", group: "g0", index: 5, set: null }) === "a,[orange],e,c,[Work],b,d",
     order({ from: "tabset", tabset: s1 }, { kind: "bar", group: "g0", index: 5, set: null }))
+  // Every other list reordered by dragging (slide.ts): the order a drop at a slot leaves, which it makes way for.
+  const ro = (keys: string[], moving: string[], i: number) => { const r = sl.reorder(keys, moving, i); return `${r.order.join(",")}|${r.before}|${r.same}` }
+  check("make way: one dragged down past two lands after them, before the next", ro(["a", "b", "c", "d"], ["a"], 3) === "b,c,a,d|d|false", ro(["a", "b", "c", "d"], ["a"], 3))
+  check("make way: over its own place (either side of its middle), nothing changes", ro(["a", "b", "c"], ["b"], 1) === "a,b,c|c|true" && ro(["a", "b", "c"], ["b"], 2) === "a,b,c|c|true")
+  check("make way: past the last, the end", ro(["a", "b", "c"], ["a"], 3) === "b,c,a|null|false", ro(["a", "b", "c"], ["a"], 3))
+  check("make way: what comes from elsewhere opens one gap there", ro(["a", "b"], ["y", "z"], 1) === `a,${sl.INCOMING},b|b|false`, ro(["a", "b"], ["y", "z"], 1))
   ts.renameSet(s1, "  Lighthouse "); ts.colorSet(s1, "teal")
   check("tab groups: renamed (trimmed) and recoloured", pane().sets[0].name === "Lighthouse" && pane().sets[0].color === "teal", pane().sets)
   ws.closeTab("e")

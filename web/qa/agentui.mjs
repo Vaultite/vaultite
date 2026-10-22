@@ -50,7 +50,7 @@ async function dragTo(key, x, y, shot) {
   const h = await (await page.$(`aside [data-panel='${key}'] [data-panel-handle]`)).boundingBox()
   await page.mouse.move(h.x + 30, h.y + h.height / 2); await page.mouse.down()
   await page.mouse.move(h.x + 40, h.y - 10, { steps: 5 }); await page.mouse.move(x, y, { steps: 10 }); await wait(250)
-  if (shot) { check("a line shows where", !!(await page.$("aside [data-panel-line]"))); await page.screenshot({ path: `${OUT}${shot}.png` }) }
+  if (shot) { check("the panels make way", !!(await page.$("aside [data-sidebar-body][data-drop-preview]"))); await page.screenshot({ path: `${OUT}${shot}.png` }) }
   await page.mouse.up(); await wait(600)
 }
 try {

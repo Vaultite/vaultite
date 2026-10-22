@@ -246,7 +246,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
-- `INCOMING`
+- `INCOMING`: The key of what comes in from elsewhere: a gap where it would land, drawn by its list (its `[data-slide]` element, absolutely placed or last in the list; sized like the list's own unless…
 - `inKeyList()`: The keyboard is on a row of a list.
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
@@ -427,6 +427,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
 - `registerCanvas(c)`: A canvas came on screen: registered until it goes (the returned function).
 - `reload()`
+- `reorder(keys, moving, index)`: What a drop at slot `index` of `keys` (slotAt) leaves: their `order`, with `moving` there (those not among them come in as one INCOMING), the key it goes `before` (null: the end), and whether…
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
 - `Resizer({ label, horizontal, onStart, onDrag, onEnd, onReset, resetTip, className, style })`
@@ -502,6 +503,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarSetup`: A plugin that keeps the sidebars' setup itself (Workspaces), in sidebars.json's shape: `get` null means sidebars.json applies; call `sidebarsChanged()` when `get`'s answer changes.
 - `SidebarTile({ icon, iconClassName, tint, badge, label, active, onClick, onContextMenu, href, className, … })`: A sidebar tile, a SidebarRow drawn as its icon alone, bigger (a grid of them: Pinned's tiles): named by its tooltip, under it.
 - `SlashItem`: An entry in the editor's slash menu: `text` replaces the "/query" ("$|" marks the cursor), or `run` does something else with the function that types text there.
+- `slotAt(box, items, x, y, axis)`: Where a drag at (x, y) lands among `items` (in order, `box` their offset parent) as laid out, not as slid: before which (its index; `items.length`, the end).
 - `snippet(md)`: Markdown as one line of plain text: a preview in a row, a card or a search result.
 - `SortableList({ ids, onMove, className, lift, children })`
 - `span(name, tags?, t0?)`: A span from `t0` (a performance.now(), default now): `mark` ends a part, `end` sends it all.

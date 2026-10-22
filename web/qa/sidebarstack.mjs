@@ -1,5 +1,5 @@
 // The sidebars' stacks (core/sidebars.ts, sidebars.json): the default order; panels dragged by their heading (the
-// drop line, the ends, onto the right sidebar's toggle, back from a pane's view tab); scrolling per panel (the tree's
+// others making way, the ends, onto the right sidebar's toggle, back from a pane's view tab); scrolling per panel (the tree's
 // box, Pinned's divider and its saved height) and as one scroller (Settings); folding; the menu (a panel's own items,
 // Open in a tab, Panels, More, Move, Hide); the empty right sidebar; the rail. Makes a folder of notes (Qa stack/), many
 // pinned. WRITES those, sidebars.json, pages.json and appearance.json's sidebarScroll (put back) and empties the
@@ -40,8 +40,12 @@ const panel = (k, side = "left") => `aside[data-side=${side}] [data-panel='${k}'
 const head = (k, side = "left") => `${panel(k, side)} [data-panel-handle]`
 const visible = (sel) => page.$eval(sel, (e) => !!e.getClientRects().length).catch(() => false)
 const clickHead = (k, side) => page.click(head(k, side), { position: { x: 12, y: 14 } })
-/** The drop line's top, in the page (null: none). */
-const lineY = () => page.$eval("[data-panel-line]", (e) => e.getBoundingClientRect().top).catch(() => null)
+/** A sidebar's panels as drawn while dragging, top to bottom (they make way: core/slide.ts). */
+const drawn = (side = "left") => page.$$eval(`aside[data-side=${side}] [data-sidebar-body] > [data-panel]`, (els) => els
+  .map((e) => ({ k: e.dataset.panel, y: e.getBoundingClientRect().top })).sort((a, b) => a.y - b.y).map((x) => x.k).join())
+/** Whether the left sidebar's panels are making way; where the gap for one coming in is (null: none). */
+const making = () => page.$(`${L} [data-sidebar-body][data-drop-preview]`).then((e) => !!e)
+const gapY = () => page.$eval(`${L} [data-sidebar-body] > [data-slide=incoming]`, (e) => e.getBoundingClientRect().top).catch(() => null)
 const ghost = () => page.$eval("[data-drag-ghost]", (e) => e.textContent).catch(() => "")
 /** Drag from an element to (x, y); `during` looks while over the target (before the drop); `cancel`: Escape, no drop. */
 async function dragTo(from, x, y, during, cancel) {
@@ -223,43 +227,43 @@ try {
 
   // ---------- reorder: down ----------
   let f = await edges("files:files")
-  let seen = await dragTo(head("pages:pages"), 120, f.top + 4, async () => ({ y: await lineY(), at: f.top }))
-  check("Pinned dragged down (into the gap above Files): a line at that gap", near(seen.y, seen.at - 1), seen)
+  let seen = await dragTo(head("pages:pages"), 120, f.top + 4, async () => ({ drawn: await drawn() }))
+  check("Pinned dragged down (past Terminals' middle): the others make way, Pinned drawn under Terminals", seen.drawn === "search:search,terminal:sessions,pages:pages,files:files", seen)
   check("dropped: under Terminals", !!(await until(async () => (await saved()) === "search:search|terminal:sessions|pages:pages|files:files")), await saved())
   check("...drawn so", (await shown()).join() === "search:search,terminal:sessions,pages:pages,files:files", await shown())
 
   // ---------- reorder: up ----------
   const t = await edges("terminal:sessions")
-  seen = await dragTo(head("files:files"), 120, t.top + 3, async () => { await page.screenshot({ path: `${OUT}2-line.png` }); return { y: await lineY(), at: t.top } })
-  check("Files dragged up (into the gap above Terminals): a line at that gap", near(seen.y, seen.at - 1), seen)
+  seen = await dragTo(head("files:files"), 120, t.top + 3, async () => { await page.screenshot({ path: `${OUT}2-make-way.png` }); return { drawn: await drawn() } })
+  check("Files dragged up (above Terminals' middle): drawn under Search", seen.drawn === "search:search,files:files,terminal:sessions,pages:pages", seen)
   check("dropped: under Search", !!(await until(async () => (await saved()) === "search:search|files:files|terminal:sessions|pages:pages")), await saved())
 
-  // ---------- its own place: no line ----------
+  // ---------- its own place: nothing makes way ----------
   const p = await edges("terminal:sessions")
-  seen = await dragTo(head("terminal:sessions"), 120, p.top + 2, async () => ({ above: await lineY() }), true)
-  check("over its own top gap: no line", seen.above === null, seen)
-  seen = await dragTo(head("terminal:sessions"), 120, p.bottom - 2, async () => ({ below: await lineY() }), true)
-  check("...nor its bottom one", seen.below === null, seen)
+  seen = await dragTo(head("terminal:sessions"), 120, p.top + 2, async () => ({ above: await making() }), true)
+  check("over its own top: nothing makes way", !seen.above, seen)
+  seen = await dragTo(head("terminal:sessions"), 120, p.bottom - 2, async () => ({ below: await making() }), true)
+  check("...nor over its bottom", !seen.below, seen)
   check("...and nothing moved", (await saved()) === "search:search|files:files|terminal:sessions|pages:pages", await saved())
 
-  // ---------- the nearest gap ----------
+  // ---------- past a panel's middle ----------
   // The geometry below wants the whole stack on screen: the tree's folders closed, a taller window, scrolled to the top.
   if (await page.$(`${L} [aria-label="Collapse all"]`)) await page.click(`${L} [aria-label="Collapse all"]`, { force: true })
   await page.setViewportSize({ width: 1440, height: 1300 }); await wait(400)
   await page.$eval(body, (e) => { e.scrollTop = 0 })
   check("...the whole stack fits now", await page.$eval(body, (e) => e.scrollHeight <= e.clientHeight + 1))
-  // Over Files (tall: the tree), a third of the way down: the gap above it; two thirds: the gap below it.
+  // Over Files (tall: the tree), a third of the way down: above it; two thirds: below it.
   f = await edges("files:files")
-  seen = await dragTo(head("pages:pages"), 120, f.top + (f.bottom - f.top) / 3, async () => ({ y: await lineY(), at: f.top }), true)
-  check("a third into Files: the line above it", near(seen.y, seen.at - 1), seen)
-  seen = await dragTo(head("pages:pages"), 120, f.top + (f.bottom - f.top) * 2 / 3, async () => ({ y: await lineY(), at: f.bottom }), true)
-  check("two thirds into Files: the line below it", near(seen.y, seen.at - 1), seen)
+  seen = await dragTo(head("pages:pages"), 120, f.top + (f.bottom - f.top) / 3, async () => ({ drawn: await drawn() }), true)
+  check("a third into Files: drawn above it", seen.drawn === "search:search,pages:pages,files:files,terminal:sessions", seen)
+  seen = await dragTo(head("pages:pages"), 120, f.top + (f.bottom - f.top) * 2 / 3, async () => ({ drawn: await drawn() }), true)
+  check("two thirds into Files: drawn below it", seen.drawn === "search:search,files:files,pages:pages,terminal:sessions", seen)
   check("...Escape: nothing moved", (await saved()) === "search:search|files:files|terminal:sessions|pages:pages", await saved())
 
   // ---------- the very top ----------
   const s = await edges("search:search")
-  seen = await dragTo(head("pages:pages"), 120, s.top + 1, async () => ({ y: await lineY(), at: s.top }))
-  check("dragged to the very top: a line above Search", seen.y !== null && seen.y <= seen.at + 1, seen)
+  seen = await dragTo(head("pages:pages"), 120, s.top + 1, async () => ({ drawn: await drawn() }))
+  check("dragged to the very top: drawn above Search", seen.drawn === "pages:pages,search:search,files:files,terminal:sessions", seen)
   check("dropped: first", !!(await until(async () => (await saved()) === "pages:pages|search:search|files:files|terminal:sessions")), await saved())
   check("the search field second: an 8px top margin (2 units)", (await page.$eval(`${L} [data-sidebar-search]`, (e) => parseFloat(getComputedStyle(e).marginTop))) === 2 * unit,
     await page.$eval(`${L} [data-sidebar-search]`, (e) => getComputedStyle(e).marginTop))
@@ -270,8 +274,8 @@ try {
   check("...saved as collapsed", !!(await until(async () => (await saved()) === "pages:pages|search:search|files:files!|terminal:sessions")), await saved())
   const bb = await box(body), lastEnd = (await edges("terminal:sessions")).bottom
   check("...the room below the stack is empty", bb.y + bb.height - lastEnd > 200, [bb, lastEnd])
-  seen = await dragTo(head("pages:pages"), 120, bb.y + bb.height - 40, async () => ({ y: await lineY(), at: lastEnd }))
-  check("over the empty space below: the line under the last panel", near(seen.y, seen.at - 1), seen)
+  seen = await dragTo(head("pages:pages"), 120, bb.y + bb.height - 40, async () => ({ drawn: await drawn() }))
+  check("over the empty space below: drawn under the last panel", seen.drawn === "search:search,files:files,terminal:sessions,pages:pages", seen)
   check("dropped: the last", !!(await until(async () => (await saved()) === "search:search|files:files!|terminal:sessions|pages:pages")), await saved())
   await page.screenshot({ path: `${OUT}3-folded.png` })
   await clickHead("files:files")
@@ -372,8 +376,8 @@ try {
   const tabSel = `[data-tab-id='${await paneTab.getAttribute("data-tab-id")}']`
   // Into the left sidebar, the gap above Terminals.
   const tt = await edges("terminal:sessions")
-  const back = await dragTo(tabSel, 120, tt.top + 3, async () => ({ y: await lineY(), at: tt.top, hint: await ghost() }))
-  check("over the sidebar: a line at the gap, 'To the left sidebar'", near(back.y, back.at - 1) && back.hint.includes("To the left sidebar"), back)
+  const back = await dragTo(tabSel, 120, tt.top + 3, async () => ({ making: await making(), drawn: await drawn(), hint: await ghost() }))
+  check("over the sidebar: Files (still there) drawn above Terminals, 'To the left sidebar'", back.making && back.drawn === "search:search,files:files,terminal:sessions" && back.hint.includes("To the left sidebar"), back)
   check("dropped: Files moved there", !!(await until(async () => (await saved()) === "search:search|files:files|terminal:sessions")), await saved())
   check("...and its tab closes", !!(await until(async () => !(await page.$(tabSel)))))
   // From the right sidebar: Files there, its tab dragged into the left's empty space below.
@@ -385,7 +389,8 @@ try {
   await until(() => page.evaluate(() => location.hash === "#view/files"))
   const tab2 = `[data-tab-id='${await (await page.$$("section[data-group] [data-tab-id]")).at(-1).getAttribute("data-tab-id")}']`
   const lb = await box(body)
-  await dragTo(tab2, 120, lb.y + lb.height - 40)
+  const coming = await dragTo(tab2, 120, lb.y + lb.height - 40, async () => ({ gap: await gapY(), end: (await edges("terminal:sessions")).bottom }))
+  check("...over the left's empty space: a gap opens under its last panel", near(coming.gap, coming.end), coming)
   check("the right one's tab into the left's empty space: the end of the left", !!(await until(async () => (await saved()) === "search:search|terminal:sessions|files:files" && !(await saved("right")))), [await saved(), await saved("right")])
   check("...its tab closes", !!(await until(async () => !(await page.$(tab2)))))
 

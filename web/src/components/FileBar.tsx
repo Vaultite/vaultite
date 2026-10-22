@@ -10,9 +10,11 @@ import { getDrag, startDrag, useDrag, useDropHit, useDropTarget } from "@/core/d
 import { dockAtEnd, fileBarItems, isBarItem, moveBarItem, setBarItemDrawer, sideOf, useSidebars, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
+import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 
-/** Where a dropped item goes: before `before` (null: last); `x` its line, in the bar's px. */
-type Gap = { before: string | null; x: number }
+/** Where a dropped item goes: before `before` (null: last), and the bar's `order` that leaves, which it makes way for
+ *  (core/slide.ts). */
+type Gap = { before: string | null; order: string[] }
 
 /** In the desktop path bar (`bar`), or at the end of the line above the title in a sheet or on a phone (`line`). */
 export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line" }) {
@@ -31,13 +33,11 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
     const b = el.getBoundingClientRect()
     if (x < b.left - 24 || x > b.right + 24 || y < b.top - 12 || y > b.bottom + 12) return null
     const slots = [...el.querySelectorAll<HTMLElement>(":scope > [data-file-bar-key]")].filter((s) => s.offsetWidth)
-    const edges = [...slots.map((s) => s.getBoundingClientRect().left - 4), (slots.at(-1)?.getBoundingClientRect().right ?? b.left) + 4]
-    const i = edges.reduce((best, e, j) => (Math.abs(x - e) < Math.abs(x - edges[best]) ? j : best), 0)
+    const { order, before, same } = reorder(slots.map((s) => s.dataset.fileBarKey!), [key], slotAt(el, slots, x, y, place === "bar" ? "x" : "wrap"))
     // (its own place, in the bar: nothing to do)
-    const mine = slots.findIndex((s) => s.dataset.fileBarKey === key)
-    if (mine >= 0 && (i === mine || i === mine + 1)) return null
-    return { before: slots[i]?.dataset.fileBarKey ?? null, x: edges[i] - b.left }
+    return same ? null : { before, order }
   }, (item, g) => moveBarItem(item.panel!, g.before), { hint: () => (sideOf(getDrag()?.item.panel ?? "") ? "To the top bar" : undefined) })
+  useSlide(box, hit?.order ?? null, place === "bar" ? "x" : "wrap")
   const keys = items.map((x) => x.key)
   const menu = (key: string, i: number) => menuFor((): MenuItem[] => [
     ...(keys.length > 1 ? [
@@ -53,12 +53,13 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
       // (a line's items are 44px targets, their room the gap between them)
       place === "bar" ? "shrink-0 gap-2" : "ml-auto min-w-0 flex-wrap justify-end md:gap-1")}>
       {items.map(({ key, plugin, item }, i) => (
-        <span key={key} data-file-bar-key={key} onContextMenu={menu(key, i)} className={cn("flex shrink-0 items-center empty:hidden", d?.item.panel === key && "opacity-50")}
+        <span key={key} data-file-bar-key={key} data-slide={key} onContextMenu={menu(key, i)} className={cn("flex shrink-0 items-center empty:hidden", d?.item.panel === key && "opacity-50")}
           onPointerDown={(e) => startDrag(e, { from: "panel", panel: key, label: item.title ?? plugin.name })}>
           <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(ctx)} /></Catch>
         </span>
       ))}
-      {hit && <div aria-hidden className="pointer-events-none absolute top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-primary" style={{ left: hit.x - 1 }} />}
+      {/* Where one from a sidebar would go. */}
+      {hit?.order.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-6 w-6 shrink-0" />}
     </div>
   )
 }

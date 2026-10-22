@@ -56,8 +56,8 @@ export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInf
 export { setMenu, setName, SetNameField } from "@/components/Tabs"
 export { foldSet, groupTab, useRenaming } from "@/core/tabsets"
 export { type TabSet } from "@/core/layout"
-export { canDropAt as canDropTab, dropOn as dropTab, INCOMING, previewIn as tabPreview, previewOrder as tabPreviewOrder, setsAsDrawn, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
-export { useSlide } from "@/core/slide"
+export { canDropAt as canDropTab, dropOn as dropTab, previewIn as tabPreview, previewOrder as tabPreviewOrder, setsAsDrawn, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
+export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"

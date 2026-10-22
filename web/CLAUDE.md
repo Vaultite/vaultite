@@ -47,6 +47,8 @@
 - Selecting several is `core/select.ts` (Finder's way); several at once is one toast with one Undo.
 - Dragging is `core/drag.ts` (pointer events, not dnd-kit or HTML5; files from the computer are HTML5 drops). A finger
   drags only with `{ touch: true }`.
+- A list reordered by dragging makes way, as browser tabs do (`core/slide.ts`: `slotAt`, `reorder`, `useSlide`), never a
+  drop line. A line only where a drop isn't a place in one list: a dashboard's grid (beside or below), table columns.
 - Text sizes: a plugin declares `textSizes` and uses `useTextSize` (`core/textsize.ts`), never a setting of its own.
 - Steadiness: nothing moves that the user didn't move (`core/heights.ts`, `core/anchor.ts`, `core/viewstate.ts`).
 - Speed: live updates do nothing while hidden and patch the store at most once a second, unchanged slices keeping their

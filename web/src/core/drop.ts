@@ -6,6 +6,7 @@ import { canMove, canMoveGroup, canOpenAt, moveGroupTo, moveTabsTo, moveTabTo, o
 import { canMoveSet, moveSetTo } from "@/core/tabsets"
 import { groups } from "@/core/workspace"
 import { getStore } from "@/core/data"
+import { INCOMING } from "@/core/slide"
 
 /** Where a dragged tab or file would land: a place in a tab bar (`set`: the tab group it joins there, null none), or a
  *  pane's edge or middle. */
@@ -57,7 +58,6 @@ export function slotIn(g: Group, slots: Slot[], pos: number, axis: "x" | "y") {
 /** A pane's tabs as a drop under the pointer would leave them, for its bar to draw while dragging (`INCOMING`: where
  *  what comes from elsewhere opens; `into`: a folded group taking it, which stays folded). Null: nothing changes there. */
 export type Preview = { tabs: { id: string; set?: string }[]; into?: string }
-export const INCOMING = "incoming"
 export function previewIn(g: Group, item: DragItem, d: Drop | null): Preview | null {
   if (!d || d.kind !== "bar" || d.group !== g.id) return null
   const sets = new Map(g.tabs.map((t) => [t.id, t.set]))

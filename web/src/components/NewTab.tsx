@@ -9,6 +9,7 @@ import { fileAt } from "@/core/pages"
 import type { NewTabSection, SidebarPanel } from "@/core/define"
 import { available, commandList, keyHint, keysOf, runCommand, useCommandList, type Command } from "@/core/commands"
 import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
+import { reorder, slotAt, useSlide } from "@/core/slide"
 import { commandIcon } from "@/core/pages"
 import { newTabSections, sidebarPanels } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -64,7 +65,7 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   }
   const drawn = shown.map((s) => ({ s, el: body(s) })).filter((x) => x.el !== null)
   const list = useRef<HTMLDivElement>(null)
-  const line = useReorder(list, "sections")
+  useReorder(list, "sections")
   const d = useDrag()
   // Right-click: change the page (on a section or a button, that one first).
   const onMenu = (e: MouseEvent) => {
@@ -81,7 +82,7 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
         const heading = s.heading === false ? null : s.heading ?? s.title
         return (
           // Dragged by its heading (the page's, or the one a sidebar panel draws: data-panel-handle) to reorder.
-          <section key={s.key} data-newtab-section={s.key} aria-label={s.title} className={cn(d?.item.newtab?.key === s.key && "opacity-50")}
+          <section key={s.key} data-newtab-section={s.key} data-slide={s.key} aria-label={s.title} className={cn(d?.item.newtab?.key === s.key && "opacity-50")}
             onPointerDown={(e) => {
               const t = e.target as HTMLElement
               // A button that is itself the handle (the search field: a panel that's one control) drags too, as in the
@@ -102,7 +103,6 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
           <MousePointerClick className="size-4" strokeWidth={2} />Right-click to choose what a new tab shows
         </p>
       )}
-      {line && <div aria-hidden data-newtab-line className="pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary" style={{ top: line.y - 1 }} />}
     </div>
     </div>
   )
@@ -118,12 +118,12 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   )
 }
 
-/** Where a section or a button dragged (by its heading; a button itself) would go: the gap nearest the pointer, and the
- *  line's place in the list (`y`, in the list's own px: it may be zoomed; `x` too in a row of icons, the line upright). */
-type Reorder = { before: string | null; y: number; x?: number }
+/** Where a section or a button dragged (by its heading; a button itself) would go: before `before` (null: the end), and
+ *  the list's `order` that leaves, which it makes way for (core/slide.ts). */
+type Reorder = { before: string | null; order: string[] }
 
-/** A list of sections or of buttons as a drop target for its own (core/drag.ts): a drop puts the one dragged before the
- *  one after the line (newtab.json's `sections` or `actions`). `across`: a row of icons that wraps (a phone's dock). */
+/** A list of sections or of buttons as a drop target for its own (core/drag.ts), making way while one is dragged over
+ *  it: a drop puts it there (newtab.json's `sections` or `actions`). `across`: a row of icons that wraps (a phone's dock). */
 function useReorder(box: RefObject<HTMLDivElement | null>, list: "sections" | "actions", across = false) {
   const target = `newtab:${useId()}`
   useDropTarget<Reorder>(target, (item, x, y) => {
@@ -131,37 +131,18 @@ function useReorder(box: RefObject<HTMLDivElement | null>, list: "sections" | "a
     if (n?.list !== list || !root) return null
     const r = root.getBoundingClientRect()
     if (!r.width || x < r.left - 48 || x > r.right + 48 || y < r.top - 24 || y > r.bottom + 24) return null
-    const attr = list === "sections" ? "newtabSection" : "newtabAction"
-    const rows = [...root.querySelectorAll<HTMLElement>(list === "sections" ? ":scope > [data-newtab-section]" : "[data-newtab-action]")]
+    const rows = [...root.children].filter((el): el is HTMLElement => el instanceof HTMLElement && !!el.dataset.slide)
     if (!rows.length) return null
-    const boxes = rows.map((el) => el.getBoundingClientRect())
-    const k = root.offsetHeight / r.height || 1
-    if (across) {
-      // The gaps: before each icon (halfway from the one before it on its line), after the last; the nearest wins.
-      const mid = (b: DOMRect) => (b.top + b.bottom) / 2
-      const gaps = boxes.map((b, i) => ({ x: i && boxes[i - 1].top === b.top ? (boxes[i - 1].right + b.left) / 2 : b.left, y: mid(b) }))
-      const last = boxes[boxes.length - 1]
-      gaps.push({ x: last.right, y: mid(last) })
-      const i = gaps.reduce((best, g, j) => (Math.hypot(x - g.x, y - g.y) < Math.hypot(x - gaps[best].x, y - gaps[best].y) ? j : best), 0)
-      const mine = rows.findIndex((el) => el.dataset.newtabAction === n.key)
-      if (mine >= 0 && (i === mine || i === mine + 1)) return null
-      return { before: rows[i]?.dataset.newtabAction ?? null, x: (gaps[i].x - r.left) * k, y: (gaps[i].y - r.top) * k }
-    }
-    // The gaps: above the first, between each two (halfway), below the last; the nearest wins.
-    const edges = boxes.map((b, i) => (i ? (boxes[i - 1].bottom + b.top) / 2 : b.top - 2))
-    edges.push(boxes[boxes.length - 1].bottom + 2)
-    const i = edges.reduce((best, e, j) => (Math.abs(y - e) < Math.abs(y - edges[best]) ? j : best), 0)
-    // Its own place (just above or below itself): nothing to do.
-    const mine = rows.findIndex((el) => el.dataset[attr] === n.key)
-    if (mine >= 0 && (i === mine || i === mine + 1)) return null
-    return { before: rows[i]?.dataset[attr] ?? null, y: (edges[i] - r.top) * k }
+    const { order, before, same } = reorder(rows.map((el) => el.dataset.slide!), [n.key], slotAt(root, rows, x, y, across ? "wrap" : "y"))
+    // (its own place: nothing to do)
+    return same ? null : { before, order }
   }, (item, h) => {
     const key = item.newtab!.key
     const now = list === "sections" ? sectionsNow() : shownActions(getPrefs().newTab)
-    // A key that isn't in the list (a section shown but not saved) goes before the one after the line too.
+    // A key that isn't in the list (a section shown but not saved) is placed by the one after it too.
     void setNewTab({ [list]: placeKey(now, key, h.before && now.includes(h.before) ? h.before : null) })
   })
-  return useDropHit<Reorder>(target)
+  useSlide(box, useDropHit<Reorder>(target)?.order ?? null, across ? "wrap" : "y")
 }
 
 /** A sidebar panel as a section: drawn as in the open sidebar (its own heading, if it draws one), its menu the page's. */
@@ -176,7 +157,7 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
   const byId = new Map(useCommandList().map((c) => [c.id, c]))
   const cmds = available(shownActions(newTab).flatMap((id) => byId.get(id) ?? []))
   const box = useRef<HTMLDivElement>(null)
-  const line = useReorder(box, "actions", dock)
+  useReorder(box, "actions", dock)
   const d = useDrag()
   const dragged = d?.item.newtab?.list === "actions" ? d.item.newtab.key : null
   // (docked, the panel has no heading: its icons carry its menu, Take out of the dock among it)
@@ -187,7 +168,7 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
         const Icon = commandIcon(c, newTab.icons?.[c.id]) ?? CommandIcon
         return (
           // Only its icon: held, its menu names it first.
-          <button key={c.id} type="button" data-newtab-action={c.id} aria-label={labelOf(c)} onClick={() => runCommand(c)}
+          <button key={c.id} type="button" data-newtab-action={c.id} data-slide={c.id} aria-label={labelOf(c)} onClick={() => runCommand(c)}
             onPointerDown={(e) => startDrag(e, { from: "newtab", newtab: { list: "actions", key: c.id }, label: labelOf(c) }, { touch: true })}
             onContextMenu={menuFor(() => [{ label: labelOf(c), caption: true, run: () => {} }, ...menu(c.id).map((it, i) => (i ? it : { ...it, sep: true }))])}
             className={cn("grid size-11 cursor-pointer place-items-center rounded-[10px] text-primary active:bg-foreground/[0.06]", dragged === c.id && "opacity-50")}>
@@ -200,7 +181,6 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
           <Plus className="size-[21px]" strokeWidth={2} />
         </button>
       )}
-      {line?.x !== undefined && <div aria-hidden data-newtab-line className="pointer-events-none absolute h-8 w-0.5 rounded-full bg-primary" style={{ left: line.x - 1, top: line.y - 16 }} />}
     </div>
   )
   if (!cmds.length) return null
@@ -211,7 +191,7 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
         const keys = keysOf(c)[0]
         return (
           // Dragged to reorder the buttons (the click that ends a drag runs nothing). A row like the others, in the accent.
-          <div key={c.id} onPointerDown={(e) => startDrag(e, { from: "newtab", newtab: { list: "actions", key: c.id }, label: labelOf(c) }, { touch: !!phone })}
+          <div key={c.id} data-slide={c.id} onPointerDown={(e) => startDrag(e, { from: "newtab", newtab: { list: "actions", key: c.id }, label: labelOf(c) }, { touch: !!phone })}
             onContextMenu={panel ? menuFor(() => menu(c.id)) : undefined} className={cn(dragged === c.id && "opacity-50")}>
             <SidebarRow data-newtab-action={c.id} icon={Icon} tint="var(--primary)" label={labelOf(c)} open={open} className="text-primary" onClick={() => runCommand(c)}>
               {keys && !phone && <span className="mr-1 shrink-0 text-[11px] text-tertiary">{keyHint(keys)}</span>}
@@ -219,7 +199,6 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
           </div>
         )
       })}
-      {line && <div aria-hidden data-newtab-line className="pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary" style={{ top: line.y - 1 }} />}
     </div>
   )
 }

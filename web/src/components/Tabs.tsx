@@ -13,8 +13,8 @@ import { leaves, vaultPath, type Group, type Tab, type TabSet } from "@/core/lay
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { addToSet, allSets, askRenameSet, closeSet, colorSet, doneRenaming, foldSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet, useRenaming } from "@/core/tabsets"
 import { colorItems, dotIcon } from "@/components/ColorDot"
-import { INCOMING, PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
-import { useSlide } from "@/core/slide"
+import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
+import { INCOMING, useSlide } from "@/core/slide"
 import { usePaneHasTopBar } from "@/core/pane"
 import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -499,7 +499,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
-      <div ref={row} data-select-list={TABS} data-drop-preview={preview ? "" : undefined} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
+      <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", d?.item.group === group.id && "opacity-50")}>
         {tabs.map((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined

@@ -43,7 +43,7 @@ async function spot(gid, where) {
 }
 const barStart = async (gid) => { const r = await page.locator(`section[data-group="${gid}"] [data-tab-id]`).first().boundingBox(); return [r.x + 4, r.y + r.height / 2] }
 const center = async (loc) => { await loc.scrollIntoViewIfNeeded(); const b = await loc.boundingBox(); return [b.x + Math.min(60, b.width / 2), b.y + b.height / 2] }
-/** Drag `from` to (x, y); before letting go, what's offered (a pane zone, a bar making way, a pin line, a highlighted folder, the ghost's hint). */
+/** Drag `from` to (x, y); before letting go, what's offered (a pane zone, a bar or the pages making way, a highlighted folder, the ghost's hint). */
 async function drag(from, [x, y], { drop = true, name } = {}) {
   const [fx, fy] = await center(from)
   await page.mouse.move(fx, fy); await page.mouse.down()
@@ -52,7 +52,8 @@ async function drag(from, [x, y], { drop = true, name } = {}) {
   const offered = await page.evaluate(() => ({
     zone: document.querySelector("[data-drop-zone]")?.dataset.dropZone ?? null,
     line: !!document.querySelector("[data-drop-preview]"),
-    pinLine: !!document.querySelector("[data-pin-line]"),
+    pinWay: !!document.querySelector("aside [data-select-list=pins][data-drop-preview]"),
+    pinGap: !!document.querySelector("aside [data-select-list=pins] > [data-slide=incoming]"),
     folder: [...document.querySelectorAll("aside .drop-target")].length,
     ghost: document.querySelector("[data-drag-ghost]")?.textContent ?? null,
     dim: !!document.querySelector("[data-drag-ghost].opacity-60"),
@@ -118,7 +119,7 @@ check("...dropped: moved into it", (await api("GET", "files")).files.some((f) =>
 const firstPin = (await pins())[0]
 o = await drag(row("Qa drag/One.md"), await (async () => { const b = await pinRow(firstPin).boundingBox(); return [b.x + 40, b.y + 3] })(), { name: "tree-pin" })
 await wait(300)
-check("tree file over the pages: a line shows where", o.pinLine, o)
+check("tree file over the pages: they make way, a gap where it goes", o.pinWay && o.pinGap, o)
 check("...dropped: pinned first", (await pins())[0] === "Qa drag/One.md", await pins())
 
 // A pinned page: reorder, onto a pane, out onto the tree.
@@ -126,14 +127,14 @@ const p = await pins()
 o = await drag(pinRow(p[0]), await (async () => { const b = await pinRow(p[2]).boundingBox(); return [b.x + 40, b.y + b.height - 3] })())
 await wait(300)
 const p2 = await pins()
-check("pinned page dragged down: a line, then it moves after the third", o.pinLine && p2.indexOf(p[0]) === 2, { o, p2 })
+check("pinned page dragged down: the others make way, then it moves after the third", o.pinWay && !o.pinGap && p2.indexOf(p[0]) === 2, { o, p2 })
 o = await drag(pinRow("Qa drag/One.md"), await spot(g0, "top"), { name: "pin-top" })
 ps = await panes()
 check("pinned page onto a pane's top edge: a split above with it", o.zone === "top" && ps.some((x) => x.tabs.join() === "One" && x.y < 200), { o, ps })
 check("...still pinned", (await pins()).includes("Qa drag/One.md"))
 o = await drag(pinRow("Qa drag/One.md"), await center(row("Qa drag/Two.md")), { name: "pin-out" })
 await wait(300)
-check("pinned page over the tree: 'Unpin' on it, no folder lit", o.ghost?.includes("Unpin") && o.folder === 0, o)
+check("pinned page over the tree: 'Unpin' on it, the rest close up, no folder lit", o.ghost?.includes("Unpin") && o.pinWay && o.folder === 0, o)
 check("...dropped: unpinned", !(await pins()).includes("Qa drag/One.md"), await pins())
 
 // A tab onto the pages: pinned.
@@ -142,7 +143,7 @@ const withTwo = ps.find((x) => x.tabs.includes("Two"))
 const tabLoc = page.locator(`section[data-group="${withTwo.id}"] [data-tab-id]`, { has: page.locator("[role=tab]", { hasText: "Two" }) }).first()
 o = await drag(tabLoc, await (async () => { const b = await pinRow((await pins())[0]).boundingBox(); return [b.x + 40, b.y + 3] })())
 await wait(300)
-check("a tab onto the pages: pinned", (await pins())[0] === "Qa drag/Two.md" && o.pinLine, { o, pins: await pins() })
+check("a tab onto the pages: a gap opens, pinned", (await pins())[0] === "Qa drag/Two.md" && o.pinGap, { o, pins: await pins() })
 check("...and the tab stays where it was", (await panes()).find((x) => x.id === withTwo.id)?.tabs.includes("Two"))
 
 // A plain click on a tree file still opens it.

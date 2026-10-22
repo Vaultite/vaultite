@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { ArrowDown, ArrowUp, Ellipsis, EyeOff, PanelLeft, PanelRight, SlidersHorizontal } from "lucide-react"
 import { startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { fuzzy } from "@/core/fuzzy"
+import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { defaultPanels, dockPanel, hidePanel, panelsIn, restoreSidebars, sideOf, sidebarPanels, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { menuFor, rightClickBelow, type MenuItem } from "@/components/ContextMenu"
@@ -16,8 +17,9 @@ import { cn } from "@/lib/utils"
 
 /** A list in the sheet: a sidebar, or the hidden panels (null). */
 type Where = Side | null
-/** Where a drop would put it: before panel `before` (null: the end), the line at `y` in the list's box. */
-type Drop = { before: string | null; y: number }
+/** Where a drop would put it: before panel `before` (null: the end), and the sidebar's `order` that leaves, which its
+ *  list makes way for (core/slide.ts; none for the hidden list, in name order). */
+type Drop = { before: string | null; order?: string[] }
 
 const byTitle = new Intl.Collator(undefined, { sensitivity: "base" })
 const other = (side: Side): Side => (side === "left" ? "right" : "left")
@@ -78,19 +80,21 @@ function PanelList({ where, title, panels, shows, filtered, className }: {
   const box = useRef<HTMLDivElement>(null)
   const id = `customize:${where ?? "hidden"}`
   const hit = useListDrop(id, where, box)
+  useSlide(box, hit?.order ?? null, "y")
   const seen = panels.filter(shows)
   return (
     <section aria-label={title} className={className}>
       <h3 className="mb-1 px-1 text-[13px] font-semibold text-muted-foreground">{title}</h3>
       <div ref={box} data-panel-list={where ?? "hidden"}
-        className={cn("relative flex min-h-24 flex-col rounded-[10px] bg-foreground/[0.04] p-1 transition-colors", hit && !where && "bg-primary/10 ring-1 ring-primary/50")}>
+        className={cn("relative flex min-h-24 flex-col rounded-[10px] bg-foreground/[0.04] p-1 transition-colors", hit && (!where || !seen.length) && "bg-primary/10 ring-1 ring-primary/50")}>
         {seen.map((p) => <PanelRow key={p.key} p={p} where={where} list={panels} />)}
         {!seen.length && (
           <div className="grid flex-1 place-items-center px-3 py-4 text-center text-[13px] text-muted-foreground">
             {filtered ? "No panel matches" : where ? "Drag panels here" : "Every panel is in a sidebar"}
           </div>
         )}
-        {hit && where && <div aria-hidden className="pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-primary" style={{ top: hit.y }} />}
+        {/* Where one from elsewhere would go. */}
+        {hit?.order?.includes(INCOMING) && seen.length > 0 && <div aria-hidden data-slide={INCOMING} className="h-8 shrink-0" />}
       </div>
     </section>
   )
@@ -103,16 +107,11 @@ function useListDrop(id: string, where: Where, box: RefObject<HTMLDivElement | n
     if (!key || !el) return null
     const b = el.getBoundingClientRect()
     if (x < b.left || x > b.right || y < b.top || y > b.bottom) return null
-    const from = sideOf(key)
-    if (!where) return from ? { before: null, y: 0 } : null
+    if (!where) return sideOf(key) ? { before: null } : null
     const rows = [...el.querySelectorAll<HTMLElement>(":scope > [data-row]")]
-    if (!rows.length) return { before: null, y: 3 }
-    const edges = [...rows.map((r) => r.getBoundingClientRect().top), rows[rows.length - 1].getBoundingClientRect().bottom]
-    const i = edges.reduce((best, e, j) => (Math.abs(y - e) < Math.abs(y - edges[best]) ? j : best), 0)
-    // Just above or below itself: it stays where it is.
-    const mine = rows.findIndex((r) => r.dataset.row === key)
-    if (from === where && mine >= 0 && (i === mine || i === mine + 1)) return null
-    return { before: rows[i]?.dataset.row ?? null, y: Math.max(1, edges[i] - b.top - 1) }
+    const { order, before, same } = reorder(rows.map((r) => r.dataset.row!), [key], slotAt(el, rows, x, y, "y"))
+    // (its own place: it stays where it is)
+    return same ? null : { before, order }
   }, (item, h) => {
     const key = carried(item)!
     if (where) dockPanel(key, { side: where, before: h.before })
@@ -138,7 +137,7 @@ function PanelRow({ p, where, list }: { p: PanelOf; where: Where; list: PanelOf[
     ]
   }
   return (
-    <div data-row={p.key} onContextMenu={menuFor(menu)}
+    <div data-row={p.key} data-slide={p.key} onContextMenu={menuFor(menu)}
       onPointerDown={(e) => startDrag(e, { from: "row", panel: p.key, label: p.panel.title, drawn: true }, { touch: true })}
       className={cn("group/row flex h-11 shrink-0 cursor-grab items-center gap-3 rounded-[7px] pr-1 pl-2.5 text-[17px] select-none hover:bg-foreground/[0.05] md:h-8 md:gap-2 md:pl-2 md:text-[13px]",
         d && carried(d.item) === p.key && "opacity-40")}>

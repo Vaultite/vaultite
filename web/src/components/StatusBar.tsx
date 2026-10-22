@@ -14,6 +14,7 @@ import { kindOf } from "@/core/filekinds"
 import { ambientItems, statusItems, usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
+import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { defaultOrder, keyList, placeKey } from "../../../core/slots.ts"
 
 /** Past this, a file's counts and plugins' items wait for typing to pause, and the counts are made in a worker: a 16 MB
@@ -47,23 +48,9 @@ function moveAmbient(key: string, before: string | null, tuck: boolean) {
   setPrefs({ statusBar: placeKey(keys, key, before), statusBarMore: tuck ? [...more, key] : more })
 }
 
-/** Where an item dropped would go, and its line's place in the bar or the tray (none: onto the more button). */
-type Gap = { before: string | null; x?: number; y?: number }
-/** The gap among `slots` (left to right, maybe on several lines) nearest (x, y), or null where the item already is.
- *  `last`: what a drop after the last one goes before. */
-function gapAt(box: HTMLElement, slots: HTMLElement[], key: string, x: number, y: number, last: string | null, here: boolean): Gap {
-  const r = box.getBoundingClientRect()
-  if (!slots.length) return { before: last, x: r.width / 2, y: r.height / 2 }
-  const boxes = slots.map((el) => el.getBoundingClientRect())
-  const mid = (b: DOMRect) => (b.top + b.bottom) / 2
-  const gaps = boxes.map((b, i) => ({ x: i && boxes[i - 1].top === b.top ? (boxes[i - 1].right + b.left) / 2 : b.left - 2, y: mid(b) }))
-  const end = boxes[boxes.length - 1]
-  gaps.push({ x: end.right + 2, y: mid(end) })
-  const i = gaps.reduce((best, g, j) => (Math.hypot(x - g.x, y - g.y) < Math.hypot(x - gaps[best].x, y - gaps[best].y) ? j : best), 0)
-  const mine = slots.findIndex((el) => el.dataset.statusKey === key)
-  if (here && mine >= 0 && (i === mine || i === mine + 1)) return { before: key }
-  return { before: slots[i]?.dataset.statusKey ?? last, x: gaps[i].x - r.left, y: gaps[i].y - r.top }
-}
+/** Where an item dropped would go: before `before` in the bar's order (null: last), and the bar's or the tray's `order`
+ *  that leaves, which it makes way for (core/slide.ts; none: onto the more button). */
+type Gap = { before: string | null; order?: string[] }
 
 /** What the bar leaves out to stop short of the left sidebar, least needed first: characters, ambient items (the widest
  *  first, to the tray), words, plugins' items. Each pass starts from everything, before a paint. Returns those in the tray. */
@@ -73,6 +60,9 @@ function useFit(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElement |
   run.current = () => {
     const b = bar.current
     if (!b?.offsetWidth) return
+    // (the gap an item dragged in from the tray opens isn't taken yet: measured without it)
+    const coming = b.querySelector<HTMLElement>(`[data-slide="${INCOMING}"]`)
+    if (coming) coming.style.display = "none"
     const out = (els: Iterable<Element>, gone = true) => { for (const el of els) el.toggleAttribute("data-fit-out", gone) }
     const fits = () => b.scrollWidth <= b.clientWidth + 0.5
     const drop = (n: number) => b.querySelectorAll(`[data-drop="${n}"]`)
@@ -105,6 +95,7 @@ function useFit(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElement |
       }
       for (const n of [2, 3]) if (!fits()) out(drop(n))
     } else delete b.dataset.cramped
+    if (coming) coming.style.display = ""
     setOver((was) => (was.join() === left.join() ? was : left))
   }
   const joined = keys.join()
@@ -260,7 +251,7 @@ export function StatusBar() {
     return () => { removeEventListener("pointerdown", down, true); removeEventListener("keydown", key, true) }
   }, [trayOpen])
   const slot = (key: string, item: (typeof ambient)[number]["item"], hold = 0) => (
-    <span key={key} data-status-key={key} onPointerDown={(e) => startDrag(e, { from: "status", status: key, label: item.title })}
+    <span key={key} data-status-key={key} data-slide={key} onPointerDown={(e) => startDrag(e, { from: "status", status: key, label: item.title })}
       style={hold ? { minWidth: hold } : undefined}
       className={cn("flex shrink-0 items-center", !hold && "empty:hidden", dragged === key && "opacity-50")}>
       {item_(key, () => item.render())}
@@ -272,9 +263,12 @@ export function StatusBar() {
   const inBarSlots = useMemo(() => withComing(inBar, held, ambient.map((x) => x.key)).map((x) => "coming" in x
     ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} />
     : slot(x.key, x.item, held?.find(([k]) => k === x.key)?.[1])), [inBar, held, ambient, dragged, path])
-  const line = (g: Gap | null) => g?.x !== undefined && <div aria-hidden className="pointer-events-none absolute h-4 w-0.5 rounded-full bg-primary" style={{ left: g.x - 1, top: g.y! - 8 }} />
+  // Dragged over, the bar's items and the tray's make way for the one dragged.
+  useSlide(fitRef, barHit?.order ?? null, "x")
+  useSlide(trayRef, trayHit?.order ?? null, "wrap")
+  const gap = (g: Gap | null) => g?.order?.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-5 shrink-0" />
   // (always there, the fit showing it: drawn again only when it changes, not on each keystroke)
-  const any = ambient.length > 0, ring = trayHit?.x === undefined && !!trayHit
+  const any = ambient.length > 0, ring = !!trayHit && !trayHit.order
   const more = useMemo(() => any && (
     <button type="button" data-status-more data-pinned={pinned || undefined} onClick={() => setTray((t) => !t)} aria-label="More status items" aria-expanded={trayOpen} data-tip="More" data-tip-side="top"
       className={cn("grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground",
@@ -286,8 +280,9 @@ export function StatusBar() {
   const fileComing = !late && !!holds?.file
   const own = ambient.length > 0 && <>
     {more}
-    <div ref={fitRef} data-ambient className="flex shrink-0 items-center gap-1">
+    <div ref={fitRef} data-ambient className="relative flex shrink-0 items-center gap-1">
       {inBarSlots}
+      {gap(barHit)}
     </div>
     {(s || fileComing) && <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />}
   </>
@@ -295,18 +290,17 @@ export function StatusBar() {
     <div ref={trayRef} data-status-tray onClickCapture={() => setTray(false)} style={{ maxWidth: MAX_WIDTH }}
       className="absolute bottom-full left-0 mb-1 flex flex-wrap items-center gap-1 rounded-[8px] border-[0.5px] border-border bg-sidebar p-1 shadow-lg">
       {inTray.map(({ key, item }) => slot(key, item))}
-      {line(trayHit)}
+      {gap(trayHit)}
     </div>
   )
   const bar = "fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex"
-  // (its row holds what's in line, so what it leaves out is measured without the tray and the drop line over it)
+  // (its row holds what's in line, so what it leaves out is measured without the tray over it)
   const wrap = (children: ReactNode) => (
     <div ref={barRef} role="status" data-status-bar className={bar} style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(ambientMenu)}>
       <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
         {own}
         {children}
       </div>
-      {line(barHit)}
       {trayBox}
     </div>
   )
@@ -342,8 +336,8 @@ export function StatusBar() {
   </span>)
 }
 
-/** The bar and its tray (with the more button) as drop targets for ambient items: in the bar, before the item after the
- *  line; in the tray or onto the button, tucked there (onto the button: last). */
+/** The bar and its tray (with the more button) as drop targets for ambient items: in the bar, where it lands among them;
+ *  in the tray or onto the button, tucked there (onto the button: last). */
 function useAmbientDrops(barRef: RefObject<HTMLElement | null>, fitRef: RefObject<HTMLElement | null>, trayRef: RefObject<HTMLElement | null>,
   keys: string[], trayKeys: string[], tucked: string[]) {
   // A drop after the tray's last item goes before what follows that one in the bar's order.
@@ -351,25 +345,23 @@ function useAmbientDrops(barRef: RefObject<HTMLElement | null>, fitRef: RefObjec
     const rest = keys.filter((k) => k !== key), end = trayKeys.filter((k) => k !== key).at(-1)
     return end ? rest[rest.indexOf(end) + 1] ?? null : rest[0] ?? null
   }
-  const stays = (item: { status?: string }, h: Gap) => h.before === item.status
+  const slots = (box: HTMLElement) => [...box.querySelectorAll<HTMLElement>(":scope > [data-status-key]")].filter((el) => el.offsetWidth)
   useDropTarget<Gap>("status:bar", (item, x, y, el) => {
     const bar = barRef.current, fit = fitRef.current
     if (!item.status || !bar || !fit || el?.closest("[data-status-tray], [data-status-more]")) return null
     const b = bar.getBoundingClientRect(), f = fit.getBoundingClientRect()
     if (x < f.left - 24 || x > b.right || y < b.top - 24 || y > b.bottom) return null
-    const slots = [...fit.querySelectorAll<HTMLElement>(":scope > [data-status-key]")].filter((el) => el.offsetWidth)
-    const g = gapAt(fit, slots, item.status, x, y, null, !tucked.includes(item.status))
-    if (stays(item, g)) return null
-    // (the line in the bar's px: the bar holds it)
-    return { ...g, x: g.x! + f.left - b.left, y: g.y! + f.top - b.top }
+    const at = slots(fit), { order, before, same } = reorder(at.map((el) => el.dataset.statusKey!), [item.status], slotAt(fit, at, x, y, "x"))
+    // (where it is already: nothing to do)
+    return same ? null : { before, order }
   }, (item, g) => moveAmbient(item.status!, g.before, false))
   useDropTarget<Gap>("status:more", (item, x, y, el) => {
     if (!item.status) return null
     const tray = trayRef.current
     if (tray && el && tray.contains(el)) {
-      const slots = [...tray.querySelectorAll<HTMLElement>(":scope > [data-status-key]")]
-      const g = gapAt(tray, slots, item.status, x, y, afterTray(item.status), tucked.includes(item.status))
-      return stays(item, g) ? null : g
+      const at = slots(tray), { order, before, same } = reorder(at.map((el) => el.dataset.statusKey!), [item.status], slotAt(tray, at, x, y, "wrap"))
+      // (tucked there already, in its place: nothing to do; one there because the bar is full is tucked for good)
+      return same && tucked.includes(item.status) ? null : { before: before ?? afterTray(item.status), order }
     }
     return el?.closest("[data-status-more]") ? { before: afterTray(item.status) } : null
   }, (item, g) => moveAmbient(item.status!, g.before, true))

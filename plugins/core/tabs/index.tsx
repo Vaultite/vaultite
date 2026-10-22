@@ -131,7 +131,7 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
   const only = (t: Tab) => panes === 1 && g.tabs.length === 1 && t.to === "new"
   const incoming = shown.some((t) => t.id === INCOMING)
   return (
-    <div ref={box} className="relative flex flex-col gap-px" data-tabs-pane={g.id} data-drop-preview={preview ? "" : undefined}>
+    <div ref={box} className="relative flex flex-col gap-px" data-tabs-pane={g.id}>
       {panes > 1 && (
         <div className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium max-md:h-8 max-md:text-[13px]", n && "mt-1",
           focused ? "text-muted-foreground" : "text-tertiary")}>Pane {n + 1}</div>

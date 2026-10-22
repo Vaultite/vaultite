@@ -107,6 +107,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `vau tabs group`. Dragging tabs, the others make way and the tab shows where it lands, the group's line under it if
   it joins: held over a group's last tab it joins its end, just past it it leaves in place, and dropped on a folded
   group it goes in, the group staying folded.
+- Every list you reorder by dragging makes way as the tabs do, instead of showing a line: pinned pages (list and
+  tiles), sidebar panels, the Sidebars sheet, a blank tab's sections and buttons, the status bar and its tray, and the
+  header's items. Something dragged in from elsewhere opens a gap where it would land; a pin dragged out to unpin
+  leaves the rest closed up.
 - Vertical tabs in one switch: Show tabs in the sidebar (the palette, or right-click the tab bar) puts the Tabs panel at
   the top of the left sidebar and hides the tab bar; Show tabs on top puts them back.
 - Mac app: with the tab bar and pane titles off, the sidebar toggles beside a folded sidebar can be clicked again.
