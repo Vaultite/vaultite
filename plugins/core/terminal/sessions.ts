@@ -1,4 +1,4 @@
-import { Check, CircleAlert, LoaderCircle, type LucideIcon } from "lucide-react"
+import { Check, CircleAlert, createLucideIcon, type LucideIcon } from "lucide-react"
 import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, openView, parseTerminal, type Agent } from "@vaultite"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
@@ -245,17 +245,20 @@ export function runningResume(id: string): string | null {
   return now.list?.find((s) => s.id !== id && s.session === t.resume && (s.machine ?? null) === t.machine && agentIn(s)?.name === t.agent)?.id ?? null
 }
 
-/** Its icon, as a browser tab's shows a page loading: a spinner while its agent works, a check once it's done with
- *  nothing for you (or you've read it), an alert once it failed; else its agent's (a dot while it needs you). */
+/** A filled dot that breathes (`WORKING`) while an agent works: calm, as it works for minutes, not a page's seconds. */
+export const Working = createLucideIcon("working-dot", [["circle", { cx: "12", cy: "12", r: "5", fill: "currentColor", stroke: "none", key: "dot" }]])
+export const WORKING = "breathe motion-reduce:animate-none"
+/** Its icon: a breathing dot while its agent works, a check once it's done with nothing for you (or you've read it),
+ *  an alert once it failed; else its agent's (a dot while it needs you). */
 export function iconOf(s: Session, a = agentIn(s)): LucideIcon | null {
   if (!a) return null
-  if (s.state === "working") return LoaderCircle
+  if (s.state === "working") return Working
   if (needsYou(s, a)) return a.icon
   return s.state === "done" ? Check : s.state === "error" ? CircleAlert : a.icon
 }
-/** Its icon's classes: the spinner turning; at rest, dimmed as far as its prompt cache ran out (Agent meters). */
+/** Its icon's classes: the dot breathing; at rest, dimmed as far as its prompt cache ran out (Agent meters). */
 export const stateClass = (s: Session, a = agentIn(s)) =>
-  !a ? undefined : s.state === "working" ? "animate-spin motion-reduce:animate-none" : resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
+  !a ? undefined : s.state === "working" ? WORKING : resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
 
 /** How much of its prompt cache's time an idle agent has left (0-1), when Agent meters draws it in the icon. */
 export const cacheIn = (s: Session) => {

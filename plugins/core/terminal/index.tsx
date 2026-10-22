@@ -19,7 +19,7 @@ function Preview() {
       <p className="text-[15px] leading-[20px] text-muted-foreground">
         A shell in a tab, started in the vault's folder: run a coding agent (Claude Code, Codex, OpenCode, Cursor) on your
         notes without leaving the app. Open one from the command palette or the Terminals panel, in a new tab or in a split
-        on the right. Reloading, or the server restarting, keeps the shell running, with its history. Closing its tab ends a shell at its prompt, but whatever runs in one (an agent, a server) keeps running in the Terminals panel until you end it (End session); typing exit closes the tab. An agent's tab shows what it's doing: a spinner while it works, a dot when it needs you, a check once you've seen what it finished. Pasted screenshots
+        on the right. Reloading, or the server restarting, keeps the shell running, with its history. Closing its tab ends a shell at its prompt, but whatever runs in one (an agent, a server) keeps running in the Terminals panel until you end it (End session); typing exit closes the tab. An agent's tab shows what it's doing: a breathing dot while it works, a dot when it needs you, a check once you've seen what it finished. Pasted screenshots
         reach the shell as files.
       </p>
       <pre className="mt-3 rounded-[8px] bg-background px-3 py-2 font-mono text-[12px] leading-[17px]">
@@ -81,7 +81,7 @@ export default definePlugin({
       // The session's own name, colour and state, as its row in the Terminals panel and the rail show them (an agent's
       // session name, a running program); until the server has said, what it was opened as.
       icon: SquareTerminal,
-      // Its state as a browser tab shows a page's: a spinner while its agent works, a dot while it needs you, a check
+      // Its state as a browser tab shows a page's: a breathing dot while its agent works, a dot while it needs you, a check
       // once what it finished was seen (sessions.ts: iconOf, needsYou).
       iconFor: (arg) => { const s = sessionById(arg); return (s ? iconOf(s) : agentOfTerminal(arg)?.icon) ?? SquareTerminal },
       title: (arg) => {

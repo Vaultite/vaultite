@@ -1,6 +1,6 @@
 // Agents' states in their tabs, on a list the page is fed (the sessions socket stood in for: four Claude Code sessions
 // working, waiting on you, done with an unread Inbox row and done with nothing for you, and a plain shell): the Terminals panel lists the ones that
-// need you first, bold with a dot; each tab shows a spinner (turning), a dot, a dot, a check, on the desktop's tab bar,
+// need you first, bold with a dot; each tab shows a breathing dot, a dot, a dot, a check, on the desktop's tab bar,
 // the Tabs panel and the phone's tab list.
 // Writes workspaces (the tabs it opens): throwaway server only.
 //   node web/qa/agenttabs.mjs <base url> [out dir]
@@ -51,16 +51,16 @@ check("Terminals: the ones that need you first (waiting, then with an unread row
   JSON.stringify(order) === JSON.stringify([blocked.id, unseen.id, working.id, seen.id, shell.id]), order)
 const row = (s) => rows.find((r) => r.id === s.id)
 check("Terminals: those that need you are bold, with a dot", [blocked, unseen].every((s) => row(s)?.bold && row(s)?.dot) && [working, seen].every((s) => !row(s)?.bold && !row(s)?.dot), rows)
-check("Terminals: working shows a turning spinner, seen a check", /loader-circle/.test(row(working)?.icon) && /animate-spin/.test(row(working)?.icon) && /lucide-check/.test(row(seen)?.icon), rows)
+check("Terminals: working shows a breathing dot, seen a check", /working-dot/.test(row(working)?.icon) && /breathe/.test(row(working)?.icon) && /lucide-check/.test(row(seen)?.icon), rows)
 
 // ---------- tabs: each session opened from its row ----------
 for (const s of [working, blocked, unseen, seen]) { await D.click(`[data-session="${s.id}"]`); await wait(400) }
 const look = (page, sel) => page.$$eval(sel, (els) => els.map((e) => ({ text: e.innerText.trim().split("\n")[0], icon: e.querySelector("svg")?.getAttribute("class") ?? "", dot: !!e.querySelector("[data-badged] > span.rounded-full") })))
-const states = (list) => Object.fromEntries(list.filter((x) => / one$/.test(x.text)).map((x) => [x.text, /loader-circle/.test(x.icon) ? (/animate-spin/.test(x.icon) ? "spinner" : "still spinner")
+const states = (list) => Object.fromEntries(list.filter((x) => / one$/.test(x.text)).map((x) => [x.text, /working-dot/.test(x.icon) ? (/breathe/.test(x.icon) ? "breathing" : "still dot")
   : /lucide-check/.test(x.icon) ? "check" : x.dot ? "dot" : "icon"]))
-const WANT = JSON.stringify({ "Working one": "spinner", "Blocked one": "dot", "Unseen one": "dot", "Seen one": "check" })
+const WANT = JSON.stringify({ "Working one": "breathing", "Blocked one": "dot", "Unseen one": "dot", "Seen one": "check" })
 const bar = states(await look(D, "[data-tab-bar] [data-tab-id]"))
-check("tab bar: a spinner, a dot, a dot, a check", JSON.stringify(bar) === WANT, bar)
+check("tab bar: a breathing dot, a dot, a dot, a check", JSON.stringify(bar) === WANT, bar)
 const panel = states(await look(D, "[data-open-tab]"))
 check("Tabs panel: the same", JSON.stringify(panel) === WANT, panel)
 await D.screenshot({ path: `${OUT}desktop.png` })

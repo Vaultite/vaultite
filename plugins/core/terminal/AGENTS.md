@@ -41,7 +41,7 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
   agent's session that died or whose machine restarted keeps them, saying so, with Restart. Otherwise a shell ends only
   when its last tab closes at its prompt, never for being left alone: closing an agent's tab detaches it (it keeps
   running, listed in Terminals, its answer still reaching the Inbox), and opening it again attaches.
-- An agent's tab and row show its state: a spinner while it works, a dot while it needs the user (it waits on them, or
+- An agent's tab and row show its state: a breathing dot while it works, a dot while it needs the user (it waits on them, or
   its Inbox row does, unread: the list's `needs`), a check once it's done with nothing for them. Terminals lists the
   ones that need the user first.
 - A session terminal.run started on a note (Dispatch) opens its tab beside that note's tab, in its tab group.

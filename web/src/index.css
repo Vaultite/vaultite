@@ -415,6 +415,9 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
    load just appears. A skeleton bar stands for a line of text, with a light passing over it. */
 @keyframes loading-in { from { opacity: 0; } }
 .loading-in { animation: loading-in 150ms ease-out 200ms both; }
+/* An agent at work: slow and eased, as it works for minutes in the background. */
+@keyframes breathe { 50% { opacity: 0.3; } }
+.breathe { animation: breathe 2.2s ease-in-out infinite; }
 @keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
 /* (a component layer: a utility on it wins, rounded-full) */
 @layer components {
