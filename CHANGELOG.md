@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Clicking a web page's field always types there: a click while a toast is over the page, or in a window that's behind,
+  no longer leaves the keyboard in a note.
 - The view button picks any view, source mode too: right-click it, or hold it on phones. The views' menus show each
   view's icon, with the check at the row's end.
 

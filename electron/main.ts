@@ -321,6 +321,9 @@ async function openVault(p: string, file?: string) {
   const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
     title: nameOf(p), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
+    // (a click in a window that's behind acts too, as in a browser: a web page's field it lands on gets the keyboard,
+    // not whatever had it in the app before)
+    acceptFirstMouse: true,
     // (App windows on: transparent, the page paints itself and leaves app tabs see-through, electron/apps.ts)
     ...(apps ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }),
     // bypassHeatCheck: V8 caches the app's compiled scripts on the first launch, not the third (like VS Code).
@@ -437,7 +440,7 @@ function guard(win: AppWindow, origin: string) {
   // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
   const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences) => {
     const child = new AppWindow({ width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset",
-      trafficLightPosition: LIGHTS, backgroundColor: background(), webPreferences }, page)
+      trafficLightPosition: LIGHTS, backgroundColor: background(), acceptFirstMouse: true, webPreferences }, page)
     popouts.set(page, w)
     const closeIt = () => { if (!child.isDestroyed()) child.close() }
     win.once("closed", closeIt)

@@ -257,8 +257,15 @@ await win.waitForSelector("[data-sonner-toast]:has-text('A toast over the page')
 check("a toast over the page: the window goes over it, the page stays shown", await until(raised, 4000) && await shown(), await pages())
 await inPage("window.__downs = 0; addEventListener('mousedown', () => window.__downs++); 1")
 const pb = await box()
+// (the window's page with the keyboard, as where such a click lands: a note's editor kept it, and got the typing; only
+// with SHOW=1, a window that isn't focused has no keyboard to give)
+await app.evaluate(({ app: a, BaseWindow }, show) => { const w = BaseWindow.getAllWindows()[0]; if (show) { a.focus({ steal: true }); w.focus() } w.webContents.focus() }, !!process.env.SHOW)
 await win.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2)
 check("… a click on the page beside it reaches the page", await until(async () => (await inPage("window.__downs")) === 1, 3000), await inPage("window.__downs"))
+if (process.env.SHOW) check("… and gives it the keyboard", await until(() => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
+  return !!w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())?.webContents.isFocused()
+}), 3000))
 await win.locator("[data-sonner-toast]:has-text('A toast over the page') button", { hasText: "Open" }).click()
 check("a click on the toast's Open acts on it", await until(async () => (await tabTitles()).some((t) => t?.includes("Reading list")) && (await win.evaluate(() => decodeURIComponent(location.hash))).includes("Reading list"), 5000), await tabTitles())
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()

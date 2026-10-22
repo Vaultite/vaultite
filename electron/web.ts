@@ -1194,6 +1194,8 @@ function pointer(p: Page, m: unknown) {
   const x = Math.round(num(e.x) * z), y = Math.round(num(e.y) * z)
   const button = e.button === "right" || e.button === "middle" ? e.button : "left", clickCount = Math.max(1, Math.min(3, num(e.clickCount)))
   const wc = p.view.webContents
+  // (the click landed on the window's view, which macOS gave the keyboard: a press in the page takes it, as a real one does)
+  if (e.type === "mouseDown" && !wc.isFocused()) wc.focus()
   if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true })
   else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount })
 }
