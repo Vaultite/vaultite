@@ -4,9 +4,6 @@ name: windev
 on:
   push:
     branches: ["windows**"]
-concurrency:
-  group: windev-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   run:
     strategy:
