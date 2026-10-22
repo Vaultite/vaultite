@@ -150,6 +150,8 @@ export type WebPages = {
   /** The window drawn over its pages while something of it covers one (null: under them again): "app" takes the pointer
    *  (a menu, the palette), "through" leaves it to the pages (a toast, a tooltip), passed on with `pointer`. */
   raise: (how: "app" | "through" | null) => Promise<unknown>
+  /** The app's background (#rrggbb): what a new page shows till its first page comes in. Older builds don't have it. */
+  look?: (background: string) => Promise<unknown>
   /** The pointer over page `id` while the window lets it through: where in the page (CSS pixels), what it did. */
   pointer: (id: number, m: { type: "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel"; x: number; y: number
     button?: "left" | "middle" | "right"; clickCount?: number; dx?: number; dy?: number }) => Promise<unknown>

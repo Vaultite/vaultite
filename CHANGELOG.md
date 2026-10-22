@@ -21,6 +21,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   palette, lists every app and browser.
 - Clicking a web page's field always types there: a click while a toast is over the page, or in a window that's behind,
   no longer leaves the keyboard in a note.
+- Opening a web page no longer flashes white while the site answers: it shows the app's background until the site first
+  draws (pages that set no colour of their own are still white).
 - The view button picks any view, source mode too: right-click it, or hold it on phones. The views' menus show each
   view's icon, with the check at the row's end.
 

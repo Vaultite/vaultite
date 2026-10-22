@@ -16,7 +16,7 @@ import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, passkeyAsks, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
-import { editStyle, useSiteStyles } from "./stylestate"
+import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
 
 const WebPage = lazy(() => import("./WebPage"))
@@ -97,6 +97,7 @@ function Background() {
   useEffect(watchShields, [])
   useHiddenParts()
   useSiteStyles()
+  useLookBackground()
   // (the browsers there are to import from: their commands show)
   useEffect(() => { if (webPages?.engine) void findBrowsers() }, [])
   const commands = useCommandList()

@@ -1,8 +1,11 @@
 # Notes for `plugins/core/web-viewer/`
 
 - Desktop only: a `view:web/<url>` tab is an Electron WebContentsView over the pane (`electron/web.ts`), a session per
-  profile, http(s) and installed extensions' own pages (chrome-extension://) only. No preload of the page's own: the
-  engine's (electron/browser/) are registered on its session.
+  profile, http(s) and installed extensions' own pages (chrome-extension://) only. Its preloads are the engine's
+  (electron/browser/), registered on its session, and web.ts's web-preload.cjs, which only tells its first paint.
+- A new page shows the app's background (`web:look`) till its site first paints, then white, the web's default canvas
+  (which a view's colour also is: kept dark, unstyled sites go dark). Not white at commit: nothing holds the old frame
+  till the first paint, so that flashed. Not a hidden page till it paints either: a hidden or off-window view never paints.
 - It's native, a view above the window's own page: while anything covers it, the window's page goes over it
   (`layers.ts`, electron/appwindow.ts), see-through behind it (only backgrounds are cut), so the page stays live. A new
   overlay that doesn't take the pointer needs `data-floats` (the pointer then goes on to the page). Small ambient bits

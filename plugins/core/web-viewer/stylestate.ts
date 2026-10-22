@@ -17,6 +17,22 @@ function lookVars() {
   return `:root { ${vars.filter(([, x]) => x).map(([k, x]) => `--vault-${k}: ${x};`).join(" ")} }`
 }
 
+/** The app's background as #rrggbb (its token may be oklch()), read through a canvas. */
+function background() {
+  const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
+  if (!ctx) return ""
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--background").trim() || "#fff"
+  ctx.fillRect(0, 0, 1, 1)
+  return `#${[...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)].map((x) => x.toString(16).padStart(2, "0")).join("")}`
+}
+
+/** The desktop app hears the app's background now and as the look changes: a new page shows it till it paints. */
+export function useLookBackground() {
+  const [color, setColor] = useState(background)
+  useEffect(() => onLook(() => setColor(background())), [])
+  useEffect(() => { if (color) void webPages?.look?.(color).catch(() => {}) }, [color])
+}
+
 /** A declaration block's declarations, split at its top-level semicolons (not one in a string or a url()). */
 function declarations(text: string) {
   const out: string[] = []

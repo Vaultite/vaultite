@@ -1,6 +1,6 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
@@ -10,6 +10,7 @@ import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
@@ -36,7 +37,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
   sound: Playback; hush?: NodeJS.Timeout
   /** It's the spare's, its first load not in yet: the spare's about:blank is no page to go back to (gone once it is). */
-  blankBehind?: boolean }
+  blankBehind?: boolean
+  /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
+  fresh: boolean }
 /** A site a profile keeps cookies for, who's signed in there when we know how to ask, and `other` when no page of it
  *  was opened (its cookies came with other sites' pages: trackers). */
 export type WebSite = { site: string; account?: string; other?: boolean }
@@ -64,6 +67,8 @@ const shows = (u: string) => web(u) || engineOpens(u)
 const toVault = new Set<string>()
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
 
+/** Each page's frames: its main frame tells when it first paints (`painted`). */
+const PRELOAD = fileURLToPath(new URL("./web-preload.cjs", import.meta.url))
 /** A profile's session, set up once. */
 function webSession(profile: string) {
   const had = sessions.get(profile)
@@ -71,6 +76,7 @@ function webSession(profile: string) {
   const s = session.fromPartition(partitionOf(profile))
   // A plain Chrome: some sites turn away "embedded" browsers by their user agent.
   s.setUserAgent(s.getUserAgent().replace(/\s(Electron|vaultite|Vaultite)\/\S+/g, ""))
+  s.registerPreloadScript({ type: "frame", filePath: PRELOAD })
   s.setPermissionRequestHandler((wc, perm, ok, details) => void askPermission(profile, wc, perm, details).then(ok, () => ok(false)))
   s.setPermissionCheckHandler((_wc, perm, origin, details) => {
     if (FREE.has(perm)) return true
@@ -241,6 +247,19 @@ async function otherApp(p: Page, to: string) {
   if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
 }
 
+/** Each window's colour as its page tells it (`web:look`: the app's background), shown by a new page till its site
+ *  first paints rather than white, which flashed in a dark app while the site answered. */
+const looks = new WeakMap<AppWindow, string>()
+const lookOf = (win: AppWindow) => looks.get(win) ?? win.getBackgroundColor()
+/** Its site painted: white from now on, what the web's pages expect under what they leave unpainted. Not at commit:
+ *  the page shows its colour from then till its first paint. */
+function painted(p: Page) {
+  if (!p.fresh || p.view.webContents.isDestroyed()) return
+  p.fresh = false
+  p.view.setBackgroundColor("#ffffff")
+}
+ipcMain.on("vaultite:web:painted", (e) => { const p = pageOf(e.sender); if (p && shows(e.sender.getURL())) painted(p) })
+
 /** A page's view in a profile's session. */
 function newView(profile: string) {
   // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
@@ -291,13 +310,13 @@ function takeSpare(profile: string) {
 function make(win: AppWindow, url: string, profile: string, tab: string): Page {
   const taken = takeSpare(profile), view = taken ?? newView(profile)
   makeSpare(profile)
-  view.setBackgroundColor("#ffffff")
+  view.setBackgroundColor(lookOf(win))
   view.setVisible(false)
   // (a size before it's first shown: a page laid out at none has nothing an agent could click)
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
-  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(), blankBehind: !!taken }
+  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(), blankBehind: !!taken, fresh: true }
   pages.set(p.id, p)
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
@@ -335,6 +354,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string): Page {
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument && shows(d.url)) p.target = d.url })
   wc.on("did-stop-loading", changed)
   wc.on("did-navigate", (_e, to) => { p.sound = playback(); noteVisit(profile, to); changed() })
+  // (loaded and still not told it painted, a page with no paint timing (an extension's): white a moment later)
+  wc.on("did-finish-load", () => { if (p.fresh && shows(wc.getURL())) setTimeout(() => painted(p), 1000).unref() })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
   wc.on("page-title-updated", changed)
   // (its sound changed: told now, and again when a quiet stretch ends it)
@@ -739,6 +760,12 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     const from = p?.id ?? keyboardFrom.get(win) ?? null
     keyboardFrom.delete(win)
     return from
+  },
+  "web:look": (win, color) => {
+    const c = str(color)
+    if (!/^#[0-9a-f]{6}$/i.test(c)) return
+    looks.set(win, c)
+    for (const p of pages.values()) if (p.win === win && p.fresh) p.view.setBackgroundColor(c)
   },
   "web:raise": (win, how) => raise(win, how === "app" || how === "through" ? how : null),
   "web:pointer": (win, id, m) => pointer(mine(win, id), m),
