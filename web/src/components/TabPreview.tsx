@@ -44,7 +44,11 @@ function useText(path: string, mtime: number) {
     if (fresh) return
     let on = true
     limited(() => get<FileText>(`file?path=${encodeURIComponent(path)}`))
-      .then((f) => { texts.set(path, { mtime, text: f.text.slice(0, 6000) }); if (on) redraw((n) => n + 1) })
+      .then((f) => {
+        texts.delete(path); texts.set(path, { mtime, text: f.text.slice(0, 6000) })
+        if (texts.size > 200) texts.delete(texts.keys().next().value!) // (the most recent ones, not every file previewed all day)
+        if (on) redraw((n) => n + 1)
+      })
       .catch(() => { /* gone or unreadable: the card keeps its placeholder */ })
     return () => { on = false }
   }, [path, mtime, fresh])

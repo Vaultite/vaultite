@@ -69,8 +69,14 @@ const aliasesOf = (fm: Record<string, unknown>) => (Array.isArray(fm.aliases) ? 
 /** While it's drawn (a rename field), the keyboard is held: renamed or not, it goes back where it was (core/focus.ts). */
 function HeldFocus() { useHeldFocus(); return null }
 
-/** Last text seen per file, so reopening one shows it at once (then refreshes). */
+/** Last text seen per file, so reopening one shows it at once (then refreshes): the most recent few, not every file
+ *  opened since the app started. */
 const seen = new Map<string, FileText>()
+const SEEN = 100
+const remember = (path: string, f: FileText) => {
+  seen.delete(path); seen.set(path, f)
+  if (seen.size > SEEN) seen.delete(seen.keys().next().value!)
+}
 
 /** A file renamed from its title while editing, so its view at the new path (a new mount) keeps editing and takes the
  *  cursor: New note, type its name, Enter, write. */
@@ -131,7 +137,7 @@ async function rename(path: string, typed: string, settle: () => Promise<void>, 
     await settle()
     if (after) renamed = { path: to, ...after }  // before the move: its tab follows it (a new mount) while it finishes
     const had = seen.get(path)
-    if (had) seen.set(to, { ...had, path: to })  // which shows the text at once, not a blank while it loads
+    if (had) remember(to, { ...had, path: to })  // which shows the text at once, not a blank while it loads
     const r = await moveFile(path, to, { undo })
     if (after && r.path !== to) renamed = { path: r.path, ...after }
     return true
@@ -281,7 +287,7 @@ function TextFile({ store, path, pane }: { store: Store; path: string; pane: boo
   const [tries, setTries] = useState(0)
   useEffect(() => {
     let on = true
-    readFile(path).then((f) => { if (on) { seen.set(path, f); setFile(f) } })
+    readFile(path).then((f) => { if (on) { remember(path, f); setFile(f) } })
       .catch((e) => on && setFile((cur) => (NOT_TEXT.test(String(e)) ? (/too big/.test(String(e)) ? "big" : "binary")
         : cur && typeof cur === "object" && !gone(e) ? cur : "missing")))
     return () => { on = false }
@@ -652,7 +658,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       const ed = editor.current
       return !!ed?.api.view.dom.isConnected && !ed.api.view.state.readOnly && ed.api.conflict(text, clashes, who, left) && (apply(text), true)
     },
-    onDisk: (f) => { seen.set(path, f); setProblems(f.problems ?? []) },
+    onDisk: (f) => { remember(path, f); setProblems(f.problems ?? []) },
     onGone: () => { seen.delete(path); onGone() },
   })
   const changed = saver.changed, save = saver.save, settle = saver.settle
