@@ -161,7 +161,7 @@ try {
   const row = await page.$eval(`aside [data-session='${sid}']`, (e) => e.textContent).catch(() => null)
   check("  the same name as its row", row?.includes("Refactor the parser"), row)
   const tabIcon = () => page.$eval(`[data-tab-bar] [data-tab-id]:has-text("Refactor the parser") svg`, (e) => e.getAttribute("class")).catch(() => null)
-  check("  its icon pulses while working", (await tabIcon())?.includes("animate-pulse"), await tabIcon())
+  check("  its icon is a breathing dot while working", (await tabIcon())?.includes("breathe"), await tabIcon())
   // The colour is the icon's style (a view's iconTint, a row's tint); waiting is a dot on the icon (kit.tsx: Badged).
   const colourOf = (sel) => page.$eval(sel, (e) => e.style.color || getComputedStyle(e).color).catch(() => null)
   const tabSvg = `[data-tab-bar] [data-tab-id]:has-text("Refactor the parser") svg`, rowSvg = `aside [data-session='${sid}'] svg`
