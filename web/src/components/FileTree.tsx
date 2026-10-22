@@ -1,6 +1,6 @@
 // The vault's files, the file explorer: menus shared with tabs (FileActions.ts), drag to move (core/drag.ts;
 // the sort decides order, so no "between" places), files dropped in from the computer copied in. Phones swipe rows.
-import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent } from "react"
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type FocusEvent, type MouseEvent, type PointerEvent, type RefObject } from "react"
 import {
   Archive, ArrowUpNarrowWide, Bot, ChevronRight, ChevronsDownUp, ChevronsUpDown, Ellipsis, FileBraces, FileInput, FilePlus, FileText, Folder,
   FolderInput, FolderOpen, FolderPlus, RotateCcw, SquareArrowOutUpRight, SquarePen, Trash2, type LucideIcon,
@@ -12,7 +12,7 @@ import { isMac, isDesktop } from "@/core/platform"
 import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { leaves, type Workspace } from "@/core/layout"
-import { useNearEnd } from "@/core/near"
+import { useVirtual } from "@/core/virtual"
 import { openInSplit } from "@/core/splits"
 import { fileAt, iconOf, namedIcon, tintOf } from "@/core/pages"
 import { scopedState, subscribeScoped } from "@/core/scope"
@@ -31,7 +31,7 @@ import { pickFolder } from "@/components/FolderPicker"
 import { ICON_BUTTON } from "@/components/FileTitle"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 import { capitalize, cn, scrollingBox, space } from "@/lib/utils"
-import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
+import { listOrders, rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
 import { SidebarHeading } from "@/components/SidebarHeading"
 import { signal } from "@/core/signal"
 
@@ -52,8 +52,6 @@ function openSet(key: string, fallback: string[]) {
     now, set,
     toggle: (p: string) => { const n = new Set(now()); if (n.has(p)) { n.delete(p); setShowingAll(p, false) } else n.add(p); set(n) },
     useAll: () => useSyncExternalStore(subscribeScoped, now),
-    /** Whether this folder is open: its row is drawn again when that changes, not when another folder opens. */
-    useHas: (p: string) => useSyncExternalStore(subscribeScoped, () => now().has(p)),
   }
 }
 type OpenSet = ReturnType<typeof openSet>
@@ -77,9 +75,6 @@ function setShowingAll(p: string | null, all = false) {
   showingAll = n
   moreSubs.notify()
 }
-const useShowsAll = (p: string) => moreSubs.use(() => showingAll.has(p))
-/** The revealed file when it's this folder's own, else "" (only that folder is drawn again). */
-const useRevealedIn = (p: string) => moreSubs.use(() => (revealedPath && folderOf(revealedPath) === p ? revealedPath : ""))
 /** A folder's rows: its folders, its first `limit` files and the ones in `keep` (open, revealed, being renamed);
  *  `hidden`: how many files that leaves out, `long`: whether it has more than the limit shows. */
 function capped(children: Node[], limit: number, all: boolean, keep: (string | undefined)[]) {
@@ -219,11 +214,11 @@ function deleteRow() {
   const r = keyedRow()
   if (!r) return
   const many = selectionFor(SELECT, r.path, false)
-  // The keyboard goes on to the row below (above, at the end), as Finder's does.
-  const gone = r.at.closest("[role=treeitem]") ?? r.at
+  // The keyboard goes on to the row below (above, at the end), as Finder's does: not one inside a folder deleted.
+  const gone = (x: HTMLElement) => { const k = keyOfEl(x); return !!k && (k === r.path || k.startsWith(`${r.path}/`) || k.startsWith(moreKey(`${r.path}/`)) || k === moreKey(r.path)) }
   const rows = [...r.tree.querySelectorAll<HTMLElement>("[data-keyrow]")].filter((x) => x.getClientRects().length > 0)
   const i = rows.indexOf(currentRow()!)
-  const next = many ? null : rows.slice(i + 1).find((x) => !gone.contains(x)) ?? rows.slice(0, i).reverse().find((x) => !gone.contains(x))
+  const next = many ? null : rows.slice(i + 1).find((x) => !gone(x)) ?? rows.slice(0, i).reverse().find((x) => !gone(x))
   void (many ? removeMany(many) : remove(r.path)).then(() => { if (next?.isConnected && !document.activeElement?.closest("dialog")) next.focus({ preventScroll: true }) })
 }
 registerCommands([
@@ -334,25 +329,25 @@ function compare(sort: FileSort) {
 }
 
 /** `open`: hidden or archived files open in tabs that the tree doesn't show: shown too, with their folders. */
-function build(store: Store, sort: FileSort, open: string[] = [], showArchived = false): Node {
+function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showArchived = false): Node {
   const root: Node = { path: "", name: "", folder: true, mtime: 0, ctime: 0, children: [] }
   const folders = new Map<string, Node>([["", root]])
   // Archive folders (core/fileprops.ts) are left out unless shown; an archived file open in a tab shows, like a hidden one.
   const wanted = new Set(open)
   const shown = (p: string) => showArchived || !archives(p) || wanted.has(p)
-  const listed = new Set([...store.files.files, ...store.files.others].map((f) => f.path))
+  const listed = new Set([...files.files, ...files.others].map((f) => f.path))
   const extra = open.filter((p) => !listed.has(p))
-  const all = new Set(folderList(store.files).filter((f) => showArchived || !archives(f)))
+  const all = new Set(folderList(files).filter((f) => showArchived || !archives(f)))
   for (const p of open) { const parts = p.split("/"); for (let i = 1; i < parts.length; i++) all.add(parts.slice(0, i).join("/")) }
   for (const f of [...all].sort()) {
     const node: Node = { path: f, name: f.split("/").pop()!, folder: true, mtime: 0, ctime: 0, children: [] }
     folders.set(f, node)
   }
   for (const [p, node] of folders) if (p) folders.get(folderOf(p))?.children.push(node)
-  for (const f of store.files.files) {
+  for (const f of files.files) {
     if (shown(f.path)) folders.get(folderOf(f.path))?.children.push({ path: f.path, name: stem(f.path), folder: false, file: f, mtime: f.mtime, ctime: f.ctime ?? f.mtime, children: [] })
   }
-  for (const o of store.files.others) {
+  for (const o of files.others) {
     // Hidden .md files (in the trash) aren't in the index, so they come as others; they still open in the editor.
     if (shown(o.path)) folders.get(folderOf(o.path))?.children.push({ path: o.path, name: shownName(o.path), folder: false, other: !isDoc(o.path), mtime: o.mtime, ctime: o.ctime ?? o.mtime, children: [] })
   }
@@ -375,6 +370,18 @@ function keepSame(prev: Node | null, next: Node): Node {
 }
 /** What a file's row shows of it besides its name (its icon comes from these). */
 const looks = (f?: VaultFile) => (f ? `${f.type}\0${f.kind}\0${f.icon ?? ""}\0${f.tint ?? ""}\0${f.plugin ?? ""}\0${f.archived ? 1 : 0}` : "")
+
+/** Whether two file lists draw the same tree in this sort: a save changes its note's entry (links, size, time), which the
+ *  tree shows only sorted by time. Unchanged entries are the same objects (a refresh patches), so it's a quick pass. */
+function sameTree(a: FileTreeFiles, b: FileTreeFiles, sort: FileSort) {
+  if (a === b) return true
+  const byTime = sort !== "name" && sort !== "name-desc"
+  const same = <T extends { path: string; mtime: number; ctime: number }>(x: T[], y: T[], also: (p: T, q: T) => boolean) =>
+    x === y || (x.length === y.length && x.every((p, i) => { const q = y[i]; return p === q || (p.path === q.path && (!byTime || (p.mtime === q.mtime && p.ctime === q.ctime)) && also(p, q)) }))
+  return (a.folders === b.folders || (a.folders.length === b.folders.length && a.folders.every((f, i) => f === b.folders[i])))
+    && same(a.files, b.files, (p, q) => looks(p) === looks(q)) && same(a.others, b.others, (p, q) => !p.excluded === !q.excluded)
+}
+type FileTreeFiles = Store["files"]
 
 // ---------- the tree ----------
 /** Hidden files open in tabs, one per line: they show in the tree while open. Archived ones only while active. */
@@ -411,12 +418,16 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const openHidden = useSyncExternalStore(onWorkspaceChange, () => openHiddenIn(getWorkspace(), showHidden))
   // An archived file shows while it's the open file (just archived, or opened from search), and goes when you move on.
   const openArchived = !showArchived && active && archives(active) ? active : ""
+  // The files as the tree last drew them, while a refresh changed nothing it shows (a save, every few keys).
+  const shape = useRef(store.files)
+  if (!sameTree(shape.current, store.files, fileSort)) shape.current = store.files
+  const files = shape.current
   const last = useRef<Node | null>(null)
-  const root = useMemo(() => (last.current = keepSame(last.current, build(store, fileSort, [...(openHidden ? openHidden.split("\n") : []), ...(openArchived ? [openArchived] : [])], showArchived))),
-    [store, fileSort, openHidden, openArchived, showArchived])
+  const root = useMemo(() => (last.current = keepSame(last.current, build(files, fileSort, [...(openHidden ? openHidden.split("\n") : []), ...(openArchived ? [openArchived] : [])], showArchived))),
+    [files, fileSort, openHidden, openArchived, showArchived])
   const opened = folder === undefined ? treeOpen : pinsOpen
   const open = opened.useAll()
-  const allFolders = useMemo(() => folderList(store.files), [store])
+  const allFolders = useMemo(() => folderList(files), [files])
   const anyOpen = allFolders.some((f) => open.has(f))
   // Auto-reveal: the open file's folders open and the tree scrolls to it, whenever it changes (desktop sidebar).
   useEffect(() => { if (header && folder === undefined && autoReveal && active) revealInTree(active, { scroll: revealScroll }) }, [header, folder, autoReveal, active, revealScroll])
@@ -618,19 +629,24 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const { marks, icons } = usePluginRows(store, disabled)
   const decor = useFileRows(disabled)
   const limit = Math.max(0, Math.floor(Number(folderLimit) || 0))
-  const rows = useMemo<Rows>(() => ({ compact, fileIcons, disabled, pane, on, marks, icons, decor, limit, opened }), [compact, fileIcons, disabled, pane, marks, icons, decor, limit, opened])
-  const kids = { rows, active, renaming: renaming ?? undefined, dropOn: dropOn ?? undefined, dragging, draggingMany }
+  const rows = useMemo<Rows>(() => ({ compact, fileIcons, disabled, pane, on, marks, icons, decor, opened, pinned: folder !== undefined }), [compact, fileIcons, disabled, pane, marks, icons, decor, opened, folder])
+  // The rows once folders open (long ones cut to their first files, past the open, revealed and renamed ones).
+  const all = moreSubs.use(() => showingAll), revealed = moreSubs.use(() => revealedPath)
+  const sub = folder === undefined ? root : nodeAt(root, folder)
+  const shownRows = useMemo(() => (sub ? flatten(sub, folder === undefined ? 0 : 1, open, limit, all, [active, renaming ?? undefined, revealed]) : []),
+    [sub, folder, open, limit, all, active, renaming, revealed])
+  // The row with the keyboard: drawn wherever it's scrolled to (core/virtual.ts), so arrows go on from it.
+  const [focused, setFocused] = useState<string | null>(null)
+  const kids = { items: shownRows, rows, list, active, renaming: renaming ?? undefined, revealed, dropOn: dropOn ?? undefined, dragging, draggingMany, open, focused }
+  const onFocus = (e: FocusEvent) => { const k = keyOfEl(e.target); if (k !== focused) setFocused(k) }
 
   if (folder !== undefined) {
-    const sub = nodeAt(root, folder)
     if (!sub?.children.length) return null
-    // A level in, under the pinned folder's row: its guide down from under that row's icon (SidebarRow's: 1.5 + 2 in).
+    // A level in, under the pinned folder's row: its guide down from under that row's icon.
     return (
       <div ref={box} {...treeDrop} data-pin-tree={folder} className={className}>
-        <ul ref={list} role="tree" aria-label={folder} aria-multiselectable data-keylist data-select-list={SELECT}
-          className="relative before:pointer-events-none before:absolute before:inset-y-0 before:left-(--guide) before:w-px before:bg-border"
-          style={{ "--guide": `calc(${space(3.5)} - 0.5px)` } as CSSProperties}>
-          <Kids n={sub} depth={1} {...kids} />
+        <ul ref={list} role="tree" aria-label={folder} aria-multiselectable data-keylist data-select-list={SELECT} onFocus={onFocus} className="relative">
+          <TreeRows {...kids} />
         </ul>
       </div>
     )
@@ -660,9 +676,10 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
           ))}
         </SidebarHeading>
       )}
-      <ul ref={list} role="tree" aria-label="Files" aria-multiselectable data-keylist data-select-list={SELECT} data-drop-root={dropOn === "" || undefined} onContextMenu={(e) => { if (e.target === e.currentTarget) onMenu(e, root) }}
-        className={cn("flex-1 rounded-[8px] pb-6 transition-colors", scroll && "min-h-0 overflow-y-auto overscroll-contain", dropOn === "" && "drop-target bg-primary/10")}>
-        <Kids n={root} depth={0} {...kids} />
+      <ul ref={list} role="tree" aria-label="Files" aria-multiselectable data-keylist data-select-list={SELECT} data-drop-root={dropOn === "" || undefined} onFocus={onFocus}
+        onContextMenu={(e) => { if (e.target === e.currentTarget) onMenu(e, root) }}
+        className={cn("relative flex-1 rounded-[8px] pb-6 transition-colors", scroll && "min-h-0 overflow-y-auto overscroll-contain", dropOn === "" && "drop-target bg-primary/10")}>
+        <TreeRows {...kids} />
       </ul>
     </div>
   )
@@ -673,7 +690,7 @@ type RowHandlers = {
   rename: (n: Node, name: string) => void; cancelRename: (n: Node) => void; swipe: (n: Node) => SwipeAction[]
 }
 type Rows = { compact: boolean; fileIcons: boolean; disabled: string[]; pane?: string; on: { current: RowHandlers }; marks: Record<string, FileMark>
-  icons: Record<string, FileIcon>; decor: Record<string, FileRow>; limit: number; opened: OpenSet }
+  icons: Record<string, FileIcon>; decor: Record<string, FileRow>; opened: OpenSet; pinned: boolean }
 
 /** The folder at `path` in a tree, or undefined. */
 function nodeAt(root: Node, path: string): Node | undefined {
@@ -712,44 +729,80 @@ function usePluginRows(store: Store, disabled: string[]) {
     return last.current.said
   }, [store, disabled])
 }
-/** A path that is this row or inside it (a folder's), else undefined: rows get only what concerns them (the open file,
- *  the one being renamed, the folder a drag would land in), so the others aren't drawn again when it changes. */
-const under = (p: string | null | undefined, n: Node) => (p != null && (p === n.path || p.startsWith(`${n.path}/`)) ? p : undefined)
+/** A row of the drawn tree: a file or folder at its depth, or (`more`) a long folder's "Show N more" after its files. */
+type Item = { key: string; n: Node; depth: number; more?: { hidden: number; all: boolean } }
+/** The rows in sight once folders open, in order: what the tree draws (core/virtual.ts draws only those near the screen). */
+function flatten(top: Node, depth: number, open: ReadonlySet<string>, limit: number, all: ReadonlySet<string>, keep: (string | undefined)[]) {
+  const out: Item[] = []
+  const walk = (n: Node, d: number) => {
+    const showsAll = all.has(n.path)
+    const { shown, hidden, long } = capped(n.children, limit, showsAll, keep)
+    for (const c of shown) {
+      out.push({ key: c.path, n: c, depth: d })
+      if (c.folder && open.has(c.path) && c.children.length) walk(c, d + 1)
+    }
+    if (long && (showsAll || hidden > 0)) out.push({ key: moreKey(n.path), n, depth: d, more: { hidden, all: showsAll } })
+  }
+  walk(top, depth)
+  return out
+}
+const moreKey = (folder: string) => `\0more:${folder}`
+/** The row an element is in, as the tree keys it. */
+function keyOfEl(el: EventTarget | null) {
+  const e = el instanceof Element ? el : null
+  const path = e?.closest<HTMLElement>("[data-tree-path]")?.dataset.treePath
+  if (path !== undefined) return path
+  const more = e?.closest<HTMLElement>("[data-tree-more]")?.dataset.treeMore
+  return more === undefined ? null : moreKey(more)
+}
+/** The folders above a path. */
+const above = (p: string) => { const parts = p.split("/"); return parts.slice(1).map((_, i) => parts.slice(0, i + 1).join("/")) }
 
-/** A file or folder in the tree, and (an open folder) the rows inside it. */
-const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn, dragging, draggingMany }: {
-  n: Node; depth: number; rows: Rows; active?: string; renaming?: string; dropOn?: string; dragging: string | null; draggingMany: boolean
+/** Indent guides beside a row: a thin line down from under each folder's chevron above it (size-3.5: its middle is
+ *  1.75 units in), as tall as the row and the gap under it, so they join up row to row. */
+function Guides({ depth, rows }: { depth: number; rows: Rows }) {
+  const lines = []
+  for (let k = 0; k < depth; k++) {
+    // (a pinned folder's own line is under its row's icon: SidebarRow's 1.5 + 2 in)
+    const at = rows.pinned && k === 0 ? 3.5 : (rows.compact ? 1.5 : 1) + k * (rows.compact ? 3.5 : 4.5) + 1.75
+    lines.push(<span key={k} aria-hidden className="pointer-events-none absolute inset-y-0 w-px bg-border" style={{ left: `calc(${space(at)} - 0.5px)` }} />)
+  }
+  return <>{lines}</>
+}
+
+/** A file or folder in the tree. */
+const TreeRow = memo(function TreeRow({ n, depth, index, rows, isOpen, selected, renaming, dropHere, dragging, draggingMany }: {
+  n: Node; depth: number; index: number; rows: Rows; isOpen: boolean; selected: boolean; renaming: boolean; dropHere: boolean; dragging: string | null; draggingMany: boolean
 }) {
   const picked = useSelected(SELECT, n.path)
   const { compact, fileIcons, disabled, pane, on } = rows
   const mark = n.folder ? undefined : rows.marks[n.path]
   const decor = rows.decor[n.path]
-  const isOpen = rows.opened.useHas(n.path)
   const { icon: Icon, tint }: { icon: LucideIcon; tint?: string } =
     n.path === ".trash" ? { icon: Trash2 } : n.folder ? drawn(rows.icons[n.path]) ?? { icon: n.name === ARCHIVE_DIR ? Archive : isOpen ? FolderOpen : Folder } : fileIcon(n.path, n.file?.type ?? null, disabled, n.file)
   // Rows, paddings and indents are in spacing units (compact px / 4), so they follow density (index.css): the chevron
   // stays in line with the sidebar's other icons (RAIL in Sidebar.tsx) in both.
   const rowH = compact ? "h-6.5 text-[13px]" : "min-h-11 text-[17px]"  // phones: long names wrap
   const indent = compact ? 3.5 : 4.5
-  const selected = !n.folder && active === n.path
   const faint = isHidden(n.path)
   // Archived (core/fileprops.ts): still here, dimmed, icon and name alike; an archive folder and all in it too.
   const archived = !!n.file?.archived || archives(n.path)
   const pad = (compact ? 1.5 : 1) + depth * indent
   // Renaming: the field, and whether it lost the keyboard to the icon picker (not a rename done)
   const field = useRef<HTMLInputElement>(null), picking = useRef(false)
-  const renamingIcon = renaming === n.path && <Icon className={cn("shrink-0 text-muted-foreground", compact ? "size-[15px]" : "size-[18px]")} strokeWidth={2} />
+  const renamingIcon = renaming && <Icon className={cn("shrink-0 text-muted-foreground", compact ? "size-[15px]" : "size-[18px]")} strokeWidth={2} />
   const click = (e: MouseEvent) => {
     if (selectClick(e, SELECT, n.path, currentFile())) return
     if (n.folder) return rows.opened.toggle(n.path)
     openFile(n.path, { newTab: e.metaKey || e.ctrlKey, pane })
   }
   return (
-    <li role="treeitem" aria-expanded={n.folder ? isOpen : undefined} aria-selected={selected || undefined}
-      className={cn("scroll-mt-10", n.folder && dropOn === n.path && "drop-target rounded-[7px] bg-primary/10")}>
-      {renaming === n.path ? (
+    // (the gap under a row is the item's, so a row measures with it: core/virtual.ts)
+    <li role="treeitem" aria-level={depth + 1} aria-expanded={n.folder ? isOpen : undefined} aria-selected={selected || undefined} data-vi={index}
+      className={cn("relative scroll-mt-10 pb-px", dropHere && "drop-target")}>
+      {renaming ? (
         <div data-tree-path={n.path} data-tree-folder={n.folder || undefined}
-          className={cn("mb-px flex items-center gap-1.5 rounded-[5px] bg-foreground/[0.06]", rowH)} style={{ paddingLeft: space(pad + 5) }}>
+          className={cn("flex items-center gap-1.5 rounded-[5px] bg-foreground/[0.06]", rowH)} style={{ paddingLeft: space(pad + 5) }}>
           {/* (where the row's icon is: after its chevron's room) */}
           {fileIcons && (iconChangeable(n.path) ? (
             // The name stays as typed: the field keeps the keyboard through the click, and gets it back from the picker.
@@ -767,7 +820,7 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
         <div onPointerDown={(e) => { if (!n.folder) openingSoon(n.path, true); on.current.press(e, n) }} onContextMenu={(e) => on.current.menu(e, n)}
           onPointerEnter={n.folder ? undefined : () => openingSoon(n.path)} onPointerLeave={n.folder ? undefined : () => openingSoon(null)}
           {...partProps(decor?.row)} data-tree-path={n.path} data-tree-folder={n.folder || undefined} data-select-key={n.path} {...selectedAttr(picked)}
-          className={cn(decor?.row?.className, "group relative mb-px flex items-center rounded-[5px] transition-colors", rowH,
+          className={cn(decor?.row?.className, "group relative flex items-center rounded-[5px] transition-colors", rowH,
             selected ? "bg-foreground/[0.08] font-medium" : !dragging && "hover:bg-foreground/[0.04]",
             (dragging === n.path || (picked && draggingMany)) && "opacity-50")}>
           <button type="button" data-keyrow onClick={click} onAuxClick={(e) => { if (e.button === 1 && !n.folder) { e.preventDefault(); openFile(n.path, { newTab: true, pane }) } }}
@@ -792,54 +845,77 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
         </div>
         </SwipeRow>
       )}
-      {/* An indent guide: a thin line down from under the folder's chevron (size-3.5: its middle is
-          1.75 units in), alongside its children. */}
-      {n.folder && isOpen && !!n.children.length && (
-        <ul role="group" className="relative before:pointer-events-none before:absolute before:inset-y-0 before:left-(--guide) before:w-px before:bg-border"
-          style={{ "--guide": `calc(${space(pad + 1.75)} - 0.5px)` } as CSSProperties}>
-          <Kids n={n} depth={depth + 1} rows={rows} active={active} renaming={renaming} dropOn={dropOn} dragging={dragging} draggingMany={draggingMany} />
-        </ul>
-      )}
+      <Guides depth={depth} rows={rows} />
     </li>
   )
 })
 
-type KidsProps = { n: Node; depth: number; rows: Rows; active?: string; renaming?: string; dropOn?: string; dragging: string | null; draggingMany: boolean }
-/** A folder's rows drawn at first, then this many more as the end of what's drawn nears the screen: a folder of
- *  thousands opens at once. */
-const DRAWN = 300
-
-/** A folder's rows, a long one's cut to its first files (Rows' `limit`) with a row that shows the rest or hides them again. */
-function Kids({ n, depth, rows, active, renaming, dropOn, dragging, draggingMany }: KidsProps) {
-  const all = useShowsAll(n.path), revealed = useRevealedIn(n.path)
-  const { shown, hidden, long } = capped(n.children, rows.limit, all, [active, renaming, revealed])
-  const pad = (rows.compact ? 1.5 : 1) + depth * (rows.compact ? 3.5 : 4.5)
-  const [drawn, setDrawn] = useState(DRAWN)
-  // (what's open, revealed or being renamed is drawn, however far down)
-  const kept = shown.length > drawn ? shown.findLastIndex((c) => [active, renaming, revealed].some((k) => k && under(k, c))) : -1
-  const upTo = Math.max(drawn, kept + 1)
-  const end = useRef<HTMLLIElement>(null)
-  useNearEnd(end, () => setDrawn(upTo + DRAWN), upTo)
+/** A long folder's last row (Rows' `limit`): shows the rest of its files, or hides them again. */
+function MoreRow({ item, index, rows }: { item: Item; index: number; rows: Rows }) {
+  const pad = (rows.compact ? 1.5 : 1) + item.depth * (rows.compact ? 3.5 : 4.5)
+  const { hidden, all } = item.more!
   return (
-    <>
-      {shown.slice(0, upTo).map((c) => (
-        <TreeRow key={c.path} n={c} depth={depth} rows={rows} active={under(active, c)} renaming={under(renaming, c)}
-          dropOn={under(dropOn, c)} dragging={dragging} draggingMany={draggingMany} />
-      ))}
-      {upTo < shown.length && <li ref={end} role="none" aria-hidden style={{ height: `${(shown.length - upTo) * (rows.compact ? 26 : 44)}px` }} />}
-      {long && (all || hidden > 0) && (
-        <li role="none" data-tree-more={n.path}>
-          <button type="button" data-keyrow onClick={() => setShowingAll(n.path, !all)}
-            className={cn("mb-px flex w-full cursor-pointer items-center gap-1.5 rounded-[5px] text-left text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground",
-              rows.compact ? "h-6.5 text-[12px]" : "min-h-11 text-[15px]")} style={{ paddingLeft: space(pad) }}>
-            <span className="w-3.5 shrink-0" />
-            {all ? "Show less" : `Show ${hidden} more`}
-          </button>
-        </li>
-      )}
-    </>
+    <li role="none" data-tree-more={item.n.path} data-vi={index} className="relative pb-px">
+      <button type="button" data-keyrow onClick={() => setShowingAll(item.n.path, !all)}
+        className={cn("flex w-full cursor-pointer items-center gap-1.5 rounded-[5px] text-left text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground",
+          rows.compact ? "h-6.5 text-[12px]" : "min-h-11 text-[15px]")} style={{ paddingLeft: space(pad) }}>
+        <span className="w-3.5 shrink-0" />
+        {all ? "Show less" : `Show ${hidden} more`}
+      </button>
+      <Guides depth={item.depth} rows={rows} />
+    </li>
   )
 }
+
+/** The tree's rows, only those near the screen drawn (core/virtual.ts), with what concerns each passed to it alone (the
+ *  open file, the one being renamed), so a change redraws only the rows it changes. */
+const TreeRows = memo(function TreeRows({ items, rows, list, active, renaming, revealed, dropOn, dragging, draggingMany, open, focused }: {
+  items: Item[]; rows: Rows; list: RefObject<HTMLUListElement | null>; active?: string; renaming?: string; revealed: string; dropOn?: string
+  dragging: string | null; draggingMany: boolean; open: ReadonlySet<string>; focused: string | null
+}) {
+  const keys = useMemo(() => items.map((it) => it.key), [items])
+  // Drawn wherever they are: the open file's row and the one renamed or revealed (scrolled to), the keyboard's with the
+  // rows beside it and the folders above it (arrows and ← go there), and the first and last (Home, End).
+  const index = useMemo(() => new Map(keys.map((k, i) => [k, i])), [keys])
+  const keep = useMemo(() => {
+    const k: (string | undefined)[] = [active, renaming, revealed, keys[0], keys[keys.length - 1]]
+    const i = focused === null ? undefined : index.get(focused)
+    if (i !== undefined) {
+      k.push(keys[i], keys[i - 1], keys[i + 1])
+      const p = items[i].n.path
+      k.push(...above(p), ...(items[i].more ? [p] : []))
+    }
+    return k
+  }, [keys, index, items, active, renaming, revealed, focused])
+  const v = useVirtual(list, keys, { estimate: rows.compact ? 27 : 45, keep })
+  useEffect(() => {
+    const el = list.current
+    if (!el) return
+    // (a ⇧-click's run takes rows that aren't drawn: core/select.ts asks for the order)
+    listOrders.set(el, () => items.filter((it) => !it.more).map((it) => it.key))
+    return () => { listOrders.delete(el) }
+  }, [list, items])
+  // A folder something would land in: one highlight over it and what's shown inside it.
+  let drop: { top: number; height: number } | null = null
+  const d = dropOn ? index.get(dropOn) : undefined
+  if (d !== undefined) {
+    let e = d + 1
+    while (e < items.length && items[e].depth > items[d].depth) e++
+    drop = { top: v.top(d), height: v.top(e) - v.top(d) }
+  }
+  const out = []
+  for (const { index: i, gap } of v.slots) {
+    const it = items[i]
+    if (gap > 0.5) out.push(<li key={`gap:${i}`} role="none" aria-hidden className="pointer-events-none" style={{ height: gap }} />)
+    out.push(it.more ? <MoreRow key={it.key} item={it} index={i} rows={rows} /> : (
+      <TreeRow key={it.key} n={it.n} depth={it.depth} index={i} rows={rows} isOpen={it.n.folder && open.has(it.n.path)} selected={!it.n.folder && active === it.n.path}
+        renaming={renaming === it.n.path} dropHere={it.n.folder && dropOn === it.n.path} dragging={dragging} draggingMany={draggingMany} />
+    ))
+  }
+  if (v.rest > 0.5) out.push(<li key="rest" role="none" aria-hidden className="pointer-events-none" style={{ height: v.rest }} />)
+  if (drop) out.push(<li key="drop" role="none" aria-hidden className="pointer-events-none absolute inset-x-0 rounded-[7px] bg-primary/10" style={drop} />)
+  return <>{out}</>
+})
 
 /** A new note, its name ready to type, in `folder` (by default where new notes go: on a computer, beside the focused
  *  tab's file), shown in the tree. */

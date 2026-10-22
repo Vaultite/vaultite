@@ -64,11 +64,14 @@ export function clearSelection() { if (sel) put(null) }
 let fromKeys = false
 export function asKeys(fn: () => void) { fromKeys = true; try { fn() } finally { fromKeys = false } }
 
+/** A list that draws only the rows near the screen (core/virtual.ts) says its whole order here, by its element. */
+export const listOrders = new WeakMap<HTMLElement, () => string[]>()
+/** A list's keys in order on screen: its whole order when it says one, else its rows in sight. */
+const keysIn = (box: HTMLElement) => listOrders.get(box)?.() ?? shownRows(box).map((r) => r.dataset.selectKey!)
 /** The rows of the list `el` is in, in order on screen (hidden ones left out). */
 function rowsOf(el: Element | null, list: string) {
   const box = el?.closest<HTMLElement>(`[data-select-list="${CSS.escape(list)}"]`)
-  if (!box) return []
-  return shownRows(box).map((r) => r.dataset.selectKey!)
+  return box ? keysIn(box) : []
 }
 /** A list's own rows in sight, in order: not those of a list inside it (a pinned folder's files, in the pinned list). */
 const shownRows = (box: HTMLElement) =>
@@ -164,10 +167,11 @@ function extend(delta: 1 | -1) {
   const at = keyRow()
   if (!at) return
   const box = at.row.closest<HTMLElement>("[data-select-list]")!
-  const rows = shownRows(box)
-  const i = rows.indexOf(at.row), next = rows[i + delta]
+  const order = keysIn(box)
+  const i = order.indexOf(at.key), key = order[i + delta]
+  // (the row beside the keyboard's is drawn, in a list that draws only some)
+  const next = key === undefined || i < 0 ? null : shownRows(box).find((r) => r.dataset.selectKey === key)
   if (!next) return
-  const order = rows.map((r) => r.dataset.selectKey!)
   const anchor = sel?.list === at.list && sel.anchor && order.includes(sel.anchor) ? sel.anchor : at.key
   const [a, b] = [order.indexOf(anchor), i + delta].sort((x, y) => x - y)
   put(make(at.list, order.slice(a, b + 1), anchor))
@@ -178,9 +182,7 @@ function extend(delta: 1 | -1) {
 function selectAll() {
   const at = keyRow()
   if (!at) return
-  const box = at.row.closest<HTMLElement>("[data-select-list]")!
-  const keys = shownRows(box).map((r) => r.dataset.selectKey!)
-  put(make(at.list, keys, at.key))
+  put(make(at.list, keysIn(at.row.closest<HTMLElement>("[data-select-list]")!), at.key))
 }
 
 if (typeof window !== "undefined") {

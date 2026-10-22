@@ -176,6 +176,8 @@ export { blockHeightKey, holdHeight, textKey, useHeldHeight, useKeptCount } from
 // Something heavy (a map) made only once it comes near the screen; a long list's rows drawn as they come near it, or
 // more asked for as its end does.
 export { useNearEnd, useNearScreen, useRowsNear } from "@/core/near"
+// A list of thousands drawn only where it can be seen, spaces standing in for the rest.
+export { useVirtual } from "@/core/virtual"
 // A page of cards keeps what's at the top of the screen in place when cards above it change size.
 export { keepAnchored } from "@/core/anchor"
 export { SortableList } from "@/components/Sortable"

@@ -50,6 +50,8 @@
 - A list reordered by dragging makes way, as browser tabs do (`core/slide.ts`: `slotAt`, `reorder`, `useSlide`), never a
   drop line. A line only where a drop isn't a place in one list: a dashboard's grid (beside or below), table columns.
 - Text sizes: a plugin declares `textSizes` and uses `useTextSize` (`core/textsize.ts`), never a setting of its own.
+- Long lists (thousands of rows: the file tree) draw only what's near the screen: `useVirtual` (`core/virtual.ts`),
+  with the rows the keyboard needs kept drawn, and the whole order given to `core/select.ts` (`listOrders`).
 - Steadiness: nothing moves that the user didn't move (`core/heights.ts`, `core/anchor.ts`, `core/viewstate.ts`).
 - Speed: live updates do nothing while hidden and patch the store at most once a second, unchanged slices keeping their
   objects (key memos on them). Per row: `dateText` / `numberText`, never `toLocale*String` with options; one

@@ -1,6 +1,7 @@
 // Something heavy (a map: a WebGL context) is made once it comes near the screen, so a long dashboard or a hidden tab
 // doesn't make every one. Once made, it stays.
 import { useEffect, useRef, useState, type RefObject } from "react"
+import { scrollingBox } from "@/lib/utils"
 
 /** Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after. */
 export function useNearScreen(ref: RefObject<Element | null>, margin = "600px"): boolean {
@@ -16,14 +17,17 @@ export function useNearScreen(ref: RefObject<Element | null>, margin = "600px"):
   return near
 }
 
-/** What scrolls `el` up and down: its nearest ancestor that does (one that only scrolls sideways doesn't), else the
- *  window (null). */
-function scroller(el: Element): Element | null {
-  for (let p = el.parentElement; p; p = p.parentElement) {
-    if (p.scrollHeight > p.clientHeight && /auto|scroll/.test(getComputedStyle(p).overflowY)) return p
-  }
-  return null
+/** What scrolls `el` up and down (`self`: or it itself), else the window (null); kept per element while it holds, as
+ *  looking reads each ancestor's style (scrollingBox), too much for each draw. */
+export function scrollerOf(el: Element, self = false): HTMLElement | null {
+  const had = known.get(el)
+  if (had?.isConnected && (had === el || had.contains(el)) && had.scrollHeight > had.clientHeight) return had
+  const found = self && scrolls(el) ? el as HTMLElement : scrollingBox(el)
+  if (found) known.set(el, found)
+  return found
 }
+const known = new WeakMap<Element, HTMLElement>()
+const scrolls = (p: Element) => p.scrollHeight > p.clientHeight && /auto|scroll/.test(getComputedStyle(p).overflowY)
 
 /** How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after
  *  the last row drawn) comes within a few screens of what scrolls it. A long list stays smooth; every row is reached. */
@@ -33,7 +37,7 @@ export function useRowsNear(total: number, step = 100): [number, (el: Element | 
   const shown = Math.min(n, total)
   useEffect(() => {
     if (!mark || shown >= total) return
-    const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setN((x) => x + step) }, { root: scroller(mark), rootMargin: "2000px 0px" })
+    const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setN((x) => x + step) }, { root: scrollerOf(mark), rootMargin: "2000px 0px" })
     o.observe(mark)
     return () => o.disconnect()
   }, [mark, shown, total, step])
@@ -49,7 +53,7 @@ export function useNearEnd(ref: RefObject<Element | null>, onNear: () => void, s
     const el = ref.current
     if (!el || typeof IntersectionObserver === "undefined") return
     // (the pane that scrolls it, so the margin reaches below what it clips)
-    const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) near.current() }, { root: scroller(el), rootMargin: margin })
+    const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) near.current() }, { root: scrollerOf(el), rootMargin: margin })
     o.observe(el)
     return () => o.disconnect()
   }, [ref, margin, shown])

@@ -220,16 +220,22 @@ async function browse() {
     if (cdp) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.start") }
     await typing("keyMs")
     if (cdp) fs.writeFileSync(PROFILE, JSON.stringify((await cdp.send("Profiler.stop")).profile))
-    // The biggest folder shown whole (past files.json's folderLimit) and scrolled to its end, then typing again.
+    // The biggest folder shown whole (past files.json's folderLimit, if one cuts it) and scrolled far down, then typing again.
     const more = page.locator(`aside [role=tree] [data-tree-more="${BIG_DIR}"] button`)
-    if (BIG_DIR && await more.count()) {
-      t0 = performance.now()
-      await more.click()
-      await page.waitForFunction(([d, n]: [string, number]) => document.querySelectorAll(`div[data-tree-path^="${CSS.escape(d)}/"]`).length > n, [BIG_DIR, 200] as [string, number], { timeout: 120_000 }).catch(() => {})
-      out.folderShownWhole = Math.round(performance.now() - t0)
-      for (let i = 0; i < 10; i++) { await page.locator("aside [role=tree]").first().hover(); await page.mouse.wheel(0, 20000); await wait(300) }
+    if (BIG_DIR) {
+      if (await more.count()) {
+        t0 = performance.now()
+        await more.click()
+        await page.waitForFunction(([d, n]: [string, number]) => document.querySelectorAll(`div[data-tree-path^="${CSS.escape(d)}/"]`).length > n, [BIG_DIR, 200] as [string, number], { timeout: 120_000 }).catch(() => {})
+        out.folderShownWhole = Math.round(performance.now() - t0)
+      }
+      // (a page too busy to answer a hover is a result too: a tree drawing every row)
+      const tree = await page.locator("aside [role=tree]").first().boundingBox({ timeout: 60_000 }).catch(() => null)
+      if (tree) await page.mouse.move(tree.x + tree.width / 2, tree.y + Math.min(tree.height, 400) / 2)
+      for (let i = 0; i < 10; i++) { await page.mouse.wheel(0, 20000); await wait(300) }
       out.treeRows = await page.evaluate(() => document.querySelectorAll("aside [role=tree] [data-tree-path]").length)
-      await typing("wholeFolderKeyMs")
+      // (a page that can't take a click for minutes: noted, the rest kept)
+      await typing("wholeFolderKeyMs").catch(() => { out.wholeFolderStuck = 1 })
     }
     return out
   } finally {

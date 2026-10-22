@@ -69,10 +69,22 @@ export function foldInList(open: boolean, activate = false) {
     return true
   }
   if (t?.open) { t.el.click(); return true }
-  const parent = itemOf(row)?.parentElement?.closest<HTMLElement>("[role=treeitem]")
+  const item = itemOf(row)
+  const parent = item?.parentElement?.closest<HTMLElement>("[role=treeitem]") ?? flatParent(item)
   const up = parent?.querySelector<HTMLElement>(ROW)
   if (up) focusRow(up)
   return true
+}
+
+/** In a flat tree (its items side by side, each its `aria-level`: a long one drawn in part), the item's folder: the
+ *  nearest one before it a level up. */
+function flatParent(item: HTMLElement | null | undefined) {
+  const level = Number(item?.getAttribute("aria-level"))
+  if (!item || !(level > 1)) return null
+  for (let p = item.previousElementSibling; p; p = p.previousElementSibling) {
+    if (p.getAttribute("role") === "treeitem" && Number(p.getAttribute("aria-level")) < level) return p as HTMLElement
+  }
+  return null
 }
 
 /** Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab). */

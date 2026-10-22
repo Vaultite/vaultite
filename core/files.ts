@@ -8,7 +8,7 @@ import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
-import { isTextKind, kindOf, tooBig } from "./filetypes.ts"
+import { extOf, isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, SearchError } from "./searchquery.ts"
 import { merge3 } from "./textedit.ts"
 import { textHash } from "./texthash.ts"
@@ -419,13 +419,16 @@ function readerPlugins(vault: Vault) {
 }
 
 type Reader = (b: Buffer, rel: string) => string
+/** Data, not documents: an export of 25k records would make a first search read them all, and nobody looks for
+ *  words in them (Obsidian doesn't either). Drawings and canvases (.excalidraw, .canvas) are searched. */
+const DATA = new Set(["json", "jsonl", "ndjson", "geojson", "map"])
 /** The files search reads besides the notes, each with the plugin reader that turns it into text, if any. */
 function searchFiles(vault: Vault) {
   const readers = readerPlugins(vault)
   const out = new Map<string, Reader | null>()
   for (const rel of vault.others.keys()) {
     const k = kindOf(rel)
-    if (k === "image" || k === "pdf" || k === "audio" || k === "video") continue
+    if (k === "image" || k === "pdf" || k === "audio" || k === "video" || DATA.has(extOf(rel))) continue
     const reader = k === "binary" ? serviceFor(readers, "text", rel) as Reader | null : null
     if (k !== "binary" || reader) out.set(rel, reader)
   }

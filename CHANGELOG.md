@@ -14,7 +14,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   post-processors now reach a note being read, so Simple Embeds turns a YouTube link into a player there, Banners draws
   its banner and Supercharged Links marks links; blocks no plugin changed draw as before.
 - Big vaults (tens of thousands of notes): the first load no longer reads every note again for token counts, a rename
-  reads only the notes that link to it, and each request's sync no longer asks every file its kind.
+  reads only the notes that link to it, and each request's sync no longer asks every file its kind. Typing and opening
+  notes stay fast with a folder of thousands of files open in the file tree (it draws only the rows in sight, and a save
+  no longer redraws it), and the first search no longer reads every JSON file first: plain `.json` data is left out of
+  search, as in Obsidian (canvases, drawings, tables and code are still searched).
 - Vault plugins load in a vault that is also a code project (a `package.json` saying `"type": "commonjs"` at its top).
 - Claude Code's usage is counted with less than half the work: right after the server starts (a deploy, the desktop app
   opening) it no longer stalls the app while it reads weeks of transcripts.

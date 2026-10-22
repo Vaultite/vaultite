@@ -613,6 +613,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
 - `useViewsVersion()`: Re-render when a view's title or icon changes (returns a counter).
+- `useVirtual(list, keys, { estimate, keep, overscan })`: Which of `keys` (a row each) `list` draws: each drawn row gets `data-vi={index}` (measured), `keep` are drawn wherever they are, `estimate` is a row's height until one is measured, `overscan` how…
 - `useVisibleArea(on)`: The part of the window the user sees (above the on-screen keyboard), followed while `on`.
 - `useWorkspaceVersion()`: Redraws when the current workspace or what's kept in it changes; answers a number that changes then.
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
