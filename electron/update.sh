@@ -2,11 +2,11 @@
 # The desktop app's updates (electron/main.ts runs this in a login shell, so git, node and npm are on the PATH): zsh on a
 # Mac, bash on Linux, so plain sh here.
 #
-#   update.sh build <clone> <repo url> <the running app's commit> [<branch> <npm script>]
+#   update.sh build <clone> <repo url> <the running app's commit> [<branch> <npm script> <commit>]
 #     Builds the newest main of the repo as Vaultite Main.app (Vaultite Dev: its branch, with app:build:dev), in a clone of
 #     its own (never a checkout someone works in): fetches, checks it out, installs packages when package-lock.json
 #     changed, `npm run app:build`, and moves the app (Linux: its unpacked folder, named as the app)
-#     to <clone>/../update. Prints `@building <commit>` before a build (the app's toast), and last the commit built. Exit 3: the app already runs it; anything else but 0: it failed (the
+#     to <clone>/../update. <commit>: that one rather than the branch's newest (an attached server's). Prints `@building <commit>` before a build (the app's toast), and last the commit built. Exit 3: the app already runs it; anything else but 0: it failed (the
 #     output says why).
 #   update.sh install <the app's pid> <new .app> <the running .app> [<its executable's name>]
 #     Once the app has quit, puts the new build in its place and opens it again (Linux: the folders, and the executable).
@@ -19,7 +19,7 @@ ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
 
 case ${1:-} in
 build)
-  src=$2 repo=$3 running=$4 branch=${5:-main} script=${6:-app:build}
+  src=$2 repo=$3 running=$4 branch=${5:-main} script=${6:-app:build} want=${7:-}
   # The finished build goes here (the .app, then commit, written last): never one half built.
   next=$(dirname "$src")/update
   [ -d "$src/.git" ] || { rm -rf "$src"; git clone --quiet "$repo" "$src"; }
@@ -28,6 +28,7 @@ build)
   [ "$(git remote get-url origin)" = "$repo" ] || git remote set-url origin "$repo"
   git fetch --quiet origin "$branch"
   new=$(git rev-parse "origin/$branch")
+  if [ -n "$want" ]; then new=$(git rev-parse --verify --quiet "$want^{commit}") || { echo "$want isn't fetched from $branch"; exit 1; }; fi
   [ "$new" = "$running" ] && exit 3
   # Built already (an earlier check the app hasn't restarted for): nothing to do.
   if [ "$(cat "$next/commit" 2>/dev/null)" != "$new" ]; then

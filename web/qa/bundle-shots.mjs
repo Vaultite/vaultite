@@ -3,11 +3,12 @@
 // WRITES bundles/<id>/preview*.png in this checkout (its vaults and servers are its own; PORT=<n> picks the port).
 // Fetches the plugins Life OS installs from GitHub. Re-run when a bundle's look changes (bundles/CLAUDE.md).
 //   node web/qa/bundle-shots.mjs [<bundle id>...]
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, freePort, qa, until, wait } from "./lib/qa.mjs"
+import { testServer } from "../../tools/test/lib.ts"
 
 const { args: ids, browser, check, watch, done } = await qa(import.meta.url)
 const BUNDLES = path.join(ROOT, "bundles")
@@ -22,7 +23,7 @@ const WINDOW = { width: 1088, height: 680 }, PICTURE = { width: 960, height: 600
 
 async function serve(vault, local) {
   const port = Number(process.env.PORT) || await freePort()
-  const proc = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
+  const proc = testServer({
     cwd: ROOT, stdio: "ignore", env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local },
   })
   const base = `http://127.0.0.1:${port}/`

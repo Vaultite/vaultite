@@ -177,5 +177,23 @@ export function serverCall(win: AppWindow | undefined, name: unknown, args: unkn
   return engineCall(win, name, args)
 }
 
+// ---------- busy: what a restart (an update) would cut short ----------
+
+const holds: (() => string | null)[] = []
+/** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. */
+export const busyWhen = (fn: () => string | null) => { holds.push(fn) }
+/** Why the browser is busy, or null when a restart loses nothing. */
+export function engineBusy(): string | null {
+  for (const fn of holds) { try { const why = fn(); if (why) return why } catch (e) { console.error("vaultite: a browser feature couldn't say if it's busy:", e) } }
+  return null
+}
+
 /** Tell a window something: the Browser hears it as a `WebEvent` whose `type` starts "engine:". */
 export const tell = (win: AppWindow, msg: { type: `engine:${string}` } & Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+
+type ServerSink = (win: AppWindow, name: string, data: unknown) => void
+let sink: ServerSink = () => {}
+/** How to reach a window's vault server: main.ts hands it (core/desktopapp.ts onDesktopEvent hears it there). */
+export const setServerSink = (fn: ServerSink) => { sink = fn }
+/** Tell the server of `win`'s vault something unasked (the live view's frames). */
+export const tellServer = (win: AppWindow, name: string, data: unknown) => { if (!win.isDestroyed()) sink(win, name, data) }

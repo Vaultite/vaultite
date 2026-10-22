@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, eachPage, eachSession, handle, mayOpen, tell, type EnginePage } from "./engine.ts"
+import { allPages, busyWhen, eachPage, eachSession, engineBusy, handle, mayOpen, tell, type EnginePage } from "./engine.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -40,7 +40,7 @@ function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
 // ---------- the DevTools protocol, one session per page ----------
 
 const attached = new WeakSet<WebContents>()
-async function cdp<T = Record<string, unknown>>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
+export async function cdp<T = Record<string, unknown>>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
   if (!attached.has(wc)) {
     try { wc.debugger.attach("1.3") } catch (e) {
       if (!wc.debugger.isAttached()) throw new Error(`couldn't attach to the page (${(e as Error).message}): is its DevTools open?`)
@@ -235,7 +235,7 @@ const KEYS: Record<string, { code: string; key: string; vk: number; text?: strin
   pagedown: { code: "PageDown", key: "PageDown", vk: 34 },
 }
 /** A key with modifiers ("Enter", "Meta+a", "Shift+Tab"). */
-async function press(p: EnginePage, combo: string) {
+export async function press(p: EnginePage, combo: string) {
   const parts = combo.split("+").map((x) => x.trim()).filter(Boolean)
   const last = parts.pop() ?? ""
   const mods = parts.map((m) => m.toLowerCase())
@@ -397,6 +397,7 @@ async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
   const by = { ...asked, task: asked.task || owner?.task, summary: asked.summary || (owner && sameAgent(owner, asked) ? owner.summary : undefined) }
   const run = runOf(by), t = Date.now()
   latest.set(p.id, { by, run, t, step })
+  lastStep = t
   try {
     const dir = path.join(RUNS(), run)
     fs.mkdirSync(dir, { recursive: true })
@@ -631,18 +632,22 @@ handle("agents:access", (_win, map, where) => {
   access = next
   home = typeof where === "string" && next.get(where) === "act" ? where : [...next].find(([, v]) => v === "act")?.[0] ?? ""
 })
-// The user did what an agent asked (the bar's Done), or the tab closed.
-function helped(id: number) {
+// The user did what an agent asked (the bar's Done, or the live view's), or the tab closed.
+export function helped(id: number) {
   if (!asks.delete(id)) return
   for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:help", id, on: false })
   for (const done of helpWaits.get(id) ?? []) done()
   helpWaits.delete(id)
 }
 handle("agents:helped", (_win, id) => helped(Number(id)))
-handle("agents:pause", (_win, id, on) => {
-  if (on) paused.add(Number(id)); else paused.delete(Number(id))
-  for (const p of allPages()) if (p.id === Number(id)) tell(p.win, { type: "engine:agent:paused", id: p.id, on: !!on })
-})
+/** Agents paused in page `id` (the bar's Stop, or the live view's), or let go on. */
+export function setPaused(id: number, on: boolean) {
+  if (on) paused.add(id); else paused.delete(id)
+  for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:paused", id: p.id, on })
+}
+handle("agents:pause", (_win, id, on) => setPaused(Number(id), !!on))
+/** Whose page `id` is (an agent's, else the user's), whether agents are paused in it and what one asked the user there. */
+export const agentState = (id: number) => ({ by: owners.get(id) ?? null, paused: paused.has(id), ask: asks.get(id) ?? null })
 // The pages agents are at work in now, each with a small picture of it as it is.
 handle("agents:live", async () => {
   const now = Date.now()
@@ -678,10 +683,28 @@ handle("agents:run", (_win, run) => {
   return steps.map((s) => ({ ...s, shot: typeof s.shot === "string" && /^\d+\.jpg$/.test(s.shot) ? `data:image/jpeg;base64,${fs.readFileSync(path.join(dir, s.shot)).toString("base64")}` : null }))
 })
 
+// ---------- busy: an update's restart waits till agents are done ----------
+
+/** Agent calls under way (a `run` script among them), and when an agent last did something in a page. */
+let inFlight = 0
+let lastStep = 0
+/** An agent that acted this recently is likely mid-task, between calls. */
+const BUSY_MS = 10 * 60_000
+busyWhen(() => inFlight ? "an agent's call is under way"
+  : asks.size ? "a page waits on the user for an agent"
+  : Date.now() - lastStep < BUSY_MS ? "an agent acted in a page in the last 10 minutes" : null)
+/** An agent call, counted while it runs. */
+const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
+  inFlight++
+  try { return await fn(...a) } finally { inFlight-- }
+})
+
 // ---------- the server's (its agents', checked here whatever the server says) ----------
 
-handle("agent:tabs", (_win, by) => listOf(byOf(by)))
-handle("agent:open", async (win, url, container, by) => {
+handle("agent:busy", () => { const why = engineBusy(); return { busy: !!why, why } })
+
+serve("agent:tabs", (_win, by) => listOf(byOf(by)))
+serve("agent:open", async (win, url, container, by) => {
   const u = String(url ?? "")
   if (!/^https?:\/\//i.test(u)) throw new Error("only http and https addresses")
   const profile = container ? `c-${String(container)}` : home
@@ -702,9 +725,9 @@ handle("agent:open", async (win, url, container, by) => {
     await new Promise((r) => setTimeout(r, 150))
   }
 })
-handle("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
-handle("agent:read", (_win, tab) => readIn(pageFor(tab, "read")))
-handle("agent:close", async (_win, tab) => {
+serve("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
+serve("agent:read", (_win, tab) => readIn(pageFor(tab, "read")))
+serve("agent:close", async (_win, tab) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   if (!owners.has(p.id)) throw new Error("this tab is the user's: agents close only the tabs agents opened")
@@ -716,7 +739,7 @@ handle("agent:close", async (_win, tab) => {
 })
 /** At most this wide, so a picture costs an agent less (a Retina page is twice the size). */
 const SHOT_WIDTH = 1280
-handle("agent:screenshot", async (_win, tab) => {
+serve("agent:screenshot", async (_win, tab) => {
   const p = pageFor(tab, "read")
   // (a tab in the background is drawn for it, and stays hidden)
   const img = await p.wc.capturePage(undefined, { stayHidden: true })
@@ -724,14 +747,14 @@ handle("agent:screenshot", async (_win, tab) => {
   const { width } = img.getSize()
   return { tab: p.id, png: (width > SHOT_WIDTH ? img.resize({ width: SHOT_WIDTH }) : img).toPNG().toString("base64") }
 })
-handle("agent:pdf", async (_win, tab, by) => {
+serve("agent:pdf", async (_win, tab, by) => {
   const p = pageFor(tab, "read")
   const pdf = await p.wc.printToPDF({ printBackground: true })
   if (pdf.length > 50 << 20) throw new Error("the page makes a PDF over 50 MB")
   void record(p, byOf(by), { action: "pdf" })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), pdf: pdf.toString("base64") }
 })
-handle("agent:evaluate", async (_win, tab, expression, by) => {
+serve("agent:evaluate", async (_win, tab, expression, by) => {
   const p = pageFor(tab, "act")
   const code = String(expression ?? "")
   if (!code.trim()) throw new Error("evaluate needs an expression")
@@ -745,8 +768,8 @@ handle("agent:evaluate", async (_win, tab, expression, by) => {
   if (json.length > 100_000) json = `${json.slice(0, 100_000)}… (cut short)`
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
 })
-handle("agent:run", (_win, tab, script, by) => runIn(pageFor(tab, "act"), String(script ?? ""), byOf(by)))
-handle("agent:help", (_win, tab, reason, by) => {
+serve("agent:run", (_win, tab, script, by) => runIn(pageFor(tab, "act"), String(script ?? ""), byOf(by)))
+serve("agent:help", (_win, tab, reason, by) => {
   const p = pageFor(tab, "read")
   const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
   if (!why) throw new Error("say what the user should do (sign in, solve the check)")
@@ -756,17 +779,17 @@ handle("agent:help", (_win, tab, reason, by) => {
   void record(p, who, { action: "help", value: why })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-handle("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), (what && typeof what === "object" ? what : {}) as Wait, ms))
-handle("agent:navigate", (_win, tab, to, by) => navigateIn(pageFor(tab, "act"), to, byOf(by)))
+serve("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), (what && typeof what === "object" ? what : {}) as Wait, ms))
+serve("agent:navigate", (_win, tab, to, by) => navigateIn(pageFor(tab, "act"), to, byOf(by)))
 // (any tab, whatever its container lets agents do: it moves the page to a window, nothing in it is read or done)
-handle("agent:player", (_win, tab, on, fullScreen) => {
+serve("agent:player", (_win, tab, on, fullScreen) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("only a web page opens as a player")
   p.player(on !== false, fullScreen !== false)
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-handle("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act"), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
+serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act"), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
 
 // A page that ends isn't paused, anyone's, live or asking any more.
 eachPage((p) => p.wc.once("destroyed", () => { paused.delete(p.id); owners.delete(p.id); latest.delete(p.id); helped(p.id) }))

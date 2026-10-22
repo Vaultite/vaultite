@@ -8,8 +8,11 @@ import { Kind, writeAtomic, type Vault } from "../../../core/vault.ts"
 import { addBookmarks, readBookmarks, type Bookmark } from "./bookmarks.ts"
 import { addRule, BLOCKED, makeRule, readRules, removeRule } from "./elements.ts"
 import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitestyles.ts"
+import { liveView } from "./liveroutes.ts"
 
 export const plugin = new Plugin(import.meta.url)
+// (the owner watching and driving tabs from the web app: routes, not ops)
+liveView(plugin)
 
 type Tab = { tab: number; url: string; title: string; container: string | null; access: "none" | "read" | "act"; shown: boolean
   by: string | null; mine: boolean; summary?: string; paused?: boolean; asking?: string }
@@ -30,6 +33,8 @@ const task = { type: "string" as const, description: "your task in two or three 
 // writes; pdf's file.upload holds it for its own)
 const tab = { type: "integer" as const, required: true, description: "the tab's number (browser tabs)" }
 const got = (d: Download) => `Downloaded ${d.name}${d.path ? ` to ${d.path}` : ""}${d.state === "completed" ? "" : ` (${d.state})`}`
+const DONE: Record<string, string> = { click: "Clicked", dblclick: "Double-clicked", hover: "Pointed at", fill: "Filled", type: "Typed in", press: "Pressed",
+  check: "Checked", uncheck: "Unchecked", select: "Picked in", upload: "Uploaded into", scroll: "Scrolled" }
 const where = (p: Page) => [`Tab ${p.tab}: ${p.title || "(untitled)"}`, p.url, ...(p.downloads ?? []).map(got)].join("\n")
 function changed(r: Acted) {
   const d = r.diff
@@ -48,8 +53,7 @@ plugin.op({
 an agent ("Claude Code/flight search", marked "yours" when it's you, by your task), else the user. Agents read pages in
 containers set to Read or Act, and click and type only in ones set to Act; the user picks, per container, in the page's
 bar. Open your own tab with browser open (in the container meant for agents); leave the user's tabs as you found them.
-The browser is the desktop app's: from a server without one (the always-on one), the desktop app of a machine with this
-vault (Machines) answers.
+The browser is the desktop app's attached to this server; a server without one asks an always-on machine's (Machines).
 
   vau browser tabs
   vau browser tabs --task "flight search"`,
@@ -180,8 +184,9 @@ went to another.
       ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, by(ctx, p))
   },
   text: (r: Acted) => `${r.navigated ? "Went to another page. " : ""}${where(r)}${changed(r)}`,
-  did: (p) => ({ action: "run", text: Array.isArray(p.fields) ? `Filled ${p.fields.length} fields in a browser tab`
-    : `${String(p.action)} in a browser tab${p.ref ? ` (${String(p.ref)})` : ""}` }),
+  // (each names its tab, "browser tab 3": the live view lists a tab's steps from Activity by it)
+  did: (p) => ({ action: "run", text: Array.isArray(p.fields) ? `Filled ${p.fields.length} fields in browser tab ${String(p.tab)}`
+    : `${DONE[String(p.action)] ?? String(p.action)}${p.action === "press" && p.key ? ` ${String(p.key)}` : ""}${p.ref ? ` ${String(p.ref)}` : ""} in browser tab ${String(p.tab)}` }),
 })
 
 plugin.op({
@@ -197,7 +202,7 @@ plugin.op({
   args: ["tab", "to"],
   run: (p, ctx) => ask<Page>("agent:navigate", p.tab, p.to, by(ctx, p)),
   text: where,
-  did: (p) => ({ action: "run", text: `Sent a browser tab to ${String(p.to)}` }),
+  did: (p) => ({ action: "run", text: `Sent browser tab ${String(p.tab)} to ${String(p.to)}` }),
 })
 
 /** The lines of `text` that have `find` (any case; /a regex/ too), a line around each, numbered. */
@@ -239,7 +244,7 @@ read or done.
   args: ["tab"],
   run: (p) => ask<Page>("agent:player", p.tab, !p.off, p.window ? false : plugin.settings().playerFullScreen !== false),
   text: (r: Page) => where(r),
-  did: (p) => ({ action: "run", text: p.off ? "Brought a browser tab back from its player" : "Opened a browser tab as a player" }),
+  did: (p) => ({ action: "run", text: p.off ? `Brought browser tab ${String(p.tab)} back from its player` : `Opened browser tab ${String(p.tab)} as a player` }),
 })
 
 plugin.op({
@@ -404,11 +409,11 @@ they did it (--text, --url). Never ask for their password: they type it themselv
   run: async (p, ctx) => {
     const r = await ask<Page>("agent:help", p.tab, p.reason, by(ctx, p))
     await plugin.ask("inbox:event", null, { source: "browser", kind: "waiting", key: `help-${p.tab}`, title: `${ctx.who.label} needs you in the browser`,
-      body: `${String(p.reason).slice(0, 300)} (${r.title || r.url})` })
+      body: `${String(p.reason).slice(0, 300)} (${r.title || r.url})`, link: `view:web-live/${r.tab}` })
     return r
   },
   text: (r: Page) => `Asked the user in tab ${r.tab} (its bar, and their Inbox). Wait for their Done: browser wait ${r.tab} --helped`,
-  did: (p) => ({ action: "run", text: `Asked for help in a browser tab: ${String(p.reason).slice(0, 80)}` }),
+  did: (p) => ({ action: "run", text: `Asked for help in browser tab ${String(p.tab)}: ${String(p.reason).slice(0, 80)}` }),
 })
 
 // ---------- bookmarks ----------

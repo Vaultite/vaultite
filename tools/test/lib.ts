@@ -1,5 +1,6 @@
 // The tests' shared kit: check, skip, sections (timed; one that throws ends there, not the run), the summary, the
 // record of runs (tools/.runs/test-runs.jsonl).
+import { type ChildProcess, spawn, type SpawnOptions } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
@@ -19,6 +20,26 @@ export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export const freePort = () => new Promise<number>((resolve) => {
   const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address() as net.AddressInfo; s.close(() => resolve(port)) })
 })
+
+const servers = new Set<ChildProcess>()
+const killServers = () => { for (const s of servers) if (s.exitCode === null && s.signalCode === null) try { s.kill("SIGKILL") } catch { /* gone */ } }
+let ending = false
+/** This checkout's server.ts for a test (spawn's options): killed when the test ends, by its end, a signal or a crash,
+ *  and ending itself should the test die unseen (VAULTITE_PARENT_PID, server.ts). */
+export function testServer(o: SpawnOptions = {}): ChildProcess {
+  if (!ending) {
+    ending = true
+    process.on("exit", killServers)
+    for (const [sig, n] of [["SIGINT", 2], ["SIGTERM", 15], ["SIGHUP", 1]] as const) {
+      // (a script with its own handler decides when to exit; else this one does, as the signal would have)
+      process.on(sig, () => { killServers(); if (process.listenerCount(sig) === 1) process.exit(128 + n) })
+    }
+  }
+  const s = spawn(process.execPath, [path.join(REPO, "server.ts")], { cwd: REPO, ...o, env: { ...(o.env ?? process.env), VAULTITE_PARENT_PID: String(process.pid) } })
+  servers.add(s)
+  s.once("exit", () => servers.delete(s))
+  return s
+}
 
 export function check(name: string, ok: unknown, got?: unknown) {
   const note = ok ? "" : JSON.stringify(got)?.slice(0, 400) ?? ""

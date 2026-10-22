@@ -1,7 +1,7 @@
-import type { VaultTest } from "./harness.ts"
+import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { api, check, exists, read, vault, write } = $
+  const { api, app, check, exists, read, sleep, vault, write } = $
   // The Browser's files in .vaultite: the blocked elements list (the note it was, moved there once) and each site's
   // style; their ops, and what the app gets of them in /api/state.
   const LIST = ".vaultite/plugins/web-viewer/blocked-elements.md", SITES = ".vaultite/plugins/web-viewer/sites"
@@ -36,4 +36,49 @@ export default async ($: VaultTest) => {
   check("browser style alone lists the sites with one", JSON.stringify(r.sites) === JSON.stringify(["youtube.com"]), r)
   ;[, r] = await api("POST", "ops/web-viewer.style", { site: "youtube.com", remove: true })
   check("… and --remove sends one to the trash", r.removed && !exists(`${SITES}/youtube.com.css`), r)
+
+  // The live view (liveroutes.ts): the owner's only, the desktop app's engine asked, a tab's steps from Activity.
+  {
+    const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any
+    let [code] = await api("GET", "web-viewer/tabs", undefined, stranger)
+    check("live view: someone else on the tailnet is refused the tabs", code === 403, code)
+    ;[code] = await api("POST", "web-viewer/tabs/3/pause", { on: true }, stranger)
+    check("… and pausing agents in one", code === 403, code)
+    let body: Any
+    ;[code, body] = await api("GET", "web-viewer/tabs")
+    check("… with no desktop app, says so", code === 409 && /desktop app/.test(body.error), [code, body])
+    const { LOADED } = await import("../../../core/plugins.ts")
+    const wv = LOADED.find((p) => p.id === "web-viewer")!
+    const asked: unknown[][] = []
+    const was = wv.desktop
+    wv.desktop = async (name: string, ...args: unknown[]) => {
+      asked.push([name, ...args])
+      if (name === "agent:act") return { tab: args[0], url: "https://example.com/", title: "Example", navigated: false }
+      if (name === "agent:live:tabs") return [{ tab: 3, url: "https://example.com/", title: "Example" }]
+      return { tab: args[0] }
+    }
+    try {
+      ;[code, body] = await api("GET", "web-viewer/tabs")
+      check("live view: the owner gets the engine's tabs", code === 200 && body.tabs[0]?.tab === 3, [code, body])
+      ;[code] = await api("POST", "web-viewer/tabs/3/pause", { on: false })
+      check("… resuming agents asks the engine so", code === 200 && JSON.stringify(asked.at(-1)) === JSON.stringify(["agent:live:pause", 3, false]), asked.at(-1))
+      ;[code] = await api("POST", "web-viewer/tabs/x/done", {})
+      check("… a tab is its number", code === 400, code)
+      const since = Date.now() - 1
+      await app.callOp("web-viewer.act", { tab: 3, action: "click", ref: "e5" }, undefined, { report: "test" })
+      await app.callOp("web-viewer.act", { tab: 4, action: "press", key: "Enter" }, undefined, { report: "test" })
+      let steps: Any[] = []
+      for (let i = 0; i < 20 && !steps.length; i++) { await sleep(100); steps = (await api("GET", `web-viewer/tabs/3/steps?since=${since}`))[1].steps }
+      check("live view: a tab's steps are what Activity kept of agents' ops in it, and only its", steps.length === 1 && steps[0].text === "Clicked e5", steps)
+    } finally { wv.desktop = was }
+    // What the desktop app tells the server unasked reaches who listens (core/desktopapp.ts).
+    const { onDesktopEvent } = await import("../../../core/desktopapp.ts")
+    const heard: unknown[] = []
+    const stop = onDesktopEvent((name, data) => heard.push([name, data]))
+    const tell = (data: unknown) => (process.emit as (e: string, m: unknown) => boolean)("message", { type: "desktop:event", name: "live:state", data })
+    tell({ tab: 3 })
+    stop()
+    tell({ tab: 4 })
+    check("desktop events reach a listener till it stops", JSON.stringify(heard) === JSON.stringify([["live:state", { tab: 3 }]]), heard)
+  }
 }

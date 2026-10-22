@@ -6,7 +6,8 @@ import os from "node:os"
 import path from "node:path"
 
 const LABEL = "app.vaultite.server"
-export type ServiceOptions = { root: string; node: string; vault: string; port?: number; host?: string; home?: string }
+/** `updates`: a branch this checkout follows on its own (core/selfupdate.ts), this machine's choice. */
+export type ServiceOptions = { root: string; node: string; vault: string; port?: number; host?: string; home?: string; updates?: string }
 export type ServicePlan = { platform: "darwin" | "linux"; file: string; text: string; log: string; start: string[][]; stop: string[][] }
 
 const xml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -35,6 +36,7 @@ export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = "1" // vau run by the desktop app's own Node
   if (o.port) env.PORT = String(o.port)
   if (o.host) env.HOST = o.host
+  if (o.updates) env.VAULTITE_UPDATES = o.updates
   if (platform === "darwin") {
     const file = path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`)
     const log = path.join(home, "Library", "Logs", "vaultite.log")
@@ -111,4 +113,12 @@ export function uninstallService(platform: string, o: ServiceOptions) {
   fs.rmSync(plan.file, { force: true })
   if (platform === "linux") run([["systemctl", "--user", "daemon-reload"]])
   return { ...plan, failed }
+}
+
+/** The vault this machine's service serves, if one is installed (read from its job file), else "". */
+export function serviceVault(platform = process.platform, home = os.homedir()) {
+  let text = ""
+  try { text = fs.readFileSync(servicePlan(platform, { root: "", node: "", vault: "", home }).file, "utf8") } catch { return "" }
+  const m = /<key>VAULTITE_VAULT<\/key><string>([^<]*)<\/string>/.exec(text) ?? /^Environment="VAULTITE_VAULT=((?:[^"\\]|\\.)*)"$/m.exec(text)
+  return m ? m[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\\(.)/g, "$1").replace(/%%/g, "%") : ""
 }

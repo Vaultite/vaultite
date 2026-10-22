@@ -680,7 +680,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).
 - `HTTPError`
-- `inDesktop()`: Whether this server runs in the desktop app (its browser can be asked).
+- `inDesktop()`: Whether this server has a desktop app on this machine to ask (its browser).
 - `isColor(c)`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
@@ -696,6 +696,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `match(plugins, method, parts)`: The handler for a request path (parts under /api/), the wildcard values and the route's options.
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.
+- `noDesktop()`
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
 - `opcodes(a, b)`: How to turn a into b: equal runs and changed runs (replace / delete / insert).
 - `OpError`: What an op can't do, with what to do instead: a 400 over HTTP (`status`), the tool's error over MCP.

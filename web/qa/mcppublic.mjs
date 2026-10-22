@@ -4,12 +4,13 @@
 // elsewhere, a wrong code or verifier, no token, an owner-only route through it. Starts its own server on a copy of the
 // vault (the public listener needs this machine's data/config.json), so it WRITES only there. No browser.
 //   node web/qa/mcppublic.mjs <vault copy>
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, apiAt, freePort, qa, wait } from "./lib/qa.mjs"
+import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, done } = await qa(import.meta.url, { chrome: false })
 
@@ -18,7 +19,7 @@ const port = await freePort(), pubPort = await freePort()
 const PUB = `http://127.0.0.1:${pubPort}`, BASE = `http://127.0.0.1:${port}`
 const REDIRECT = "https://app.example.com/callback"
 fs.writeFileSync(path.join(local, "config.json"), JSON.stringify({ mcp: { public: { url: PUB, port: pubPort, redirectHosts: ["app.example.com"], approvalWait: 3 } } }))
-const proc = spawn(process.execPath, [path.join(ROOT, "server.ts")], { cwd: ROOT, stdio: "ignore",
+const proc = testServer({ stdio: "ignore",
   env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: local } })
 const stop = () => {
   if (proc.exitCode === null) proc.kill()

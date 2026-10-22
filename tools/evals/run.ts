@@ -1,13 +1,13 @@
 // Agent evals: can an agent use the vault through its tools? On a sandbox vault, never a real one.
 //   node tools/evals/run.ts [--live]   scripted MCP calls in-process; --live: `claude -p` on haiku (a few cents)
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { parse as parseYaml } from "yaml"
-import { type Any, check, section, skip, summary, waitFor } from "../test/lib.ts"
+import { type Any, check, section, skip, summary, testServer, waitFor } from "../test/lib.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..")
 const LIVE = process.argv.includes("--live")
@@ -161,7 +161,7 @@ async function live() {
   if (spawnSync("claude", ["--version"]).status !== 0) return skip("live", "no claude on PATH")
   // A sandbox of its own, served, its MCP tools through `vau mcp` as an agent runs them.
   const port = await freePort(), base = `http://127.0.0.1:${port}`
-  const server = spawn(process.execPath, [path.join(ROOT, "server.ts")], { cwd: ROOT, stdio: "ignore",
+  const server = testServer({ stdio: "ignore",
     env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, "live-local") } })
   try {
     if (!await waitFor(async () => (await fetch(`${base}/api/state`)).ok, 60_000)) return check("live: the sandbox server starts", false)

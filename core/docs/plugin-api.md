@@ -40,7 +40,8 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.patchSettings(changes, { nullRemoves)`: Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's value is checked against its manifest declaration (400).
 - `plugin.localKeys(file)`: The keys its manifest marks `local`: this machine's (core/trust.ts), never read from or written to the vault.
 - `plugin.dayLog(kind)`: A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly.
-- `plugin.desktop(name, ...args)`: Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): this server's when it's the desktop app's, else one on another machine serving this vault (`machines:desktop`); fails when there's none.
+- `plugin.desktop(name, ...args)`: Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): the one attached to this server, else an always-on machine's serving this vault (`machines:desktop`); fails when there's none.
+- `plugin.onDesktopEvent(fn)`: fn(name, data) hears what this server's desktop app tells it unasked (a live view's frames), till it's unloaded.
 - `plugin.localDir(make)`: Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make` is false, with vault.txt naming the vault.
 - `plugin.cachePath()`: .vaultite/cache/<id>.json in the vault (the vault's folder when run on its own, like the GitHub refresh).
 - `plugin.secrets()`: This machine's data/config.json (private URLs, keys). Never copy these into the vault.
@@ -190,7 +191,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `machines:self` (machines)
 - `machines:vault` (machines)
 - `machines:ids` (machines)
-- `machines:desktop` (machines): Ask the browser engine of another machine's desktop app with this vault open: what plugin.desktop does off one.
+- `machines:desktop` (machines): What plugin.desktop does on a server with no desktop app attached.
 - `machines:fs` (machines)
 - `mcp:<…>` (tool, app-host, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)

@@ -13,7 +13,7 @@ export type ConnectClaims = { sub: string; handle: string; role: string; exp: nu
 export const MCP_PATHS = /^\/(mcp|register|token|authorize(\/status)?|\.well-known\/oauth-[a-z-]+(\/mcp)?|upload\/.*|icon\.svg|icon\.png|favicon\.ico)\/?$/
 /** What runs code or reaches the machine (as hosted vaults' proxy refuses them), refused here too while ownerTools is off;
  *  the app's own owner checks (core/owner.ts) refuse them anyway. */
-const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|file\/open|vaultite-cloud\/export)(\/|$)/
+const OWNER_PATHS = /^\/api\/(terminals?|dispatch|screens|herdr|bundles|machines|schedule|vaults|file\/open|vaultite-cloud\/export|web-viewer\/(tabs|live))(\/|$)/
 const OWNER_OPS = /^(plugin|bundle|terminal|dispatch|screens|herdr|schedule|machines|vault-plugin|vaultite-cloud|settings)\.|^ui\.command$/
 const HOP = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate", "host", "forwarded", "x-real-ip"])
 const OURS = /^(x-vaultite-|tailscale-|x-forwarded-|cf-)/

@@ -30,7 +30,7 @@ const self = async () => String(await plugin.ask("machines:self", ""))
 const machinesNow = async () => (await plugin.ask<Machine[]>("machines", [])) ?? []
 
 /** The computer a machine entry runs on, by its name: one at a loopback address is a second server on a computer listed
- *  by its network address (the desktop app's beside the always-on one), so that one names it. */
+ *  by its network address, so that one names it. */
 function computerOf(m: Machine, all: Machine[]) {
   if (!LOOPBACK_URL.test(m.url)) return m.label
   return all.find((x) => x !== m && !x.via && x.host && x.host === m.host && !LOOPBACK_URL.test(x.url))?.label ?? m.label

@@ -12,6 +12,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, freePort, qa, until, wait } from "./lib/qa.mjs"
+import { testServer } from "../../tools/test/lib.ts"
 const { check, watch, done } = await qa(import.meta.url, { chrome: false })
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-onboarding-"))
@@ -37,7 +38,7 @@ const obsidianBefore = tree(OBSIDIAN)
 const OTHER = path.join(TMP, "other")
 spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", OTHER], { stdio: "ignore" })
 const otherPort = await freePort()
-const other = spawn(process.execPath, [path.join(ROOT, "server.ts")], { cwd: ROOT, stdio: "ignore",
+const other = testServer({ stdio: "ignore",
   env: { ...process.env, PORT: String(otherPort), HOST: "127.0.0.1", VAULTITE_VAULT: OTHER, VAULTITE_LOCAL: path.join(TMP, "other-local") } })
 const OTHER_URL = `http://127.0.0.1:${otherPort}`
 await until(async () => (await fetch(`${OTHER_URL}/api/state`)).ok, 60000)

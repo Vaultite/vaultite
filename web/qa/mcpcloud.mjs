@@ -5,7 +5,7 @@
 // the app for a request signed with the relay's key (pages, /api, its live WebSocket), owner tools refused. Own servers and
 // temp folders; WRITES only to the vault copy given.
 //   node web/qa/mcpcloud.mjs <vault copy>
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import http from "node:http"
@@ -13,6 +13,7 @@ import os from "node:os"
 import path from "node:path"
 import { WebSocketServer } from "ws"
 import { ROOT, apiAt, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
+import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-mcpcloud-"))
@@ -129,7 +130,7 @@ async function fakeTarget() {
 
 const servers = []
 function serve(local, port) {
-  const proc = spawn(process.execPath, [path.join(ROOT, "server.ts")], { cwd: ROOT, stdio: "ignore",
+  const proc = testServer({ stdio: "ignore",
     env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: local, VAULTITE_CLOUD: relay.url } })
   servers.push({ proc, port })
   return proc

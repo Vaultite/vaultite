@@ -24,6 +24,13 @@ module.enableCompileCache?.()
 // Vault files are read on libuv's threads (core/vault.ts, readSoon): one iCloud holds keeps its thread, so have many.
 process.env.UV_THREADPOOL_SIZE ??= "128"
 startServerLog() // the log's lines dated, its errors heard (plugin.onServerError: the Errors plugin)
+// A test's server (VAULTITE_PARENT_PID: tools/test/lib.ts testServer) ends with its test however that ended, from a thread
+// of its own: a main thread held (a read that never returns) can't keep it alive.
+if (Number(process.env.VAULTITE_PARENT_PID) > 1) {
+  const { Worker } = await import("node:worker_threads")
+  new Worker(`const pid = ${Number(process.env.VAULTITE_PARENT_PID)}
+setInterval(() => { if (process.ppid === pid) return; try { process.kill(pid, 0); return } catch {} process.kill(process.pid, "SIGKILL") }, 1000)`, { eval: true }).unref()
+}
 const { askedAt, span } = await import("./core/spans.ts")
 const starting = span("server.start", {}, askedAt - performance.timeOrigin)
 starting.mark("spawn")
@@ -39,6 +46,8 @@ const { tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
+const { claim, servingKey } = await import("./core/serving.ts")
+const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
 const DIST = path.join(ROOT, "web", "dist") // built web app (npm run build)
@@ -51,6 +60,11 @@ const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 // `ready`. A vault that can't be opened still ends the server.
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
 await vaultThere(VAULT_AT)
+const servedBy = claim(VAULT_AT, PORT, DESKTOP)
+if (servedBy) {
+  console.error(`vaultite: ${VAULT_AT} is served on this machine already (pid ${servedBy.pid}, port ${servedBy.port}): one server per vault`)
+  process.exit(1)
+}
 let app: App, vault: Vault, live: LiveType
 const ready = open(VAULT_AT, { timing: starting }).then((a) => {
   app = a
@@ -93,6 +107,8 @@ function watch(l: LiveType) {
 /** Serve another vault (Manage vaults, on the web): read it, then every request and socket goes to it. Open apps are
  *  disconnected from the old one's events and reload everything when they reconnect. */
 async function switchTo(p: string) {
+  const other = claim(p, PORT, DESKTOP)
+  if (other) throw new HTTPError(409, `${p} is served on this machine already (port ${other.port})`)
   await vault.lock(async () => {
     await app.vaultPlugins.close() // the old vault's own plugins stop (their onUnload runs)
     app.scheduler.stop()
@@ -104,8 +120,10 @@ async function switchTo(p: string) {
       LOADED.splice(0, LOADED.length, ...app.app)
       await app.syncPlugins()
       app.scheduler.start()
+      claim(vault.path, PORT, DESKTOP)
       throw e
     }
+    detach("the server now serves another vault")
     live.close()
     for (const plugin of LOADED) plugin.forget()
     app = next
@@ -117,10 +135,8 @@ async function switchTo(p: string) {
   console.log(`vaultite: now serving ${p}`)
 }
 
-// The desktop app's main process: files from outside the vault this window may open.
-process.on("message", (m: { type?: string; paths?: unknown }) => {
-  if (m && m.type === "allow") allow(m.paths)
-})
+// The desktop app's main process: files from outside the vault its window may open.
+onHostMessage("allow", (m) => allow(m.paths))
 // Going (the app gone, even if it crashed; a stop): the vault's own plugins stop first (onUnload), so what they run does.
 // (listening the whole time: signal-exit kills the process at once when it's the only listener left)
 let going = false
@@ -521,6 +537,14 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     const why = await foreign(req)
     if (why) return refuse(socket, 403, why)
     await ready
+    if (url.pathname === "/api/desktop/host") {
+      // (this machine's desktop app, never a page: no Origin, and the key only this user can read, core/serving.ts)
+      const key = Buffer.from(String(req.headers["x-vaultite-host-key"] ?? "")), mine = Buffer.from(servingKey())
+      if (overNetwork(req) || req.headers.origin !== undefined || !mine.length || key.length !== mine.length || !crypto.timingSafeEqual(key, mine)) {
+        return refuse(socket, 403, "only this machine's desktop app attaches")
+      }
+      return sockets.handleUpgrade(req, socket, head, (ws) => { ws.on("error", () => ws.terminate()); attach(ws) })
+    }
     if (url.pathname === "/api/events") {
       return sockets.handleUpgrade(req, socket, head, (ws) => {
         ws.on("error", () => ws.terminate())
@@ -557,3 +581,16 @@ server.listen(PORT, HOST, () => {
   starting.mark("listen")
   console.log(`vaultite on http://${HOST}:${PORT}  vault=${VAULT_AT}`)
 })
+
+// A service install following a branch updates itself (core/selfupdate.ts); the service manager starts it again.
+if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
+  const { startUpdater } = await import("./core/selfupdate.ts")
+  startUpdater({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
+    restart: () => process.kill(process.pid, "SIGTERM"),
+    // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
+    busy: async () => {
+      await ready
+      const r = await LOADED[0]?.desktop("agent:busy").catch(() => null) as { busy?: boolean; why?: string } | null
+      return r?.busy ? String(r.why || "the browser is busy") : null
+    } })
+}

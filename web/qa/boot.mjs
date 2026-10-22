@@ -10,12 +10,13 @@
 // .vaultite/ only once the user allowed it).
 // WRITES: only the throwaway vault it makes (none with <base url>, which should be a throwaway server too).
 //   node web/qa/boot.mjs [<base url>]
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { CHROME, ROOT, freePort, launch, qa, wait } from "./lib/qa.mjs"
 import { officialBundles, officialRepos } from "../../tools/test/official.ts"
+import { testServer } from "../../tools/test/lib.ts"
 const { check, fails } = await qa(import.meta.url, { chrome: false })
 if (!fs.existsSync(CHROME)) { console.log("boot: skipped (no Google Chrome here)"); process.exit(0) }
 if (!process.argv[2] && !fs.existsSync(path.join(ROOT, "web/dist/index.html"))) { console.error("boot: no web/dist (npm run build first)"); process.exit(1) }
@@ -25,7 +26,7 @@ if (!process.argv[2] && !fs.existsSync(path.join(ROOT, "web/dist/index.html"))) 
 const servers = []
 async function serve(vault, local) {
   const port = await freePort()
-  const server = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
+  const server = testServer({
     cwd: ROOT, stdio: ["ignore", "ignore", "pipe"],
     env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local, ...(github ? { VAULTITE_GITHUB: github, VAULTITE_BUNDLES: bundles } : {}) },
   })

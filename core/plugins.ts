@@ -18,8 +18,8 @@ import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { CONNECT_HEADER, fromInternet } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"
-import { desktopCall, inDesktop, NO_DESKTOP } from "./desktopapp.ts"
-export { inDesktop } from "./desktopapp.ts"
+import { desktopCall, inDesktop, noDesktop, onDesktopEvent } from "./desktopapp.ts"
+export { inDesktop, noDesktop } from "./desktopapp.ts"
 import { pinFile, pinKind, withPinFile } from "./pins.ts"
 import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
@@ -656,12 +656,17 @@ export class Plugin {
     return log
   }
 
-  /** Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): this server's when it's the
-   *  desktop app's, else one on another machine serving this vault (`machines:desktop`); fails when there's none. */
+  /** Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): the one attached to this
+   *  server, else an always-on machine's serving this vault (`machines:desktop`); fails when there's none. */
   desktop(name: string, ...args: unknown[]): Promise<unknown> {
     if (inDesktop()) return desktopCall(name, args)
     const there = this.service("machines:desktop")
-    return typeof there === "function" ? Promise.resolve().then(() => there(name, args)) : Promise.reject(new Error(NO_DESKTOP))
+    return typeof there === "function" ? Promise.resolve().then(() => there(name, args)) : Promise.reject(new Error(noDesktop()))
+  }
+
+  /** fn(name, data) hears what this server's desktop app tells it unasked (a live view's frames), till it's unloaded. */
+  onDesktopEvent(fn: (name: string, data: unknown) => void) {
+    this.cleanups.push(onDesktopEvent(fn))
   }
 
   /** Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make`

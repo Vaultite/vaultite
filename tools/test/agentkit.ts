@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { parse as parseYaml } from "yaml"
-import { type Any, check, sleep, waitFor } from "./lib.ts"
+import { type Any, check, sleep, testServer, waitFor } from "./lib.ts"
 
 export const REPO = path.resolve(import.meta.dirname, "..", "..")
 export const PORT = Number(process.env.VAULTITE_TEST_PORT || 8911)
@@ -45,7 +45,7 @@ const portOpen = () => fetch(`${BASE}/api/version`, { signal: AbortSignal.timeou
 
 export async function startServer() {
   const log = fs.openSync(path.join(TMP, "server.log"), "a")
-  server = spawn(process.execPath, [path.join(REPO, "server.ts")], { cwd: REPO, env: serverEnv, stdio: ["ignore", log, log], detached: true })
+  server = testServer({ env: serverEnv, stdio: ["ignore", log, log], detached: true })
   const up = await waitFor(async () => (await api("GET", "vault"))[0] === 200, 60000)
   if (!up) throw new Error(`the server didn't start on ${PORT}: ${fs.readFileSync(path.join(TMP, "server.log"), "utf8").slice(-2000)}`)
 }

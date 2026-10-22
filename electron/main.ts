@@ -1,4 +1,4 @@
-// Vaultite as a Mac app (Electron): each vault a window with its own server.ts child; electron/CLAUDE.md says how.
+// Vaultite as a Mac app (Electron): each vault a window with its server (its own, or one here: host.ts); see CLAUDE.md.
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
 import { app, autoUpdater, type BaseWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
@@ -9,7 +9,8 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
 import { revive, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
-import { serverCall } from "./browser/engine.ts"
+import { engineBusy, serverCall, setServerSink } from "./browser/engine.ts"
+import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
@@ -202,7 +203,8 @@ function portFor(v: Known, taken = false) {
 }
 class PortTaken extends Error {}
 
-type Win = { vault: Known; win: AppWindow; server: ChildProcess; port: number; ready: boolean; queue: string[]
+/** `server`: the one it started; `link`: the server it attached to instead, one already serving the vault here. */
+type Win = { vault: Known; win: AppWindow; server: ChildProcess | null; link: Link | null; port: number; ready: boolean; queue: string[]
   /** What its page last told the menu bar (`menu:sync`): its commands, pins and recent files. */
   menu?: MenuSnapshot }
 const wins = new Map<string, Win>() // vault path -> its window
@@ -231,6 +233,18 @@ function serverFor(v: Known) {
   return b
 }
 
+/** Its server's calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), and macOS's
+ *  permissions (app.permissions: core/coreops/permissions.ts). */
+const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions() : null)
+  : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
+
+/** Push an event to a vault's server unasked (core/desktopapp.ts onDesktopEvent): the one way the main process does. */
+function desktopEvent(w: Win, name: string, data: unknown) {
+  const m = { type: "desktop:event", name, data }
+  if (w.server?.connected) w.server.send(m); else w.link?.send(m)
+}
+setServerSink((win, name, data) => { for (const w of wins.values()) if (w.win === win) desktopEvent(w, name, data) })
+
 function startServer(v: Known, port: number): Promise<ChildProcess> {
   const logDir = app.getPath("logs")
   fs.mkdirSync(logDir, { recursive: true })
@@ -245,14 +259,10 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     },
   })
   child.stderr!.pipe(log)
-  // Its agents' calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), and macOS's
-  // permissions (app.permissions: core/coreops/permissions.ts).
-  child.on("message", (m: { type?: string; rid?: number; name?: unknown; args?: unknown }) => {
+  child.on("message", (m: Call) => {
     if (m?.type !== "desktop:call" || typeof m.rid !== "number") return
     const reply = (r: { value?: unknown; error?: string }) => { if (child.connected) child.send({ type: "desktop:reply", rid: m.rid, ...r }) }
-    Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions() : null)
-      : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
-      .then((value) => reply({ value }), (e) => reply({ error: e instanceof Error ? e.message : String(e) }))
+    answerCall(v, m).then((value) => reply({ value }), (e) => reply({ error: e instanceof Error ? e.message : String(e) }))
   })
   return new Promise((ok, fail) => {
     let out = ""
@@ -314,7 +324,9 @@ async function openVault(p: string, file?: string) {
   }
   if (!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${p} isn't a folder`)
   const v = remember(p)
-  const starting = serverFor(v)
+  // (served here already, by its service: the window attaches to that server)
+  const there = await servedHere(p).catch((e) => { failedBox(`Couldn't open ${nameOf(p)}`, e, { why: "Its server didn't start." }); throw e })
+  const starting = there ? null : serverFor(v)
   // The window (and its renderer process) is made while the server starts; its page loads once the server listens.
   const b = v.bounds
   const apps = appsOn(p)
@@ -331,15 +343,20 @@ async function openVault(p: string, file?: string) {
   })
   // (not shown where they sit by default while the page that hides them loads)
   if (MAC && v.lightsOff) setLights(win, null)
-  let server: ChildProcess, port: number
+  let server: ChildProcess | null = null, link: Link | null = null, port: number, loadFailed = false
+  const outside = () => (v.outside?.length ? [{ type: "allow", paths: v.outside }] : [])
   try {
-    [server, port] = await starting
+    if (there) {
+      port = there.port
+      // (a page that loaded while its server was down is Chromium's error page: loaded again once it's back)
+      link = await attach(p, there, (m) => answerCall(v, m), () => { if (loadFailed && !win.isDestroyed()) void win.loadURL(`http://127.0.0.1:${port}/`).catch(() => {}); return outside() })
+    } else [server, port] = await starting!
   } catch (e) {
     win.destroy()
     failedBox(`Couldn't open ${nameOf(p)}`, e, { why: "Its server didn't start.", log: serverLog(p) })
     throw e
   }
-  const w: Win = { vault: v, win, server, port, ready: false, queue: file ? [file] : [] }
+  const w: Win = { vault: v, win, server, link, port, ready: false, queue: file ? [file] : [] }
   wins.set(p, w)
   v.open = true
   save()
@@ -365,7 +382,8 @@ async function openVault(p: string, file?: string) {
   win.on("closed", () => {
     wins.delete(p)
     booting.delete(p)
-    w.server.kill()
+    w.server?.kill()
+    w.link?.stop()
     buildMenu()
   })
   // The server ends on its own only on failure: soon after start, a vault it can't open (say why, close the window);
@@ -403,10 +421,9 @@ async function openVault(p: string, file?: string) {
       }, (e) => { booting.delete(p); fail(String((e as Error).message ?? e)) })
     })
   }
-  let loadFailed = false
   win.webContents.on("did-start-loading", () => { loadFailed = false })
   win.webContents.on("did-fail-load", (_e, code, _d, _u, main) => { if (main && code !== -3) loadFailed = true })
-  watchServer(server)
+  if (server) watchServer(server)
   win.webContents.on("did-finish-load", () => win.webContents.setZoomFactor(zoom))
   // Its page's process killed or crashed: load the page again (files sent meanwhile wait for it, `app:ready`).
   revive(win.webContents, () => { w.ready = false }, crashedFor(win, nameOf(p)))
@@ -488,7 +505,8 @@ function allowIn(w: Win, abs: string) {
   const list = w.vault.outside ?? []
   w.vault.outside = [abs, ...list.filter((x) => x !== abs)]
   save()
-  w.server.send({ type: "allow", paths: [abs] })
+  const m = { type: "allow", paths: [abs] }
+  if (w.server) w.server.send(m); else w.link?.send(m)
 }
 
 function showManager() {
@@ -660,7 +678,7 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
     if (!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${p} isn't a folder`)
   }
   chosen = { path: p, made, added: !find(p) }
-  const [, port] = await serverFor(remember(p))
+  const port = (await servedHere(p))?.port ?? (await serverFor(remember(p)))[1]
   // Starter content only when the user asked for it (core/start.ts): opening a folder writes nothing outside .vaultite/.
   if (c.kind === "new" && c.starter) {
     const r = await fetch(`http://127.0.0.1:${port}/api/ops/vault.starter`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: "{}" })
@@ -1004,7 +1022,7 @@ handle("app:notify", (w, title: string, body: string) => new Promise<boolean>((r
 handle("apps:reopen", (w) => {
   if (!w) throw new Error("no vault here")
   const p = w.vault.path, server = w.server
-  const gone = new Promise<void>((ok) => { if (server.exitCode !== null || server.signalCode) ok(); else server.once("exit", () => ok()) })
+  const gone = new Promise<void>((ok) => { if (!server || server.exitCode !== null || server.signalCode) ok(); else server.once("exit", () => ok()) })
   w.win.once("closed", () => void gone.then(() => openVault(p)).catch((e) => console.error(e)))
   w.win.close()
 })
@@ -1077,15 +1095,31 @@ function updateLog() {
 function checkForUpdate(byHand: boolean) {
   if (!byHand && updates === "off") return
   if (RELEASE) return void checkRelease(byHand)
-  if (!updatable() || checking) return
+  if (!updatable() || checking || looking) return
+  looking = true
+  void attachedCommit().then((want) => { looking = false; buildUpdate(byHand, want) })
+}
+let looking = false
+
+/** The commit the servers its windows attached to run, when every open window is attached: the app updates to that
+ *  rather than the branch's newest, so the two are one version. "" otherwise. */
+async function attachedCommit() {
+  const all = [...wins.values()]
+  if (!all.length || all.some((w) => !w.link)) return ""
+  const ran = await Promise.all(all.map((w) => fetch(`http://127.0.0.1:${w.port}/api/ops/app.version`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: "{}", signal: AbortSignal.timeout(5000) }).then((r) => r.json()).then((j: { result?: { commit?: unknown } }) => String(j.result?.commit ?? ""), () => "")))
+  return ran.every((c) => /^[0-9a-f]{40}$/.test(c) && c === ran[0]) ? ran[0] : ""
+}
+
+function buildUpdate(byHand: boolean, want: string) {
   const log = updateLog()
-  fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${BUILD!.commit.slice(0, 7)})\n`)
+  fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${BUILD!.commit.slice(0, 7)}${want ? `, its server ${want.slice(0, 7)}` : ""})\n`)
   let out = ""
   if (byHand) setStatus("Checking for updates…")
   // On the timer it builds at a low priority: its minutes of compiling never compete with what the user is doing.
   const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-c", "utility"] : ["nice", "-n", "10"]
   const [cmd, ...args] = [...low, SHELL, "-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), BUILD!.repo, BUILD!.commit,
-    BRANCH, DEV ? "app:build:dev" : "app:build"]
+    BRANCH, DEV ? "app:build:dev" : "app:build", ...(want ? [want] : [])]
   const child = checking = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: true })
   buildMenu()
   const take = (b: Buffer) => {
@@ -1108,7 +1142,7 @@ function checkForUpdate(byHand: boolean) {
     if (code === 0 && commit === built()) {
       if (ready !== commit || byHand) { ready = commit; for (const w of wins.values()) tell(w) }
     } else if (byHand && code === 3) {
-      dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${BUILD!.commit.slice(0, 7)}, the newest on ${BRANCH}.` })
+      dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${BUILD!.commit.slice(0, 7)}, ${want ? "the version its server runs" : `the newest on ${BRANCH}`}.` })
     } else if (byHand && !quitting) {
       updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check."
         : /not building an update signed ad hoc/.test(out) ? "The new version couldn't be signed: the keychain may be locked. The next check tries again."
@@ -1145,12 +1179,16 @@ function tell(w: Win) {
 
 /** The pages that said a restart would lose nothing now (`app:update-safe`). */
 const safeNow = new WeakSet<WebContents>()
-/** Automatic: restart into the update once every window (pop-outs too) said so; another machine's can't say, so not
- *  while one is open. */
+let idleRetry: NodeJS.Timeout | undefined
+/** Automatic: restart into the update once every window (pop-outs too) said so and the browser is idle (agents done);
+ *  another machine's window can't say, so not while one is open. */
 function restartIfSafe() {
   if (updates !== "automatic" || !ready || remoteWins.size) return
   const pages = [...[...wins.values()].map((w) => w.win.webContents), ...popouts.keys()].filter((wc) => !wc.isDestroyed())
-  if (pages.length && pages.every((wc) => safeNow.has(wc))) restartToUpdate()
+  if (!pages.length || !pages.every((wc) => safeNow.has(wc))) return
+  if (!engineBusy()) return restartToUpdate()
+  // (nothing tells when the busy window ends, so look again a little later)
+  idleRetry ??= setTimeout(() => { idleRetry = undefined; restartIfSafe() }, 30_000)
 }
 
 /** Show (or, null, take down) what the update is doing in every window. */
@@ -1446,7 +1484,7 @@ else {
   for (const p of reopening()) {
     try { if (refreshSandbox(p)) { const v = find(p); if (v) delete v.port } } catch (e) { console.error(e) }
     const v = find(p)
-    if (v && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) serverFor(v).catch(() => {})
+    if (v && !attachable(p) && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) serverFor(v).catch(() => {})
   }
 }
 // Launched again (Linux: the app's icon, Open with, `vaultite <file>`): this one opens what it was given, else comes forward.
@@ -1465,7 +1503,7 @@ app.on("second-instance", (_e, argv, cwd) => {
 })
 
 app.on("before-quit", () => { quitting = true })
-app.on("will-quit", () => { for (const w of wins.values()) w.server.kill(); stopChecking(); stopApps() })
+app.on("will-quit", () => { for (const w of wins.values()) { w.server?.kill(); w.link?.stop() } stopChecking(); stopApps() })
 /** The launch's windows are open (or failed): from then on, closing the last window quits off a Mac. */
 let launched = false
 app.on("window-all-closed", () => {

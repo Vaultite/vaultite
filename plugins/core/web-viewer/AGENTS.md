@@ -59,9 +59,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   elsewhere) opens them in the system browser, as does every link with `openLinks: browser`.
 - Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,
   `browser_act`, `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
-  `browser_evaluate`, `browser_ask_user`, `browser_close`). The browser is the desktop app's: a server without one (the always-on one, which
-  the phone and apps on the internet reach) passes each call to a machine in Machines whose desktop app has this vault
-  open (its tab numbers, its Downloads), and says so when none has. `vau browser tabs` lists the tabs, whose each is
+  `browser_evaluate`, `browser_ask_user`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a
+  machine: the app attaches to the always-on one there); a server without one passes each call to an always-on machine
+  in Machines that has one (its tab numbers, its Downloads), never to a laptop's app, and says so when none has. `vau browser tabs` lists the tabs, whose each is
   (yours, another agent's, the user's) and what agents may do in it; `vau browser open <url> --task "<task>"` opens one
   for you beside the user's, in the Agents container (signed in to what the user signed in to there), in a tab group of
   yours, `<you>/<task>` ("Claude Code/flight search"; `--summary` says what for), answering its number; `vau browser close <tab>` closes one an

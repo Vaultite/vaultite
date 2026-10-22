@@ -6,6 +6,7 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { camel, flagOf, kebab, opDoc, type OpEntry, usage as opUsage } from "./ops.ts"
 import { EVENT_TYPES } from "./events.ts"
+import { servingOf } from "./serving.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
@@ -78,8 +79,8 @@ async function request(url: string, method: string, body?: string, extra: Record
 export const userData = (env: Record<string, string | undefined> = process.env) => env.VAULTITE_USER_DATA || (process.platform === "darwin"
   ? path.join(os.homedir(), "Library", "Application Support", "Vaultite") : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Vaultite"))
 
-/** Where a server may be when VAULTITE_URL doesn't say, in order: the desktop app's for the vault we're in (its
- *  vaults.json), the default port, then the app's other open vaults, most recent first. */
+/** Where a server may be when VAULTITE_URL doesn't say, in order: the one serving the vault we're in (core/serving.ts,
+ *  else the desktop app's vaults.json), the default port, then the app's other open vaults, most recent first. */
 export function servers(env: Record<string, string | undefined> = process.env, cwd = process.cwd()): string[] {
   const data = userData(env)
   type Known = { path: string; port: number; open?: boolean; last?: number }
@@ -91,10 +92,12 @@ export function servers(env: Record<string, string | undefined> = process.env, c
   const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
   const inside = (dir: string, root: string) => dir === root || dir.startsWith(root + path.sep)
   const here = [cwd, env.VAULTITE_VAULT].filter((x): x is string => !!x).map(real)
-  const url = (k: Known) => `http://127.0.0.1:${k.port}`
+  const url = (k: Known) => `http://127.0.0.1:${servingOf(k.path)?.port ?? k.port}`
+  const vaultOf = (dir: string): string | null => fs.existsSync(path.join(dir, ".vaultite")) ? dir : path.dirname(dir) === dir ? null : vaultOf(path.dirname(dir))
+  const served = here.map(vaultOf).flatMap((v) => { const s = v ? servingOf(v) : null; return s ? [`http://127.0.0.1:${s.port}`] : [] })
   const mine = known.filter((k) => here.some((h) => inside(h, real(k.path))))
   const others = known.filter((k) => !mine.includes(k) && k.open).sort((a, b) => (b.last ?? 0) - (a.last ?? 0))
-  return [...new Set([...mine.map(url), DEFAULT_URL, ...others.map(url)])]
+  return [...new Set([...served, ...mine.map(url), DEFAULT_URL, ...others.map(url)])]
 }
 
 /** stdin's text; `implicit`: read unasked (a body piped in), so "" rather than an error from a terminal. */
@@ -255,7 +258,7 @@ serve it: VAULTITE_VAULT=<folder> npm start. Never your own vault: it's made up.
 }, {
   name: "service",
   summary: "Keep this checkout's server running on this machine: a launchd agent on macOS, a systemd user unit on Linux.",
-  usage: "vau service install --vault <folder> [--port <n>] [--host <address>] [--print] | vau service uninstall",
+  usage: "vau service install --vault <folder> [--port <n>] [--host <address>] [--updates <branch>] [--print] | vau service uninstall",
   bool: ["print"],
   help: `install writes the job and starts it: on macOS ~/Library/LaunchAgents/app.vaultite.server.plist (at login,
 logs in ~/Library/Logs/vaultite.log), on Linux ~/.config/systemd/user/vaultite.service (at boot: it turns on linger,
@@ -265,7 +268,13 @@ again after moving the checkout or Node. --print shows the file without writing 
 with Tailscale Serve (\`tailscale serve --bg --https=8447 http://127.0.0.1:8793\`): SECURITY.md. uninstall stops it
 and removes the file.
 
+--updates <branch> has the server follow that branch of origin: every 10 minutes, a newer commit CI passed on is
+merged (fast-forward only, the checkout clean), installed and built, and the server restarts when its own code changed;
+never while an agent is at work in the desktop app's browser. A failure keeps the version before (vau errors says why).
+vau version shows what runs and what the updates are doing.
+
   vau service install --vault ~/Vault
+  vau service install --vault ~/Vault --updates main
   vau service install --vault ~/Vault --print
   vau service uninstall`,
   run: async (a, c) => {
@@ -275,7 +284,10 @@ and removes the file.
     const vault = flag(a, "vault") ?? c.env.VAULTITE_VAULT
     const port = flag(a, "port") !== undefined ? Number(flag(a, "port")) : undefined
     if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new CliError("--port is a port number")
-    const o = { root: ROOT, node: S.stableNode(process.execPath, c.env.PATH), vault: vault ? local(vault) : "", port, host: flag(a, "host") }
+    const updates = flag(a, "updates")
+    if (updates !== undefined && !/^[\w][\w./-]*$/.test(updates)) throw new CliError("--updates is a branch's name: --updates main")
+    if (updates && !fs.existsSync(path.join(ROOT, ".git"))) throw new CliError(`--updates needs a git checkout, and ${ROOT} isn't one`)
+    const o = { root: ROOT, node: S.stableNode(process.execPath, c.env.PATH), vault: vault ? local(vault) : "", port, host: flag(a, "host"), updates }
     if (what === "uninstall") {
       const r = S.uninstallService(process.platform, o)
       return done({ file: r.file, failed: r.failed }, [`Removed ${r.file}.`, ...r.failed].join("\n"))
@@ -291,7 +303,7 @@ and removes the file.
     const r = S.installService(process.platform, o)
     const url = `http://${o.host ?? "127.0.0.1"}:${port ?? 8793}`
     return done({ file: r.file, log: r.log, url, failed: r.failed },
-      [`Wrote ${r.file} and started it: ${url} serves ${o.vault}. Logs: ${r.log}`, ...r.failed.map((f) => `Couldn't: ${f}`)].join("\n"))
+      [`Wrote ${r.file} and started it: ${url} serves ${o.vault}${updates ? `, following ${updates}` : ""}. Logs: ${r.log}`, ...r.failed.map((f) => `Couldn't: ${f}`)].join("\n"))
   },
 }, {
   // (streams, so it's a command rather than an op: it's the op events.wait, asked again with each answer's cursor)
@@ -474,7 +486,7 @@ When you finish something the user should know about, \`vau notify <text>\` tell
 Options: --json (machine-readable output), --count (how many a list answer holds), --paths (its files, one a line),
 --copy (the output on the clipboard too), --url <server>. \`-\` as a value reads stdin. \`vau\` alone in a terminal
 is a prompt (Tab completes, with history).
-Environment: VAULTITE_URL (else the desktop app's server for the vault you're in, then ${DEFAULT_URL}, then the
+Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the
 app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal).
 Settings and data both go through the server (settings key by key, the rest of each file kept); the app follows
 every change live. File formats: vau docs.`

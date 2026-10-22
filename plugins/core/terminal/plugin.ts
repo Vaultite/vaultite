@@ -219,12 +219,13 @@ function vauBin(): string {
   return dir
 }
 
-/** Where a terminal is opened from: through Tailscale Serve, and which app (the iPhone app sets a cookie: core/phoneapp.ts). */
+/** Where a terminal is opened from: through Tailscale Serve, and which app (the iPhone app and an attached desktop app set
+ *  a cookie: core/phoneapp.ts, electron/host.ts). */
 type From = { remote: boolean; client: "desktop" | "iphone" | "web" }
 const LOCAL: From = { remote: false, client: process.env.VAULTITE_DESKTOP === "1" ? "desktop" : "web" }
 function fromReq(req: IncomingMessage): From {
-  const iphone = /(?:^|;\s*)vaultite_client=iphone(?:;|$)/.test(req.headers.cookie ?? "")
-  return { remote: typeof req.headers["tailscale-user-login"] === "string", client: iphone ? "iphone" : LOCAL.client }
+  const app = /(?:^|;\s*)vaultite_client=(iphone|desktop)(?:;|$)/.exec(req.headers.cookie ?? "")?.[1] as From["client"] | undefined
+  return { remote: typeof req.headers["tailscale-user-login"] === "string", client: app ?? LOCAL.client }
 }
 
 /** Programs a terminal finds right after vau, before the user's own (the server's VAULTITE_AGENT_BIN): QA's stand-in

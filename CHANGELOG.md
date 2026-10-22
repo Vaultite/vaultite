@@ -6,6 +6,20 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
+  desktop app on a Mac whose always-on service serves the vault attaches its window and browser to that server rather
+  than starting its own. Agents' tabs outlast the server restarting. Other machines' agents use an always-on machine's
+  browser; a laptop's app answers only its own agents.
+- **Updates wait for agents**: the desktop app restarts into an update only once its browser is idle (no agent call
+  under way, no page waiting on you, no agent at work in the last 10 minutes).
+- **A server that updates itself**: `vau service install --updates main` has a service install follow a branch, taking
+  each commit CI passed on (fast-forward only, a clean checkout, never while agents use the browser), building it and
+  restarting when its own code changed; a failure keeps the version before and shows in `vau errors`. `vau version`
+  says what runs and what the updates are doing.
+- **Browser tabs from your phone**: in the web app (another Mac, a phone), Show browser tabs lists the desktop app's web
+  pages, whose each is (an agent's and its task, or yours), its container, paused or waiting for you. Open one to watch it
+  live and tap, type and scroll in it, stop or resume its agents, see what they did there, and say Done to what an agent
+  asked (signing in, a check): the Inbox item a browser ask makes opens it.
 - **Sites, tidied**: each container is a card in its colour and leads with who you're signed in as, now on Google
   (YouTube and its country sites in the same row, other Google accounts beside it), X, Reddit, GitHub and Hacker News
   too, with their pictures; a site whose login cookie is there shows signed in even when it won't say who, and keeps

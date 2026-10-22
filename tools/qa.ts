@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
-import { freePort, record, sleep } from "./test/lib.ts"
+import { freePort, record, sleep, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
@@ -77,7 +77,7 @@ const AGENT_BIN = standIns()
 type Server = { base: string, port: number, proc: ReturnType<typeof spawn> }
 async function serve(vault: string, local: string, env: Record<string, string>): Promise<Server> {
   const port = await freePort()
-  const proc = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
+  const proc = testServer({
     cwd: ROOT, stdio: "ignore", env: { ...process.env, VAULTITE_HOSTS: "home-mac.example.ts.net", ...env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local },
   })
   const base = `http://127.0.0.1:${port}/`

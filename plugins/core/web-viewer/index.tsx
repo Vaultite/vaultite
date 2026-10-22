@@ -11,6 +11,7 @@ import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView 
 import { ExtensionsView } from "./Extensions"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { ReplaysView } from "./Replays"
+import { liveTitle, LiveView } from "./LiveView"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
@@ -224,6 +225,9 @@ export default definePlugin({
       },
     },
     "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <ReplaysView /> },
+    // (from the web app: the desktop app's tabs, one watched live by its number)
+    "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(Number(arg)) || "Browser tab" : "Browser tabs"), argState: true, full: true,
+      render: ({ arg, setArg }) => <LiveView arg={arg} setArg={setArg} /> },
     // (named web-pages from when it listed open pages too: kept, as sidebars and tabs name it)
     "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
     "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <ExtensionsView openPage={openPage} /> },
@@ -241,6 +245,7 @@ export default definePlugin({
   },
   commands: [
     { id: "web:open", name: "Open web page…", desktop: true, when: () => !!webPages, run: () => askAddress() },
+    { id: "web:live", name: "Show browser tabs", when: () => !webPages, icon: MonitorPlay, run: () => openView("web-live", { newTab: !isViewOpen("view:web-live") }) },
     { id: "web:agent-runs", name: "Show agents in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
       run: () => openView("agent-runs", { newTab: !isViewOpen("view:agent-runs") }) },
     { id: "web:default-browser", name: "Make Vaultite the default browser", desktop: true, when: () => !!webPages?.engine, icon: Globe,

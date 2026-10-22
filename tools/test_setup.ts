@@ -61,6 +61,8 @@ check("service: a systemd user unit on Linux, paths with spaces quoted, linger o
   lin.text.includes('ExecStart="/usr/bin/node" "/srv/vault ite/server.ts"') && lin.text.includes("WorkingDirectory=/srv/vault ite\n") && !lin.text.includes("homebrew") && lin.text.includes('Environment="VAULTITE_VAULT=/home/alice/My Vault"') &&
   lin.text.includes("WantedBy=default.target") && lin.start.some((c) => c[0] === "loginctl" && c[1] === "enable-linger"), lin)
 check("service: % is escaped for systemd", SV.servicePlan("linux", { ...so, vault: "/v/100%" }).text.includes("VAULTITE_VAULT=/v/100%%"))
+check("service: --updates follows a branch, in the job's env (this machine's choice)", SV.servicePlan("darwin", { ...so, updates: "main" }).text.includes("<key>VAULTITE_UPDATES</key><string>main</string>") &&
+  SV.servicePlan("linux", { ...so, updates: "main" }).text.includes('Environment="VAULTITE_UPDATES=main"') && !mac.text.includes("VAULTITE_UPDATES"))
 check("service: not on Windows", (() => { try { SV.servicePlan("win32", so); return false } catch { return true } })())
 const realNode = fs.realpathSync(process.execPath), binDir = path.join(tmp, "bin")
 fs.mkdirSync(binDir, { recursive: true })

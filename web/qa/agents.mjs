@@ -6,8 +6,8 @@
 // sandbox (no network, 30 s), a page saves as a PDF, and the cockpit shows the tab live (Pause) and finds past runs.
 // Then as Claude Code over MCP (vau mcp, plugins/core/mcp/cli.ts): its tabs grouped by task and marked its own, a
 // form filled, a file uploaded and one downloaded, the page searched, a picture, an expression in its own world, the
-// user asked for help (Done in the bar), its tab closed; and through a server with no desktop app (core/desktopapp.ts,
-// plugins/core/machines/plugin.ts) that passes the calls on to this one, or says none is open.
+// user asked for help (Done in the bar), its tab closed; and a server on another machine with no desktop app
+// (plugins/core/machines/plugin.ts) isn't answered by this app's, a laptop's (web/qa/attach.mjs: an always-on one's is).
 // WRITES: the throwaway vault only.
 //   node web/qa/agents.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -17,6 +17,7 @@ import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-agents-"))
@@ -254,10 +255,11 @@ check("MCP: closing the user's tab is refused", notMine.isError && /the user's/.
 const closed = await mcp.tool("browser_close", { tab: t2 })
 check("MCP: its own tab closes", !closed.isError && !(await op("tabs")).some((t) => t.tab === t2), text(closed))
 
-// ---------- through a server with no desktop app (the always-on one): passed on to this one ----------
+// ---------- a server on another machine (its own TMPDIR) with no desktop app: a laptop's app doesn't answer it ----------
 const PLAIN = 20000 + Math.floor(Math.random() * 20000)
-const plain = spawn(process.execPath, [path.join(ROOT, "server.ts")], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local-plain"), HOST: "127.0.0.1", PORT: String(PLAIN), VAULTITE_DESKTOP: "" } })
+fs.mkdirSync(path.join(TMP, "run-plain"))
+const plain = testServer({ stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local-plain"), HOST: "127.0.0.1", PORT: String(PLAIN), VAULTITE_DESKTOP: "", TMPDIR: path.join(TMP, "run-plain") } })
 let plainOut = ""
 plain.stdout.on("data", (d) => { plainOut += d })
 plain.stderr.on("data", (d) => { plainOut += d })
@@ -272,14 +274,10 @@ const http2 = async (name, args) => {
   return r.result
 }
 const none = await http2("browser_tabs", {})
-check("no desktop app: says none has the vault open", none?.isError && /no machine has one open with this vault/.test(text(none)), text(none))
+check("no desktop app: says none is attached", none?.isError && /none is attached to this server/.test(text(none)), text(none))
 list([{ id: "plain", label: "Plain", url: `http://127.0.0.1:${PLAIN}` }, { id: "desk", label: "Desk", url: origin }])
 const relayed = await http2("browser_tabs", {})
-check("a desktop app listed in Machines: its tabs", !relayed?.isError && text(relayed).includes(`${t1}  [act, agents]`), text(relayed))
-const relayRead = await http2("browser_read", { tab: t1, find: "Bob" })
-check("… and reading one", /Hello Bob/.test(text(relayRead)), text(relayRead))
-const relayShot = await http2("browser_screenshot", { tab: t1 })
-check("… and its picture", relayShot?.content?.some((c) => c.type === "image"), relayShot?.content?.map((c) => c.type))
+check("a laptop's desktop app listed in Machines: answers only its own agents", relayed?.isError && /Desk \(a laptop's app/.test(text(relayed)), text(relayed))
 plain.kill()
 mcp.close()
 

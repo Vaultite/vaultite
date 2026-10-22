@@ -1,7 +1,8 @@
 # Notes for `electron/`
 
 - Each vault is a window with its own `server.ts` (forked with `ELECTRON_RUN_AS_NODE`, a port kept per vault so each
-  keeps its localStorage), dying with its window. `vaults.json` is this Mac's, never a vault's.
+  keeps its localStorage), dying with its window, unless a server here already serves it (its service): then the window
+  attaches to that one and answers its browser calls (host.ts). `vaults.json` is this Mac's, never a vault's.
 - Files from outside a vault (Open with, a drop) are read or written only when the main process sent their path
   (`core/outside.ts`).
 - Signing (`sign.cjs`): with a real identity macOS keeps the app's privacy grants across builds; signed ad hoc, each

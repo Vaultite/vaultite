@@ -4,11 +4,12 @@
 // server on a fresh sandbox vault (or uses <base url>, then the log isn't checked).
 // WRITES: only the throwaway vault (with <base url>: that server's error record, which it clears at the end).
 //   node web/qa/errors.mjs [<base url>] [--shots <dir>]
-import { spawn, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { CHROME, ROOT, freePort, launch, qa, wait } from "./lib/qa.mjs"
+import { testServer } from "../../tools/test/lib.ts"
 const { check, done } = await qa(import.meta.url, { chrome: false })
 if (!fs.existsSync(CHROME)) { console.log("errors: skipped (no Google Chrome here)"); process.exit(0) }
 const args = process.argv.slice(2)
@@ -20,7 +21,7 @@ if (!base) {
   const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", path.join(tmp, "vault")], { encoding: "utf8" })
   if (made.status !== 0) { console.error(`errors: couldn't make the sandbox\n${made.stderr || made.stdout}`); process.exit(1) }
   port = await freePort()
-  server = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
+  server = testServer({
     cwd: ROOT, stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: path.join(tmp, "vault"), VAULTITE_LOCAL: path.join(tmp, "local") },
   })

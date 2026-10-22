@@ -1,13 +1,12 @@
 // A file iCloud is slow to give never holds the server: FIFOs stand in for them (a read waits until written), and the
 // server still answers and reads the rest of the vault. `node tools/test_stall.ts` (npm test)
-import { execFileSync, spawn } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { check, freePort, results, sleep, summary } from "./test/lib.ts"
+import { check, freePort, results, sleep, summary, testServer } from "./test/lib.ts"
 const began = Date.now()
 
-const ROOT = path.dirname(import.meta.dirname)
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-stall-test-"))
 const VAULT = path.join(tmp, "vault")
 const put = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); fs.writeFileSync(path.join(VAULT, rel), text) }
@@ -24,13 +23,13 @@ fifo("Attachments/photo.png")
 fifo(".trash/Old.md")
 
 const port = await freePort()
-const server = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
+const server = testServer({
   env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, "local"), PORT: String(port), HOST: "127.0.0.1", VAULTITE_DESKTOP: "" },
   stdio: ["ignore", "pipe", "pipe"],
 })
 let log = ""
-server.stdout.on("data", (d) => { log += d })
-server.stderr.on("data", (d) => { log += d })
+server.stdout!.on("data", (d) => { log += d })
+server.stderr!.on("data", (d) => { log += d })
 const base = `http://127.0.0.1:${port}/api/`
 // A request gives up after 8 s: a held server is a failure, not a hung test.
 async function get(p: string, wait = 8000) {
@@ -81,6 +80,23 @@ try {
   check("and opens", slow.status === 200 && slow.body.text.includes("Arrived."), slow)
 } finally {
   server.kill("SIGKILL")
+}
+
+// A test's server never outlives its test (six on FIFO vaults like this one once ran for days): killed as the test
+// exits, and ending itself when the test died unseen (SIGKILL), whatever holds its main thread.
+const runner = (end: string) => `import { testServer } from ${JSON.stringify(new URL("./test/lib.ts", import.meta.url).href)}
+const s = testServer({ env: { ...process.env, VAULTITE_VAULT: ${JSON.stringify(VAULT)}, VAULTITE_LOCAL: ${JSON.stringify(path.join(tmp, "local2"))}, PORT: process.argv[1], HOST: "127.0.0.1", VAULTITE_DESKTOP: "" }, stdio: "ignore" })
+console.log(s.pid)
+for (let i = 0; i < 200; i++) { try { if ((await fetch("http://127.0.0.1:" + process.argv[1] + "/api/loading")).ok) break } catch {} await new Promise((r) => setTimeout(r, 100)) }
+${end}`
+const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
+for (const [how, end] of [["exits", "process.exit(0)"], ["is killed", "process.kill(process.pid, 'SIGKILL')"]]) {
+  const p = await freePort()
+  const pid = Number(spawnSync(process.execPath, ["--input-type=module", "-e", runner(end), String(p)], { encoding: "utf8", timeout: 30_000 }).stdout.trim())
+  let gone = false
+  for (let i = 0; i < 50 && !(gone = !alive(pid)); i++) await sleep(100)
+  check(`a test's server ends when its test ${how}`, pid > 0 && gone, pid)
+  if (!gone) try { process.kill(pid, "SIGKILL") } catch { /* gone */ }
 }
 if (results.some((r) => r.status === "FAIL")) console.log(log.slice(-3000))
 fs.rmSync(tmp, { recursive: true, force: true })
