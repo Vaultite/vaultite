@@ -146,8 +146,8 @@ function encodingFor(req: http.IncomingMessage | undefined, type: string, size: 
 }
 
 /** An answer. Over the network (the phone) a 200 GET gets an ETag (a reload is a 304) and text is brotli'd; the app on
- *  this Mac gets answers as they are, since bytes cost nothing there. */
-function send(res: http.ServerResponse, status: number, body: string | Buffer, type: string, headers: Record<string, string> = {}) {
+ *  this Mac gets answers as they are, since bytes cost nothing there. Resolves once it's sent. */
+async function send(res: http.ServerResponse, status: number, body: string | Buffer, type: string, headers: Record<string, string> = {}) {
   const req = res.req as http.IncomingMessage | undefined
   let data = typeof body === "string" ? Buffer.from(body) : body
   const out: Record<string, string> = { "Content-Type": type, ...headers }
@@ -161,12 +161,30 @@ function send(res: http.ServerResponse, status: number, body: string | Buffer, t
   }
   const enc = encodingFor(req, type, data.length)
   if (enc) {
-    data = enc === "br" ? brotli(data, 1) : zlib.gzipSync(data, { level: 1 })
+    data = data.length < BIG ? (enc === "br" ? brotli(data, 1) : zlib.gzipSync(data, { level: 1 })) : await packBig(data, enc, out.ETag)
     out["Content-Encoding"] = enc
     out.Vary = "Accept-Encoding"
   }
   res.writeHead(status, { ...out, "Content-Length": String(data.length) })
   res.end(data)
+}
+
+/** A big answer (the whole state, the ops catalog) is compressed off the event loop and better (a quarter smaller than
+ *  quality 1 for the phone's first load), and kept by its ETag, so other windows and reloads asking for it reuse it. */
+const BIG = 64 << 10
+const bigPacked = new Map<string, Promise<Buffer>>()
+function packBig(data: Buffer, enc: "br" | "gzip", etag?: string) {
+  const key = etag ? `${etag}\0${enc}` : "", hit = key && bigPacked.get(key)
+  if (hit) { bigPacked.delete(key); bigPacked.set(key, hit); return hit }
+  const out = enc === "br"
+    ? compress.br(data, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: data.length } })
+    : compress.gzip(data, { level: 6 })
+  if (key) {
+    bigPacked.set(key, out)
+    out.catch(() => bigPacked.delete(key))
+    if (bigPacked.size > 16) bigPacked.delete(bigPacked.keys().next().value!)
+  }
+  return out
 }
 
 const json = (res: http.ServerResponse, obj: unknown, status = 200) =>
@@ -383,7 +401,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   const out = await app.run(method, parts, query, body, req)
   if (out.status >= 400) failures.set(req, String((out.body as { error?: unknown } | null)?.error ?? ""))
   if (out.body instanceof Text) return send(res, out.status, out.body.text, out.body.type, out.body.headers)
-  send(res, out.status, jsonOf(out.body), "application/json")
+  return send(res, out.status, jsonOf(out.body), "application/json")
 }
 
 /** The web app's files compressed once per build: "<path>\0<encoding>" -> [mtime and size, bytes]. Emptied if many
