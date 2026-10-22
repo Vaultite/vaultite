@@ -686,6 +686,31 @@ export class Vault {
     this.heardCount++
   }
 
+  /** What the watcher heard at once (null: it couldn't say). Markdown files already indexed are read again on their own
+   *  while the index is vouched for; anything else (new, gone, not Markdown, still downloading) walks. */
+  async hear(rels: string[] | null): Promise<boolean> {
+    const told = rels?.filter((r) => !NOT_SETTINGS.has(r.split("/").slice(0, 2).join("/")) && !this.indexed(r))
+    if (told && !told.length) return false
+    if (!told || this.next || !this.vouched() || told.some((r) => !this.entries.has(r))) {
+      for (const r of rels ?? [null]) this.heard(r)
+      return this.synced({ trusting: true })
+    }
+    this.heardCount++
+    return this.lock(async () => {
+      if (!this.vouched()) return this.sync()
+      const stats = told.map((r) => fs.statSync(this.abs(r), { bigint: true, throwIfNoEntry: false }))
+      if (stats.some((st) => !st?.isFile())) return this.sync()
+      const { texts, late } = await this.readAll(told)
+      if (late.length || texts.size < told.length) return this.sync()
+      told.forEach((rel, i) => this.read(rel, statFrom(stats[i]!), texts.get(rel)))
+      this.version++
+      for (const fn of this.hooks) {
+        try { fn(this) } catch (e) { console.error(e) }
+      }
+      return true
+    })
+  }
+
   /** Whether a file is in the index as it is on disk now. */
   private indexed(rel: string) {
     const was = this.entries.get(rel)?.stat ?? this.others.get(rel)

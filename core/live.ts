@@ -127,9 +127,8 @@ export class Live {
     this.pending.clear()
     this.all = false
     // (the folders iCloud touched beside a write left out here too, or each of the server's own saves walks the vault)
-    for (const p of paths ?? [null]) this.vault.heard(p)
     try {
-      await this.vault.synced({ trusting: true }) // (walks unless all it heard was already indexed: Vault.heard)
+      await this.vault.hear(paths) // (notes edited on disk read again on their own, else a walk)
     } catch (e) {
       console.error(e)
     }

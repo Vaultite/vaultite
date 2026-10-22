@@ -54,6 +54,9 @@ export default async ($: VaultTest) => {
     walks = 0
     await vault.synced({ trusting: true })
     check("live: then the app's reads trust the watcher again", walks === 0, walks)
+    write("Notes/Live four.md", "Edited on disk.\n")
+    check("live: a note edited on disk is read again", await wait(() => !!vault.entries.get("Notes/Live four.md")?.body.includes("Edited")))
+    check("live: on its own, without a walk", walks === 0 && vault.vouched(), walks)
     vault.heard("Notes/Live five.md")
     check("live: a change not in the index isn't vouched for", !vault.vouched())
     await vault.synced({ trusting: true })

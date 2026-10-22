@@ -49,7 +49,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Status bar: after the window or a sidebar is resized it no longer reaches under the left sidebar or keeps empty room
   at its end (it held the width it had at the last launch).
 - Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing
-  changed on disk, and a save re-reads only the file saved (on a 3,000-file vault, 6 to 20 times less work per request).
+  changed on disk, and a save, or a note an agent edits, re-reads only that file (on a 3,000-file vault, 6 to 20 times
+  less work per request, and an edit on disk 0.1 ms instead of 64).
 - Lighter over the network: an open app asks the server about 6 times less (a change on disk no longer has every window
   read every setting and live card again), the phone back from sleep reads only what changed meanwhile, its first load
   comes a quarter smaller, and agents' hooks and `vau` commands answer without waiting on the vault.
