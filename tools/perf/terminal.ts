@@ -315,8 +315,10 @@ try {
 
 /** The page's side: keystroke to echo drawn, and frames while a shell prints fast, in Playwright's Chromium. */
 async function browserSide() {
-  const { launch } = await import("../../web/qa/lib/qa.mjs")
-  const browser = await launch({ args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--ignore-gpu-blocklist"] })
+  // (Playwright's own Chromium, after this machine's QA slot: tools/qa_slots.ts)
+  const { hold } = await import("../qa_slots.ts"), { chromium } = await import("playwright-core")
+  await hold()
+  const browser = await chromium.launch({ args: ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--ignore-gpu-blocklist"] })
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
     await page.addInitScript(() => {
@@ -328,7 +330,7 @@ async function browserSide() {
           super(url, p)
           if (/\/api\/terminal\//.test(String(url))) this.addEventListener("message", () => (w.__msgs as number[]).push(performance.now()))
         }
-      } as typeof WebSocket
+      } as unknown as typeof window.WebSocket
     })
     const id = newId()
     await page.goto(`${BASE}/#view/terminal%2F${id}`)
@@ -341,7 +343,7 @@ async function browserSide() {
     const keys: number[] = []
     for (let i = 0; i < 40; i++) {
       const ch = String.fromCharCode(97 + (i % 26))
-      const p = page.evaluate((ch) => new Promise<number>((resolve) => {
+      const p = page.evaluate((ch: string) => new Promise<number>((resolve) => {
         let t0 = 0
         addEventListener("keydown", () => { t0 = performance.now() }, { capture: true, once: true })
         const el = document.querySelector("[data-terminal]") as unknown as { terminalText: () => string }
@@ -378,7 +380,7 @@ async function browserSide() {
     await page.keyboard.type("yes | head -c 2000000\n")
     const r = await frames
     const busy = r.gaps.slice(0, Math.max(1, r.gaps.length - 31))
-    return { echoDrawn: stats(keys), frame: stats(busy), longTasks: r.long.length, longTaskMs: Math.round(r.long.reduce((a, b) => a + b, 0)), outputMs: Math.round(r.ms) }
+    return { echoDrawn: stats(keys), frame: stats(busy), longTasks: r.long.length, longTaskMs: Math.round(r.long.reduce((a: number, b: number) => a + b, 0)), outputMs: Math.round(r.ms) }
   } finally { await browser.close() }
 }
 
