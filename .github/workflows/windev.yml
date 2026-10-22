@@ -1,0 +1,35 @@
+# Temporary, while Windows support is built: each push to a windows* branch runs .github/windev.sh on Windows (its
+# windev-out/ folder kept as an artifact). Removed before landing.
+name: windev
+on:
+  push:
+    branches: ["windows**"]
+concurrency:
+  group: windev-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  run:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2025]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm config set script-shell "$(cygpath -w "$(command -v bash)")"
+      - run: npm ci
+      - run: bash .github/windev.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windev-${{ matrix.runner }}
+          path: windev-out/
+          if-no-files-found: ignore
