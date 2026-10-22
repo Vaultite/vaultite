@@ -94,6 +94,7 @@ export const sayWindowState = () => { if (document.hasFocus()) { said = 0; sayAc
 // ---------- the connection ----------
 let ws: WebSocket | null = null
 let seen: string | null = null // the server's "<boot>:<version>" last heard
+let heard: string | null = null // where the changes it told ended (`at`): back, it tells only those since
 let last = 0                  // when it last said anything (pings come every 25 s)
 let tries = 0
 let retry: ReturnType<typeof setTimeout> | null = null
@@ -108,25 +109,30 @@ function connect() {
   if (retry) { clearTimeout(retry); retry = null }
   if (ws) return
   const url = new URL("api/events", location.href)
+  if (heard) url.searchParams.set("at", heard)
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
   const s = new WebSocket(url)
   ws = s
   last = Date.now()
   s.onmessage = (e) => {
     last = Date.now()
-    let m: { type?: string; v?: string; web?: string; paths?: Paths; from?: string; to?: string | null } & Partial<UiAction>
+    let m: { type?: string; v?: string; at?: string; web?: string; paths?: Paths; from?: string; to?: string | null } & Partial<UiAction>
     try { m = JSON.parse(String(e.data)) } catch { return }
     if (m.type === "hello") {
       tries = 0
       if (poll) { clearInterval(poll); poll = null }
       if (down !== null && Date.now() - down > LOST) notify("Reconnected", { id: "live" })
       down = null
-      if (seen !== null && m.v !== seen) emit(null) // missed something while away
+      // What changed while away: as the server says (paths since `heard`; null: anything), else anything if its version moved
+      if (heard && m.paths !== undefined) { if (m.paths === null || m.paths.length) emit(m.paths) }
+      else if (seen !== null && m.v !== seen) emit(null)
       seen = m.v ?? null
+      heard = m.at ?? null
       if (m.web && BUILD && m.web !== BUILD)
         notify("A new version of Vaultite is ready", { id: "update", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
     } else if (m.type === "change") {
       seen = m.v ?? seen
+      heard = m.at ?? heard
       emit(m.paths ?? null)
     } else if (m.type === "moved" && m.from) {
       for (const fn of [...moveSubs]) { try { fn(m.from, m.to ?? null) } catch (e) { console.error(e) } }

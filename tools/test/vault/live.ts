@@ -88,6 +88,25 @@ export default async ($: VaultTest) => {
     check("live: a folder told alone is", JSON.stringify(got[0]?.paths) === '["Notes"]', got)
     own.close()
   }
+  {
+    // A window back after a while says where its changes ended: it hears only what changed since.
+    const own = new Live(vault), got: Any[] = []
+    own.listen((c) => got.push(c))
+    const hello = (at?: string) => {
+      const ws: Any = { readyState: 1, OPEN: 1, on() {}, close() {}, sent: [] as Any[], send(t: string) { ws.sent.push(JSON.parse(t)) } }
+      own.client(ws, at)
+      return ws.sent[0]
+    }
+    const at = hello().at
+    own.add("Notes/Away one.md")
+    await wait(() => got.length === 1)
+    own.add("Notes/Away two.md")
+    await wait(() => got.length === 2)
+    check("live: back, a window hears what changed while it was away", JSON.stringify(hello(at).paths) === '["Notes/Away one.md","Notes/Away two.md"]', hello(at))
+    check("live: and nothing when nothing did", JSON.stringify(hello(hello().at).paths) === "[]")
+    check("live: from another server (restarted), anything may have", hello("other:0").paths === null && !("paths" in hello()))
+    own.close()
+  }
   check("live: .git, .DS_Store, iCloud placeholders and temp files are ignored",
     ignored(".git/index") && ignored("Notes/.DS_Store") && ignored("Notes/.a.md.icloud") && ignored("Notes/a.md.tmp-1-2") &&
     ignored(".vaultite/artifacts/x.html.json") && !ignored(".vaultite/cache/github.json") && !ignored("Notes/a.md"))

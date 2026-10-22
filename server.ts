@@ -523,7 +523,7 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     if (url.pathname === "/api/events") {
       return sockets.handleUpgrade(req, socket, head, (ws) => {
         ws.on("error", () => ws.terminate())
-        live.client(ws)
+        live.client(ws, url.searchParams.get("at") ?? undefined)
       })
     }
     const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)

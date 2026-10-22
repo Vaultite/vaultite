@@ -9,7 +9,7 @@ import type { WebSocket } from "ws"
 import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 
-const QUIET = 100, MAX = 500, PING = 25_000, UI_ANSWER_MS = 3000, ASK_MS = 10_000
+const QUIET = 100, MAX = 500, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask), only through ops, never
  *  POST /api/ui: the dev ones are the owner's. Seconds an ask may wait: a person gets longer than a window. */
 const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
@@ -49,6 +49,8 @@ export class Live {
   private closed = false
   private sent = "" // the v of the last event
   private told: Set<string> | null = new Set() // the paths told at that v (null: all of them)
+  private recent: (string[] | null)[] = [] // the last changes told, for windows coming back (since)
+  private dropped = 0 // how many were told before them
 
   private unmove: () => void
   private unarrive: () => void
@@ -157,7 +159,9 @@ export class Live {
     else for (const p of paths) this.told?.add(p)
     const change = { paths, v: this.v }
     for (const fn of this.listeners) fn(change)
-    this.send({ type: "change", ...change })
+    this.recent.push(paths)
+    if (this.recent.length > RECENT) { this.recent.shift(); this.dropped++ }
+    this.send({ type: "change", ...change, at: this.at })
     eventsOf(this.vault).emit("file.changed", { paths })
   }
 
@@ -167,8 +171,8 @@ export class Live {
     return () => { this.listeners.delete(fn) }
   }
 
-  /** A web app connected to /api/events. */
-  client(ws: WebSocket) {
+  /** A web app connected to /api/events; `at`, where its changes ended when it was here before. */
+  client(ws: WebSocket, at?: string) {
     this.clients.add(ws)
     const drop = () => {
       this.clients.delete(ws); this.active.delete(ws); this.workspaces.delete(ws)
@@ -187,7 +191,26 @@ export class Live {
         else if (m.type === "ui-done" && typeof m.rid === "string") this.answers.get(m.rid)?.(m)
       } catch { /* not ours */ }
     })
-    ws.send(JSON.stringify({ type: "hello", v: this.v, web: Live.web() ?? undefined }))
+    const missed = at === undefined ? undefined : this.since(at)
+    ws.send(JSON.stringify({ type: "hello", v: this.v, at: this.at, web: Live.web() ?? undefined, ...(missed !== undefined ? { paths: missed } : {}) }))
+  }
+
+  /** Where the changes told so far end ("<boot>:<n>"): a window back after a while says it, and hears only what changed
+   *  since instead of reading everything again. */
+  get at() {
+    return `${this.boot}:${this.dropped + this.recent.length}`
+  }
+
+  /** The paths changed since `at` (null: anything may have, as when it's from before this server or too long ago). */
+  private since(at: string): string[] | null {
+    const [boot, n] = at.split(":"), from = Number(n) - this.dropped
+    if (boot !== this.boot || !Number.isInteger(from) || from < 0 || from > this.recent.length) return null
+    const out = new Set<string>()
+    for (const paths of this.recent.slice(from)) {
+      if (!paths) return null
+      for (const p of paths) out.add(p)
+    }
+    return out.size > 500 ? null : [...out].sort()
   }
 
   private send(msg: object) {
