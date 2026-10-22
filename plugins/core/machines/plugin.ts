@@ -70,7 +70,9 @@ function vaultId(): string {
 
 async function self() {
   return { instance: INSTANCE, host: HOST, platform: process.platform, version: APP_VERSION, api: API_VERSION,
-    commit: await commit, plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop() }
+    commit: await commit, plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop(),
+    // (the agent machines listed, as connected here: whoever asks has those that dial in here without asking again)
+    dialed: Object.fromEntries(listed().filter((m) => m.via).map((m) => [m.id, dial.summary(m.id)])) }
 }
 
 
@@ -84,41 +86,54 @@ const isOwn = (url: string, own: string) => LOOPBACK.test(url) || (!!own && url 
 
 const dial = dialIn(plugin, listed, selfId)
 
-async function probe(m: DialEntry, own: string): Promise<Machine> {
-  if (m.via) {
-    const via = listed().find((e) => e.id === m.via && !e.via)
-    if (via && (isOwn(via.url, own) || (await probe(via, own)).self)) return { ...m, ...dial.summary(m.id) }
-    try {
-      if (!via) throw new Error("missing relay")
-      const r = await fetch(`${via.url}/api/machines/${m.id}/info`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
-      if (!r.ok) throw new Error("relay offline")
-      return { ...m, ...(await r.json()), self: false, dial: true, readOnly: true, plugins: [] }
-    } catch { return { ...m, online: false, self: false, dial: true, readOnly: true, plugins: [], error: "relay unavailable" } }
-  }
+type Probed = { machine: Machine; dialed?: Record<string, Item> }
+
+/** A machine with its own address: this server, else its /api/machines/self. */
+async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
   if (isOwn(m.url, own)) {
     const s = await self()
-    return { ...m, online: true, self: true, host: s.host, platform: s.platform, version: s.version, commit: s.commit || undefined, plugins: s.plugins, vault: s.vault || undefined,
-      desktop: s.desktop }
+    return { machine: { ...m, online: true, self: true, host: s.host, platform: s.platform, version: s.version, commit: s.commit || undefined, plugins: s.plugins,
+      vault: s.vault || undefined, desktop: s.desktop } }
   }
   try {
     const r = await fetch(`${m.url}/api/machines/self`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
-    if (!r.ok) return { ...m, online: false, self: false, error: `answered ${r.status}` }
+    if (!r.ok) return { machine: { ...m, online: false, self: false, error: `answered ${r.status}` } }
     const s = await r.json() as Item
     if (s.instance === INSTANCE) knownOwn.add(m.url)
-    return { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
+    return { machine: { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
       commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined,
-      desktop: s.desktop === true }
+      desktop: s.desktop === true }, dialed: s.dialed && typeof s.dialed === "object" ? s.dialed as Record<string, Item> : undefined }
   } catch (e) {
-    return { ...m, online: false, self: false, error: (e as Error).name === "TimeoutError" ? "no answer" : "unreachable" }
+    return { machine: { ...m, online: false, self: false, error: (e as Error).name === "TimeoutError" ? "no answer" : "unreachable" } }
   }
+}
+
+/** A machine as listed: one with an address asked (`direct`: once per listing, which its agent machines share), one
+ *  dialing in as its relay says (in its answer to that ask; a relay from before says it at /info). */
+async function probe(m: DialEntry, own: string, direct = (e: DialEntry) => probeDirect(e, own)): Promise<Machine> {
+  if (!m.via) return (await direct(m)).machine
+  const offline = { ...m, online: false, self: false, dial: true, readOnly: true, plugins: [], error: "relay unavailable" }
+  const via = listed().find((e) => e.id === m.via && !e.via)
+  if (!via) return offline
+  const relay = await direct(via)
+  if (relay.machine.self) return { ...m, ...dial.summary(m.id) }
+  if (!relay.machine.online) return offline
+  const said = relay.dialed?.[m.id]
+  if (said) return { ...m, ...said, online: said.online === true, self: false, dial: true, readOnly: true, plugins: [] }
+  try {
+    const r = await fetch(`${via.url}/api/machines/${m.id}/info`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
+    if (!r.ok) throw new Error("relay offline")
+    return { ...m, ...(await r.json()), self: false, dial: true, readOnly: true, plugins: [] }
+  } catch { return offline }
 }
 
 async function machines(): Promise<Machine[]> {
   return plugin.memoStale(20, async function machines(key: string) {
     void key
     vaultId() // (made before another machine is asked, so it's there to compare)
-    const own = await ownUrl()
-    return Promise.all(listed().map((m) => probe(m, own)))
+    const own = await ownUrl(), asked = new Map<string, Promise<Probed>>()
+    const direct = (e: DialEntry) => { let p = asked.get(e.id); if (!p) asked.set(e.id, p = probeDirect(e, own)); return p }
+    return Promise.all(listed().map((m) => probe(m, own, direct)))
   }, JSON.stringify(listed()))
 }
 

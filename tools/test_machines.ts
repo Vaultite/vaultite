@@ -126,10 +126,11 @@ try {
   machinePlugin.forget()
   assert.ok((await api("GET", "machines")).body.some((m: { id: string; online: boolean }) => m.id === "sandbox" && !m.online))
   const seen: string[] = []
+  let says = false // a relay that says its agent machines in /self (else one from before: /info)
   const relay = http.createServer((req, res) => {
     seen.push(`${req.method} ${req.url}`)
     res.setHeader("Content-Type", "application/json")
-    if (req.url === "/api/machines/self") return res.end(JSON.stringify({ instance: "another-server", host: "other", plugins: [] }))
+    if (req.url === "/api/machines/self") return res.end(JSON.stringify({ instance: "another-server", host: "other", plugins: [], ...(says ? { dialed: { away: { online: true, platform: "linux" } } } : {}) }))
     if (req.url === "/api/machines/away/info") return res.end(JSON.stringify({ online: true, platform: "linux" }))
     if (req.url?.startsWith("/api/machines/away/fs/list")) return res.end(JSON.stringify({ path: "/workspace", entries: [{ name: "report.txt", dir: false }] }))
     if (req.url === "/api/ops/machines.revoke") return res.end(JSON.stringify({ id: "away", revoked: true }))
@@ -144,6 +145,11 @@ try {
     machinePlugin.forget()
     const ms = (await api("GET", "machines")).body
     assert.ok(ms.some((m: { id: string; online: boolean; dial: boolean }) => m.id === "away" && m.online && m.dial))
+    assert.deepEqual(seen.splice(0), ["GET /api/machines/self", "GET /api/machines/away/info"], "a relay is asked once per listing")
+    says = true
+    machinePlugin.forget()
+    assert.ok((await api("GET", "machines")).body.some((m: { id: string; online: boolean }) => m.id === "away" && m.online))
+    assert.deepEqual(seen.splice(0), ["GET /api/machines/self"], "a relay saying its agent machines isn't asked for each")
     const forwarded = await api("GET", "machines/away/fs/list?path=/workspace")
     assert.equal(forwarded.status, 200)
     assert.equal(forwarded.body.entries[0].name, "report.txt")
