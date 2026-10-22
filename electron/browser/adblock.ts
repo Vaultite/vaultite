@@ -43,11 +43,19 @@ const parseUser = (c: Choice) => {
   c.user = lib && c.rules ? lib.ElectronBlocker.parse(c.rules, { loadNetworkFilters: false, loadCosmeticFilters: true, loadGenericCosmeticsFilters: true, loadExtendedSelectors: true }) : null
 }
 
-/** The site Shields are set for: example.co.uk for www.example.co.uk, the host for an address or localhost. */
+/** The site Shields are set for: example.co.uk for www.example.co.uk, the host for an address or localhost. Asked for
+ *  every request's page: kept for the last addresses. */
+const sites = new Map<string, string>()
 function siteOf(url: string) {
   if (!/^https?:/i.test(url) || !lib) return ""
-  const r = lib.Request.fromRawDetails({ url })
-  return r.domain || r.hostname
+  let site = sites.get(url)
+  if (site === undefined) {
+    const r = lib.Request.fromRawDetails({ url })
+    site = r.domain || r.hostname
+    if (sites.size >= 200) sites.clear()
+    sites.set(url, site)
+  }
+  return site
 }
 const upFor = (c: Choice, top: string) => c.on && !!engine && !c.down.has(siteOf(top))
 
@@ -78,14 +86,17 @@ function tellCount(p: EnginePage) {
   }, 250))
 }
 
-/** Where a request comes from: the page its frame is in, and the document that asked (a frame's parent, for a frame). */
+/** Where a request comes from: the page its frame is in and that page's address. */
 function originOf(d: OnBeforeRequestListenerDetails | OnHeadersReceivedListenerDetails) {
   const page = d.webContentsId ? pages.get(d.webContentsId) : undefined
   const wc = page?.wc ?? (d.webContentsId ? webContents.fromId(d.webContentsId) : undefined)
-  const top = wc && !wc.isDestroyed() ? wc.getURL() : d.referrer
+  return { page, top: wc && !wc.isDestroyed() ? wc.getURL() : d.referrer }
+}
+/** The document that asked (a frame's parent, for a frame): asked only once Shields are up there (a frame costs). */
+function sourceOf(d: OnBeforeRequestListenerDetails | OnHeadersReceivedListenerDetails, top: string) {
   let frame = ""
   try { frame = (d.resourceType === "subFrame" ? d.frame?.parent?.url : d.frame?.url) ?? "" } catch { /* the frame went */ }
-  return { page, top, source: /^https?:/i.test(frame) ? frame : top || d.referrer }
+  return /^https?:/i.test(frame) ? frame : top || d.referrer
 }
 
 function requestOf(d: OnBeforeRequestListenerDetails | OnHeadersReceivedListenerDetails, source: string) {
@@ -99,7 +110,7 @@ function beforeRequest(d: OnBeforeRequestListenerDetails) {
   if (!e || d.resourceType === "mainFrame" || !/^(https?|wss?):/i.test(d.url)) return
   const o = originOf(d)
   if (!upFor(choiceOf(o.page?.win), o.top)) return
-  const { match, redirect } = e.match(requestOf(d, o.source))
+  const { match, redirect } = e.match(requestOf(d, sourceOf(d, o.top)))
   if (!match && !redirect) return
   if (o.page) {
     const wcId = o.page.wc.id
@@ -116,7 +127,7 @@ function headersReceived(d: OnHeadersReceivedListenerDetails) {
   const o = originOf(d)
   const top = d.resourceType === "mainFrame" ? d.url : o.top
   if (!upFor(choiceOf(o.page?.win), top)) return
-  const csp = e.getCSPDirectives(requestOf(d, d.resourceType === "mainFrame" ? d.url : o.source))
+  const csp = e.getCSPDirectives(requestOf(d, d.resourceType === "mainFrame" ? d.url : sourceOf(d, o.top)))
   if (!csp) return
   const headers = { ...d.responseHeaders }
   const policies = csp.split(";").map((x) => x.trim())
@@ -126,7 +137,8 @@ function headersReceived(d: OnHeadersReceivedListenerDetails) {
 
 // (the first hooks: index.ts imports Shields before extensions, so what they block no extension sees)
 onRequest("onBeforeRequest", beforeRequest)
-onRequest("onHeadersReceived", (d) => headersReceived(d as OnHeadersReceivedListenerDetails))
+// (only documents' headers: a filter's $csp is a page's or a frame's)
+onRequest("onHeadersReceived", (d) => headersReceived(d as OnHeadersReceivedListenerDetails), undefined, ["mainFrame", "subFrame"])
 const sessions = new Set<Session>()
 eachSession((s) => {
   sessions.add(s)

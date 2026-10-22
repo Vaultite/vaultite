@@ -55,41 +55,51 @@ export type RequestDetails = OnBeforeRequestListenerDetails & { requestHeaders?:
   statusLine?: string; statusCode?: number; redirectURL?: string; error?: string; fromCache?: boolean; ip?: string }
 export type RequestAnswer = { cancel?: boolean; redirectURL?: string; requestHeaders?: Record<string, string | string[]>
   responseHeaders?: Record<string, string | string[]>; statusLine?: string }
-type RequestHook = { event: RequestEvent; fn: (d: RequestDetails, s: Session) => RequestAnswer | void | Promise<RequestAnswer | void>; on: (s: Session) => boolean }
+type ResourceType = NonNullable<Electron.WebRequestFilter["types"]>[number]
+type RequestHook = { event: RequestEvent; fn: (d: RequestDetails, s: Session) => RequestAnswer | void | Promise<RequestAnswer | void>; on: (s: Session) => boolean
+  types?: ResourceType[] }
 
 const EVENTS: RequestEvent[] = ["onBeforeRequest", "onBeforeSendHeaders", "onSendHeaders", "onHeadersReceived", "onResponseStarted", "onBeforeRedirect", "onCompleted", "onErrorOccurred"]
 const ANSWERED = new Set<RequestEvent>(["onBeforeRequest", "onBeforeSendHeaders", "onHeadersReceived"])
 const hooks: RequestHook[] = []
-/** Each session's hooks by event, as `on` said when last asked: Electron listens only for the events in it. */
+/** Each session's hooks by event, as `on` said, and the resource types they want ("": all): Electron listens only for
+ *  those (each request a listener sees is a round trip through the main process, most of a page's cost here). */
 const wired = new WeakMap<Session, Map<RequestEvent, RequestHook[]>>()
+const wiredTypes = new WeakMap<Session, Map<RequestEvent, string>>()
 const wiredSessions = new Set<Session>()
 
-/** `fn` sees each request's `event` in the sessions `on` picks (all, unset), after the hooks added before it. An answer that
- *  cancels or redirects is the request's, and later hooks don't see it; headers it sets are what later hooks see. */
-export function onRequest(event: RequestEvent, fn: RequestHook["fn"], on: RequestHook["on"] = () => true) {
-  hooks.push({ event, fn, on })
+/** `fn` sees each request's `event` (of `types`, if given) in the sessions `on` picks, after earlier hooks. An answer that
+ *  cancels or redirects is the request's, later hooks don't see it; headers it sets are what later hooks see. */
+export function onRequest(event: RequestEvent, fn: RequestHook["fn"], on: RequestHook["on"] = () => true, types?: ResourceType[]) {
+  hooks.push({ event, fn, on, types })
   for (const s of wiredSessions) wire(s)
 }
 /** What a hook's `on` says for `s` changed: Electron's listeners follow, so an event no hook wants costs nothing. */
 export const requestsChanged = (s: Session) => wire(s)
 
 function wire(s: Session) {
-  const had = wired.get(s), now = new Map<RequestEvent, RequestHook[]>()
+  const had = wiredTypes.get(s), now = new Map<RequestEvent, RequestHook[]>(), types = new Map<RequestEvent, string>()
   for (const h of hooks) if (h.on(s)) now.set(h.event, [...(now.get(h.event) ?? []), h])
+  for (const [ev, list] of now) types.set(ev, list.some((h) => !h.types) ? "" : [...new Set(list.flatMap((h) => h.types!))].sort().join(" "))
   wired.set(s, now)
+  wiredTypes.set(s, types)
   wiredSessions.add(s)
   const wr = s.webRequest as unknown as Record<RequestEvent, (...a: unknown[]) => void>
   for (const ev of EVENTS) {
-    if (!!had?.has(ev) === now.has(ev)) continue
+    if (had?.get(ev) === types.get(ev)) continue
+    const filter = { urls: ["<all_urls>"], ...(types.get(ev) ? { types: types.get(ev)!.split(" ") } : {}) }
     if (!now.has(ev)) wr[ev](null)
-    else if (ANSWERED.has(ev)) wr[ev]({ urls: ["<all_urls>"] }, (d: RequestDetails, done: (r: RequestAnswer) => void) => answer(wired.get(s)?.get(ev) ?? [], d, s, done))
-    else wr[ev]({ urls: ["<all_urls>"] }, (d: RequestDetails) => { for (const h of wired.get(s)?.get(ev) ?? []) try { void h.fn(d, s) } catch (e) { console.error("vaultite: a browser feature's request hook failed:", e) } })
+    else if (ANSWERED.has(ev)) wr[ev](filter, (d: RequestDetails, done: (r: RequestAnswer) => void) => answer(wired.get(s)?.get(ev) ?? [], d, s, done))
+    else wr[ev](filter, (d: RequestDetails) => { for (const h of wired.get(s)?.get(ev) ?? []) if (wants(h, d)) try { void h.fn(d, s) } catch (e) { console.error("vaultite: a browser feature's request hook failed:", e) } })
   }
 }
+/** Whether a hook wants this request: its types (another hook's may have brought it here). */
+const wants = (h: RequestHook, d: RequestDetails) => !h.types || h.types.includes(d.resourceType as ResourceType)
 
 /** The hooks in turn, synchronously while they answer synchronously (Shields does, for every request). */
-function answer(list: RequestHook[], d: RequestDetails, s: Session, done: (r: RequestAnswer) => void) {
+function answer(all: RequestHook[], d: RequestDetails, s: Session, done: (r: RequestAnswer) => void) {
   const out: RequestAnswer = {}
+  const list = all.some((h) => h.types) ? all.filter((h) => wants(h, d)) : all
   let i = 0
   const take = (r: RequestAnswer | void) => {
     if (!r) return false
