@@ -18,8 +18,10 @@ import { barShown, barShows, type BarItem, moveBarItem, showAllBarItems, showBar
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { cn } from "@/lib/utils"
 
-/** Past this, a file's counts and plugins' items wait for typing to pause, and the counts are made in a worker: a 16 MB
- *  note's take seconds. */
+/** Past this, a file's counts and plugins' items wait for typing to pause: a long note's (100 KB) words and tokens took
+ *  ~20 ms a keystroke. */
+const LONG = 32 * 1024
+/** Past this, the counts are made in a worker: a 16 MB note's take seconds. */
 const BIG = 1 << 20
 /** The bar and its tray stop short of the left sidebar (and the right one, which the bar sits against). */
 const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px) - 12px)"
@@ -359,13 +361,13 @@ function useBarDrops(barRef: RefObject<HTMLElement | null>, itemsRef: RefObject<
   return { barHit: useDropHit<Gap>("status:bar"), trayHit: useDropHit<Gap>("status:more") }
 }
 
-/** The file as it is, a moment after each keystroke; a big one's once typing pauses (another file's at once). */
+/** The file as it is, a moment after each keystroke; a long one's once typing pauses (another file's at once). */
 function useSettled(s: typeof status_) {
   const deferred = useDeferredValue(s)
-  const big = (s?.body.length ?? 0) > BIG
+  const long = (s?.body.length ?? 0) > LONG
   const [settled, setSettled] = useState(s)
-  useEffect(() => { if (!big) return; const t = setTimeout(() => setSettled(s), 700); return () => clearTimeout(t) }, [s, big])
-  return big && settled?.path === s?.path ? settled : deferred
+  useEffect(() => { if (!long) return; const t = setTimeout(() => setSettled(s), 500); return () => clearTimeout(t) }, [s, long])
+  return long && settled?.path === s?.path ? settled : deferred
 }
 
 let worker: Worker | null = null, asked = 0
