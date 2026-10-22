@@ -12,7 +12,7 @@ const mute = (s: Sound, on: boolean) => void webPages?.go(s.id, on ? "mute" : "u
 const here = (s: Sound) => !!s.tab && panesOf(getTabLayout().root).some((g) => g.tabs.some((t) => t.id === s.tab))
 
 function rowOf(s: Sound): MenuItem {
-  const muted = s.sound === "muted", name = nameOf(s)
+  const muted = s.muted, name = nameOf(s)
   const toggle: MenuItem = { label: muted ? "Unmute tab" : "Mute tab", icon: muted ? Volume2 : VolumeX, run: () => mute(s, !muted) }
   if (!here(s)) return { ...toggle, label: `${muted ? "Unmute" : "Mute"} ${name}`, hint: "Another workspace" }
   const show: MenuItem = { label: "Show tab", run: () => selectTab(s.tab) }
@@ -20,9 +20,9 @@ function rowOf(s: Sound): MenuItem {
 }
 
 export function Playing() {
-  const list = sounds.use().filter((s) => s.audible)
+  const list = sounds.use().filter((s) => s.playing)
   if (!list.length) return null
-  const loud = list.filter((s) => s.sound === "playing")
+  const loud = list.filter((s) => !s.muted)
   const name = list.length === 1 ? nameOf(list[0]) : `${list.length} tabs`
   const items = (): MenuItem[] => [
     ...list.map(rowOf),

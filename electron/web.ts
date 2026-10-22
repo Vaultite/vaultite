@@ -5,14 +5,14 @@ import { app, BaseWindow, BrowserWindow, clipboard, dialog, type Input, Menu, ty
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { writeAtomic } from "./setup.ts"
-import { claim, discardable, letGo, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned } from "./webpages.ts"
+import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 
 export type WebRect = { x: number; y: number; width: number; height: number }
-export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; audible?: boolean; muted?: boolean
+export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
   player?: boolean }
 type Page = Owned<BrowserWindow> & { view: WebContentsView; error?: string
   /** Where its tab last asked it to be (null: hidden): where it goes back to from full screen. */
@@ -32,7 +32,9 @@ type Page = Owned<BrowserWindow> & { view: WebContentsView; error?: string
   /** The icon addresses it last told (page-favicon-updated), so the same list isn't fetched again. */
   icons?: string
   /** It had the keyboard when it was last hidden. */
-  hadFocus?: boolean }
+  hadFocus?: boolean
+  /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
+  sound: Playback; hush?: NodeJS.Timeout }
 /** A site a profile keeps cookies for, who's signed in there when we know how to ask, and `other` when no page of it
  *  was opened (its cookies came with other sites' pages: trackers). */
 export type WebSite = { site: string; account?: string; other?: boolean }
@@ -173,11 +175,12 @@ function freeName(dir: string, name: string) {
 
 const tell = (win: BrowserWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
+const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.sound, p.view.webContents.isCurrentlyAudible(), Date.now())
 function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
   return { url: wc.getURL() || p.target, title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
-    ...(wc.isCurrentlyAudible() ? { audible: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}) }
+    ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
@@ -246,7 +249,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   win.contentView.addChildView(view)
-  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null }
+  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback() }
   pages.set(p.id, p)
   const wc = view.webContents
   pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible(), tab: () => p.tab,
@@ -282,10 +285,19 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   wc.on("did-start-loading", () => { p.error = undefined; changed() })
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument && shows(d.url)) p.target = d.url })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to) => { noteVisit(profile, to); if (siteOf(hostOfUrl(to)) === CLOUD.site) cloudOpened.add(profile); changed() })
+  wc.on("did-navigate", (_e, to) => { p.sound = playback(); noteVisit(profile, to); if (siteOf(hostOfUrl(to)) === CLOUD.site) cloudOpened.add(profile); changed() })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
   wc.on("page-title-updated", changed)
-  wc.on("audio-state-changed", changed)
+  // (its sound changed: told now, and again when a quiet stretch ends it)
+  const sounded = () => {
+    clearTimeout(p.hush)
+    const ends = quietEnds(p.sound)
+    if (ends !== undefined) p.hush = setTimeout(() => { if (!wc.isDestroyed()) changed() }, ends - Date.now()).unref()
+    changed()
+  }
+  wc.on("audio-state-changed", (e) => { hear(p.sound, e.audible, Date.now()); sounded() })
+  wc.on("media-started-playing", () => { media(p.sound, true, wc.isCurrentlyAudible()); sounded() })
+  wc.on("media-paused", () => { media(p.sound, false, wc.isCurrentlyAudible()); sounded() })
   wc.on("did-fail-load", (_e, code, desc, _u, main) => {
     if (!main || code === -3) return // -3: stopped, or another load took over
     p.error = desc || `error ${code}`
@@ -404,6 +416,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
 
 function end(p: Page) {
   pages.delete(p.id)
+  clearTimeout(p.hush)
   fromPlayer(p)
   pagesChanged(p.win)
   if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view)
@@ -413,7 +426,7 @@ function end(p: Page) {
 /** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
  *  one in a player is on screen, whatever its tab. */
 async function trim() {
-  const keep = (p: Page) => !!p.player || (!p.view.webContents.isDestroyed() && p.view.webContents.isCurrentlyAudible())
+  const keep = (p: Page) => !!p.player || playingNow(p)
   if (!discardable(pages.values(), keep).length || !(await shortOfMemory())) return
   for (const p of discardable(pages.values(), keep)) end(p)
 }

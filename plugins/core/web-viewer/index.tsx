@@ -146,8 +146,8 @@ function Background() {
     const web = webPages
     if (!web?.list) return
     let timer = 0
-    const read = () => void web.list!().then((list) => setSounds(list.flatMap((p) => p.muted || p.audible
-      ? [{ sound: p.muted ? "muted" as const : "playing" as const, audible: !!p.audible, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : [])), () => {})
+    const read = () => void web.list!().then((list) => setSounds(list.flatMap((p) => p.muted || p.playing
+      ? [{ playing: !!p.playing, muted: !!p.muted, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : [])), () => {})
     const off = web.on((m) => { if (m.type === "state" || m.type === "pages") { clearTimeout(timer); timer = window.setTimeout(read, 250) } })
     return () => { off(); clearTimeout(timer) }
   }, [])
@@ -214,13 +214,7 @@ export default definePlugin({
     web: {
       icon: Globe,
       title: (arg) => { const { url } = splitArg(arg); return url ? titleOf(url) || extensionPageName(url) || hostOf(url) || "Web page" : "New tab" },
-      // (playing sound or muted: a speaker in place of the site's icon, as a browser's tab shows it)
-      iconFor: (arg, tab) => {
-        const sound = soundOf(arg, tab)?.sound
-        if (sound) return sound === "muted" ? VolumeX : Volume2
-        const { container, url } = splitArg(arg), c = containerById(container)
-        return siteIcon(url, c ? colorOf(c) : undefined)
-      },
+      iconFor: (arg) => { const { container, url } = splitArg(arg), c = containerById(container); return siteIcon(url, c ? colorOf(c) : undefined) },
       // (with appearance `tabTint`: the active tab in its container's colour, lightly)
       tabTint: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
       full: true,
@@ -233,18 +227,18 @@ export default definePlugin({
       render: ({ arg, focused, setArg }) => (
         <Suspense fallback={null}><WebPage key={splitArg(arg).container ?? ""} arg={arg} focused={focused} setArg={setArg} /></Suspense>
       ),
-      // (a click on the speaker mutes the tab, as a browser's does)
-      iconAction: (arg, tab) => {
+      // (playing sound or muted: a speaker beside the site's icon, a click on it mutes the tab, as a browser's does)
+      tabMark: (arg, tab) => {
         const s = soundOf(arg, tab)
-        return s ? { label: s.sound === "muted" ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.sound === "muted" ? "unmute" : "mute") } : null
+        return s ? { icon: s.muted ? VolumeX : Volume2, label: s.muted ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.muted ? "unmute" : "mute") } : null
       },
       // (a tab's page is its own, whatever else shows the address)
       onTabClose: (_arg, tab) => void webPages?.close(tab),
       tabMenu: (arg) => {
         const { url } = splitArg(arg), sound = soundOf(arg)
         return [
-          ...(sound ? [{ label: sound.sound === "muted" ? "Unmute tab" : "Mute tab", icon: sound.sound === "muted" ? Volume2 : VolumeX,
-            run: () => void webPages?.go(sound.id, sound.sound === "muted" ? "unmute" : "mute") }] : []),
+          ...(sound ? [{ label: sound.muted ? "Unmute tab" : "Mute tab", icon: sound.muted ? Volume2 : VolumeX,
+            run: () => void webPages?.go(sound.id, sound.muted ? "unmute" : "mute") }] : []),
           ...(/^https?:\/\//i.test(url) ? webPageActions({ url, title: titleOf(url) ?? "" }) : []),
         ]
       },

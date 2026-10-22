@@ -49,9 +49,9 @@ export function setTitle(url: string, title: string) {
   viewsChanged()
 }
 
-/** A page playing sound (`audible`), or muted: its tab's icon says so, shown or in the background. `tab`: its tab's id
- *  ("" from builds before tabs owned their pages), `arg` that tab's. */
-export type Sound = { sound: "playing" | "muted"; audible: boolean; id: number; tab: string; arg: string; title: string }
+/** A page playing sound (through its quiet scenes, till its media pauses), or muted: its tab's speaker says so, shown or
+ *  in the background. `tab`: its tab's id ("" from builds before tabs owned their pages), `arg` that tab's. */
+export type Sound = { playing: boolean; muted: boolean; id: number; tab: string; arg: string; title: string }
 /** Every page's, for the status bar's "playing". */
 export const sounds = cell<Sound[]>([])
 /** Tab `tab`'s page's sound; without a tab (a pin), a page's at that address. */
@@ -60,9 +60,9 @@ export const soundOf = (arg: string, tab?: string) => {
   return tab ? all.find((s) => s.tab === tab) ?? all.find((s) => !s.tab && s.arg === arg) : all.find((s) => s.arg === arg)
 }
 export function setSounds(next: Sound[]) {
-  const key = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.sound} ${s.audible} ${s.title}`).sort().join("\n")
+  const key = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.playing} ${s.muted} ${s.title}`).sort().join("\n")
   if (key(next) === key(sounds.get())) return
-  const icons = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.sound}`).sort().join("\n")
+  const icons = (l: Sound[]) => l.map((s) => `${s.tab} ${s.arg} ${s.muted}`).sort().join("\n")
   const redraw = icons(next) !== icons(sounds.get())
   sounds.set(next)
   if (redraw) viewsChanged()

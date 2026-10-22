@@ -289,7 +289,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <AddressBar url={state.url} current={tabArg} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} />}
           trail={id > 0 && onWeb ? <ShieldsButton id={id} url={state.url} loading={state.loading} /> : null} />
-        {(state.audible || state.muted) && (
+        {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
         )}
         <ExtensionButtons bar={ext} className="@max-md/bar:hidden" />

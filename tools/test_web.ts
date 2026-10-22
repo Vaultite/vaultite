@@ -964,6 +964,26 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const out = wp.discardable([...bg, page("x")], (p: P) => p.tab === "b0")
   check("pages: short of memory, the longest in the background are discarded, never shown or playing ones",
     out.map((p: P) => p.tab).join() === "b2,b1", out.map((p: P) => p.tab))
+
+  // A page's sound as its tab shows it: through a quiet scene till its media pauses.
+  const v = wp.playback()
+  wp.media(v, true, false)
+  check("sound: media playing before any sound isn't playing (a silent autoplay)", !wp.playing(v, false, 0))
+  wp.hear(v, true, 1000)
+  wp.hear(v, false, 2000)
+  check("sound: a video in a quiet scene still plays, past a minute's silence not (a muted hero video after a ping)",
+    wp.playing(v, false, 2000 + wp.QUIET_MS * 3) && !wp.playing(v, false, 2000 + wp.MEDIA_QUIET_MS))
+  wp.media(v, false, true)
+  check("sound: its pause ends it at once, though Chromium's audible lingers", !wp.playing(v, true, 2100))
+  wp.media(v, true, true)
+  check("sound: playing again while audible plays at once (an ad, then the video)", wp.playing(v, true, 3000))
+  const g = wp.playback()
+  wp.hear(g, true, 0)
+  wp.hear(g, false, 1000)
+  check("sound: without media (a game) a quiet stretch still plays, then ends",
+    wp.playing(g, false, 1000 + wp.QUIET_MS - 1) && !wp.playing(g, false, 1000 + wp.QUIET_MS))
+  wp.hear(g, true, 20_000)
+  check("sound: a new sound ends its quiet stretch", wp.playing(g, true, 20_000) && g.quiet === undefined)
 }
 
 // ---------- Slides: a note split at --- lines (plugins/core/slides/slides.ts) ----------

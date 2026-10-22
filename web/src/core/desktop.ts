@@ -107,8 +107,8 @@ export type MenuSnapshot = {
 export type WebPageState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean
   /** Why the page didn't load ("ERR_NAME_NOT_RESOLVED"), until the next load. */
   error?: string
-  /** It's playing sound now; its sound is muted. */
-  audible?: boolean; muted?: boolean
+  /** It's playing sound: from its first sound till its media pauses, through quiet scenes; its sound is muted. */
+  playing?: boolean; muted?: boolean
   /** It's in its player, a window of its own (still its tab's). */
   player?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */

@@ -31,15 +31,15 @@ export function PageHeader({ title, subtitle, section, tabs, children, className
   )
 }
 
-/** A row's icon that does something of its own when clicked (a view's `iconAction`: mute a tab), without the row's
- *  click, drag or menu. A span, as the row is often a button or a link already. */
-export function IconAction({ action, children }: { action?: { label: string; run: () => void }; children: ReactNode }) {
+/** An icon in a row that does something of its own when clicked (a tab's mark: mute it), without the row's click, drag
+ *  or menu. A span, as the row is often a button or a link already. */
+export function IconAction({ action, className, children }: { action?: { label: string; run: () => void }; className?: string; children: ReactNode }) {
   if (!action) return <>{children}</>
   const stop = (e: { stopPropagation: () => void }) => { e.stopPropagation() }
   return (
     <span role="button" tabIndex={-1} aria-label={action.label} data-tip={action.label} data-no-drag data-icon-action onPointerDown={stop}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); action.run() }} onAuxClick={stop}
-      className="-m-0.5 inline-grid shrink-0 cursor-pointer place-items-center rounded-[4px] p-0.5 hover:bg-foreground/[0.08]">
+      className={cn("-m-0.5 inline-grid shrink-0 cursor-pointer place-items-center rounded-[4px] p-0.5 hover:bg-foreground/[0.08]", className)}>
       {children}
     </span>
   )

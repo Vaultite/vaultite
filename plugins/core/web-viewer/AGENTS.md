@@ -19,8 +19,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
 - Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps
   its page, closing it ends it, and ⌘⇧T opens it again afresh at its address. When the Mac runs short of memory,
   background tabs' pages may be let go (never one playing sound) and load again when shown. A tab playing sound shows
-  a speaker: a click on it mutes or unmutes the tab, and while a page makes sound the status bar's "Web pages playing"
-  names it, its menu showing its tab or muting it.
+  a speaker beside its site's icon: a click on it mutes or unmutes the tab, and while a page plays the status bar's "Web
+  pages playing" names it, its menu showing its tab or muting it. Playing lasts from a page's first sound till its media
+  pauses or ends, through quiet scenes; sound without media (a game) ends after 10 seconds of silence.
 - Full screen: a page's own (a video's button) fills the window, which goes full screen, as in Chrome; Esc brings it back.
 - Players, to watch a page or share it in a call (Discord's window picker finds "Vaultite player"): "Open as player" (the
   … menu, "Open current web page as player", ⌥⌘P) moves the tab's page, playing on and not loaded again, into a window

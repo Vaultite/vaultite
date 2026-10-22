@@ -3,7 +3,7 @@
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
-import type { SidebarCtx, SidebarPanel } from "@/core/define"
+import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
@@ -300,7 +300,7 @@ export const RAIL = 11
 export const ROW = "group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap transition-colors"
 
 /** A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows. */
-export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, iconAction, label, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
+export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, label, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
   /** None: the label alone (file icons turned off). */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   label: React.ReactNode; open: boolean; active?: boolean; href?: string
@@ -314,8 +314,8 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, iconAc
   badge?: Dot
   /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
   tag?: string
-  /** What a click on the icon does instead of the row's (a tab's `action`: mute it). */
-  iconAction?: { label: string; run: () => void }
+  /** A small button after the label (a tab's mark: a page playing sound, its speaker). */
+  mark?: TabMark
   /** Its tooltip (default the label, when text): always in the rail; open, only when it adds to the row or the label is
    *  cut off. A non-text label counts as said by `tip`; null: none. `onClick` hears middle-click too (new tab). */
   tip?: string | null
@@ -340,10 +340,11 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, iconAc
         ROW,
         active ? "bg-foreground/[0.08] font-medium" : "hover:bg-foreground/[0.04]", className,
       )}>
-      {Icon && <IconAction action={iconAction}><Badged on={badge} tag={tag}>
+      {Icon && <Badged on={badge} tag={tag}>
         <Icon className={cn("size-4 shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
-      </Badged></IconAction>}
+      </Badged>}
       <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>
+      {open && mark && <IconAction action={mark}><mark.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} /></IconAction>}
       {open && children}
       {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
     </a>

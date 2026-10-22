@@ -21,6 +21,7 @@ import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { fileIcon } from "@/components/FileTree"
 import { copyText, copyToVaultItem, fileMenu, revealItem } from "@/components/FileActions"
 import { Badged, IconAction, type Dot } from "@/components/kit"
+import type { TabMark } from "@/core/define"
 import { cn } from "@/lib/utils"
 import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
 
@@ -30,8 +31,8 @@ export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClas
   badge?: Dot
   /** The colour the tab takes lightly while it's the active one, with appearance `tabTint` (a view's `tabTint`). */
   wash?: string
-  /** What a click on the icon does instead (a view's `iconAction`: mute it). */
-  action?: { label: string; run: () => void } }
+  /** A small button at its end (a view's `tabMark`: a page playing sound, its speaker). */
+  mark?: TabMark }
 
 
 /** `it`, with `other` (its variant: moving instead of copying) in its submenu, or alone when that can't be done now. */
@@ -297,9 +298,11 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
       <button type="button" role="tab" aria-selected={active}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
         data-tip={d ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
-        {icons && <IconAction action={info.action}><Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged></IconAction>}
+        {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
+        {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.mark && "@max-[80px]/tab:hidden", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
         <span className={cn("min-w-0 truncate", icons && "@max-[80px]/tab:hidden", active && focused ? "font-medium text-foreground" : active ? "font-medium text-muted-foreground" : "text-muted-foreground")}>{info.label}</span>
+        {info.mark && <IconAction action={info.mark} className="ml-auto @max-[80px]/tab:ml-0"><info.mark.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} /></IconAction>}
       </button>
       {/* A pinned tab's pin, where the X goes: a click unpins it. */}
       {tab.pinned ? (
@@ -342,7 +345,7 @@ export function viewInfo(to: string, disabled = getPrefs().disabled, tab?: strin
   const v = viewFor(to, disabled)
   return v ? { label: v.def.title(v.arg), icon: v.def.iconFor?.(v.arg, tab) ?? v.def.icon,
     iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on ? v.def.iconBadge?.(v.arg) : undefined,
-    wash: v.on ? v.def.tabTint?.(v.arg) : undefined, action: v.on && tab ? v.def.iconAction?.(v.arg, tab) ?? undefined : undefined }
+    wash: v.on ? v.def.tabTint?.(v.arg) : undefined, mark: v.on && tab ? v.def.tabMark?.(v.arg, tab) ?? undefined : undefined }
     : { label: to.slice(5), icon: SquareDashed }
 }
 

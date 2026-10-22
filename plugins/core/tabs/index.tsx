@@ -26,7 +26,7 @@ function Row({ t, g, i, only, inSet }: { t: Tab; g: TabGroup; i: TabInfo; only: 
     // or Pinned; selected with others, they all go.
     <div onPointerDown={(e) => dragTab(e, t)} className={cn((d?.item.tab === t.id || (picked && d?.item.tabs) || (!!t.set && d?.item.tabset === t.set)) && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
-      <SidebarRow data-open-tab={t.id} data-select-key={t.id} {...selectedAttr(picked)} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} iconAction={i.action} label={i.label} open active={t.id === g.active} more
+      <SidebarRow data-open-tab={t.id} data-select-key={t.id} {...selectedAttr(picked)} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} mark={i.mark} label={i.label} open active={t.id === g.active} more
         className={inSet ? "pl-5" : undefined}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         onClick={(e) => { if (e.button === 1) { if (!t.pinned && !only) closeTab(t.id) } else if (!selectClick(e, TABS, t.id, g.active)) selectTab(t.id) }}>

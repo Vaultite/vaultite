@@ -486,7 +486,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarCtx`
 - `SidebarHeading`
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
-- `SidebarRow({ icon, iconClassName, tint, badge, tag, iconAction, label, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
+- `SidebarRow({ icon, iconClassName, tint, badge, tag, mark, label, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
 - `sidebars(prefs?)`: The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's.
 - `Sidebars`
 - `sidebarsChanged()`: Tell the sidebars a plugin's setup changed (a workspace switch).

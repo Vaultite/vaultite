@@ -208,6 +208,9 @@ export type AgentDef = { label: string; icon: LucideIcon; tint?: string
    *  something about a session goes when no terminal of the app runs it (the Inbox's events). */
   session?: string }
 
+/** A view's tab's mark (ViewDef `tabMark`): an icon a click on runs `run`, named by `label`. */
+export type TabMark = { icon: LucideIcon; label: string; run: () => void }
+
 /** A kind of tab it opens that isn't a file (a terminal), desktop only. The tab's target is `view:<name>` or
  *  `view:<name>/<arg>` (arg: which one, e.g. a terminal session id); open one with openView (the plugin API). */
 export type ViewDef = {
@@ -216,9 +219,9 @@ export type ViewDef = {
   /** Picks its tab's icon per tab (a Claude Code terminal), else `icon`. Its own field, as an icon can be a plain
    *  function too (a brand's mark). `tab`: the tab's id, where it's drawn for one (not a pin). */
   iconFor?: (arg: string, tab?: string) => LucideIcon
-  /** What a click on its tab's icon does instead of showing the tab (a page playing sound: Mute tab), its `label` the
-   *  icon's tooltip; null: nothing, a click shows the tab. */
-  iconAction?: (arg: string, tab: string) => { label: string; run: () => void } | null
+  /** A small icon at its tab's end, a button of its own (a page playing sound: its speaker, a click mutes it), its
+   *  `label` the tooltip; beside the tab's icon, not in its place, so the tab stays recognisable. null: none. */
+  tabMark?: (arg: string, tab: string) => TabMark | null
   /** The tab's label. It may read live data the plugin keeps (a terminal's session name): call `viewsChanged()` (the
    *  plugin API) when that changes, and every tab is drawn again. */
   title: (arg: string) => string

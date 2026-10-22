@@ -4,7 +4,7 @@
 // with appearance tabTint); a site set to always open in Work goes there from a
 // plain link; the container menu moves a tab to another; deleting a container clears its logins. A link from another
 // app opens in a web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
-// speaker unmutes it.
+// speaker unmutes it; a video keeps its speaker through a quiet scene, till it pauses.
 // WRITES: the throwaway vault only.
 //   node web/qa/containers.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -27,6 +27,8 @@ const server = http.createServer((req, res) => {
   const headers = { "Content-Type": "text/html; charset=utf-8" }
   if (u.pathname === "/login") headers["Set-Cookie"] = `who=${u.searchParams.get("u")}; Path=/; Max-Age=3600`
   res.writeHead(200, headers)
+  // (a second of tone, then silence: a video's quiet scene, past Chromium's 2s of audible)
+  if (u.pathname === "/quiet") return res.end(`<!doctype html><title>Quiet</title><script>const r = 8000, n = r * 30, b = new ArrayBuffer(44 + n * 2), d = new DataView(b), str = (o, t) => [...t].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0))); str(0, "RIFF"); d.setUint32(4, 36 + n * 2, true); str(8, "WAVEfmt "); d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, r, true); d.setUint32(28, r * 2, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true); str(36, "data"); d.setUint32(40, n * 2, true); for (let i = 0; i < r; i++) d.setInt16(44 + i * 2, Math.sin(i * 2 * Math.PI * 20 / r) * 40, true); window.player = new Audio(URL.createObjectURL(new Blob([b], { type: "audio/wav" }))); player.play()</script>`)
   if (u.pathname === "/sound") return res.end(`<!doctype html><title>Sound</title><script>const c = new AudioContext(); const o = c.createOscillator(); o.frequency.value = 20; const g = c.createGain(); g.gain.value = 0.001; o.connect(g).connect(c.destination); o.start()</script>`)
   res.end(`<!doctype html><title>Who</title><p id="who">${u.pathname === "/login" ? "signed in" : `who:${who ?? "nobody"}`}</p>`)
 })
@@ -140,6 +142,15 @@ check("… the bar's button mutes it", await until(muted, 5000), null)
 check("… and its tab says muted", await until(async () => (await win.locator("[role=tab][aria-selected=true] svg.lucide-volume-x").count()) === 1, 5000), await activeTab())
 await win.locator("[role=tab][aria-selected=true] [data-icon-action]").click()
 check("… a click on its tab's speaker unmutes it", await until(async () => !(await muted()), 5000), await activeTab())
+check("… beside its site's icon, not in its place", await until(async () => (await win.locator("[role=tab][aria-selected=true] [data-icon-action] svg.lucide-volume-2").count()) === 1, 5000), await activeTab())
+
+await open(`view:web/${SITE}/quiet`)
+const speaker = () => win.locator("[role=tab][aria-selected=true] svg.lucide-volume-2").count()
+check("a video playing: a speaker on its tab", await until(async () => (await speaker()) === 1, 15000), await activeTab())
+await wait(5000)
+check("… kept through a quiet scene", (await speaker()) === 1, await activeTab())
+await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return Promise.all(w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).map((x) => x.webContents.executeJavaScript("player.pause()"))) })
+check("… gone once it pauses", await until(async () => (await speaker()) === 0, 3000), await activeTab())
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()

@@ -69,8 +69,33 @@ export const unclaimed = <W, P extends Owned<W>>(pages: Iterable<P>, now: number
 
 /** Under memory pressure, background tabs' pages to discard (Chrome's way: the tab stays, its page loads again when
  *  shown): past each window's KEEP most recently shown, never one playing sound. */
-export function discardable<W, P extends Owned<W>>(pages: Iterable<P>, audible: (p: P) => boolean): P[] {
+export function discardable<W, P extends Owned<W>>(pages: Iterable<P>, playing: (p: P) => boolean): P[] {
   const all = [...pages]
   return [...new Set(all.map((p) => p.win))].flatMap((w) =>
-    all.filter((p) => p.win === w && !p.holds && !p.closing && !audible(p)).sort((a, b) => b.let - a.let).slice(KEEP))
+    all.filter((p) => p.win === w && !p.holds && !p.closing && !playing(p)).sort((a, b) => b.let - a.let).slice(KEEP))
 }
+
+/** How long a silent page still counts as playing: sound without media (a game's Web Audio) has no pause to end it;
+ *  with media, a long quiet scene, but not a muted hero video looping after one ping. */
+export const QUIET_MS = 10_000, MEDIA_QUIET_MS = 60_000
+
+/** A page playing sound as its tab shows it: from its first sound till its media pauses or ends, not only while sound
+ *  comes out (Chromium's audible drops 2s into a quiet scene). `quiet`: silent since (ms). */
+export type Playback = { heard: boolean; media: boolean; quiet?: number }
+export const playback = (): Playback => ({ heard: false, media: false })
+
+/** Sound started or stopped coming out (audio-state-changed). */
+export function hear(p: Playback, audible: boolean, now: number) {
+  if (audible) { p.heard = true; p.quiet = undefined } else p.quiet ??= now
+}
+
+/** Its media started, or paused or ended: that ends it at once, though Chromium's audible lingers 2s after. */
+export function media(p: Playback, playing: boolean, audible: boolean) {
+  p.media = playing
+  p.heard = playing && (p.heard || audible)
+}
+
+/** When its quiet stretch ends it, if it's in one (ms). */
+export const quietEnds = (p: Playback) => (p.quiet === undefined ? undefined : p.quiet + (p.media ? MEDIA_QUIET_MS : QUIET_MS))
+
+export const playing = (p: Playback, audible: boolean, now: number) => p.heard && (audible || now < (quietEnds(p) ?? 0))

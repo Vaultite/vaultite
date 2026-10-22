@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- A web tab playing a video keeps its speaker, and the status bar its "playing", through quiet scenes, till the video
+  pauses; the speaker sits beside the site's icon instead of replacing it. A background video in a quiet scene is no
+  longer let go when memory runs short.
 - Inbox: each agent session is one row, there only when it needs you (it asks, wants an approval, or its turn ended
   with a question or an answer to read, judged from its last message by a small fast model), bold until you open it;
   its sheet shows the answer drawn and a reply that goes back into the session. A turn done with nothing for you goes in
