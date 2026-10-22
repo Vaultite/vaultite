@@ -47,7 +47,7 @@ jobs:
             ~/.cache/ms-playwright
             ~/Library/Caches/ms-playwright
             ~/AppData/Local/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       - if: ${{ !cancelled() }}
         run: npx playwright-core install --with-deps chromium
       - if: ${{ !cancelled() }}
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       - run: npx playwright-core install --with-deps chromium
       - run: sudo apt-get install -y tmux xvfb ffmpeg
       - run: npm run build
