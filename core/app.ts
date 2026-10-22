@@ -662,7 +662,12 @@ export class App {
   /** /api/ops: GET the catalog or one entry, POST runs one (`?as=text`: its answer as Markdown; `?as=answer`: that and
    *  its picture, for `vau mcp`). */
   private async opsRoute(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<unknown> {
-    if (method === "GET" && parts.length === 0) return query.as === "text" ? new Text(this.opsDoc() + "\n") : this.catalog()
+    if (method === "GET" && parts.length === 0) {
+      if (query.as === "text") return new Text(this.opsDoc() + "\n")
+      // ?word=: only the ops a command line starting with it can name (`vau <word> ...` asks, not for all of them each time)
+      const w = query.word
+      return w ? this.ops().filter(({ op }) => op.id === w || op.id.startsWith(`${w}.`) || op.cli?.split(" ")[0] === w).map(({ op, plugin }) => entryOf(op, plugin)) : this.catalog()
+    }
     if (parts.length !== 1) return reply(404, { error: "not found" })
     if (method === "GET") {
       const hit = this.opNamed(parts[0])

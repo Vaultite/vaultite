@@ -484,10 +484,11 @@ const commandHelp = (c: Command) => `${c.usage}\n\n${c.summary}\n\n${c.help}`
 
 // ---------- operations (core/ops.ts): every op is a command ----------
 
-/** The server's catalog of operations, or null when it can't be asked (no server, an older one). */
-async function catalog(c: Ctx): Promise<OpEntry[] | null> {
+/** The server's catalog of operations (`word`: those a command starting with it can name), or null when it can't be
+ *  asked (no server, an older one). */
+async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
   try {
-    const r = await c.api("GET", "ops")
+    const r = await c.api("GET", word ? `ops?word=${encodeURIComponent(word)}` : "ops")
     return r.status === 200 && Array.isArray(r.body) ? r.body as OpEntry[] : null
   } catch (e) {
     if (e instanceof CliError) return null
@@ -620,7 +621,7 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     }
   }
   const c = ctx()
-  const ops = await catalog(c)
+  const ops = await catalog(c, which)
   // An op by its id, or by its CLI name, which may be several words (`plugin on`): the longest the words start with.
   const said = (e: OpEntry) => (e.cli ?? "").split(" ").filter(Boolean)
   const fits = (ops ?? []).filter((e) => e.id === which || (e.cli && said(e).every((w, i) => named[i] === w)))
@@ -632,7 +633,8 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     const group = (ops ?? []).filter((e) => e.cli?.startsWith(`${which} `) || e.id.startsWith(`${which}.`))
     const more = named.length > 1 && !help && !a.flags.help
     if (group.length) return { code: more ? 2 : 0, out: group.map((e) => `  vau ${(e.cli ?? e.id).padEnd(24)} ${e.summary}`).join("\n") + `\n\n\`vau ${which} <command> --help\` explains one.`, err: more ? `vau: no command '${named.slice(0, 2).join(" ")}'` : "" }
-    const names = [...all.map((x) => x.name), ...(ops ?? []).flatMap((e) => [e.id, e.cli ?? ""]).filter(Boolean)]
+    const every = ops && (await catalog(c))
+    const names = [...all.map((x) => x.name), ...(every ?? []).flatMap((e) => [e.id, e.cli ?? ""]).filter(Boolean)]
     const near = names.filter((n) => n.startsWith(which.slice(0, 3)))
     return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.slice(0, 4).join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
   }

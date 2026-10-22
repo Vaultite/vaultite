@@ -177,7 +177,7 @@ export default async ($: VaultTest) => {
       req.on("data", (c) => { body += c })
       req.on("end", () => {
         const send = (status: number, out: unknown, type = "application/json") => { res.writeHead(status, { "Content-Type": type }); res.end(typeof out === "string" ? out : JSON.stringify(out)) }
-        if (req.url === "/api/ops") return send(200, [entry("big.text", "big"), entry("bad.thing", "boom"), entry("echo.body", "echo", { body: { type: "string", stdin: true, description: "x" } })])
+        if (req.url?.split("?")[0] === "/api/ops") return send(200, [entry("big.text", "big"), entry("bad.thing", "boom"), entry("echo.body", "echo", { body: { type: "string", stdin: true, description: "x" } })])
         if (req.url?.startsWith("/api/ops/big.text")) return send(200, big, "text/plain")
         if (req.url?.startsWith("/api/ops/bad.thing")) return send(500, { error: "it broke" })
         if (req.url?.startsWith("/api/ops/echo.body")) return send(200, `body: ${JSON.parse(body || "{}").body ?? "(none)"}`, "text/plain")

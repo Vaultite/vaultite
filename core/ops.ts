@@ -183,7 +183,13 @@ export function opProblems(op: Op): string[] {
 }
 
 /** An op's parameters as one JSON Schema object. */
+const schemas = new WeakMap<Op, Schema>() // (an op's params don't change: the catalog is asked for often)
 export function paramsSchema(op: Op): Schema {
+  let hit = schemas.get(op)
+  if (!hit) schemas.set(op, hit = schemaOf(op))
+  return hit
+}
+function schemaOf(op: Op): Schema {
   const properties: Record<string, Schema> = {}
   const required: string[] = []
   for (const [k, p] of Object.entries(op.params ?? {})) {
