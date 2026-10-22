@@ -38,7 +38,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentUsageBlock({ src, options, fm })`: Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`).
 - `AgentWindow`
 - `AmbientButton({ icon, text, tip, tint, onClick, className })`
-- `AmbientItem`: Drawn at the start of the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
+- `AmbientItem`: Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
 - `API_VERSION`
 - `APP_VERSION`
 - `appDevice`: Which app this is, as the server hears it (X-Vaultite-Client: app/<device>, for Activity).

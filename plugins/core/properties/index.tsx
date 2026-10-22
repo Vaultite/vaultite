@@ -10,7 +10,7 @@ export default definePlugin({
   sidebar: { properties: { title: "All properties", heading: false, sort: 52, hidden: true, view: "properties", flyout: { icon: Tags }, render: (ctx) => <PropertiesPanel {...ctx} /> } },
   views: { properties: { icon: Tags, title: () => "All properties", render: ({ store }) => <PropertiesView store={store} /> } },
   fileBar: { chips: { title: "Note properties", sort: 40, render: (file) => <Chips file={file} place={file.place} /> } },
-  status: { chips: { sort: 40, render: (file) => <Chips file={file} place="status" /> } },
+  status: { chips: { title: "Property chips", sort: 40, render: (file) => <Chips file={file} place="status" /> } },
   settingsPanel: ({ store }) => <ChipsSettings store={store} />,
   settingsSearch: [
     { label: "Properties in files' headers", description: "chips to set a property from, and in the status bar" },

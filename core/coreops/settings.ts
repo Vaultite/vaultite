@@ -59,7 +59,7 @@ const APPEARANCE: Record<string, Setting> = {
   peekShade: { about: "true or false (default): with rails off, the page dims a little behind a hidden sidebar slid in", parse: bool("peekShade") },
   typingFade: { about: "true or false (default): on desktop, the bars above files (the path, the file's items) fade while typing in a file, back when the pointer moves or at Escape", parse: bool("typingFade") },
   statusBar: {
-    about: "the plugins' items at the start of the desktop status bar, in order, as <plugin>:<name> (today:routines, inbox:new, terminal:agents, claude-code:limits): a JSON list or names separated by commas; [] for none", parse: names },
+    about: "the desktop status bar's items, in order: the app's own (core:view, core:words, core:characters) and plugins' as <plugin>:<name> (inbox:new, terminal:agents, vim:mode, token-count:tokens): a JSON list or names separated by commas; [] for none (an empty corner, right-click to bring them back)", parse: names },
   statusBarMore: {
     about: "those of statusBar's items kept in the status bar's tray (its more button) whatever room there is: a JSON list or names separated by commas", parse: names },
   fileBar: {

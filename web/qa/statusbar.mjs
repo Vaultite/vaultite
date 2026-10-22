@@ -1,6 +1,7 @@
 // The desktop status bar beside the left sidebar: it never reaches it (what doesn't fit goes to the tray behind its
 // more button) nor wraps, holds last load's widths only while loading, and its ambient items drag along it, onto the more button (tucked: appearance.json's
-// `statusBarMore`) and back out of the tray. WRITES appearance.json (put back) and a made-up vault plugin with a long
+// `statusBarMore`) and back out of the tray. Every item hides (right-click, the palette), the file's too: with none, the
+// bar is a faint corner whose right-click brings them back. WRITES appearance.json (put back) and a made-up vault plugin with a long
 // item, .vaultite/plugins/qa-long (removed): throwaway server only.
 //   node web/qa/statusbar.mjs <base url> <vault path>
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
@@ -20,10 +21,10 @@ const LONG = path.join(VAULT, ".vaultite/plugins/qa-long")
 mkdirSync(LONG, { recursive: true })
 writeFileSync(path.join(LONG, "manifest.json"), JSON.stringify({ id: "qa-long", category: "other", name: "Qa long", icon: "ruler", description: "A made-up vault plugin with a long status bar item.", version: "1.0.0", author: "Alice Park", disclosures: {}, apiVersion: 1 }))
 writeFileSync(path.join(LONG, "index.tsx"), `import { definePlugin } from "@vaultite"
-export default definePlugin({ ambient: { long: { title: "Qa long", sort: 50, render: () => <span className="whitespace-nowrap px-1 text-[12px]">A long status item that takes room in the bar</span> } } })
+export default definePlugin({ ambient: { long: { title: "Qa long", sort: 50, render: () => <span className="whitespace-nowrap px-1 text-[12px]">A long status item that takes a good deal of room in the bar, more than fits</span> } } })
 `)
 await api("POST", "ops/plugin.enable", { id: "qa-long" })
-await api("PATCH", "config/appearance", { statusBar: ["today:routines", "terminal:agents", "inbox:new", "claude-code:limits", "qa-long:long"], statusBarMore: [] })
+await api("PATCH", "config/appearance", { statusBar: ["today:routines", "terminal:agents", "inbox:new", "claude-code:limits", "qa-long:long", "core:view", "core:words", "core:characters"], statusBarMore: [] })
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
@@ -32,7 +33,7 @@ try {
   await page.goto(`${B}#file/${encodeURIComponent(P)}`)
   const bar = page.locator("[data-status-bar]")
   await until(async () => (await bar.locator("[data-status-key='qa-long:long']").count()) > 0 && /word/.test(await bar.innerText()), 15000)
-  const keys = () => bar.locator("[data-ambient] > [data-status-key]").evaluateAll((els) =>
+  const keys = () => bar.locator("[data-status-items] > [data-ambient]").evaluateAll((els) =>
     els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))
   const clear = () => page.evaluate(() => {
     const side = document.querySelector("aside[data-side=left]").getBoundingClientRect().right
@@ -61,7 +62,8 @@ try {
   await page.screenshot({ path: `${SHOTS}statusbar-2-narrow.png`, clip: { x: 0, y: 740, width: 820, height: 60 } })
   await bar.locator("[data-status-more]").click(); await wait(200)
   const tray = page.locator("[data-status-tray] > [data-status-key]")
-  const inTray = await tray.evaluateAll((els) => els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))
+  // (the file's items it left out too: the characters first)
+  const inTray = (await tray.evaluateAll((els) => els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))).filter((k) => shown.includes(k))
   check("the tray has what the bar left out", inTray.length === shown.length - narrow.length && inTray.every((k) => !narrow.includes(k)), inTray)
   await page.screenshot({ path: `${SHOTS}statusbar-3-tray.png`, clip: { x: 0, y: 680, width: 820, height: 120 } })
   await page.keyboard.press("Escape"); await wait(100)
@@ -75,14 +77,16 @@ try {
     await page.mouse.move(from.x + 8, from.y, { steps: 3 }); await page.mouse.move(to.x, to.y, { steps: 12 }); await wait(150)
     await page.mouse.up(); await wait(400)
   }
-  const first = await box(`[data-status-key="${shown[0]}"]`), last = await box(`[data-ambient] > [data-status-key="${shown.at(-1)}"]`)
+  const first = await box(`[data-status-key="${shown[0]}"]`), last = await box(`[data-status-items] > [data-status-key="${shown.at(-1)}"]`)
   await drag({ x: first.x + first.width / 2, y: first.y + first.height / 2 }, { x: last.x + last.width - 2, y: last.y + last.height / 2 })
   const moved = await keys()
   check("drag along the bar: moved to the end", moved.at(-1) === shown[0], moved)
-  check("…saved in appearance.json", !!(await until(async () => (await api("GET", "config/appearance")).statusBar?.at(-1) === shown[0])), (await api("GET", "config/appearance")).statusBar)
+  // (the bar's list holds the file's items after them)
+  const lastAmbient = (l) => l?.filter((k) => !k.startsWith("core:")).at(-1)
+  check("…saved in appearance.json", !!(await until(async () => lastAmbient((await api("GET", "config/appearance")).statusBar) === shown[0])), (await api("GET", "config/appearance")).statusBar)
 
   // 3. Onto the more button (it shows while one is dragged): tucked away.
-  const a = await box(`[data-ambient] > [data-status-key="${moved[0]}"]`)
+  const a = await box(`[data-status-items] > [data-status-key="${moved[0]}"]`)
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down()
   await page.mouse.move(a.x + a.width / 2 + 8, a.y + 10, { steps: 3 }); await wait(150)
   const m = await box("[data-status-more]")
@@ -93,10 +97,15 @@ try {
 
   // 4. Out of the tray onto the bar: back.
   await bar.locator("[data-status-more]").click(); await wait(200)
-  const t = await box(`[data-status-tray] > [data-status-key="${moved[0]}"]`), b = await box(`[data-ambient] > [data-status-key="${(await keys())[0]}"]`)
+  const t = await box(`[data-status-tray] > [data-status-key="${moved[0]}"]`), b = await box(`[data-status-items] > [data-status-key="${(await keys())[0]}"]`)
   // (the last drop's toast may sit over the tray, bottom right, until it goes: the item held, not the toast)
   await until(() => page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-status-tray]"), [t.x + t.width / 2, t.y + t.height / 2]), 10000)
-  await drag({ x: t.x + t.width / 2, y: t.y + t.height / 2 }, { x: b.x + 2, y: b.y + b.height / 2 })
+  // (over the bar, it opens a gap for the item and grows to the left: its first item is aimed at where it is then)
+  await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.mouse.down()
+  await page.mouse.move(t.x + t.width / 2 + 8, t.y + t.height / 2, { steps: 3 }); await page.mouse.move(b.x + 2, b.y + b.height / 2, { steps: 12 }); await wait(300)
+  const b2 = await box(`[data-status-items] > [data-status-key="${(await keys())[0]}"]`)
+  await page.mouse.move(b2.x + 2, b2.y + b2.height / 2, { steps: 4 }); await wait(300)
+  await page.mouse.up(); await wait(400)
   check("out of the tray: back at the bar's start", (await keys())[0] === moved[0] && !!(await until(async () => !(await api("GET", "config/appearance")).statusBarMore?.includes(moved[0]))),
     { bar: await keys(), more: (await api("GET", "config/appearance")).statusBarMore })
   await page.screenshot({ path: `${SHOTS}statusbar-4-after.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
@@ -126,7 +135,7 @@ try {
     const k = JSON.parse(localStorage.getItem("vaultite.statusbar.items") ?? "[]")
     localStorage.setItem("vaultite.statusbar.items", JSON.stringify(k.map(([key, w]) => [key, key === "qa-long:long" ? w + 300 : w])))
   })
-  const longWidth = () => page.evaluate(() => Math.round(document.querySelector("[data-ambient] > [data-status-key='qa-long:long']")?.getBoundingClientRect().width ?? 0))
+  const longWidth = () => page.evaluate(() => Math.round(document.querySelector("[data-status-items] > [data-status-key='qa-long:long']")?.getBoundingClientRect().width ?? 0))
   const natural = await longWidth()
   await page.reload()
   await until(async () => (await longWidth()) > 0 && /word/.test(await bar.innerText()), 15000); await wait(1500)
@@ -135,6 +144,33 @@ try {
   await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, P); await wait(1500)
   const back = await longWidth()
   check("an item drawn narrower than last load keeps none of its old room", Math.abs(after - natural) <= 2 && Math.abs(back - natural) <= 2, { natural, after, back })
+
+  // 7. The file's items are items too: hidden by right-click, back from the palette; none at all leaves a faint corner.
+  const look_ = async () => (await api("GET", "config/appearance")).statusBar ?? []
+  const words = bar.locator("[data-status-key='core:words']")
+  await words.click({ button: "right" }); await wait(300)
+  await page.getByRole("menuitemcheckbox", { name: "Word count", exact: true }).click(); await wait(300)
+  await page.keyboard.press("Escape")
+  check("right-click: the word count hides, saved", !!(await until(async () => !(await look_()).includes("core:words") && (await words.count()) === 0)), await look_())
+  await page.keyboard.press("ControlOrMeta+P"); await wait(300)
+  await page.keyboard.type("show in status bar: word"); await wait(300)
+  await page.keyboard.press("Enter")
+  check("the palette shows it again, in its place", !!(await until(async () => (await look_()).indexOf("core:words") === (await look_()).indexOf("core:view") + 1 && (await words.count()) === 1)), await look_())
+  await api("PATCH", "config/appearance", { statusBar: [] })
+  await until(async () => (await bar.locator("[data-status-key]").count()) === 0)
+  await wait(300)
+  const corner = await page.evaluate(() => {
+    const el = document.querySelector("[data-status-bar]"), r = el.getBoundingClientRect(), cs = getComputedStyle(el)
+    return { w: r.width, h: r.height, right: innerWidth - r.right, bottom: innerHeight - r.bottom, bg: cs.backgroundColor, border: cs.borderTopColor }
+  })
+  const clear_ = (c) => c === "transparent" || /rgba\(.*,\s*0\)$/.test(c)
+  check("nothing shown: no bar drawn, a corner of its height left", corner.h >= 27 && corner.w >= 36 && corner.bottom <= 1 && clear_(corner.bg) && clear_(corner.border), corner)
+  await page.mouse.move(1280 - 10, 800 - 10); await wait(200)
+  check("…its outline on hover", !clear_(await page.evaluate(() => getComputedStyle(document.querySelector("[data-status-bar]")).borderTopColor)))
+  await page.screenshot({ path: `${SHOTS}statusbar-5-empty.png`, clip: { x: 1080, y: 740, width: 200, height: 60 } })
+  await page.mouse.click(1280 - 10, 800 - 10, { button: "right" }); await wait(300)
+  await page.getByRole("menuitem", { name: "Show all", exact: true }).click(); await wait(300)
+  check("…whose right-click shows them all again", !!(await until(async () => (await look_()).filter((k) => k.startsWith("core:")).length === 3 && (await words.count()) === 1)), await look_())
 } finally {
   await api("PATCH", "config/appearance", { statusBar: look.statusBar ?? null, statusBarMore: look.statusBarMore ?? [] })
   await api("POST", "ops/plugin.disable", { id: "qa-long" })

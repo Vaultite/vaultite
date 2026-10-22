@@ -265,7 +265,7 @@ export function setSwitch(p: Plugin, on: boolean, quiet = false) {
 
 function turn(p: Plugin, on: boolean) {
   const { disabled, enabled } = getPrefs()
-  if (on) { showPanelsOf(p); showSectionsOf(p) }
+  if (on) { showPanelsOf(p); showSectionsOf(p); showBarItemsOf(p) }
   // Turned on: what it writes on its own is asked now, once (core/grants.ts).
   if (on) void askGrant(p.id)
   const next = switched({ disabled, enabled }, p.id, on, optIn(p))
@@ -594,6 +594,19 @@ function showPanelsOf(p: Plugin) {
   const add = Object.entries(p.sidebar ?? {}).filter(([, x]) => !x.hidden).map(([name, x]) => ({ key: `${p.id}:${name}`, side: x.side ?? "left" })).filter((x) => !sideIn(s, x.key))
   if (!add.length || (!provided() && !getPrefs().sidebars)) return
   setSidebars(add.reduce((acc, x) => placePanel(acc, x.key, { side: x.side, before: null }), s))
+}
+
+/** A plugin was turned on: its status bar items (not ambient ones marked `hidden`) join a saved list: an ambient one
+ *  before the file's items, a file's before the app's own (or last: `after`). */
+function showBarItemsOf(p: Plugin) {
+  const { statusBar, disabled, order } = getPrefs()
+  if (!statusBar) return
+  const file = new Set(statusItems(disabled, order).map((x) => x.key))
+  let list = statusBar
+  const add = (key: string, before: string | null) => { if (!list.includes(key)) list = placeKey(list, key, before) }
+  for (const [name, x] of Object.entries(p.ambient ?? {})) if (!x.hidden) add(`${p.id}:${name}`, list.find((k) => k.startsWith("core:") || file.has(k)) ?? null)
+  for (const [name, x] of Object.entries(p.status ?? {})) add(`${p.id}:${name}`, x.after ? null : list.find((k) => k.startsWith("core:")) ?? null)
+  if (list !== statusBar) void setPrefs({ statusBar: list })
 }
 
 /** What the plugins that are on draw in one place (`slot`: its items by name), left to right by their `sort`. */

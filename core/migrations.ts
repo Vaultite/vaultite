@@ -129,6 +129,27 @@ async function blockedElementsIn(v: Vault): Promise<string[]> {
   return []
 }
 
+/** The status bar's items for the file (Vim's mode, chips, the view, the counts) were always there; they're in its list
+ *  now (appearance `statusBar`), which a saved one gets, where they were (status-bar-items-2026-10). */
+const FILE_ITEMS = ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"]
+const withFileItems = (look: Item | null) =>
+  Array.isArray(look?.statusBar) ? { ...look, statusBar: [...look.statusBar.filter((k: unknown) => !FILE_ITEMS.includes(k as string)), ...FILE_ITEMS] } : null
+
+/** In the vault's settings, its saved bundles' and the setup a restore puts back (`bundles/previous`). */
+function eachSettings(v: Vault, change: (get: (name: string) => Item | null, set: (name: string, value: Item) => void) => void) {
+  const inVault = (base: string) => change((n) => v.readConfig(base + n), (n, value) => v.setConfig(base + n, value))
+  inVault("")
+  let saved: string[] = []
+  try { saved = fs.readdirSync(v.abs(".vaultite/bundles"), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) } catch { /* none */ }
+  for (const b of saved) inVault(`bundles/${b}/`)
+  const prev = v.readConfig("bundles/previous")
+  if (prev && isObj<Item>(prev.config)) {
+    const config: Record<string, Item> = { ...prev.config }
+    change((n) => config[n] ?? null, (n, value) => { config[n] = value })
+    if (JSON.stringify(config) !== JSON.stringify(prev.config)) v.setConfig("bundles/previous", { ...prev, config })
+  }
+}
+
 /** A step: what it changes in the vault. One that changes files (`only` those, when some were left) returns the files it
  *  couldn't read yet, to change at a later start. */
 const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<string[]> }[] = [
@@ -169,6 +190,10 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     },
   },
   { id: "blocked-elements-2026-10", run: blockedElementsIn },
+  {
+    id: "status-bar-items-2026-10",
+    run: (v) => eachSettings(v, (get, set) => { const look = withFileItems(get("appearance")); if (look) set("appearance", look) }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

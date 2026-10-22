@@ -101,7 +101,7 @@ export default definePlugin({
     return at ? [{ label: `Written by ${at.tip}`, icon: Bot, run: () => view.dispatch({ selection: { anchor: at.from, head: at.to } }) }] : []
   },
   fileBar: { origin: { sort: 50, render: (file) => <Label file={file} place={file.place} /> } },
-  status: { origin: { sort: 50, render: (file) => <Label file={file} place="status" /> } },
+  status: { origin: { title: "Origin", sort: 50, render: (file) => <Label file={file} place="status" /> } },
   settingsPanel: ({ store }) => <SettingsPanel store={store} />,
   commands: [
     { id: "provenance:choose", name: "Label who wrote it…", when: onFile, run: pick },

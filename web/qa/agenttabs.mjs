@@ -56,7 +56,7 @@ const dots = Object.fromEntries([working, blocked, unseen, seen, failed].map((s)
 check("Terminals: Claude's logo on each, its state a dot: working, ask, unread, none, error",
   JSON.stringify(dots) === JSON.stringify({ "Working one": "working", "Blocked one": "ask", "Unseen one": "unread", "Seen one": null, "Failed one": "error" })
   && [working, seen].every((s) => !/working-dot|lucide-check/.test(row(s)?.icon)), dots)
-const ambient = await D.$eval('[data-ambient] > [data-status-key$="agents"]', (e) => e.innerText.trim()).catch(() => "")
+const ambient = await D.$eval('[data-status-items] > [data-status-key$="agents"]', (e) => e.innerText.trim()).catch(() => "")
 check("status bar: agents at work count what Terminals says needs you (blocked and an unread row)", ambient === "1 · 2 need you", ambient)
 
 // ---------- tabs: each session opened from its row ----------

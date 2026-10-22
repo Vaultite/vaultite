@@ -101,9 +101,10 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   `tabs:tabs` at the top of the left sidebar (Show tabs in the sidebar does it, Show tabs on top undoes it). `paneTitles`: false (default) | true: with the tab bar off, that bar names the tab on screen; off, nothing is above a pane: a file's bar (or the Browser's) is its title row.
   `tabTint`: true | false (default): the active tab takes a light wash of its colour (a web page's container).
   `rails`: true (default) | false: off, a hidden sidebar has no icon rail and slides in while the pointer is at its edge; `peekShade`: true | false (default), the page dims a little behind it. `typingFade`: true | false (default): the bars above files fade while typing, back when the pointer moves or at Escape. `lineNumbers`: true | false (default), line numbers beside a file's text while editing
-  it (code files always have them). `statusBar`: the plugins' items at the start of the desktop status bar, in order
-  (`["companion:status", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one
-  to move it). `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
+  it (code files always have them). `statusBar`: the desktop status bar's items, in order: the app's own (`core:view`,
+  `core:words`, `core:characters`) and plugins' (`["terminal:agents", "core:view", "core:words", "token-count:tokens"]`;
+  unset: every default one; `[]`: none, the bar a faint corner). Right-click the bar for the list, drag one to move it;
+  the palette shows or hides each. `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
   fit). `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
   unset: their default places); one dragged into a sidebar (or Move to sidebar) is a panel there, in `sidebars.json`.
   `pullActions`: the three commands a page pulled down past its top offers on a phone, by palette command id: left,

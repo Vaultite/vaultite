@@ -104,6 +104,17 @@ export default async ($: VaultTest) => {
     const prev = conf(daily, "bundles/previous")
     check("migrated: a restore puts back Daily notes' keys", JSON.stringify(prev?.config) === '{"hotkeys":{"daily-notes:today":null},"plugins/today/data":{},"plugins/daily-notes/data":{"format":null}}'
       && prev.absent.includes("plugins/daily-notes/data") && conf(daily, "migrations")?.done?.includes("daily-notes-2026-10"), prev)
+    // The status bar's file items joined its list: a saved one gets them after its own (unset and bundles' too).
+    const bar = path.join(tmp, "Status bar before")
+    const putBar = (rel: string, o: unknown) => { fs.mkdirSync(path.dirname(path.join(bar, rel)), { recursive: true }); fs.writeFileSync(path.join(bar, rel), JSON.stringify(o)) }
+    putBar(".vaultite/appearance.json", { theme: "dark", statusBar: ["inbox:new"] })
+    putBar(".vaultite/bundles/mine/appearance.json", { statusBar: [] })
+    putBar(".vaultite/bundles/other/appearance.json", { statusBar: null })
+    await open(bar)
+    const FILE = "vim:mode,properties:chips,provenance:origin,core:view,core:words,core:characters,token-count:tokens"
+    check("migrated: a saved status bar list has the file's items after its own", conf(bar, "appearance")?.statusBar?.join() === `inbox:new,${FILE}` && conf(bar, "appearance")?.theme === "dark", conf(bar, "appearance"))
+    check("migrated: a saved bundle's too, an unset one left unset", conf(bar, "bundles/mine/appearance")?.statusBar?.join() === FILE && conf(bar, "bundles/other/appearance")?.statusBar === null,
+      [conf(bar, "bundles/mine/appearance"), conf(bar, "bundles/other/appearance")])
     // Kinds' stamps were UTC: now the vault's local time, a user's own time keys left as they were.
     const stamped = path.join(tmp, "Stamped before")
     fs.mkdirSync(path.join(stamped, ".vaultite"), { recursive: true })

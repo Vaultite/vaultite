@@ -47,7 +47,7 @@ function marks(store: Store): Record<string, FileMark> {
 }
 
 export default definePlugin({
-  status: { tokens: { after: true, render: (file) => <Tokens file={file} /> } },
+  status: { tokens: { title: "Token count", after: true, render: (file) => <Tokens file={file} /> } },
   fileMarks: marks,
   sidebar: {
     context: {

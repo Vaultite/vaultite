@@ -16,7 +16,7 @@
   "paneTitles": false, "tabTint": false,
   "rails": false, "peekShade": true, "typingFade": true,
   "lineNumbers": false,
-  "statusBar": [],
+  "statusBar": ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"],
   "statusBarMore": [],
   "fileBar": null,
   "pullActions": null

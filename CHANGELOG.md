@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Status bar: every item can be hidden, moved and tucked under More, the file's too (view, word and character counts,
+  Vim's mode, chips, origin, tokens): right-click the bar, or "Show in status bar" / "Hide from status bar" and "Show
+  all status bar items" in the palette. With nothing shown, the bar is a faint corner whose right-click brings them
+  back; saved setups keep the file's items they showed.
 - Browser: switching between web tabs no longer flashes see-through for a frame. A tab's container menu is only for
   choosing one (Open in, Always open here, New container, Manage containers); containers are added and changed in
   Sites (the panel's + and the picked one's options, the Sites tab with every container and its options), which also

@@ -372,8 +372,11 @@ export type FileHead = { path: string; fm: Record<string, unknown>; type: string
 export type OpenFile = FileHead & { text: string }
 
 /** Drawn in the desktop status bar for the focused file: before its view and counts (Vim's mode), or `after` them
- *  (Token count). Nothing when render answers null. */
+ *  (Token count). The user can hide or move it (appearance `statusBar`). Nothing when render answers null. */
 export type StatusItem = {
+  /** Its name in the bar's menu and the palette ("Vim mode"): the plugin's name unless set. A plugin's status and
+   *  ambient items share their names' keys, so they differ. */
+  title?: string
   render: (file: OpenFile) => ReactNode
   /** Its place, left to right, when several plugins have one. */
   sort?: number
@@ -381,8 +384,8 @@ export type StatusItem = {
   after?: boolean
 }
 
-/** Drawn at the start of the desktop status bar whatever is open (routines done today, agents at work, the inbox):
- *  small, a click away from its page. The user picks which (appearance `statusBar`). Nothing when render answers null. */
+/** Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click
+ *  away from its page. The user picks which (appearance `statusBar`). Nothing when render answers null. */
 export type AmbientItem = {
   /** Its name in the bar's menu ("Routines today"). */
   title: string
