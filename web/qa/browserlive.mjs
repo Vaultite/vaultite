@@ -34,14 +34,14 @@ const SITE = `http://127.0.0.1:${site.address().port}/`
 const PORT = 20000 + Math.floor(Math.random() * 20000)
 const B = `http://127.0.0.1:${PORT}`
 const server = testServer({ stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local"), HOST: "127.0.0.1", PORT: String(PORT), VAULTITE_DESKTOP: "", TMPDIR: RUN } })
+  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local"), HOST: "127.0.0.1", PORT: String(PORT), VAULTITE_DESKTOP: "", TMPDIR: RUN, XDG_RUNTIME_DIR: RUN, XDG_RUNTIME_DIR: RUN } })
 let out = ""
 server.stdout.on("data", (d) => { out += d })
 server.stderr.on("data", (d) => { out += d })
 await until(() => /vaultite: vault read/.test(out), 60000)
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, TMPDIR: RUN, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "app-local") },
+  env: { ...process.env, TMPDIR: RUN, XDG_RUNTIME_DIR: RUN, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "app-local") },
 })
 const win = await app.firstWindow()
 await win.waitForSelector("[role=tree]", { timeout: 60000 })

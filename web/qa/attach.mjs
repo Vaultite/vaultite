@@ -22,7 +22,7 @@ fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.e
 /** A server on the vault, as the service runs one (TMPDIR: which machine it's on). */
 async function serve(port, tmpdir, local) {
   const p = testServer({ stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, local), HOST: "127.0.0.1", PORT: String(port), VAULTITE_DESKTOP: "", TMPDIR: tmpdir } })
+    env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, local), HOST: "127.0.0.1", PORT: String(port), VAULTITE_DESKTOP: "", TMPDIR: tmpdir, XDG_RUNTIME_DIR: tmpdir } })
   let out = ""
   p.stdout.on("data", (d) => { out += d })
   p.stderr.on("data", (d) => { out += d })
@@ -41,13 +41,13 @@ const self = () => fetch(`${ORIGIN}/api/machines/self`).then((r) => r.json())
 
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, TMPDIR: RUN, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "app-local") },
+  env: { ...process.env, TMPDIR: RUN, XDG_RUNTIME_DIR: RUN, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "app-local") },
 })
 const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 check("the window is the running server's, not one of its own", new URL(win.url()).origin === ORIGIN, win.url())
-check("… and the app started none", fs.readdirSync(RUN).filter((f) => f.startsWith("vaultite-serves-")).length === 1 && !fs.existsSync(path.join(TMP, "app-local")))
+check("… and the app started none", fs.readdirSync(process.platform === "darwin" ? RUN : path.join(RUN, "vaultite")).filter((f) => f.startsWith("vaultite-serves-")).length === 1 && !fs.existsSync(path.join(TMP, "app-local")))
 await until(async () => (await self()).desktop === true, 15000)
 check("the server has the app's browser now (Machines: desktop, standalone)", (await self()).desktop === true && (await self()).standalone === true)
 

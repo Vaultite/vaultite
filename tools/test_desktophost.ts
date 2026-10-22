@@ -11,20 +11,22 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-host-test-"))
 const VAULT = path.join(tmp, "vault")
 fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ enabled: ["web-viewer", "machines"], disabled: [] }))
-// (its own runtime folder, where the claim is: another "machine" is another TMPDIR)
+// (its own runtime folder, where the claim is (core/runtime.ts): TMPDIR on a Mac, XDG_RUNTIME_DIR/vaultite on Linux)
 const RUN = path.join(tmp, "run")
-fs.mkdirSync(RUN)
+fs.mkdirSync(RUN, { mode: 0o700 })
+const CLAIMS = process.platform === "darwin" ? RUN : path.join(RUN, "vaultite")
+const claimFile = () => fs.existsSync(CLAIMS) ? fs.readdirSync(CLAIMS).find((f) => f.startsWith("vaultite-serves-")) : undefined
 
 function serve(port: number, env: Record<string, string> = {}) {
   const s = testServer({ stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, `local-${port}`), PORT: String(port), HOST: "127.0.0.1", VAULTITE_DESKTOP: "", TMPDIR: RUN, ...env } })
+    env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, `local-${port}`), PORT: String(port), HOST: "127.0.0.1", VAULTITE_DESKTOP: "", TMPDIR: RUN, XDG_RUNTIME_DIR: RUN, ...env } })
   let log = ""
   s.stdout!.on("data", (d) => { log += d })
   s.stderr!.on("data", (d) => { log += d })
   const exited = new Promise<number | null>((r) => s.once("exit", (code) => r(code)))
   return { s, log: () => log, exited, up: async () => { for (let i = 0; i < 600 && !/vaultite: vault read/.test(log); i++) await sleep(100) } }
 }
-const claimed = () => JSON.parse(fs.readFileSync(path.join(RUN, fs.readdirSync(RUN).find((f) => f.startsWith("vaultite-serves-"))!), "utf8"))
+const claimed = () => JSON.parse(fs.readFileSync(path.join(CLAIMS, claimFile()!), "utf8"))
 function socket(port: number, headers: Record<string, string>) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}/api/desktop/host`, { headers })
   const heard: any[] = []
@@ -44,7 +46,7 @@ const one = serve(port)
   await one.up()
   const c = claimed()
   check("serving: the server claims its vault (pid, port, a key only this user reads)", c.pid === one.s.pid && c.port === port && c.key.length > 20 &&
-    (fs.statSync(path.join(RUN, fs.readdirSync(RUN).find((f) => f.startsWith("vaultite-serves-"))!)).mode & 0o077) === 0, c)
+    (fs.statSync(path.join(CLAIMS, claimFile()!)).mode & 0o077) === 0, c)
 
   const two = serve(await freePort())
   const code = await Promise.race([two.exited, sleep(30_000).then(() => "running")])
@@ -90,6 +92,6 @@ const one = serve(port)
 
   one.s.kill("SIGTERM")
   await one.exited
-  check("serving: a server that stops lets its vault go", !fs.readdirSync(RUN).some((f) => f.startsWith("vaultite-serves-")))
+  check("serving: a server that stops lets its vault go", !claimFile())
 }
 process.exit(summary("desktophost", began))

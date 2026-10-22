@@ -259,7 +259,7 @@ check("MCP: its own tab closes", !closed.isError && !(await op("tabs")).some((t)
 const PLAIN = 20000 + Math.floor(Math.random() * 20000)
 fs.mkdirSync(path.join(TMP, "run-plain"))
 const plain = testServer({ stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local-plain"), HOST: "127.0.0.1", PORT: String(PLAIN), VAULTITE_DESKTOP: "", TMPDIR: path.join(TMP, "run-plain") } })
+  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local-plain"), HOST: "127.0.0.1", PORT: String(PLAIN), VAULTITE_DESKTOP: "", TMPDIR: path.join(TMP, "run-plain"), XDG_RUNTIME_DIR: path.join(TMP, "run-plain") } })
 let plainOut = ""
 plain.stdout.on("data", (d) => { plainOut += d })
 plain.stderr.on("data", (d) => { plainOut += d })
