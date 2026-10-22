@@ -6,6 +6,7 @@ import type { EditorView } from "@codemirror/view"
 import type { LucideIcon } from "lucide-react"
 import type { Store, VaultMeta } from "@/core/data"
 import type { ConfirmOptions } from "@/components/ConfirmDialog"
+import type { Dot } from "@/components/kit"
 import type { MenuItem } from "@/components/ContextMenu"
 import type { Side, Sidebars } from "../../../core/sidebars.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
@@ -225,8 +226,8 @@ export type ViewDef = {
   iconClass?: (arg: string) => string | undefined
   /** Its tab's icon colour (a CSS colour, like a file's tint: a coding agent's own). */
   iconTint?: (arg: string) => string | undefined
-  /** A dot on its tab's icon: something wants the user (a coding agent waiting for an answer). */
-  iconBadge?: (arg: string) => boolean
+  /** A dot on its tab's icon (Badged's kinds): a coding agent at work, waiting for an answer, with one to read. */
+  iconBadge?: (arg: string) => Dot
   /** A colour its tab takes lightly while it's the active one, when the appearance setting `tabTint` is on (a web
    *  page's container). */
   tabTint?: (arg: string) => string | undefined

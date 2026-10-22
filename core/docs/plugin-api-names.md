@@ -59,7 +59,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.
-- `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (an agent waiting for you), the same wherever the icon is.
+- `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (an agent at work, waiting for you), the same wherever the icon is.
 - `Bar({ w, className })`: A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width).
 - `BarKey`
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
@@ -145,6 +145,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dismissNotice(id)`: Close a toast before its time.
 - `dockAtEnd(key, side)`: Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's toggle, Move to the other sidebar, ticking it in the Panels menu), so where it…
 - `dockIcon()`: The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it.
+- `Dot`: A status dot's kind.
 - `dotIcon(color)`: A colour's dot (a CSS colour), as a menu row's icon.
 - `dow(s)`
 - `DragItem`

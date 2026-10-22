@@ -18,7 +18,7 @@ import { checklist, menuFor, rightClickBelow, type CheckItem, type MenuItem } fr
 import { HeadingButton } from "@/components/Button"
 import { FileTree } from "@/components/FileTree"
 import { Drawn, Guard } from "@/components/Guard"
-import { Badged, IconAction } from "@/components/kit"
+import { Badged, IconAction, type Dot } from "@/components/kit"
 import { cn, space } from "@/lib/utils"
 import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
@@ -310,8 +310,8 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, iconAc
   iconClassName?: string
   /** The icon's colour (a CSS colour: a coding agent's own), else the rows' grey (the accent while active). */
   tint?: string
-  /** A dot on the icon: something wants the user (an agent waiting for an answer). */
-  badge?: boolean
+  /** A dot on the icon (Badged's kinds): an agent at work, waiting for an answer. */
+  badge?: Dot
   /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
   tag?: string
   /** What a click on the icon does instead of the row's (a tab's `action`: mute it). */
@@ -355,7 +355,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, iconAc
  *  tooltip, under it. Its icon keeps a row's colours; active, the tile stands out as a segmented control's choice. */
 export function SidebarTile({ icon: Icon, iconClassName, tint, badge, label, active, onClick, onContextMenu, href, className, ...rest }: {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
-  label: string; active?: boolean; href?: string; className?: string; iconClassName?: string; tint?: string; badge?: boolean
+  label: string; active?: boolean; href?: string; className?: string; iconClassName?: string; tint?: string; badge?: Dot
   onClick?: (e: React.MouseEvent) => void; onContextMenu?: (e: React.MouseEvent) => void
 } & Record<`data-${string}`, string | undefined>) {
   return (

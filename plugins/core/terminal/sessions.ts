@@ -1,5 +1,5 @@
-import { Check, CircleAlert, createLucideIcon, type LucideIcon } from "lucide-react"
-import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, openView, parseTerminal, type Agent } from "@vaultite"
+import type { LucideIcon } from "lucide-react"
+import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, openView, parseTerminal, type Agent, type Dot } from "@vaultite"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
 // registers itself here while it's mounted.
@@ -165,10 +165,9 @@ async function settle(ids: string[]) {
   })
 }
 
-/** A session's colour, its state's: its agent's own (Claude Code's orange) while it works or says nothing, yellow while
- *  it waits on you, red once it failed, none (the icons' grey) at rest or a plain shell. */
-export const tintOf = (s: Session, a = agentIn(s)) =>
-  !a ? undefined : s.state === "error" ? "var(--red)" : resting(s) && !cacheIn(s) ? undefined : s.state === "blocked" ? "var(--yellow)" : a.tint
+/** A session's colour: its agent's own (Claude Code's orange), grey once at rest with its cache gone or a plain shell.
+ *  Its state is its dot's (dotOf). */
+export const tintOf = (s: Session, a = agentIn(s)) => (!a || (resting(s) && !cacheIn(s)) ? undefined : a.tint)
 /** Where a session sorts, as a mailbox's unread first: needs you, working, idle (or saying nothing), a plain shell. */
 export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 3 : needsYou(s, a) ? 0 : s.state === "working" ? 1 : 2)
 /** It needs the user: its agent waits on them (blocked), or its Inbox row does, unread (an answer to read, a question). */
@@ -245,20 +244,19 @@ export function runningResume(id: string): string | null {
   return now.list?.find((s) => s.id !== id && s.session === t.resume && (s.machine ?? null) === t.machine && agentIn(s)?.name === t.agent)?.id ?? null
 }
 
-/** A filled dot that breathes (`WORKING`) while an agent works: calm, as it works for minutes, not a page's seconds. */
-export const Working = createLucideIcon("working-dot", [["circle", { cx: "12", cy: "12", r: "5", fill: "currentColor", stroke: "none", key: "dot" }]])
-export const WORKING = "breathe motion-reduce:animate-none"
-/** Its icon: a breathing dot while its agent works, a check once it's done with nothing for you (or you've read it),
- *  an alert once it failed; else its agent's (a dot while it needs you). */
-export function iconOf(s: Session, a = agentIn(s)): LucideIcon | null {
-  if (!a) return null
-  if (s.state === "working") return Working
-  if (needsYou(s, a)) return a.icon
-  return s.state === "done" ? Check : s.state === "error" ? CircleAlert : a.icon
+/** Its icon: always its agent's, so a tab says which agent; what it's doing is its dot (dotOf). */
+export const iconOf = (s: Session, a = agentIn(s)): LucideIcon | null => a?.icon ?? null
+/** The dot on its icon: breathing while it works, yellow while it waits on you, blue with an answer to read (its Inbox
+ *  row unread), red once it failed; none at rest. */
+export function dotOf(s: Session, a = agentIn(s)): Dot {
+  if (!a) return false
+  if (s.state === "blocked") return "ask"
+  if (s.state === "working") return "working"
+  if (s.state === "error") return "error"
+  return s.needs ? "unread" : false
 }
-/** Its icon's classes: the dot breathing; at rest, dimmed as far as its prompt cache ran out (Agent meters). */
-export const stateClass = (s: Session, a = agentIn(s)) =>
-  !a ? undefined : s.state === "working" ? WORKING : resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
+/** Its icon's classes: at rest, dimmed as far as its prompt cache ran out (Agent meters). */
+export const stateClass = (s: Session, a = agentIn(s)) => (a && resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined)
 
 /** How much of its prompt cache's time an idle agent has left (0-1), when Agent meters draws it in the icon. */
 export const cacheIn = (s: Session) => {

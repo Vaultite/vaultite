@@ -20,14 +20,14 @@ import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { fileIcon } from "@/components/FileTree"
 import { copyText, copyToVaultItem, fileMenu, revealItem } from "@/components/FileActions"
-import { Badged, IconAction } from "@/components/kit"
+import { Badged, IconAction, type Dot } from "@/components/kit"
 import { cn } from "@/lib/utils"
 import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
 
 /** `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting). */
 export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClassName?: string
-  /** A dot on the icon (a view's `iconBadge`: a coding agent waiting for you). */
-  badge?: boolean
+  /** A dot on the icon (a view's `iconBadge`: a coding agent at work, waiting for you). */
+  badge?: Dot
   /** The colour the tab takes lightly while it's the active one, with appearance `tabTint` (a view's `tabTint`). */
   wash?: string
   /** What a click on the icon does instead (a view's `iconAction`: mute it). */
@@ -341,7 +341,7 @@ export function useTabInfo(store: Store | null, pageInfo: (id: string) => TabInf
 export function viewInfo(to: string, disabled = getPrefs().disabled, tab?: string): TabInfo {
   const v = viewFor(to, disabled)
   return v ? { label: v.def.title(v.arg), icon: v.def.iconFor?.(v.arg, tab) ?? v.def.icon,
-    iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on && !!v.def.iconBadge?.(v.arg),
+    iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on ? v.def.iconBadge?.(v.arg) : undefined,
     wash: v.on ? v.def.tabTint?.(v.arg) : undefined, action: v.on && tab ? v.def.iconAction?.(v.arg, tab) ?? undefined : undefined }
     : { label: to.slice(5), icon: SquareDashed }
 }

@@ -8,7 +8,7 @@ import {
   useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { cloudListed, getCloud, subscribeCloud } from "./cloud"
-import { agentIn, cacheLeft, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, Working, WORKING, type Session } from "./sessions"
+import { agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, type Session } from "./sessions"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
  *  list the terminal tabs' names, colours and states come from too (sessions.ts). */
@@ -40,8 +40,8 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   return (
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
-    {/* Its icon as its tab's (a breathing dot, a check); one that needs you bold, with a dot, as an unread mail. */}
-    <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={needs} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
+    {/* Its icon and dot as its tab's; one that needs you bold, as an unread mail. */}
+    <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={dotOf(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
       active={tab === to} tip={tip} more data-session={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}
       className={needs ? "font-semibold" : undefined}
       data-where={where}
@@ -166,8 +166,7 @@ function CloudRow({ c, open, tab, page }: { c: CloudSession; open: boolean; tab:
   const a = useAgents().find((x) => x.name === "claude")
   const state = c.state === "running" ? "working" : c.state === "waiting" ? "waiting for you" : "idle"
   return (
-    <SidebarRow icon={c.state === "running" ? Working : a?.icon ?? Cloud} iconClassName={c.state === "running" ? WORKING : undefined}
-      tint={c.state === "waiting" ? "var(--yellow)" : c.state === "running" ? a?.tint : undefined} badge={c.state === "waiting"}
+    <SidebarRow icon={a?.icon ?? Cloud} tint={c.state === "idle" ? undefined : a?.tint} badge={c.state === "running" ? "working" : c.state === "waiting" && "ask"}
       label={c.title} open={open} active={tab === to} tip={`${c.title} (${state}), in the cloud`} data-cloud={c.id} data-state={c.state}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       <span className="mr-1 shrink-0 truncate text-[11px] text-tertiary">{page ? `${capitalize(state)} · ${fmtAgo(c.updated, { short: true })}` : fmtAgo(c.updated, { short: true })}</span>

@@ -418,6 +418,13 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 /* An agent at work: slow and eased, as it works for minutes in the background. */
 @keyframes breathe { 50% { opacity: 0.3; } }
 .breathe { animation: breathe 2.2s ease-in-out infinite; }
+/* A status dot (Badged) pops in; one that asks for the user rings once as it comes. */
+@keyframes dot-in { from { transform: scale(0); } }
+@keyframes dot-ping { to { transform: scale(2.6); opacity: 0; } }
+.dot-in { animation: dot-in 180ms ease-out; }
+.dot-in.breathe { animation: dot-in 180ms ease-out, breathe 2.2s ease-in-out infinite; }
+.dot-ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: dot-ping 1s ease-out; }
+@media (prefers-reduced-motion: reduce) { .dot-in, .dot-ping::after { animation: none; } }
 @keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
 /* (a component layer: a utility on it wins, rounded-full) */
 @layer components {

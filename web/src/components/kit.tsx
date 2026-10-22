@@ -45,14 +45,23 @@ export function IconAction({ action, children }: { action?: { label: string; run
   )
 }
 
-/** An icon with a status dot on its corner while `on` (an agent waiting for you), the same wherever the icon is.
- *  `tag`: a tiny label on its bottom corner (the machine a terminal runs on: "M1"). */
-export function Badged({ on, tag, children }: { on?: boolean; tag?: string; children: ReactNode }) {
+/** A status dot's kind. Only work moves; the colours want the user: `true` (yellow), ask (yellow, ringing once: blocked
+ *  on them), unread (blue, an answer to read), error (red). */
+export type Dot = boolean | "working" | "ask" | "unread" | "error"
+const DOTS: Record<"true" | Exclude<Dot, boolean>, string> = {
+  true: "bg-[var(--yellow)]", working: "bg-foreground breathe motion-reduce:animate-none", ask: "bg-[var(--yellow)] dot-ping", unread: "bg-[var(--blue)]", error: "bg-[var(--red)]",
+}
+
+/** An icon with a status dot on its corner while `on` (an agent at work, waiting for you), the same wherever the icon
+ *  is. `tag`: a tiny label on its bottom corner (the machine a terminal runs on: "M1"). */
+export function Badged({ on, tag, children }: { on?: Dot; tag?: string; children: ReactNode }) {
   if (!on && !tag) return <>{children}</>
+  const kind = on ? String(on) as keyof typeof DOTS : undefined
   return (
     <span className="relative inline-grid shrink-0 place-items-center" data-badged>
       {children}
-      {on && <span aria-hidden className="absolute -top-[3px] -right-[3px] size-[7px] rounded-full bg-[var(--yellow)] ring-[1.5px] ring-background" />}
+      {/* (keyed by its kind, so a new state pops in) */}
+      {kind && <span key={kind} aria-hidden data-dot={kind} className={cn("dot-in absolute -top-[3px] -right-[3px] size-[7px] rounded-full ring-[1.5px] ring-background", DOTS[kind])} />}
       {tag && <span aria-hidden data-tag className="absolute -right-[6px] -bottom-[2px] rounded-[2px] bg-background px-[1.5px] text-[7px] leading-[8px] font-semibold tracking-tight text-muted-foreground">{tag}</span>}
     </span>
   )
