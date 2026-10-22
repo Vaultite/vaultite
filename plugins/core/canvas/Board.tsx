@@ -891,7 +891,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     <div ref={box} tabIndex={embed ? -1 : 0} data-canvas-board={place} data-canvas-nodes={doc.nodes.length} data-canvas-edges={doc.edges.length} data-canvas-selected={sel.size}
       data-file-drop={editable && !embed ? "" : undefined} data-drops={editable && !embed ? "" : undefined}
       className={cn("absolute inset-0 overflow-hidden bg-background outline-none select-none", !embed && "touch-none",
-        drag?.kind === "pan" && drag.moved ? "cursor-grabbing" : spacePan ? "cursor-grab" : "cursor-default", embed && "pointer-events-none")}
+        (drag?.kind === "pan" || drag?.kind === "move") && drag.moved ? "cursor-grabbing [&_*]:cursor-grabbing" : spacePan ? "cursor-grab" : "cursor-default", embed && "pointer-events-none")}
       style={{ "--k": 1 } as CSSProperties}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onDoubleClick={onDouble} onKeyDown={onKey} onKeyUp={onKeyUp}
       onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node)) setSpacePan(false) }}
