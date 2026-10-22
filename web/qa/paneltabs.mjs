@@ -3,7 +3,7 @@
 // headings onto a pane's middle, an edge and a tab bar (a tab opens; the same panel again into a pane that has it only
 // shows it; the panel stays in the sidebar); "Open Terminals in a tab" in a heading's right-click menu; the search tab keeps its
 // query in its address and across a switch and a reload; a terminal whose process is `claude` (a stand-in: a tiny sleeping program under
-// that name) shows its pane title, its colour and working/waiting state on its tab, live, like its sidebar row; phones at 390px
+// that name) shows its pane title, its colour and its working/waiting dot on its tab, live, like its sidebar row; phones at 390px
 // draw each view (screenshots); the wheel over rows of every panel as a tab scrolls its pane (no wheel trap inside it:
 // a scroller with overscroll containment and nothing to scroll). Writes plugins.json (Workspaces off) and sidebars.json (put back), runs a shell:
 // throwaway server only.
@@ -160,26 +160,27 @@ try {
   if (!named) console.log(await page.evaluate(() => [...document.querySelectorAll("[data-terminal]")].map((e) => e.terminalText?.() ?? "").join("\n").trim()))
   const row = await page.$eval(`aside [data-session='${sid}']`, (e) => e.textContent).catch(() => null)
   check("  the same name as its row", row?.includes("Refactor the parser"), row)
-  const tabIcon = () => page.$eval(`[data-tab-bar] [data-tab-id]:has-text("Refactor the parser") svg`, (e) => e.getAttribute("class")).catch(() => null)
-  check("  its icon is a breathing dot while working", (await tabIcon())?.includes("breathe"), await tabIcon())
-  // The colour is the icon's style (a view's iconTint, a row's tint); waiting is a dot on the icon (kit.tsx: Badged).
+  const tab = `[data-tab-bar] [data-tab-id]:has-text("Refactor the parser")`, tabDot = () => page.$eval(`${tab} [data-dot]`, (e) => `${e.dataset.dot} ${e.className}`).catch(() => null)
+  check("  a breathing dot on its icon while working", /^working .*breathe/.test(await tabDot() ?? ""), await tabDot())
+  // The icon's colour is the agent's (sessions.ts: tintOf), the same in its row; its state is the dot (dotOf).
   const colourOf = (sel) => page.$eval(sel, (e) => e.style.color || getComputedStyle(e).color).catch(() => null)
-  const tabSvg = `[data-tab-bar] [data-tab-id]:has-text("Refactor the parser") svg`, rowSvg = `aside [data-session='${sid}'] svg`
+  const tabSvg = `${tab} svg`, rowSvg = `aside [data-session='${sid}'] svg`
   const [rowColour, tabColour] = [await colourOf(rowSvg), await colourOf(tabSvg)]
   check("  in the session's own colour, the same as its row", !!rowColour && rowColour === tabColour, [rowColour, tabColour])
   writeFileSync(stateFile, "waiting")
-  const dot = await until(async () => (await page.$(`[data-tab-bar] [data-tab-id]:has-text("Refactor the parser") [data-badged]`)) !== null, 6000)
-  check("  and shows a dot while waiting, live", dot, await tabIcon())
-  // Colour is the state's (sessions.ts: tintOf): yellow waiting, grey idle; waiting sorts first (SessionsPanel: useByState).
+  const dot = await until(async () => (await page.$(`${tab} [data-dot='ask']`)) !== null, 6000)
+  check("  and its dot asks while waiting, live", dot, await tabDot())
+  // Waiting is a yellow dot, row and tab (kit.tsx: DOTS); waiting sorts first (SessionsPanel: useByState).
   const yellow = await page.evaluate(() => { const e = document.createElement("i"); e.style.color = "var(--yellow)"; document.body.append(e); const c = getComputedStyle(e).color; e.remove(); return c })
-  const drawn = (sel) => page.$eval(sel, (e) => getComputedStyle(e).color).catch(() => null)
-  check("  in yellow while waiting, row and tab", (await drawn(rowSvg)) === yellow && (await drawn(tabSvg)) === yellow, [await drawn(rowSvg), await drawn(tabSvg), yellow])
+  const fill = (sel) => page.$eval(sel, (e) => getComputedStyle(e).backgroundColor).catch(() => null)
+  const [rowDot, barDot] = [await fill(`aside [data-session='${sid}'] [data-dot]`), await fill(`${tab} [data-dot]`)]
+  check("  in yellow while waiting, row and tab", rowDot === yellow && barDot === yellow, [rowDot, barDot, yellow])
   await page.mouse.move(700, 300)
   const onTop = await until(async () => (await page.$eval("aside [data-session]", (e) => e.dataset.session).catch(() => null)) === sid, 4000)
   check("  and its row sorts first in the panel", onTop, await page.$$eval("aside [data-session]", (es) => es.map((e) => e.dataset.state ?? "-")))
   writeFileSync(stateFile, "idle")
   const grey = await until(async () => !(await page.$eval(rowSvg, (e) => e.style.color).catch(() => "x")), 6000)
-  check("  in the icons' grey once idle, without the dot", grey && !(await page.$(`[data-tab-bar] [data-tab-id]:has-text("Refactor the parser") [data-badged]`)), await colourOf(rowSvg))
+  check("  in the icons' grey once idle, without the dot", grey && !(await page.$(`${tab} [data-dot]`)), await colourOf(rowSvg))
   await page.screenshot({ path: `${OUT}terminal-tab-name.png` })
   await page.screenshot({ path: `${OUT}terminal-tab-bar.png`, clip: { x: 0, y: 0, width: 900, height: 44 } })
   await palette("Close current tab") // ends that shell

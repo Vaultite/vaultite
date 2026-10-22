@@ -184,7 +184,9 @@ const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.s
 function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  return { url: wc.getURL() || p.target, title: wc.getTitle() || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
+  // (the spare's about:blank is no address: the one it's loading shows till it's in)
+  const blank = p.blankBehind
+  return { url: (!blank && wc.getURL()) || p.target, title: (!blank && wc.getTitle()) || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
     ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
@@ -609,7 +611,8 @@ async function toPlayer(p: Page, fullScreen: boolean) {
   wc.setBackgroundThrottling(false)
   // (full screen in its tab already: it stays so, filling the player, and the window it made full screen goes back)
   if (p.full) { p.filled = true; if (p.madeFull) { p.madeFull = false; p.win.setFullScreen(false) } }
-  w.on("resize", () => fit(p))
+  // (as its content is laid out: on Linux its menu bar comes and goes with no resize)
+  w.contentView.on("bounds-changed", () => fit(p))
   w.on("close", () => fromPlayer(p, true))
   fit(p)
   w.show()
@@ -685,7 +688,7 @@ export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) 
 /** Wire a vault window: its pages end with it; as its page reloads, its tabs take their pages back or they end. */
 export function webWindow(win: AppWindow) {
   // (a page full screen in it follows it as it goes full screen; the window leaving full screen takes the page out too)
-  win.on("resize", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
+  win.contentView.on("bounds-changed", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
   win.on("closed", () => {
     for (const p of [...pages.values()]) if (p.win === win) end(p)

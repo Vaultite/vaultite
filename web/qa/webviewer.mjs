@@ -454,8 +454,9 @@ check("… and opens no web tab", (await pages()).length === before, await pages
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const n0 = (await pages()).length
 await ui({ action: "open", path: `${SITE}/slow`, newTab: true })
+// (its page still loading: nothing in yet, or the spare's about:blank it was started in)
 check("a slow page: its address shows while it loads", await until(async () => (await win.locator("[data-web-address]:visible").inputValue().catch(() => "")) === `${SITE}/slow`, 4000)
-  && (await pages()).some((p) => p.url === ""), await pages())
+  && (await pages()).some((p) => p.url === "" || p.url === "about:blank"), await pages())
 // (named by its site till its title comes)
 for (let i = 0; i < 3; i++) {
   await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click(); await wait(150)

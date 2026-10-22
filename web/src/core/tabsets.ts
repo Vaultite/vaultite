@@ -46,13 +46,14 @@ function without(g: Group, ids: Set<string>): Group {
 /** The tabs `ids` in their order on screen. */
 const inOrder = (ids: string[]) => groups().flatMap((g) => g.tabs).filter((t) => ids.includes(t.id))
 
-/** Put `tabs` into pane `gid` at `at` (as computed without them), in group `set`, taking them out of wherever they are. */
-function gather(tabs: Tab[], gid: string, at: (g: Group) => number, setId: string, def?: TabSet): Layout {
+/** Put `tabs` into pane `gid` at `at` (as computed without them), in group `set`, taking them out of wherever they are;
+ *  `shown`: the one of them that pane then shows. */
+function gather(tabs: Tab[], gid: string, at: (g: Group) => number, setId: string, def?: TabSet, shown?: string): Layout {
   const chosen = new Set(tabs.map((t) => t.id))
   return mapGroups(getWorkspace().root, (g) => {
     if (g.id !== gid) return without(g, chosen)
     const rest = g.tabs.filter((t) => !chosen.has(t.id)), i = at(g)
-    const active = chosen.has(g.active) || rest.some((t) => t.id === g.active) ? g.active : rest[0]?.id ?? tabs[0].id
+    const active = shown && chosen.has(shown) ? shown : chosen.has(g.active) || rest.some((t) => t.id === g.active) ? g.active : rest[0]?.id ?? tabs[0].id
     return { ...g, tabs: [...rest.slice(0, i), ...tabs.map((t) => inSet(t, setId)), ...rest.slice(i)], active, ...(def ? { sets: [...(g.sets ?? []), def] } : {}) }
   })
 }
@@ -72,14 +73,14 @@ export function makeSet(ids: string[], opts: { name?: string; color?: Color; col
   return id
 }
 
-/** Add tabs to the end of a tab group (from anywhere: they move to its pane). */
-export function addToSet(ids: string[], setId: string) {
+/** Add tabs to the end of a tab group (from anywhere: they move to its pane); `shown`: the one of them its pane shows. */
+export function addToSet(ids: string[], setId: string, shown?: string) {
   const where = setById(setId)
   const tabs = inOrder(ids).filter((t) => t.set !== setId)
   if (!where || !tabs.length) return
   const chosen = new Set(tabs.map((t) => t.id))
   const at = (g: Group) => { const rest = g.tabs.filter((t) => !chosen.has(t.id)), r = runOf({ ...g, tabs: rest }, setId); return r.at + r.n }
-  set({ ...getWorkspace(), root: gather(tabs, where.g.id, at, setId) })
+  set({ ...getWorkspace(), root: gather(tabs, where.g.id, at, setId, undefined, shown) })
 }
 
 /** Put the tab showing `to` (the one on screen in its pane, as a tab just opened is) in the tab group named `name`: an
@@ -90,7 +91,8 @@ export function groupTab(to: string, name: string) {
   const tab = g && (g.tabs.find((t) => t.id === g.active && t.to === to) ?? g.tabs.find((t) => t.to === to))
   if (!g || !tab || !name.trim()) return
   const named = g.sets?.find((s) => s.name === name) ?? allSets().find((s) => s.name === name)
-  if (named) addToSet([tab.id], named.id)
+  // (on screen it stays, in that group's pane too: an agent's web tab hidden there would get no page)
+  if (named) addToSet([tab.id], named.id, tab.id === g.active ? tab.id : undefined)
   else makeSet([tab.id], { name })
 }
 

@@ -204,9 +204,9 @@ const want = ["browser_tabs", "browser_open", "browser_close", "browser_snapshot
 check("MCP: the browser's tools", want.every((t) => tools.includes(t)), tools.filter((t) => t.startsWith("browser")))
 const o1 = await mcp.tool("browser_open", { url: `${SITE}/form`, task: "form test" })
 const t1 = Number(/^Tab (\d+)/.exec(text(o1))?.[1])
-check("MCP: browser_open answers its tab", !o1.isError && t1 > 0, text(o1))
 const o2 = await mcp.tool("browser_open", { url: `${SITE}/upload`, task: "form test" })
 const t2 = Number(/^Tab (\d+)/.exec(text(o2))?.[1])
+check("MCP: browser_open answers its tab, each time", !o1.isError && t1 > 0 && !o2.isError && t2 > t1, [text(o1), text(o2)])
 const groups = await until(async () => {
   const r = await fetch(`${origin}/api/ops/tabs.list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((x) => x.json())
   const g = r.panes?.flatMap((p) => p.groups).find((x) => x.name === "Claude Code/form test")

@@ -25,7 +25,8 @@ export class AppWindow extends BaseWindow {
     byPage.set(wc, this)
     const fit = () => { const [width, height] = this.getContentSize(); this.view.setBounds({ x: 0, y: 0, width, height }) }
     fit()
-    this.on("resize", fit)
+    // (as its content is laid out, not only as it resizes: Linux shows its menu bar again after full screen with no resize)
+    this.contentView.on("bounds-changed", fit)
     this.ready = new Promise((ok) => wc.once("did-finish-load", () => ok()))
     // (a window's page has the keyboard as it's focused, unless a page of its own over it does)
     this.on("focus", () => { if (!wc.isDestroyed() && !this.contentView.children.some((v) => v instanceof WebContentsView && v.webContents.isFocused())) wc.focus() })
