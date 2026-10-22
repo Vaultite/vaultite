@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing
+  changed on disk, and a save re-reads only the file saved (on a 3,000-file vault, 6 to 20 times less work per request).
 - Agents in the browser: `act` answers what changed on the page once it settles (`--diff`) and fills a whole form at
   once (`--fields`), refs last while their element does, `browser run` does a whole flow in one call (a script in a
   sandbox, 30 s), and `browser pdf` saves a page into the vault. "Show agents in the browser" shows the tabs agents work

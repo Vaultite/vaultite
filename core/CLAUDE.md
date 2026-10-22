@@ -1,8 +1,8 @@
 # Notes for `core/`
 
 ## The vault
-- The only store. The server indexes every Markdown file in memory (`vault.ts`), re-reads changed files at the start of
-  every request, and API writes go straight to the files. Back it up before bulk changes.
+- The only store. The server indexes every Markdown file in memory (`vault.ts`), re-reads changed files before each
+  request (the app's own trust the watcher between walks: `Vault.vouched`), and API writes go straight to the files. Back it up before bulk changes.
 - Folders are the user's: reorganizing must break nothing. A file's kind is its `type:` wherever it is
   (`Vault.kindFor`); a kind's `folder` is only where new files go by default. Find files by type, plugin, id or
   `homeOf`, never by a hard-coded path like `People/...`.

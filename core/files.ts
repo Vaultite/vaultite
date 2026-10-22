@@ -731,7 +731,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       else text = vault.saving(rel, cur, text) // (what plugins set in the same write: plugin.onSave)
       const before = vault.entries.get(rel) ?? null
       if (cur !== text) writeText(vault.abs(rel), text)
-      await vault.sync()
+      await (cur === null ? vault.sync() : vault.reread([rel]))
       // An edit in the app: plugins may fill things in (a note's id and dates), and the editor gets the result.
       if (cur !== text) await vault.fillIn(rel, before)
       const f = read(vault, rel)

@@ -35,6 +35,32 @@ export default async ($: VaultTest) => {
   await api("PUT", "file", { path: "Notes/Live two.md", text: "From the app.\n", base: read("Notes/Live two.md") })
   check("live: the app's own writes are heard too", await wait(() => touched("Notes/Live two.md")), heard)
   {
+    // While the watcher hears nothing, the app's reads don't walk the vault; an agent's always do (it may have just
+    // written a file the watcher hasn't told of yet).
+    const sync = vault.sync
+    let walks = 0
+    vault.sync = function () { walks++; return sync.call(this) }
+    await new Promise((r) => setTimeout(r, 300))
+    await vault.synced()
+    walks = 0
+    await vault.synced({ trusting: true })
+    check("live: the app's read, nothing heard since the last walk, doesn't walk", walks === 0 && vault.vouched(), walks)
+    await vault.synced()
+    check("live: an agent's read walks anyway", walks === 1, walks)
+    vault.heard("Notes/Live two.md")
+    check("live: hearing a file indexed as it is on disk (the server's own write) keeps the index vouched for", vault.vouched())
+    write("Notes/Live four.md", "From disk, unasked.\n")
+    check("live: a file written behind the app's back is heard and indexed", await wait(() => vault.entries.has("Notes/Live four.md")))
+    walks = 0
+    await vault.synced({ trusting: true })
+    check("live: then the app's reads trust the watcher again", walks === 0, walks)
+    vault.heard("Notes/Live five.md")
+    check("live: a change not in the index isn't vouched for", !vault.vouched())
+    await vault.synced({ trusting: true })
+    check("live: so the app's next read walks", walks === 1, walks)
+    vault.sync = sync
+  }
+  {
     // A write the API indexed itself, heard after another change was told at that index: still told (once).
     const own = new Live(vault), got: Any[] = []
     own.listen((c) => got.push(c))

@@ -95,6 +95,7 @@ export function splitTags(s: unknown): string[] {
 let tmpN = 0
 /** How long a turn with the vault may take before the log says what holds it (and again each time after). */
 const HELD_LONG = 30_000
+const VOUCH = 10_000 // the longest the app's reads trust the watcher without walking the vault
 
 /** A new file, whole or not at all (a full disk or a crash mid-write leaves no cut-off file to be refused as "already
  *  exists"); false if one came at `p` meanwhile. Renamed, not hard-linked: iCloud Drive's folders may not take links. */
@@ -661,9 +662,73 @@ export class Vault {
     return run
   }
 
-  /** Sync before a read. Every read asking before the next turn shares one sync that starts after all of them, so an
-   *  app's burst of requests walks the vault once, not once each. */
-  synced(): Promise<boolean> {
+  // The watcher (core/live.ts) vouches for the index between syncs: while it watches and has heard nothing since the
+  // last walk, the app's reads skip walking the vault again (~20 ms of blocked event loop on 3,000 files).
+  private watched = false
+  private stale = true
+  private walked = 0
+  private linkedOut = false // a linked folder was followed: the watcher doesn't see into it
+
+  /** Live watches the vault, or stopped (until it restarts, every read walks it). */
+  watching(on: boolean) {
+    this.watched = on
+    this.stale = true
+    this.heardCount++
+  }
+  /** Changes Live heard so far (and starts and stops): what was worked out from the disk at one count still holds. */
+  heardCount = 0
+
+  /** Live heard a change on disk: the next read walks the vault. */
+  heard(rel: string | null) {
+    if (rel && NOT_SETTINGS.has(rel.split("/").slice(0, 2).join("/"))) return // (what no sync looks at)
+    if (rel && this.indexed(rel)) return // (the server's own write, indexed as it wrote it)
+    this.stale = true
+    this.heardCount++
+  }
+
+  /** Whether a file is in the index as it is on disk now. */
+  private indexed(rel: string) {
+    const was = this.entries.get(rel)?.stat ?? this.others.get(rel)
+    if (!was || this.entries.get(rel)?.broken) return false
+    try {
+      const st = fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false })
+      return !!st && st.isFile() && sameStat(was, statFrom(st))
+    } catch {
+      return false
+    }
+  }
+
+  /** Index `rels` after writing them: only those while the watcher vouches for the rest and they're Markdown files
+   *  already indexed, else a whole sync. */
+  async reread(rels: string[]): Promise<boolean> {
+    if (!this.vouched() || rels.some((r) => !this.entries.has(r))) return this.sync()
+    let changed = false
+    for (const rel of rels) {
+      const st = fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false })
+      if (!st?.isFile()) return this.sync()
+      const e = this.entries.get(rel)!
+      if (sameStat(e.stat, statFrom(st)) && !e.broken) continue
+      this.read(rel, statFrom(st))
+      changed = true
+    }
+    if (changed) this.version++
+    for (const fn of this.hooks) {
+      try { fn(this) } catch (e) { console.error(e) }
+    }
+    return changed
+  }
+
+  /** Whether the index is as the disk is, by the watcher's word. Not while files are still downloading or evicted, a
+   *  folder is missing, or the last walk is older than VOUCH (in case the watcher missed something). */
+  vouched() {
+    return this.watched && !this.stale && !this.linkedOut && !this.downloading.length && !this.evicted.length &&
+      !this.missing.size && Date.now() - this.walked < VOUCH
+  }
+
+  /** Sync before a read; reads asking before the next turn share one walk. `trusting`: the watcher's word will do (the
+   *  app's reads: an agent that just wrote a file asks before the watcher could hear of it). */
+  synced({ trusting = false } = {}): Promise<boolean> {
+    if (trusting && !this.next && this.vouched()) return Promise.resolve(false)
     return this.next ??= turn().then(() => this.lock(() => {
       this.next = null
       return this.sync()
@@ -1035,6 +1100,7 @@ export class Vault {
    *  folders, for the file tree. */
   private scan() {
     this.evicted = []
+    this.linkedOut = false
     const found = new Map<string, Stat>()
     const others = new Map<string, Stat>()
     const folders: string[] = []
@@ -1064,6 +1130,7 @@ export class Vault {
           continue
         }
         if (st === undefined) continue
+        if (d.isSymbolicLink()) this.linkedOut = true
         if (st === null || st.isDirectory()) {
           if (CACHES.has(name)) continue
           if (st) { const key = `${st.dev}:${st.ino}`; if (linked.has(key)) continue; linked.add(key) }
@@ -1137,6 +1204,19 @@ export class Vault {
 
   /** Re-read every file that changed since the last sync. Returns true if anything changed. */
   async sync(): Promise<boolean> {
+    const t0 = Date.now()
+    this.stale = false // (a change heard while walking makes it stale again)
+    try {
+      const changed = await this.walk()
+      this.walked = t0
+      return changed
+    } catch (e) {
+      this.stale = true
+      throw e
+    }
+  }
+
+  private async walk(): Promise<boolean> {
     this.settings.clear() // read again, like the files
     try {
       const plain = this.plain().map((d) => d.replace(/^\/+|\/+$/g, "")).filter(Boolean)

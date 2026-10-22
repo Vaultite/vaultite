@@ -379,7 +379,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       throw e
     }
   }
-  await app.syncPlugins()
+  await app.syncPlugins({ trusting: app.trusts(req) })
   const out = await app.run(method, parts, query, body, req)
   if (out.status >= 400) failures.set(req, String((out.body as { error?: unknown } | null)?.error ?? ""))
   if (out.body instanceof Text) return send(res, out.status, out.body.text, out.body.type, out.body.headers)

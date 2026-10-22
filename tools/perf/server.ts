@@ -19,7 +19,7 @@ const BASE = `http://127.0.0.1:${PORT}`
 const CLIENT = arg("client", "app/web")
 const APP: Record<string, string> = CLIENT === "none" ? {} : { "X-Vaultite-Client": CLIENT }
 const ENDPOINTS = ["/api/state", "/api/vault", "/api/files", "/api/plugins", "/api/graph", "/api/tags", "/api/search?q=light",
-  "/api/render?path=Start%20here.md", "/api/render?path=Dashboards/People.md", "/api/render?path=Dashboards/Agents.md",
+  "/api/render?path=Start%20here.md", "/api/render?path=People/Alice%20Martin.md", "/api/render?path=Projects/Lighthouse.md",
   "/api/query?q=" + encodeURIComponent(JSON.stringify({ from: "Notes/", type: "note", sort: ["-updated"], limit: 50 })), "/"]
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-perf-"))
@@ -166,7 +166,8 @@ try {
   if (ONLY !== "boot") await measure(child)
   await stop(child)
 } finally {
-  fs.rmSync(tmp, { recursive: true, force: true })
+  // (a server stopping may still be writing there: tried again, and a leftover temp folder isn't worth hiding an error)
+  try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch (e) { console.error(`left ${tmp}: ${(e as Error).message}`) }
 }
 
 const fmt = (n: number) => n >= 1024 * 1024 ? `${(n / 1048576).toFixed(1)}M` : n >= 1024 ? `${(n / 1024).toFixed(0)}K` : `${n}B`

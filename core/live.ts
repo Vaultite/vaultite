@@ -73,6 +73,7 @@ export class Live {
         ? watchTree(root, unwatched, (rel) => this.add(rel))
         : fs.watch(root, { recursive: true }, (_event, name) => this.add(name === null || name === undefined ? null : String(name).split(path.sep).join("/")))
       this.watcher.on("error", (e) => this.restart(e))
+      this.vault.watching(true)
     } catch (e) {
       this.restart(e)
     }
@@ -86,7 +87,7 @@ export class Live {
     if (!full || !this.full) console.error(`live: watching the vault failed (${(e as Error).message ?? e}); trying again in ${full ? "a minute" : "5 s"}` +
       (full ? ". Linux ran out of inotify watches: raise them with `sudo sysctl fs.inotify.max_user_watches=524288` (and in /etc/sysctl.d/)" : ""))
     this.full ||= full
-    this.watcher?.close()
+    if (this.watcher) { this.watcher.close(); this.vault.watching(false) }
     this.watcher = null
     if (!this.closed) setTimeout(() => this.start(), full ? 60_000 : 5000).unref()
   }
@@ -97,6 +98,7 @@ export class Live {
     if (rel === null) this.all = true
     else if (!ignored(rel)) this.pending.add(rel)
     else return
+    this.vault.heard(rel)
     const now = Date.now()
     if (!this.timer) this.first = now
     if (this.timer) clearTimeout(this.timer)
@@ -111,7 +113,7 @@ export class Live {
     this.pending.clear()
     this.all = false
     try {
-      await this.vault.synced()
+      await this.vault.synced({ trusting: true }) // (walks unless all it heard was already indexed: Vault.heard)
     } catch (e) {
       console.error(e)
     }
@@ -289,7 +291,7 @@ export class Live {
     this.closed = true
     this.unmove()
     this.unarrive()
-    this.watcher?.close()
+    if (this.watcher) { this.watcher.close(); this.vault.watching(false) }
     if (this.timer) clearTimeout(this.timer)
     if (this.again) clearTimeout(this.again)
     if (this.pinger) clearInterval(this.pinger)

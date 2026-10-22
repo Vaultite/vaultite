@@ -150,8 +150,12 @@ export class App {
 
   /** Load, reload or unload the vault's own plugins, and adopt updates made elsewhere. Runs before every request and
    *  before the files are read, so a plugin's kinds apply to them; then the pages of plugins turned on (followPlugins). */
-  async syncPlugins({ pages: write = true } = {}) {
+  async syncPlugins({ pages: write = true, trusting = false } = {}) {
+    // (the app's reads skip it while nothing changed on disk, by the watcher's word, nor here: Vault.vouched)
+    const key = `${this.vault.heardCount}:${this.vault.settingsVersion}:${this.vaultPlugins.trust.version}:${this.index.version}`
+    if (trusting && this.pluginsSynced === key && this.vault.vouched()) return false
     const changed = await this.loadPlugins()
+    this.pluginsSynced = key
     this.adopt()
     this.tellPaused()
     this.followPlugins(write)
@@ -168,6 +172,13 @@ export class App {
     }
     setMarks(this.plugins.map((p) => p.manifest))
     return changed
+  }
+
+  private pluginsSynced = "" // what syncPlugins last ran at (its key)
+
+  /** Whether a request is the app's own, whose reads may trust the vault's watcher (Vault.synced). */
+  trusts(http?: IncomingMessage) {
+    return String(http?.headers["x-vaultite-client"] ?? "").startsWith("app/")
   }
 
   private adopting = new Map<string, number>() // plugin id + hash -> when it was last checked against its source
@@ -660,13 +671,13 @@ export class App {
 
   /** fn with the vault held (a write: synced first, then nobody else's write until it's done), as server.ts runs every
    *  write request; at once when this call already holds it (an op run by an op). Then plugins it turned on: followPlugins. */
-  hold<T>(fn: () => Promise<T> | T): Promise<T> {
+  hold<T>(fn: () => Promise<T> | T, { trusting = false } = {}): Promise<T> {
     if (this.holding.getStore()?.on) return Promise.resolve().then(fn)
     return this.vault.lock(async () => {
       const token = { on: true }
       try {
         return await this.holding.run(token, async () => {
-          await this.vault.sync()
+          if (!trusting || !this.vault.vouched()) await this.vault.sync() // (the app's writes trust the watcher: Vault.synced)
           this.pagesOf = this.onKey()
           try { return await fn() } finally { await this.loadPlugins().then(() => this.followPlugins(), (e) => console.error("plugins:", e)) }
         })
@@ -733,8 +744,8 @@ export class App {
   private async respond(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage, synced = false): Promise<Reply> {
     const go = () => this.dispatchOrReply(method, parts, query, body ?? {}, http)
     if (this.holding.getStore()?.on) return go()
-    if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced().then(go)
-    return this.hold(go)
+    if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced({ trusting: this.trusts(http) }).then(go)
+    return this.hold(go, { trusting: this.trusts(http) })
   }
 
   /** A route of the API in-process as `who` (for plugins: plugin.host.api): its body without private keys (text for a

@@ -34,7 +34,7 @@ const total = (d: Record<string, number>) => +Object.values(d).reduce((x, y) => 
 const cpuMs = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000 }
 
 const ENDPOINTS = ["state", "vault", "files", "plugins", "graph", "tags", "search?q=light", "render?path=Start%20here.md",
-  "render?path=Dashboards/People.md", "render?path=Dashboards/Agents.md",
+  "render?path=People/Alice%20Martin.md", "render?path=Projects/Lighthouse.md",
   "query?q=" + encodeURIComponent(JSON.stringify({ from: "Notes/", type: "note", sort: ["-updated"], limit: 50 }))]
 const EDITED = ["state", "files", "graph"]
 
