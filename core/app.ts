@@ -551,6 +551,11 @@ export class App {
       }
       return p ? p.settings() : this.vault.config(name)
     }
+    // Several plugins' settings at once ({<id>: settings}): the app reads them so as it loads.
+    if (route === "config/plugin" && method === "GET") {
+      const ids = String(query.ids ?? "").split(",").filter((id) => /^[a-z0-9][a-z0-9-]*$/.test(id)).slice(0, 500)
+      return Object.fromEntries(ids.map((id) => [id, this.plugins.find((x) => x.id === id)?.settings() ?? this.vault.config(`plugins/${id}/data`)]))
+    }
     // Ids have slashes ("People/Alice Park"): an unencoded one arrives as several parts.
     if (parts.length && this.vault.has(parts[0])) return await this.crud(method, this.vault.kind(parts[0]), parts.slice(1).join("/") || null, body)
     return reply(404, { error: "not found" })

@@ -20,10 +20,28 @@ const isMap = (v: unknown): v is Data => !!v && typeof v === "object" && !Array.
 // (a var: plugins call pluginSettings as their modules load, maybe before this module has run)
 // eslint-disable-next-line no-var
 var kept: Map<string, ReturnType<typeof keep>> | undefined
+// Plugins' reads in the same moment (as the app loads, after a reconnect) are one request. (A var, as `kept`.)
+// eslint-disable-next-line no-var
+var asking: Map<string, { ok: (d: unknown) => void; fail: (e: unknown) => void }> | null = null
+function readSoon(id: string) {
+  return new Promise<unknown>((ok, fail) => {
+    if (!asking) {
+      const all = asking = new Map()
+      setTimeout(() => {
+        asking = null
+        fetchJson<Data>(`config/plugin?ids=${[...all.keys()].join(",")}`)
+          .then((d) => { for (const [k, r] of all) r.ok(d?.[k]) }, (e) => { for (const r of all.values()) r.fail(e) })
+      })
+    }
+    asking.set(id, { ok, fail })
+  })
+}
+
 function keep(id: string) {
   const value = cell<Data | null>(null)
   let reading: Promise<void> | null = null
-  const read = () => fetchJson<Data>(`config/plugin/${id}`).then((d) => value.set(isMap(d) ? d : {}), () => { if (!value.get()) value.set({}) })
+  const got = (d: unknown) => value.set(isMap(d) ? d : {}), failed = () => { if (!value.get()) value.set({}) }
+  const read = () => readSoon(id).then(got, failed)
   const start = () => {
     if (reading) return
     reading = read()

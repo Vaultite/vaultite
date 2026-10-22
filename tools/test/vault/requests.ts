@@ -27,6 +27,11 @@ export default async ($: VaultTest) => {
       check("hooks: an agent's hook runs while a write holds the vault", hook === 200, hook)
     }
     {
+      const [status, all] = await api("GET", "config/plugin?ids=terminal,no-such-plugin,../x")
+      check("settings: several plugins' at once, the same as each one's", status === 200 && JSON.stringify(Object.keys(all)) === '["terminal","no-such-plugin"]' &&
+        JSON.stringify(all.terminal) === JSON.stringify((await api("GET", "config/plugin/terminal"))[1]) && !("allowRemote" in all.terminal), all)
+    }
+    {
       const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any
       const r = await app.run("PATCH", ["config", "plugin", "terminal"], {}, { allowRemote: true }, stranger)
       check("local settings: someone else on the tailnet can't change them", r.status === 403 && !(await api("GET", "config/plugin/terminal"))[1].allowRemote, r)
