@@ -52,7 +52,7 @@ for (const dark of [false, true]) {
     await shot("sort-menu")
     await page.locator("[role=menu] button", { hasText: "File name (Z to A)" }).click(); await wait(400)
     // (restored to what the vault had at the end of this block)
-    const top = await tree.locator(":scope > li > div button[data-tip]").allInnerTexts()
+    const top = await tree.locator(':scope > li[aria-level="1"] > div button[data-tip]').allInnerTexts()
     const folders = top.filter((_, i) => i < 5)
     check("Z to A reverses the list", folders.join() === [...folders].sort((a, b) => b.localeCompare(a)).join(), top.slice(0, 6))
     await head("Change sort order").click(); await wait(200)
@@ -66,7 +66,7 @@ for (const dark of [false, true]) {
     check("right-click on a page: the browser's menu is blocked", blocked)
     check("...and no menu shows", !(await page.locator("[role=menu]").count()))
     await page.locator("aside [role=tree] button", { hasText: /^Notes$/ }).first().click(); await wait(300)
-    await tree.locator("li li button[data-tip]").first().click({ button: "right" }); await wait(200)
+    await tree.locator('li[aria-level="2"] button[data-tip]').first().click({ button: "right" }); await wait(200)
     check("right-click on a file: its menu", (await page.locator("[role=menu] button").allInnerTexts()).includes("Rename"))
     await page.keyboard.press("Escape"); await wait(100)
   }
@@ -112,7 +112,7 @@ for (const dark of [false, true]) {
     check("view tooltip says current view", /Current view: (reading|editing)/.test(await page.locator("[role=tooltip]").innerText().catch(() => "")))
     await shot("view-tooltip")
     await viewBtn.click(); await wait(300)
-    // Status bar button: click or right-click lists the three views, above it; picking one switches.
+    // Status bar button: a click lists the three views, above it; picking one switches.
     // The view button (the bar also has property chips: Provenance's origin, 321233a)
     const sb = page.locator("[role=status] button[aria-label^='Current view']")
     await sb.click(); await wait(200)
@@ -124,8 +124,11 @@ for (const dark of [false, true]) {
     await shot("view-menu")
     await page.locator("[role=menu] button", { hasText: "Source mode" }).click(); await wait(300)
     check("picking Source mode switches", (await sb.getAttribute("data-tip")) === "Current view: source mode")
+    // (a right-click is the bar's own: which items it shows, def836c2)
     await sb.click({ button: "right" }); await wait(200)
-    check("right-click opens the same menu", await page.locator("[role=menu] [role=menuitemradio]").count() === 3)
+    check("right-click lists the bar's items, the view shown", (await page.getByRole("menuitemcheckbox", { name: "Current view", exact: true }).getAttribute("aria-checked")) === "true")
+    await page.keyboard.press("Escape"); await wait(100)
+    await sb.click(); await wait(200)
     await page.locator("[role=menu] button", { hasText: "Live preview" }).click(); await wait(300)
     // Folder crumb: reveals and pulses the folder in the tree.
     await head("Collapse all").click().catch(() => {}); await wait(200)

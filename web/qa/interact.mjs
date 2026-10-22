@@ -65,11 +65,11 @@ await cmd("Open links in a tab"); await cmd("Open links in right split")
 check("Open links in a tab, then in right split: one Links tab", (await count("Links")) === 1, await tabs())
 // Start again from one tab, its folder open: both workspace 1's (there always is a workspace, 02c5ae8).
 const fresh = async () => {
-  // (Off the app once its tabs are saved, about 1 s after a change: one still on its way is saved over these by the next
-  // page, workspaces/state.ts' leaving.)
-  const saved = (x) => x?.kids ? x.kids.flatMap(saved) : (x?.tabs ?? []).map((t) => `${x.id}/${t.id}`)
-  const shown = () => page.$$eval("section[data-group] [data-tab-id]", (els) => els.map((e) => `${e.closest("section").dataset.group}/${e.dataset.tabId}`))
-  await until(async () => saved((await api("GET", "workspaces")).workspaces?.[0]?.layout?.root).sort().join() === (await shown()).sort().join(), 6000)
+  // (Off the app once its tabs are saved as they are, order and splits too, about 1 s after a change: one still on its
+  // way is saved over these by the next page, workspaces/state.ts' leaving, which compares them so.)
+  const shape = (l) => JSON.stringify(l ?? null, (k, v) => (["back", "fwd", "from", "active", "focus"].includes(k) ? undefined : v))
+  const mine = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs") ?? "null")?.root)
+  await until(async () => shape((await api("GET", "workspaces")).workspaces?.[0]?.layout?.root) === shape(await mine()), 10000)
   await page.goto(`${B}api/state`)
   await api("PUT", "workspaces/1", { layout: { root: { id: "g0", tabs: [{ id: "t1", to: `file:${DIR}/One.md` }], active: "t1" }, focus: "g0" }, state: { "files:open": [DIR] } })
   await page.goto(`${B}#file/${encodeURIComponent(`${DIR}/One.md`)}`); await wait(1800)

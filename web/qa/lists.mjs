@@ -64,10 +64,12 @@ try {
   await wait(700)
   const options = () => page.$$eval('[role="listbox"] [role="option"]', (es) => es.length)
   const before = await options()
-  for (let n = 0; n < 12; n++) { await page.$eval('[role="listbox"]', (l) => { l.scrollTop = 1e9 }); await wait(250) }
+  const lastOption = () => page.$eval('[role="listbox"] [role="option"]:last-of-type', (e) => e.textContent)
+  // (a page of rows drawn per scroll, and another page of hits found when all are drawn: to the end, however many)
+  for (let n = 0; n < 40 && !/in every file/.test(await lastOption()); n++) { await page.$eval('[role="listbox"]', (l) => { l.scrollTop = 1e9 }); await wait(250) }
   const after = await options()
   check("the quick switcher lists more as it's scrolled", before <= 81 && after > before + 100, { before, after })
-  const last = await page.$eval('[role="listbox"] [role="option"]:last-of-type', (e) => e.textContent)
+  const last = await lastOption()
   check("it ends with the search tab", /Search for "qa note" in every file/.test(last), last)
   await page.fill('[role="dialog"][aria-label="Search"] input', "xq")
   await until(async () => (await page.textContent('[role="listbox"]')).includes("Qa note 7"), 4000).catch(() => {})
@@ -84,13 +86,25 @@ try {
     // (open already when a search line opened one of its files: the tree reveals the open file)
     if (await row.evaluate((e) => e.closest("li").getAttribute("aria-expanded") !== "true")) await row.click()
     // (the sidebar has a tree too: the tab's alone)
-    const drawn = () => page.$$eval(`[data-pane] [data-tree-path^="${DIR}/"][data-select-key]`, (es) => es.length)
-    const d0 = await until(drawn, 5000)
-    const d1 = await until(async () => {
-      await page.evaluate((p) => document.querySelector(`[data-pane] [data-tree-path="${p}"]`)?.closest("ul")?.lastElementChild?.scrollIntoView(), DIR)
-      const n = await drawn(); return n === FILES && n
-    }, 8000, 300) || await drawn()
-    check("a long folder draws its first rows, then every file as it's scrolled", d0 > 0 && d0 < FILES && d1 === FILES, { d0, d1 })
+    const drawn = () => page.$$eval(`[data-pane] [data-tree-path^="${DIR}/"][data-select-key]`, (es) => es.map((e) => e.dataset.treePath))
+    const d0 = (await until(async () => { const d = await drawn(); return d.length && d }, 5000) || []).length
+    // Only the rows near the screen are drawn (core/virtual.ts): scrolled through, every file is drawn on the way.
+    const seen = new Set(), most = { n: 0 }
+    for (let n = 0; n < 80 && seen.size < FILES; n++) {
+      const end = await page.evaluate((p) => {
+        // (what scrolls the tree, found once: the folder's own row goes undrawn once scrolled past)
+        let s = window.qaScroller ?? document.querySelector(`[data-pane] [data-tree-path="${p}"]`)
+        while (s && !(s.scrollHeight > s.clientHeight && /auto|scroll/.test(getComputedStyle(s).overflowY))) s = s.parentElement
+        if (!s) return true
+        window.qaScroller = s
+        s.scrollTop += s.clientHeight * 0.7
+        return s.scrollTop + s.clientHeight >= s.scrollHeight - 1
+      }, DIR)
+      await wait(150)
+      const d = await drawn(); most.n = Math.max(most.n, d.length); for (const k of d) seen.add(k)
+      if (end) { await wait(300); for (const k of await drawn()) seen.add(k); break }
+    }
+    check("a long folder draws its first rows, then every file as it's scrolled", d0 > 0 && d0 < FILES && seen.size === FILES && most.n < FILES, { d0, seen: seen.size, most: most.n })
   } else check("the files tab shows the folder", false, null)
 
   // Recent files: 50 (its setting's default), then Show more.

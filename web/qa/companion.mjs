@@ -640,6 +640,10 @@ const hb = await docked.locator("[data-panel-handle]").boundingBox(), fb = await
 await sp.mouse.move(hb.x + 20, hb.y + hb.height / 2)
 await sp.mouse.down()
 for (let i = 1; i <= 10; i++) { await sp.mouse.move(hb.x + 20 + (fb.x - hb.x - 20) * i / 10, hb.y + hb.height / 2 + (fb.y + fb.height / 2 - hb.y - hb.height / 2) * i / 10); await wait(30) }
+// (over the bar, it opens a gap for the item and grows to the left: its first item is aimed at where it's laid out
+// then, not where it slid to make way)
+const first = await sp.locator('[data-file-bar="bar"]:visible').evaluate((bar) => { const e = [...bar.children].find((c) => c.dataset.fileBarKey && c.offsetWidth), r = bar.getBoundingClientRect(); return { x: r.x + e.offsetLeft, y: r.y + r.height / 2 } })
+await sp.mouse.move(first.x + 2, first.y, { steps: 4 }); await wait(100)
 await sp.mouse.up()
 await pres.waitFor({ timeout: 3000 })
 const bar = await sp.locator('[data-file-bar="bar"]:visible > [data-file-bar-key]').evaluateAll((els) => els.filter((e) => e.offsetWidth).map((e) => e.dataset.fileBarKey))
