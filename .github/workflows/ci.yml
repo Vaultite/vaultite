@@ -38,16 +38,20 @@ jobs:
       - run: npm ci
       # First: the rules most pushes break, in seconds
       - run: npm run check
-      # Playwright's Chromium, cached by its version, so its CDN being down fails nothing
-      - uses: actions/cache@v4
+      # Playwright's Chromium, cached by its version, so its CDN being down fails nothing (each step after check runs
+      # whatever check said, so one push shows every failure)
+      - if: ${{ !cancelled() }}
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/ms-playwright
             ~/Library/Caches/ms-playwright
             ~/AppData/Local/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
-      - run: npx playwright-core install --with-deps chromium
-      - run: npm run build
+      - if: ${{ !cancelled() }}
+        run: npx playwright-core install --with-deps chromium
+      - if: ${{ !cancelled() }}
+        run: npm run build
       - if: ${{ !cancelled() }}
         run: npm test
       - if: ${{ !cancelled() }}
