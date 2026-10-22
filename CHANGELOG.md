@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Plugins: a plugin's row tapped just after installing it opens its own sheet once its code has loaded, not the
+  directory's sheet with Install.
 - Start @name's model and effort chooser stays open while the note changes from outside away from it (an agent's
   edit, the file changed on disk); typing on or moving off it still closes it.
 - An open window that sits idle costs less: a settled graph no longer redraws every frame (its GPU and page work drop to

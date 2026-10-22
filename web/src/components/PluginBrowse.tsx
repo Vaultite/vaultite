@@ -425,6 +425,9 @@ function DirectorySheet({ id }: { id: string }) {
   // undefined: asking; null: not in the directory (or it can't be reached)
   const [e, setE] = useState<Entry | null | undefined>(() => seen.get(id))
   const [busy, setBusy] = useState(false)
+  // Installed (here, or before its code arrived, the row tapped meanwhile): its own sheet once its code is here.
+  const [goOn, setGoOn] = useState(() => { const s = seen.get(id); return !!s && s.installed !== null && !s.update && !pluginById(id) })
+  useEffect(() => { if (goOn && pluginById(id)) replaceDetail(`plugin/${id}`) }, [goOn, id, v])
   useEffect(() => {
     let live = true
     op<Found>("plugin.search", { q: id }).then((f) => {
@@ -447,7 +450,7 @@ function DirectorySheet({ id }: { id: string }) {
     const ok = await installEntry(e)
     setBusy(false)
     // (installed: its own sheet, with its switch and settings)
-    if (ok && pluginById(e.id)) replaceDetail(`plugin/${e.id}`)
+    if (ok) setGoOn(true)
   }
   return (
     <div data-browse-sheet={e.id}>
