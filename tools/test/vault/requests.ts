@@ -14,6 +14,19 @@ export default async ($: VaultTest) => {
     await vault.synced()
     check("local settings: one in the vault's file is ignored", !("allowRemote" in (await api("GET", "config/plugin/terminal"))[1]))
     {
+      // An agent's hook reads nothing of the vault: it never waits behind a write holding it.
+      let release = () => {}
+      let holding = () => {}
+      const started = new Promise<void>((r) => { holding = r })
+      const held = app.hold(() => new Promise<void>((r) => { release = r; holding() }))
+      await started
+      const hook = await Promise.race([app.run("POST", ["activity", "hook"], { agent: "claude" }, { tool_name: "Bash", tool_input: { command: "true" } }).then((r) => r.status),
+        new Promise((r) => setTimeout(() => r("waited"), 2000))])
+      release()
+      await held
+      check("hooks: an agent's hook runs while a write holds the vault", hook === 200, hook)
+    }
+    {
       const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any
       const r = await app.run("PATCH", ["config", "plugin", "terminal"], {}, { allowRemote: true }, stranger)
       check("local settings: someone else on the tailnet can't change them", r.status === 403 && !(await api("GET", "config/plugin/terminal"))[1].allowRemote, r)

@@ -719,7 +719,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RequestHook`
 - `RequestStart`: An API request as it starts: `route` is the path under /api/; `client`, `agent`, `command` its X-Vaultite-* headers; `remote`/`port` the caller's address (a loopback caller can be looked up).
 - `ROOT`
-- `RouteOptions`: `lock: false`: not held while it runs.
+- `RouteOptions`: `lock: false`: not held while it runs; `sync: false`: reads no vault, so neither held nor synced.
 - `runtimeDir()`: A folder only this user can use: a Mac's $TMPDIR is that already; Linux's /tmp is shared (another user could make the folder first and swap a script a shell runs), so $XDG_RUNTIME_DIR/vaultite,…
 - `sameSidebars(a, b)`: The same setup (what Workspaces compares to tell an unused workspace).
 - `SearchError`

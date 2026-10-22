@@ -255,9 +255,9 @@ export type RequestStart = { t: number; method: string; route: string; query: Re
 export type RequestEnd = { status: number; ms: number; body: unknown; error?: string }
 export type RequestHook = (start: RequestStart) => ((end: RequestEnd) => void) | void
 export type { ServerError }
-/** `lock: false`: not held while it runs. `stream: true`: the route reads `req.http` itself (uploads of any size),
- *  `req.body` is {}, and it's never held either. */
-export type RouteOptions = { lock?: boolean; stream?: boolean }
+/** `lock: false`: not held while it runs; `sync: false`: reads no vault, so neither held nor synced. `stream: true`: the
+ *  route reads `req.http` itself (uploads of any size), `req.body` is {}, and it's never held either. */
+export type RouteOptions = { lock?: boolean; sync?: boolean; stream?: boolean }
 /** An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's). */
 export type OpCall = { op: string; kind: OpKind; plugin: string | null; params: Item; who: Who; ctx: OpCtx }
 /** Middleware over ops: answer next(params)'s result (changed params are checked again), changed or your own in the
@@ -368,8 +368,8 @@ export class Plugin {
     return kind
   }
 
-  /** `pattern`: a path under /api/, * one segment, a last ** the rest. `lock: false` for routes that run ops themselves
-   *  or wait on something slow (they hold the vault only to write); `stream: true` leaves the body unread (uploads). */
+  /** `pattern`: a path under /api/, * one segment, a last ** the rest. `lock: false`: runs ops itself or waits on something
+   *  slow (holds the vault only to write); `sync: false`: reads no vault (a hook); `stream: true`: body unread (uploads). */
   route(method: string, pattern: string, fn: Handler, options: RouteOptions = {}) {
     this.routes.push([method, pattern.split("/"), fn, options])
     return fn

@@ -447,7 +447,13 @@ export class App {
     // An op holds the vault itself, only for a write (callOp), so an op that waits (events.wait) holds nothing.
     if (method === "POST" && parts.length === 2 && parts[0] === "ops") return true
     if (this.streams(method, parts)) return true
-    return match(this.plugins, method, parts)?.[2].lock === false
+    const o = match(this.plugins, method, parts)?.[2]
+    return o?.lock === false || o?.sync === false
+  }
+
+  /** Whether a request goes to a plugin route that reads nothing of the vault (`sync: false`): run at once. */
+  unsynced(method: string, parts: string[]) {
+    return match(this.plugins, method, parts)?.[2].sync === false
   }
 
   /** Does this route read its request's body itself (an upload: the core's, plugin.route's `stream: true`, or an op
@@ -744,7 +750,7 @@ export class App {
    *  its sync to its last write (at once inside a hold); `lock: false` routes and ops sync like a read. */
   private async respond(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage, synced = false): Promise<Reply> {
     const go = () => this.dispatchOrReply(method, parts, query, body ?? {}, http)
-    if (this.holding.getStore()?.on) return go()
+    if (this.holding.getStore()?.on || this.unsynced(method, parts)) return go()
     if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced({ trusting: this.trusts(http) }).then(go)
     return this.hold(go, { trusting: this.trusts(http) })
   }

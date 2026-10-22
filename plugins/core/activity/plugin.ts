@@ -487,7 +487,7 @@ plugin.route("POST", "activity/hook", async (req) => {
     if (cmd) record({ t, actor, action: "run", text: `Ran ${cmd}`, paths: [] })
   }
   return { ok: true }
-})
+}, { sync: false }) // (an agent waits on its hook, which reads nothing of the vault)
 
 async function terminalInfo(id: string): Promise<{ terminal?: string; session?: string }> {
   const t = await plugin.ask<{ title?: string } | null>("terminal:info", null, id)
@@ -514,7 +514,7 @@ plugin.route("POST", "activity", (req) => {
     n++
   }
   return { ok: true, recorded: n }
-})
+}, { sync: false })
 
 plugin.route("POST", "activity/perf", (req) => {
   const b = (req.body ?? {}) as ClientPerf & { spans?: unknown }
@@ -533,7 +533,7 @@ plugin.route("POST", "activity/perf", (req) => {
     shifts: num(b.shifts) ?? 0, api: api ?? was?.api, heap: num(b.heap) ?? was?.heap }
   clients.set(device, next)
   return { ok: true }
-})
+}, { sync: false })
 
 plugin.route("DELETE", "activity", () => {
   events = []

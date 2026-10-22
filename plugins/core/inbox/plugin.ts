@@ -861,7 +861,7 @@ plugin.route("POST", "inbox/hook", async (req) => {
   const h = fromHook(j)
   if (h) track(heard({ ...h, agent, ...(terminal ? { terminal } : {}), from: "hooks" }))
   return { ok: true }
-})
+}, { sync: false }) // (an agent waits on its hook, which reads nothing of the vault)
 
 // ---------- operations (core/ops.ts): `vau inbox ...` (cli.ts routes to them), MCP's inbox_add
 

@@ -7,7 +7,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 
 - `plugin.vault`: The vault (set by the loader).
 - `plugin.blocks`: Its blocks as manifest.json declares them (core/blocks.ts): name -> description and options.
-- `plugin.route(method, pattern, fn, options)`: `pattern`: a path under /api/, * one segment, a last ** the rest. `lock: false` for routes that run ops themselves or wait on something slow (they hold the vault only to write); `stream: true` leaves the body unread (uploads).
+- `plugin.route(method, pattern, fn, options)`: `pattern`: a path under /api/, * one segment, a last ** the rest. `lock: false`: runs ops itself or waits on something slow (holds the vault only to write); `sync: false`: reads no vault (a hook); `stream: true`: body unread (uploads).
 - `plugin.op(def)`: An operation, served as `POST /api/ops/<id>`, `vau <id>`, MCP and the docs (core/ops.ts). Its id starts with the plugin's id or a kind it owns. Only while the plugin is on.
 - `plugin.serve(prefix, fn)`: GET /<prefix>/<rest> outside /api/, for what a browser loads by address (an artifact's sandboxed frame at /v/...). Only while the plugin is on; the vault isn't synced first and onRequest doesn't hear of it.
 - `plugin.socket(pattern, fn, opts)`: A WebSocket at /api/<pattern>. `opts.accept` runs before the upgrade and refuses it by throwing an HTTPError. Sockets of a plugin that's off are refused.
