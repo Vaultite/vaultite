@@ -670,9 +670,10 @@ setupHandle("setup:vau", async (system: boolean) => {
   if (system) await Setup.linkSystem(r.path)
   return { did: system ? `Linked /usr/local/bin/vau to ${r.path}` : r.did, vau: Setup.vauStatus(where(), pathDirs()) }
 })
+// (the playground's window first: closing the last window quits off a Mac, and an AppWindow closes at once)
 setupHandle("setup:sandbox", async () => {
-  setupWin?.close()
   await sandbox()
+  setupWin?.close()
 })
 /** Done: open the vault chosen (a new one on its Start here note), and never show this window by itself again. */
 setupHandle("setup:finish", async () => {
