@@ -759,11 +759,23 @@ export class PublicMcp {
   signInPage(res: ServerResponse, s: SignIn) {
     const nonce = crypto.randomBytes(16).toString("base64")
     const code = `${s.code.slice(0, 3)} ${s.code.slice(3)}`
-    const extra = `<div class="code" aria-label="code">${esc(code)}</div>
+    const extra = `<div class="code"><span aria-label="code">${esc(code)}</span><button type="button" id="copy" aria-label="Copy code">${COPY}</button></div>
 <p class="muted" id="state">Open Vaultite on your phone or computer, go to Connections, and type this code. This page goes on by itself.</p>
 <p class="muted small">Didn't start this? Close the page: nothing connects without the code.</p>
 <script nonce="${nonce}">
 const id = ${JSON.stringify(s.id)}
+const copy = document.getElementById("copy")
+copy.onclick = async () => {
+  const text = ${JSON.stringify(s.code)}
+  // (Vaultite Cloud serves this page sandboxed, where the clipboard API can refuse: then the old way)
+  try { await navigator.clipboard.writeText(text) } catch {
+    const t = Object.assign(document.createElement("textarea"), { value: text })
+    document.body.append(t); t.select(); const ok = document.execCommand("copy"); t.remove()
+    if (!ok) return
+  }
+  copy.innerHTML = ${JSON.stringify(CHECK)}; copy.setAttribute("aria-label", "Copied")
+  setTimeout(() => { copy.innerHTML = ${JSON.stringify(COPY)}; copy.setAttribute("aria-label", "Copy code") }, 1500)
+}
 async function poll() {
   try {
     const r = await (await fetch("authorize/status?id=" + encodeURIComponent(id), { cache: "no-store" })).json()
@@ -788,7 +800,14 @@ const CSS = `:root{color-scheme:light dark;--bg:#fbfbfa;--fg:#1d1d1b;--muted:#6b
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 main{max-width:420px;margin:12vh auto;padding:0 16px}.brand{display:flex;align-items:center;gap:10px;font-weight:600;margin-bottom:24px}.brand img{width:32px;height:32px}
 h1{font-size:22px;line-height:1.3;margin:0 0 8px}p{margin:0 0 16px}.muted{color:var(--muted)}.small{font-size:14px}
-.code{font:600 34px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;padding:18px 0;margin:8px 0 20px;text-align:center;border:1px solid var(--line);border-radius:10px}`
+.code{position:relative;font:600 34px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;padding:18px 0;margin:8px 0 20px;text-align:center;border:1px solid var(--line);border-radius:10px}
+.code span{user-select:all}.code button{position:absolute;right:8px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
+.code button:hover{background:var(--line);color:var(--fg)}.code svg{width:20px;height:20px}`
+
+// Lucide's copy and check icons, inline: the page's CSP loads no other files.
+const svg = (d: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`
+const COPY = svg(`<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>`)
+const CHECK = svg(`<path d="M20 6 9 17l-5-5"/>`)
 
 /** What the public server's instructions add: what waits for the user's yes here, or that the app only reads. */
 const READ_ONLY = "You have read-only access to this vault: the tools only read. The user can give you write access in Vaultite's Connections."

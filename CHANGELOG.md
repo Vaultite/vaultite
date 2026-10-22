@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
+  paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
   desktop app on a Mac whose always-on service serves the vault attaches its window and browser to that server rather
   than starting its own. Agents' tabs outlast the server restarting. Other machines' agents use an always-on machine's
