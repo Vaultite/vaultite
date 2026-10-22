@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Agents' lines: what agents write in a note is marked theirs by line, kept beside the note (never in its text) and
+  found again as you edit: a thin bar in the writer's colour by each line, hover (or a held finger's menu) for who,
+  model, effort and when; a line you edit after an agent shows as both. Provenance's setting Agents' lines: a bar,
+  tinted (the text stays washed in their colour), or off. `vau blame <note>` lists them, and the day's recap counts
+  lines by agent. The companion is told an ask's whole paragraph and the three above it, uncut.
 - Renaming or moving a note updates Markdown links that name it alone (`[a](Note.md)`, Obsidian's shortest path), not
   only relative ones and wikilinks.
 - Agents never take your focus: a terminal an agent opens, resumes or dispatches goes in a tab behind yours, with a

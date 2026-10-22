@@ -222,6 +222,15 @@ function agentOf(name: string): Agent {
   }
   return a
 }
+/** The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour,
+ *  and the model and effort it was started with; null when it's no companion's. */
+plugin.provide("companion:who", (terminal: string) => {
+  const s = sessions().find((x) => x.id === terminal)
+  if (!s) return null
+  const kept = session(s.name), a = agentOf(s.name)
+  return { name: a.name, tint: a.tint, ...(kept?.model ? { model: kept.model } : {}), ...(kept?.effort ? { effort: kept.effort } : {}) }
+})
+
 function setAgent(name: string, change: Partial<Agent>) {
   if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(key(name))
   const a = Object.assign(agentOf(name), { seen: undefined }, change, { t: Date.now() })
@@ -544,6 +553,8 @@ const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(
   await plugin.ask("history:keep", false, e.path)
   const ws = editorFor(e.path)
   if (ws) {
+    let was: string | null = null
+    try { was = readText(plugin.vault.abs(e.path)) } catch { /* a drawing's, or gone */ }
     const wait = EDIT_WAIT + e.text.length * 20
     await plugin.ask("activity:typing", false, e.path, agent.name, wait + SAVED_MS)
     let typed = false, late = false
@@ -551,7 +562,11 @@ const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(
       // (typed, or maybe still typing: its save lands within a moment of the window's autosave)
       await plugin.ask("activity:typing", false, e.path, agent.name, typed || late ? SAVED_MS : 0)
     }
-    if (typed) return "typed"
+    if (typed) {
+      // (the app saves what it typed, as the user's: who wrote those lines is said here, for Provenance)
+      if (was !== null && !drawing(e.path)) try { await plugin.ask("provenance:wrote", null, e.path, was, editText(was, e)) } catch { /* not in the file as saved */ }
+      return "typed"
+    }
   }
   const f = await ctx.api("GET", `file?path=${encodeURIComponent(e.path)}`)
   const cur = String(f.text ?? "")
@@ -914,20 +929,43 @@ export async function excerpts(ctx: OpCtx, ms: Moment[]) {
   }
   return out
 }
-const WHOLE = 120, MOST = 160
+const WHOLE = 120, MOST = 160, ABOVE = 3, PARAGRAPH = 12
 export function excerpt(path: string, text: string, ms: Moment[]): Excerpt | null {
   const lines = text.split("\n")
   if (lines.at(-1) === "") lines.pop()
   const asked = ms.some((m) => m.kind !== "edit")
   const at = ms.flatMap((m) => [m.line ?? 0, ...(m.hunks ?? []).flatMap((h) => [h.line, h.line + h.added.length - 1])]).filter((n) => n > 0)
   if (!lines.length || (!at.length && !asked)) return null
+  const keep = uncut(lines, ms)
   let from = 1, to = lines.length
   if (!asked || lines.length > WHOLE) {
     const pad = asked ? 40 : 6
     from = Math.max(1, Math.min(...at, lines.length) - pad)
     to = Math.min(lines.length, Math.max(...at, 1) + pad, from + MOST - 1)
   }
-  return { path, from, to, of: lines.length, lines: lines.slice(from - 1, to).map((l) => cut(l, 400)) }
+  return { path, from, to, of: lines.length, lines: lines.slice(from - 1, to).map((l, i) => (keep.has(from - 1 + i) ? l : cut(l, 400))) }
+}
+
+/** The lines (from 0) read whole: the paragraph an ask, a point or a reply is in, and the few paragraphs just above it
+ *  ("read this and the previous three"); other long lines are cut. */
+function uncut(lines: string[], ms: Moment[]) {
+  const out = new Set<number>()
+  const para = (i: number) => {
+    let a = i, b = i
+    while (a > 0 && i - a < PARAGRAPH && lines[a - 1].trim()) a--
+    while (b + 1 < lines.length && b - i < PARAGRAPH && lines[b + 1].trim()) b++
+    for (let k = a; k <= b; k++) out.add(k)
+    return a
+  }
+  for (const m of ms) {
+    if (m.kind === "edit" || !m.line || m.line > lines.length) continue
+    let k = para(m.line - 1) - 1
+    for (let n = 0; n < ABOVE && k >= 0; n++) {
+      while (k >= 0 && !lines[k].trim()) k--
+      if (k >= 0) k = para(k) - 1
+    }
+  }
+  return out
 }
 
 /** Moments as an agent reads them. */

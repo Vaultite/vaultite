@@ -39,7 +39,7 @@ import { autoUpdates } from "./updates.ts"
 import { disclosuresOf, saysMore } from "./pluginmeta.ts"
 import { browse, PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
-import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault } from "./vault.ts"
+import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault, type Writer } from "./vault.ts"
 import { strings } from "./values.ts"
 
 /** How many recent states the server keeps as pieces (a device that last loaded before them gets the whole state).
@@ -49,6 +49,12 @@ const KEEP = 32
 /** A state as the app was given it: its version, and its pieces (core/statepatch.ts). */
 type Snap = { v: string; state: Item; piece: SP.Piece; json?: string; patches: Map<string, string> }
 
+
+/** The writer for a call made as `who`: the request's own (its terminal, session, model) when it's the same caller. */
+function writerAs(who: Who): Writer {
+  const w = requestWriter.getStore()
+  return w && w.client === who.client && whoOf(w.client, w.agent).agent === who.agent ? { ...w, agent: who.agent } : { client: who.client, agent: who.agent }
+}
 
 export class App {
   vault: Vault
@@ -449,7 +455,9 @@ export class App {
       // A request is the user's own action, unless a plugin's command says it acts on its own (core/hooks.ts).
       const actor = h("x-vaultite-actor"), as = <T>(fn: () => T) => (actor ? onItsOwn(actor, fn) : byUser(fn))
       const go = () => this.respond(method, parts, query, body, http)
-      return http ? await as(() => requestWriter.run({ client: h("x-vaultite-client"), agent: h("x-vaultite-agent") }, go)) : await go()
+      const writer = { client: h("x-vaultite-client"), agent: h("x-vaultite-agent"), terminal: h("x-vaultite-terminal"), session: h("x-vaultite-session"),
+        model: h("x-vaultite-model"), effort: h("x-vaultite-effort") }
+      return http ? await as(() => requestWriter.run(writer, go)) : await go()
     } catch (e) {
       console.error(e)
       return reply(500, { error: String((e as Error).message ?? e) })
@@ -687,7 +695,7 @@ export class App {
     if (!hit) throw this.noOp(name)
     const { op, plugin } = hit
     const write = op.kind !== "read"
-    const run = () => requestWriter.run({ client: who.client, agent: who.agent }, () => this.runOp(op.id, given, { who, http: opts.http, input: opts.input }))
+    const run = () => requestWriter.run(writerAs(who), () => this.runOp(op.id, given, { who, http: opts.http, input: opts.input }))
     const t0 = performance.now()
     const end = this.reported("POST", `ops/${op.id}`, {}, who, opts.report)
     try {
@@ -737,7 +745,7 @@ export class App {
     const end = this.reported(method, parts.join("/"), query, who, opts.report)
     let res: Reply
     try {
-      res = await requestWriter.run({ client: who.client, agent: who.agent }, () => this.respond(method, parts, query, body, opts.http))
+      res = await requestWriter.run(writerAs(who), () => this.respond(method, parts, query, body, opts.http))
     } catch (e) {
       end?.({ status: 500, ms: performance.now() - t0, body })
       throw e

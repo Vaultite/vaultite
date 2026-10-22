@@ -28,7 +28,7 @@ import { notHereYet, onItsOwn, runHook } from "./writegate.ts"
 /** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
  *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
 export { WriteRefused } from "./writegate.ts"
-import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, type Item, Kind, type MoveHook, readText, type SaveHook, type Vault, writeAtomic } from "./vault.ts"
+import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, type Item, Kind, type MoveHook, readText, type SaveHook, type Vault, type WriteHook, writeAtomic } from "./vault.ts"
 
 /** What kind of file a name is (core/filetypes.ts), for plugins that treat text files differently, and the type it is served with. */
 export { contentType, isTextKind, kindOf } from "./filetypes.ts"
@@ -440,6 +440,12 @@ export class Plugin {
    *  returns are set in that text, in the same write. Only while on; files written on disk aren't heard. */
   onSave(fn: SaveHook) {
     return this.attach(fn, (v) => v.onSave(this.id, fn))
+  }
+
+  /** fn(path, before, after, writer) after a request wrote a Markdown file outside .vaultite/ by any route or op
+   *  (`before` null: new). Runs inside the write, so quick; only while on; files written on disk aren't heard. */
+  onWrite(fn: WriteHook) {
+    return this.attach(fn, (v) => v.onWrite(this.id, fn))
   }
 
   /** fn(path, file, writer) before the API writes a new non-Markdown file: `file` (NewFile) is read-only and read only

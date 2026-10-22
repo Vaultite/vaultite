@@ -40,6 +40,11 @@ export default async ($: VaultTest) => {
     check("companion: an ask comes with its note, whole when short, else the lines around it",
       ask?.from === 1 && ask.to === 2 && ask.lines.join() === "a,b" && long?.from === 110 && long.to === 190 && long.lines[0] === "line 110", [ask, long])
     check("companion: an edit comes with a few lines around what changed", edit?.from === 44 && edit.to === 57, edit)
+    const para = (k: string) => `${k} ${"word ".repeat(120)}end`
+    const talk = [para("p1"), "", para("p2"), "", para("p3"), "", para("p4"), "", para("p5"), "", `${para("ask")} @claude read these`, "", para("after")].join("\n")
+    const told = c.excerpt("Talk.md", talk, [{ seq: 1, t: 0, kind: "ask", line: 11 }])!
+    check("companion: the ask's paragraph and the three above come whole, other long lines cut",
+      told.lines[10].endsWith("@claude read these") && [4, 6, 8].every((i) => told.lines[i].endsWith("end")) && [0, 2, 12].every((i) => told.lines[i].endsWith("…")), told.lines.map((l) => l.slice(-12)))
     check("companion: and reads as numbered lines", c.momentsText([], "pair", null, []).includes("Nothing yet") &&
       c.momentsText([{ seq: 1, t: 0, kind: "ask", path: "N.md", line: 2, text: "hi" }], "pair", null, [ask!]).endsWith("N.md, lines 1-2 of 2:\n   1  a\n   2  b"))
     // Timings: handed, first action, back to next; seqs restart with the server.

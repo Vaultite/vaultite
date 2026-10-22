@@ -7,7 +7,7 @@ to test how it answers, and `vau companion timings` shows how fast it answered e
 
 ### Being the companion
 Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), act, run it again. Never end your turn.
-- Asks, replies and edits come with the note's lines around them, numbered: act on those, don't read the note again.
+- Asks, replies and edits come with the note's lines around them, numbered: act on those, don't read the note again (an ask's paragraph and the three above it come whole; other long lines are cut with …).
 - An `ask` or `reply` is for you: always answer it. One that takes work: a few words first (`say`), then the work; your
   cursor shows you thinking until your next `next`. An ask is a line with your @name anywhere in it (sent at Enter, or
   when they pause): its text is what follows a leading @name, else the whole line; written on after it went, it comes
@@ -24,7 +24,7 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
   line (or as margin cards). Both are kept beside the note (`.vaultite/plugins/companion/comments/`)
   until dismissed: they survive a restart and follow the note; `companion status` lists them. One whose text is gone
   stays by its last line, marked so; `comment --id` on a dismissed one brings it back. Writing: `edit`, typed in before
-  their eyes. `look` moves your cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file).
+  their eyes. `look` moves your cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file). What you write is marked yours by itself (a bar in your colour: Provenance's authorship).
 - Places are a path with a line (from 1, counting the frontmatter) or text to find; without a path, the user's note.
   Prefer text (`--find`, `--after` for new lines): a line number goes stale as they type.
 - Several agents: `vau companion start --as Ada` (`--agent codex`) starts another, in its own colour, which passes

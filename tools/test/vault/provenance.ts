@@ -61,6 +61,55 @@ export default async ($: VaultTest) => {
     for (const f of ["Prov", "Notes/Prov by mcp.md", "Notes/Prov by app.md", "People/Prov Person.md"]) fs.rmSync(path.join(VAULT, f), { recursive: true, force: true })
   }
 
+  // ---------- Authorship: which lines agents wrote, kept beside the note (authorship.ts), never in it ----------
+  {
+    const A = await import("../../../plugins/core/provenance/authorship.ts")
+    const { opcodes } = await import("../../../core/textedit.ts")
+    const who = { by: "Opus", model: "Opus 5.5", effort: "high", tint: "orange", t: 1 }
+    const spans = A.written("Mine.\n", "Mine.\n\nYours, a long answer.\nAnd more.\n", who, opcodes)
+    check("authorship: a write's new lines are one span, as written", spans.length === 1 && spans[0].line === 3 && spans[0].lines.join("|") === "Yours, a long answer.|And more.", spans)
+    const later = "Mine, edited.\n\nA line I added.\nYours, a long answer.\nAnd more, which I edited a bit.\n"
+    const m = A.resolve(later, spans)
+    check("authorship: found again by their text after edits; a line the user edited since is mixed", m.get(4)?.mixed === false && m.get(5)?.mixed === true && !m.has(1) && !m.has(3), [...m])
+    check("authorship: a line the user rewrote is theirs again", !A.resolve("Mine.\n\nSomething else entirely now.\nNothing alike.\n", spans).size)
+    const over = A.written("Mine, a line of mine here.\n", "Mine, a line of mine here today.\n", who, opcodes)
+    check("authorship: an agent's edit of the user's line is mixed", over.length === 1 && over[0].mixed?.join() === "0", over)
+    check("authorship: frontmatter is never marked", A.written(null, "---\norigin: ai\n---\nBody.\n", who, opcodes).map((x) => x.line).join() === "4")
+    check("authorship: the tip says who, model, effort and when", A.authorText(who, () => "19:36") === "Opus · Opus 5.5 high · 19:36")
+
+    const agent = (extra: Record<string, string> = {}) => ({ headers: { "x-vaultite-client": "cli", "x-vaultite-agent": "claude-code", "x-vaultite-effort": "high", ...extra } }) as unknown as import("node:http").IncomingMessage
+    const settle = () => new Promise((r) => setTimeout(r, 80))
+    const side = (rel: string) => path.join(VAULT, ".vaultite/plugins/provenance/authorship", `${rel}.json`)
+    const spansOf = (rel: string) => (fs.existsSync(side(rel)) ? JSON.parse(fs.readFileSync(side(rel), "utf8")).spans as Any[] : [])
+    write("Auth/Talk.md", "My question?\n")
+    await api("PUT", "file", { path: "Auth/Talk.md", text: "My question?\n\nMy answer.\n", base: "My question?\n" }, agent({ "x-vaultite-model": "claude-opus-5-5" }))
+    await settle()
+    const s1 = spansOf("Auth/Talk.md")
+    check("authorship: an agent's write is kept beside the note, with who, model and effort", s1.length === 1 && s1[0].by === "Claude" && s1[0].model === "Opus 5.5" && s1[0].effort === "high" && s1[0].lines.join() === "My answer.", s1)
+    check("authorship: the note itself is unchanged", !read("Auth/Talk.md").includes("Opus"), read("Auth/Talk.md"))
+    await api("PUT", "file", { path: "Auth/Talk.md", text: "My question?\n\nMy answer.\n\nMy follow-up.\n", base: read("Auth/Talk.md") }, sentBy("app/desktop"))
+    await settle()
+    check("authorship: the user's own writes add nothing", spansOf("Auth/Talk.md").length === 1)
+    await api("POST", "ops/file.edit", { path: "Auth/Talk.md", old: "My follow-up.", new: "My follow-up.\n\nYour reply, by vau edit." }, agent())
+    await settle()
+    check("authorship: any write op by an agent is kept too (vau edit)", spansOf("Auth/Talk.md").some((x) => x.lines.includes("Your reply, by vau edit.")), spansOf("Auth/Talk.md"))
+    const blame = await app.callOp("provenance.blame", { path: "Auth/Talk.md" }) as { result: Any; text: string }
+    check("authorship: vau blame lists agents' lines by number", blame.result.runs.map((r: Any) => `${r.from}:${r.by}`).join() === "3:Claude,7:Claude" && /2 of \d+ lines by agents/.test(blame.text), blame)
+    const [, got] = await api("GET", "provenance/authorship?path=Auth/Talk.md")
+    check("authorship: the app reads the spans and the setting (gutter by default)", got.mode === "gutter" && got.spans.length === 2, got)
+    const { LOADED } = await import("../../../core/plugins.ts")
+    const today = await LOADED.find((x) => x.id === "provenance")!.ask<Any[]>("provenance:authored", [], "Auth/Talk.md", Date.now() - 60_000, Date.now() + 1000)
+    check("authorship: the recap hears what agents wrote that day, by who", today.length === 1 && today[0].by === "Claude" && today[0].lines === 2, today)
+    await api("POST", "file/move", { from: "Auth/Talk.md", to: "Auth/Moved.md" })
+    check("authorship: it follows the note when it moves", spansOf("Auth/Moved.md").length === 2 && !fs.existsSync(side("Auth/Talk.md")))
+    vault.setConfig("plugins/provenance/data", { authorship: "off" })
+    await api("PUT", "file", { path: "Auth/Off.md", text: "Not kept.\n" }, agent())
+    await settle()
+    check("authorship: off keeps nothing", !fs.existsSync(side("Auth/Off.md")))
+    vault.setConfig("plugins/provenance/data", {})
+    for (const f of ["Auth", ".vaultite/plugins/provenance/authorship"]) fs.rmSync(path.join(VAULT, f), { recursive: true, force: true })
+  }
+
   // ---------- Provenance for files that aren't notes: its list (files.json), their bytes never changed ----------
   {
     const zlib = await import("node:zlib")

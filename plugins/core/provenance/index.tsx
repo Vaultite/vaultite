@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Bot } from "lucide-react"
 import {
   choose, ChipValuesEditor, chipLabel, chipValues, currentFile, definePlugin, getStore, Group, isHidden, notifyError, op, patch, PropertyChip,
   Section, setProperty, useLive, useStore, type ChipValue, type FileHead, type Store,
@@ -6,7 +7,7 @@ import {
 import "./types"
 
 // Provenance: who wrote a file (`origin`), a label and never a lock, as a PropertyChip in every file's header and status
-// bar; a note keeps it in its frontmatter, any other file in the plugin's list (plugin.ts).
+// bar; a note keeps it in its frontmatter, any other file in the plugin's list (plugin.ts). Agents' lines: gutter.ts.
 
 const KEY = "origin"
 const valuesOf = (store: Store | null): ChipValue[] => chipValues(store?.provenance?.values)
@@ -87,7 +88,18 @@ function SettingsPanel({ store }: { store: Store }) {
   )
 }
 
+// (gutter.ts loads with the first note)
+let gutter: Promise<typeof import("./gutter")> | null = null
+let gutterMod: typeof import("./gutter") | null = null
+const loadGutter = () => (gutter ??= import("./gutter").then((m) => (gutterMod = m)))
+
 export default definePlugin({
+  editor: async (ctx) => (ctx.kind === "markdown" && ctx.path && isNote(ctx.path) && labelled(ctx.path) ? (await loadGutter()).authorshipExtension(ctx) : []),
+  // (a held finger or a right-click on an agent's line: who wrote it, and its lines selected)
+  editorMenu: ({ view, path }) => {
+    const at = path && gutterMod ? gutterMod.authorAt(view) : null
+    return at ? [{ label: `Written by ${at.tip}`, icon: Bot, run: () => view.dispatch({ selection: { anchor: at.from, head: at.to } }) }] : []
+  },
   fileBar: { origin: { sort: 50, render: (file) => <Label file={file} place={file.place} /> } },
   status: { origin: { sort: 50, render: (file) => <Label file={file} place="status" /> } },
   settingsPanel: ({ store }) => <SettingsPanel store={store} />,

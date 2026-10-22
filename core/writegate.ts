@@ -44,8 +44,10 @@ export function runHook(id: string, what: string, fn: () => unknown) {
   } catch (e) { logFailure(`${id}: ${what}:`, e) }
 }
 
-/** A vault's side of the gate (Vault sets it up): may `plugin` write `rel`, and what to do when it may not. */
-export type Gate = { may: (plugin: string, rel: string) => boolean; refused: (plugin: string, rel: string) => void }
+/** A vault's side of the gate (Vault sets it up): may `plugin` write `rel`, what to do when it may not, and what to
+ *  tell once a text file is written (`watch`: null when no one listens). */
+export type Gate = { may: (plugin: string, rel: string) => boolean; refused: (plugin: string, rel: string) => void
+  watch?: (rel: string) => ((before: string | null, after: string) => void) | null }
 const gates = new Map<string, Gate>()
 
 /** The gate for the vault at `root` (the last one set for a folder wins). */
@@ -75,4 +77,14 @@ export function guard(abs: string) {
     gate.refused(id, rel)
     throw new WriteRefused(id, rel)
   }
+}
+
+/** What to tell once `abs` is written, from the vault it's in (Vault.onWrite), or null. */
+export function watching(abs: string) {
+  const full = path.resolve(abs)
+  for (const [root, gate] of gates) {
+    const rel = inside(root, full)
+    if (rel !== null && gate.watch) return gate.watch(rel)
+  }
+  return null
 }

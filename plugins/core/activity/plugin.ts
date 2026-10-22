@@ -942,6 +942,7 @@ async function sourcesOf(date: string): Promise<Sources> {
     captureFolders: recapSettings().folders,
     statuses: taskStatuses(),
     updates: pluginUpdates(),
+    authored: (rel) => plugin.ask("provenance:authored", [], rel, from, to),
   }
 }
 

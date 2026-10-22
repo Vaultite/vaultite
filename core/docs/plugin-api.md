@@ -18,6 +18,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.onMove(fn)`: fn(from, to) when the API moves, restores or trashes a file (to: null; `trashed`: where it went), so what the plugin keeps follows; even while it's off. Moves on disk (Finder, iCloud) aren't heard.
 - `plugin.onCreate(fn)`: fn(path, fm, writer) before the API writes a new Markdown file: the keys it returns are added (the file's own win). `writer` is who asked (null for no request). Only while on; files written on disk aren't heard.
 - `plugin.onSave(fn)`: fn(path, now, was, writer) before the API saves new text ({fm, body}) over a Markdown file's (`was`): the keys it returns are set in that text, in the same write. Only while on; files written on disk aren't heard.
+- `plugin.onWrite(fn)`: fn(path, before, after, writer) after a request wrote a Markdown file outside .vaultite/ by any route or op (`before` null: new). Runs inside the write, so quick; only while on; files written on disk aren't heard.
 - `plugin.onCreateFile(fn)`: fn(path, file, writer) before the API writes a new non-Markdown file: `file` (NewFile) is read-only and read only as far as asked, as an upload can be any size. Only while on; files written on disk aren't heard.
 - `plugin.onArchive(fn)`: fn(path, archived) when the API archives or unarchives an item (`archived` set or changed in a write): the folder its file moves to (links follow, like a move), or null to leave it. Only while on (the Archive plugin's).
 - `plugin.onRequest(fn)`: fn(start) as each API request starts; the function it returns runs when it's answered. Keep it cheap and never throw: it runs for every request.
@@ -157,9 +158,11 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
 - `agent-meters:claude` (claude-code)
 - `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
+- `agent-model:claude-code` (claude-code)
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
+- `companion:who` (companion): The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour, and the model and effort it was started with; null when it's no companion's.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `fence:<…>` (genui, chart, base): genui; query
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
@@ -198,6 +201,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `property-types` (other-apps)
 - `provenance:user` (provenance): What the user said or wrote, made by another plugin's backend (Inbox's voice notes): the label to give it.
 - `provenance:agent` (provenance): And what an agent's are labelled (an AI app's note for the inbox).
+- `provenance:wrote` (provenance): What an agent wrote that the app saves for it (the companion's edits, typed in the window): the request's agent.
+- `provenance:authored` (provenance): Lines agents wrote in a note between two times that are still there, by who: the day's recap says them.
 - `sample` (claude-code)
 - `setting-defaults` (other-apps)
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.

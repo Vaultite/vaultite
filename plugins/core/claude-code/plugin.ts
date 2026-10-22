@@ -536,6 +536,27 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   return t ? { session: sid, ...lastTurn(t.talk.entries) } : null
 })
 
+/** The model a session runs now, as said ("Opus 5.5"): its transcript's last answer's (the service "agent-model:claude-code":
+ *  Provenance says who wrote a line). Read again only when the transcript grew. */
+const models = new Map<string, { size: number; model: string | null }>()
+plugin.provide("agent-model:claude-code", (session: string) => {
+  const found = SESSION_ID.test(session) ? sessionFile(session, true) : null
+  if (!found) return null
+  let size = 0
+  try { size = fs.statSync(found.file).size } catch { return null }
+  const was = models.get(found.file)
+  if (was?.size === size) return was.model
+  let model: string | null = null
+  for (const line of (tail(found.file)?.text ?? "").split("\n").reverse()) {
+    if (!line.includes('"type":"assistant"') || line.includes('"isSidechain":true')) continue
+    const m = /"model":"([^"]+)"/.exec(line)
+    if (m && m[1] !== "<synthetic>") { model = modelName(m[1]); break }
+  }
+  models.set(found.file, { size, model })
+  if (models.size > 50) models.delete(models.keys().next().value!)
+  return model
+})
+
 /** A file's last 256 KB and its stat, or null when it can't be read. */
 function tail(file: string) {
   try {

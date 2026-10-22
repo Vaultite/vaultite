@@ -11,13 +11,13 @@ import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
 import { tagsOf } from "./sections.ts"
 import { bodyLine, FM, frontmatter, loadFm, parseText, prose, stripNl } from "./frontmatter.ts"
-import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived } from "./fileprops.ts"
+import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived, isHiddenPath } from "./fileprops.ts"
 import { kindOf } from "./filetypes.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
 import { strings } from "./values.ts"
-import { guard, setGate } from "./writegate.ts"
+import { guard, setGate, watching } from "./writegate.ts"
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
 export { extract, hasTag, tagName, tagsOf } from "./sections.ts"
 // A file's type (its kind's, else its frontmatter's), whether it's archived (`archived: true`) and archive folders:
@@ -100,6 +100,7 @@ const HELD_LONG = 30_000
  *  exists"); false if one came at `p` meanwhile. Renamed, not hard-linked: iCloud Drive's folders may not take links. */
 export function writeNew(p: string, data: string | Buffer): boolean {
   guard(p)
+  const told = typeof data === "string" ? watching(p) : null
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
@@ -107,6 +108,7 @@ export function writeNew(p: string, data: string | Buffer): boolean {
     // (iCloud's placeholder of it counts: another Mac's copy, not here yet; a second would be iCloud's "Name 2")
     if (fs.existsSync(p) || !gone(p, { code: "ENOENT" })) { fs.rmSync(tmp, { force: true }); return false }
     fs.renameSync(tmp, p)
+    told?.(null, data as string)
     return true
   } catch (e) {
     fs.rmSync(tmp, { force: true })
@@ -127,6 +129,9 @@ export function writeText(p: string, text: string) {
 /** A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only). */
 export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?: number } = {}) {
   guard(p)
+  const told = typeof text === "string" ? watching(p) : null
+  let before: string | null = null
+  if (told) try { before = fs.readFileSync(p, "utf8") } catch { /* a new file */ }
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
@@ -137,6 +142,7 @@ export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?:
     fs.rmSync(tmp, { force: true })
     throw e
   }
+  told?.(before, text as string)
 }
 
 /** A settings file's mtime and size, which change with every write (readConfig: is the text read last still it?). */
@@ -351,9 +357,9 @@ export function publicOf(x: unknown): unknown {
 
 // ---------- who's writing ----------
 
-/** Who asked for the write being made: the API request's X-Vaultite-Client ("app/desktop", "cli", "mcp"; null for
- *  anyone who doesn't say: curl, a script) and X-Vaultite-Agent (the CLI's coding agent). */
-export type Writer = { client: string | null; agent: string | null }
+/** Who asked for the write being made: X-Vaultite-Client ("app/desktop", "cli", "mcp"; null: curl, a script), -Agent
+ *  (the CLI's coding agent), and its app terminal, session, model and effort (-Terminal, -Session, -Model, -Effort). */
+export type Writer = { client: string | null; agent: string | null; terminal?: string | null; session?: string | null; model?: string | null; effort?: string | null }
 /** Set by the API around each request that came over HTTP (core/app.ts), read by the hooks that run on its writes. */
 export const requestWriter = new AsyncLocalStorage<Writer>()
 /** onCreate's hooks (Vault.onCreate): the keys to add to a new file. `writer` is null outside a request over HTTP. */
@@ -367,6 +373,8 @@ export type SaveHook = (path: string, now: NoteText, was: NoteText, writer: Writ
 export type NewFile = { size: number; head: (n: number) => Buffer; tail: (n: number) => Buffer }
 /** onCreateFile's hooks (Vault.onCreateFile): told of a new file that isn't Markdown; they never change its bytes. */
 export type FileCreateHook = (path: string, file: NewFile, writer: Writer | null) => void
+/** onWrite's hooks (Vault.onWrite): told after a request wrote a Markdown file, its text before (null: new) and after. */
+export type WriteHook = (path: string, before: string | null, after: string, writer: Writer) => void
 
 /** Bytes in memory as a NewFile. */
 export const newFile = (b: Buffer): NewFile => ({ size: b.length, head: (n) => b.subarray(0, n), tail: (n) => b.subarray(Math.max(0, b.length - n)) })
@@ -636,7 +644,7 @@ export class Vault {
 
   constructor(p: string) {
     this.path = p
-    setGate(p, { may: (plugin, rel) => this.mayWrite(plugin, rel), refused: (plugin, rel) => this.writeRefused(plugin, rel) })
+    setGate(p, { may: (plugin, rel) => this.mayWrite(plugin, rel), refused: (plugin, rel) => this.writeRefused(plugin, rel), watch: (rel) => this.watch(rel) })
   }
 
   /** Run fn with the vault to itself: writes (and the sync before them) take turns, so a file is never half-updated. */
@@ -875,6 +883,23 @@ export class Vault {
     let fm: Item
     try { fm = m ? loadFm(m[1] ?? "") : {} } catch { return text }
     return withKeys(text, m, fm, this.creating(rel, fm))
+  }
+
+  private writers = new Set<{ plugin: string; fn: WriteHook }>()
+  /** fn(path, before, after, writer) after a request (the app, the CLI, an agent) wrote a Markdown file outside
+   *  .vaultite/, by any route or op. Only while `plugin` is on. Returns the function that removes it. */
+  onWrite(plugin: string, fn: WriteHook) {
+    return added(this.writers, { plugin, fn })
+  }
+  /** What writing `rel` now tells (the gate asks before each write): the onWrite hooks, or null when none listens. */
+  private watch(rel: string): ((before: string | null, after: string) => void) | null {
+    const who = requestWriter.getStore()
+    if (!who || !this.writers.size || !/\.md$/i.test(rel) || isHiddenPath(rel)) return null
+    const fns = this.on(this.writers)
+    if (!fns.length) return null
+    return (before, after) => {
+      for (const fn of fns) try { fn(rel, before, after, who) } catch (e) { console.error(e) }
+    }
   }
 
   private savers = new Set<{ plugin: string; fn: SaveHook }>()

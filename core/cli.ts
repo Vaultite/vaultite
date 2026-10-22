@@ -159,7 +159,19 @@ export class Ctx {
     // (a vault plugin's schedule, startup or event command acts on its own: core/writegate.ts)
     const actor = process.env.VAULTITE_ACTOR
     return { "X-Vaultite-Client": this.client, ...(agent ? { "X-Vaultite-Agent": agent } : {}), ...(this.command ? { "X-Vaultite-Command": this.command } : {}),
-      ...(actor ? { "X-Vaultite-Actor": actor } : {}) }
+      ...(actor ? { "X-Vaultite-Actor": actor } : {}), ...(agent ? this.session() : {}) }
+  }
+
+  /** Which session of its coding agent this is, for who-wrote-what (provenance): the app terminal it runs in, its
+   *  session id, and the model and effort when its variables say them (Claude Code: CLAUDE_EFFORT, ANTHROPIC_MODEL). */
+  private session(): Record<string, string> {
+    const e = this.env, out: Record<string, string> = {}
+    const put = (k: string, v: string | undefined) => { if (v && /^[\w.:@/ -]{1,120}$/.test(v)) out[k] = v }
+    put("X-Vaultite-Terminal", e.VAULTITE_TERMINAL)
+    put("X-Vaultite-Session", e.CLAUDE_CODE_SESSION_ID ?? e.CODEX_SESSION_ID)
+    put("X-Vaultite-Model", e.ANTHROPIC_MODEL ?? e.CLAUDE_MODEL)
+    put("X-Vaultite-Effort", e.CLAUDE_EFFORT ?? e.CLAUDE_CODE_EFFORT_LEVEL)
+    return out
   }
 
   /** The coding agent this runs under, by its variables ("claude-code", "codex"...), or "". */

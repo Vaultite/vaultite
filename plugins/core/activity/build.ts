@@ -30,6 +30,8 @@ export type Sources = {
   statuses?: Record<string, TaskState>
   /** Installed plugins' updates (the op plugin.history): when, the plugin's name, versions, how, what's new. */
   updates?: { t: number; name: string; from: string; to: string; how: "auto" | "manual" | "rollback"; notes: string[] }[]
+  /** The lines agents wrote in a file this day that are still there, by who (Provenance's authorship). */
+  authored?: (rel: string) => Promise<{ by: string; lines: number }[]>
 }
 
 /** A file's properties and body; one whose properties can't be read is all body. */
@@ -203,6 +205,11 @@ async function stretchesOf(s: Sources, rel: string): Promise<Stretch[]> {
 /** The day's entries, oldest first. */
 export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
   const inDay = (t: number) => t >= s.from && t < s.to, link = linker(s)
+  // (" · 12 lines by Opus": what agents wrote in a file, the companion's edits in yours too)
+  const wrote = async (rel: string) => {
+    const a = await s.authored?.(rel) ?? []
+    return a.length ? ` · ${a.map((x) => `${x.lines} line${x.lines === 1 ? "" : "s"} by ${x.by}`).join(", ")}` : ""
+  }
   const paths = new Set(s.changed.filter(followed))
   for (const e of s.events) if (CHANGES.has(e.action) && inDay(e.t)) for (const p of e.paths ?? []) if (followed(p)) paths.add(p)
   const stretches: Stretch[] = []
@@ -256,7 +263,7 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
       const quote = quoteOf(added, true)
       if (source) add(st.t0, "captured", `Captured ${link(st.rel)} · ${source}${by}`, quote, { source, rel: st.rel })
       else if (k.log) add(st.t0, "logged", `Logged ${link(st.rel)}${by}`, quote, { rel: st.rel })
-      else add(st.t0, "created", `Created ${link(st.rel)}${typeof st.fm.type === "string" && st.fm.type !== "note" ? ` · ${st.fm.type}` : ""}${by}`, quote, { rel: st.rel })
+      else add(st.t0, "created", `Created ${link(st.rel)}${typeof st.fm.type === "string" && st.fm.type !== "note" ? ` · ${st.fm.type}` : ""}${by}${await wrote(st.rel)}`, quote, { rel: st.rel })
       continue
     }
     if (!left) continue
@@ -265,7 +272,7 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     const source = captureOf(s, st.rel, st.fm, null) ?? undefined
     const n = st.hunks
     if (st.audio) add(st.t0, "captured", `Captured ${link(st.rel)} · Recording${by}`, quote, { source: "Recording" })
-    else add(st.t0, "edited", `Edited ${link(st.rel)} · ${n} change${n === 1 ? "" : "s"}${by}`, quote, { source })
+    else add(st.t0, "edited", `Edited ${link(st.rel)} · ${n} change${n === 1 ? "" : "s"}${by}${await wrote(st.rel)}`, quote, { source })
   }
 
   // Moves and deletes, from the events (File history keeps a moved file's versions under its new name).
@@ -316,7 +323,9 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     if (!m.agent) continue
     const g = sessions.get(`${m.agent.name}\0${m.agent.session ?? ""}`)!
     m.e.text = `${m.agent.name} changed ${g.files.length} file${g.files.length === 1 ? "" : "s"}${m.agent.session ? ` · ${m.agent.session}` : ""}`
-    m.e.items = listed(g.files, link)
+    const lines = new Map<string, string>()
+    for (const f of g.files.slice(0, ITEMS)) lines.set(f, await wrote(f))
+    m.e.items = listed(g.files, (f) => `${link(f)}${lines.get(f) ?? ""}`)
   }
   return batched(rest).map((m) => m.e)
 }

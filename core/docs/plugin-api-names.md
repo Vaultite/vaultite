@@ -822,8 +822,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `unarchived(rel)`: The path as if it weren't archived (People/.archive/Kai.md -> People/Kai.md): what kinds and homes go by.
 - `Vault`: In-memory index of the vault's files.
 - `writeAtomic(p, text, { mode }?)`: A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only).
+- `WriteHook`: onWrite's hooks (Vault.onWrite): told after a request wrote a Markdown file, its text before (null: new) and after.
 - `writeNew(p, data)`: A new file, whole or not at all (a full disk or a crash mid-write leaves no cut-off file to be refused as "already exists"); false if one came at `p` meanwhile.
-- `Writer`: Who asked for the write being made: the API request's X-Vaultite-Client ("app/desktop", "cli", "mcp"; null for anyone who doesn't say: curl, a script) and X-Vaultite-Agent (the CLI's coding agent).
+- `Writer`: Who asked for the write being made: X-Vaultite-Client ("app/desktop", "cli", "mcp"; null: curl, a script), -Agent (the CLI's coding agent), and its app terminal, session, model and effort…
 - `writeText(p, text)`: Text written as writeAtomic does, keeping the Windows line endings (\r\n) a file there has: text is read as \n.
 
 ### `@vaultite/core/agents.ts` (plugin.ts: a coding agent's plugin)

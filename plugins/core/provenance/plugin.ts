@@ -1,8 +1,10 @@
-// Provenance: `origin`, a label never a lock: new notes get the agent value or (with `label_user`) the human one; other
-// files keep theirs in files.json, their bytes never changed (an AI's mark already in them is read: xmp.ts).
+// Provenance: `origin`, a label never a lock (new notes: agent value or, with `label_user`, human; other files in
+// files.json, their bytes never changed: xmp.ts). And which lines agents wrote, beside each note (authorship.ts).
 import fs from "node:fs"
-import { byUser, OpError, Plugin, vaultPath } from "../../../core/plugins.ts"
-import { isHiddenPath, readText, setPropertyText, type Vault, type Writer } from "../../../core/vault.ts"
+import path from "node:path"
+import { byUser, localDate, localTime, opcodes, OpError, Plugin, vaultPath, whoOf } from "../../../core/plugins.ts"
+import { isHiddenPath, readText, requestWriter, setPropertyText, type Vault, writeAtomic, type Writer } from "../../../core/vault.ts"
+import { type Author, authorText, MAX_SPANS, type Mark, resolve, type Span, written } from "./authorship.ts"
 import { saysAi } from "./xmp.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -35,7 +37,13 @@ const agentValue = () => (plugin.settings().label_agents === false ? "" : aiValu
 /** Whether the user's own new notes are labelled (`label_user`, off unless set). */
 const labelsUser = () => plugin.settings().label_user === true
 
-plugin.state(() => ({ provenance: { values: values(), defaults: DEFAULT_VALUES, labelUser: labelsUser() } }))
+/** How agents' lines show (`authorship`): off (not kept either), a bar by them (gutter), or washed in their colour. */
+const authorship = (): "off" | "gutter" | "tint" => {
+  const v = plugin.settings().authorship
+  return v === "off" || v === "tint" ? v : "gutter"
+}
+
+plugin.state(() => ({ provenance: { values: values(), defaults: DEFAULT_VALUES, labelUser: labelsUser(), authorship: authorship() } }))
 
 /** Not the user: anyone but the app (`app/<device>`) and the vau CLI typed by hand (`cli` naming no coding agent). */
 export const byAgent = (w: Writer | null) => !!w && !byUser(w)
@@ -106,6 +114,12 @@ plugin.onMove((from, to, trashed) => {
   relist((l) => follow(Object.keys(l), (k, at) => { const v = l[k]; delete l[k]; if (at) l[at] = v }))
   const s = seen()
   follow([...s.keys()], (k, at) => { const v = s.get(k)!; s.delete(k); if (at) s.set(at, v) })
+  // (a note's authorship, or a folder's notes')
+  for (const [a, b] of [[`${sidecar(from)}`, dest && sidecar(dest)], [`${AUTHORSHIP}/${from}`, dest && `${AUTHORSHIP}/${dest}`]] as const) {
+    const abs = plugin.vault.abs(a)
+    if (!fs.existsSync(abs)) continue
+    if (b) { fs.mkdirSync(path.dirname(plugin.vault.abs(b)), { recursive: true }); fs.renameSync(abs, plugin.vault.abs(b)) } else fs.rmSync(abs, { recursive: true, force: true })
+  }
 })
 
 // ---------- other files: what their bytes say (an image from ChatGPT or Gemini carries IPTC's label, or C2PA's)
@@ -303,4 +317,152 @@ the app or with vau typed by hand.
     return await originOf(ctx.vault, rel)
   },
   text: (r) => said(r),
+})
+
+// ---------- authorship: which lines agents wrote (authorship.ts), a sidecar per note, never in the note
+
+const AUTHORSHIP = ".vaultite/plugins/provenance/authorship"
+const sidecar = (rel: string) => `${AUTHORSHIP}/${rel}.json`
+
+/** A note's spans as its sidecar has them ([] for none, or one that doesn't read). */
+function spansOf(rel: string): Span[] {
+  try {
+    const list = JSON.parse(readText(plugin.vault.abs(sidecar(rel)))).spans
+    return Array.isArray(list) ? list.filter((x): x is Span => !!x && typeof x.by === "string" && Array.isArray(x.lines) && typeof x.line === "number") : []
+  } catch { return [] }
+}
+function saveSpans(rel: string, spans: Span[]) {
+  const abs = plugin.vault.abs(sidecar(rel))
+  if (!spans.length) return void fs.rmSync(abs, { force: true })
+  writeAtomic(abs, `${JSON.stringify({ spans }, null, 1)}\n`)
+}
+
+/** Agents' colours when the companion doesn't give theirs (a colour token). */
+const TINTS: Record<string, string> = { "claude-code": "orange", "claude-app": "orange", codex: "teal", chatgpt: "teal", gemini: "blue", cursor: "purple" }
+/** A model as said: claude-opus-5-5 -> Opus 5.5, opus -> Opus. */
+const modelWord = (m: string) => {
+  const parts = m.replace(/^claude-/, "").replace(/\[.*\]$/, "").split("-").filter((p) => !(/^\d{8}$/.test(p)))
+  const words = parts.filter((p) => !/^\d+$/.test(p)), nums = parts.filter((p) => /^\d+$/.test(p))
+  return [...words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)), nums.join(".")].join(" ").trim() || m
+}
+
+/** Who a write's agent is, as the user knows it: the companion's name and colour when it runs in the companion's
+ *  terminal, the model its session ran last (its transcript), the effort it said. */
+async function authorOf(w: Writer, t: number): Promise<Author> {
+  const who = whoOf(w.client, w.agent)
+  const named = w.terminal ? await plugin.ask<{ name: string; tint?: string; model?: string; effort?: string } | null>("companion:who", null, w.terminal) : null
+  const model = (w.session && who.agent ? await plugin.ask<string | null>(`agent-model:${who.agent}`, null, w.session) : null)
+    ?? (w.model ? modelWord(w.model) : named?.model ? modelWord(named.model) : null)
+  const effort = w.effort ?? named?.effort ?? null
+  const by = named?.name ?? (who.agent === "claude-code" ? "Claude" : who.label)
+  return { by, ...(who.agent ? { agent: who.agent } : {}), ...(model ? { model } : {}), ...(effort ? { effort } : {}), tint: named?.tint ?? TINTS[who.agent ?? ""] ?? "indigo", t }
+}
+
+/** Writes to a note's sidecar, one after another (they wait for who wrote them). */
+const turns = new Map<string, Promise<void>>()
+function inTurn(rel: string, fn: () => Promise<void>) {
+  const run = (turns.get(rel) ?? Promise.resolve()).then(fn).catch((e) => console.error(`provenance: authorship of ${rel}:`, e))
+  turns.set(rel, run)
+  void run.then(() => { if (turns.get(rel) === run) turns.delete(rel) })
+  return run
+}
+
+/** Keep what an agent wrote: the spans its write adds; those that no longer mark a line go. */
+function record(rel: string, before: string | null, after: string, w: Writer) {
+  if (authorship() === "off") return
+  const t = Date.now()
+  return inTurn(rel, async () => {
+    const author = await authorOf(w, t)
+    const had = spansOf(rel)
+    const add = written(before, after, author, opcodes, before === null ? undefined : resolve(before, had))
+    if (!add.length) return
+    const all = [...had, ...add]
+    const used = new Set([...resolve(after, all).values()].map((m) => m.span))
+    saveSpans(rel, all.filter((_, i) => used.has(i)).slice(-MAX_SPANS))
+  })
+}
+
+/** An agent named by a request (a coding agent, an MCP client): the app and vau typed by hand aren't. */
+const namedAgent = (w: Writer | null | undefined): w is Writer => !!w && byAgent(w) && (!!w.agent || w.client === "mcp")
+
+plugin.onWrite((rel, before, after, w) => { if (namedAgent(w)) void record(rel, before, after, w) })
+
+/** What an agent wrote that the app saves for it (the companion's edits, typed in the window): the request's agent. */
+plugin.provide("provenance:wrote", (rel: string, before: string | null, after: string) => {
+  const w = requestWriter.getStore()
+  return namedAgent(w) ? record(rel, before, after, w) : undefined
+})
+
+/** Lines agents wrote in a note between two times that are still there, by who: the day's recap says them. */
+plugin.provide("provenance:authored", (rel: string, from: number, to: number) => {
+  const spans = spansOf(rel)
+  if (!spans.length) return []
+  let text: string
+  try { text = readText(plugin.vault.abs(rel)) } catch { return [] }
+  const by = new Map<string, number>()
+  for (const m of resolve(text, spans).values()) {
+    const s = spans[m.span]
+    if (s.t >= from && s.t < to) by.set(s.by, (by.get(s.by) ?? 0) + 1)
+  }
+  return [...by].map(([name, lines]) => ({ by: name, lines })).sort((a, b) => b.lines - a.lines)
+})
+
+/** A note to read authorship of: there, Markdown, not hidden. */
+function authorable(vault: Vault, p: unknown) {
+  const rel = vaultPath(p, true, vault)
+  if (!isNote(rel) || isHiddenPath(rel)) throw new OpError(`${rel} isn't a note: only notes keep who wrote their lines`)
+  return rel
+}
+
+// The app's editors draw it (index.tsx), finding the spans in the text as it is while you type.
+plugin.route("GET", "provenance/authorship", (req) => {
+  const rel = authorable(plugin.vault, req.query.path)
+  return { path: rel, mode: authorship(), spans: authorship() === "off" ? [] : spansOf(rel) }
+})
+
+/** A note's agent-written lines in runs: from, to, who, mixed (edited by the user since, or rewritten from theirs). */
+type Run = { from: number; to: number; mixed: boolean; text: string } & Author
+function runsOf(text: string, spans: Span[]): Run[] {
+  const lines = text.replace(/\r\n/g, "\n").split("\n"), out: Run[] = []
+  const marks = [...resolve(text, spans).values()].sort((a, b) => a.line - b.line)
+  let last: Mark | null = null
+  for (const m of marks) {
+    const r = out[out.length - 1]
+    if (r && last && m.line === last.line + 1 && m.span === last.span && m.mixed === last.mixed) r.to = m.line
+    else {
+      const { line: _, lines: _l, mixed: _m, ...who } = spans[m.span]
+      out.push({ ...who, from: m.line, to: m.line, mixed: m.mixed, text: lines[m.line - 1].trim() })
+    }
+    last = m
+  }
+  return out
+}
+
+const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+const when = (t: number) => (localDate(t) === localDate(Date.now()) ? localTime(t) : `${localDate(t)} ${localTime(t)}`)
+
+plugin.op({
+  id: "provenance.blame",
+  cli: "blame",
+  summary: "Which lines of a note agents wrote: who (name, model, effort) and when, by line; mixed where the user edited them too.",
+  help: `Kept beside the note (Provenance's authorship, never in its text) for every agent's write through Vaultite
+(vau edit, write ops, MCP, the companion's edits), found again by their text as the note changes. Lines it doesn't
+list are the user's (or lost to an edit outside Vaultite). Off when the setting authorship is off.
+
+  vau blame "Notes/Garden plan.md"`,
+  kind: "read",
+  params: { path: { type: "string", format: "path", required: true, description: "the note (a path, or a name as the user says it)" } },
+  args: ["path"],
+  run: async ({ path: p }, ctx) => {
+    const rel = authorable(ctx.vault, p)
+    const text = readText(ctx.vault.abs(rel))
+    return { path: rel, mode: authorship(), lines: text.split("\n").length, runs: runsOf(text, spansOf(rel)) }
+  },
+  text: (r) => {
+    const n = r.runs.reduce((k: number, x: Run) => k + x.to - x.from + 1, 0)
+    if (r.mode === "off") return `${r.path}: authorship is off (Provenance's setting), so who wrote which lines isn't kept.`
+    if (!r.runs.length) return `${r.path}: no lines by agents (all the user's, or written before authorship was kept).`
+    return [`${r.path}: ${n} of ${r.lines} lines by agents.`, "",
+      ...r.runs.map((x: Run) => `- ${x.from === x.to ? x.from : `${x.from}-${x.to}`} ${authorText(x, when)}${x.mixed ? " (mixed: the user's too)" : ""}: ${cut(x.text, 80)}`)].join("\n")
+  },
 })
