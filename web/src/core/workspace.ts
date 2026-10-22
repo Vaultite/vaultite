@@ -245,6 +245,14 @@ export function go(to: string, newTab = false, push = true) {
   show(to, push)
 }
 
+/** A new tab showing `to` beside the active one, the user staying where they are (a browser's ⌘-click); one already open
+ *  anywhere is left as it is. What agents open goes here: they never take the focus. */
+export function openBehind(to: string) {
+  if (findOpen(to)) return
+  const cur = activeTab()
+  set(withGroup(state.focus, (g) => ({ ...withTabAfter(g, cur.id, to), active: g.active })))
+}
+
 /** A group with a new tab showing `to` right after tab `after`, active (`from`: the tab it was opened from, Tab.from),
  *  in `after`'s tab group, as a browser's link opened from a grouped tab is. */
 function withTabAfter(g: Group, after: string, to: string, from?: string): Group {

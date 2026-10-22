@@ -4,6 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { agentIn, newTerminalId, shellQuote, startAgent, TERMINAL_AGENT } from "../../../core/agents.ts"
 import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
+import { show } from "./ops.ts"
 
 export const DEFAULT_PROMPT = "Read the note {path} and do what it asks."
 /** What an agent is told after its prompt while the Inbox is on: it works alone, and its report is where the user answers. */
@@ -186,7 +187,7 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
       }
       let shown = false
       if (open ?? !r.handed) {
-        try { await ctx.ui({ action: "open", path: `view:terminal/${r.id}`, newTab: true }); shown = true } catch (e) {
+        try { await show(ctx, r.id); shown = true } catch (e) {
           if (!(e instanceof OpError && e.status === 409)) throw e
         }
       }
@@ -236,7 +237,7 @@ the prompt's first words, until the agent names its session.
       }
       let shown = false
       if (open) {
-        try { await ctx.ui({ action: "open", path: `view:terminal/${id}`, newTab: true }); shown = true } catch (e) {
+        try { await show(ctx, id); shown = true } catch (e) {
           if (!(e instanceof OpError && e.status === 409)) throw e
         }
       }

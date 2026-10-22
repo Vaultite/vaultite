@@ -53,6 +53,17 @@ export default async ($: VaultTest) => {
     check("vau terminal open <agent>: starts the session, then shows it", tr.code === 0 && !!opened &&
       calls[1] === `POST ui {"action":"open","path":"view:terminal/${opened}","split":"right","newTab":false}`, [tr, calls])
     calls.length = 0
+    const userWho = termCtx.who
+    termCtx.who = whoOf("cli", "claude-code")
+    tr = await term("open", { agent: "claude", prompt: " Fix the failing test ", split: "right" })
+    termCtx.who = userWho
+    const behind = /^POST terminals\/(claude-[a-z0-9]{8}) (.*)$/.exec(calls[0] ?? "")
+    check("vau terminal open from an agent: starts with its prompt, its tab behind the user's, a toast to show it", tr.code === 0 && !!behind &&
+      behind[2] === '{"prompt":"Fix the failing test"}' && calls[1] === `POST ui {"action":"open","path":"view:terminal/${behind[1]}","background":true}` &&
+      calls[2] === `POST ui {"action":"notify","text":"Claude Code started a session","button":{"label":"Show","open":"view:terminal/${behind[1]}"}}`, [tr, calls])
+    tr = await term("open", { prompt: "hi" })
+    check("vau terminal open: a prompt with no agent is refused", tr.code === 1 && tr.err.includes("a prompt is an agent's"), tr)
+    calls.length = 0
     tr = await term("open", { agent: "nope" })
     check("vau terminal open: an agent no plugin brings is refused (and its shell ended)", tr.code === 1 && tr.err.includes("no agent 'nope'") && calls.some((x) => x.startsWith("DELETE terminals/nope-")), [tr, calls])
     calls.length = 0

@@ -65,7 +65,7 @@ function release() {
 
 /** Something an agent asked this window to do (server.ts /api/ui): open a path, run a command or notify. The handler
  *  answers false for a command it couldn't run. */
-export type UiAction = { action: string; path?: string; split?: "right" | "down" | null; newTab?: boolean; id?: string; rid?: string
+export type UiAction = { action: string; path?: string; split?: "right" | "down" | null; newTab?: boolean; background?: boolean; id?: string; rid?: string
   text?: string; kind?: "error" | null; button?: { label: string; open: string } | null }
 let uiHandler: ((m: UiAction) => unknown) | null = null
 export const onUiAction = (fn: (m: UiAction) => unknown) => { uiHandler = fn }

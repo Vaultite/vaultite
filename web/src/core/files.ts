@@ -13,7 +13,7 @@ import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
 import { isDesktop } from "@/core/platform"
-import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, retarget, targetOf } from "@/core/workspace"
+import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, openBehind, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
@@ -136,10 +136,11 @@ setFileOpener((path) => openFile(path))
 
 // An agent's `vau open <path>` / `vau command <id>` / `vau notify <text>` (server.ts /api/ui), in the window the user
 // was in last.
-function openAsked(path: string, split?: "right" | "down" | null, newTab = false) {
+function openAsked(path: string, split?: "right" | "down" | null, newTab = false, background = false) {
   if (/^https?:\/\//i.test(path)) path = `view:web/${path}`
   const view = path.startsWith("view:")
   const to = view ? path : `file:${path.replace(/^file:/, "")}`
+  if (background) return openBehind(to)
   if (!isDesktop()) return view ? afterSheets(() => go(to)) : openFile(to.slice(5))
   if (split) return openInSplit(to, split === "down" ? "bottom" : "right")
   if (!view) besideTerminal()
@@ -160,7 +161,7 @@ onUiAction((m) => {
     const b = m.button
     return void notice(m.text, { kind: m.kind === "error" ? "error" : undefined, action: b ? { label: b.label, run: () => openAsked(b.open) } : undefined })
   }
-  if (m.action === "open" && m.path) openAsked(m.path, m.split, !!m.newTab)
+  if (m.action === "open" && m.path) openAsked(m.path, m.split, !!m.newTab, !!m.background)
 })
 
 /** Open a plugin's view. A view is shown once: already open anywhere, that tab shows whatever `newTab` or `split` say,

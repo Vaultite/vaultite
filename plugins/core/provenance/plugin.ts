@@ -1,7 +1,7 @@
 // Provenance: `origin`, a label never a lock: new notes get the agent value or (with `label_user`) the human one; other
 // files keep theirs in files.json, their bytes never changed (an AI's mark already in them is read: xmp.ts).
 import fs from "node:fs"
-import { OpError, Plugin, vaultPath } from "../../../core/plugins.ts"
+import { byUser, OpError, Plugin, vaultPath } from "../../../core/plugins.ts"
 import { isHiddenPath, readText, setPropertyText, type Vault, type Writer } from "../../../core/vault.ts"
 import { saysAi } from "./xmp.ts"
 
@@ -38,7 +38,7 @@ const labelsUser = () => plugin.settings().label_user === true
 plugin.state(() => ({ provenance: { values: values(), defaults: DEFAULT_VALUES, labelUser: labelsUser() } }))
 
 /** Not the user: anyone but the app (`app/<device>`) and the vau CLI typed by hand (`cli` naming no coding agent). */
-export const byAgent = (w: Writer | null) => !!w && !w.client?.startsWith("app/") && !(w.client === "cli" && !w.agent)
+export const byAgent = (w: Writer | null) => !!w && !byUser(w)
 
 /** What the user's new notes are labelled: the first value (human by default), or nothing with `label_user` off. */
 const userValue = () => {

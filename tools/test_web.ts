@@ -806,6 +806,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tabs: asked for a new tab of what another tab has, from a blank tab: that tab, no copy", tabs() === "file:a.md *", tabs())
   one([A, B], "b"); ws.go("file:a.md", true)
   check("tabs: asked for a new tab from a tab with something, it still gets one", tabs() === "file:a.md,file:b.md,file:a.md *", tabs())
+  one([A, B], "a"); ws.openBehind("view:terminal/x"); ws.openBehind("file:b.md")
+  check("tabs: what an agent opens goes in a tab beside the active one, which stays shown; one already open is left",
+    tabs() === "file:a.md,view:terminal/x,file:b.md *" && ws.activeTab().to === "file:a.md", tabs())
   one([A, N], "n"); g.location.hash = "#file/a.md"; ws.followHash("file/a.md")
   check("tabs: a link from a blank tab to what another tab has closes the blank one", tabs() === "file:a.md *", tabs())
   one([A, N], "n"); ws.selectTab("a")

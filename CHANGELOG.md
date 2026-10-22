@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Agents never take your focus: a terminal an agent opens, resumes or dispatches goes in a tab behind yours, with a
+  quiet toast ("Claude Code started a session") and Show. `vau terminal open claude --prompt "..."` starts it on its task.
 - Browser: menus, the palette, popovers, tooltips and toasts draw over a live page; it no longer freezes into a picture
   or blinks as one opens, and a toast over a page lets clicks through to it.
 - Cloud sessions: Claude Code on the web's sessions have a sidebar panel of their own, out of Terminals. Every claude.ai

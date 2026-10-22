@@ -1,6 +1,6 @@
 // Review: the files AI apps and coding agents changed that the user hasn't looked at yet. Who changed what is Activity's
 // (asked as a service), the text before is File history's; what's reviewed is a mark per file (its data.json).
-import { diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
+import { byUser, diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
 import { isHiddenPath, type Item, parseText, readText, setPropertyText, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -30,8 +30,6 @@ function readable(name: string) {
   const known = whoOf(null, name).label
   return known !== name ? known : name.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ")
 }
-/** Who asked is an AI or a script, not the user (the app, or vau typed by hand). */
-const notUser = (w: Who) => !w.client?.startsWith("app") && !(w.client === "cli" && !w.agent)
 /** An AI app or a coding agent calling: an MCP client, or a client that names its agent. */
 const isAi = (w: Who) => w.client === "mcp" || !!w.agent
 /** Not the user's files: settings, the app's own pages, the trash, archives (a path with a part starting with a dot). */
@@ -161,7 +159,7 @@ async function targets(vault: Vault, p: { path?: string; all?: boolean; by?: str
 
 /** The user's to do, in the app or with vau typed by hand: an AI marking its own changes reviewed would defeat it. */
 const usersOnly = (who: Who, what: string) => {
-  if (notUser(who)) throw new OpError(`${what} is the user's to do, in the app or with vau typed by hand`, 403)
+  if (!byUser(who)) throw new OpError(`${what} is the user's to do, in the app or with vau typed by hand`, 403)
 }
 
 /** Mark files reviewed (up to now), and label those an AI wrote (Provenance's origin ai) reviewed: what that value
@@ -279,7 +277,7 @@ plugin.route("GET", "review/file", async (req) => {
 })
 plugin.route("POST", "review/marks", (req) => {
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
-  if (notUser(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, "only the app puts review marks back")
+  if (!byUser(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, "only the app puts review marks back")
   const given = (req.body as { was?: unknown })?.was
   if (!given || typeof given !== "object") throw new HTTPError(400, "was: { path: ms or null }, as keep or revert answered")
   remark((n) => {

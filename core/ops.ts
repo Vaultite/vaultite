@@ -350,6 +350,10 @@ export function whoOf(client: string | null, agent: string | null): Who {
   return { client, agent: null, label: client ?? "the API", source: client ?? "api" }
 }
 
+/** The user's own hand: the app (`app/<device>`) or vau typed by hand (`cli` naming no coding agent). Anyone else is an
+ *  agent or a script: what it opens never takes the user's focus. */
+export const byUser = (w: { client: string | null; agent: string | null }) => !!w.client?.startsWith("app/") || (w.client === "cli" && !w.agent)
+
 // ---------- docs ----------
 
 /** A parameter as a line of docs: `- \`title\` (text, required): what it is. Default: x.` */

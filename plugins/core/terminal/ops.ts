@@ -1,7 +1,7 @@
 // Terminal's operations (`vau terminal`), through the plugin's own routes, Workspaces' and the user's window, so they
 // can do what the routes allow and nothing more.
 import { startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/agents.ts"
-import { fmtAgo, OpError, type OpCtx, type Plugin, quoted } from "../../../core/plugins.ts"
+import { byUser, fmtAgo, OpError, type OpCtx, type Plugin, quoted } from "../../../core/plugins.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -47,10 +47,15 @@ async function closeTabs(ctx: OpCtx, id: string) {
   }
 }
 
-/** Show terminal `to` in the user's window: a new tab, or a split. */
-async function show(ctx: OpCtx, to: string, split: "right" | "down" | null) {
+/** Show terminal `to` in the user's window: a new tab, or a split. An agent's goes behind the user's tab, with a toast
+ *  to show it: agents never take the user's focus. */
+export async function show(ctx: OpCtx, to: string, split: "right" | "down" | null = null, did = "started a session") {
+  const path = `view:terminal/${to}`
   try {
-    await ctx.ui({ action: "open", path: `view:terminal/${to}`, ...(split ? { split } : {}), newTab: !split })
+    if (byUser(ctx.who)) return void await ctx.ui({ action: "open", path, ...(split ? { split } : {}), newTab: !split })
+    await ctx.ui({ action: "open", path, background: true })
+    const who = ctx.who.label
+    await ctx.ui({ action: "notify", text: `${who[0].toUpperCase()}${who.slice(1)} ${did}`, button: { label: "Show", open: path } })
   } catch (e) {
     if (e instanceof OpError && e.status === 409) throw new OpError(`no app window is open: open the app first (the session is running: vau terminal screen ${to})`, 409)
     throw e
@@ -65,7 +70,7 @@ function localId(raw: string) {
 }
 
 const where = (tabs: TabAt[] | undefined) => (tabs?.length ? `tab in workspace ${[...new Set(tabs.map((t) => t.workspace))].join(", ")}` : "no tab")
-const SPLIT = { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down) the current one, not a new tab" } as const
+const SPLIT = { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down) the current one, not a new tab (the user's only: an agent's goes behind theirs)" } as const
 const ID = { type: "string", required: true, description: "the terminal's id (vau terminal lists them)" } as const
 
 export function terminalOps(plugin: Plugin) {
@@ -115,23 +120,27 @@ it runs inside Vaultite, then each plugin's line for agents. The vault's rules, 
     owner: "the terminal",
     id: "terminal.open",
     cli: "terminal open",
-    summary: "Open a new terminal in a tab of the user's window: a shell, or a coding agent (claude, codex...).",
+    summary: "Open a new terminal in a tab of the user's window: a shell, or a coding agent (claude, codex...), with its task.",
     help: `The session starts first, so it runs even with no window open (then its tab can't be shown: vau terminal screen
-reads it). An agent with accounts starts in one with <agent>_<account> (claude_personal).
+reads it). An agent with accounts starts in one with <agent>_<account> (claude_personal). Opened by an agent, its tab
+goes behind the user's, with a toast to show it.
 
   vau terminal open
-  vau terminal open claude --split right`,
+  vau terminal open claude --prompt "Fix the failing test in core/" --split right`,
     kind: "write",
     lock: false, // starting a shell holds nothing of the vault
     params: {
       agent: { type: "string", description: "the agent to run (claude, codex, opencode...; claude_personal: one of its accounts); none: a shell" },
+      prompt: { type: "string", description: "the agent's first message: its task" },
       split: SPLIT,
     },
     args: ["agent"],
-    run: async ({ agent, split }, ctx) => {
+    run: async ({ agent, prompt, split }, ctx) => {
       if (agent && !TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
+      const said = prompt?.trim()
+      if (said && !agent) throw new OpError("a prompt is an agent's: name the agent (claude, codex...)")
       const t = newTerminalId(agent)
-      const r = agent ? await startAgent(ctx, t) : await ctx.api("POST", `terminals/${t}`)
+      const r = agent ? await startAgent(ctx, t, said || undefined) : await ctx.api("POST", `terminals/${t}`)
       await show(ctx, t, split ?? null)
       return { ...r, id: t }
     },
@@ -173,7 +182,7 @@ days); several are listed. Other agents: their session's id.
       }
       const t = resumeTerminalId(agent, sid)
       await ctx.api("POST", `terminals/${t}`)
-      await show(ctx, t, split ?? null)
+      await show(ctx, t, split ?? null, "resumed a session")
       return { id: t, session: sid, title }
     },
     text: (r) => `Resumed ${r.title ? `"${r.title}" ` : ""}in ${r.id}.`,

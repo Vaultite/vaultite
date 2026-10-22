@@ -82,7 +82,7 @@ export { allowedPath as outsidePath } from "./outside.ts"
 export { clean as vaultPath } from "./files.ts"
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
-export { type Op, type OpCtx, type OpDid, type OpEntry, OpError, type Param, quoted, type Schema, type Who, whoOf } from "./ops.ts"
+export { byUser, type Op, type OpCtx, type OpDid, type OpEntry, OpError, type Param, quoted, type Schema, type Who, whoOf } from "./ops.ts"
 export type { EventFilter, VaultEvent } from "./events.ts"
 /** A path as the user says it ("Today", "Alice Park") made a vault path, given GET /api/files (core/ops.ts): for an op's
  *  parameter that may be a path or something else (a tab's id). */

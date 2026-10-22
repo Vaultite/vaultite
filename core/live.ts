@@ -260,7 +260,7 @@ export class Live {
   }
 
   /** /api/ui: GET the open windows and the focused one's workspace; POST {action: open | command | notify}. Only the
-   *  window focused last acts. */
+   *  window focused last acts. An open with `background` adds a tab behind the user's, as a browser's ⌘-click does. */
   handle(method: string, body: unknown): [unknown, number] {
     if (method === "GET") return [{ windows: this.windows, workspace: this.workspace }, 200]
     if (method !== "POST") return [{ error: "not found" }, 404]
@@ -268,7 +268,7 @@ export class Live {
     let msg: Record<string, unknown>
     if (b.action === "open" && typeof b.path === "string" && b.path.trim()) {
       if (b.split != null && b.split !== "right" && b.split !== "down") return [{ error: "split is right or down" }, 400]
-      msg = { action: "open", path: b.path.trim(), split: b.split ?? null, newTab: !!b.newTab }
+      msg = { action: "open", path: b.path.trim(), split: b.split ?? null, newTab: !!b.newTab, ...(b.background ? { background: true } : {}) }
     } else if (b.action === "command" && typeof b.id === "string" && b.id) msg = { action: "command", id: b.id, ...(typeof b.rid === "string" ? { rid: b.rid } : {}) }
     else if (b.action === "notify") {
       const text = typeof b.text === "string" ? b.text.trim() : ""
