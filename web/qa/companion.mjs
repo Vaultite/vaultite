@@ -1,6 +1,6 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
-// words pop in a bubble by it, comments are threads in the Conversations panel (a dot by the line; or, a setting, cards
-// in the margin, a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
+// words pop in a bubble by it, comments are cards in the margin (a dot on a phone, opened by a tap; or, a setting,
+// threads in the Conversations panel, a dot by the line) and take a reply, a suggestion is struck through with its replacement after it
 // and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
 // the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes
 // reaches it after a pause. Its cursor: hovered, its status; clicked, its last words and a box to ask it; dragged onto
@@ -34,8 +34,8 @@ if (want.length) {
   writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []), ...want] }, null, 2))
   await wait(1500)
 }
-// (the margin's cards first; the sidebar, the default, after)
-await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1, comments: "margin" })
+// (the margin's cards, the default, first; the sidebar after)
+await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1, comments: null })
 await op("plugin.grant", { id: "activity", allow: false }) // (its recaps' ask would cover the page)
 const DIR = "QA companion", NOTE = `${DIR}/Garden ideas.md`
 rmSync(file(DIR), { recursive: true, force: true })
@@ -546,8 +546,8 @@ for (const [label, viewport, mobile] of [["desktop", { width: 1500, height: 700 
   check(`${label}: with the cards gone, the note gives back the room it kept`, await p.evaluate(() => [...document.querySelectorAll(".cm-content")].every((e) => !e.style.marginBottom)))
   await c.close()
 }
-// Comments in the sidebar (the default): threads in the Conversations panel in the note's order, a dot by each line.
-await api("PATCH", "config/plugin/companion", { comments: null })
+// Comments in the sidebar (a setting): threads in the Conversations panel in the note's order, a dot by each line.
+await api("PATCH", "config/plugin/companion", { comments: "sidebar" })
 await op("companion.clear")
 const sc = await browser.newContext({ viewport: { width: 1400, height: 900 } })
 const sp = watch(await sc.newPage(), { label: "sidebar" })

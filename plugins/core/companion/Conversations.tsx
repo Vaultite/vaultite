@@ -1,4 +1,4 @@
-// The Conversations panel (the right sidebar by default, a phone's right drawer): the focused note's threads in its
+// The Conversations panel (the right sidebar by default, a phone's right drawer; where threads show with `comments: sidebar`): the focused note's threads in its
 // order, open or resolved, who's around atop them. One clicked lights its line; replying and resolving are here.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"

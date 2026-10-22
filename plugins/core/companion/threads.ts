@@ -5,10 +5,10 @@ import { type Note, pick, viewOf } from "./live"
 import { nearest } from "./text"
 
 const settings = pluginSettings<{ comments?: string }>("companion")
-/** Where comments and suggestions show: the Conversations panel, a dot by each one's line (the default), or cards in
- *  the margin. */
-export const inMargin = () => settings.get().comments === "margin"
-export const useInMargin = () => settings.use().comments === "margin"
+/** Where comments and suggestions show: cards in the margin (the default), or the Conversations panel, a dot by each
+ *  one's line. */
+export const inMargin = () => settings.get().comments !== "sidebar"
+export const useInMargin = () => settings.use().comments !== "sidebar"
 
 /** The Conversations panel's key. */
 export const PANEL = "companion:conversations"
