@@ -752,7 +752,9 @@ const ASKING: Record<string, string> = { permission: "Asks permission", question
 
 type Who = { agent: string; terminal: string; session: string }
 /** An agent's last turn as its plugin reads it (the service "agent-turn:<agent>"): the user's message, its last answer. */
-type Last = { session: string; prompt: string; text: string; at: number; final: boolean }
+type Last = { session: string; prompt: string; text: string; at: number; final: boolean
+  /** The session's own name, for an agent whose terminal isn't titled by it (Codex's thread name, else first prompt). */
+  title?: string }
 const BODY = 8000
 
 /** A turn that ended: its last message read (the hook's, else the agent's transcript), judged; needing the user, its
@@ -761,7 +763,13 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   let { text, prompt } = h
   if (text === undefined || prompt === undefined) {
     const t = await lastTurn(who, since, text === undefined)
+    // (back to idle with no session to read: it was starting up, as Codex says it works while it does)
+    if (!t && h.from === "osc7501" && h.state === "idle" && text === undefined && prompt === undefined) return
     if (t) { text ??= t.text; prompt ??= t.prompt; who = { ...who, session: who.session || t.session } }
+    if (t?.title && (who.terminal || who.session)) {
+      named.set(who.terminal || who.session, t.title)
+      if (named.size > 500) named.delete(named.keys().next().value!)
+    }
   }
   text = (text ?? h.msg ?? "").trim()
   // Its report (inbox.report) this turn is what it had to say: the row is the report's.
@@ -792,10 +800,16 @@ async function lastTurn(who: Who, since: number, wantText: boolean): Promise<Las
 const rowOf = (k: Who) => (e: InboxEvent) => !e.gate && !e.machine && e.source === k.agent &&
   ((!!k.session && e.session === k.session) || (!!k.terminal && e.terminal === k.terminal))
 
-/** What the user knows a session by: its terminal's name (Claude Code names it after the session), else its folder. */
+/** The name a session's agent gave it as its last turn ended (agent-turn's `title`), by terminal, else session. */
+const named = new Map<string, string>()
+
+/** What the user knows a session by: the name its agent gave it, else its terminal's (Claude Code names it after the
+ *  session), else its folder. */
 async function sessionTitle(k: Who, cwd?: string) {
-  const named = k.terminal ? await plugin.ask<{ title?: string } | null>("terminal:info", null, k.terminal).catch(() => null) : null
-  return str(named?.title).replace(/^[^\p{L}\p{N}]+/u, "").trim() || (cwd ? path.basename(cwd) : "")
+  const own = named.get(k.terminal || k.session)
+  if (own) return own
+  const term = k.terminal ? await plugin.ask<{ title?: string } | null>("terminal:info", null, k.terminal).catch(() => null) : null
+  return str(term?.title).replace(/^[^\p{L}\p{N}]+/u, "").trim() || (cwd ? path.basename(cwd) : "")
 }
 
 /** Session `k`'s row, made or changed (`patch`; undefined takes a field away), at the top; `news`: the user is told. */

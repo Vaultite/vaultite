@@ -276,7 +276,12 @@ const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
 function stateNow(id: string): Now | null {
   const agent = agentOf(id)?.name ?? ""
   const o = osc.get(id), st = o?.status
-  if (st) return { agent: agent || AGENT_APPS[st.app ?? ""] || st.app || "", state: st.state, ...(st.kind ? { kind: st.kind } : {}), ...(shown(st.msg) ? { msg: shown(st.msg) } : {}), from: "osc7501" }
+  if (st) {
+    // (blocked without saying why, as Codex says it: the question its agent declares on its screen does)
+    const ask = st.state === "blocked" && !st.kind ? asking.get(id) : undefined
+    const kind = st.kind ?? (ask ? "permission" : undefined), msg = shown(st.msg) ?? ask?.says
+    return { agent: agent || AGENT_APPS[st.app ?? ""] || st.app || "", state: st.state, ...(kind ? { kind } : {}), ...(msg ? { msg } : {}), from: "osc7501" }
+  }
   // (a program that speaks it says nothing before its session starts: Claude Code's folder trust is only on its screen)
   const [hook, kind] = o?.seen ? [] : (stateOf(id) ?? "").split(":")
   if (hook === "working" || hook === "idle") return { agent, state: hook, from: "hooks" }
@@ -331,7 +336,23 @@ function oscSaid(id: string, said: Said) {
   const was = osc.get(id)
   osc.set(id, said)
   if (said.seen && !was?.seen) try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(oscMark(id), "") } catch { /* hooks go on */ }
-  if (JSON.stringify(was) !== JSON.stringify(said)) stateChanged(id)
+  if (JSON.stringify(was) === JSON.stringify(said)) return
+  const st = said.status, agent = agentOf(id)?.name
+  if (st?.state !== "blocked" || st.kind || !agent) { asking.delete(id); return stateChanged(id) }
+  // Blocked, not saying why: told once its screen shows the question (Approve and Deny need it), or soon without.
+  void askShown(id, agent).finally(() => stateChanged(id))
+}
+
+/** The question agent terminal `id` shows (its agent declares it), looked for while its screen draws it: kept in
+ *  `asking` while it's still blocked. */
+async function askShown(id: string, agent: string) {
+  const asks = await asksOf(agent), b = await backendOf(id)
+  if (!asks.length || !b) return
+  for (let i = 0; i < 8 && osc.get(id)?.status?.state === "blocked"; i++) {
+    const hit = await askOn(b, id, asks)
+    if (hit) { if (osc.get(id)?.status?.state === "blocked") asking.set(id, hit); return }
+    await new Promise((r) => setTimeout(r, 200))
+  }
 }
 
 /** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */

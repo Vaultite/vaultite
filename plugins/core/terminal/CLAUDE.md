@@ -6,7 +6,8 @@
   unit the keeper and tmux need their own scope, or a restart kills them.
 - One shell has one size, the last device's; a view used again that doesn't match sends its own.
 - A terminal's state (the list's `state`, the service "inbox:state") comes from OSC 7501 (`osc7501.ts`) when its program
-  speaks it, else its agent's hooks, else a question its agent declares seen on its screen. OSC 7501 is answered and
+  speaks it, else its agent's hooks, else a question its agent declares seen on its screen. A blocked report without a
+  kind (Codex's) waits for that question on screen for its kind and words: Approve and Deny need it. Codex never probes. OSC 7501 is answered and
   read where the pty is held (the keeper, the server's own shells), in stream order: the probe's answer has to reach the
   program before the primary DA answer right after it (Claude Code takes a DA answer first as "not spoken here"). tmux
   answers DA itself and drops the OSC, so agents there stay on hooks; a keeper an older build started speaks it only once

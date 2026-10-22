@@ -2,7 +2,7 @@
 // from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentAsk, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
+import { type AgentAsk, type AgentMeter, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
   priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
@@ -203,9 +203,10 @@ const codexProcesses = () => plugin.memo(2, async function codexProcesses() {
   return out
 })
 
-/** Codex sessions open now: each process with the session it's writing (the newest in its folder since it started),
- *  working while a turn runs. A TUI not asked anything yet has none: listed only when in one of the app's terminals. */
-async function live(): Promise<Live[]> {
+/** Codex sessions open now: each process with the session it's writing (the newest in its folder since it started; a
+ *  TUI not asked anything has none). `fresh`: rollouts read now, not 5 s ago (a turn ending may be its session's first). */
+async function live(fresh = false): Promise<Live[]> {
+  await scan.refresh(fresh)
   const metas = [...scan.sessions().values()]
   const out: Live[] = []
   for (const [p, m] of sessionsOf(await codexProcesses(), (s: Meta) => s.id, (p, free) =>
@@ -318,13 +319,18 @@ async function session(id: string) {
   return t && { ...t.talk.head, title: scan.names.get(id) || t.talk.head.title, entries: t.talk.entries }
 }
 
-/** A session's latest turn: the user's last message and Codex's last answer (the service "agent-turn:codex": the Inbox
- *  reads it as a turn ends). The session running in `terminal` when `session` isn't given. */
+/** A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service
+ *  "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given. */
 plugin.provide("agent-turn:codex", async (terminal: string, session = "") => {
-  const id = session || (terminal ? (await live()).find((l) => l.terminal === terminal)?.id ?? "" : "")
+  const id = session || (terminal ? (await live(true)).find((l) => l.terminal === terminal)?.id ?? "" : "")
   const t = id ? await transcript(id) : null
-  return t ? { session: id, ...lastTurn(t.talk.entries) } : null
+  return t ? { session: id, title: scan.names.get(id) || t.talk.head.title, ...lastTurn(t.talk.entries) } : null
 })
+
+/** Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session
+ *  ids. No meters: its rollouts don't say when a prompt cache expires. */
+plugin.provide("agent-meters:codex", async (): Promise<AgentMeter[]> =>
+  (await live()).flatMap((l) => (l.terminal && l.id ? [{ terminal: l.terminal, session: l.id }] : [])))
 
 // ---------- Terminal runs it (the service "agent:codex")
 
@@ -337,8 +343,8 @@ plugin.provide("agent:codex", async ({ resume, prompt }: AgentStart) => {
     cwd: t?.talk.head.cwd || null }
 })
 
-/** Its dialogs, seen on its screen (it has no hooks, and doesn't speak OSC 7501 yet), by their last lines: folder
- *  trust, its default Trust; running a command or making edits, its first choice Yes, Esc No. */
+/** Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC
+ *  7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No. */
 plugin.provide("agent-asks:codex", (): AgentAsk[] => [
   { id: "trust", match: /Trust this folder\? Codex can/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\r"], deny: ["\x1b"] },
   { id: "permission", match: /Yes, proceed \(y\)[\s\S]*Press enter to confirm or esc to cancel/, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
@@ -354,4 +360,4 @@ plugin.block("agent-limits", async () => {
 })
 
 codingAgent(plugin, { id: "codex", name: "Codex", value: "estimated at list prices", state: (s) => (s.status === "busy" ? "Working" : "Idle"),
-  sessionId: SESSION_ID, summary, live, plan, session, modelName, projectOf: (cwd) => projectOf(cwd, rootsOf), warm: scan.refresh })
+  sessionId: SESSION_ID, summary, live: () => live(), plan, session, modelName, projectOf: (cwd) => projectOf(cwd, rootsOf), warm: scan.refresh })

@@ -218,6 +218,20 @@ export default async ($: VaultTest) => {
       await new Promise((ok) => setTimeout(ok, 50))
       check("a session the user ended: its row is read", (await rows()).find((e) => e.terminal === "claude-osc75011")?.read === true)
       await api("DELETE", `inbox/events/${r[0].id}`) // (the block's newest events below are the ones before it)
+      // Codex says no done: its turn ends working -> idle. Its session's name is its own (the terminal's says the folder).
+      const cx = app.plugins.find((p) => p.id === "codex")!, cxTurn = cx.services["agent-turn:codex"]
+      cx.services["agent-turn:codex"] = async (terminal: string) => (terminal === "codex-osc75012" ? { session: "cx-sess", title: "Answer 2+2",
+        prompt: "What is 2+2? Answer in one short sentence.", text: "2 + 2 = 4.", at: Date.now(), final: true } : null)
+      cc.services.sample = async () => ({ text: "NEEDS_YOU", truncated: false })
+      for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75012", agent: "codex", state, from: "osc7501", at })
+      // (starting up, it says it works, then idle, with no session yet: no turn)
+      for (const state of ["idle", "working", "idle"]) tell({ terminal: "codex-osc75013", agent: "codex", state, from: "osc7501", at })
+      await settled()
+      r = (await rows()).filter((e) => e.terminal === "codex-osc75012" || e.terminal === "codex-osc75013")
+      check("inbox:state: Codex's working -> idle is a turn's end: its answer to the user's question needs you, titled as its session; starting up isn't a turn",
+        r.length === 1 && r[0].kind === "waiting" && r[0].ask === "answer" && r[0].body === "2 + 2 = 4." && r[0].title === "Answer 2+2" && r[0].session === "cx-sess", r)
+      await api("DELETE", `inbox/events/${r[0].id}`)
+      cx.services["agent-turn:codex"] = cxTurn
       cc.services["agent-turn:claude"] = was.turn; cc.services.sample = was.sample
     }
     ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-p9p9p9p9", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "perm", message: "Claude needs your permission to use Bash" })

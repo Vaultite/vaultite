@@ -69,15 +69,17 @@ export function priceList<T>(table: Record<string, T>, sep = "") {
   }
 }
 
-/** `fn` run at most every `ms` (or sooner when `due`), callers sharing a run in progress. */
+/** `fn` run at most every `ms` (or sooner when `due`), callers sharing a run in progress; `now`: run it anyway, after
+ *  one in progress (which may have started before what's wanted was there). */
 function throttled(ms: number, fn: () => Promise<void>, due?: () => boolean) {
   let at = 0, running: Promise<void> | null = null
-  return (): Promise<void> => {
-    if (running) return running
-    if (Date.now() - at < ms && !due?.()) return Promise.resolve()
+  const go = (now = false): Promise<void> => {
+    if (running) return now ? running.then(() => go(true)) : running
+    if (!now && Date.now() - at < ms && !due?.()) return Promise.resolve()
     running = fn().finally(() => { at = Date.now(); running = null })
     return running
   }
+  return go
 }
 
 // ---------- projects

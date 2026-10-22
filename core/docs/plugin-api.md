@@ -153,11 +153,12 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent:claude` (claude-code): `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none).
 - `agent:codex` (codex): `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared background server, so no context (it reads the vault's AGENTS.md itself) and no hooks.
 - `agent-asks:claude` (claude-code): Its dialogs: folder trust shows before its hooks run, its default No; a permission's first choice is Yes.
-- `agent-asks:codex` (codex): Its dialogs, seen on its screen (it has no hooks, and doesn't speak OSC 7501 yet), by their last lines: folder trust, its default Trust; running a command or making edits, its first choice Yes, Esc No.
+- `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
 - `agent-meters:claude` (claude-code)
+- `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
-- `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
+- `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `fence:<…>` (genui, chart, base): genui; query
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.

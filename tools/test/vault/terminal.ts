@@ -127,7 +127,7 @@ export default async ($: VaultTest) => {
       JSON.stringify(trust.approve) === JSON.stringify(["\x1b[B", "\r"]) && JSON.stringify(trust.deny) === JSON.stringify(["\x1b"]), trust)
     const perm = await term.askOn(showing(" Bash command\n   rm -rf build\n Do you want to proceed?\n ❯ 1. Yes\n   2. No"), "t", asks)
     check("terminal: its permission dialog is one too, Yes first", perm?.id === "permission" && JSON.stringify(perm.approve) === JSON.stringify(["\r"]), perm)
-    // Codex has no hooks and no OSC 7501 yet: its command approval, seen by its last lines, is Yes by Enter.
+    // Codex has no hooks (and before 0.163 no OSC 7501, whose blocked has no kind): its approval, seen by its last lines, is Yes by Enter.
     const cx = await import("../../../plugins/core/codex/plugin.ts")
     const codexAsk = await term.askOn(showing("  $ curl -sI https://example.com | head -1\n\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `curl` (p)\n" +
       "  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel"), "t", cx.plugin.services["agent-asks:codex"]())

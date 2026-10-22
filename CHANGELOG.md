@@ -26,8 +26,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Claude Code session with no tab, where the workspace's new sessions go (the agent, account and machine are picked
   under the field, remembered per workspace); a toast says what was asked, with Open. `vau terminal ask` does the same.
 - Terminals read OSC 7501 (program status): Claude Code says itself when it's working, waiting on you (for a permission,
-  an answer or a login, and why) or done, instead of hooks and screen reading; agents that don't speak it (Codex, or any
-  agent in tmux) keep those, and Codex's permission prompts now show as waiting with Approve and Deny.
+  an answer or a login, and why) or done, instead of hooks and screen reading, and so does Codex from 0.163 (its turn's
+  answer reaching the Inbox under its session's name); agents that don't speak it (older Codex, or any agent in tmux)
+  keep those, and Codex's permission prompts show as waiting with Approve and Deny.
 - An Obsidian vault keeps its look: its base theme (light, dark or system), its theme from `.obsidian/themes/`, the CSS
   snippets it has on from `.obsidian/snippets/` and its fonts apply until you set them in Vaultite. Nothing is written
   to `.obsidian/`.
