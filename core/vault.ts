@@ -1684,12 +1684,15 @@ export class Vault {
     fs.rmSync(this.abs(`.vaultite/${name}.json`), { force: true })
     this.settings.delete(name)
     this.lastGood.delete(name)
+    this.stale = true
   }
 
   setConfig(name: string, data: unknown) {
     const file = this.abs(`.vaultite/${name}.json`), text = JSON.stringify(data, null, 2) + "\n"
     writeAtomic(file, text)
     this.settings.delete(name)
+    // (the next read walks, as once the watcher hears of it: what's worked out from the settings, the state, is old now)
+    this.stale = true
     try { this.lastGood.set(name, { text, stat: configStat(file) }) } catch { this.lastGood.delete(name) }
   }
 
