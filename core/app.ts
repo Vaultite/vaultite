@@ -8,7 +8,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
-import { ownerRefusal } from "./owner.ts"
+import { overNetwork, ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
 import { migrate, migrateMoved } from "./migrations.ts"
 import { installFrom } from "./coreops/installs.ts"
@@ -176,9 +176,10 @@ export class App {
 
   private pluginsSynced = "" // what syncPlugins last ran at (its key)
 
-  /** Whether a request is the app's own, whose reads may trust the vault's watcher (Vault.synced). */
+  /** Whether a request may trust the vault's watcher (Vault.synced): the app's own, or one from another machine, which
+   *  can't have just written a file here. A local agent or script may have, before the watcher heard of it. */
   trusts(http?: IncomingMessage) {
-    return String(http?.headers["x-vaultite-client"] ?? "").startsWith("app/")
+    return !!http && (String(http.headers["x-vaultite-client"] ?? "").startsWith("app/") || overNetwork(http))
   }
 
   private adopting = new Map<string, number>() // plugin id + hash -> when it was last checked against its source
