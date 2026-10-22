@@ -764,7 +764,7 @@ type Read = (Item & { entries: Entry[] }) | null
 
 /** A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of. */
 export type CodingAgent<A extends Account> = Words & {
-  /** Its routes: GET /api/<id>?days=&account=, /api/<id>/session/<session> and /api/<id>/accounts. */
+  /** Its routes: GET /api/<id>?days=&account=, /api/<id>/limits, /api/<id>/session/<session> and /api/<id>/accounts. */
   id: string
   /** What its session ids look like: any other is a 404. */
   sessionId: RegExp
@@ -807,6 +807,8 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
     return { ...(await a.plan?.(accts) ?? { plan: null, limits: null }), live: busyFirst(live), ...s }
   }
   plugin.route("GET", a.id, async (req) => ({ updated: new Date().toISOString(), ...await usage(daysOf(req.query.days), req.query.account) }))
+  // (the status bar's limits, asked every 15 s: not the sessions and costs the usage reads to answer)
+  plugin.route("GET", `${a.id}/limits`, async (req) => ({ updated: new Date().toISOString(), ...await a.plan?.(accountsFor(req.query.account)) ?? { plan: null, limits: null } }))
   plugin.route("GET", `${a.id}/session/*`, async (req) => {
     const id = req.arg(0)
     const s = a.sessionId.test(id) ? await a.session(id) : null

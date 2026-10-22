@@ -9,7 +9,7 @@ import { Bar, Bars, Empty, List, Loading, LoadingRows, Panel, Row, Section, Segm
 import { usePluginSettings } from "@/components/PluginSettings"
 import { Button } from "@/components/ui/button"
 import { canRunAgents, choosePlace, openAgent } from "@/core/agents"
-import { addDays, dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, today, useLive } from "@/core/data"
+import { addDays, dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, today, useLive, useTick } from "@/core/data"
 import { api } from "@/core/http"
 import type { BlockCtx, PluginDef } from "@/core/define"
 import { isViewOpen, openView } from "@/core/files"
@@ -220,8 +220,8 @@ function Consent({ src, consent }: { src: AgentSource; consent: NonNullable<Agen
 
 /** Its plan's limits in the status bar (AmbientItem): each account's tightest window, a click to `open`. */
 export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => void }) {
-  // (30 days: the same request as the limits block's)
-  const { data } = useAgentUsage(src, {})
+  const tick = useTick(EVERY)
+  const { data } = useLive<Pick<AgentUsage, "limits" | "accounts">>(`${src.path}/limits`, tick)
   const each = data?.accounts && data.accounts.length > 1 ? data.accounts : data?.limits ? [{ label: "", limits: data.limits }] : []
   const shown = each.flatMap((a) => (a.limits?.windows.length ? [{ label: a.label, top: Math.max(...a.limits.windows.map((w) => w.used)), all: a.limits.windows }] : []))
   if (!shown.length) return null
