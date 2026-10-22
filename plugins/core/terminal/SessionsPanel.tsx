@@ -1,13 +1,12 @@
 // The Terminals panel: every shell the server runs (sessions outlive tabs: a closed tab only detaches), live, with
-// agents' states and other machines' sessions, the ones that need you first; on the desktop app, then Claude Code on the web's (cloud.ts).
-import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
-import { Cloud, Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
+// agents' states and other machines' sessions, the ones that need you first. Claude Code on the web's: Cloud sessions.
+import { useContext, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
+import { Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
-  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, fmtAgo, HeadingButton, isViewOpen, menuBelow, menuFor, notify,
+  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, HeadingButton, isViewOpen, menuBelow, menuFor, notify,
   notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount,
-  useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
+  useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type MenuItem, type SidebarCtx,
 } from "@vaultite"
-import { cloudListed, getCloud, subscribeCloud } from "./cloud"
 import { agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, type Session } from "./sessions"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
@@ -15,12 +14,6 @@ import { agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, me
 export const useSessions = () => useSyncExternalStore(subscribeSessions, getSessions)
 /** The sessions the panel lists: another program's own (a herdr pane) only while a tab shows it (its own panel has the rest). */
 const listed = (list: Session[] | null) => list?.filter((s) => !s.external || s.clients > 0) ?? null
-/** Claude Code on the web's sessions the panel lists (none but on the desktop app). */
-function useCloud() {
-  const all = useSyncExternalStore(subscribeCloud, getCloud)
-  return useMemo(() => cloudListed(all), [all])
-}
-type Cloudy = ReturnType<typeof cloudListed>
 
 
 /** One session's row (its icon in its colour, with its name and what the row can't say as the tooltip). `page`: in the
@@ -160,42 +153,6 @@ function Rows({ list, open, tab, page }: { list: Session[]; open: boolean; tab: 
   )
 }
 
-/** A Claude Code on the web session's row: Claude Code's icon in its state's colour, its page in a web tab. */
-function CloudRow({ c, open, tab, page }: { c: CloudSession; open: boolean; tab: string; page?: boolean }) {
-  const to = `view:web/${c.url}`
-  const a = useAgents().find((x) => x.name === "claude")
-  const state = c.state === "running" ? "working" : c.state === "waiting" ? "waiting for you" : "idle"
-  return (
-    <SidebarRow icon={a?.icon ?? Cloud} tint={c.state === "idle" ? undefined : a?.tint} badge={c.state === "running" ? "working" : c.state === "waiting" && "ask"}
-      label={c.title} open={open} active={tab === to} tip={`${c.title} (${state}), in the cloud`} data-cloud={c.id} data-state={c.state}
-      onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
-      <span className="mr-1 shrink-0 truncate text-[11px] text-tertiary">{page ? `${capitalize(state)} · ${fmtAgo(c.updated, { short: true })}` : fmtAgo(c.updated, { short: true })}</span>
-    </SidebarRow>
-  )
-}
-
-/** The cloud's rows under their heading (in the rail: after a rule), the older ones behind Show older (not in the rail). */
-function CloudRows({ cloud, open, tab, page, after }: { cloud: Cloudy; open: boolean; tab: string; page?: boolean; after: boolean }) {
-  const [older, setOlder] = useState(false)
-  const { listed } = cloud
-  if (!listed.length && !(open && cloud.older.length)) return null
-  return (
-    <div className="flex flex-col gap-px" data-terminals-cloud>
-      {open
-        ? <div className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium text-tertiary max-md:h-8 max-md:text-[13px]", after && "mt-1")}>Cloud</div>
-        : after && <div aria-hidden className="mx-auto my-1 h-px w-4 bg-border" />}
-      {listed.map((c) => <CloudRow key={c.id} c={c} open={open} tab={tab} page={page} />)}
-      {open && older && cloud.older.map((c) => <CloudRow key={c.id} c={c} open={open} tab={tab} page={page} />)}
-      {open && !!cloud.older.length && (
-        <button type="button" data-keyrow data-cloud-older onClick={() => setOlder(!older)}
-          className="flex h-7 min-w-0 cursor-pointer items-center truncate rounded-[5px] pl-1.5 text-left text-[13px] whitespace-nowrap text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground max-md:min-h-11 max-md:text-[15px]">
-          {older ? "Show fewer" : `Show ${cloud.older.length} older`}
-        </button>
-      )}
-    </div>
-  )
-}
-
 /** The + button's menu: a terminal, then every coding agent that's on. */
 export function newMenu(e: MouseEvent, agents: Agent[]) {
   menuBelow(e, [
@@ -210,17 +167,14 @@ export function newMenu(e: MouseEvent, agents: Agent[]) {
 export function Sessions({ open, tab }: SidebarCtx) {
   const { list: all, refused } = useSessions()
   const list = listed(all)
-  const cloud = useCloud()
   const agents = useAgents()
   const fold = useContext(PanelFold)
-  const empty = !!list && !list.length && !cloud.listed.length
+  const empty = !!list && !list.length
   // Opened by hand while empty: until a session comes along (then it's open anyway) or it's folded again.
   const [peek, setPeek] = useState(false)
   useEffect(() => { if (!empty) setPeek(false) }, [empty])
   if (refused) return null
-  if (!open) return list?.length || cloud.listed.length
-    ? <>{!!list?.length && <Rows list={list} open={false} tab={tab} />}<CloudRows cloud={cloud} open={false} tab={tab} after={!!list?.length} /></>
-    : null
+  if (!open) return list?.length ? <Rows list={list} open={false} tab={tab} /> : null
   const auto = empty && !peek
   const folded = !!fold?.collapsed || auto
   const own = fold && {
@@ -245,7 +199,6 @@ export function Sessions({ open, tab }: SidebarCtx) {
       {!folded && (
         <div className="flex flex-col gap-px">
           {list && <Rows list={list} open={open} tab={tab} />}
-          <CloudRows cloud={cloud} open={open} tab={tab} after={!!list?.length} />
           {empty && (
             <button type="button" onClick={() => void openTerminal()}
               className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
@@ -261,12 +214,10 @@ export function Sessions({ open, tab }: SidebarCtx) {
 /** The sessions' rows in the Terminals tab (view:terminals): the panel's rows, spelled out. */
 export function SessionList() {
   const list = listed(useSessions().list)
-  const cloud = useCloud()
   return (
     <div className="flex flex-col gap-px pb-1">
       {list && <Rows list={list} open tab="" page />}
-      <CloudRows cloud={cloud} open tab="" page after={!!list?.length} />
-      {list && !list.length && !cloud.listed.length && !cloud.older.length && (
+      {list && !list.length && (
         <button type="button" onClick={() => void openTerminal()}
           className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
           No terminals running. Open one

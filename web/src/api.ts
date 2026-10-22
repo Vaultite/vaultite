@@ -102,7 +102,7 @@ export { hostPlugins, standingIn } from "@/core/plugins"
 // The three levels state lives at (the vault, a workspace, a device: core/scope.ts): the current workspace, the ones in
 // use, and values a plugin keeps per workspace or per device. Workspaces itself tells the app when they change.
 export {
-  currentWorkspace, pinInWorkspace, scopedState, subscribeScoped, useScopedState, useWorkspaceVersion, workspaceChanged, workspaceList, workspacePins,
+  currentWorkspace, pinInWorkspace, scopedState, subscribeScoped, useScopedState, useWorkspaceVersion, workspaceChanged, workspaceList, workspacePins, workspaces,
   type Scope,
 } from "@/core/scope"
 export type { Sidebars } from "@/core/plugins"
@@ -237,7 +237,7 @@ export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.
 export { lookUp, spelling } from "@/core/desktop"
 // Web pages laid over a pane (the Browser): null in a browser, and in app builds from before it.
-export { webPages, type CloudSession, type WebEvent, type WebPageInfo, type WebPages, type WebPageState, type WebSite } from "@/core/desktop"
+export { webPages, type CloudAccount, type CloudSession, type CloudState, type WebEvent, type WebPageInfo, type WebPages, type WebPageState, type WebSite } from "@/core/desktop"
 export { appWindows, type AppEvent, type AppInfo, type AppProblem, type AppWindows } from "@/core/desktop"
 // Files saved as attachments where the vault's settings say (pasted or dropped images): their vault paths.
 export { saveAttachments } from "@/core/conventions"

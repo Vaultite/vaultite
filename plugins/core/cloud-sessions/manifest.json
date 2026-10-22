@@ -1,0 +1,14 @@
+{
+  "id": "cloud-sessions",
+  "icon": "cloud",
+  "category": "agents",
+  "essential": true,
+  "desktopApp": true,
+  "name": "Cloud sessions",
+  "description": "Claude Code on the web's sessions in a sidebar panel of their own, live: which are working and which wait for you, with their news in the Inbox. Every claude.ai account the Browser is signed in to shows (each workspace's logins, each container, each organization), and a click opens a session in the logins it belongs to. Start a new one, or one from a note, in the account you pick.",
+  "requires": ["web-viewer"],
+  "settings": {
+    "read": { "type": "boolean", "label": "Read your sessions", "description": "reads your sessions from claude.ai with the Browser's logins; until you say, the panel asks, once a page of the Browser is signed in to claude.ai" },
+    "hidden": { "type": "list", "label": "Hidden accounts", "description": "claude.ai accounts not shown nor read, by the name the panel gives them: a login's email, or a team's name" }
+  }
+}

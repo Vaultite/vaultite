@@ -14,8 +14,7 @@
   it's drawn changes (`fit`), so ending, reclaiming and closing work as for any; its tab draws nothing over it meanwhile.
   Esc never reaches a page that's full screen (Electron takes it), so the player's video leaving full screen leaves it.
 - The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events.
-- Claude Code on the web's sessions come from claude.ai's JSON API with a profile's cookies, asked only after that
-  profile opened a claude.ai page (never on load alone), never from its DOM, which changes.
+- Claude Code on the web's sessions are read here (electron/web.ts) for the Cloud sessions plugin, which says what.
 - Extensions (electron/browser/extensions.ts) are this Mac's, in userData: each is code with every site's logins, so a
   synced vault setting never chooses one (plugins rule 4). Their bar buttons, popups and the Extensions tab:
   `Extensions.tsx`; the made-up one QA uses: tools/fixtures/web-extension (web/qa/extensions.mjs).

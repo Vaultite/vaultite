@@ -129,8 +129,6 @@ function Background() {
   useEffect(watchShields, [])
   useHiddenParts()
   useSiteStyles()
-  // (Claude Code on the web's sessions: their news comes as `session` events from now on)
-  useEffect(() => { void webPages?.cloud?.().catch(() => {}) }, [])
   // (the browsers there are to import from: their commands show)
   useEffect(() => { if (webPages?.engine) void findBrowsers() }, [])
   const commands = useCommandList()

@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Cloud sessions: Claude Code on the web's sessions have a sidebar panel of their own, out of Terminals. Every claude.ai
+  account the Browser is signed in to shows (each workspace's logins, each container, each organization), under its
+  name, any of them hidden from the panel's eye; a session opens in the logins it belongs to. Asked once before
+  anything is read. Start a new one with +, or send a note as a new session's prompt. Working and waiting sessions show
+  as such again (claude.ai's list had stopped saying).
 - A web tab playing a video keeps its speaker, and the status bar its "playing", through quiet scenes, till the video
   pauses; the speaker sits beside the site's icon instead of replacing it. A background video in a quiet scene is no
   longer let go when memory runs short.

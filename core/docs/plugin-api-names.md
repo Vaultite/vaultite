@@ -107,7 +107,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `clearSelection()`
 - `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
-- `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with.
+- `CloudAccount`: A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins (profiles) it's in.
+- `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id (older builds don't say).
+- `CloudState`: `signedIn`: a profile named is signed in to claude.ai (from its cookies: nothing asked); the rest once read.
 - `cn`
 - `Color`
 - `COLOR_NAMES`
@@ -628,6 +630,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WorkspaceInfo`: A workspace as other plugins see it: its number, its name (or "Workspace 2") and the places its tabs show (tab targets: "view:terminal/abc", "file:Notes/Idea.md").
 - `workspaceList()`: The workspaces in use, and the current one ([] without workspaces).
 - `workspacePins()`: The current workspace's pinned pages, or null: no workspaces, or the current one has no list of its own (it shows the vault's, .vaultite/pages.json: Pinned's).
+- `workspaces()`: The plugin keeping workspaces, as the phone's tab list pages through them (null: none).
 
 ### `@vaultite/core/plugins.ts` (plugin.ts)
 - `accessOf(code)`: A folder read's answer: "" read, else the error's code.

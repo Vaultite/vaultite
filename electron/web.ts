@@ -285,7 +285,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   wc.on("did-start-loading", () => { p.error = undefined; changed() })
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument && shows(d.url)) p.target = d.url })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to) => { p.sound = playback(); noteVisit(profile, to); if (siteOf(hostOfUrl(to)) === CLOUD.site) cloudOpened.add(profile); changed() })
+  wc.on("did-navigate", (_e, to) => { p.sound = playback(); noteVisit(profile, to); changed() })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
   wc.on("page-title-updated", changed)
   // (its sound changed: told now, and again when a quiet stretch ends it)
@@ -720,11 +720,14 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     // Its pages in that profile show it signed out.
     for (const p of pages.values()) if (p.profile === prof && siteOf(hostOfUrl(p.view.webContents.getURL())) === name) p.view.webContents.reload()
   },
-  // Claude Code on the web's sessions: the window is told them from now on, as they change (`cloud`) and their news.
-  "web:cloud": (win) => {
+  // Claude Code on the web's sessions in the profiles the app names: the window is told them from now on, as they
+  // change (`cloud`) and their news. Asked again with what changed (a workspace, the user's yes, an account hidden).
+  "web:cloud": (win, want) => {
     cloudWindows.add(win)
-    if (!cloudTimer) { cloudTimer = setInterval(() => void cloudRead(), 1000); void cloudRead() }
-    return cloudAll()
+    cloudWant = cloudWantOf(want)
+    if (!cloudTimer) cloudTimer = setInterval(() => void cloudRead(), 1000)
+    void cloudRead()
+    return cloudState()
   },
   // (anything but a host is answered "", never the whole list refused)
   "web:icons": (_win, hosts) => {
@@ -914,60 +917,132 @@ async function iconFrom(p: Page, urls: unknown) {
 
 // ---------- Claude Code on the web's sessions ----------
 
-/** A session of Claude Code on the web, as its own sidebar has it: `state` from its `session_status` (running,
- *  requires_action, anything else idle), `updated` in ms, `url` its page. */
-export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string }
+/** A claude.ai organization whose sessions are read: `label` its name, or its login's email for a personal one
+ *  ("<email>'s Organization"); `profiles` the logins it's in, in the order the app named them. */
+export type CloudAccount = { id: string; label: string; profiles: string[] }
+/** A session of Claude Code on the web, as its own sidebar has it: `state` from its `session_status`, `updated` in ms,
+ *  `url` its page, `account` its organization's id, `profile` the first logins it's in. */
+export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string; account: string }
+/** What the app tells: `signedIn`, some profile it named is signed in to claude.ai (known from its cookies, nothing
+ *  asked); the accounts and their sessions only once the user said yes; `base`, claude.ai's address. */
+export type CloudState = { signedIn: boolean; accounts: CloudAccount[]; sessions: CloudSession[]; base: string }
+/** What the app asks for: the profiles to look in, whether they may be read (the user's yes), accounts not to read. */
+type CloudWant = { profiles: string[]; read: boolean; hidden: string[] }
+
 /** Asked of claude.ai with a profile's logins, no page needed. VAULTITE_TEST_CLAUDE_URL: web/qa/webwatch.mjs's stand-in. */
 const CLOUD_BASE = process.env.VAULTITE_TEST_CLAUDE_URL || "https://claude.ai"
 const CLOUD = {
-  list: `${CLOUD_BASE}/v1/code/sessions?statuses=active&statuses=paused&limit=50`,
+  orgs: `${CLOUD_BASE}/api/organizations`,
+  // (what claude.ai's own sidebar lists: /v1/code/sessions no longer says whether one is working)
+  list: `${CLOUD_BASE}/v1/sessions?limit=50`,
+  headers: (org: string) => ({ accept: "application/json", "anthropic-version": "2023-06-01", "anthropic-beta": "ccr-byoc-2025-07-29", "x-organization-uuid": org }),
   page: (id: string) => `${CLOUD_BASE}/code/${encodeURIComponent(id)}`,
   site: siteOf(hostOfUrl(CLOUD_BASE)),
   // (read again sooner while a session is working or waiting: its news comes sooner)
   busy: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 5000,
   idle: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 15_000,
+  // (a profile's organizations, and whether it's signed in at all, change rarely)
+  orgsFor: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 600_000,
+  cookiesFor: process.env.VAULTITE_TEST_CLAUDE_URL ? 500 : 10_000,
 }
-/** The windows that asked (`web:cloud`): they're told the list as it changes, and its news. */
+let cloudWant: CloudWant = { profiles: [], read: false, hidden: [] }
+const cloudWantOf = (x: unknown): CloudWant => {
+  const w = (x && typeof x === "object" ? x : {}) as Record<string, unknown>
+  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [])
+  return { profiles: [...new Set(strs(w.profiles).filter((p) => p === "" || profileOf(p) === p))].slice(0, 50), read: w.read === true, hidden: strs(w.hidden) }
+}
+/** The windows that asked (`web:cloud`): they're told the state as it changes, and its news. */
 const cloudWindows = new Set<BrowserWindow>()
-/** Each profile's sessions as last read (null: not signed in), and when to read it next (later after a failure). */
-const cloudLists = new Map<string, CloudSession[] | null>()
+/** Whether a profile is signed in to claude.ai, by its cookies, looked at lately. */
+const cloudCookies = new Map<string, { at: number; in: boolean }>()
+/** A profile's claude.ai organizations (the ones with claude.ai's apps, not an API-only one), read lately. */
+const cloudOrgs = new Map<string, { at: number; orgs: { id: string; name: string }[] }>()
+/** Each account's sessions as last read, and when to read it next (later after a failure). */
+const cloudLists = new Map<string, CloudSession[]>()
 const cloudNext = new Map<string, { at: number; wait: number }>()
+/** Accounts claude.ai turned away (no Claude Code in that organization): not listed, asked again in an hour. */
+const cloudNone = new Set<string>()
+let cloudAccounts: CloudAccount[] = []
+let cloudSignedIn = false
 let cloudTimer: ReturnType<typeof setInterval> | undefined
 let cloudReading = false
 
-/** The profiles with a claude.ai page opened since the app started: only theirs are asked, never on load alone. */
-const cloudOpened = new Set<string>()
-const cloudProfiles = () => [...cloudOpened]
-
-/** A profile's sessions, or null when it isn't signed in to claude.ai. From one of its claude.ai pages when one is open
- *  (the site's own origin), else with the session's cookies from here, like accountOf. */
-async function readCloud(profile: string): Promise<CloudSession[] | null> {
-  const s = webSession(profile)
-  if (!(await s.cookies.get({ url: CLOUD_BASE })).length) return null
-  const headers = { accept: "application/json", "anthropic-version": "2023-06-01" }
+/** `url` asked with a profile's logins: from one of its claude.ai pages when one is open (the site's own origin: what its
+ *  pages ask is never turned away), else with the session's cookies from here, like accountOf. */
+async function cloudGet(profile: string, url: string, headers: Record<string, string>): Promise<{ status: number; json: unknown }> {
   const page = [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === CLOUD.site)
-  const j = (page
-    ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: `fetch(${JSON.stringify(CLOUD.list)}, { credentials: "include", headers: ${JSON.stringify(headers)} }).then((r) => r.status === 401 || r.status === 403 ? { out: true } : r.ok ? r.json() : Promise.reject(new Error(String(r.status))))` }])
-    : await s.fetch(CLOUD.list, { credentials: "include", headers }).then((r) => (r.status === 401 || r.status === 403 ? { out: true } : r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))) as { out?: boolean; data?: unknown }
-  if (j?.out) return null
-  if (!Array.isArray(j?.data)) throw new Error("no sessions list")
-  return (j.data as Record<string, unknown>[]).flatMap((x): CloudSession[] => {
+  if (page) return await page.view.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: `fetch(${JSON.stringify(url)}, { credentials: "include", headers: ${JSON.stringify(headers)} }).then(async (r) => ({ status: r.status, json: r.ok ? await r.json() : null }))` }])
+  const r = await webSession(profile).fetch(url, { credentials: "include", headers })
+  return { status: r.status, json: r.ok ? await r.json() : null }
+}
+
+async function cloudSignedInTo(profile: string) {
+  const had = cloudCookies.get(profile)
+  if (had && Date.now() - had.at < CLOUD.cookiesFor) return had.in
+  // (logins never used have no folder: not made just to look, which would set up a session, extensions and all)
+  if (!sessions.has(profile) && !fs.existsSync(path.join(app.getPath("userData"), "Partitions", partitionOf(profile).replace(/^persist:/, "")))) return false
+  const cookies = await webSession(profile).cookies.get({ url: CLOUD_BASE })
+  const signed = cookies.some((c) => c.name.startsWith("sessionKey"))
+  cloudCookies.set(profile, { at: Date.now(), in: signed })
+  return signed
+}
+
+/** Its organizations; [] signed out, or when they couldn't be had (asked again a minute later). */
+async function cloudOrgsOf(profile: string) {
+  const had = cloudOrgs.get(profile)
+  if (had && Date.now() < had.at) return had.orgs
+  let orgs: { id: string; name: string }[] = [], next = CLOUD.orgsFor
+  try {
+    const r = await cloudGet(profile, CLOUD.orgs, { accept: "application/json" })
+    if (!Array.isArray(r.json)) throw new Error(String(r.status))
+    orgs = (r.json as Record<string, unknown>[]).flatMap((o) => typeof o?.uuid === "string" && Array.isArray(o.capabilities) && o.capabilities.includes("chat")
+      ? [{ id: o.uuid, name: typeof o.name === "string" ? o.name : "" }] : [])
+  } catch { next = 60_000 }
+  cloudOrgs.set(profile, { at: Date.now() + next, orgs })
+  return orgs
+}
+const cloudLabel = (name: string) => name.replace(/'s Organization$/, "").trim() || "Claude"
+
+/** An account's sessions, read with `profile`'s logins when they're due; null when they weren't read now. */
+async function cloudReadAccount(profile: string, account: string): Promise<CloudSession[] | null> {
+  const due = cloudNext.get(account)
+  if (due && Date.now() < due.at) return null
+  let r: { status: number; json: unknown }
+  try { r = await cloudGet(profile, CLOUD.list, CLOUD.headers(account)) } catch { r = { status: 0, json: null } }
+  if (r.status === 401 || r.status === 403 || r.status === 404) {
+    // (signed out since: its organizations are asked again; turned away: none here)
+    if (r.status === 401) cloudOrgs.delete(profile); else cloudNone.add(account)
+    cloudNext.set(account, { at: Date.now() + (r.status === 401 ? 60_000 : 3_600_000), wait: CLOUD.idle })
+    cloudLists.delete(account)
+    return null
+  }
+  const data = (r.json as { data?: unknown } | null)?.data
+  if (!Array.isArray(data)) {
+    // (a failure: asked again later and later, up to five minutes; the list stays as it was)
+    const wait = Math.min(300_000, (due?.wait ?? CLOUD.idle) * 2)
+    cloudNext.set(account, { at: Date.now() + wait, wait })
+    return null
+  }
+  cloudNone.delete(account)
+  const list = (data as Record<string, unknown>[]).flatMap((x): CloudSession[] => {
     if (typeof x?.id !== "string" || x.session_status === "archived") return []
     const at = Date.parse(String(x.updated_at ?? ""))
     return [{
       id: x.id, title: typeof x.title === "string" && x.title.trim() ? x.title.trim().slice(0, 200) : "Claude Code session",
       state: x.session_status === "running" ? "running" : x.session_status === "requires_action" ? "waiting" : "idle",
-      updated: Number.isFinite(at) ? at : 0, url: CLOUD.page(x.id), profile,
+      updated: Number.isFinite(at) ? at : 0, url: CLOUD.page(x.id), profile, account,
     }]
   })
+  const wait = list.some((c) => c.state !== "idle") ? CLOUD.busy : CLOUD.idle
+  cloudNext.set(account, { at: Date.now() + wait, wait })
+  return list
 }
 
-/** Every profile's sessions, one per session (the first profile's), most recent first. */
-const cloudAll = () => {
-  const seen = new Map<string, CloudSession>()
-  for (const list of cloudLists.values()) for (const c of list ?? []) if (!seen.has(c.id)) seen.set(c.id, c)
-  return [...seen.values()].sort((a, b) => b.updated - a.updated)
-}
+/** Every account's sessions, most recent first. */
+const cloudState = (): CloudState => ({
+  signedIn: cloudSignedIn, accounts: cloudAccounts, base: CLOUD_BASE,
+  sessions: [...cloudLists.values()].flat().sort((a, b) => b.updated - a.updated),
+})
 
 /** What a session going from one state to another is worth telling, if anything. */
 function newsOf(was: CloudSession["state"], now: CloudSession["state"]): { kind: "done" | "waiting"; title: string } | null {
@@ -976,42 +1051,52 @@ function newsOf(was: CloudSession["state"], now: CloudSession["state"]): { kind:
   if (was === "running") return { kind: "done", title: "Claude Code finished" }
   return null
 }
+const cloudNews = (s: CloudSession, kind: "done" | "waiting", title: string) => {
+  for (const w of cloudWindows) tell(w, { type: "session", id: 0, profile: s.profile, site: CLOUD.site, url: s.url, kind, title, body: s.title })
+}
 
+/** Each named profile signed in to claude.ai, each of its organizations once (in the first profile that has it), each
+ *  account's sessions when due, with news of what changed; the windows told when anything did. */
 async function cloudRead() {
   for (const w of cloudWindows) if (w.isDestroyed()) cloudWindows.delete(w)
   if (!cloudWindows.size) { clearInterval(cloudTimer); cloudTimer = undefined; return }
   if (cloudReading) return
   cloudReading = true
   try {
-    const before = JSON.stringify(cloudAll())
-    for (const profile of cloudProfiles()) {
-      const due = cloudNext.get(profile)
-      if (due && Date.now() < due.at) continue
-      let list: CloudSession[] | null
-      try { list = await readCloud(profile) } catch {
-        // (a failure: asked again later and later, up to five minutes; the list stays as it was)
-        const wait = Math.min(300_000, (due?.wait ?? CLOUD.idle) * 2)
-        cloudNext.set(profile, { at: Date.now() + wait, wait })
-        continue
+    const before = JSON.stringify(cloudState())
+    const want = cloudWant, hidden = new Set(want.hidden)
+    const seen = new Map<string, CloudAccount>()
+    let signedIn = false
+    for (const profile of want.profiles) {
+      if (!(await cloudSignedInTo(profile))) continue
+      signedIn = true
+      if (!want.read) continue
+      for (const o of await cloudOrgsOf(profile)) {
+        const had = seen.get(o.id)
+        if (had) { had.profiles.push(profile); continue }
+        const account = { id: o.id, label: cloudLabel(o.name), profiles: [profile] }
+        seen.set(o.id, account)
+        if (hidden.has(account.label)) continue
+        const was = cloudLists.get(o.id)
+        const list = await cloudReadAccount(profile, o.id)
+        if (!list) continue
+        cloudLists.set(o.id, list)
+        // (an account's first read is where things stand, not news; a running session that left the list is done)
+        if (!was) continue
+        const now = new Map(list.map((c) => [c.id, c]))
+        for (const c of was) {
+          const n = now.get(c.id), news = newsOf(c.state, n?.state ?? "idle")
+          if (news) cloudNews(n ?? c, news.kind, news.title)
+        }
+        for (const n of list) if (n.state === "waiting" && !was.some((c) => c.id === n.id)) cloudNews(n, "waiting", "Claude Code needs you")
       }
-      // (signed out: asked again in a minute)
-      const wait = !list ? 60_000 : list.some((c) => c.state !== "idle") ? CLOUD.busy : CLOUD.idle
-      cloudNext.set(profile, { at: Date.now() + wait, wait })
-      const had = cloudLists.get(profile)
-      cloudLists.set(profile, list)
-      // (a profile's first read is where things stand, not news; a running session that left the list is done)
-      if (!had || !list) continue
-      const now = new Map(list.map((c) => [c.id, c]))
-      for (const c of had) {
-        const n = now.get(c.id)
-        const news = newsOf(c.state, n?.state ?? "idle")
-        if (news) for (const w of cloudWindows) tell(w, { type: "session", id: 0, profile, site: CLOUD.site, url: c.url, kind: news.kind, title: news.title, body: (n ?? c).title })
-      }
-      for (const n of list) if (!had.some((c) => c.id === n.id) && n.state === "waiting")
-        for (const w of cloudWindows) tell(w, { type: "session", id: 0, profile, site: CLOUD.site, url: n.url, kind: "waiting", title: "Claude Code needs you", body: n.title })
     }
-    const after = cloudAll()
-    if (JSON.stringify(after) !== before) for (const w of cloudWindows) tell(w, { type: "cloud", sessions: after })
+    // (hidden, turned away or gone: their sessions go, and a hidden one shows again from a fresh read)
+    for (const id of [...cloudLists.keys()]) if (!seen.has(id) || hidden.has(seen.get(id)!.label) || cloudNone.has(id)) { cloudLists.delete(id); cloudNext.delete(id) }
+    cloudAccounts = [...seen.values()].filter((a) => !cloudNone.has(a.id))
+    cloudSignedIn = signedIn
+    const after = cloudState()
+    if (JSON.stringify(after) !== before) for (const w of cloudWindows) tell(w, { type: "cloud", ...after })
   } finally { cloudReading = false }
 }
 

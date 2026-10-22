@@ -146,9 +146,9 @@ export type WebPages = {
   sites?: (profile: string) => Promise<WebSite[]>
   /** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
   forget?: (profile: string, site: string) => Promise<unknown>
-  /** Claude Code on the web's sessions in every profile signed in to claude.ai, read with its logins (no page needed); the
-   *  window is told them from now on as `cloud` events, their news as `session` ones. Older builds don't have it. */
-  cloud?: () => Promise<CloudSession[]>
+  /** Claude Code on the web's sessions in the profiles named, read with their logins once `read` (the user's yes), told
+   *  from now on as `cloud` events, news as `session` ones. Older builds take nothing and answer the sessions. */
+  cloud?: (want: { profiles: string[]; read: boolean; hidden: string[] }) => Promise<CloudState | CloudSession[]>
   /** Toasts and tooltips floating over a page: each copied into
    *  a layer above the pages, so it shows while the page stays live; `through` passes the pointer on to the page. */
   float?: (rects: (WebRect & { through?: boolean })[]) => Promise<unknown>
@@ -181,13 +181,19 @@ export type WebEvent =
   | { type: "notify"; id: number; profile: string; url: string; site: string; title: string; body: string }
   /** A Claude Code on the web session finished or waits for the user: `url` is the session's page. */
   | { type: "session"; id: number; profile: string; url: string; site: string; kind: "done" | "waiting"; title: string; body: string }
-  /** Claude Code on the web's sessions changed (`cloud`). */
-  | { type: "cloud"; sessions: CloudSession[] }
+  /** Claude Code on the web's sessions changed (`cloud`); older builds tell only the sessions. */
+  | ({ type: "cloud" } & Partial<CloudState> & { sessions: CloudSession[] })
   /** Something a feature of the browser engine tells (electron/browser/engine.ts `tell`): its own `type`. */
   | { type: `engine:${string}`; [k: string]: unknown }
 /** A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was
- *  read with. */
-export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string }
+ *  read with, `account` its organization's id (older builds don't say). */
+export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string; account?: string }
+/** A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins
+ *  (profiles) it's in. */
+export type CloudAccount = { id: string; label: string; profiles: string[] }
+/** `signedIn`: a profile named is signed in to claude.ai (from its cookies: nothing asked); the rest once read. `base`:
+ *  claude.ai's address (a test's stand-in has its own; older builds don't say). */
+export type CloudState = { signedIn: boolean; accounts: CloudAccount[]; sessions: CloudSession[]; base?: string }
 export type WebPageInfo = WebPageState & { id: number; profile: string; shown: boolean
   /** The id of the tab it's for ("": none, a glance). Older builds don't say. */
   tab?: string }
