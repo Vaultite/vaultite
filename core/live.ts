@@ -101,7 +101,6 @@ export class Live {
     if (rel === null) this.all = true
     else if (!ignored(rel)) this.pending.add(rel)
     else return
-    this.vault.heard(rel)
     const now = Date.now()
     if (!this.timer) this.first = now
     if (this.timer) clearTimeout(this.timer)
@@ -127,6 +126,8 @@ export class Live {
     const paths = this.all ? null : this.narrow([...this.pending]).sort()
     this.pending.clear()
     this.all = false
+    // (the folders iCloud touched beside a write left out here too, or each of the server's own saves walks the vault)
+    for (const p of paths ?? [null]) this.vault.heard(p)
     try {
       await this.vault.synced({ trusting: true }) // (walks unless all it heard was already indexed: Vault.heard)
     } catch (e) {
