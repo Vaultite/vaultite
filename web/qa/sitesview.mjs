@@ -1,5 +1,6 @@
 // The Sites tab on made-up sites and accounts (the desktop app's web:sites answered by the script): who's signed in
-// leads each container, with the sites always opened there; the rest and the trackers fold away behind one line; a login
+// leads each container (a card in its colour), with the sites always opened there, a site whose login can't be named
+// saying "Signed in"; the rest and the trackers fold away behind one line; a login
 // that covers other sites (Google's, YouTube) is one row, and signing out of it signs out of both; the filter keeps only
 // what matches; the address bar's container menu names who's signed in to the page's site in each container.
 // WRITES: the throwaway vault only.
@@ -26,7 +27,7 @@ const FIX = {
     ...visited.map((site, i) => ({ site, last: now - (i + 2) * 5 * H })),
     { site: "doubleclick.net", other: true }, { site: "criteo.com", other: true },
   ],
-  "c-work": [{ site: "github.com", account: "alice-lighthouse", last: now - 2 * H }, { site: "zoom.us", last: now - 9 * H }],
+  "c-work": [{ site: "github.com", signed: true, account: "alice-lighthouse", last: now - 2 * H }, { site: "x.com", signed: true, last: now - 4 * H }, { site: "zoom.us", last: now - 9 * H }],
 }
 
 const app = await _electron.launch({
@@ -63,9 +64,13 @@ await personal.locator("[data-web-more]").click()
 check("… unfolded: the latest visited first, then the trackers' line", await until(async () => (await rows()).length === 8, 3000)
   && (await rows())[2] === "nytimes.com" && (await personal.locator("[data-web-trackers='2']").count()) === 1, await rows())
 const work = win.locator("[data-web-logins-section=work]")
-check("a container with a few sites shows them all, its always-open site with them", await until(async () => (await work.locator("[data-web-site]").count()) === 3, 5000)
+check("a container with a few sites shows them all, its always-open site with them", await until(async () => (await work.locator("[data-web-site]").count()) === 4, 5000)
   && (await work.locator("[data-web-more]").count()) === 0 && (await work.locator("[data-web-site='linear.app'] [data-web-always]").count()) === 1, await work.innerText())
-check("the heading counts accounts and sites", /1 account · 1 site/.test(await work.locator("[data-web-logins-heading]").innerText()), await work.locator("[data-web-logins-heading]").innerText())
+check("a site signed in whose name it can't have leads, saying so", JSON.stringify(await work.locator("[data-web-site]").evaluateAll((els) => els.slice(0, 2).map((e) => e.getAttribute("data-web-site")))) === JSON.stringify(["github.com", "x.com"])
+  && /Signed in/.test(await work.locator("[data-web-site='x.com']").innerText()), await work.innerText())
+const card = await work.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, border: getComputedStyle(e).borderTopWidth }))
+check("each container is a card in its colour", card.bg !== "rgba(0, 0, 0, 0)" && parseFloat(card.border) > 0, card)
+check("the heading counts accounts and sites", /2 accounts · 1 site/.test(await work.locator("[data-web-logins-heading]").innerText()), await work.locator("[data-web-logins-heading]").innerText())
 
 await win.locator("[data-web-sites-view] input[type=search]").fill("alice-light")
 check("filter: only the containers with a match, only what matches", await until(async () => (await personal.count()) === 0 && (await work.locator("[data-web-site]").count()) === 1, 3000),

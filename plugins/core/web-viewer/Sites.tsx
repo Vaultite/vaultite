@@ -84,6 +84,8 @@ function forget(l: Logins, names: string[], failed: string, done: () => void) {
 /** A row's sites: its own and the ones its login signs in to too. */
 const sitesOf = (s: WebSite) => [s.site, ...(s.with ?? [])]
 const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs[0] ?? "")
+/** Signed in there (older builds only say who). */
+const isIn = (s: WebSite) => !!(s.signed || s.account)
 /** Everyone signed in, in a line. */
 const whoText = (s: WebSite) => [s.account, ...(s.more ?? [])].filter(Boolean).join(", ")
 
@@ -135,7 +137,7 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
               <div key={s.site} className={row} data-web-site={s.site} data-leaving={leaving(s.site)}>
                 <SiteIcon host={s.site} className="size-4 shrink-0 text-muted-foreground" />
                 <span className="flex min-w-0 flex-1 items-baseline gap-2"><span className="truncate">{s.site}</span>
-                  {s.account && <span className="min-w-0 truncate text-[13px] text-muted-foreground">{s.account}</span>}</span>
+                  {isIn(s) && <span className="min-w-0 truncate text-[13px] text-muted-foreground">{s.account || "Signed in"}</span>}</span>
                 <Button size="small" look="quiet" onClick={() => void signOut(l, s, refresh)}>Sign out</Button>
               </div>
             ))}
@@ -176,8 +178,8 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   const all = [...(sites ?? []), ...(sites ? always.filter((a) => !sites.some((s) => sitesOf(s).includes(a))).map((site): WebSite => ({ site })) : [])]
     .filter((s) => !q || matches(s, q))
   const pinned = (s: WebSite) => sitesOf(s).some((x) => always.includes(x))
-  const top = all.filter((s) => s.account || pinned(s))
-  const rest = all.filter((s) => !s.account && !pinned(s))
+  const top = all.filter((s) => isIn(s) || pinned(s))
+  const rest = all.filter((s) => !isIn(s) && !pinned(s))
   const trackers = q ? others.filter((s) => matches(s, q)) : others
   const trackersLeaving = trackers.length && trackers.every((s) => leaving(s.site) === "") ? "" : undefined
   const folds = !q && rest.length + (trackers.length ? 1 : 0) > FEW
@@ -189,13 +191,13 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
     ...(signedIn(s) ? [{ label: "Sign out", icon: LogOut, danger: true, sep: true, run: () => void signOut(l, s, refresh) }] : []),
   ]
   const row = (s: WebSite) => (
-    <SidebarRow key={s.site} icon={s.account ? accountIcon(s.site, s.avatar) : siteIcon(`https://${s.site}/`)} label={<SiteLabel s={s} />} open
+    <SidebarRow key={s.site} icon={isIn(s) ? accountIcon(s.site, s.avatar) : siteIcon(`https://${s.site}/`)} label={<SiteLabel s={s} />} open
       tip={[andList(sitesOf(s)), whoText(s), pinned(s) && c ? `always opens in ${c.name}` : ""].filter(Boolean).join(": ")}
-      data-web-site={s.site} data-web-account={s.account ? "" : undefined} data-leaving={pinned(s) ? undefined : leaving(s.site)} onClick={() => open(`https://${s.site}/`)} more
+      data-web-site={s.site} data-web-account={isIn(s) ? "" : undefined} data-leaving={pinned(s) ? undefined : leaving(s.site)} onClick={() => open(`https://${s.site}/`)} more
       swipe={() => signedIn(s) ? [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(l, s, refresh) }] : []}
       onContextMenu={menuFor(() => menu(s))}>
       {pinned(s) && <Pin aria-hidden data-web-always="" className="mr-1 size-3 shrink-0 text-tertiary group-hover/row:hidden" strokeWidth={2} />}
-      {!s.account && !pinned(s) && s.last ? <span className="mr-1 shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{fmtAgo(s.last, { short: true })}</span> : null}
+      {!isIn(s) && !pinned(s) && s.last ? <span className="mr-1 shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{fmtAgo(s.last, { short: true })}</span> : null}
     </SidebarRow>
   )
   const Chevron = unfolded ? ChevronDown : ChevronRight
@@ -225,7 +227,7 @@ function SiteLabel({ s }: { s: WebSite }) {
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
       <span className="shrink truncate">{sitesOf(s).join(", ")}</span>
-      {s.account && <span className="min-w-0 shrink-[0.5] truncate text-[12px] text-muted-foreground">{s.account}</span>}
+      {isIn(s) && <span className="min-w-0 shrink-[0.5] truncate text-[12px] text-muted-foreground">{s.account || "Signed in"}</span>}
       {!!s.more?.length && <span className="shrink-0 text-[11px] text-tertiary" data-web-more-accounts={String(s.more.length)}>+{s.more.length}</span>}
     </span>
   )
@@ -332,15 +334,17 @@ function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: strin
   )
 }
 
-/** A set of logins in the Sites tab: its heading and its sites; nothing while a filter matches none of them. */
+/** A set of logins in the Sites tab, a card in its colour: its heading and its sites; nothing while a filter matches none. */
 function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; openPage: Open; filter: string }) {
   const data = useSites(l.prof)
   const q = filter.trim().toLowerCase()
   if (q && data.sites && !data.sites.some((s) => matches(s, q)) && !data.others.some((s) => matches(s, q)) && !(c?.sites ?? []).some((x) => x.includes(q))) return null
-  const accounts = data.sites?.filter((s) => s.account).length ?? 0, n = data.sites?.length ?? 0
+  const accounts = data.sites?.filter(isIn).length ?? 0, n = data.sites?.length ?? 0
   const count = data.sites === null ? "" : [accounts ? plural(accounts, "account") : "", n - accounts ? plural(n - accounts, "site") : ""].filter(Boolean).join(" · ")
   return (
-    <section data-web-logins-section={l.container ?? l.prof} className="mt-7 first:mt-2">
+    // (a card in its colour, faint, so every row reads as inside it)
+    <section data-web-logins-section={l.container ?? l.prof} className="mt-3 rounded-[12px] border px-1.5 pt-1 pb-1.5 first:mt-2"
+      style={{ background: `color-mix(in srgb, ${l.color} 6%, transparent)`, borderColor: `color-mix(in srgb, ${l.color} 20%, transparent)` }}>
       <LoginsHeading l={l} c={c} count={count} />
       <SiteRows logins={l} data={data} openPage={openPage} filter={filter} />
     </section>

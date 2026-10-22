@@ -1563,6 +1563,12 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("accounts: X, the user whose id the twid cookie has, not another on the page", xWho?.account === "@alicepark" && xWho.avatar === "https://pbs.example.com/a.jpg", xWho)
   check("accounts: X, no twid cookie: nobody", await read("x.com", x) === null)
   check("accounts: claude.ai's email", await read("claude.ai", { account: { email_address: "alice@example.com" } }) === "alice@example.com")
+  check("accounts: X's handle and picture from an open page's sidebar, nothing from a page without it",
+    JSON.stringify(sa.xLooked({ handle: "alicepark", avatar: "https://pbs.example.com/a.jpg" })) === JSON.stringify({ account: "@alicepark", avatar: "https://pbs.example.com/a.jpg" }) && sa.xLooked(null) === null && sa.xLooked({ handle: "i/flow/login" }) === null)
+  check("accounts: Hacker News's name from its login cookie, none without one",
+    await read("ycombinator.com", null, { user: "alicepark&k3yH4sh" }) === "alicepark" && await read("ycombinator.com", null) === null)
+  check("accounts: Google's login covers YouTube and google.<country>, not other sites",
+    sa.covers("youtube.com", "youtube.com") && sa.covers("google.*", "google.com.br") && sa.covers("google.*", "google.co.uk") && !sa.covers("google.*", "google.com") && !sa.covers("google.*", "googleapis.com") && !sa.covers("youtube.com", "youtu.be"))
 }
 
 // ---------- Browser: passkeys from a phone (electron/browser/hybrid.ts, webauthn.ts) ----------

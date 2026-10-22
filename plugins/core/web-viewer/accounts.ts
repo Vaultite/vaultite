@@ -11,8 +11,9 @@ export function askSites(profs: string[]) {
   for (const p of profs) void webPages?.sites?.(p).then((s) => keep(p, s), () => {})
 }
 
-/** Who's signed in to `site` in a set of logins, as last listed: the account, and how many more beside it. */
+/** Who's signed in to `site` in a set of logins, as last listed: the account, and how many more beside it ("Signed in"
+ *  when the site doesn't say who). */
 export function accountIn(prof: string, site: string) {
   const s = listed.get().get(prof)?.find((x) => x.site === site || x.with?.includes(site))
-  return s?.account ? (s.more?.length ? `${s.account} +${s.more.length}` : s.account) : ""
+  return s?.account ? (s.more?.length ? `${s.account} +${s.more.length}` : s.account) : s?.signed ? "Signed in" : ""
 }

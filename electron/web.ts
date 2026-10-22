@@ -5,7 +5,7 @@ import { AppWindow } from "./appwindow.ts"
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
-import { ACCOUNTS, nonempty, type Who } from "./siteaccounts.ts"
+import { ACCOUNTS, covers, nonempty, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
@@ -42,9 +42,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   blankBehind?: boolean
   /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
   fresh: boolean }
-/** A site a profile keeps cookies for: who's signed in when we know how to ask, sites the same login covers (`with`),
+/** A site a profile keeps cookies for: whether it's signed in and who as, when we know how to ask, sites the same login covers (`with`),
  *  its last visit, and `other` when no page of it was opened (its cookies came with other sites' pages: trackers). */
-export type WebSite = { site: string; account?: string; more?: string[]; avatar?: string; with?: string[]; last?: number; other?: boolean }
+export type WebSite = { site: string; signed?: boolean; account?: string; more?: string[]; avatar?: string; with?: string[]; last?: number; other?: boolean }
 
 const PARTITION = "persist:web"
 /** The session's partition for a profile ("" or a workspace's "2"; anything else is the shared one). */
@@ -849,33 +849,66 @@ function siteOf(host: string) {
 const hostOfUrl = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
 
 /** Accounts found lately, by "<profile> <site>", with their picture as an icon: asked again after a minute. null:
- *  asked, nobody signed in. */
-const accounts = new Map<string, { at: number; who: (Who & { avatar?: string }) | null }>()
+ *  asked, nobody signed in; an empty account: signed in, its name not had. */
+const accounts = new Map<string, { at: number; who: Who | null }>()
 
-async function accountOf(profile: string, site: string): Promise<Who | null> {
+/** The last account named for each login (by profile, site, and a hash of its login cookie, so another login asks
+ *  again), for when its site won't say: in userData, never the vault. */
+type Known = Record<string, Record<string, { login: string; who: Who }>>
+let known: Known | null = null
+const knownFile = () => path.join(app.getPath("userData"), "web-accounts.json")
+function loadKnown(): Known {
+  if (!known) { try { known = JSON.parse(fs.readFileSync(knownFile(), "utf8")) as Known } catch { known = {} } }
+  return known
+}
+function keepKnown(profile: string, site: string, login: string, who: Who | null) {
+  const k = loadKnown(), had = k[profile]?.[site]
+  if (who ? had?.login === login && JSON.stringify(had.who) === JSON.stringify(who) : !had) return
+  if (who) (k[profile] ??= {})[site] = { login, who }
+  else delete k[profile]?.[site]
+  try { writeAtomic(knownFile(), JSON.stringify(k)) } catch { /* asked again next time */ }
+}
+const loginHash = (value: string) => crypto.createHash("sha256").update(value).digest("hex").slice(0, 16)
+
+/** Who's signed in to `site` in a profile (its cookies given). A site with a login cookie is signed in by it alone:
+ *  its name is asked, else the one last named for that login. */
+async function accountOf(profile: string, site: string, cookies: Electron.Cookie[]): Promise<Who | null> {
   const how = ACCOUNTS[site]
   if (!how) return null
-  const key = `${profile} ${site}`, had = accounts.get(key)
+  const key = `${profile} ${site}`
+  const login = how.signed ? cookies.find((c) => siteOf(c.domain ?? "") === site && c.name.startsWith(how.signed!) && c.value) : undefined
+  if (how.signed && !login) { accounts.set(key, { at: Date.now(), who: null }); keepKnown(profile, site, "", null); return null }
+  const had = accounts.get(key)
   if (had && Date.now() - had.at < 60_000) return had.who
   let who: Who | null = null
   try {
     const s = webSession(profile)
-    const page = how.page && [...pages.values()].find((p) => p.profile === profile && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)
-    const as = how.text ? "text" : "json"
-    const body = page
-      ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: `fetch(${JSON.stringify(how.url)}, { credentials: "include" }).then((r) => r.ok ? r.${as}() : null).catch(() => null)` }])
-      : await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers: { accept: how.text ? "text/html,*/*" : "application/json" } } as RequestInit)
-        .then((r) => (r.ok ? r[as]() : null)).catch(() => null)
+    const open = [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)
     const cookie = async (domain: string, name: string) => (await s.cookies.get({ domain, name }).catch(() => []))[0]?.value ?? ""
-    const v = body ? await how.read(body, cookie) : null
-    const w = typeof v === "string" ? { account: v } : v
+    let w: Who | null = null
+    if (how.look && open) w = how.look.read(await open.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: how.look.code }]).catch(() => null))
+    if (!w) {
+      const page = how.page && open
+      const as = how.text ? "text" : "json"
+      const body = !how.url ? null : page
+        ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: `fetch(${JSON.stringify(how.url)}, { credentials: "include" }).then((r) => r.ok ? r.${as}() : null).catch(() => null)` }])
+        : await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers: { accept: how.text ? "text/html,*/*" : "application/json" } } as RequestInit)
+          .then((r) => (r.ok ? r[as]() : null)).catch(() => null)
+      const v = body || !how.url ? await how.read(body, cookie) : null
+      w = typeof v === "string" ? { account: v } : v
+    }
     const account = nonempty(w?.account).slice(0, 200)
     if (w && account) {
       who = { account, ...(w.more?.length ? { more: w.more.map((m) => m.slice(0, 200)).slice(0, 9) } : {}) }
       const pic = w.avatar && /^https:\/\//.test(w.avatar) ? await iconBytes(s, w.avatar).then((b) => b && iconOf(b), () => null) : null
       if (pic && isIcon(pic)) who.avatar = pic
     }
-  } catch { /* not signed in, or the site changed: no account shown */ }
+  } catch { /* the site changed, or didn't answer: no name */ }
+  if (login) {
+    const hash = loginHash(login.value), kept = loadKnown()[profile]?.[site]
+    if (who) keepKnown(profile, site, hash, who)
+    else who = kept?.login === hash ? kept.who : { account: "" }
+  }
   accounts.set(key, { at: Date.now(), who })
   return who
 }
@@ -888,23 +921,23 @@ async function sitesOf(profile: string): Promise<WebSite[]> {
   const last = new Map<string, number>()
   for (const [host, at] of lastVisits(profile)) { const site = siteOf(host); if (at > (last.get(site) ?? 0)) last.set(site, at) }
   const out = await Promise.all(names.map(async (site): Promise<WebSite> => {
-    const who = await accountOf(profile, site)
+    const who = await accountOf(profile, site, cookies)
     const at = last.get(site)
-    return { site, ...(who ?? {}), ...(at ? { last: at } : {}), ...(!who && !been.has(site) ? { other: true } : {}) }
+    return { site, ...(who ? { signed: true, ...who, account: who.account || undefined } : {}), ...(at ? { last: at } : {}), ...(!who && !been.has(site) ? { other: true } : {}) }
   }))
-  // A login that signs in to other sites too (Google's, YouTube) is one row for them all.
+  // A login that signs in to other sites too (Google's: YouTube, google.<country>) is one row for them all.
   const joined = new Set<string>()
   for (const s of out) {
-    const also = s.account ? ACCOUNTS[s.site]?.with : undefined
+    const also = s.signed ? ACCOUNTS[s.site]?.with : undefined
     if (!also) continue
-    const sites = Object.entries(also).filter(([site, name]) => cookies.some((c) => siteOf(c.domain ?? "") === site && c.name === name)).map(([site]) => site)
+    const sites = names.filter((site) => site !== s.site && Object.entries(also).some(([k, name]) => covers(k, site) && cookies.some((c) => siteOf(c.domain ?? "") === site && c.name === name)))
     if (!sites.length) continue
     s.with = sites
     for (const x of sites) { joined.add(x); s.last = Math.max(s.last ?? 0, last.get(x) ?? 0) || undefined }
   }
   // Signed in first, then the latest visited, then A to Z.
   return out.filter((s) => !joined.has(s.site))
-    .sort((a, b) => Number(!b.account) - Number(!a.account) || (b.last ?? 0) - (a.last ?? 0) || a.site.localeCompare(b.site))
+    .sort((a, b) => Number(!b.signed) - Number(!a.signed) || (b.last ?? 0) - (a.last ?? 0) || a.site.localeCompare(b.site))
 }
 
 /** The sites a page was opened at, by profile (this Mac's, in userData: never the vault). */

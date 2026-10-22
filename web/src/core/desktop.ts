@@ -203,10 +203,12 @@ export type CloudState = { signedIn: boolean; accounts: CloudAccount[]; sessions
 export type WebPageInfo = WebPageState & { id: number; profile: string; shown: boolean
   /** The id of the tab it's for ("": none, a glance). Older builds don't say. */
   tab?: string }
-export type WebSite = { site: string; account?: string
+export type WebSite = { site: string
+  /** Signed in (its login cookie says so), and who as when the site says. Older builds don't say `signed`. */
+  signed?: boolean; account?: string
   /** Other accounts signed in beside `account` (Google's), its picture (a data URL). Older builds don't say. */
   more?: string[]; avatar?: string
-  /** Other sites the same login signs in to (YouTube with Google), shown as one row. */
+  /** Other sites the same login signs in to (YouTube and google.<country> with Google), shown as one row. */
   with?: string[]
   /** When a page of it was last visited in these logins (ms). */
   last?: number
