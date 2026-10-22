@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The command palette opens about twice as fast on a vault with many plugins: it draws the rows near the screen,
+  more as you scroll.
 - Typing in a long note (over 32 KB) no longer counts its words and tokens on every key: the status bar updates
   them when typing pauses.
 - Vault plugins' code is kept by the browser: a reload no longer waits for every plugin's bundle again (about half

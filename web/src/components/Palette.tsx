@@ -10,6 +10,8 @@ import { dismissKeyboardOnDrag, usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 
 export type Pick = { mod: boolean; shift: boolean }
+/** Rows drawn at first, and how many more each time the list is scrolled near its end. */
+const ROWS = 60
 
 /** Matched characters (indexes into `text`, as JavaScript counts them) drawn in the accent colour. */
 export function Marked({ text, marks }: { text: string; marks: number[] }) {
@@ -91,8 +93,16 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const selected = items[sel] ?? null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => onSelect?.(selected), [selected?.id])
+  // A page of rows (and down to the selected one), another as it's scrolled near their end: opening drew every
+  // command's row, ~700 on a big vault.
+  const [limit, setLimit] = useState(ROWS)
+  const [limitFor, setLimitFor] = useState(query)
+  if (limitFor !== query) { setLimitFor(query); setLimit(ROWS) }
+  const drawn = Math.min(items.length, Math.max(limit, sel + ROWS / 3))
+  const more = useRef<HTMLDivElement>(null)
+  useNearEnd(more, () => setLimit(drawn + ROWS), drawn)
   const end = useRef<HTMLDivElement>(null)
-  useNearEnd(end, () => onEnd?.(), items.length, "200px")
+  useNearEnd(end, () => onEnd?.(), drawn, "200px")
   const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })
   // The rows' handlers stay the same (so a row's memo holds), calling the latest.
   const picks = useRef(pick)
@@ -125,7 +135,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
       <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
         {heading && <div className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
         {!items.length && empty}
-        {items.map((it, i) => (
+        {items.slice(0, drawn).map((it, i) => (
           <Fragment key={it.id}>
           {section && section(it) && section(it) !== (i ? section(items[i - 1]) : undefined) && (
             <div role="presentation" className="px-3 pt-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{section(it)}</div>
@@ -133,7 +143,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
           <PaletteRow id={it.id} item={it} i={i} selected={i === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
           </Fragment>
         ))}
-        {onEnd && <div ref={end} aria-hidden className="h-px" />}
+        {drawn < items.length ? <div ref={more} aria-hidden className="h-px" /> : onEnd && <div ref={end} aria-hidden className="h-px" />}
       </div>
       <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t-[0.5px] border-border px-5 py-2.5 text-[13px] text-muted-foreground md:flex">
         {hints.map(([k, what]) => (

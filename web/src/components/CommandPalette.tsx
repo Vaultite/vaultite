@@ -92,6 +92,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   // (only what kind of setting it is: the hints change with it, and keeping the row itself redrew every row each move)
   const [setting, setSetting] = useState<"switch" | "choice" | null>(null)
   const switched = useSwitches()
+  // Switches change a few times as it opens (plugins' settings arriving): it lists again only when a command's name
+  // changes with them ("Hide left sidebar"); a row's switch or value redraws itself (SwitchMark, ChoiceValue).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const names = useMemo(() => all.filter((c) => c.nameWhenOn).map(commandName).join("\n"), [all, switched])
   const rows = useMemo((): Row[] => {
     // Named as they are now ("Hide left sidebar"), found by either name.
     const cs = once(available(all).map((c) => (c.nameWhenOn ? { ...c, name: commandName(c), words: [c.words, c.name, c.nameWhenOn].filter(Boolean).join(" ") } : c)))
@@ -107,7 +111,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       .sort((a, b) => b.score - a.score).map(({ score: _, ...c }) => c)
     return [...found, ...pluginRows(plugins, disabled, q.trim())]
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, q, plugins, disabled, switched])
+  }, [all, q, plugins, disabled, names])
 
   return (
     <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} items={rows} onClose={onClose}
@@ -130,15 +134,24 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={c.name} marks={c.marks} /></span>
           {(isSetting(c) || c.value) && c.place && <span className="hidden max-w-[35%] shrink-0 truncate text-[13px] text-muted-foreground md:block">{c.place.name}</span>}
           {keysOf(c)[0] && <Keys keys={keysOf(c)[0]} />}
-          {isSetting(c) && <SwitchMark on={isOn(c)} />}
-          {c.value && <span className="shrink-0 rounded-[5px] bg-muted px-1.5 text-[12px] leading-[18px] text-muted-foreground" data-choice-value>{c.value()}</span>}
+          {isSetting(c) && <SwitchMark c={c} />}
+          {c.value && <ChoiceValue value={c.value} />}
         </>
       }} />
   )
 }
 
-/** A setting's state at the end of its row: the switch Settings draws, small, to look at (Enter flips it). */
-function SwitchMark({ on }: { on: boolean }) {
+/** A choice's value at the end of its row, drawn again as switches and choices change. */
+function ChoiceValue({ value }: { value: () => string }) {
+  useSwitches()
+  return <span className="shrink-0 rounded-[5px] bg-muted px-1.5 text-[12px] leading-[18px] text-muted-foreground" data-choice-value>{value()}</span>
+}
+
+/** A setting's state at the end of its row: the switch Settings draws, small, to look at (Enter flips it); drawn again
+ *  as switches change (its row isn't). */
+function SwitchMark({ c }: { c: Command }) {
+  useSwitches()
+  const on = isOn(c)
   return (
     <span className={cn("relative h-[18px] w-[30px] shrink-0 rounded-full transition-colors", on ? "bg-primary" : "bg-foreground/[0.18]")}>
       <span className={cn("absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/0.2)] transition-transform", on && "translate-x-[12px]")} />

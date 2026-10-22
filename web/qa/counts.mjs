@@ -1,5 +1,5 @@
 // Counts that can only go down: how many components React renders per keystroke in a note and in the quick switcher,
-// and when a note that isn't open changes behind the app (as Claude would write it). Counted, not timed (a stand-in for
+// when the command palette opens, and when a note that isn't open changes behind the app (as Claude would write it). Counted, not timed (a stand-in for
 // React DevTools' hook, as perf.mjs's), so it's the same run after run and can fail a change: above its limit in
 // counts.json, it fails. Each limit is 5% over the best count seen (commits per key wobbled more: left out). With
 // --ratchet, a count that went down lowers its limit there (commit it), so a win stays won.
@@ -102,6 +102,18 @@ await wait(300)
 c = await read()
 now["switcher.renderedPerKey"] = c.rendered / query.length
 why.switcher = busiest(c)
+await page.keyboard.press("Escape")
+
+// The command palette opened: it draws the rows near the screen, not one per command (~700 on a big vault).
+await quiet()
+await reset()
+await page.keyboard.press("ControlOrMeta+p")
+await until(() => page.evaluate(() => !!document.querySelector("[role=dialog] [role=option]")), 5000)
+await wait(300)
+await quiet()
+c = await read()
+now["palette.rendered"] = c.rendered
+why.palette = busiest(c)
 await page.keyboard.press("Escape")
 
 const limits = JSON.parse(fs.readFileSync(LIMITS, "utf8"))
