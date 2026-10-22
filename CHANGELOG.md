@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Status bar: after the window or a sidebar is resized it no longer reaches under the left sidebar or keeps empty room
+  at its end (it held the width it had at the last launch).
 - Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing
   changed on disk, and a save re-reads only the file saved (on a 3,000-file vault, 6 to 20 times less work per request).
 - Agents in the browser: `act` answers what changed on the page once it settles (`--diff`) and fills a whole form at
