@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { Session } from "node:inspector/promises"
-import { HTTPError, LOCAL, localDate, localTime, ROOT } from "../../../core/plugins.ts"
+import { HTTPError, LOCAL, localDate, ROOT } from "../../../core/plugins.ts"
 
 type Frame = { functionName: string; url: string; lineNumber: number }
 type Node = { id: number; callFrame: Frame; children?: number[] }
@@ -35,7 +35,7 @@ export async function profile(seconds: number, top: number): Promise<Profiled> {
   }
   fs.mkdirSync(DIR, { recursive: true })
   const now = Date.now()
-  const file = path.join(DIR, `${localDate(now)} ${localTime(now).replace(/:/g, "")}.cpuprofile`)
+  const file = path.join(DIR, `${localDate(now)} ${new Date(now).toTimeString().slice(0, 8).replace(/:/g, "")}.cpuprofile`)
   fs.writeFileSync(file, JSON.stringify(cpu))
   for (const old of fs.readdirSync(DIR).filter((f) => f.endsWith(".cpuprofile")).sort().slice(0, -KEEP)) fs.rmSync(path.join(DIR, old), { force: true })
   return { file, seconds, ...summary(cpu, top) }

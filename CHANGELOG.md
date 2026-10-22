@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Claude Code's usage is counted with less than half the work: right after the server starts (a deploy, the desktop app
+  opening) it no longer stalls the app while it reads weeks of transcripts.
 - Terminals: a burst of output (a long listing, a busy agent) reaches the screen 5-10x sooner in a few large pieces
   instead of thousands of tiny ones, the terminal list (`vau terminal`, the Terminals panel) answers without starting
   tmux or `ps` again when it just did, and typing no longer lays out the page on every key.

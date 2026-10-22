@@ -84,13 +84,23 @@ const PRIVATE = "\0private:"
 type Resp = { ts: number; model: string; cwd: string; session: string; n: [number, number, number, number, number]; fast: boolean; day: string }
 const N_INPUT = 0, N_WRITE5 = 1, N_WRITE1H = 2, N_READ = 3, N_OUTPUT = 4
 
+const TYPE_FIRST = Buffer.from('{"type":"')
+
 class Scan extends JsonlScan<Resp> {
   titles = new Map<string, [string, string]>()  // session -> [custom | ai, title]
 
   protected line(line: Buffer) {
-    // Cheap byte tests first: most lines are tool output nobody needs.
+    // Cheap byte tests first: most lines are tool output nobody needs. A line's own type comes first in some (titles,
+    // request blobs) and early in a user's (before its message, the big part): those are told from their head.
     let kind: string
-    if (line.includes('"type":"assistant"') && line.includes('"usage"')) kind = "assistant"
+    if (line.subarray(0, TYPE_FIRST.length).equals(TYPE_FIRST)) {
+      const type = line.subarray(TYPE_FIRST.length, TYPE_FIRST.length + 14).toString("latin1")
+      if (type.startsWith('ai-title"') || type.startsWith('custom-title"')) kind = "title"
+      else if (type.startsWith('assistant"') && line.includes('"usage"')) kind = "assistant"
+      else if (type.startsWith('system"') && line.includes('"turn_duration"')) kind = "turn"
+      else return
+    } else if (line.subarray(0, 512).includes('"type":"user"')) return
+    else if (line.includes('"type":"assistant"') && line.includes('"usage"')) kind = "assistant"
     else if (line.includes('"turn_duration"')) kind = "turn"
     else if (line.includes('"ai-title"') || line.includes('"custom-title"')) kind = "title"
     else return

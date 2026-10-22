@@ -4,6 +4,17 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, check, fixtureNow, tmp, write, TOOLS } = $
+  // Transcripts are read as they grow, a chunk at a time: a line longer than a chunk (a tool's whole output) is whole.
+  {
+    const { readLines } = await import("../../../core/agents.ts")
+    const f = path.join(tmp, "long-lines.jsonl"), lines = ["a", "x".repeat(10_000), "", "b".repeat(37), "c".repeat(25_000)]
+    fs.writeFileSync(f, lines.join("\n") + "\npartial")
+    for (const chunk of [7, 4096, 1 << 22]) {
+      const got: string[] = []
+      const at = await readLines(f, 0, (b: Buffer) => { got.push(b.toString()) }, chunk)
+      check(`transcripts: long lines read whole, a chunk of ${chunk} bytes`, JSON.stringify(got) === JSON.stringify(lines) && at === lines.join("\n").length + 1, [got.length, at])
+    }
+  }
   // Claude Code: one session's conversation (plugins/core/claude-code/transcript.ts), from the fixture.
   {
     const sid = "0a1b2c3d-1111-4222-8333-444455556666"

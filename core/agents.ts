@@ -443,19 +443,22 @@ export async function readLines(file: string, offset: number, line: (b: Buffer) 
   try {
     fh = await fs.promises.open(file, "r")
     const into = Buffer.alloc(chunk)
-    let rest = Buffer.alloc(0)
+    // A line longer than a chunk (a tool's whole output) is kept in pieces, joined once when it ends.
+    let parts: Buffer[] = [], partLen = 0
     for (;;) {
-      const { bytesRead } = await fh.read(into, 0, chunk, offset + rest.length)
+      const { bytesRead } = await fh.read(into, 0, chunk, offset + partLen)
       if (!bytesRead) break
-      const buf = rest.length ? Buffer.concat([rest, into.subarray(0, bytesRead)]) : into.subarray(0, bytesRead)
-      const end = buf.lastIndexOf(10) + 1
-      for (let start = 0; start < end;) {
-        const nl = buf.indexOf(10, start)
-        line(buf.subarray(start, nl))
+      const got = into.subarray(0, bytesRead)
+      let start = 0
+      for (let nl = got.indexOf(10); nl >= 0; nl = got.indexOf(10, start)) {
+        const piece = got.subarray(start, nl)
+        line(partLen ? Buffer.concat([...parts, piece]) : piece)
+        offset += partLen + nl - start + 1
+        parts = []
+        partLen = 0
         start = nl + 1
       }
-      offset += end
-      rest = Buffer.from(buf.subarray(end))
+      if (start < got.length) { parts.push(Buffer.from(got.subarray(start))); partLen += got.length - start }
     }
   } catch {
     // gone or unreadable: try again next time
