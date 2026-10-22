@@ -58,7 +58,13 @@ install)
     if mv "$app.new" "$app"; then rm -rf "$app.old" || true
     else mv "$app.old" "$app" || true; echo "couldn't replace $app"; fi
   else rm -rf "$app.new" || true; echo "couldn't replace $app"; fi
-  if [ "$(uname)" = Darwin ]; then open "$app"
+  # An app a LaunchAgent runs (its label, not LaunchServices' application.*) starts again under it, so a crash still
+  # brings it back; `open` would leave it unwatched.
+  if [ "$(uname)" = Darwin ]; then
+    case ${XPC_SERVICE_NAME:-0} in
+    0 | application.*) open "$app" ;;
+    *) launchctl kickstart "gui/$(id -u)/$XPC_SERVICE_NAME" || open "$app" ;;
+    esac
   else setsid "$app/$exe" >/dev/null 2>&1 < /dev/null & fi
   ;;
 *)
