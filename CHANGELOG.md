@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - ⌘A selects only what you're in, never the whole window: a menu's filter is a real field (⌘A, ⌥⌫, paste and
   dictation work in it), a field being renamed keeps ⌘A for its text, a note in reading view selects its text, and the
   sidebars and bars select nothing.
+- Vaultite Main updates again on a Mac whose shell aliases `rm` to ask first; it kept the old version, saying the new
+  one didn't build.
 - Passkeys work in the browser: a site asking for one shows a QR code that your phone scans, and the phone's passkey (an
   iPhone's iCloud Keychain, an Android's) signs you in or is saved there. Bluetooth needs to be on, on both.
 - **Your devices, live**: the Tabs panel marks which of your other devices are open now, and on those a tab can be

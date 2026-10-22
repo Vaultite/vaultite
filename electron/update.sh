@@ -11,6 +11,8 @@
 #   update.sh install <the app's pid> <new .app> <the running .app> [<its executable's name>]
 #     Once the app has quit, puts the new build in its place and opens it again (Linux: the folders, and the executable).
 set -eu
+# The login shell brings the user's aliases (an `rm -I` prompts, gets no answer and fails every build): none here.
+unalias -a 2>/dev/null || true
 [ "$(uname)" = Darwin ] && export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 # An app started from the Dock gets 256 open files, too few for electron-builder signing every file it copied.
 ulimit -n 65536 2>/dev/null || ulimit -n 10240 2>/dev/null || true
