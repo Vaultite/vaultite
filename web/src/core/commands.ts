@@ -299,6 +299,9 @@ export function typingIn(el: EventTarget | null) {
 /** A step that a text field, an editor or a terminal keeps: one without ⌘, ⌃ or ⌥ types (but a function key never
  *  does), and on a Mac ⌃ and a letter edits the line (a shell's ⌃W, ⌃U). */
 const typed = (step: string) => (!/(^|\+)(mod|ctrl|alt)\+/.test(step) && !/(^|\+)f\d\d?$/.test(step)) || (MAC && /^ctrl\+(shift\+)?[a-z]$/.test(step))
+/** Keys that edit what's typed in any field (⌘A selects it, ⌘⌫ and ⌥⌫ delete back): the field's, never a command's
+ *  (a list's ⌘A selecting its rows while one of them is being renamed). */
+const FIELD_KEYS = new Set(["mod+a", "mod+backspace", "alt+backspace", "mod+delete", "alt+delete"])
 
 /** A sequence under way: its steps so far, and the command they already name when longer ones go on from it (run when
  *  nothing follows in time, like Vim's `timeoutlen`). */
@@ -342,7 +345,7 @@ function intent(e: KeyboardEvent) {
   const step = shortcutOf(e)
   if (!step) return null
   const k = canonical(step).toLowerCase()
-  if (!pending && typed(k) && typingIn(e.target)) return null
+  if (!pending && (typed(k) || FIELD_KEYS.has(k)) && typingIn(e.target)) return null
   const steps = pending ? [...pending.steps, k] : [k]
   const { exact, longer } = matching(steps)
   if (!exact.length && !longer.length) return pending ? { steps, cancel: true as const } : null

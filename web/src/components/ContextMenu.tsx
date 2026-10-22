@@ -11,7 +11,7 @@ import { haptic } from "@/core/haptics"
 import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { signal } from "@/core/signal"
-import { isDesktop } from "@/core/platform"
+import { isDesktop, isMac } from "@/core/platform"
 
 export type MenuItem = {
   label: string; icon?: LucideIcon; run: () => void; danger?: boolean; disabled?: boolean
@@ -324,11 +324,15 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const shown = trail.reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)
   const parent = trail.length ? trail.slice(0, -1).reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)[trail[trail.length - 1]] : null
   // Typed while it's open: only the rows that match, its submenus' too. Its width stays as it was (the rows don't jump).
+  // The filter is a real field once typed into (⌘A, ⌥⌫, paste and dictation work in it), its best match the one Enter picks.
   const [query, setQuery] = useState("")
+  const field = useRef<HTMLInputElement>(null)
+  const [inField, setInField] = useState(false)
   const [width, setWidth] = useState<number>()
   const hits = query ? found(shown, query) : null
   const rows = hits ? hits.map((f) => f.it) : shown
   const lead = rows.some((it) => it.icon || it.items)
+  const bestAt = rows.findIndex((it) => !it.caption && !it.disabled)
   // Rows with an icon of their own and a check (a container, a panel): the check goes at the end, so no row keeps two
   // empty columns at its start.
   const trailing = rows.some((it) => it.checked !== undefined && it.icon)
@@ -358,17 +362,33 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   useLayoutEffect(() => {
     if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")?.focus({ preventScroll: true })
   }, [placed, focus, trail])
-  // Each key typed: the best match takes the focus, so Enter picks it; no match, the menu keeps it (to type on).
-  const typed = useRef(false)
+  // A key typed on a row goes on in the field; the field gone (its text cleared), the keyboard is back on the first row.
+  const toField = useRef(false)
   useLayoutEffect(() => {
-    if (typed.current) (ref.current?.querySelector<HTMLElement>(":scope > button[data-index]:not(:disabled)") ?? ref.current)?.focus({ preventScroll: true })
+    if (toField.current && field.current) { const n = query.length; field.current.focus({ preventScroll: true }); field.current.setSelectionRange(n, n) }
+    else if (!ref.current?.contains(document.activeElement)) ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")?.focus({ preventScroll: true })
+    toField.current = false
   }, [query])
   useEffect(() => () => clearTimeout(timer.current), [])
   const open = (i: number, el: HTMLElement, focusFirst: boolean) => { clearTimeout(timer.current); setSub({ label: rows[i].label, rect: el.getBoundingClientRect(), focus: focusFirst }) }
-  const type = (q: string) => {
+  const type = (q: string, focusField = false) => {
     if (!query) setWidth(ref.current?.offsetWidth)
-    typed.current = true
+    toField.current = focusField
     setQuery(q)
+  }
+  /** The row Enter picks from the field: the best match. */
+  const best = () => ref.current?.querySelector<HTMLElement>(":scope > button[data-index]:not(:disabled)")
+  const onFieldKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+    if (e.nativeEvent.isComposing) return
+    const all = [...(ref.current?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? [])]
+    if (e.key === "Enter") { e.preventDefault(); best()?.click() }
+    else if (e.key === "ArrowDown") { e.preventDefault(); all[query && all.length > 1 ? 1 : 0]?.focus() }
+    else if (e.key === "ArrowUp") { e.preventDefault(); all[all.length - 1]?.focus() }
+    else if (e.key === "Escape" && query) { e.preventDefault(); type("") }
+    else if (e.key === "Escape" && trail.length) { e.preventDefault(); back() }
+    else if (e.key === "Escape" && onBack) { e.preventDefault(); onBack(true) }
+    else if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); closeMenu() }
   }
   const later = (fn: () => void) => { clearTimeout(timer.current); timer.current = window.setTimeout(fn, 120) }
   const onKey = (e: React.KeyboardEvent) => {
@@ -376,8 +396,11 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     const cur = document.activeElement as HTMLElement
     if (!all.includes(cur) && e.target !== ref.current) return  // a key inside a submenu: it handles its own
     e.stopPropagation()
-    if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key !== " " || query)) { e.preventDefault(); type(query + e.key); return }
-    if ((e.key === "Backspace" || e.key === "Escape") && query) { e.preventDefault(); type(e.key === "Escape" ? "" : query.slice(0, -1)); return }
+    if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key !== " " || query)) { e.preventDefault(); type(query + e.key, true); return }
+    if (e.key === "Backspace" && query) { e.preventDefault(); type(query.slice(0, -1), true); return }
+    if (e.key === "Escape" && query) { e.preventDefault(); type(""); return }
+    // ⌘A selects what was typed, never the page under the menu.
+    if (e.key.toLowerCase() === "a" && (isMac ? e.metaKey : e.ctrlKey)) { e.preventDefault(); field.current?.focus(); field.current?.select(); return }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
       const i = all.indexOf(cur)
@@ -408,9 +431,9 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
       {(query || (!drill && shown.length >= LONG && !shown.some((it) => it.sep))) && <>
         <div data-menu-filter className="flex h-11 items-center gap-3 px-3 text-[17px] whitespace-nowrap md:h-7 md:gap-2.5 md:px-2.5 md:text-[13px]">
           <Search className={cn(icon, "text-muted-foreground")} strokeWidth={2} />
-          {query
-            ? <span className="flex flex-1 items-center truncate">{query}<span aria-hidden className="ml-px h-[1.1em] w-px bg-foreground" /></span>
-            : <span className="flex-1 text-muted-foreground">Type to filter</span>}
+          <input ref={field} value={query} placeholder="Type to filter" aria-label="Filter" spellCheck={false} autoComplete="off"
+            onChange={(e) => type(e.target.value)} onKeyDown={onFieldKey} onFocus={() => setInField(true)} onBlur={() => setInField(false)}
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground" />
         </div>
         <div role="separator" className="mx-2.5 my-1 h-px bg-border" />
       </>}
@@ -443,7 +466,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
               closeMenu(); runOrSay(it.run, it.label)
             }}
             className={cn("flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
-              it.danger && "text-destructive", subAt === i && "bg-foreground/[0.07]")}>
+              it.danger && "text-destructive", (subAt === i || (inField && query && i === bestAt)) && "bg-foreground/[0.07]")}>
             {!trailing && it.checked !== undefined && <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />}
             {(trailing || it.checked === undefined) && (it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />)}
             <span className="flex-1">{it.label}</span>

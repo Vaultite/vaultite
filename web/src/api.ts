@@ -122,7 +122,7 @@ export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scroll
 export { backlinks, followLink, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Target } from "@/core/links"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
 export { openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
-export { currentEditor, editorOf, keysInEditor, selectedText, type OpenEditor } from "@/core/editors"
+export { currentEditor, editorOf, keysInEditor, selectAllIn, selectedText, type OpenEditor } from "@/core/editors"
 export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 // Highlight colours (==🟢text==): the class each draws with (hl-<colour>), and colouring one in an editor.
 // The palette things are coloured by (a container, a tab group): its names, tokens and menu rows.

@@ -63,6 +63,13 @@ export function keysInEditor(ed: Pick<OpenEditor, "view"> | null = currentEditor
   return a === ed.view.contentDOM || !typingIn(a) && (!a || a.contains(ed.view.dom) || !!a.closest(".file-view")?.contains(ed.view.dom))
 }
 
+/** Select an editor's whole text: in reading view, the page's selection over what it shows. */
+export function selectAllIn(view: EditorView) {
+  if (view.contentDOM.contentEditable !== "true") { getSelection()?.selectAllChildren(view.contentDOM); return }
+  view.focus()
+  view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } })
+}
+
 /** The text selected in an editor (the one the user means by default): its selections, or in reading view the page's
  *  selection inside it; "" for none. */
 export function selectedText(ed: Pick<OpenEditor, "view"> | null = currentEditor()): string {

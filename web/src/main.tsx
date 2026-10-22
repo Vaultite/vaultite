@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 import "./index.css"
 import "./core/shifts" // traces layout shifts the user didn't cause
 import "./core/appearance" // applies the theme, scheme, density and fonts before the first paint
+import "./core/selectAll" // ⌘A selects the text the user is in, never the whole window
 import App from "./App.tsx"
 import { startStore } from "./core/data"
 import { startDesktop } from "./core/desktop"

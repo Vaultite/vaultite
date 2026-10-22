@@ -463,6 +463,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Segmented({ value, options, onChange, label, big, className })`: A choice of a few, side by side.
 - `segments(body)`
 - `Selectable`: What a list's selected things can do together: its rows' right-click and the phone's bar.
+- `selectAllIn(view)`: Select an editor's whole text: in reading view, the page's selection over what it shows.
 - `selectClick(e, list, key, current?)`: A row's click: ⌘ (Ctrl) adds or takes it, ⇧ the run from the last picked (first from `current`, the open row, as in Finder); a phone selecting adds or takes.
 - `selectedAttr(on)`: What a row draws while selected: `data-selected`, styled once in index.css.
 - `selectedIn(list)`: The keys selected in a list, in the order they were picked (none: empty).

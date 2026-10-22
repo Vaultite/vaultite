@@ -8,7 +8,7 @@ import {
   Pilcrow, Quote, RemoveFormatting, Scissors, Search, Sigma, SquareCode, SquareSigma, Strikethrough, Table, TextCursorInput,
   TextSelect, type LucideIcon,
 } from "lucide-react"
-import { copyText, editorMenuItems, grouped, highlightItems, keyHint, keysOf, lookUp, notifyError, offeredCommand, openMenu, selectedText, spelling, type MenuItem } from "@vaultite"
+import { copyText, editorMenuItems, grouped, highlightItems, keyHint, keysOf, lookUp, notifyError, offeredCommand, openMenu, selectAllIn, selectedText, spelling, type MenuItem } from "@vaultite"
 
 type Entry = [id: string, label: string, icon: LucideIcon]
 const FORMAT: (Entry | null)[] = [
@@ -63,7 +63,7 @@ function menuItems(view: EditorView, at: { x: number; y: number }, spelled: Spel
       ...(text ? [{ label: "Copy", icon: Copy, hint: keyHint("Mod+C"), run: () => { copyText(text).catch((e) => notifyError(e)) } }] : []),
       ...(editable ? [{ label: "Paste", icon: ClipboardPaste, hint: keyHint("Mod+V"), run: () => void paste(view) }] : []),
       ...command(view, ["editor:paste-plain-text", "Paste as plain text", ClipboardType]),
-      { label: "Select all", icon: TextSelect, hint: keyHint("Mod+A"), run: () => selectAll(view) },
+      { label: "Select all", icon: TextSelect, hint: keyHint("Mod+A"), run: () => selectAllIn(view) },
     ],
     !text ? [] : [
       ...command(view, ["search:selection", `Search for “${short}”`, Search]),
@@ -118,12 +118,6 @@ async function paste(view: EditorView) {
   // (a browser that leaves a made-up paste's data out: its text put in directly)
   const t = data.getData("text/plain")
   if (!ev.defaultPrevented && t) view.dispatch(view.state.replaceSelection(t), { userEvent: "input.paste", scrollIntoView: true })
-}
-
-function selectAll(view: EditorView) {
-  if (!view.state.facet(EditorView.editable)) { getSelection()?.selectAllChildren(view.contentDOM); return }
-  view.focus()
-  view.dispatch({ selection: EditorSelection.single(0, view.state.doc.length) })
 }
 
 /** The menu on right-click. Shift+right-click in a browser (its spelling) and a finger (the phone's own menu) keep the

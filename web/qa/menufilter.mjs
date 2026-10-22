@@ -1,8 +1,8 @@
 // Typing in a menu (components/ContextMenu.tsx): the sidebar's Panels ▸ filtered to a hidden panel in More, ticked with
-// Enter, Backspace and Escape; a long menu says it can be typed into; the panels' icons beside their checks. Then
-// Customize sidebars (pages/Sidebars.tsx): opened from the menu, a panel dragged between the sidebars and down to
-// Hidden, moved from its menu, the filter, Restore defaults and its Undo. WRITES sidebars.json and empties the
-// workspaces: throwaway only.
+// Enter, ⌘A selecting the query (never the page), Backspace and Escape; a long menu says it can be typed into; the
+// panels' icons beside their checks. Then Customize sidebars (pages/Sidebars.tsx): opened from the menu, a panel
+// dragged between the sidebars and down to Hidden, moved from its menu, the filter, Restore defaults and its Undo.
+// WRITES sidebars.json and empties the workspaces: throwaway only.
 //   node web/qa/menufilter.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -42,8 +42,15 @@ try {
   await wait(150)
   const found = await rows(1)
   check("typed 'outl': Outline from More, first", found[0] === "Outline" && !found.includes("Search field"), found)
-  check("...the query shown at the top", (await menus().nth(1).locator("[data-menu-filter]").innerText()).includes("outl"))
-  check("...the best one focused", await page.evaluate(() => document.activeElement?.textContent?.trim()) === "Outline")
+  const query = (n) => menus().nth(n).locator("[data-menu-filter] input").inputValue()
+  check("...the query shown at the top", (await query(1)) === "outl", await query(1))
+  check("...typed into its field, the keyboard still there", await page.evaluate(() => document.activeElement?.matches("[data-menu-filter] input")))
+  await page.keyboard.press("ControlOrMeta+a")
+  // (the page's selection reads a focused field's: more than the field holds is the page's)
+  const sel = await page.evaluate(() => { const f = document.activeElement; return { page: getSelection().toString(), field: [f.selectionStart, f.selectionEnd, f.value.length] } })
+  check("⌘A selects what was typed, not the page", sel.page === "outl" && sel.field[0] === 0 && sel.field[1] === sel.field[2] && sel.field[2] === 4, sel)
+  await page.keyboard.type("outl")
+  check("...typing replaces it", (await query(1)) === "outl", await query(1))
   await page.screenshot({ path: `${OUT}filtered.png` })
   await page.keyboard.press("Enter")
   check("Enter ticks it: Outline at the end of the left, the menu still open",
@@ -56,8 +63,7 @@ try {
   await page.keyboard.type("zzzq"); await wait(100)
   check("nothing matches: says so", (await menus().nth(1).innerText()).includes("No matches"))
   await page.keyboard.press("Backspace"); await wait(100)
-  check("...and still takes keys: Backspace edits the query", (await menus().nth(1).locator("[data-menu-filter]").innerText()).includes("zzz")
-    && !(await menus().nth(1).locator("[data-menu-filter]").innerText()).includes("zzzq"))
+  check("...and still takes keys: Backspace edits the query", (await query(1)) === "zzz", await query(1))
   await page.keyboard.type("q"); await page.keyboard.press("Escape"); await wait(100)
   check("...Escape clears it, the menu stays", (await menus().count()) === 2 && !(await menus().nth(1).locator("[data-menu-filter]").count()))
   await closeMenus()
@@ -69,7 +75,7 @@ try {
   await menus().nth(1).locator(":scope > button", { hasText: /^More$/ }).hover()
   await until(async () => (await menus().count()) === 3)
   const long = await rows(2)
-  check("More ▸ (a long list): 'Type to filter' on top", long.length < 12 || (await menus().nth(2).locator("[data-menu-filter]").innerText()).includes("Type to filter"), long.length)
+  check("More ▸ (a long list): 'Type to filter' on top", long.length < 12 || (await menus().nth(2).locator("[data-menu-filter] input").getAttribute("placeholder")) === "Type to filter", long.length)
   await page.screenshot({ path: `${OUT}more.png` })
   await closeMenus()
 
