@@ -10,9 +10,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { SHOTS, apiAt, qa, wait } from "./lib/qa.mjs"
+import { fileURLToPath, pathToFileURL } from "node:url"
 const { args: [B, OUT = `${SHOTS}aiimport/`], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
-const ROOT = new URL("../../", import.meta.url).pathname
+const ROOT = fileURLToPath(new URL("../../", import.meta.url))
 // What it uses, whatever the vault turned off (the sandbox starts calm: AI import is off). `--url` naming this server
 // makes vau ask it for its vault; the vault variables a Vaultite terminal sets (the user's) are left out besides.
 {
@@ -27,7 +28,7 @@ const files = async (pre) => (await api("GET", "files")).files.map((f) => f.path
 // The made-up exports, and a big one (random text, so it stays over 8 MB zipped).
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "aiimport-qa-"))
 execFileSync("node", [path.join(ROOT, "tools/fixtures/ai-import/make.ts"), dir])
-const { zipFiles } = await import(path.join(ROOT, "plugins/core/ai-import/zip.ts"))
+const { zipFiles } = await import(pathToFileURL(path.join(ROOT, "plugins/core/ai-import/zip.ts")).href)
 const many = Array.from({ length: 1100 }, (_, i) => ({ uuid: `b16b16b1-0000-4000-8000-${String(i).padStart(12, "0")}`, name: `Big chat ${i}`,
   created_at: "2026-09-02T10:00:00Z", updated_at: "2026-09-02T10:05:00Z", chat_messages: [
     { uuid: `${i}a`, text: `Question ${i}: ${crypto.randomBytes(8000).toString("base64")}`, sender: "human", created_at: "2026-09-02T10:00:00Z" },

@@ -9,13 +9,14 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node
 import path from "node:path"
 import { devices } from "playwright-core"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { fileURLToPath } from "node:url"
 const { args: [B, OUT = "/tmp/inbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
 const api = apiAt(B)
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 const sidebars = read(".vaultite/sidebars.json")
-const vau = (...args) => execFileSync("node", [new URL("../../bin/vau", import.meta.url).pathname, ...args], { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: "" }, encoding: "utf8" })
+const vau = (...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args], { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: "" }, encoding: "utf8" })
 await api("DELETE", "inbox/events")
 rmSync(path.join(VAULT, "Inbox"), { recursive: true, force: true })
 rmSync(path.join(VAULT, "Notes/Filed"), { recursive: true, force: true })

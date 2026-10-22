@@ -3,7 +3,7 @@
 import { isUtf8 } from "node:buffer"
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
@@ -306,7 +306,7 @@ if (agentsSize > AGENTS_MAX) problems.push(`core/AGENTS.md (the vault's rules) i
   const names = new Map<string, string | null>(COMMANDS.map((c) => [c.name, null]))
   for (const [id, [tier, d]] of found) {
     if (tier === "vault" || !fs.existsSync(path.join(d, "cli.ts"))) continue
-    const { cli } = await import(path.join(d, "cli.ts"))
+    const { cli } = await import(pathToFileURL(path.join(d, "cli.ts")).href)
     for (const c of cli?.commands ?? []) names.set(c.name, id)
   }
   const ids = new Map<string, string>(), clis = new Map<string, string>(), tools = new Map<string, string>()

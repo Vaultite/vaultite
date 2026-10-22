@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { registerHooks } from "node:module"
 import os from "node:os"
 import path from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { check, section, summary } from "./test/lib.ts"
 const t0 = Date.now()
 
@@ -34,7 +34,7 @@ registerHooks({
     }
     // A relative import without its extension, the way Vite resolves it (core/markdown.ts -> ./richmd).
     if (spec.startsWith(".") && !/\.[a-z]+$/i.test(spec) && context.parentURL?.startsWith(pathToFileURL(WEB).href)) {
-      const base = path.resolve(path.dirname(new URL(context.parentURL).pathname), spec)
+      const base = path.resolve(path.dirname(fileURLToPath(context.parentURL)), spec)
       const file = [".ts", ".tsx"].map((x) => base + x).find((f) => fs.existsSync(f))
       if (file) return { url: pathToFileURL(file).href, shortCircuit: true }
     }

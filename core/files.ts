@@ -15,7 +15,7 @@ import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
-import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
+import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -349,7 +349,7 @@ function restore(vault: Vault, rel: string) {
   const dst = freeName(vault, stem.replace(STAMP, "") + ext)
   guard(vault.abs(dst))
   fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
-  fs.renameSync(vault.abs(rel), vault.abs(dst))
+  renameFile(vault.abs(rel), vault.abs(dst))
   return dst
 }
 
@@ -646,7 +646,7 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
     return await hold(async () => {
       vault.fileCreated(rel, newFileAt(tmp)) // (plugins look at it: onCreateFile)
       if (fs.existsSync(abs)) throw new HTTPError(409, `${rel} already exists`)
-      fs.renameSync(tmp, abs)
+      renameFile(tmp, abs)
       await vault.sync()
       return reply(201, { path: rel })
     })
@@ -767,7 +767,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     guard(vault.abs(src))
     guard(vault.abs(dst))
     fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
-    fs.renameSync(vault.abs(src), vault.abs(dst))
+    renameFile(vault.abs(src), vault.abs(dst))
     forget(vault, src)
     vault.moved(src, dst) // open apps follow it (core/live.ts), and so do plugins (plugin.onMove: an artifact's storage, pinned pages)
     await vault.sync()

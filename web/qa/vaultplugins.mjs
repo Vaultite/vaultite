@@ -11,8 +11,9 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { SHOTS, pluginsFilter, qa, until, wait } from "./lib/qa.mjs"
+import { fileURLToPath } from "node:url"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, errs, watch, done } = await qa(import.meta.url)
-const FIXTURE = new URL("../../tools/fixtures/lighthouse/", import.meta.url).pathname
+const FIXTURE = fileURLToPath(new URL("../../tools/fixtures/lighthouse/", import.meta.url))
 const DIR = ".vaultite/plugins/lighthouse"
 const PAGE = "Dashboards/Lighthouse.md" // (its page, written when it's turned on: core/pages.ts)
 const abs = (p) => `${VAULT}/${p}`

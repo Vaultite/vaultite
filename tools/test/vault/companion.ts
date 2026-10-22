@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import type { Any, VaultTest } from "./harness.ts"
+import { fileURLToPath } from "node:url"
 
 export default async ($: VaultTest) => {
   const { api, check, exists, read, write } = $
@@ -28,7 +29,7 @@ export default async ($: VaultTest) => {
     // Its threads are the Conversations panel's, in the right sidebar from the start (vau panels reads the source).
     const { panelsOf } = await import("../../../core/appsource.ts")
     const { defaultSidebars } = await import("../../../core/sidebars.ts")
-    const ps = panelsOf({ id: "companion", tier: "core", dir: new URL("../../../plugins/core/companion", import.meta.url).pathname })
+    const ps = panelsOf({ id: "companion", tier: "core", dir: fileURLToPath(new URL("../../../plugins/core/companion", import.meta.url)) })
     check("companion: the Conversations panel starts in the right sidebar", ps.some((x) => x.key === "companion:conversations" && x.side === "right") &&
       defaultSidebars(ps).right.includes("companion:conversations"), ps)
   }

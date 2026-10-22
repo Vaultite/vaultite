@@ -15,6 +15,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { zipFiles } from "../../../plugins/core/ai-import/zip.ts"
+import { pathToFileURL } from "node:url"
 
 const T = Date.UTC(2026, 8, 20, 16, 0, 0) / 1000 // 2026-09-20 16:00 UTC, in seconds (ChatGPT's unit)
 
@@ -147,7 +148,7 @@ export function claudeExport() {
   })
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const dir = process.argv[2]
   if (!dir) { console.error("usage: node tools/fixtures/ai-import/make.ts <dir>"); process.exit(1) }
   fs.mkdirSync(dir, { recursive: true })

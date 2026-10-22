@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"
 import { SHOTS, apiAt, qa, wait } from "./lib/qa.mjs"
+import { fileURLToPath } from "node:url"
 const { args: [B, OUT = `${SHOTS}toast/`], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -15,7 +16,7 @@ const exists = async (p) => (await api("GET", "files")).files.some((f) => f.path
 // Without the app's variables from wherever this runs (a terminal's VAULTITE_TERMINAL ties a notice to that terminal,
 // which gives its toast an Open button and so a longer life), so it tests the same thing anywhere.
 const clean = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^VAULTITE_/.test(k)))
-const vau = (...args) => execFileSync("node", [new URL("../../bin/vau", import.meta.url).pathname, ...args], { env: { ...clean, VAULTITE_URL: B.replace(/\/$/, "") }, encoding: "utf8" })
+const vau = (...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args], { env: { ...clean, VAULTITE_URL: B.replace(/\/$/, "") }, encoding: "utf8" })
 
 // A fresh folder: Qa toast/{Doomed.md, Mover.md, Target/}
 await fetch(`${B}api/file?path=${encodeURIComponent("Qa toast")}`, { method: "DELETE" })

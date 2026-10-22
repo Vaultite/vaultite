@@ -108,7 +108,7 @@ export function writeNew(p: string, data: string | Buffer): boolean {
     fs.writeFileSync(tmp, data, { flag: "wx" })
     // (iCloud's placeholder of it counts: another Mac's copy, not here yet; a second would be iCloud's "Name 2")
     if (fs.existsSync(p) || !gone(p, { code: "ENOENT" })) { fs.rmSync(tmp, { force: true }); return false }
-    fs.renameSync(tmp, p)
+    renameFile(tmp, p)
     told?.(null, data as string)
     return true
   } catch (e) {
@@ -127,6 +127,17 @@ export function writeText(p: string, text: string) {
   writeAtomic(p, crlf ? text.replace(/\r?\n/g, "\r\n") : text)
 }
 
+/** fs.renameSync, retried a moment on Windows, which won't replace or move a file another process has open (a reader,
+ *  the search indexer, antivirus) until it lets go (EPERM, EACCES or EBUSY). */
+export function renameFile(from: string, to: string) {
+  for (let wait = 10; ; wait *= 2) {
+    try { return fs.renameSync(from, to) } catch (e) {
+      if (process.platform !== "win32" || wait > 1280 || !["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
+    }
+  }
+}
+
 /** A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only). */
 export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?: number } = {}) {
   guard(p)
@@ -137,7 +148,7 @@ export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?:
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
     fs.writeFileSync(tmp, text, mode === undefined ? "utf8" : { encoding: "utf8", mode })
-    fs.renameSync(tmp, p)
+    renameFile(tmp, p)
   } catch (e) {
     // (a write macOS refused, EPERM from a server whose app was replaced under it, leaves no copy behind in the vault)
     fs.rmSync(tmp, { force: true })
@@ -1557,7 +1568,7 @@ export class Vault {
       guard(this.abs(cur))
       guard(this.abs(rel))
       fs.mkdirSync(path.dirname(this.abs(rel)), { recursive: true })
-      fs.renameSync(this.abs(cur), this.abs(rel))
+      renameFile(this.abs(cur), this.abs(rel))
       this.drop(cur)
       this.moved(cur, rel)
     }
@@ -1586,7 +1597,7 @@ export class Vault {
     let to = stem + ext
     for (let n = 1; fs.existsSync(this.abs(to)); n++) to = `${stem} ${n}${ext}`
     fs.mkdirSync(path.dirname(this.abs(to)), { recursive: true })
-    fs.renameSync(this.abs(rel), this.abs(to))
+    renameFile(this.abs(rel), this.abs(to))
     return to
   }
 
