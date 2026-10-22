@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Big vaults (tens of thousands of notes): the first load no longer reads every note again for token counts, a rename
+  reads only the notes that link to it, and each request's sync no longer asks every file its kind.
+- Vault plugins load in a vault that is also a code project (a `package.json` saying `"type": "commonjs"` at its top).
 - Claude Code's usage is counted with less than half the work: right after the server starts (a deploy, the desktop app
   opening) it no longer stalls the app while it reads weeks of transcripts.
 - Terminals: a burst of output (a long listing, a busy agent) reaches the screen 5-10x sooner in a few large pieces

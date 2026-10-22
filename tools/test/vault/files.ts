@@ -68,6 +68,15 @@ export default async ($: VaultTest) => {
   await api("POST", "file/move", { from: "C/Short two.md", to: "C/Same.md" })
   t = read("Notes/Shortest.md")
   check("a link by name whose new name another file has gets the path", t === "[a](C/Same.md) [b](C/Same.md#Top) [c](C/Same)\n", t)
+  write("Notes/Bare.md", "---\nrelated: [[Ref target]]\n---\nNo links here.\n")
+  write("Ref target.md", "x\n")
+  write("Notes/Others.md", "[[Something else]] and [a](../Elsewhere.md)\n")
+  await vault.synced()
+  const readFile = fs.readFileSync, seen: string[] = []
+  fs.readFileSync = ((p: fs.PathOrFileDescriptor, ...a: Any[]) => { seen.push(String(p)); return readFile(p, ...a) }) as typeof fs.readFileSync
+  try { await api("POST", "file/move", { from: "Ref target.md", to: "Ref moved.md" }) } finally { fs.readFileSync = readFile }
+  check("a rename reads only the files whose links change (unquoted frontmatter links too)", read("Notes/Bare.md").includes("related: [[Ref moved]]")
+    && !seen.some((p) => p.endsWith("Notes/Others.md")), [read("Notes/Bare.md"), seen.filter((p) => p.includes("/Notes/"))])
   await api("POST", "folder", { path: "Projects/Sub" })
   await api("POST", "file/move", { from: "Notes/Renamed.md", to: "Projects/Sub/Renamed.md" })
   check("move into a folder", exists("Projects/Sub/Renamed.md"))

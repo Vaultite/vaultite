@@ -858,21 +858,29 @@ export class Vault {
       const out = after(base(np), now) === np ? base(np) : np
       return /\.md$/i.test(np) && !/\.md$/i.test(h) ? out.slice(0, -3) : out
     }
+    /** How each link in the file at `rel` (once at `self`) changes: its new target, or null. */
+    const mapper = (self: string, rel: string) => (t: string, md: boolean) => {
+      if (!md) return wiki(t, self, rel)
+      const old = find(dirOf(self), t, was)
+      if (!old) return named(t, self, rel)
+      const np = fwd.get(old.p) ?? old.p
+      if (find(dirOf(rel), t, is)?.p === np) return null
+      const out = old.md ? np.slice(0, -3) : np
+      return t.startsWith("/") ? `/${out}` : old.relative ? relativePath(dirOf(rel), out) : out
+    }
     const changed: string[] = []
     for (const [rel, e] of [...this.entries]) {
       const self = back.get(rel) ?? rel
-      if (!e.body.includes("[[") && !e.body.includes("](") && !JSON.stringify(e.fm).includes("[[")) continue
+      const fm = JSON.stringify(e.fm)
+      if (!e.body.includes("[[") && !e.body.includes("](") && !fm.includes("[[") && !fm.includes("](")) continue
+      const map = mapper(self, rel)
+      // The index's text first: only a file with a link that changes is read (a rename in a big vault read them all).
+      // (`key: [[X]]` unquoted reads as a list in a list, not text: such a file is read)
+      const fmStrings = stringsIn(e.fm)
+      if (!e.broken && fmStrings !== null && mapLinks(e.body, map) === e.body && fmStrings.every((v) => mapLinks(v, map) === v)) continue
       let text: string
       try { text = readText(this.abs(rel)) } catch { continue }
-      const neu = mapLinks(text, (t, md) => {
-        if (!md) return wiki(t, self, rel)
-        const old = find(dirOf(self), t, was)
-        if (!old) return named(t, self, rel)
-        const np = fwd.get(old.p) ?? old.p
-        if (find(dirOf(rel), t, is)?.p === np) return null
-        const out = old.md ? np.slice(0, -3) : np
-        return t.startsWith("/") ? `/${out}` : old.relative ? relativePath(dirOf(rel), out) : out
-      })
+      const neu = mapLinks(text, map)
       if (neu === text) continue
       writeText(this.abs(rel), neu)
       changed.push(rel)
@@ -1008,10 +1016,15 @@ export class Vault {
     }
   }
 
+  /** Bumps when kinds come or go (sync then asks each file's kind again). */
+  private kindsVersion = 0
+  private kindsSeen = ""
+
   register(kind: Kind) {
     this.kinds.push(kind)
     this.ordered.clear()
     this.types = null
+    this.kindsVersion++
     return kind
   }
 
@@ -1020,6 +1033,7 @@ export class Vault {
     this.kinds = this.kinds.filter((k) => k !== kind)
     this.ordered.clear()
     this.types = null
+    this.kindsVersion++
     for (const key of [...this.byId.keys()]) if (key.startsWith(kind.collection + "\0")) this.byId.delete(key)
   }
 
@@ -1223,11 +1237,13 @@ export class Vault {
       if (plain.join("\n") !== this.plainDirs.join("\n")) this.plainDirs = plain
     } catch (e) { console.error(e) }
     const found = this.scan()
-    // A file that couldn't be read is tried again every time: iCloud may still have been downloading it. One that didn't
-    // change is read again when its kind would now be another (a vault plugin's kind came or went).
+    // A file that couldn't be read is tried again every time (iCloud may have been downloading it); one that didn't
+    // change, when its kind would now be another: asked only when kinds or settings changed, not at every sync.
+    const kinds = `${this.kindsVersion}:${this.settingsVersion}:${this.plainDirs.join("\n")}`, recheck = kinds !== this.kindsSeen
+    this.kindsSeen = kinds
     let changed = [...found].filter(([r, st]) => {
       const e = this.entries.get(r)
-      return !e || !sameStat(e.stat, st) || e.broken || e.kind !== this.kindFor(r, e.fm)
+      return !e || !sameStat(e.stat, st) || e.broken || (recheck && e.kind !== this.kindFor(r, e.fm))
     }).map(([r]) => r)
     // Read before the index changes; one iCloud is slow to give is left as it was until it arrives. Files iCloud evicted
     // since they were read are brought down meanwhile, for what reads them in this request.
@@ -1657,6 +1673,15 @@ export class Vault {
       .flatMap(([r, e]) => e.problems.map((m) => ({ file: r, problem: m })))
       .concat(this.downloading.map((r) => ({ file: r, problem: "iCloud is still downloading it" })))
   }
+}
+
+/** Every string in a frontmatter value, nested ones too (links in lists and maps); null when a list holds a list, which
+ *  is how YAML reads an unquoted `[[link]]`. */
+function stringsIn(v: unknown, out: string[] = []): string[] | null {
+  if (typeof v === "string") out.push(v)
+  else if (Array.isArray(v)) { for (const x of v) if (Array.isArray(x) || stringsIn(x, out) === null) return null }
+  else if (v && typeof v === "object") { for (const x of Object.values(v)) if (stringsIn(x, out) === null) return null }
+  return out
 }
 
 /** Adds `x` to a set of hooks; returns the function that removes it. */

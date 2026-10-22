@@ -7,6 +7,8 @@ export default async ($: VaultTest) => {
   // Vault plugins (core/vaultplugins.ts): the made-up Lighthouse (tools/fixtures/lighthouse) in .vaultite/plugins/.
   const LH = ".vaultite/plugins/lighthouse"
   fs.cpSync(path.join(TOOLS, "fixtures", "lighthouse"), path.join(VAULT, LH), { recursive: true })
+  // (a vault that is also a code project, `npm init`'s package.json at its top: its plugins still load as ES modules)
+  write("package.json", JSON.stringify({ name: "a-code-project", type: "commonjs" }) + "\n")
   write("Keepers/Bob Lee.md", "---\ntype: keeper\nshift: night\n---\n\nKeeps the lamp.\n")
   write(".vaultite/plugins/people/manifest.json", JSON.stringify({ id: "people", name: "People again", description: "A clash." }))
   write(".vaultite/plugins/tide/data.json", "{}\n") // settings only: not a plugin

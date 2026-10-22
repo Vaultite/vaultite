@@ -68,9 +68,19 @@ function moduleUrl(id: string, name: string, vault: boolean): string | null {
 }
 const requiresOf = (dir: string): string[] => { try { const r = JSON.parse(readText(path.join(dir, "manifest.json"))).requires; return Array.isArray(r) ? r : [] } catch { return [] } }
 
+/** A vault plugin's file as an ES module, whatever package.json is above it (a vault that is also a code project may
+ *  say `"type": "commonjs"`, which made its plugins fail to load). */
+const asModule = <R extends { url: string; format?: string | null }>(r: R): R => {
+  if (!TAG.test(r.url) || !r.url.startsWith("file:")) return r
+  const p = new URL(r.url).pathname
+  return /\.(m?ts|tsx)$/.test(p) ? { ...r, format: "module-typescript" } : /\.m?js$/.test(p) ? { ...r, format: "module" } : r
+}
+
 registerHooks({
   resolve(spec, context, next) {
     const m = context.parentURL ? TAG.exec(context.parentURL) : null
+    // (a vault plugin's plugin.ts, imported by the app with its tag)
+    if (!m && TAG.test(spec)) return asModule(next(spec, context))
     // (an app plugin's backend: another's module, one it exports, of a plugin it requires)
     if (!m) {
       const p = spec.startsWith("@plugins/") && context.parentURL?.startsWith("file:") ? fileURLToPath(context.parentURL) : ""
@@ -97,7 +107,7 @@ registerHooks({
       if (!hashed(dir, fileURLToPath(new URL(spec, context.parentURL)))) return refuse(own)
       const r = next(spec, context)
       if (!r.url.startsWith("file:") || !hashed(dir, fileURLToPath(r.url))) return refuse(own)
-      return { ...r, url: `${r.url}?plugin=${m[1]}&v=${m[2]}` }
+      return asModule({ ...r, url: `${r.url}?plugin=${m[1]}&v=${m[2]}` })
     }
     if (/^(@[\w.-]+\/)?[\w.-]/.test(spec) && !spec.includes(":") && !spec.startsWith("@vaultite") && !spec.startsWith("@plugins/")) {
       return next(spec, { ...context, parentURL: APP }) // an npm package: the app's

@@ -6,4 +6,5 @@
   pointed at by env vars (`tools/test/vault/harness.ts`), never this machine's.
 - `tools/test_agents_linux.ts` (not in `npm test`: it starts real terminals on a sandbox server) runs the app's agents
   end to end on `tools/test/agentkit.ts`, which Vaultite/plugins' agent tests use too: keep its names stable.
-- Performance: `tools/perf/` and `web/qa/perf.mjs`; compare before and after on servers run alternately.
+- Performance: `tools/perf/` and `web/qa/perf.mjs`; compare before and after on servers run alternately. A real vault (one
+  brought from Obsidian): `node tools/perf/bigvault.ts --vault <dir> --root <before checkout>`, on a copy; never commit one.

@@ -5,7 +5,7 @@ import path from "node:path"
 import { OpError, pathAsSaid, Plugin } from "../../../core/plugins.ts"
 import { parseText, type Vault } from "../../../core/vault.ts"
 import { estimateTokens, shortTokens, tokenText } from "./estimate.ts"
-import { importsOf, isChainRoot, levelOf, limitFor, type Limits, limitsOf, type Link, MAX_DEPTH, pathLike, type Sized, worse } from "./limits.ts"
+import { importsOf, isChainRoot, levelOf, limitFor, type Limits, limitsOf, type Link, MAX_DEPTH, NEAR, pathLike, type Sized, worse } from "./limits.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -94,13 +94,22 @@ function size(vault: Vault, rel: string, r: Read, l: Limits): Sized {
   return out
 }
 
-/** Every Markdown file sized (the index's, and agent files in hidden folders), biggest first. */
-export function sizes(vault: Vault): Sized[] {
+/** At most this many tokens a byte (a CJK character is 3 bytes and about 1.2 tokens): what a file can't be near its
+ *  limit by, told from its size alone. */
+const MAX_PER_BYTE = 1.2
+
+/** Every Markdown file sized (the index's, and agent files in hidden folders), biggest first. `flaggedOnly`: only the
+ *  files that may be flagged are read, so a big vault isn't read again for the few near a limit (most have none). */
+export function sizes(vault: Vault, { flaggedOnly = false } = {}): Sized[] {
   const l = limits(), out: Sized[] = []
   const live = new Set<string>()
   for (const e of vault.entries.values()) {
-    const r = readAt(vault, e.rel, e.stat)
     live.add(vault.abs(e.rel))
+    if (flaggedOnly && !isChainRoot(e.rel)) {
+      const limit = limitFor(e.rel, e.fm, l)
+      if (!limit || e.stat.size * MAX_PER_BYTE < limit * NEAR) continue
+    }
+    const r = readAt(vault, e.rel, e.stat)
     if (r) out.push(size(vault, e.rel, r, l))
   }
   for (const rel of hiddenAgentFiles(vault)) {
@@ -114,7 +123,7 @@ export function sizes(vault: Vault): Sized[] {
 
 /** What the app needs: the files near or over their limit, and every load chain. */
 const flagged = (s: Sized) => s.level !== "ok" || s.chain !== undefined
-plugin.state(() => ({ tokenCount: { limits: limits(), files: sizes(plugin.vault).filter(flagged) } }))
+plugin.state(() => ({ tokenCount: { limits: limits(), files: sizes(plugin.vault, { flaggedOnly: true }).filter(flagged) } }))
 
 /** An absolute path (a Claude Code hook's) as a vault path; null when it's outside the vault. */
 function vaultRel(vault: Vault, p: string): string | null {
@@ -155,7 +164,7 @@ nothing. Only warns: nothing stops a file from growing.
   args: ["path"],
   run: ({ path: p, over, all }) => {
     const vault = plugin.vault
-    let files = sizes(vault)
+    let files = sizes(vault, { flaggedOnly: !p && !all })
     if (p) {
       const rel = vaultRel(vault, p)
       if (rel === null) return { files: [], outside: p }

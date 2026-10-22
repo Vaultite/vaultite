@@ -3,7 +3,7 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, check, read, write } = $
+  const { VAULT, api, check, read, vault, write } = $
   // ---------- journal entries as a tag, people's sort ----------
   write("Notes/Tagged journal.md", "---\ntype: note\ntags: [journal]\n---\n\nAnother day.\n")
   write("Notes/Inline journal.md", "---\ntype: note\n---\n\nA third day. #Journal\n")
@@ -25,4 +25,14 @@ export default async ($: VaultTest) => {
   check("people: no `sort` is written, on a new person or on read", !/sort/.test(read("People/Zed Nosort.md")) && !/sort/.test(read("People/Aaron Nosort.md")), read("People/Zed Nosort.md"))
   const pOrder = s.people.map((p: Any) => p.name)
   check("people: those with a sort first, by it; the rest after, by name", pOrder.indexOf("Hand Made") < pOrder.indexOf("Aaron Nosort") && pOrder.indexOf("Aaron Nosort") < pOrder.indexOf("Zed Nosort"), pOrder)
+
+  // A sync asks only the changed files' kinds while kinds and settings stay (it asked every file's, each request).
+  await vault.synced()
+  const kindFor = vault.kindFor, asked: string[] = []
+  vault.kindFor = (rel: string, fm: Any) => { asked.push(rel); return kindFor.call(vault, rel, fm) }
+  try {
+    write("Notes/Inline journal.md", "---\ntype: note\n---\n\nA third day, again. #Journal\n")
+    await vault.synced()
+  } finally { vault.kindFor = kindFor }
+  check("sync: only the changed file's kind is asked", asked.join() === "Notes/Inline journal.md", asked.slice(0, 5))
 }

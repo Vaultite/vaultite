@@ -26,6 +26,13 @@ export default async ($: VaultTest) => {
     check("token-count: the text says what's over", /Over their limit[\s\S]*Size\/Long\.md[\s\S]*Loaded at startup[\s\S]*@Size\/rules\.md/.test(text), text)
     const st = (await app.state()).tokenCount
     check("token-count: the app gets the flagged files and the chains, not every file", st.files.some((s: Any) => s.path === "Size/CLAUDE.md") && !st.files.some((s: Any) => s.path === "Size/code.md") && st.limits.limits["CLAUDE.md"] === 3000, st)
+    // (a big vault's thousands of notes have no limit: the state reads none of them again, as it did on every first load)
+    for (let i = 0; i < 20; i++) write(`Size/many/Note ${i}.md`, "word ".repeat(50))
+    await vault.synced()
+    const readFile = fs.readFileSync, seen: string[] = []
+    fs.readFileSync = ((p: fs.PathOrFileDescriptor, ...a: Any[]) => { seen.push(String(p)); return readFile(p, ...a) }) as typeof fs.readFileSync
+    try { await app.state() } finally { fs.readFileSync = readFile }
+    check("token-count: the app's state reads no note that can't be near its limit", !seen.some((p) => p.includes("Size/many/")), seen.filter((p) => p.includes("Size/")))
     const one = await sized({ path: path.join(VAULT, "Size/Long.md"), over: true })
     check("token-count: an absolute path inside the vault (a hook's) answers that file", one.r.files.length === 1 && one.text.startsWith("Over its limit:"), one)
     check("token-count: --over says nothing for a file under its limit or outside the vault", (await sized({ path: "Size/code.md", over: true })).text === ""
