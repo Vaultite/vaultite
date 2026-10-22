@@ -86,6 +86,7 @@ async function vaultThere(p: string) {
 function watch(l: LiveType) {
   l.listen((c) => app.changed(c.paths))
   app.ui = l.drive // ops drive the user's window the way POST /api/ui does
+  app.presence = { list: () => l.present(), tell: (device, msg) => l.tell(device, msg) }
   return l
 }
 
@@ -523,7 +524,7 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
     if (url.pathname === "/api/events") {
       return sockets.handleUpgrade(req, socket, head, (ws) => {
         ws.on("error", () => ws.terminate())
-        live.client(ws, url.searchParams.get("at") ?? undefined)
+        live.client(ws, url.searchParams.get("at") ?? undefined, url.searchParams.get("device") ?? undefined)
       })
     }
     const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decode)

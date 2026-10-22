@@ -270,5 +270,13 @@ answerUi("tabs", (m) => {
     leaveSet(ids)
     return { removed: ids }
   }
-  throw new Error("do is list, group or ungroup")
+  if (m.do === "close") {
+    // (another device closing this one's tabs: named as its list has them, a terminal with or without its machine)
+    const bare = (to: string) => (to.startsWith("view:terminal/") ? to.replace(/@[a-z0-9-]+$/, "") : to)
+    const want = Array.isArray(m.tabs) ? new Set(m.tabs.map((t) => bare(String(t)))) : null
+    const ids = groups().flatMap((g) => g.tabs).filter((t) => t.to !== "new" && (!want || want.has(bare(t.to)))).map((t) => t.id)
+    if (ids.length) closeTabIds(ids)
+    return { closed: ids.length }
+  }
+  throw new Error("do is list, group, ungroup or close")
 })

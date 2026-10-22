@@ -6,6 +6,7 @@ import {
   useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
 import { MachineFiles, EnrollMachine } from "./Files"
+import { DevicesPanel } from "@plugins/tabs/devices"
 
 // Machines: your other computers running Vaultite, each with whether it answers and what it runs; a click opens a
 // terminal, an agent or its app there.
@@ -101,7 +102,7 @@ function MachinesPanel({ open }: SidebarCtx) {
 }
 
 function MachinesView() {
-  return <div className="space-y-6 pt-2 pb-10"><MachinesBlock /><EnrollMachine /></div>
+  return <div className="space-y-6 pt-2 pb-10"><MachinesBlock /><DevicesPanel /><EnrollMachine /></div>
 }
 
 const mock: Machine[] = [

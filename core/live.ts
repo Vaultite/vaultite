@@ -26,6 +26,8 @@ export function ignored(rel: string) {
 const unwatched = (rel: string) => ignored(rel) || rel.split("/").includes("node_modules")
 
 export type Change = { paths: string[] | null; v: string }
+/** A device with app windows open on this server: how many, and when one was last used (ms). */
+export type Present = { id: string; windows: number; at: number }
 
 export class Live {
   /** The web app's build being served (server.ts sets it; null in development). */
@@ -36,6 +38,7 @@ export class Live {
   private clients = new Set<WebSocket>()
   private active = new Map<WebSocket, number>() // when each window last said it had the focus (this server's clock)
   private workspaces = new Map<WebSocket, number>() // the workspace each window said it's on
+  private devices = new Map<WebSocket, { id: string; since: number }>() // the device each window is (its app's id) and since when
   private answers = new Map<string, (a: Answer) => void>() // windows answering what they were sent (a command ran, an ask's result)
   private answering = new WeakSet<WebSocket>() // windows that answer (an older app doesn't)
   private asked = new Map<string, WebSocket>() // an ask's window, so its closing ends the wait
@@ -171,11 +174,13 @@ export class Live {
     return () => { this.listeners.delete(fn) }
   }
 
-  /** A web app connected to /api/events; `at`, where its changes ended when it was here before. */
-  client(ws: WebSocket, at?: string) {
+  /** A web app connected to /api/events; `at`, where its changes ended when it was here before; `device`, the id its
+   *  app keeps for the device it's on (web/src/core/device.ts). */
+  client(ws: WebSocket, at?: string, device?: string) {
     this.clients.add(ws)
+    if (device && /^[a-z0-9]{8,32}$/.test(device)) this.devices.set(ws, { id: device, since: Date.now() })
     const drop = () => {
-      this.clients.delete(ws); this.active.delete(ws); this.workspaces.delete(ws)
+      this.clients.delete(ws); this.active.delete(ws); this.workspaces.delete(ws); this.devices.delete(ws)
       for (const [rid, to] of this.asked) if (to === ws) this.answers.get(rid)?.({ error: "the app window closed before answering" })
     }
     ws.on("close", drop)
@@ -221,6 +226,24 @@ export class Live {
   /** How many app windows are connected. */
   get windows() {
     return [...this.clients].filter((ws) => ws.readyState === ws.OPEN).length
+  }
+
+  /** The devices with a window open here: how many, and when one was last used (connected, or focused since). */
+  present(): Present[] {
+    const out = new Map<string, Present>()
+    for (const [ws, d] of this.devices) {
+      if (ws.readyState !== ws.OPEN) continue
+      const at = Math.max(d.since, this.active.get(ws) ?? 0), had = out.get(d.id)
+      out.set(d.id, { id: d.id, windows: (had?.windows ?? 0) + 1, at: Math.max(at, had?.at ?? 0) })
+    }
+    return [...out.values()]
+  }
+
+  /** Something for every window of one device (close its tabs): how many windows it went to. */
+  tell(device: string, msg: object) {
+    let n = 0
+    for (const [ws, d] of this.devices) if (d.id === device && ws.readyState === ws.OPEN) { ws.send(JSON.stringify({ ...msg, type: "ui" })); n++ }
+    return n
   }
 
   /** The window focused last (else the one that connected last), or null when no app is open. */

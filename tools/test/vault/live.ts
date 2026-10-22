@@ -141,6 +141,25 @@ export default async ($: VaultTest) => {
     await live.drive({ action: "command", id: "theme:dark" })
     check("ui: a window that never answers isn't waited on", Date.now() - t0 < 500 && old.sent.at(-1)?.id === "theme:dark" && !old.sent.at(-1)?.rid)
   }
+  // Which devices are open (each window says its app's device id as it connects): another device's tabs close there.
+  {
+    const own = new Live(vault)
+    const win = (device?: string) => {
+      const on: Record<string, () => void> = {}
+      const ws: Any = { readyState: 1, OPEN: 1, close() {}, on: (k: string, f: () => void) => { on[k] = f }, sent: [] as Any[], send(t: string) { ws.sent.push(JSON.parse(t)) } }
+      own.client(ws, undefined, device)
+      return { ws, gone: () => { ws.readyState = 3; on.close?.() } }
+    }
+    const a1 = win("devicea1b2c3"), a2 = win("devicea1b2c3"), b = win("deviceb4d5e6"), none = win(), bad = win("../x")
+    const present = own.present()
+    check("live: the devices open, each with its windows", present.length === 2 && present.find((p) => p.id === "devicea1b2c3")?.windows === 2 &&
+      present.find((p) => p.id === "deviceb4d5e6")?.windows === 1, present)
+    check("live: a message for one device goes to each of its windows, and no other", own.tell("devicea1b2c3", { action: "tabs", do: "close" }) === 2 &&
+      a1.ws.sent.at(-1)?.type === "ui" && a2.ws.sent.at(-1)?.do === "close" && b.ws.sent.length === 1 && none.ws.sent.length === 1 && bad.ws.sent.length === 1)
+    a1.gone(); a2.gone()
+    check("live: a device whose windows all closed isn't open", !own.present().some((p) => p.id === "devicea1b2c3") && own.tell("devicea1b2c3", {}) === 0)
+    own.close()
+  }
   live.close()
   Object.assign($.vars, { Live })
 }

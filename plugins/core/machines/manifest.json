@@ -3,6 +3,7 @@
   "icon": "server",
   "category": "system",
   "offByDefault": true,
+  "requires": ["tabs"],
   "name": "Machines",
   "description": "Your other computers and agent VMs: their status, terminals and coding agents, or read-only folders and files through a relay server.",
   "tint": "teal",

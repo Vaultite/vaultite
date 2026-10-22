@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
 import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
+import type { Present } from "./live.ts"
 import { entryOf, type Op, type OpCtx, type OpDid, type OpEntry, type OpImage, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
@@ -254,7 +255,7 @@ export type RequestStart = { t: number; method: string; route: string; query: Re
 /** How a request ended: `error`, what a failed one (4xx, 5xx) answered. */
 export type RequestEnd = { status: number; ms: number; body: unknown; error?: string }
 export type RequestHook = (start: RequestStart) => ((end: RequestEnd) => void) | void
-export type { ServerError }
+export type { Present, ServerError }
 /** `lock: false`: not held while it runs; `sync: false`: reads no vault, so neither held nor synced. `stream: true`: the
  *  route reads `req.http` itself (uploads of any size), `req.body` is {}, and it's never held either. */
 export type RouteOptions = { lock?: boolean; sync?: boolean; stream?: boolean }
@@ -279,6 +280,10 @@ export type OpsHost = {
   did: (name: string, params: unknown) => OpDid | null
   /** Tell the vault's event bus (core/events.ts). */
   emit: (type: string, data?: Item) => VaultEvent
+  /** The devices with app windows open on this server (each app's device id: web/src/core/device.ts). */
+  devices: () => Present[]
+  /** A `ui` message to every window of a device open here (core/live.ts tell): how many it went to. */
+  tell: (device: string, msg: Item) => number
 }
 const hosts = new WeakMap<Vault, OpsHost>()
 /** The App gives its vault's plugins operations and events (core/app.ts). */

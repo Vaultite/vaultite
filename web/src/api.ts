@@ -117,6 +117,7 @@ export { addKeys, appShortcut, beginKeys, cancelKeys, commandKeys, keyCaps, keyH
 export { isLinux, isMac, modKey, revealLabel, showLabel } from "@/core/platform"
 export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, openMenu, rightClickBelow, type CheckItem, type MenuItem } from "@/components/ContextMenu"
 export { onVaultChange, touches, useVaultChange } from "@/core/live"
+export { DEVICE } from "@/core/device"
 export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
 export { backlinks, followLink, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Target } from "@/core/links"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).

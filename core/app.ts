@@ -17,6 +17,7 @@ import * as O from "./outside.ts"
 import * as pages from "./pages.ts"
 import { setUpNew } from "./start.ts"
 import type { ServerError } from "./serverlog.ts"
+import type { Present } from "./live.ts"
 import { enabled, hostOps, HTTPError, LOADED, LOCAL, load as loadPlugins, vaultHere, match, matchServed, type Plugin, propertyTypes, Reply, reply, type RequestEnd, type RequestStart, Request, service, settingDefaults, Text } from "./plugins.ts"
 import { readTypes } from "./proptypes.ts"
 import { blockOn, blockSources, render } from "./render.ts"
@@ -70,6 +71,8 @@ export class App {
   private pagesOf = "" // the plugins that were on at the last look (onKey): those turned on since get their pages
   /** The user's open window, driven from outside (server.ts sets it: POST /api/ui's handler, core/live.ts). */
   ui: ((message: Item | null) => unknown) | null = null
+  /** The devices with app windows open on this server, and a message to one's windows (server.ts: core/live.ts). */
+  presence: { list: () => Present[]; tell: (device: string, msg: Item) => number } | null = null
   /** The plugins that moved out of the app being installed, once it's open (core/migrations.ts migrateMoved). */
   moving: Promise<void> = Promise.resolve()
   private core: Op[] | null = null
@@ -794,6 +797,8 @@ export class App {
       api: (method, route, body, who, o) => this.apiAs(method, route, body, who, o),
       did: (name, params) => { const hit = this.opNamed(name); return hit ? didOf(hit.op, params) : null },
       emit: (type, data) => bus.emit(type, data ?? {}),
+      devices: () => this.presence?.list() ?? [],
+      tell: (device, msg) => this.presence?.tell(device, msg) ?? 0,
     })
     // Heard after the emitter's turn and outside its call (not holding the vault, not as its request), so a plugin
     // that runs an op on an event takes the vault like anyone.

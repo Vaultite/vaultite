@@ -23,6 +23,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "moved", deps: ["pages"] },
   { name: "filetypes", deps: ["pages"] },
   { name: "live", deps: ["pages"] },
+  { name: "devices", deps: ["pages"] },
   { name: "query", deps: ["pages"] },
   { name: "services", deps: ["pages"] },
   { name: "cli", deps: ["pages","live"] },

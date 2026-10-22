@@ -3,10 +3,11 @@
   "icon": "layers-2",
   "category": "navigation",
   "alwaysOn": true,
+  "exports": ["devices", "types"],
   "settings": {
-    "other_devices": { "type": "boolean", "default": true, "label": "Other devices' tabs", "description": "under this device's tabs, what your other devices have open, to open here (right-click the Tabs heading to switch)" }
+    "other_devices": { "type": "boolean", "default": true, "label": "Other devices' tabs", "description": "under this device's tabs, what your other devices have open (open now or used this week), to open here, move here or close there (right-click the Tabs heading to switch)" }
   },
   "name": "Tabs",
-  "description": "A sidebar panel with the open tabs, pane by pane, and their tab groups: show, close and drag them from the sidebar, with or without the tab bar (Show tabs in the sidebar makes them vertical tabs). Under them, the tabs your other devices have open, to open here.",
+  "description": "A sidebar panel with the open tabs, pane by pane, and their tab groups: show, close and drag them from the sidebar, with or without the tab bar (Show tabs in the sidebar makes them vertical tabs). Under them, the tabs your other devices have open, to open here, move here or close there; Devices lists every app and browser, which are open now, to rename or forget.",
   "replaces": { "obsidian": ["vertical-tabs"] }
 }

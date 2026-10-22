@@ -3,7 +3,12 @@ The Tabs panel lists the open tabs pane by pane, so the tab bar can be off: vert
 between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel):
 in the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the
 workspace's `sidebars`); on top, `tabBar` is true and the panel is hidden. Under the tabs, what the user's other devices
-have open (`other_devices`), from `.vaultite/plugins/tabs/device-<id>.json`, one per browser.
+have open (`other_devices`: those open now or used this week), from `.vaultite/plugins/tabs/device-<id>.json`, one per
+app or browser (`label`: the user's name for it). A browser driven by automation isn't a device.
+
+**Devices** (`vau tabs devices`; the Devices view, also in Machines): each one, open now or when it was last used, with
+its tabs. Which are open isn't kept in a file: each server knows its own windows, and asks the other machines for theirs.
+`vau tabs device-close <device> [tabs...]` closes tabs on one that's open now (all of them without tabs).
 
 **Tab groups**, as in a browser: a named, coloured run of a pane's tabs, side by side, that folds to its name. In the
 tab bar a group is a chip before its tabs, which are underlined in its colour; in the panel, the same pill, a line in

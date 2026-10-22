@@ -1,6 +1,7 @@
 // Live updates: one WebSocket (/api/events) says which files changed, moved, or what an agent asks the window to do.
 // It reconnects with backoff (refreshing once after a gap), holds changes while hidden, and offers a reload on a new build.
 import { useEffect, useRef } from "react"
+import { DEVICE } from "@/core/device"
 import { notify } from "@/core/notify"
 
 /** Changed vault paths (a folder: anything in it), or null: anything may have changed. */
@@ -110,6 +111,7 @@ function connect() {
   if (ws) return
   const url = new URL("api/events", location.href)
   if (heard) url.searchParams.set("at", heard)
+  if (DEVICE) url.searchParams.set("device", DEVICE) // (so other devices see this one is open now)
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
   const s = new WebSocket(url)
   ws = s

@@ -1,13 +1,14 @@
-import { useEffect, useId, useRef } from "react"
-import { ChevronDown, ChevronRight, Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
+import { useEffect, useId, useRef, useState } from "react"
+import { ChevronDown, ChevronRight, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, del, dragTab, dropTab, fmtAgo, foldSet, HeadingButton, isPopout, menuFor, newTab,
-  notifyError, openFile, openView, panesOf, pastEnd, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetNameField, SidebarHeading,
+  canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSet, HeadingButton, isPopout, menuFor, newTab,
+  notifyError, openView, panesOf, pastEnd, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetNameField, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useRenaming, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
+import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPanel, KIND_ICON, LiveDot, openHere, tabItems, useDevices } from "./devices"
 
 // The open tabs as a list in the sidebar, pane by pane, so the tab bar can be off (`tabBar`); under them the other
 // devices' tabs (plugin.ts), to open here.
@@ -157,19 +158,6 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
 
 // ---------- other devices ----------
 
-/** This device, as the server knows it: an id kept in this browser (each browser, and each address of the server, is
- *  a device of its own, as its tabs are). */
-const DEVICE = (() => {
-  const key = "vaultite.device"
-  try {
-    const had = localStorage.getItem(key)
-    if (had && /^[a-z0-9]{8,32}$/.test(had)) return had
-    const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join("")
-    localStorage.setItem(key, id)
-    return id
-  } catch { return "" }
-})()
-
 /** Sends this device's tabs when the places open change (not which one is in front), and once as the page opens. A
  *  view's label goes with it (another device can't tell a terminal's name); a file's is found where it's shown. */
 function Report({ store }: { store: Store }) {
@@ -193,38 +181,49 @@ function Report({ store }: { store: Store }) {
   return null
 }
 
-const KIND_ICON = { desktop: Monitor, phone: Smartphone, web: Globe }
-const opened = (t: DeviceTab) => (t.to.startsWith("file:") ? openFile(t.to.slice(5), { newTab: true }) : openView(t.to, { newTab: true }))
+/** A device's heading: open now (a dot) or when it was used; right-click for its menu, its name as a field to rename. */
+function DeviceHeading({ d }: { d: Device }) {
+  const [renaming, setRenaming] = useState(false)
+  const Icon = KIND_ICON[d.kind]
+  return (
+    <div className="mt-1 flex h-6 items-end gap-1.5 px-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground max-md:h-8 max-md:text-[13px]"
+      onContextMenu={menuFor(() => [...deviceItems(d, () => setRenaming(true), { manage: true }), othersItem(true)])}>
+      <Icon className="mb-px size-3 shrink-0" strokeWidth={2} />
+      {renaming ? <DeviceNameField d={d} done={() => setRenaming(false)} className="min-w-0 flex-1 rounded-[4px] bg-card px-1 font-normal text-foreground outline-none" />
+        : <span className="min-w-0 truncate">{deviceName(d)}</span>}
+      {!renaming && (d.live ? <span className="mb-[5px] max-md:mb-[7px]"><LiveDot d={d} /></span> : <span className="shrink-0 font-normal text-tertiary">{fmtAgo(d.at)}</span>)}
+    </div>
+  )
+}
 
-/** The tabs the other devices have open, a device each (the latest first): a click opens one here. */
+/** The tabs the other devices have open, a device each (open ones first, then the latest): a click opens one here; on
+ *  a device that's open now, a tab can be moved here or closed there. */
 function OtherDevices({ store }: { store: Store }) {
   const info = useTabLabels(store)
   const shown = settings.use().other_devices !== false
-  const list = (store.tabDevices ?? []).filter((d) => d.id !== DEVICE && d.tabs.length)
+  const list = (useDevices(store) ?? []).filter(inPanel)
   if (!shown || !list.length) return null
   return (
     <div className="mt-2 flex flex-col gap-px" data-keylist data-device-tabs>
-      {list.map((d: Device) => {
-        const Icon = KIND_ICON[d.kind]
-        return (
-          <div key={d.id} className="flex flex-col gap-px" data-device={d.id}>
-            <div className="mt-1 flex h-6 items-end gap-1.5 px-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground max-md:h-8 max-md:text-[13px]"
-              onContextMenu={menuFor(() => [
-                { label: "Forget this device", icon: X, run: () => { del(`tabs/devices/${d.id}`).catch((e) => notifyError(e, "Couldn't forget it")) } },
-                othersItem(true),
-              ])}>
-              <Icon className="mb-px size-3 shrink-0" strokeWidth={2} />
-              <span className="min-w-0 truncate">{d.name}</span>
-              <span className="shrink-0 font-normal text-tertiary">{fmtAgo(d.at)}</span>
-            </div>
-            {d.tabs.map((t) => {
-              const i = info({ id: `${d.id}:${t.to}`, to: t.to })
-              return <SidebarRow key={t.to} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} label={t.to.startsWith("file:") ? i.label : t.label || i.label} open
-                onClick={(e) => { e.preventDefault(); opened(t) }} />
-            })}
-          </div>
-        )
-      })}
+      {list.map((d: Device) => (
+        <div key={d.id} className="flex flex-col gap-px" data-device={d.id} data-live={d.live ? "" : undefined}>
+          <DeviceHeading d={d} />
+          {d.tabs.map((t) => {
+            const i = info({ id: `${d.id}:${t.to}`, to: t.to })
+            const label = t.to.startsWith("file:") ? i.label : t.label || i.label
+            return (
+              <div key={t.to} onContextMenu={menuFor(() => tabItems(d, t))}>
+                <SidebarRow icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} label={label} open
+                  swipe={d.live ? () => [{ label: "Close there", icon: X, danger: true, run: () => closeOn(d, [t]), removes: true }] : undefined}
+                  onClick={(e) => { e.preventDefault(); openHere(t) }}>
+                  {d.live && <HeadingButton icon={X} label={`Close on ${deviceName(d)}`} tip={`Close on ${deviceName(d)}`} className="hidden group-hover/row:grid" data-no-drag
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeOn(d, [t]) }} />}
+                </SidebarRow>
+              </div>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }
@@ -250,7 +249,8 @@ export default definePlugin({
       title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,
       view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />,
       // (Show tabs on top, the way back to the tab bar, and other devices' tabs on or off)
-      menu: () => [...commandItems("tab:sidebar"), othersItem(settings.get().other_devices !== false)],
+      menu: () => [...commandItems("tab:sidebar"), othersItem(settings.get().other_devices !== false),
+        { label: "Show all devices", icon: MonitorSmartphone, run: () => openView("devices", { newTab: true }) }],
     },
   },
   views: {
@@ -264,5 +264,10 @@ export default definePlugin({
         </div>
       ),
     },
+    devices: {
+      icon: MonitorSmartphone, title: () => "Devices",
+      render: ({ store }) => <div className="pt-2 pb-10" data-devices-view><DevicesPanel store={store} /></div>,
+    },
   },
+  commands: [{ id: "tabs:devices", name: "Show all devices", run: () => openView("devices", { newTab: true }) }],
 })

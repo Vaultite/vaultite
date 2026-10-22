@@ -140,6 +140,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `deleteFile(path, opts?)`: Move a file or folder to the trash (in the trash: delete it for good; .trash itself: empty it), with Undo unless `quiet`.
 - `DetailDef`
 - `detailPath(kind, ...args)`: A detail path with its parts encoded (ids have slashes: "People/Alice Park").
+- `DEVICE`
 - `devicePref(key, fallback)`: A value a plugin keeps for this device only (the current workspace), in this device's prefs (localStorage), never in the vault.
 - `DiffLine`: Kept, only in the second text (add), only in the first (del), or `n` unchanged lines folded away (gap).
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.

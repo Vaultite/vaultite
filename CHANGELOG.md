@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Your devices, live**: the Tabs panel marks which of your other devices are open now, and on those a tab can be
+  moved here or closed there (or all of them). Browsers are named by what they are and where ("Brave on Studio", not
+  "Chrome on Mac"), a device can be renamed, and automated browsers no longer show up. Devices, in Machines and the
+  palette, lists every app and browser.
 - Clicking a web page's field always types there: a click while a toast is over the page, or in a window that's behind,
   no longer leaves the keyboard in a note.
 - The view button picks any view, source mode too: right-click it, or hold it on phones. The views' menus show each
