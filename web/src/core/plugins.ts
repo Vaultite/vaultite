@@ -1,6 +1,6 @@
 // The plugin registry: every folder in plugins/core/ with an index.tsx (found with import.meta.glob), plus the vault's
 // own once /api/state lists them. Which are on is plugins.json (prefs.ts); a plugin is off while one it `requires` is.
-import type { ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import { signal } from "@/core/signal"
 import { PanelTop, Puzzle } from "lucide-react"
 import BUILT_IN_ICONS from "virtual:plugin-icons"
@@ -9,7 +9,7 @@ import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
 import { editorOf } from "@/core/editors"
-import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, SidebarCtx, SidebarPanel, TimelineKind, ViewDef, WebPageAction } from "@/core/define"
+import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TimelineKind, ViewDef, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -359,6 +359,36 @@ export function useFileRows(disabled: string[]): Record<string, FileRow> {
     try { for (const [path, r] of Object.entries(p.fileRows())) out[path] ??= r } catch { /* a plugin failing must not break the tree */ }
   }
   rowsMemo = { key, out }
+  return out
+}
+
+/** A block's drawing while it's read, through the plugins that are on and have something to do (`reading`), each in
+ *  turn over the same element: what they made, or null when none changed it (PreviewConfig.readBlock). */
+export type ReadBlock = (el: HTMLElement, block: ReadingBlock) => Promise<ReadingDrawn | null>
+const reading = signal()
+let readMemo: { key: unknown[]; out: ReadBlock | null } | null = null
+/** The plugins' ReadBlock now, a new one each time they change (so every block is offered again); null while none has
+ *  anything to do, and reading costs nothing. */
+export function useReadBlock(disabled: string[]): ReadBlock | null {
+  const key: unknown[] = [usePluginsVersion(), reading.use(), disabled, getPrefs().enabled]
+  const list = PLUGINS.filter((p) => p.reading && isEnabled(p.id, disabled))
+  const ids = list.map((p) => p.id).join()
+  useEffect(() => {
+    const stops = list.map((p) => { try { return p.reading!.subscribe(reading.notify) } catch { return () => {} } })
+    return () => stops.forEach((s) => s())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids])
+  const on = list.filter((p) => { try { return p.reading!.active() } catch { return false } })
+  key.push(on.map((p) => p.id).join())
+  if (readMemo?.key.every((k, i) => k === key[i])) return readMemo.out
+  const out: ReadBlock | null = on.length ? async (el, block) => {
+    const made: ReadingDrawn[] = []
+    for (const p of on) {
+      try { const d = await p.reading!.draw(el, block); if (d) made.push(d) } catch (e) { console.error(`${p.id}: reading`, e) }
+    }
+    return made.length ? { destroy: () => made.forEach((d) => { try { d.destroy?.() } catch (e) { console.error(e) } }) } : null
+  } : null
+  readMemo = { key, out }
   return out
 }
 

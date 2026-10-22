@@ -627,6 +627,11 @@ dialog { --vau-panel-bottom: 0px; }
 .vau-editor :is(.cm-block-block, .cm-block-embed) { cursor: default; }
 /* A table sits close to its lines, as a paragraph does: its ruled edge is its border. */
 .vau-editor .cm-block-table { padding: 4px 0; }
+/* A block a plugin drew while reading (another app's post-processors): in its lines' place, spaced as they were. */
+.vau-editor .cm-block-read { display: flow-root; padding: 0; cursor: default; }
+.vau-editor .cm-block-read .cm-read { font-size: inherit; line-height: inherit; }
+.vau-editor .cm-block-read .cm-read > :last-child { margin-bottom: 0; }
+.vau-editor .cm-block-read .wikilink:not(.missing) { text-decoration: none; }
 /* A drawn block's bar, top right on hover: its name, options, menu and </> (phones: a held finger opens its menu). */
 .cm-block-bar { position: absolute; top: 4px; right: 0; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 2px;
   border: 0.5px solid var(--border); border-radius: 7px; background: var(--background); font-family: var(--font-sans);

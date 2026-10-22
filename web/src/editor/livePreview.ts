@@ -22,6 +22,8 @@ import { cellAt } from "./tableText"
 import { commentSpans, highlightClass, highlightColor, highlightSpans, paragraphAt, unquoted, type HighlightColor } from "@/core/highlights"
 import { highlightItems } from "@/core/highlightMenu"
 import { openMenu } from "@/components/ContextMenu"
+import type { ReadingBlock, ReadingDrawn } from "@/core/define"
+import type { ReadBlock } from "@/core/plugins"
 
 export type PreviewConfig = {
   /** false: plain Markdown (source mode). */
@@ -61,6 +63,9 @@ export type PreviewConfig = {
   /** Blocks side by side: each run of block fences with only blank lines between is one element (`edit` changes them;
    *  each card a `[data-card]`, in order), and an empty one ends a text that doesn't end with blocks. */
   renderGrid?: (cards: GridCard[], el: HTMLElement, edit: GridEdit) => { update: (cards: GridCard[]) => void; destroy: () => void }
+  /** Plugins' drawing of blocks while reading (core/plugins.ts useReadBlock), or none: each block drawn as text is
+   *  offered to them once per text, and drawn as they made it where they changed it. */
+  readBlock?: ReadBlock | null
 }
 
 export type Drawn = { update: (text: string) => void; destroy: () => void }
@@ -466,6 +471,8 @@ class Block extends WidgetType {
     drawn.set(el, this.draw(body, this.text, view, bar.edit))
     painted.set(el, this)
     el.addEventListener("mousedown", (e) => { if (pressed(view, el, e) && !this.view) bar.edit.source!() })
+    // (a link's press followed it: its click mustn't again, nor go to its address)
+    el.addEventListener("click", (e) => { const w = (e.target as Element).closest("[data-wiki], [data-tag]"); if (w && !w.closest("[data-embed]")) e.preventDefault() })
     return el
   }
   updateDOM(el: HTMLElement) {
@@ -1237,7 +1244,9 @@ type Cand = { from: number; to: number; a: number; b: number; decos: Range<Decor
   fence?: { name: string; text: string; wide?: boolean; stack?: boolean }
   /** Drawn wherever the cursor is (a comment's faint lines), and doesn't hide what's inside. */
   always?: boolean }
-type Cands = { cfg: PreviewConfig; read: boolean; list: Cand[] }
+type Cands = { cfg: PreviewConfig; read: boolean; list: Cand[]
+  /** Reading with plugins that draw blocks (readBlock): every top-level block, which they may draw. */
+  reads: Read[] }
 
 /** A line that starts a block of raw HTML: a block-level tag, or a whole tag alone on its line (not a comment). */
 const HTML_BLOCK = /^\s{0,3}(?:<\/?(?:address|article|aside|blockquote|center|dd|dir|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|iframe|li|main|nav|ol|p|section|table|tbody|td|tfoot|th|thead|tr|ul)(?=[\s/>]|$)|<\/?[a-z][\w-]*(?:\s+[^<>]*)?\/?>\s*$)/i
@@ -1248,7 +1257,7 @@ function candidates(state: EditorState): Cands {
   const cfg = state.facet(previewConfig)
   const read = reading(state)
   const list: Cand[] = []
-  if (!cfg.live) return { cfg, read, list }
+  if (!cfg.live) return { cfg, read, list, reads: [] }
   const doc = state.doc
   // Lines are 1-based here, 0-based in the scan.
   const { prose, code, fences, lines, starts } = scanOf(doc)
@@ -1381,7 +1390,7 @@ function candidates(state: EditorState): Cands {
       return false
     },
   })
-  return { cfg, read, list }
+  return { cfg, read, list, reads: read && cfg.readBlock ? readsOf(state) : [] }
 }
 
 /** The blocks drawn now: those the cursor isn't on and no block drawn before holds (a table in a callout being
@@ -1403,6 +1412,7 @@ function visible(c: Cands, state: EditorState): DecorationSet {
     if (!x.always) covered.fill(1, x.a, x.b + 1)
   }
   if (grid) out.push(...gridRuns(c, state, cards))
+  if (c.reads.length) out.push(...readDecos(c, state, covered))
   return Decoration.set(out.sort((a, b) => a.from - b.from), true)
 }
 
@@ -1432,6 +1442,7 @@ function gridRuns(c: Cands, state: EditorState, cards: Cand[]): Range<Decoration
 // was, only moved: typing a sentence in a long file doesn't read it all again.
 const LOUD = /`{3}|~{3}|\$\$|<\/?details|^\s{0,3}<\/?[a-z]|%%|!\[\[|\||^\s{0,3}>|^\s{0,3}#{1,6}(?:\s|$)|^\s*$/i
 function mapped(c: Cands, tr: Transaction): Cands | null {
+  if (c.reads.length) return null
   const before = tr.startState.doc, after = tr.state.doc
   let quiet = true
   tr.changes.iterChanges((fa, ta, fb, _tb, inserted) => {
@@ -1501,7 +1512,7 @@ const blockField = StateField.define<{ c: Cands; deco: DecorationSet }>({
     if (c.cfg !== state.facet(previewConfig) || c.read !== reading(state)) c = candidates(state)
     else if (tr.docChanged) c = mapped(c, tr) ?? candidates(state)
     else if (syntaxTree(tr.startState).length < syntaxTree(state).length) c = candidates(state) // more of a long file parsed
-    if (c === v.c && !tr.selection && !tr.effects.some((e) => e.is(setFocus))) return v
+    if (c === v.c && !tr.selection && !tr.effects.some((e) => e.is(setFocus) || e.is(readAnswered))) return v
     return { c, deco: visible(c, state) }
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
@@ -1523,6 +1534,160 @@ export function offBlocks(state: EditorState, pos: number): number | null {
   for (let x = holder(n); x; x = holder(n)) n = x.a - 1
   return n >= 1 ? doc.line(n).to : null
 }
+
+// ---------- reading: blocks as plugins draw them (PreviewConfig.readBlock) ----------
+
+/** A top-level block reading offers to plugins: its lines (1-based), what it is, its Markdown. */
+type Read = { from: number; to: number; a: number; b: number; kind: string; text: string }
+const READ_KINDS: Record<string, string> = { Frontmatter: "frontmatter", Paragraph: "paragraph", BulletList: "list", OrderedList: "list",
+  Blockquote: "quote", FencedCode: "code", CodeBlock: "code", HorizontalRule: "rule" }
+
+function readsOf(state: EditorState): Read[] {
+  const out: Read[] = [], doc = state.doc, body = state.field(frontmatter, false) ?? 0
+  for (let n = syntaxTree(state).topNode.firstChild; n; n = n.nextSibling) {
+    const kind = READ_KINDS[n.name] ?? (/^(ATX|Setext)Heading/.test(n.name) ? "heading" : null)
+    // (the frontmatter is hidden: offered as itself, never as the rule and heading it would parse as)
+    if (!kind || (kind === "frontmatter" ? !body : n.from < body)) continue
+    const first = doc.lineAt(n.from), last = doc.lineAt(Math.max(n.from, n.to - 1))
+    out.push({ from: first.from, to: last.to, a: first.number, b: last.number, kind, text: doc.sliceString(first.from, last.to) })
+  }
+  return out
+}
+
+/** What reading knows per ReadBlock (a new one when plugins change): which block texts they changed, those being
+ *  asked, and what an ask made, kept for the block's widget (so a plugin draws a block once, not to ask and again). */
+type Made = { el: HTMLElement; drawn: ReadingDrawn; follow: (view: EditorView, el: HTMLElement) => void }
+type ReadCache = { changed: Map<string, boolean>; asking: Map<string, Promise<void>>; made: Map<string, Made> }
+const readCaches = new WeakMap<ReadBlock, ReadCache>()
+function cacheOf(f: ReadBlock): ReadCache {
+  let c = readCaches.get(f)
+  if (!c) readCaches.set(f, c = { changed: new Map(), asking: new Map(), made: new Map() })
+  return c
+}
+const readKey = (place: string | undefined, r: Read) => `${place ?? ""}\0${r.kind}\0${textKey(r.text)}`
+const readAnswered = StateEffect.define<null>()
+
+/** The block's lines now: its widget's place once it's drawn (the text above it may have changed), else where it was. */
+function readAt(view: EditorView, el: HTMLElement | null, r: Read): { a: number; b: number } {
+  if (!el?.isConnected) return r
+  let pos: number
+  try { pos = view.posAtDOM(el) } catch { return r }
+  const reads = view.state.field(blockField, false)?.c.reads ?? []
+  return reads.find((x) => (r.kind === "frontmatter" ? x.kind === r.kind : x.from === pos)) ?? r
+}
+
+function readingBlock(view: EditorView, r: Read, path: string) {
+  let at = () => readAt(view, null, r)
+  const block: ReadingBlock = { path, text: r.text, kind: r.kind, get container() { return view.contentDOM },
+    get lineStart() { return at().a - 1 }, get lineEnd() { return at().b - 1 }, get doc() { return view.state.doc.toString() } }
+  return { block, follow: (v: EditorView, el: HTMLElement) => { view = v; at = () => readAt(v, el, r) } }
+}
+
+/** A block drawn as HTML, as plugins get it (the frontmatter as nothing). */
+function readEl(cfg: PreviewConfig, r: Read) {
+  const el = document.createElement("div")
+  el.className = "cm-read note-prose"
+  if (r.kind !== "frontmatter") { el.innerHTML = cfg.renderMarkdown(r.text); hydrate(el) }
+  return el
+}
+
+function ask(view: EditorView, cfg: PreviewConfig, r: Read, key: string, cache: ReadCache): Promise<void> {
+  const el = readEl(cfg, r), { block, follow } = readingBlock(view, r, cfg.place ?? "")
+  return cfg.readBlock!(el, block).catch((e) => { console.error(e); return null }).then((drawn) => {
+    cache.asking.delete(key)
+    cache.changed.set(key, !!drawn)
+    if (drawn) { cache.made.get(key)?.drawn.destroy?.(); cache.made.set(key, { el, drawn, follow }) }
+  })
+}
+
+/** A block as plugins drew it: what its ask made, else (drawn anew: scrolled back, the plugins changed) offered again. */
+function drawRead(r: Read, key: string, cache: ReadCache): Draw {
+  return (body, text, view) => {
+    let drawn: ReadingDrawn | null = null, n = 0
+    const paint = (made: Made | null) => {
+      drawn?.destroy?.()
+      drawn = null
+      body.textContent = ""
+      const cfg = view.state.facet(previewConfig), now = ++n
+      let el: HTMLElement
+      if (made) { el = made.el; drawn = made.drawn; made.follow(view, body) }
+      else {
+        el = readEl(cfg, r)
+        const { block, follow } = readingBlock(view, r, cfg.place ?? "")
+        follow(view, body)
+        void cfg.readBlock?.(el, block).then((d) => { if (now === n) drawn = d; else d?.destroy?.() }, (e) => console.error(e))
+      }
+      body.append(el)
+      wireTasks(el, cfg.writable ? (nth, on) => {
+        if (!view.state.facet(previewConfig).writable) return
+        const from = view.state.doc.line(readAt(view, body, r).a).from, mark = taskMarks(text)[nth]
+        if (mark === undefined || view.state.sliceDoc(from, from + text.length) !== text) return
+        view.dispatch({ changes: { from: from + mark, to: from + mark + 1, insert: on ? "x" : " " }, userEvent: "input.toggle" })
+      } : null)
+    }
+    const made = cache.made.get(key) ?? null
+    cache.made.delete(key)
+    paint(made)
+    body.addEventListener("click", (e) => richClick(e, body))
+    return { update: () => paint(null), destroy: () => { n++; drawn?.destroy?.(); drawn = null } }
+  }
+}
+
+/** The blocks plugins changed (and no other block holds): drawn as they made them; the frontmatter's above the body. */
+function readDecos(c: Cands, state: EditorState, covered: Uint8Array): Range<Decoration>[] {
+  const cache = cacheOf(c.cfg.readBlock!), out: Range<Decoration>[] = []
+  for (const r of c.reads) {
+    const key = readKey(c.cfg.place, r)
+    if (cache.changed.get(key) !== true) continue
+    let free = true
+    for (let n = r.a; n <= r.b && free; n++) if (covered[n]) free = false
+    if (!free) continue
+    const widget = new Block(`read:${r.kind}:${textKey(r.text)}`, r.text, readGen(c.cfg.readBlock!), drawRead(r, key, cache), c.cfg.place)
+    out.push(r.kind === "frontmatter" ? Decoration.widget({ widget, block: true, side: -1 }).range(state.field(frontmatter, false) ?? r.to)
+      : Decoration.replace({ widget, block: true }).range(r.from, r.to))
+  }
+  return out
+}
+// (a new ReadBlock draws the blocks again: its number is their widgets' version)
+const gens = new WeakMap<ReadBlock, number>()
+let lastGen = 0
+const readGen = (f: ReadBlock) => { let g = gens.get(f); if (g === undefined) gens.set(f, g = ++lastGen); return g }
+
+/** Asks the plugins about the blocks on screen not asked about yet (each text once), and draws the answers as they come;
+ *  what no widget took is let go. */
+const readAsker = ViewPlugin.fromClass(class {
+  view: EditorView; timer: ReturnType<typeof setTimeout> | null = null; flush: ReturnType<typeof setTimeout> | null = null
+  gone = false; answers: [ReadCache, string][] = []; waiting = new Set<string>()
+  constructor(view: EditorView) { this.view = view; if (view.state.field(blockField, false)?.c.reads.length) this.later() }
+  // (nothing at all while no plugin draws blocks: reads is empty then)
+  update(u: ViewUpdate) {
+    const f = u.state.field(blockField, false)
+    if (f?.c.reads.length && (u.viewportChanged || f !== u.startState.field(blockField, false))) this.later()
+  }
+  later() { this.timer ??= setTimeout(() => { this.timer = null; this.ask() }) }
+  ask() {
+    const f = this.gone ? null : this.view.state.field(blockField, false), cfg = f?.c.cfg
+    if (!f?.c.reads.length || !cfg?.readBlock) return
+    const cache = cacheOf(cfg.readBlock), { from, to } = this.view.viewport
+    for (const r of f.c.reads) {
+      const key = readKey(cfg.place, r)
+      if (r.to < from || r.from > to || cache.changed.has(key) || this.waiting.has(key)) continue
+      let p = cache.asking.get(key)
+      if (!p) cache.asking.set(key, p = ask(this.view, cfg, r, key, cache))
+      this.waiting.add(key)
+      void p.then(() => { this.waiting.delete(key); this.answers.push([cache, key]); this.flush ??= setTimeout(() => this.draw()) })
+    }
+  }
+  draw() {
+    this.flush = null
+    if (!this.gone) this.view.dispatch({ effects: readAnswered.of(null) })
+    for (const [cache, key] of this.answers.splice(0)) {
+      const m = cache.made.get(key)
+      if (m) { cache.made.delete(key); m.drawn.destroy?.() }
+    }
+  }
+  destroy() { this.gone = true; if (this.timer) clearTimeout(this.timer) }
+})
 
 // ---------- what find finds (plugins/core/find) ----------
 
@@ -1723,4 +1888,4 @@ export const fenceMenu = EditorView.domEventHandlers({
   },
 })
 
-export const livePreview = [focused, focusTracker, menuGone, inlinePlugin, blockField, blockKeys, newTable, fenceHover]
+export const livePreview = [focused, focusTracker, menuGone, inlinePlugin, blockField, readAsker, blockKeys, newTable, fenceHover]

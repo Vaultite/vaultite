@@ -476,6 +476,26 @@ export type EditorCtx = { kind: "markdown" | "code" | "text"
  *  it load only when on; open editors take them in and drop them as it's switched. */
 export type EditorExtension = (ctx: EditorCtx) => Extension | Promise<Extension>
 
+/** A note's block as reading offers it to a plugin (`reading`): the note, the block's Markdown, what it is, its lines in
+ *  the file (0-based, frontmatter counted, as the editor's positions are; where it is now) and the file's text. */
+export type ReadingBlock = { path: string; text: string
+  /** "paragraph", "heading", "list", "quote", "code", "rule", or "frontmatter" (drawn as nothing: Properties shows it). */
+  kind: string
+  readonly lineStart: number; readonly lineEnd: number; readonly doc: string
+  /** The note's element the block shows in (the editor's), before it's drawn there too. */
+  container: HTMLElement }
+/** What a plugin made of a block: shown instead of the editor's drawing until the block or the note goes (`destroy`). */
+export type ReadingDrawn = { destroy?: () => void }
+/** How a note's blocks draw while it's read (another app's post-processors): each text block, drawn as HTML into `el`,
+ *  goes to `draw` once per text; what it answers it made shows instead of the editor's drawing, null leaves it be. */
+export type ReadingBlocks = {
+  /** It has something to do now (cheap, asked often): while no plugin has, reading draws as if none were on. */
+  active: () => boolean
+  /** Call `changed` when `active` or what it would make changes: every block is offered again. Returns how to stop. */
+  subscribe: (changed: () => void) => () => void
+  draw: (el: HTMLElement, block: ReadingBlock) => ReadingDrawn | null | Promise<ReadingDrawn | null>
+}
+
 /** An item in a file's menu. `section`: "actions" (default, top level: what a file of its kind is for), "navigate", "more"
  *  (More ▸, where most belong), "away" (with Delete: Archive), or a group of its own. Keep the top level short. */
 export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; disabled?: boolean; section?: string
@@ -581,6 +601,8 @@ export type PluginDef = {
   commands?: PluginCommand[]
   /** What it adds to every editor (see EditorExtension). */
   editor?: EditorExtension
+  /** How a note's blocks draw while it's read (see ReadingBlocks). */
+  reading?: ReadingBlocks
   /** Its entries in the editor's slash menu (see SlashItem). Every plugin's blocks are offered there already. */
   slash?: (store: Store) => SlashItem[]
   /** Its panels in the desktop sidebar, by name (see SidebarPanel). */

@@ -418,6 +418,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `range(from, n)`
 - `rawUrl(path, opts?)`: The address of a file's bytes (a vault path, or an outside file's absolute path).
 - `readFile(path)`: A file's text.
+- `ReadingBlock`: A note's block as reading offers it to a plugin (`reading`): the note, the block's Markdown, what it is, its lines in the file (0-based, frontmatter counted, as the editor's positions are; where…
+- `ReadingBlocks`: How a note's blocks draw while it's read (another app's post-processors): each text block, drawn as HTML into `el`, goes to `draw` once per text; what it answers it made shows instead of the…
+- `ReadingDrawn`: What a plugin made of a block: shown instead of the editor's drawing until the block or the note goes (`destroy`).
 - `readProps(block)`
 - `readSidebars`
 - `RecentKind`

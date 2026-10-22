@@ -26,7 +26,7 @@ import { renderMarkdown } from "@/core/markdown"
 import { notify, notifyError } from "@/core/notify"
 import { merge3 } from "@/core/merge"
 import { draftOf, dropDraft, keepDraft, type Draft } from "@/core/drafts"
-import { blockFor, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, type FileCtx, type PageCtx } from "@/core/plugins"
+import { blockFor, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, useReadBlock, type FileCtx, type PageCtx } from "@/core/plugins"
 import type { FileFormat, FileHead } from "@/core/define"
 import { FormatBox, FormatGuard } from "@/components/FormatView"
 import { Drawn, Guard } from "@/components/Guard"
@@ -741,6 +741,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // A page edited as it's read (a dashboard: PageView.editGrid): its blocks side by side in the editor, as read.
   const editGrid = dash && shown === "live" ? pageView?.editGrid ?? null : null
   const pageRef = useRef<PageCtx | null>(null)
+  const readBlock = useReadBlock(disabled)
   const config = useMemo<PreviewConfig>(() => ({
     live: shown !== "source",
     writable: !ro,
@@ -763,7 +764,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     version,
     place: path,
     renderGrid: editGrid ? (cards, el, edit) => island((c) => editGrid(c, edit, pageRef.current!), cards, el) : undefined,
-  }), [shown, ro, resolve, store, disabled, version, path, sections, editGrid])
+    readBlock,
+  }), [shown, ro, resolve, store, disabled, version, path, sections, editGrid, readBlock])
 
 
   // ⌘E switches between reading and editing; the palette also offers each view.

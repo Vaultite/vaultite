@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Reading view runs plugins over a note's blocks (`reading` in the plugin API): Obsidian plugins' Markdown
+  post-processors now reach a note being read, so Simple Embeds turns a YouTube link into a player there, Banners draws
+  its banner and Supercharged Links marks links; blocks no plugin changed draw as before.
 - Big vaults (tens of thousands of notes): the first load no longer reads every note again for token counts, a rename
   reads only the notes that link to it, and each request's sync no longer asks every file its kind.
 - Vault plugins load in a vault that is also a code project (a `package.json` saying `"type": "commonjs"` at its top).

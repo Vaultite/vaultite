@@ -115,6 +115,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agents`: Coding agents it brings, by name (see AgentDef): the Terminal plugin runs them.
 - `commands`: Its commands, listed in the command palette while it's on. One that switches something says what it does now (`on`, `nameWhenOn`), never "Toggle"; its manifest's boolean and enum `settings` get their commands on their own.
 - `editor`: What it adds to every editor (see EditorExtension).
+- `reading`: How a note's blocks draw while it's read (see ReadingBlocks).
 - `slash`: Its entries in the editor's slash menu (see SlashItem). Every plugin's blocks are offered there already.
 - `sidebar`: Its panels in the desktop sidebar, by name (see SidebarPanel).
 - `header`: What it draws in the desktop sidebar's header, by name (see HeaderItem).
