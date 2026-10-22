@@ -427,7 +427,12 @@ const chooser = StateField.define<Choice | null>({
   create: () => null,
   update(v, tr) {
     for (const e of tr.effects) if (e.is(choose)) return e.value
-    // (typing on, or moving off it, takes it away)
+    // (typing on, or moving off it, takes it away; a change from outside away from it, an agent's edit or the file
+    // changed on disk, only moves it)
+    if (v && tr.docChanged && !tr.selection && tr.annotation(Transaction.remote) && !tr.changes.touchesRange(v.from - 1, v.from + v.name.length)) {
+      const from = tr.changes.mapPos(v.from)
+      return from === v.from ? v : { ...v, from, tip: { ...v.tip, pos: from - 1 } }
+    }
     return v && (tr.docChanged || tr.selection) ? null : v
   },
   provide: (f) => showTooltip.from(f, (v) => v?.tip ?? null),

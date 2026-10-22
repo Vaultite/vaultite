@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Start @name's model and effort chooser stays open while the note changes from outside away from it (an agent's
+  edit, the file changed on disk); typing on or moving off it still closes it.
 - An open window that sits idle costs less: a settled graph no longer redraws every frame (its GPU and page work drop to
   nearly nothing), a hidden window stops the server checking every terminal every 2 s, and the app no longer re-lists
   its commands for the menu bar or re-places comment cards every second and a half while nothing needs them.
