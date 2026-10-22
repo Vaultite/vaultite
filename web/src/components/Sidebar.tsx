@@ -314,7 +314,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
   badge?: Dot
   /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
   tag?: string
-  /** A small button after the label (a tab's mark: a page playing sound, its speaker). */
+  /** A small button beside the icon (a tab's mark: a page playing sound, its speaker). */
   mark?: TabMark
   /** Its tooltip (default the label, when text): always in the rail; open, only when it adds to the row or the label is
    *  cut off. A non-text label counts as said by `tip`; null: none. `onClick` hears middle-click too (new tab). */
@@ -343,8 +343,9 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
       {Icon && <Badged on={badge} tag={tag}>
         <Icon className={cn("size-4 shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
       </Badged>}
+      {/* (on the left, where hovering the row doesn't move it: the … and X come in on the right) */}
+      {open && mark && <IconAction action={mark} className="-ml-1"><mark.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} /></IconAction>}
       <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>
-      {open && mark && <IconAction action={mark}><mark.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} /></IconAction>}
       {open && children}
       {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
     </a>
