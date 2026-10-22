@@ -1,6 +1,7 @@
 // Shields: ads and trackers blocked in every web session (Ghostery's engine, uBlock Origin's lists, rebuilt daily in
 // adblock-lists.ts); hiding rules and scriptlets go in through adblock-preload.cjs before a page's own scripts.
-import { app, ipcMain, webContents, type BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session } from "electron"
+import { app, ipcMain, webContents, type IpcMainEvent, type IpcMainInvokeEvent, type OnBeforeRequestListenerDetails, type OnHeadersReceivedListenerDetails, type Session } from "electron"
+import { AppWindow } from "../appwindow.ts"
 import type { ElectronBlocker } from "@ghostery/adblocker-electron"
 import fs from "node:fs"
 import path from "node:path"
@@ -27,9 +28,9 @@ type Choice = { on: boolean; down: Set<string>; rules: string; user: ElectronBlo
 const choices = new Map<number, Choice>()
 let lastChoice: Choice = { on: true, down: new Set(), rules: "", user: null }
 /** A window's choice; pages outside one (a sign-in popup) follow the last told. */
-const choiceOf = (win?: BrowserWindow | null) => (win && choices.get(win.id)) || lastChoice
+const choiceOf = (win?: AppWindow | null) => (win && choices.get(win.id)) || lastChoice
 /** A window's choice, to change: made the first time it tells one. */
-function told(win: BrowserWindow) {
+function told(win: AppWindow) {
   let c = choices.get(win.id)
   if (!c) {
     const id = win.id

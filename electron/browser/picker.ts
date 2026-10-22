@@ -1,6 +1,6 @@
 // Block an element: a picker in the page (picker-page.js, in an isolated world) answers the selector the user chose; the
 // app keeps it in the blocked elements list, which comes back to Shields (adblock.ts `adblock:rules`) like every rule.
-import type { BrowserWindow } from "electron"
+import type { AppWindow } from "../appwindow.ts"
 import fs from "node:fs"
 import { fileURLToPath } from "node:url"
 import { allPages, handle } from "./engine.ts"
@@ -10,7 +10,7 @@ let source = ""
 const code = () => (source ||= fs.readFileSync(fileURLToPath(new URL("./picker-page.js", import.meta.url)), "utf8"))
 const cancel = "globalThis.__vaultitePicker?.cancel()"
 
-const pageOf = (win: BrowserWindow, id: unknown) => allPages().find((x) => x.id === id && x.win === win && !x.wc.isDestroyed())
+const pageOf = (win: AppWindow, id: unknown) => allPages().find((x) => x.id === id && x.win === win && !x.wc.isDestroyed())
 
 /** Pick an element in the page: its selector, or null when cancelled (Esc, Cancel, the page went elsewhere). `at`: a
  *  point (window px, from the page's right-click menu) whose element starts picked. */

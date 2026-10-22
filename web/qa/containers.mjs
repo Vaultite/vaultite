@@ -46,14 +46,14 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 const open = async (to) => { await ui({ action: "open", path: to, newTab: true }); await wait(500) }
 
 /** The visible web page: its address, what it says, and its session's partition. */
-const visible = () => app.evaluate(async ({ BrowserWindow, session }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const visible = () => app.evaluate(async ({ BaseWindow, session }) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   if (!v) return null
   const parts = ["persist:web", "persist:web-c-work", "persist:web-c-personal", "persist:web-c-shop"]
@@ -62,8 +62,8 @@ const visible = () => app.evaluate(async ({ BrowserWindow, session }) => {
   return { url: v.webContents.getURL(), text, partition }
 })
 const cookiesIn = (partition) => app.evaluate(async ({ session }, p) => (await session.fromPartition(p).cookies.get({})).map((c) => `${c.name}=${c.value}`), partition)
-const inPage = (code) => app.evaluate(({ BrowserWindow }, code) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v ? v.webContents.executeJavaScript(code) : null
 }, code)
@@ -137,7 +137,7 @@ check("a web link from another app opens in a web tab", await until(async () => 
 await open(`view:web/${SITE}/sound`)
 check("a page playing sound: a speaker on its tab", await until(async () => (await win.locator("[role=tab][aria-selected=true] svg.lucide-volume-2").count()) === 1, 15000), await activeTab())
 await win.locator("[data-web-page] button[aria-label='Mute tab']:visible").click()
-const muted = () => app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return w.contentView.children.some((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.webContents.isAudioMuted()) })
+const muted = () => app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; return w.contentView.children.some((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.webContents.isAudioMuted()) })
 check("… the bar's button mutes it", await until(muted, 5000), null)
 check("… and its tab says muted", await until(async () => (await win.locator("[role=tab][aria-selected=true] svg.lucide-volume-x").count()) === 1, 5000), await activeTab())
 await win.locator("[role=tab][aria-selected=true] [data-icon-action]").click()
@@ -149,7 +149,7 @@ const speaker = () => win.locator("[role=tab][aria-selected=true] svg.lucide-vol
 check("a video playing: a speaker on its tab", await until(async () => (await speaker()) === 1, 15000), await activeTab())
 await wait(5000)
 check("… kept through a quiet scene", (await speaker()) === 1, await activeTab())
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return Promise.all(w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).map((x) => x.webContents.executeJavaScript("player.pause()"))) })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; return Promise.all(w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).map((x) => x.webContents.executeJavaScript("player.pause()"))) })
 check("… gone once it pauses", await until(async () => (await speaker()) === 0, 3000), await activeTab())
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")

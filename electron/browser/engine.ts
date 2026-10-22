@@ -1,10 +1,11 @@
 // The browser engine's hooks: each feature (blocking, extensions, history...) adds itself here for every web session
 // and page as they're made, so web.ts makes them once and doesn't know the features.
-import type { BrowserWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
+import type { OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
+import type { AppWindow } from "../appwindow.ts"
 
 type SessionSetup = (s: Session, profile: string) => void | Promise<void>
 /** A page as features see it: its contents, its logins (profile) and the window it's in. */
-export type EnginePage = { id: number; wc: WebContents; profile: string; win: BrowserWindow
+export type EnginePage = { id: number; wc: WebContents; profile: string; win: AppWindow
   /** The address it was opened at. */
   url: string
   /** Take it off the screen (its tab shows it again when it asks to). */
@@ -148,11 +149,11 @@ export const allPages = () => [...pages.values()]
 
 // ---------- talking with the app ----------
 
-type Handler = (win: BrowserWindow, ...args: unknown[]) => unknown
+type Handler = (win: AppWindow, ...args: unknown[]) => unknown
 const handlers = new Map<string, Handler>()
 /** What the app may ask a feature (`webPages.engine(name, ...args)` in the window, through `web:engine`). */
 export function handle(name: string, fn: Handler) { handlers.set(name, fn) }
-export async function engineCall(win: BrowserWindow, name: unknown, args: unknown[]) {
+export async function engineCall(win: AppWindow, name: unknown, args: unknown[]) {
   if (typeof name === "string" && !handlers.has(name)) await engineLoaded()
   const fn = typeof name === "string" ? handlers.get(name) : undefined
   if (!fn) throw new Error(`no browser feature answers ${String(name)}`)
@@ -160,11 +161,11 @@ export async function engineCall(win: BrowserWindow, name: unknown, args: unknow
 }
 /** What the vault's server may ask (its agents' calls, core/desktopapp.ts): only the `agent:` names, never the app's own
  *  (unlocking a container, its access, clearing logins). */
-export function serverCall(win: BrowserWindow | undefined, name: unknown, args: unknown[]) {
+export function serverCall(win: AppWindow | undefined, name: unknown, args: unknown[]) {
   if (typeof name !== "string" || !name.startsWith("agent:")) throw new Error(`the server can't ask ${String(name)}`)
   if (!win || win.isDestroyed()) throw new Error("the vault's window isn't open")
   return engineCall(win, name, args)
 }
 
 /** Tell a window something: the Browser hears it as a `WebEvent` whose `type` starts "engine:". */
-export const tell = (win: BrowserWindow, msg: { type: `engine:${string}` } & Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+export const tell = (win: AppWindow, msg: { type: `engine:${string}` } & Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }

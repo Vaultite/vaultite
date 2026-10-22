@@ -60,20 +60,20 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const runOp = (id, params) => fetch(`${origin}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) }).then((r) => r.json())
 
 /** Run `code` in the visible page: in its own world, or (`world`) another, as the picker's (1020). */
-const inPage = (code, world = 0) => app.evaluate(({ BrowserWindow }, [code, world]) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inPage = (code, world = 0) => app.evaluate(({ BaseWindow }, [code, world]) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   if (!v) return null
   return world ? v.webContents.executeJavaScriptInIsolatedWorld(world, [{ code }]) : v.webContents.executeJavaScript(code)
 }, [code, world])
 /** Real input into the visible page (its own coordinates). */
-const input = (events) => app.evaluate(({ BrowserWindow }, events) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const input = (events) => app.evaluate(({ BaseWindow }, events) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   for (const e of events) v?.webContents.sendInputEvent(e)
 }, events)
@@ -107,7 +107,7 @@ check("Esc: the picker's gone, nothing hidden, nothing kept", await until(async 
 // (a native menu Playwright can't click: what its item tells the window, with the page's id and the right-click's point)
 const pageId = Number(await win.locator("[data-web-page]").first().getAttribute("data-web-page"))
 const at = await centre("#s1 .label")
-await app.evaluate(({ BrowserWindow }, msg) => BrowserWindow.getAllWindows()[0].webContents.send("vaultite:web", msg), { type: "block", id: pageId, ...at })
+await app.evaluate(({ BaseWindow }, msg) => BaseWindow.getAllWindows()[0].webContents.send("vaultite:web", msg), { type: "block", id: pageId, ...at })
 check("right-click, Block element…: the picker starts with that element picked", await until(async () => (await picker())?.selector === "span.label", 5000), await picker())
 await key("Escape")
 await until(async () => (await picker()) === null, 5000)

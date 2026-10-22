@@ -130,8 +130,6 @@ export type WebPages = {
   /** Into its player, a window of its own its main video fills (`fullScreen`: on a Space of its own), or back in its tab
    *  (`on` false). Older builds don't have it. */
   player?: (id: number, on: boolean, fullScreen?: boolean) => Promise<unknown>
-  /** A picture of it as it is (JPEG), to show in its place while something of the app's is drawn over it. */
-  snapshot: (id: number) => Promise<Uint8Array | null>
   /** Its HTML as rendered now, and where it is. */
   html: (id: number) => Promise<{ url: string; title: string; html: string }>
   /** An address (http, https, mailto) in the system browser. */
@@ -149,9 +147,12 @@ export type WebPages = {
   /** Claude Code on the web's sessions in the profiles named, read with their logins once `read` (the user's yes), told
    *  from now on as `cloud` events, news as `session` ones. Older builds take nothing and answer the sessions. */
   cloud?: (want: { profiles: string[]; read: boolean; hidden: string[] }) => Promise<CloudState | CloudSession[]>
-  /** Toasts and tooltips floating over a page: each copied into
-   *  a layer above the pages, so it shows while the page stays live; `through` passes the pointer on to the page. */
-  float?: (rects: (WebRect & { through?: boolean })[]) => Promise<unknown>
+  /** The window drawn over its pages while something of it covers one (null: under them again): "app" takes the pointer
+   *  (a menu, the palette), "through" leaves it to the pages (a toast, a tooltip), passed on with `pointer`. */
+  raise: (how: "app" | "through" | null) => Promise<unknown>
+  /** The pointer over page `id` while the window lets it through: where in the page (CSS pixels), what it did. */
+  pointer: (id: number, m: { type: "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel"; x: number; y: number
+    button?: "left" | "middle" | "right"; clickCount?: number; dx?: number; dy?: number }) => Promise<unknown>
   /** Something of the window's was focused: the keyboard comes to the window from a page that has it (its id), if one
    *  does (else null). */
   take?: () => Promise<number | null>

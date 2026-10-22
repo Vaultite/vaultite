@@ -59,19 +59,19 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 
 /** What the visible page shows: the scriptlet's flag, whether its ad ran, and what's hidden. */
-const seen = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const seen = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v?.webContents.executeJavaScript(`(() => { const shown = (id) => { const e = document.getElementById(id); return e ? getComputedStyle(e).display !== "none" : null }
     return { url: location.href, flag: document.getElementById("flag")?.textContent, ad: document.documentElement.dataset.ad ?? "", box: shown("box"), story: shown("story"), late: shown("late"), promo: shown("promo"), promo2: shown("promo2") } })()`) ?? null
 })
-const reload = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const reload = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
   w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())?.webContents.reload()
 })
 const blocked = (s) => s?.flag === "no" && s.ad === "" && s.box === false && s.story === true && s.late === false && s.promo === false && s.promo2 === true

@@ -1,6 +1,7 @@
 // Site styles: each site's own CSS from the vault (the Browser's sites/<site>.css), with the vault's look as variables,
 // in its frames before their first paint (sitestyles-preload.cjs) and again, without a reload, whenever either changes.
-import { ipcMain, type BrowserWindow, type Session } from "electron"
+import { ipcMain, type Session } from "electron"
+import { AppWindow } from "../appwindow.ts"
 import { fileURLToPath } from "node:url"
 import { eachPage, eachSession, handle, type EnginePage } from "./engine.ts"
 
@@ -12,7 +13,7 @@ type Choice = { vars: string; styles: Style[] }
 const choices = new Map<number, Choice>()
 let lastChoice: Choice = { vars: "", styles: [] }
 /** A window's; pages outside one (a sign-in popup) follow the last told. */
-const choiceOf = (win?: BrowserWindow | null) => (win && choices.get(win.id)) || lastChoice
+const choiceOf = (win?: AppWindow | null) => (win && choices.get(win.id)) || lastChoice
 
 const pages = new Map<number, EnginePage>() // by their contents' id
 eachPage((p) => {

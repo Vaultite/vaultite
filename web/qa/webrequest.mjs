@@ -69,20 +69,20 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const openUrl = async (url) => { await ui({ action: "open", path: `view:web/${url}` }); await wait(500) }
 const engine = (...args) => win.evaluate((a) => window.vaultite.web.engine(...a), args)
 
 /** Run JavaScript in the view whose address starts with `prefix` (the visible one first). */
-const inView = (prefix, code) => app.evaluate(({ BrowserWindow }, [prefix, code]) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inView = (prefix, code) => app.evaluate(({ BaseWindow }, [prefix, code]) => {
+  const w = BaseWindow.getAllWindows()[0]
   const all = w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.webContents.getURL().startsWith(prefix))
   const v = all.find((x) => x.getVisible()) ?? all[0]
   return v ? v.webContents.executeJavaScript(code) : null
 }, [prefix, code])
-const pageId = (prefix) => app.evaluate(({ BrowserWindow }, prefix) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const pageId = (prefix) => app.evaluate(({ BaseWindow }, prefix) => {
+  const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.find((x) => x.webContents && x.webContents.getURL().startsWith(prefix))?.webContents.id
 }, prefix)
 const flags = () => inView(`${SITE}/page`, "({ ...document.documentElement.dataset })")

@@ -1,6 +1,7 @@
 /** App windows (Vaultite/plugins app-windows): another Mac app's window kept right behind a see-through tab, moved by
  *  electron/appwindows.swift (the Accessibility API, as AeroSpace does); given back when its tab, window or app closes. */
-import { app, BrowserWindow, globalShortcut, screen } from "electron"
+import { app, globalShortcut, screen } from "electron"
+import { AppWindow } from "./appwindow.ts"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -16,7 +17,7 @@ let next = 1
 const waiting = new Map<number, (res: Record<string, unknown>) => void>()
 /** Each app window in a tab (by its number): its app, vault window, rect (null: tab hidden), whether it's raised behind
  *  it (only while that window is focused), and `at`, where it stands (the tab's rect and its own frame; null: parked). */
-type Shown = { bundle: string; win: BrowserWindow; rect: Rect | null; behind: boolean; at: { rect: Rect; frame: Rect } | null }
+type Shown = { bundle: string; win: AppWindow; rect: Rect | null; behind: boolean; at: { rect: Rect; frame: Rect } | null }
 const shown = new Map<number, Shown>()
 /** While an app tab is shown, the palette from anywhere (the app in front has the keyboard, so the window's keys don't
  *  work); taken from other apps only then. */
@@ -26,7 +27,7 @@ function hotkey() {
   if (want === globalShortcut.isRegistered(PALETTE)) return
   if (!want) return globalShortcut.unregister(PALETTE)
   globalShortcut.register(PALETTE, () => {
-    const focused = BrowserWindow.getFocusedWindow()
+    const focused = AppWindow.getFocusedWindow()
     const win = focused && [...shown.values()].some((s) => s.win === focused) ? focused : [...shown.values()].find((s) => s.rect)?.win
     if (!win || win.isDestroyed()) return
     app.focus({ steal: true })
@@ -37,11 +38,11 @@ function hotkey() {
 }
 /** The windows letting the pointer through to an app (`apps:through`). The page only hears the pointer leave a hole
  *  while it's forwarded, which an inactive app doesn't always get: so the cursor is watched here too, and it's ended. */
-const through = new Map<BrowserWindow, boolean>()
+const through = new Map<AppWindow, boolean>()
 let watching: ReturnType<typeof setInterval> | null = null
 /** A window's app windows on screen behind it (their tabs' rects on the screen). */
-const holesOf = (win: BrowserWindow) => [...shown.values()].filter((s) => s.win === win && s.behind && s.rect).map((s) => onScreen(win, s.rect!).rect)
-function setThrough(win: BrowserWindow, on: boolean, tell = false) {
+const holesOf = (win: AppWindow) => [...shown.values()].filter((s) => s.win === win && s.behind && s.rect).map((s) => onScreen(win, s.rect!).rect)
+function setThrough(win: AppWindow, on: boolean, tell = false) {
   if (win.isDestroyed()) through.delete(win)
   else {
     if (tell && !on) win.webContents.send("vaultite:apps", { type: "through", on: false })
@@ -135,7 +136,7 @@ function heard(m: Record<string, unknown>) {
   // (its app came in front with it, a link opened in it say, while its tab is hidden: the tab's shown; one held by no tab
   // yet, told every window, whichever has its tab)
   if (m.event === "front" && s && !s.rect && !s.win.isDestroyed() && !s.win.isMinimized()) s.win.webContents.send("vaultite:apps", { type: "front", wid })
-  if (m.event === "front" && !s) for (const w of BrowserWindow.getAllWindows()) if (hosts.has(w) && !w.isMinimized()) w.webContents.send("vaultite:apps", { type: "front", wid })
+  if (m.event === "front" && !s) for (const w of AppWindow.getAllWindows()) if (hosts.has(w) && !w.isMinimized()) w.webContents.send("vaultite:apps", { type: "front", wid })
   if (m.event === "window" && !shown.has(wid)) {
     const wins = [...shown.values()].filter((x) => x.bundle === m.bundle && !x.win.isDestroyed()).map((x) => x.win)
     const to = wins.find((w) => w.isFocused()) ?? wins[0]
@@ -144,7 +145,7 @@ function heard(m: Record<string, unknown>) {
 }
 
 /** The page's rect as the screen's: the window's content plus the rect, zoomed as the page is. */
-function onScreen(win: BrowserWindow, r: Rect) {
+function onScreen(win: AppWindow, r: Rect) {
   const c = win.getContentBounds(), z = win.webContents.getZoomFactor()
   return { rect: { x: c.x + r.x * z, y: c.y + r.y * z, width: r.width * z, height: r.height * z }, bound: c }
 }
@@ -173,7 +174,7 @@ function clear(wid: number, to: Rect) {
 
 /** A window put over its tab; its tab hidden, left standing (moved along with the vault window) if nothing shows it, as
  *  coming back to it then moves nothing; else, or out of sight, parked. */
-async function put(wid: number, win: BrowserWindow, r: Rect | null) {
+async function put(wid: number, win: AppWindow, r: Rect | null) {
   const s = shown.get(wid)
   if (!s || win.isMinimized() || !win.isVisible() || !s.behind) { if (s) s.at = null; return ask({ op: "park", wid }) }
   const to = r ?? (hiddenFits(wid, s) ? s.at!.rect : null)
@@ -187,7 +188,7 @@ async function put(wid: number, win: BrowserWindow, r: Rect | null) {
 }
 
 /** Every app window a vault window shows, put again (it moved, came back) or parked (minimized). */
-function follow(win: BrowserWindow) {
+function follow(win: AppWindow) {
   for (const [wid, s] of shown) if (s.win === win) void put(wid, win, s.rect)
 }
 
@@ -199,7 +200,7 @@ const isBundle = (x: unknown): x is string => typeof x === "string" && /^[\w.-]+
 const bundleOf = (x: unknown) => { if (!isBundle(x)) throw new Error("expected a bundle id"); return x }
 const widOf = (x: unknown) => (Number.isInteger(x) && (x as number) > 0 ? x as number : 0)
 /** Stop showing a window in `win`'s tab: no-op if it isn't one of its. */
-function drop(win: BrowserWindow, wid: unknown) {
+function drop(win: AppWindow, wid: unknown) {
   const id = widOf(wid)
   if (!id || shown.get(id)?.win !== win) return 0
   shown.delete(id)
@@ -207,7 +208,7 @@ function drop(win: BrowserWindow, wid: unknown) {
   return id
 }
 
-export const appHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]) => unknown> = {
+export const appHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   "apps:list": () => ask({ op: "apps" }),
   "apps:trusted": (_win, prompt) => ask({ op: "trusted", prompt: !!prompt }),
   // `wid`: the window the tab had (0: any of the app's not in a tab); it answers the one it shows.
@@ -266,10 +267,10 @@ export function appsOn(vault: string) {
   } catch { return false }
 }
 /** The windows made for app tabs (transparent); another shows none until it's opened again. */
-const hosts = new WeakSet<BrowserWindow>()
+const hosts = new WeakSet<AppWindow>()
 
 /** A vault window's app tabs follow it (see the head of this file). */
-export function appsWindow(win: BrowserWindow) {
+export function appsWindow(win: AppWindow) {
   hosts.add(win)
   const releaseAll = () => {
     for (const [id, s] of [...shown]) if (s.win === win) { shown.delete(id); void ask({ op: "release", wid: id, keep: true }) }

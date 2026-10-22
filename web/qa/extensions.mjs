@@ -41,21 +41,21 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const command = async (id) => { await ui({ action: "command", id }); await wait(700) }
 const openUrl = async (url) => { await ui({ action: "open", path: `view:web/${url}` }); await wait(500) }
 
 /** The window's native views other than the app: pages and popups, with their address and whether they show. */
-const views = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const views = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents)
     .map((v) => ({ url: v.webContents.getURL(), visible: v.getVisible(), id: v.webContents.id, bounds: v.getBounds() }))
 })
 /** Run JavaScript in the view whose address starts with `prefix` (the visible one first). */
-const inView = (prefix, code) => app.evaluate(({ BrowserWindow }, [prefix, code]) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inView = (prefix, code) => app.evaluate(({ BaseWindow }, [prefix, code]) => {
+  const w = BaseWindow.getAllWindows()[0]
   const all = w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.webContents.getURL().startsWith(prefix))
   const v = all.find((x) => x.getVisible()) ?? all[0]
   return v ? v.webContents.executeJavaScript(code) : null
@@ -112,8 +112,8 @@ check("… which found the page as the active tab and repainted it", await until
 check("… the popup says so", (await inView(`chrome-extension://${ID}/popup.html`, "document.getElementById('out').textContent")) === `painted ${SITE}/one`,
   await inView(`chrome-extension://${ID}/popup.html`, "document.getElementById('out').textContent"))
 check("… the sync area's change reached the page", (await painted())?.painterSynced === "orange", await painted())
-await app.evaluate(({ BrowserWindow }, id) => {
-  const w = BrowserWindow.getAllWindows()[0]
+await app.evaluate(({ BaseWindow }, id) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents?.getURL().startsWith(`chrome-extension://${id}/popup.html`))
   v?.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" })
 }, ID)
@@ -121,8 +121,8 @@ check("Escape closes it", await until(async () => !(await popup()), 5000), await
 
 // ---------- tabs and windows, from the service worker ----------
 // Ask the service worker from one of the extension's own pages (its options, below).
-const ask = (msg) => app.evaluate(async ({ BrowserWindow }, [id, msg]) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const ask = (msg) => app.evaluate(async ({ BaseWindow }, [id, msg]) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents?.getURL().startsWith(`chrome-extension://${id}/`))
   return v ? v.webContents.executeJavaScript(`chrome.runtime.sendMessage(${JSON.stringify(msg)})`) : "no extension page"
 }, [ID, msg])

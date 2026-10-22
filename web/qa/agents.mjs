@@ -59,7 +59,7 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ app: a, BrowserWindow }, dl) => { a.setPath("downloads", dl); const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }); w.focus() }, DOWNLOADS)
+await app.evaluate(({ app: a, BaseWindow }, dl) => { a.setPath("downloads", dl); const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }); w.focus() }, DOWNLOADS)
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 /** A browser op, as an agent calls it: its answer, or { error } with its status. */
 const op = async (id, params) => {

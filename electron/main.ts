@@ -1,6 +1,7 @@
 // Vaultite as a Mac app (Electron): each vault a window with its own server.ts child; electron/CLAUDE.md says how.
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
-import { app, autoUpdater, type BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron"
+import { app, autoUpdater, type BaseWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
+import { AppWindow } from "./appwindow.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -40,13 +41,15 @@ if (app.commandLine.hasSwitch("no-sandbox")) app.commandLine.appendSwitch("enabl
 if (process.env.VAULTITE_QUIET) {
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows")
   app.commandLine.appendSwitch("disable-renderer-backgrounding")
-  app.on("browser-window-created", (_e, w) => {
+  const quiet = (w: BaseWindow, page: WebContents) => {
     w.setOpacity(LINUX ? 0.01 : 0) // (X11 stops painting a window at 0: screenshots of it then never come)
     w.setIgnoreMouseEvents(true)
     w.show = () => w.showInactive()
     w.focus = () => {}
-    w.webContents.setBackgroundThrottling(false)
-  })
+    page.setBackgroundThrottling(false)
+  }
+  app.on("browser-window-created", (_e, w) => quiet(w, w.webContents))
+  AppWindow.each((w) => quiet(w, w.webContents))
   app.focus = () => {}
   void app.whenReady().then(() => app.dock?.hide())
 }
@@ -54,7 +57,7 @@ if (process.env.VAULTITE_QUIET) {
 // below) plays nothing aloud, AirPods included: a test's YouTube page would. VAULTITE_SOUND=1 for a test that needs it.
 if ((process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port")) && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")
 // A Mac takes a window's icon from the bundle; on Linux each window carries it (the taskbar, Alt+Tab), else Electron's.
-if (LINUX) app.on("browser-window-created", (_e, w) => w.setIcon(ICON))
+if (LINUX) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWindow.each((w) => w.setIcon(ICON)) }
 // VAULTITE_BEHIND=1 (npm run app:dev): the windows opened at launch wait to be shown until the user switches to the app,
 // rather than popping up over their work.
 let behind = !!process.env.VAULTITE_BEHIND
@@ -89,7 +92,7 @@ function uncaught(kind: "uncaught" | "rejection", e: unknown) {
 const told = new WeakSet<object>()
 /** A failure told in a box: what happened in plain words (core/plainerror.ts), `why` when the error has none to give;
  *  the exact text behind Copy details, and a log when there is one. */
-function failedBox(title: string, e: unknown, o: { win?: BrowserWindow; why?: string; log?: string } = {}) {
+function failedBox(title: string, e: unknown, o: { win?: AppWindow; why?: string; log?: string } = {}) {
   // (once: openVault tells its own and rethrows to its caller)
   if (typeof e === "object" && e) { if (told.has(e)) return; told.add(e) }
   const { reason, detail } = plainError(e)
@@ -199,7 +202,7 @@ function portFor(v: Known, taken = false) {
 }
 class PortTaken extends Error {}
 
-type Win = { vault: Known; win: BrowserWindow; server: ChildProcess; port: number; ready: boolean; queue: string[]
+type Win = { vault: Known; win: AppWindow; server: ChildProcess; port: number; ready: boolean; queue: string[]
   /** What its page last told the menu bar (`menu:sync`): its commands, pins and recent files. */
   menu?: MenuSnapshot }
 const wins = new Map<string, Win>() // vault path -> its window
@@ -271,13 +274,13 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
 // ---------- windows ----------
 const background = () => (nativeTheme.shouldUseDarkColors ? "#1e1e1e" : "#ffffff")
 let quitting = false
-let manager: BrowserWindow | null = null
+let manager: AppWindow | null = null
 /** Files to open once a vault window is there (Open with, before anything was open). */
 const waiting: string[] = []
 
 /** A window whose page hangs (a plugin in a loop) offers to reload it, rather than freeze until the app is quit; the
  *  box goes if the page comes back on its own. Its crash is `revive`'s to reload. */
-function hangs(win: BrowserWindow, name: string) {
+function hangs(win: AppWindow, name: string) {
   let asking: AbortController | null = null
   win.webContents.on("unresponsive", async () => {
     if (asking || win.isDestroyed()) return
@@ -290,7 +293,7 @@ function hangs(win: BrowserWindow, name: string) {
   win.webContents.on("responsive", () => asking?.abort())
 }
 /** A page `revive` gave up on (it kept crashing): say so, with Reload or Close window, never left blank. */
-function crashedFor(win: BrowserWindow, name: string) {
+function crashedFor(win: AppWindow, name: string) {
   return () => {
     if (win.isDestroyed()) return
     void dialog.showMessageBox(win, { type: "error", message: `${name} keeps stopping`, detail: "Its page crashed three times in a minute.",
@@ -315,7 +318,7 @@ async function openVault(p: string, file?: string) {
   // The window (and its renderer process) is made while the server starts; its page loads once the server listens.
   const b = v.bounds
   const apps = appsOn(p)
-  const win = new BrowserWindow({
+  const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
     title: nameOf(p), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
     // (App windows on: transparent, the page paints itself and leaves app tabs see-through, electron/apps.ts)
@@ -340,8 +343,7 @@ async function openVault(p: string, file?: string) {
   // (maximized as it's shown: maximizing shows a hidden window)
   const show = () => { if (win.isDestroyed()) return; if (v.maximized) win.maximize(); win.show() }
   if (v.maximized && !behind) win.maximize()
-  win.once("ready-to-show", () => { if (behind) app.once("did-become-active", show); else win.show() })
-  win.on("page-title-updated", (e) => { e.preventDefault(); win.setTitle(nameOf(p)) })
+  void win.ready.then(() => { if (behind) app.once("did-become-active", show); else win.show() })
   // A swipe between pages (the trackpad's, when set to swipe that way): the tab's Back and Forward.
   win.on("swipe", (_e, dir) => { if (dir === "left" || dir === "right") win.webContents.send("vaultite", { type: "command", id: dir === "left" ? "nav:back" : "nav:forward" }) })
   const keep = () => {
@@ -423,7 +425,7 @@ function sandbox() {
 
 /** Links leave for the browser; the window never navigates away from its app. A pop-out (`/?popout=<id>`) is a
  *  window of the vault's own. */
-function guard(win: BrowserWindow, origin: string) {
+function guard(win: AppWindow, origin: string) {
   // Full screen hides the traffic lights: the page stops making room for them (data-fullscreen on <html>, index.css).
   const lights = () => { if (!win.isDestroyed()) win.webContents.send("vaultite:fullscreen", win.isFullScreen()) }
   win.on("enter-full-screen", lights)
@@ -432,21 +434,22 @@ function guard(win: BrowserWindow, origin: string) {
   // The Mac lays the title bar out again on these and may put the traffic lights back where they sit by default.
   const again = () => applyLights(win)
   if (MAC) { win.on("focus", again); win.on("blur", again); win.on("show", again); win.on("restore", again); win.on("resized", again); win.on("leave-full-screen", again) }
-  win.webContents.on("did-create-window", (child, { url }) => {
-    if (!url.startsWith(`${origin}/?popout=`)) return
-    const w = [...wins.values()].find((x) => x.win === win) ?? popouts.get(win.webContents)
-    if (!w) return child.close()
-    const page = child.webContents
+  // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
+  const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences) => {
+    const child = new AppWindow({ width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset",
+      trafficLightPosition: LIGHTS, backgroundColor: background(), webPreferences }, page)
     popouts.set(page, w)
-    child.on("closed", () => popouts.delete(page))
-    child.on("page-title-updated", (e) => { e.preventDefault(); child.setTitle(nameOf(w.vault.path)) })
+    const closeIt = () => { if (!child.isDestroyed()) child.close() }
+    win.once("closed", closeIt)
+    child.on("closed", () => { popouts.delete(page); if (!win.isDestroyed()) win.off("closed", closeIt) })
     page.on("did-finish-load", () => page.setZoomFactor(zoom))
     revive(page, undefined, crashedFor(child, nameOf(w.vault.path)))
     hangs(child, nameOf(w.vault.path))
     guard(child, origin)
     webWindow(child)
     if (appsOn(w.vault.path)) appsWindow(child)
-  })
+    return page
+  }
   // A right-click the page left to the system (the editor's): what the spell checker says of the word under it, for
   // the page's own menu (plugins/core/editing/menu.ts). There's no menu of Electron's.
   win.webContents.on("context-menu", (_e, p) => win.webContents.send("vaultite", { type: "spelling", word: p.misspelledWord, suggestions: p.dictionarySuggestions }))
@@ -457,10 +460,10 @@ function guard(win: BrowserWindow, origin: string) {
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`${origin}/?popout=`)) {
-      return { action: "allow", overrideBrowserWindowOptions: {
-        width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
-        backgroundColor: background(), webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true },
-      } }
+      const w = [...wins.values()].find((x) => x.win === win) ?? popouts.get(win.webContents)
+      if (!w) return { action: "deny" }
+      return { action: "allow", overrideBrowserWindowOptions: { webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true } },
+        createWindow: (o) => popOut(w, (o as { webContents: WebContents }).webContents, o.webPreferences) } // (Electron puts the new page in its options)
     }
     if (url.startsWith(origin + "/api/raw?")) { // a vault file that isn't text (an image, a PDF): the Mac's app for it
       const w = [...wins.values()].find((x) => x.win === win)
@@ -487,19 +490,19 @@ function allowIn(w: Win, abs: string) {
 
 function showManager() {
   if (manager && !manager.isDestroyed()) return manager.focus()
-  manager = new BrowserWindow({
+  manager = new AppWindow({
     width: 760, height: 500, minWidth: 620, minHeight: 400, show: false, title: "Manage vaults",
     titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS, backgroundColor: background(),
     fullscreenable: false, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
   })
-  manager.once("ready-to-show", () => manager?.show())
+  void manager.ready.then(() => manager?.show())
   manager.on("closed", () => { manager = null })
   guard(manager, pathToFileURL(DIST).href)
   manager.loadFile(path.join(DIST, "vaults.html"))
 }
 
 // ---------- other machines' servers ----------
-const remoteWins = new Map<string, BrowserWindow>() // server address -> its window
+const remoteWins = new Map<string, AppWindow>() // server address -> its window
 /** A server's name: its machine's (studio of studio.tailnet.ts.net), as on the iPhone. */
 const hostName = (url: string) => new URL(url).hostname.split(".")[0]
 
@@ -514,12 +517,11 @@ function openRemote(url: string) {
   r.open = true
   save()
   const b = r.bounds, it = r
-  const win = new BrowserWindow({
+  const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, title: r.name,
     backgroundColor: background(), webPreferences: { sandbox: true, contextIsolation: true, spellcheck: true },
   })
   remoteWins.set(url, win)
-  win.on("page-title-updated", (e) => { e.preventDefault(); win.setTitle(it.name) })
   const keep = () => { if (!win.isDestroyed() && !win.isFullScreen()) { it.bounds = win.getBounds(); save() } }
   win.on("resize", keep)
   win.on("move", keep)
@@ -567,7 +569,7 @@ const saveSetup = (st: SetupState) => { fs.mkdirSync(path.dirname(SETUP()), { re
 /** The first launch: never finished, and no vault of the user's yet (the sandbox isn't one). */
 const firstRun = () => !setupState().done && !known.some((v) => v.path !== sandboxPath()) && !remotes.length
 
-let setupWin: BrowserWindow | null = null
+let setupWin: AppWindow | null = null
 /** The note a new vault opens on (core/start.ts writes it). */
 const START_HERE = "Start here.md"
 /** The vault the window chose (its server started), and what it changed. */
@@ -586,13 +588,13 @@ const pathDirs = () => (dirs ??= process.env.VAULTITE_SETUP_HOME ? [] : Setup.sh
 
 function showSetup() {
   if (setupWin && !setupWin.isDestroyed()) return setupWin.focus()
-  setupWin = new BrowserWindow({
+  setupWin = new AppWindow({
     // (useContentSize: a Linux window frame is outside it, so the page gets its 560×600 as on a Mac)
     width: 560, height: 600, useContentSize: true, resizable: false, maximizable: false, fullscreenable: false, show: false, title: "Set up Vaultite",
     titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS, backgroundColor: background(),
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
   })
-  setupWin.once("ready-to-show", () => setupWin?.show())
+  void setupWin.ready.then(() => setupWin?.show())
   setupWin.on("closed", () => {
     setupWin = null
     dropChosen()
@@ -685,7 +687,7 @@ setupHandle("setup:finish", async () => {
 })
 
 const focusedVault = () => {
-  const f = BrowserWindow.getFocusedWindow()
+  const f = AppWindow.getFocusedWindow()
   return [...wins.values()].find((w) => w.win === f) ?? [...wins.values()].sort((a, b) => (b.vault.last ?? 0) - (a.vault.last ?? 0))[0] ?? null
 }
 
@@ -845,7 +847,7 @@ ipcMain.on("dialog:sync", (e, kind: unknown, options: unknown) => {
   try {
     const w = who(e)
     const o = Object.fromEntries(Object.entries(options && typeof options === "object" ? options : {}).filter(([k]) => DIALOG_KEYS.includes(k)))
-    const parent = w?.win ?? BrowserWindow.fromWebContents(e.sender)
+    const parent = w?.win ?? AppWindow.fromWebContents(e.sender)
     if (!parent) throw new Error("no window")
     e.returnValue = kind === "open" ? dialog.showOpenDialogSync(parent, o) ?? null
       : kind === "save" ? dialog.showSaveDialogSync(parent, o) || null
@@ -940,12 +942,12 @@ ipcMain.handle("text:look-up", (e) => { who(e); e.sender.showDefinitionForSelect
 ipcMain.handle("text:learn", (e, word: string) => { who(e); e.sender.session.addWordToSpellCheckerDictionary(str(word)) })
 // ---------- the traffic lights ----------
 /** Each window's traffic lights as its page last placed them (points; null: hidden), put back after the Mac moves them. */
-const lightsOf = new WeakMap<BrowserWindow, { x: number; y: number } | null>()
-function setLights(w: BrowserWindow, at: { x: number; y: number } | null) {
+const lightsOf = new WeakMap<AppWindow, { x: number; y: number } | null>()
+function setLights(w: AppWindow, at: { x: number; y: number } | null) {
   lightsOf.set(w, at)
   applyLights(w)
 }
-function applyLights(w: BrowserWindow) {
+function applyLights(w: AppWindow) {
   const at = lightsOf.get(w)
   if (at === undefined || w.isDestroyed()) return
   if (at) w.setWindowButtonPosition(at)
@@ -957,7 +959,7 @@ function applyLights(w: BrowserWindow) {
 // down), hidden while it is (no rails). An older page sends a boolean: they stay put.
 ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | null) => {
   who(e)
-  const w = BrowserWindow.fromWebContents(e.sender)
+  const w = AppWindow.fromWebContents(e.sender)
   if (!MAC || !w) return
   if (at && typeof at === "object" && Number.isFinite(at.x) && Number.isFinite(at.mid)) {
     const z = e.sender.getZoomFactor()
@@ -1005,7 +1007,7 @@ handle("apps:reopen", (w) => {
 // (the window asking, a pop-out's own: its pages and apps' windows go over its tabs, not its vault window's)
 for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers })) {
   ipcMain.handle(name, (e, ...args) => {
-    const w = who(e), win = BrowserWindow.fromWebContents(e.sender)
+    const w = who(e), win = AppWindow.fromWebContents(e.sender)
     if (!w || !win) throw new Error("no vault here")
     return fn(win, ...args)
   })
@@ -1258,10 +1260,10 @@ async function checkRelease(byHand: boolean) {
 /** Run one of the app's commands in the focused vault window (the manager just closes on ⌘W). */
 function command(id: string) {
   return (_item: unknown, from?: BaseWindow) => {
-    const f = from ?? BrowserWindow.getFocusedWindow()
+    const f = from ?? AppWindow.getFocusedWindow()
     const w = [...wins.values()].find((x) => x.win === f)
     if (w) w.win.webContents.send("vaultite", { type: "command", id })
-    else if (f instanceof BrowserWindow && popouts.has(f.webContents)) f.webContents.send("vaultite", { type: "command", id })
+    else if (f instanceof AppWindow && popouts.has(f.webContents)) f.webContents.send("vaultite", { type: "command", id })
     else if (id === "tab:close") f?.close()
   }
 }
@@ -1317,7 +1319,7 @@ function buildMenu() {
     openDoc: (name) => { void openDoc(name) },
     issues,
     openExternal: (url) => { void shell.openExternal(url) },
-    maximize: () => { const f = BrowserWindow.getFocusedWindow(); if (f) { if (f.isMaximized()) f.unmaximize(); else f.maximize() } },
+    maximize: () => { const f = AppWindow.getFocusedWindow(); if (f) { if (f.isMaximized()) f.unmaximize(); else f.maximize() } },
     showLogs: () => { fs.mkdirSync(app.getPath("logs"), { recursive: true }); void shell.openPath(app.getPath("logs")) },
     sandbox: () => { sandbox().catch(() => {}) },
   })
@@ -1327,7 +1329,7 @@ function buildMenu() {
   menuShown = key
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
-app.on("browser-window-focus", () => buildMenu())
+AppWindow.each((w) => w.on("focus", () => buildMenu()))
 
 /** An AppImage on a system that keeps it from Chromium's sandbox (Ubuntu 24.04+'s AppArmor) runs without it (its AppRun
  *  adds --no-sandbox): said once, with the two ways to have it, the .deb or a profile for AppImages' mounts. */
@@ -1532,7 +1534,7 @@ app.whenReady().then(async () => {
   for (const u of earlyLinks.splice(0)) await appLink(u).catch(() => {})
   behind = false
   launched = true
-  if (!MAC && !BrowserWindow.getAllWindows().length) showManager() // (every window the launch opened failed)
+  if (!MAC && !AppWindow.getAllWindows().length) showManager() // (every window the launch opened failed)
   if (LINUX) unsandboxedNotice()
   if (RELEASE) {
     setTimeout(() => checkForUpdate(false), 10_000)

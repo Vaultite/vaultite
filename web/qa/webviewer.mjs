@@ -1,6 +1,6 @@
 // The Browser in the desktop app (Electron) against pages this script serves on 127.0.0.1: a web link opens a web
-// tab, a native view laid over its pane (splits, sidebar, dividers, zoom), hidden behind a picture of itself under the
-// palette or a menu, kept on tab switches; links, back, new tabs and other schemes; no bridge into the app; app
+// tab, a native view laid over its pane (splits, sidebar, dividers, zoom), live under the window's page while the
+// palette, a menu, a drag or a toast is over it (the window raised, see-through there, a toast's pointer passed on), kept on tab switches; links, back, new tabs and other schemes; no bridge into the app; app
 // shortcuts from the page; Save to vault, downloads, an image's menu; a tab's page is its own (a slow one switched away
 // from and back, two tabs of one address, ⌘⇧T); closing ends the page. SHOW=1 shows the window;
 // screenshots (screencapture, so the native view is in them) go to <out dir>.
@@ -81,29 +81,28 @@ await app.evaluate(({ app: a, shell }, dl) => {
 }, DOWNLOADS)
 const opened = () => app.evaluate(() => globalThis.__opened)
 // (SHOW: the app comes to the front, so the keyboard is really its own: started from a terminal, macOS leaves it behind)
-await app.evaluate(({ app: a, BrowserWindow, nativeTheme }, show) => { nativeTheme.themeSource = "dark"; const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); if (show) a.focus({ steal: true }); w.focus() }, !!process.env.SHOW)
-const menuClick = (label) => app.evaluate(({ Menu, BrowserWindow }, label) => {
+await app.evaluate(({ app: a, BaseWindow, nativeTheme }, show) => { nativeTheme.themeSource = "dark"; const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); if (show) a.focus({ steal: true }); w.focus() }, !!process.env.SHOW)
+const menuClick = (label) => app.evaluate(({ Menu, BaseWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
-  find(Menu.getApplicationMenu().items).click(undefined, BrowserWindow.getAllWindows()[0])
+  find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows()[0])
 }, label)
 /** The web pages laid over the vault window (its own page left out). */
-const pages = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows().find((x) => x.contentView.children.length > 1) ?? BrowserWindow.getAllWindows()[0]
-  // (not the float above the pages, electron/web.ts's FLOAT_PAGE: toasts and tooltips copied over them)
-  return w.contentView.children.filter((v) => v.webContents && v.webContents !== w.webContents && !v.webContents.getURL().startsWith("data:"))
+const pages = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows().find((x) => x.contentView.children.length > 1) ?? BaseWindow.getAllWindows()[0]
+  return w.contentView.children.filter((v) => v.webContents && v.webContents !== w.webContents)
     .map((v) => ({ url: v.webContents.getURL(), visible: v.getVisible(), bounds: v.getBounds(), wc: v.webContents.id }))
 })
 /** Run JavaScript in the visible page. */
-const inPage = (code) => app.evaluate(({ BrowserWindow }, code) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
+const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v ? v.webContents.executeJavaScript(code) : null
 }, code)
 /** Click an element of the visible page as a person would (a real input event: a page's own .click() has no user
  *  activation, and Chromium then skips its history entry for Back). */
-const clickInPage = (sel) => app.evaluate(async ({ BrowserWindow }, sel) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
+const clickInPage = (sel) => app.evaluate(async ({ BaseWindow }, sel) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   // (its first line's box: a link that wraps, as with another platform's fonts, has its middle between its lines)
   const r = await v.webContents.executeJavaScript(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getClientRects()[0]; return [r.left + r.width / 2, r.top + r.height / 2] })()`)
   const [x, y] = r.map(Math.round)
@@ -119,7 +118,7 @@ const box = () => win.evaluate(() => {
   const over = bar?.height && bar.left < r.right && bar.right > r.left && bar.top < r.bottom && bar.bottom > r.top
   return { x: r.left, y: r.top, width: r.width, height: over ? bar.top - r.top : r.height }
 })
-const zoom = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomFactor())
+const zoom = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.getZoomFactor())
 /** The visible page sits exactly on its box (in the window's pixels: the box's times the zoom). */
 async function aligned() {
   const [ps, b, z] = [await pages(), await box(), await zoom()]
@@ -142,14 +141,38 @@ const over = () => win.evaluate(() => {
 })
 const isAligned = async () => (await aligned()) === true
 const shown = async () => (await pages()).some((p) => p.visible)
-const picture = () => win.evaluate(() => [...document.querySelectorAll("[data-web-box] img")].some((i) => !i.hidden && i.src.startsWith("blob:")))
+/** The window's page over its pages (electron/web.ts `raise`). */
+const raised = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0], kids = w.contentView.children
+  return kids.length > 1 && kids.indexOf(w.view) === kids.length - 1
+})
+/** Nothing of the window's paints behind the shown page (layers.ts cuts it): it shows there while the window's raised. */
+const seeThrough = () => win.evaluate(() => {
+  const el = [...document.querySelectorAll("[data-web-box]")].find((e) => e.getBoundingClientRect().width > 0)
+  const r = el?.getBoundingClientRect()
+  if (!r) return "no box"
+  const x = r.left + r.width / 2, y = r.top + r.height / 2
+  for (let e = el; e; e = e.parentElement) {
+    const st = getComputedStyle(e)
+    if (st.backgroundImage === "none" && !/^(transparent|rgba\(.*,\s*0\))$/.test(st.backgroundColor)) return `${e.tagName}.${e.className} paints ${st.backgroundColor}`
+    if (st.backgroundImage !== "none" && e.hasAttribute("data-web-hole")) {
+      // (its strips: none over the page's middle)
+      const b = e.getBoundingClientRect(), sizes = st.backgroundSize.split(", "), at = st.backgroundPosition.split(", ")
+      for (let i = 0; i < sizes.length; i++) {
+        const [w, h] = sizes[i].split(" ").map(parseFloat), [px, py] = at[i].split(" ").map(parseFloat)
+        if (x >= b.left + px && x < b.left + px + w && y >= b.top + py && y < b.top + py + h) return `${e.tagName} strip ${i} over the page`
+      }
+    }
+  }
+  return true
+})
 /** The real window as it's on screen (the native page is in it, unlike a page screenshot). */
 async function shot(name) {
   if (!process.env.SHOW) return // (quiet: the window is transparent, so the screen shows what's behind it)
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+  await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
   try { execFileSync("caffeinate", ["-u", "-t", "2"]) } catch { /* fine */ }
   await wait(250)
-  const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
+  const b = await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].getBounds())
   try { execFileSync("screencapture", ["-x", "-o", `-R${b.x},${b.y},${b.width},${b.height}`, path.join(OUT, `${name}.png`)], { stdio: "ignore" }) } catch (e) { console.log(`(no screenshot: ${e.message})`) }
 }
 const tabTitles = () => win.evaluate(() => [...document.querySelectorAll("[role=tablist] [role=tab]")].map((t) => t.textContent?.trim()))
@@ -174,8 +197,8 @@ await shot("1-page")
 // ---------- it's sealed off ----------
 const sealed = await inPage("[typeof window.vaultite, typeof require, typeof process].join()")
 check("the page has no bridge, no require, no process", sealed === "undefined,undefined,undefined", sealed)
-const part = await app.evaluate(({ BrowserWindow, session }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const part = await app.evaluate(({ BaseWindow, session }) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents)
   return { own: v.webContents.session === session.fromPartition("persist:web"), app: w.webContents.session !== v.webContents.session, ua: v.webContents.getUserAgent() }
 })
@@ -186,93 +209,80 @@ await wait(800)
 check("a page can't go to file:", (await pages()).every((p) => p.url.startsWith(SITE)), await pages())
 
 // ---------- overlays ----------
+// (once the toasts from the start are gone: a toast over the page raises the window too, below)
+check("the shown page: the window under it, see-through behind it", await until(async () => !(await raised()), 15000) && (await seeThrough()) === true, [await raised(), await seeThrough(), await over()])
 await menuClick("Command palette")
-check("the palette over the page: the page hides", await until(async () => !(await shown()), 10000), await pages())
-check("… and its picture shows in its place", await picture())
+check("the palette over the page: the window goes over it and the page stays live", await until(raised, 10000) && await shown(), await pages())
+check("… and shows through the window", (await seeThrough()) === true, await seeThrough())
 await wait(300)
 await shot("2-palette")
 await win.keyboard.press("Escape")
-check("the palette gone: the page is back", await until(shown, 10000), await pages())
+check("the palette gone: the window back under the page", await until(async () => !(await raised()), 10000) && await shown(), await pages())
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click({ button: "right" })
-check("a tab's menu over the page: the page hides", await until(async () => !(await shown()), 10000), await pages())
+check("a tab's menu over the page: the window goes over it", await until(raised, 10000) && await shown(), await pages())
+// (nothing blurs a native page: glass goes solid over one)
+const menuFill = await win.evaluate(() => getComputedStyle(document.querySelector("[role=menu]")).backgroundColor)
+check("… solid there, not see-through glass", !/rgba|\/ 0?\.\d/.test(menuFill), menuFill)
 await wait(200)
 await shot("3-tab-menu")
 await win.keyboard.press("Escape")
 await win.mouse.click(5, 400) // (somewhere in the sidebar, if a menu is still there)
-check("the menu gone: the page is back", await until(shown, 10000), await pages())
+check("the menu gone: the window back under it", await until(async () => !(await raised()), 10000), await pages())
 await win.locator("[data-web-page] button[aria-label=Back]").hover({ force: true })
 await win.locator("[data-web-page] [data-web-more]").hover()
-/** The copies above the page placed on the tooltip (toasts still up from before are copied too, each its own). */
-const copies = () => app.evaluate(({ BrowserWindow }, tip) => {
-  const w = BrowserWindow.getAllWindows()[0], z = w.webContents.getZoomFactor()
-  return w.contentView.children.filter((v) => v.webContents && v.webContents.getURL().startsWith("data:text/html") && v.getVisible())
-    .filter((v) => { const b = v.getBounds(); return !!tip && Math.abs(b.x - tip.x * z) <= 2 && Math.abs(b.y - tip.y * z) <= 2 }).length
-}, tip)
 let tip = null
-check("a tooltip of the bar over the page: the page stays, a copy of the tooltip shows above it",
-  await until(async () => (tip = await win.locator("[role=tooltip]").boundingBox({ timeout: 200 }).catch(() => null)) && (await copies()) === 1, 3000) && await shown(), [await pages(), tip, await over()])
+check("a tooltip of the bar over the page: the window goes over it, the page stays",
+  await until(async () => (tip = await win.locator("[role=tooltip]").boundingBox({ timeout: 200 }).catch(() => null)) && await raised(), 3000) && await shown(), [await pages(), tip, await over()])
 await win.mouse.move(5, 400)
-check("… and goes with it", await until(async () => (await copies()) === 0, 10000), await copies())
+check("… and back under it as it goes", await until(async () => !(await raised()), 10000))
 
-// A tab dragged over the page: the page gives way, so the pane's drop zones show (and the drag keeps the pointer).
+// A tab dragged over the page: the window goes over it, so the pane's drop zones show (and the drag keeps the pointer).
 const tb = await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().boundingBox()
 await win.mouse.move(tb.x + 40, tb.y + tb.height / 2)
 await win.mouse.down()
 // (to the pane's left edge: a drop there would split it)
 const bx = await box()
 for (let i = 1; i <= 12; i++) await win.mouse.move(tb.x + 40 + ((bx.x + 30) - (tb.x + 40)) * i / 12, tb.y + tb.height / 2 + ((bx.y + bx.height / 2) - (tb.y + tb.height / 2)) * i / 12)
-check("a tab dragged over the page: the page hides", await until(async () => !(await shown()), 3000), await pages())
+check("a tab dragged over the page: the window goes over it", await until(raised, 3000) && await shown(), await pages())
 check("… and the pane's drop zone shows", await until(async () => (await win.locator("[data-drop-zone]").count()) > 0, 3000))
 await shot("3b-drag")
 await win.keyboard.press("Escape")
 await win.mouse.up()
-check("the drag cancelled: the page is back", await until(shown, 10000), await pages())
+check("the drag cancelled: the window back under the page", await until(async () => !(await raised()), 10000) && await shown(), await pages())
 
-// A toast over the page: the page stays live (no picture), a copy of the toast shows above it, a click on the copy's
-// button acts on the toast, and the copy goes with the toast. The palette over a page that had the keyboard: back to it.
-const floatsNow = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  return w.contentView.children.filter((v) => v.webContents && v.webContents.getURL().startsWith("data:text/html") && v.getVisible()).map((v) => ({ bounds: v.getBounds(), wc: v.webContents.id }))
-})
+// A toast over the page: the window goes over it, letting the pointer through to the page; its button works; it goes
+// back under as the toast goes. The palette over a page that had the keyboard: back to it.
 await fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "notify", text: "A toast over the page", button: { label: "Open", open: "Notes/Reading list.md" } }) })
 await win.waitForSelector("[data-sonner-toast]:has-text('A toast over the page')", { timeout: 5000 })
-await wait(900)
-check("a toast over the page: the page stays shown", await shown(), await pages())
-const toastBox = await win.locator("[data-sonner-toast]:has-text('A toast over the page')").boundingBox()
-const openBox = await win.locator("[data-sonner-toast]:has-text('A toast over the page') button", { hasText: "Open" }).boundingBox()
-// (its own copy: one still up from before, stacked behind it (the playground's notice), is copied too)
-const z = await zoom()
-const ofToast = async () => (await floatsNow()).filter((f) => Math.abs(f.bounds.x - toastBox.x * z) <= 2 && Math.abs(f.bounds.y - toastBox.y * z) <= 2)
-check("… and a copy of it is shown above the page", await until(async () => (await ofToast()).length === 1, 4000),
-  [await floatsNow(), toastBox, await win.locator("[data-sonner-toast]").allInnerTexts()])
-const [fl] = await ofToast()
-await app.evaluate(({ webContents }, [id, x, y]) => {
-  const wc = webContents.fromId(id)
-  wc.sendInputEvent({ type: "mouseMove", x, y }); wc.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 }); wc.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 })
-}, [fl?.wc, Math.round(openBox.x - toastBox.x + openBox.width / 2), Math.round(openBox.y - toastBox.y + openBox.height / 2)])
-check("a click on the copy's Open acts on the toast", await until(async () => (await tabTitles()).some((t) => t?.includes("Reading list")) && (await win.evaluate(() => decodeURIComponent(location.hash))).includes("Reading list"), 5000), await tabTitles())
-check("… and the copy goes with the toast", await until(async () => (await ofToast()).length === 0, 6000), await floatsNow())
+check("a toast over the page: the window goes over it, the page stays shown", await until(raised, 4000) && await shown(), await pages())
+await inPage("window.__downs = 0; addEventListener('mousedown', () => window.__downs++); 1")
+const pb = await box()
+await win.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2)
+check("… a click on the page beside it reaches the page", await until(async () => (await inPage("window.__downs")) === 1, 3000), await inPage("window.__downs"))
+await win.locator("[data-sonner-toast]:has-text('A toast over the page') button", { hasText: "Open" }).click()
+check("a click on the toast's Open acts on it", await until(async () => (await tabTitles()).some((t) => t?.includes("Reading list")) && (await win.evaluate(() => decodeURIComponent(location.hash))).includes("Reading list"), 5000), await tabTitles())
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
 await until(shown, 10000)
+check("… and with the toasts gone, the window back under the page", await until(async () => !(await raised()), 10000), [await raised(), await over()])
 await win.mouse.move(5, 400)
 await clickInPage("h1")
-const pageFocused = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
+const pageFocused = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return !!v && v.webContents.isFocused()
 })
 // (a window that's never focused, quiet, has no keyboard to give back: only with SHOW=1)
 if (process.env.SHOW) {
   // (in front first: whoever runs this may have clicked elsewhere meanwhile)
   // (and the page with the keyboard: a synthetic click doesn't give it)
-  await app.evaluate(({ app: a, BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0]
+  await app.evaluate(({ app: a, BaseWindow }) => {
+    const w = BaseWindow.getAllWindows()[0]
     a.focus({ steal: true }); w.focus()
     w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())?.webContents.focus()
   })
   check("(the page has the keyboard)", await until(pageFocused, 3000))
   await menuClick("Command palette")
-  await until(async () => !(await shown()), 10000)
+  await until(raised, 10000)
   await win.keyboard.press("Escape")
   check("the palette gone: the keyboard is back in the page", await until(async () => (await shown()) && await pageFocused(), 4000), await pages())
 }
@@ -305,7 +315,7 @@ check("the app zoomed in: still over its pane", await until(isAligned, 10000), a
 await shot("5-zoomed")
 await menuClick("Actual size")
 check("actual size again", await until(isAligned, 10000), await aligned())
-await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1100, height: 720 }))
+await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1100, height: 720 }))
 check("the window resized: still over its pane", await until(isAligned, 10000), await aligned())
 
 // ---------- navigating ----------
@@ -341,22 +351,22 @@ check("a link to a new tab opens a web tab", await until(async () => (await page
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/article`), 10000)
 // (⌘ on a Mac, Ctrl elsewhere: the app's Mod)
-await app.evaluate(({ BrowserWindow }, mod) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
+await app.evaluate(({ BaseWindow }, mod) => {
+  const w = BaseWindow.getAllWindows()[0]
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   v.webContents.focus()
   v.webContents.sendInputEvent({ type: "keyDown", keyCode: "O", modifiers: [mod] })
 }, process.platform === "darwin" ? "meta" : "control")
-check("⌘O pressed in the page opens the app's quick switcher", await until(async () => !(await shown()) && (await win.locator("[role=dialog] input, [role=combobox]").count()) > 0, 4000), await pages())
+check("⌘O pressed in the page opens the app's quick switcher", await until(async () => (await raised()) && (await win.locator("[role=dialog] input, [role=combobox]").count()) > 0, 4000), await pages())
 // The keyboard goes where the app focuses (web/src/core/desktop.ts), not left with the page: ⌘O's search has it, Escape
 // gives it back to the page, ⌘L's address has it, and a note picked in ⌘O, its editor. (SHOW=1 only, like the above.)
-const appHasKeyboard = async (sel) => await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.isFocused())
+const appHasKeyboard = async (sel) => await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.isFocused())
   && await win.evaluate((sel) => !!document.activeElement?.matches(sel), sel)
 // (in front first, the page with the keyboard: whoever runs this may have clicked elsewhere meanwhile)
-const pressInPage = (key) => app.evaluate(async ({ app: a, BrowserWindow }, [key, mod]) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const pressInPage = (key) => app.evaluate(async ({ app: a, BaseWindow }, [key, mod]) => {
+  const w = BaseWindow.getAllWindows()[0]
   a.focus({ steal: true }); w.focus()
-  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   v.webContents.focus()
   await new Promise((r) => setTimeout(r, 200))
   v.webContents.sendInputEvent({ type: "keyDown", keyCode: key, modifiers: [mod] })
@@ -408,10 +418,10 @@ await app.evaluate(({ Menu }) => {
   const build = Menu.buildFromTemplate.bind(Menu)
   Menu.buildFromTemplate = (items) => { const m = build(items); m.popup = () => { globalThis.__menu = items }; return m }
 })
-await app.evaluate(async ({ BrowserWindow }) => {
+await app.evaluate(async ({ BaseWindow }) => {
   globalThis.__menu = null
-  const w = BrowserWindow.getAllWindows()[0]
-  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
+  const w = BaseWindow.getAllWindows()[0]
+  const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   const [x, y] = (await v.webContents.executeJavaScript(`(() => { const r = document.querySelector("#pic").getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()`)).map(Math.round)
   v.webContents.sendInputEvent({ type: "mouseDown", x, y, button: "right", clickCount: 1 })
   v.webContents.sendInputEvent({ type: "mouseUp", x, y, button: "right", clickCount: 1 })

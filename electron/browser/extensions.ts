@@ -1,6 +1,7 @@
 // Chrome extensions in web pages: each installed one (extstore.ts) loaded into every web session, the APIs Electron
 // lacks from extapi.ts, popups over the page. The app asks `ext:*`; it's told engine:ext:changed, :open, :show, :close.
-import { app, BrowserWindow, dialog, session, WebContentsView, type Session } from "electron"
+import { app, dialog, session, WebContentsView, type Session } from "electron"
+import { AppWindow } from "../appwindow.ts"
 import { allPages, eachPage, eachSession, handle, opens, tell, type EnginePage } from "./engine.ts"
 import { actionsChanged, buttonOf, closeNatives, closeOffscreen, emit, expect, forgetActions, popupOf, popups, setFront, tabMade, unlisten, setSessions, watchCookies, watchPage, watchWindow,
   watchWorkers } from "./extapi.ts"
@@ -91,7 +92,7 @@ opens((u) => {
 
 const changed = () => {
   actionsChanged()
-  for (const w of BrowserWindow.getAllWindows()) tell(w, { type: "engine:ext:changed" })
+  for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:ext:changed" })
 }
 
 async function turn(x: store.Installed, on: boolean) {
@@ -159,7 +160,7 @@ function listed() {
   }).sort((a, b) => a.name.localeCompare(b.name))
 }
 
-const pageById = (win: BrowserWindow, id: unknown) => allPages().find((p) => p.id === Number(id) && p.win === win)
+const pageById = (win: AppWindow, id: unknown) => allPages().find((p) => p.id === Number(id) && p.win === win)
 const known = (id: unknown) => { const x = typeof id === "string" ? store.get(id) : undefined; if (!x) throw new Error("no such extension"); return x }
 
 handle("ext:list", () => listed())
@@ -249,7 +250,7 @@ const tabOfPage = (p: EnginePage) => ({ id: p.wc.id, windowId: p.win.id, url: p.
 // ---------- popups ----------
 
 type Rect = { x: number; y: number; width: number; height: number }
-type Popup = { view: WebContentsView; win: BrowserWindow; ext: string; page: EnginePage }
+type Popup = { view: WebContentsView; win: AppWindow; ext: string; page: EnginePage }
 let popup: Popup | null = null
 /** The last one closed (a click on its own button closes it first: it isn't opened again). */
 let closed = { ext: "", at: 0 }

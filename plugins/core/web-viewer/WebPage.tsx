@@ -1,5 +1,5 @@
-// A web page in a tab: a slim bar over the desktop app's native page. Native views draw above everything, so when
-// anything of the app covers the box (sampled with elementFromPoint) the page is swapped for its snapshot until it's gone.
+// A web page in a tab: a slim bar over the desktop app's native page. While anything of the app covers the box, the
+// window goes over its pages and shows the live page through a hole (layers.ts).
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, Check, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
   VolumeX, X, type LucideIcon } from "lucide-react"
@@ -8,6 +8,7 @@ import {
   type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
+import { coverOf, passPointer, setCover, setHole } from "./layers"
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
@@ -34,28 +35,8 @@ function Elsewhere({ url }: { url: string }) {
   )
 }
 
-/** Something of the app's is over the box (see the head of this file); `data-under-pages` bits (a companion's cursor)
- *  are just drawn under the page. */
-function covered(box: HTMLElement, r: DOMRect) {
-  if ("dragging" in document.documentElement.dataset) return true
-  // Every ~48px across and down (a menu or a flyout is wider than that), 8px in from the edges: the dividers beside a
-  // pane (the sidebar's edge, a split's) reach a few pixels into it.
-  const E = 8, cw = r.width - 2 * E, ch = r.height - 2 * E
-  if (cw <= 0 || ch <= 0) return false
-  const cols = Math.min(40, Math.max(2, Math.ceil(cw / 48) + 1)), rows = Math.min(40, Math.max(2, Math.ceil(ch / 48) + 1))
-  const w = innerWidth - 1, h = innerHeight - 1
-  for (let i = 0; i < cols; i++) {
-    const x = Math.min(w, r.left + E + (cw * i) / (cols - 1))
-    for (let j = 0; j < rows; j++) {
-      const at = document.elementFromPoint(x, Math.min(h, r.top + E + (ch * j) / (rows - 1)))
-      if (at && at !== box && !box.contains(at) && !at.closest("[data-sonner-toaster], [data-under-pages], [data-status-bar]")) return true
-    }
-  }
-  return false
-}
-
 /** Where in the box the page goes: above the status bar where that's drawn over the pane's foot (laid over it, the page
- *  would hide the bar, and the bar over the page would freeze it as a picture). */
+ *  would hide the bar, and the bar over the page would raise the window over it the whole time). */
 function pageArea(r: DOMRect) {
   const bar = document.querySelector("[data-status-bar]")?.getBoundingClientRect()
   if (!bar?.height || bar.left >= r.right || bar.right <= r.left || bar.top >= r.bottom || bar.bottom <= r.top) return r
@@ -79,7 +60,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const { container, url: arg } = splitArg(tabArg)
   const setArg = (url: string) => setTabArg(argOf(url, container))
   const box = useRef<HTMLDivElement>(null)
-  const shot = useRef<HTMLImageElement>(null)
   const address = useRef<HTMLInputElement>(null)
   const bar = useRef<HTMLDivElement>(null)
   usePaneTopBar(bar)
@@ -104,7 +84,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const off = web.on((m) => { if (m.type === "engine:lock:locked") ask() })
     return () => { gone = true; off() }
   }, [container, web])
-  useEffect(() => { if (locked && shot.current) shot.current.hidden = true }, [locked])
 
   // The page: the tab's own (shown again) or a new one; let go of as the tab hides (or its container locks), ended when
   // the tab shows something else (closing it ends it too: onTabClose). A new web tab has none till an address is typed.
@@ -187,37 +166,29 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     return () => setFocusedPage(id, false)
   }, [id, focused, web])
 
-  // Keep the page over the box, or hidden behind its picture while the app draws over it.
+  // Keep the page over the box; the window goes over it while anything of the app covers it.
   useEffect(() => {
     const el = box.current
     if (!id || !el || away) return
-    let raf = 0, last = "", hidden = true, busy = false, gone = false, picture = ""
-    const freeze = async () => {
-      const bytes = await web.snapshot(id).catch(() => null)
-      const img = shot.current
-      if (!bytes || !img || gone) return
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "image/jpeg" }))
-      img.src = url
-      await img.decode().catch(() => {})
-      if (picture) URL.revokeObjectURL(picture)
-      picture = url
-      img.hidden = false
-    }
+    let raf = 0, last = "", hidden = true, covered = false, gone = false
     const sync = async () => {
       raf = 0
-      if (busy || gone) return
-      const whole = el.getBoundingClientRect(), r = pageArea(whole)
-      el.style.setProperty("--page-foot", `${whole.bottom - r.bottom}px`)
-      const show = !live.current.error && r.width >= 2 && r.height >= 2 && !covered(el, r)
+      if (gone) return
+      const r = pageArea(el.getBoundingClientRect())
+      const show = !live.current.error && r.width >= 2 && r.height >= 2
+      const cover = show ? coverOf(el, r) : null
+      setCover(id, cover)
+      // In the focused pane with the keyboard nowhere in particular: the page has it (back from under a menu, or shown again
+      // with it, or it had it when it was hidden and nothing else took it meanwhile).
+      const free = !document.activeElement || document.activeElement === document.body
+      const mine = el.closest("[data-pane]")?.id === "main-scroll"
+      if (covered && cover !== "app" && free && mine) void web.go(id, "focus")
+      covered = cover === "app"
       if (!show) {
         if (hidden) return
-        busy = true
-        await freeze()
-        busy = false
-        if (gone) return
         hidden = true
         last = ""
-        delete el.dataset.live
+        setHole(id, el, null)
         await web.place(id, null).catch(() => {})
         schedule() // (it may have gone meanwhile)
         return
@@ -228,13 +199,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       const wasHidden = hidden
       hidden = false
       last = key
+      setHole(id, el, r)
       const placed = await web.place(id, rect).catch(() => undefined)
-      el.dataset.live = "" // (the page is over the box: what the toasts' copies look for, index.tsx)
-      if (shot.current) shot.current.hidden = true // (under the page now, but where the status bar leaves the foot bare)
-      // Back from under an overlay, in the focused pane with the keyboard nowhere in particular: give it back to the page.
-      // (or it had the keyboard when it was hidden, and nothing else took it meanwhile)
-      const free = !document.activeElement || document.activeElement === document.body
-      if (wasHidden && free && (placed?.focused || el.closest("[data-pane]")?.id === "main-scroll")) void web.go(id, "focus")
+      if (wasHidden && free && (placed?.focused || mine)) void web.go(id, "focus")
     }
     // (A window that's hidden or covered gets no animation frames: a timer then, so the page is in place when it shows.)
     const schedule = () => {
@@ -244,11 +211,12 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const ro = new ResizeObserver(schedule)
     ro.observe(el)
     const mo = new MutationObserver(schedule)
-    mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state"] })
+    mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] })
     addEventListener("resize", schedule)
     document.addEventListener("visibilitychange", schedule)
     // (and now and then, for a move nothing above announces)
     const tick = setInterval(schedule, 500)
+    const unpass = passPointer(el, () => id, () => pageArea(el.getBoundingClientRect()))
     schedule()
     return () => {
       gone = true
@@ -259,7 +227,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       removeEventListener("resize", schedule)
       document.removeEventListener("visibilitychange", schedule)
       clearInterval(tick)
-      if (picture) URL.revokeObjectURL(picture)
+      unpass()
+      setCover(id, null)
+      setHole(id, el, null)
     }
   }, [id, web, away])
 
@@ -308,7 +278,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       </div>
       {id > 0 && <AgentBar web={web} id={id} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
-        <img ref={shot} alt="" hidden draggable={false} className="pointer-events-none absolute inset-x-0 top-0 h-[calc(100%_-_var(--page-foot,0px))] w-full object-fill select-none" />
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab)} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
         {state.error && <Problem error={state.error} url={state.url || arg} onRetry={() => void web.go(id, "reload")} />}

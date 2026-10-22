@@ -3,9 +3,10 @@
 - Desktop only: a `view:web/<url>` tab is an Electron WebContentsView over the pane (`electron/web.ts`), a session per
   profile, http(s) and installed extensions' own pages (chrome-extension://) only. No preload of the page's own: the
   engine's (electron/browser/) are registered on its session.
-- It's native, drawn above the DOM: `WebPage.tsx` swaps it for a snapshot while anything covers it, and copies toasts and
-  `[data-floats]` into native layers above it. A new overlay that doesn't take the pointer needs `data-floats`. Small ambient bits the page may hide
-  (a companion's cursor) take `data-under-pages` instead, so they don't freeze it.
+- It's native, a view above the window's own page: while anything covers it, the window's page goes over it
+  (`layers.ts`, electron/appwindow.ts), see-through behind it (only backgrounds are cut), so the page stays live. A new
+  overlay that doesn't take the pointer needs `data-floats` (the pointer then goes on to the page). Small ambient bits
+  the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window.
 - A tab owns its page by the tab's id (`usePane().tab`; electron/webpages.ts decides): hidden in the background, the same
   one when shown again, ended when the tab closes or leaves the window (`onTabClose`) or shows something else. None
   outlives its tab: a reloaded window's tabs take theirs back within seconds or they end. Never match pages by address:

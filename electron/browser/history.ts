@@ -1,6 +1,7 @@
 // Browsing history: every page's visits, kept on this Mac (userData/web-history.sqlite, never the vault), ranked by
 // frecency for the address bar's suggestions and listed by day for the History tab.
-import { app, BrowserWindow } from "electron"
+import { app } from "electron"
+import { AppWindow } from "../appwindow.ts"
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import path from "node:path"
 import { eachPage, handle, tell } from "./engine.ts"
@@ -98,7 +99,7 @@ let telling: ReturnType<typeof setTimeout> | null = null
 function changed() {
   telling ??= setTimeout(() => {
     telling = null
-    for (const w of BrowserWindow.getAllWindows()) tell(w, { type: "engine:history:changed" })
+    for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:history:changed" })
   }, 1000)
 }
 

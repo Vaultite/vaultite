@@ -1,7 +1,7 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell,
-  type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { AppWindow } from "./appwindow.ts"
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { writeAtomic } from "./setup.ts"
@@ -14,7 +14,7 @@ import path from "node:path"
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
   player?: boolean }
-type Page = Owned<BrowserWindow> & { view: WebContentsView; error?: string
+type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   /** Where its tab last asked it to be (null: hidden): where it goes back to from full screen. */
   want: WebRect | null
   /** Its player: a window of its own it fills (see the player's section below), still its tab's. */
@@ -51,7 +51,7 @@ const PAGE_KEYS = new Set(["a", "c", "v", "x", "z", "shift+z", ...(MAC ? [] : ["
 
 const pages = new Map<number, Page>()
 /** Each window's app shortcuts with ⌘, ⌃ or ⌥ (web:keys). */
-const keysOf = new WeakMap<BrowserWindow, Set<string>>()
+const keysOf = new WeakMap<AppWindow, Set<string>>()
 let next = 1
 const sessions = new Map<string, Session>()
 
@@ -145,7 +145,7 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
     const key = `${profile} ${site} ${kinds.join(",")}`
     let q = asking.get(key)
     if (!q) {
-      const win = pageOf(wc)?.win ?? BrowserWindow.fromWebContents(wc) ?? undefined
+      const win = pageOf(wc)?.win ?? AppWindow.fromWebContents(wc) ?? undefined
       const what = kinds.map((k) => ASKED[k]).join(" and ").replace(/ and use your /, " and ")
       const box = { type: "question" as const, message: `${site} wants to ${what}`, buttons: ["Allow", "Don't allow"], defaultId: 1, cancelId: 1,
         checkboxLabel: "Remember for this site", checkboxChecked: true }
@@ -173,7 +173,7 @@ function freeName(dir: string, name: string) {
   return out
 }
 
-const tell = (win: BrowserWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
 const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.sound, p.view.webContents.isCurrentlyAudible(), Date.now())
 function stateOf(p: Page): WebState {
@@ -210,7 +210,7 @@ const QUEUED = 200
 
 const sendState = (p: Page) => tell(p.win, { type: "state", id: p.id, state: stateOf(p) })
 /** The window's pages came or went, or one was hidden or shown again (the Web pages panel). */
-const pagesChanged = (win: BrowserWindow) => tell(win, { type: "pages" })
+const pagesChanged = (win: AppWindow) => tell(win, { type: "pages" })
 
 /** A shortcut as the app's commands name it (web/src/core/commands.ts: canonical, lower case): "mod+shift+t". */
 function stepOf(i: Input) {
@@ -234,7 +234,7 @@ async function otherApp(p: Page, to: string) {
   if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
 }
 
-function make(win: BrowserWindow, url: string, profile: string, tab: string): Page {
+function make(win: AppWindow, url: string, profile: string, tab: string): Page {
   // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
   // extension's own pages embedded in it)
   const view = new WebContentsView({
@@ -248,7 +248,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   // (a size before it's first shown: a page laid out at none has nothing an agent could click)
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
-  win.contentView.addChildView(view)
+  addPage(win, view)
   const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback() }
   pages.set(p.id, p)
   const wc = view.webContents
@@ -308,7 +308,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   wc.on("enter-html-full-screen", () => {
     p.full = true
     if (!p.player) {
-      win.contentView.addChildView(p.view) // (again: over every other page and the toasts' copies)
+      win.contentView.addChildView(p.view) // (again: over every other page and the window's own, raised or not)
       if (!win.isFullScreen()) { win.setFullScreen(true); p.madeFull = true }
     }
     fit(p)
@@ -442,7 +442,7 @@ function shortOfMemory(): Promise<boolean> {
 }
 
 /** The page a window's keyboard last came from as it was hidden, till the window asks (`web:take`) or it's shown. */
-const keyboardFrom = new WeakMap<BrowserWindow, number>()
+const keyboardFrom = new WeakMap<AppWindow, number>()
 
 /** Where its tab wants it (null: hidden); in its player or full screen it stays filling that till it's back. */
 function place(p: Page, rect: WebRect | null) {
@@ -583,7 +583,7 @@ function fromPlayer(p: Page, user = false) {
   if (pages.has(p.id) && !p.win.isDestroyed()) {
     p.view.setVisible(false)
     p.want = null
-    p.win.contentView.addChildView(p.view)
+    addPage(p.win, p.view)
     sendState(p)
     pagesChanged(p.win)
     if (user) { p.win.show(); p.win.focus() }
@@ -600,7 +600,7 @@ const rectOf = (r: unknown): WebRect | null => {
   return ["x", "y", "width", "height"].every((k) => typeof o[k] === "number" && Number.isFinite(o[k])) ? o as WebRect : null
 }
 /** A page of this window. */
-function mine(win: BrowserWindow, id: unknown) {
+function mine(win: AppWindow, id: unknown) {
   const p = pages.get(Number(id))
   if (!p || p.win !== win) throw new Error("no such page")
   return p
@@ -623,25 +623,24 @@ export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) 
 }
 
 /** Wire a vault window: its pages end with it; as its page reloads, its tabs take their pages back or they end. */
-export function webWindow(win: BrowserWindow) {
+export function webWindow(win: AppWindow) {
   // (a page full screen in it follows it as it goes full screen; the window leaving full screen takes the page out too)
   win.on("resize", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
   win.on("closed", () => {
     for (const p of [...pages.values()]) if (p.win === win) end(p)
-    for (const f of floats.get(win) ?? []) if (!f.view.webContents.isDestroyed()) f.view.webContents.close()
   })
   win.webContents.on("did-start-navigation", (d) => {
     if (!d.isMainFrame || d.isSameDocument) return
-    void float(win, [])
+    raise(win, null)
     for (const p of pages.values()) if (p.win === win && !p.player) { if (p.full) leaveFull(p); p.view.setVisible(false) }
     for (const p of windowReloaded(pages.values(), win, Date.now())) end(p)
     setTimeout(() => { for (const p of unclaimed(pages.values(), Date.now())) end(p) }, RECLAIM_MS + 100)
   })
 }
 
-/** The IPC handlers (main.ts checks the asking page is a vault window's and gives its BrowserWindow). */
-export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]) => unknown> = {
+/** The IPC handlers (main.ts checks the asking page is a vault window's and gives its AppWindow). */
+export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   // (a tab's page is the tab's: shown again, it's the same one, wherever it went since)
   "web:open": async (win, url, rect, profile, tab) => {
     await engineLoaded()
@@ -672,9 +671,8 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     keyboardFrom.delete(win)
     return from
   },
-  "web:float": (win, rects) => float(win, Array.isArray(rects)
-    ? rects.flatMap((x) => { const r = rectOf(x); return r && r.width >= 2 && r.height >= 2 ? [{ ...r, through: !!(x as { through?: unknown }).through }] : [] })
-    : []),
+  "web:raise": (win, how) => raise(win, how === "app" || how === "through" ? how : null),
+  "web:pointer": (win, id, m) => pointer(mine(win, id), m),
   "web:release": (win, id) => {
     const p = pages.get(Number(id))
     if (!p || p.win !== win) return
@@ -690,12 +688,6 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
   "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen !== false); fromPlayer(p, true) },
   "web:close": (win, tab) => { for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p) },
   "web:go": (win, id, action, url) => go(mine(win, id), str(action), typeof url === "string" ? url : undefined),
-  "web:snapshot": async (win, id) => {
-    const p = mine(win, id)
-    if (!p.view.getVisible() || p.player) return null
-    const img = await p.view.webContents.capturePage()
-    return img.isEmpty() ? null : new Uint8Array(img.toJPEG(85))
-  },
   "web:html": async (win, id) => {
     const p = mine(win, id)
     // In a world of its own: the page's scripts can't stand in for what's read.
@@ -910,7 +902,7 @@ async function iconFrom(p: Page, urls: unknown) {
     all.set(host, icon)
     for (const h of [...all.keys()].slice(0, Math.max(0, all.size - ICONS_KEPT))) all.delete(h)
     saveIcons()
-    for (const w of BrowserWindow.getAllWindows()) tell(w, { type: "icon", host, icon })
+    for (const w of AppWindow.getAllWindows()) tell(w, { type: "icon", host, icon })
     return
   }
 }
@@ -952,7 +944,7 @@ const cloudWantOf = (x: unknown): CloudWant => {
   return { profiles: [...new Set(strs(w.profiles).filter((p) => p === "" || profileOf(p) === p))].slice(0, 50), read: w.read === true, hidden: strs(w.hidden) }
 }
 /** The windows that asked (`web:cloud`): they're told the state as it changes, and its news. */
-const cloudWindows = new Set<BrowserWindow>()
+const cloudWindows = new Set<AppWindow>()
 /** Whether a profile is signed in to claude.ai, by its cookies, looked at lately. */
 const cloudCookies = new Map<string, { at: number; in: boolean }>()
 /** A profile's claude.ai organizations (the ones with claude.ai's apps, not an API-only one), read lately. */
@@ -1100,77 +1092,39 @@ async function cloudRead() {
   } finally { cloudReading = false }
 }
 
-// ---------- toasts over pages ----------
+// ---------- the window's page over its pages ----------
 
-/** A window's copies of what floats over its pages (see the head of this file): a transparent view each, drawn last.
- *  `through`: the pointer goes to the page under it (a tooltip), else to the window (a toast). */
-type Float = { view: WebContentsView; ready: Promise<unknown>; shown: boolean; through: boolean }
-export type FloatRect = WebRect & { through?: boolean }
-const floats = new WeakMap<BrowserWindow, Float[]>()
-/** At most this many toasts are copied (sonner shows three). */
-const FLOATS = 4
-const POINTER = "__vaultite_float__"
-const FLOAT_PAGE = "data:text/html," + encodeURIComponent(`<!doctype html><style>html,body{margin:0;background:transparent;overflow:hidden}
-img{display:block;width:100vw;height:100vh;border-radius:8px;-webkit-user-drag:none;user-select:none}</style><img id="i" alt="">
-<script>
-const tell = (e, type) => console.debug(${JSON.stringify(POINTER)} + JSON.stringify({ type, x: e.clientX, y: e.clientY, button: ["left", "middle", "right"][e.button] || "left", clickCount: e.detail || 1, dx: e.deltaX || 0, dy: e.deltaY || 0 }))
-for (const [ev, type] of [["mousemove", "mouseMove"], ["mousedown", "mouseDown"], ["mouseup", "mouseUp"], ["mouseleave", "mouseLeave"], ["wheel", "mouseWheel"]])
-  addEventListener(ev, (e) => { if (ev === "mousedown" || ev === "wheel") e.preventDefault(); tell(e, type) }, { passive: false })
-addEventListener("contextmenu", (e) => e.preventDefault())
-</script>`)
-/** Copying is in turns: a newer set of toasts waits for the one being copied (they come every frame while one moves). */
-const floatTurn = new WeakMap<BrowserWindow, Promise<unknown>>()
+/** How the window's page is over its pages: not (null), taking the pointer (a menu, the palette, a drag), or letting it
+ *  through to them (a toast, a tooltip: `pointer` passes on what it gets there). */
+type Raise = "app" | "through" | null
+const raised = new WeakMap<AppWindow, Raise>()
 
-function floatView(win: BrowserWindow, i: number): Float {
-  const list = floats.get(win) ?? []
-  floats.set(win, list)
-  if (list[i]) return list[i]
-  const view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } })
-  view.setBackgroundColor("#00000000")
-  view.setVisible(false)
-  const f: Float = { view, ready: view.webContents.loadURL(FLOAT_PAGE).catch(() => {}), shown: false, through: false }
-  view.webContents.on("console-message", (e) => {
-    if (!e.message.startsWith(POINTER) || win.isDestroyed()) return
-    let m: { type: string; x: number; y: number; button: "left" | "middle" | "right"; clickCount: number; dx: number; dy: number }
-    try { m = JSON.parse(e.message.slice(POINTER.length)) } catch { return }
-    const b = view.getBounds(), x = Math.round(b.x + m.x), y = Math.round(b.y + m.y)
-    // A tooltip's: to the page under it, at the same place in it.
-    const under = f.through ? [...pages.values()].find((p) => p.win === win && p.view.getVisible() && inside(p.view.getBounds(), x, y)) : undefined
-    const to = under ? under.view.webContents : win.webContents
-    const at = under ? { x: x - under.view.getBounds().x, y: y - under.view.getBounds().y } : { x, y }
-    if (m.type === "mouseLeave") {
-      // Off a toast's copy: off the toast too (sonner pauses while it's hovered).
-      if (!f.through) win.webContents.sendInputEvent({ type: "mouseMove", x: Math.max(0, b.x - 24), y: b.y + Math.round(b.height / 2) })
-    } else if (m.type === "mouseWheel") to.sendInputEvent({ type: "mouseWheel", ...at, deltaX: -m.dx, deltaY: -m.dy, canScroll: true })
-    else if (m.type === "mouseMove" || m.type === "mouseDown" || m.type === "mouseUp") to.sendInputEvent({ type: m.type, ...at, button: m.button, clickCount: m.clickCount })
-  })
-  list[i] = f
-  return f
+/** A page into the window: over the others, under the window's page while that's raised. */
+function addPage(win: AppWindow, view: WebContentsView) {
+  const at = raised.get(win) ? win.contentView.children.indexOf(win.view) : -1
+  if (at >= 0) win.contentView.addChildView(view, at)
+  else win.contentView.addChildView(view)
 }
 
-const inside = (b: Electron.Rectangle, x: number, y: number) => x >= b.x && y >= b.y && x < b.x + b.width && y < b.y + b.height
+function raise(win: AppWindow, how: Raise) {
+  if (win.isDestroyed() || (raised.get(win) ?? null) === how) return
+  const was = raised.get(win) ?? null
+  raised.set(win, how)
+  if (!!was === !!how) return
+  if (!how) return win.contentView.addChildView(win.view, 0)
+  win.contentView.addChildView(win.view)
+  // (a page full screen stays over it)
+  for (const p of pages.values()) if (p.win === win && p.full && !p.player) win.contentView.addChildView(p.view)
+}
 
-function float(win: BrowserWindow, rects: FloatRect[]) {
-  const turn = (floatTurn.get(win) ?? Promise.resolve()).then(async () => {
-    if (win.isDestroyed()) return
-    const z = win.webContents.getZoomFactor()
-    const list = floats.get(win) ?? []
-    const want = rects.slice(0, FLOATS)
-    for (let i = 0; i < Math.max(want.length, list.length); i++) {
-      const r = want[i]
-      if (!r) { const f = list[i]; if (f?.shown) { f.view.setVisible(false); f.shown = false } continue }
-      const b = { x: Math.round(r.x * z), y: Math.round(r.y * z), width: Math.round(r.width * z), height: Math.round(r.height * z) }
-      const img = await win.webContents.capturePage(b).catch(() => null)
-      if (!img || img.isEmpty() || win.isDestroyed()) continue
-      const f = floatView(win, i)
-      f.through = !!r.through
-      await f.ready
-      await f.view.webContents.executeJavaScript(`document.getElementById("i").src = ${JSON.stringify(img.toDataURL())}; 1`).catch(() => {})
-      f.view.setBounds(b)
-      win.contentView.addChildView(f.view) // (again: on top of every page)
-      if (!f.shown) { f.view.setVisible(true); f.shown = true }
-    }
-  })
-  floatTurn.set(win, turn.catch(() => {}))
-  return turn
+/** The pointer over a page while the window's page lets it through, at the page's own CSS pixels from its corner. */
+function pointer(p: Page, m: unknown) {
+  if (raised.get(p.win) !== "through" || !m || typeof m !== "object") return
+  const e = m as { type?: unknown; x?: unknown; y?: unknown; button?: unknown; clickCount?: unknown; dx?: unknown; dy?: unknown }
+  const z = p.win.webContents.getZoomFactor(), num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
+  const x = Math.round(num(e.x) * z), y = Math.round(num(e.y) * z)
+  const button = e.button === "right" || e.button === "middle" ? e.button : "left", clickCount = Math.max(1, Math.min(3, num(e.clickCount)))
+  const wc = p.view.webContents
+  if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true })
+  else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount })
 }

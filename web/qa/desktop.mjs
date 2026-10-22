@@ -48,17 +48,17 @@ await win.screenshot({ path: path.join(OUT, "window.png") })
   check("vau dev screenshot: the window as a PNG, its path printed", out === shot && png(shot) && fs.statSync(shot).size > 5000, out)
   check("vau dev screenshot --selector: one element, smaller", png(el) && size.width > 0 && size.width < (await win.evaluate(() => innerWidth * devicePixelRatio)), size)
 }
-const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
+const bounds = await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].getBounds())
 if (process.env.SHOW) try { execFileSync("screencapture", ["-x", "-o", `-R${bounds.x},${bounds.y},${bounds.width},120`, path.join(OUT, "titlebar.png")], { stdio: "ignore" }) } catch { /* no screen recording permission */ }
 
 // The menu runs the app's commands.
 const tabs = () => win.locator("[role=tablist] [role=tab]").count()
-const menuClick = (label) => app.evaluate(({ Menu, BrowserWindow }, label) => {
+const menuClick = (label) => app.evaluate(({ Menu, BaseWindow }, label) => {
   const find = (items) => { for (const i of items) { if (i.label === label) return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
-  find(Menu.getApplicationMenu().items).click(undefined, BrowserWindow.getAllWindows()[0])
+  find(Menu.getApplicationMenu().items).click(undefined, BaseWindow.getAllWindows()[0])
 }, label)
 await win.bringToFront()
-await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 const before = await tabs()
 await menuClick("New tab")
 check("File > New tab (⌘T) opens a tab", await until(async () => (await tabs()) === before + 1, 10000), await tabs())
@@ -86,11 +86,11 @@ await win.keyboard.press("Escape")
   const pad = await pop.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-corner] > [role=tablist]")).paddingLeft))
   if (MAC) check("pop-out: its tab bar makes room for the traffic lights", pad >= 76, pad)
   else check("pop-out: its tab bar starts at the edge (no lights)", pad < 40, pad)
-  check("pop-out: a second window, laid out like the vault's", await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length === 2) &&
+  check("pop-out: a second window, laid out like the vault's", await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().length === 2) &&
     await pop.evaluate((p) => document.documentElement.dataset.platform === p, process.platform))
   const popTabs = () => pop.locator("[role=tablist] [role=tab]").count()
-  await app.evaluate(({ BrowserWindow, Menu }) => {
-    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))
+  await app.evaluate(({ BaseWindow, Menu }) => {
+    const w = BaseWindow.getAllWindows().find((x) => x.webContents.getURL().includes("?popout="))
     const find = (items) => { for (const i of items) { if (i.label === "New tab") return i; const s = i.submenu && find(i.submenu.items); if (s) return s } }
     find(Menu.getApplicationMenu().items).click(undefined, w)
   })
@@ -102,7 +102,7 @@ await win.keyboard.press("Escape")
   await pop.keyboard.press("ControlOrMeta+W").catch(() => {})
   check("pop-out: closing its last tab closes it", await Promise.race([gone, wait(5000).then(() => false)]))
   await win.bringToFront()
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+  await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].focus())
 }
 
 // The editor's menu (plugins/core/editing/menu.ts): the page leaves the right-click to the system, Electron reports
@@ -112,7 +112,7 @@ await win.keyboard.press("Escape")
   await win.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent("Notes/Qa spelling.md")}`)
   await win.waitForSelector("[data-pane] .cm-content"); await wait(800)
   const said = []
-  await app.evaluate(({ BrowserWindow }) => { globalThis.__said = 0; BrowserWindow.getAllWindows()[0].webContents.on("context-menu", () => { globalThis.__said++ }) })
+  await app.evaluate(({ BaseWindow }) => { globalThis.__said = 0; BaseWindow.getAllWindows()[0].webContents.on("context-menu", () => { globalThis.__said++ }) })
   const first = win.locator("[data-pane] .cm-line").first()
   await first.click(); await win.keyboard.press("Home"); await win.keyboard.press(SELECT_WORD)
   const b = await first.boundingBox()
@@ -136,7 +136,7 @@ const zoomKeys = await app.evaluate(({ Menu }) => {
   walk(Menu.getApplicationMenu().items); return all
 })
 check("View menu: zoom in on ⌘= and ⌘+, out on ⌘-, actual size on ⌘0", [`Zoom in:${CMD}+=`, `Zoom in:${CMD}+Plus`, `Zoom out:${CMD}+-`, `Actual size:${CMD}+0`].every((k) => zoomKeys.includes(k)), zoomKeys)
-const factor = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomFactor())
+const factor = () => app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].webContents.getZoomFactor())
 await menuClick("Zoom in")
 check("Zoom in zooms the page", await until(async () => Math.abs((await factor()) - 1.1) < 0.01, 10000), await factor())
 check("the zoom is kept (vaults.json)", await until(() => JSON.parse(fs.readFileSync(path.join(TMP, "userData/vaults.json"), "utf8")).zoom === 1.1, 10000))
@@ -358,7 +358,7 @@ const cdp2 = await second.context().newCDPSession(second)
 for (const type of ["dragEnter", "dragOver", "drop"]) await cdp2.send("Input.dispatchDragEvent", { type, x: m2.x + 200, y: m2.y + 200, data: { items: [], files: [path.join(VAULT, "Notes", "Cross vault.md")], dragOperationsMask: 1 } })
 check("a file of another known vault opens in that vault's window", await until(async () => decodeURIComponent(win.url()).endsWith("#file/Notes/Cross vault.md"), 10000), win.url())
 const port2 = new URL(second.url()).port
-await app.evaluate(({ BrowserWindow }, port) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes(`:${port}/`)).close(), port2)
+await app.evaluate(({ BaseWindow }, port) => BaseWindow.getAllWindows().find((w) => w.webContents.getURL().includes(`:${port}/`)).close(), port2)
 check("closing a window stops its server", await until(async () => { try { await fetch(`http://127.0.0.1:${port2}/api/vault`); return false } catch { return true } }, 10000))
 await wait(1000)
 const saved = JSON.parse(fs.readFileSync(path.join(TMP, "userData", "vaults.json"), "utf8"))

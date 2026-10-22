@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: menus, the palette, popovers, tooltips and toasts draw over a live page; it no longer freezes into a picture
+  or blinks as one opens, and a toast over a page lets clicks through to it.
 - Cloud sessions: Claude Code on the web's sessions have a sidebar panel of their own, out of Terminals. Every claude.ai
   account the Browser is signed in to shows (each workspace's logins, each container, each organization), under its
   name, any of them hidden from the panel's eye; a session opens in the logins it belongs to. Asked once before

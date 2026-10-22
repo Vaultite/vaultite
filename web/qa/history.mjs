@@ -1,7 +1,7 @@
 // The Browser's history, address bar and import in the desktop app (Electron), end to end on a throwaway vault,
 // against made-up sites this script serves (lighthouse.test, harbor.test: 127.0.0.1): visits kept (a link's, a typed
 // one's), a new web tab's address with the sites visited most, typing completing inline to a site with the list of
-// suggestions over the page (frozen meanwhile), Esc, Enter, ⇧⌦ removing a history row; the History tab (search,
+// suggestions over the live page (the window raised over it), Esc, Enter, ⇧⌦ removing a history row; the History tab (search,
 // several removed, Undo, Clear browsing history); ⌘Y; ⌘D; Import from Brave from tools/fixtures/browsers (visits once,
 // bookmarks into Bookmarks.md, suggested in the address bar).
 // WRITES: the throwaway vault only.
@@ -53,7 +53,7 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const open = async (to) => { await ui({ action: "open", path: to, newTab: true }); await wait(500) }
 const command = async (id) => { await ui({ action: "command", id }); await wait(700) }
@@ -61,13 +61,13 @@ const engine = (name, ...args) => win.evaluate(([name, args]) => window.vaultite
 const visits = async () => (await engine("history:list", {})).visits
 
 /** The visible web page's address, if one is over the window. */
-const visible = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const visible = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v ? v.webContents.getURL() : null
 })
-const inPage = (code) => app.evaluate(({ BrowserWindow }, code) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v ? v.webContents.executeJavaScript(code) : null
 }, code)
@@ -121,7 +121,8 @@ check("⌘D: the page bookmarked in Bookmarks.md", await until(() => marks().inc
 // ---------- the list over a page ----------
 await command("web:address")
 await win.keyboard.type("harbor")
-check("over a page: the list shows, the page frozen as its picture", await until(async () => (await rows()).length > 1 && (await visible()) === null, 5000), [await rows(), await visible()])
+const raised = () => app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0], kids = w.contentView.children; return kids.indexOf(w.view) === kids.length - 1 })
+check("over a page: the list shows over it, live", await until(async () => (await rows()).length > 1 && (await visible()) !== null && await raised(), 5000), [await rows(), await visible()])
 check("… an open tab of it to switch to", (await rows()).includes(`tab ${at("harbor.test")}`), await rows())
 await win.keyboard.press("Escape")
 await win.keyboard.press("Escape")

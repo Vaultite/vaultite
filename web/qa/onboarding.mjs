@@ -76,7 +76,7 @@ try {
   check("the first launch shows Set up Vaultite", !!w)
   watch(w, { label: "setup", console: true })
   await w.waitForSelector("[data-next]")
-  const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((x) => x.getTitle() === "Set up Vaultite")?.getContentSize())
+  const size = await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.getTitle() === "Set up Vaultite")?.getContentSize())
   check("a small fixed window", size?.[0] === 560 && size?.[1] === 600, size)
   check("no other window opens with it", app.windows().length === 1, app.windows().map((x) => x.url()))
   check("one screen: New vault by default, called Vault, in iCloud Drive", await w.isChecked("[data-choice=new] input") && await w.inputValue("[data-vault-name]") === "Vault"

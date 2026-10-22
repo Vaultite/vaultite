@@ -228,6 +228,8 @@
   backdrop-filter: blur(30px) saturate(200%);
   box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px var(--border), var(--glass-shadow);
 }
+/* Over a Browser page (the window raised over it, plugins/core/web-viewer/layers.ts) nothing blurs it: solid there. */
+html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover), var(--popover)) var(--background); }
 /* Icons: strokes must be an opaque colour (overlapping paths of a translucent stroke stack up and look patchy). For a
    fainter icon, use a solid mix (.text-tertiary) or put opacity on the whole icon, which composites it once. */
 .text-tertiary { color: color-mix(in srgb, var(--muted-foreground) 55%, var(--card)); }

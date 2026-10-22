@@ -1,6 +1,7 @@
 // Containers that need Touch ID (the web-viewer's `lock`): their pages don't open or show until unlocked, and lock again
 // when the Mac locks or sleeps, or after a while away, like Brave's app lock. The app tells which profiles lock.
-import { BrowserWindow, powerMonitor, systemPreferences } from "electron"
+import { powerMonitor, systemPreferences } from "electron"
+import { AppWindow } from "../appwindow.ts"
 import { allPages, guardOpen, handle, tell } from "./engine.ts"
 
 /** Locked away for: the Mac idle this long locks them again. */
@@ -16,7 +17,7 @@ function lockAll() {
   if (!unlocked.size) return
   unlocked.clear()
   for (const p of allPages()) if (locking.has(p.profile)) p.hide()
-  for (const w of BrowserWindow.getAllWindows()) tell(w, { type: "engine:lock:locked" })
+  for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:lock:locked" })
 }
 
 handle("lock:set", (_win, profiles) => {
@@ -27,7 +28,7 @@ handle("lock:set", (_win, profiles) => {
   // (a container just set to lock: its open pages go behind the lock at once)
   if (added.length) {
     for (const p of allPages()) if (added.includes(p.profile)) p.hide()
-    for (const w of BrowserWindow.getAllWindows()) tell(w, { type: "engine:lock:locked" })
+    for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:lock:locked" })
   }
 })
 handle("lock:can", () => process.platform === "darwin" && systemPreferences.canPromptTouchID())

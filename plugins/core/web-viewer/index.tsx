@@ -89,39 +89,6 @@ function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
   })
 }
 
-/** Toasts and tooltips over a shown page, told to the desktop app, which copies them above the native page so they show
- *  without stopping it; resent as they or the tabs change, and every 100 ms while they animate. */
-function FloatLayer() {
-  useEffect(() => {
-    const web = webPages
-    if (!web?.float) return
-    let timer = 0, until = 0, had = false
-    const meets = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
-    const send = () => {
-      timer = 0
-      const pages = [...document.querySelectorAll<HTMLElement>("[data-web-box][data-live]")]
-        .map((b) => b.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1)
-      const rects = pages.length
-        // (tooltips first, then the toasts sonner shows (past three it draws them see-through; copies are capped) and
-        // the status bar, over a page beside the focused pane: copied like a toast, so it's clicked there)
-        ? [...document.querySelectorAll<HTMLElement>("[data-floats]"), ...document.querySelectorAll<HTMLElement>("[data-sonner-toast][data-visible=true]:not([data-removed=true]), [data-status-bar]")]
-          .map((t) => ({ r: t.getBoundingClientRect(), through: t.hasAttribute("data-floats") }))
-          .filter(({ r }) => r.width > 1 && r.height > 1 && pages.some((b) => meets(r, b)))
-          .map(({ r, through }) => ({ x: r.left, y: r.top, width: r.width, height: r.height, through }))
-        : []
-      if (rects.length || had) void web.float!(rects).catch(() => {})
-      had = rects.length > 0
-      if (Date.now() < until) timer = window.setTimeout(send, 100)
-    }
-    const soon = () => { until = Date.now() + 700; if (!timer) timer = window.setTimeout(send, 16) }
-    const mo = new MutationObserver(soon)
-    mo.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class", "hidden", "data-live", "data-expanded", "data-removed", "data-mounted", "data-visible", "data-front"] })
-    addEventListener("resize", soon)
-    return () => { mo.disconnect(); removeEventListener("resize", soon); clearTimeout(timer); if (had) void web.float!([]).catch(() => {}) }
-  }, [])
-  return null
-}
-
 /** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events. */
 function Background() {
   useEffect(() => void settings.ready(), [])
@@ -191,7 +158,7 @@ function Background() {
       else notify(`Couldn't download ${m.name}`, { kind: "error" })
     }
   }), [])
-  return <FloatLayer />
+  return null
 }
 
 function Preview() {

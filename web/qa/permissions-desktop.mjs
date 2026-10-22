@@ -22,7 +22,7 @@ watch(win, { console: true })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 // (wide enough for Settings' sections beside the list: narrower, a section is a sheet over it)
-await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1400, 900))
+await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].setSize(1400, 900))
 // (a press would ask macOS or open System Settings: here it only says so)
 await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler("app:permission"); ipcMain.handle("app:permission", (_e, id) => { throw new Error(`pressed ${id}`) }) })
 

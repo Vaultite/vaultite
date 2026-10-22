@@ -33,8 +33,8 @@ try {
   watch(win, { console: true, fail: false })
   await win.waitForSelector("aside[data-side=left] [data-titlebar]", { timeout: 60000 })
   // Every call to the lights, in order (`at` the position in points, `shown` their visibility).
-  await app.evaluate(({ app: a, BrowserWindow }, show) => {
-    const w = BrowserWindow.getAllWindows()[0]
+  await app.evaluate(({ app: a, BaseWindow }, show) => {
+    const w = BaseWindow.getAllWindows()[0]
     if (show) a.focus({ steal: true })
     globalThis.__lights = []
     const pos = w.setWindowButtonPosition.bind(w), vis = w.setWindowButtonVisibility.bind(w)
@@ -48,7 +48,7 @@ try {
   /** What the window has the lights as after `calls`: the last position and visibility. */
   const state = (cs) => ({ at: cs.findLast((c) => c.at)?.at, shown: cs.findLast((c) => "shown" in c)?.shown })
   const shot = async (name) => {
-    const b = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBounds())
+    const b = await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].getBounds())
     execFileSync("screencapture", ["-x", "-R", `${b.x},${b.y},360,90`, path.join(OUT, `${name}.png`)])
   }
   /** Where the page wants them (points): right of their default place by the sidebar's left edge, on its top row. */
@@ -61,7 +61,7 @@ try {
   await wait(1000)
 
   // 1. Pinned: on its top row, shown (a resize sends the page's place again).
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1240, height: 800 }))
+  await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].setBounds({ x: 40, y: 40, width: 1240, height: 800 }))
   await wait(600)
   const pinned = state(await calls())
   check("pinned: shown on the sidebar's top row", pinned.shown !== false && (pinned.at === undefined || near(pinned.at, await want())), { pinned, want: await want() })
@@ -99,7 +99,7 @@ try {
 
   // 5. The Mac shows them again (as it may on a layout of its own): the window's next focus change puts them back.
   // (the window's events, not a real focus: a window behind others, as QA's is, may not get one)
-  await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setWindowButtonVisibility(true); w.emit("blur"); w.emit("focus") })
+  await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setWindowButtonVisibility(true); w.emit("blur"); w.emit("focus") })
   await wait(400)
   const again = await calls()
   check("a focus change puts them back as the page has them (hidden)", state(again).shown === false, again)

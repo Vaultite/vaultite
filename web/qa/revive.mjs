@@ -30,8 +30,8 @@ try {
   const boxes = () => app.evaluate(() => globalThis.__boxes)
   const answer = (n) => app.evaluate((_e, n) => { globalThis.__answer = n }, n)
   // The vault window's renderer, and how much of the app it draws (0 while gray).
-  const state = () => app.evaluate(async ({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().startsWith("http://127.0.0.1"))
+  const state = () => app.evaluate(async ({ BaseWindow }) => {
+    const w = BaseWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().startsWith("http://127.0.0.1"))
     if (!w || w.webContents.isCrashed()) return { pid: 0, drawn: 0 }
     // (a page in a loop never answers: 0 after a second)
     const drawn = await Promise.race([w.webContents.executeJavaScript("document.querySelectorAll('#root *').length").catch(() => 0), new Promise((r) => setTimeout(() => r(0), 1000))])
@@ -58,7 +58,7 @@ try {
   }
 
   // Its server killed (a crash), once it's been up more than 10 s: a new one on the same port.
-  const port = await app.evaluate(({ BrowserWindow }) => new URL(BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.getURL()).port)
+  const port = await app.evaluate(({ BaseWindow }) => new URL(BaseWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.getURL()).port)
   const listener = () => { try { return Number(execFileSync("lsof", ["-tiTCP:" + port, "-sTCP:LISTEN"]).toString().trim().split("\n")[0]) } catch { return 0 } }
   await wait(Math.max(0, 11_000 - (Date.now() - opened)))
   const server = listener()
@@ -74,11 +74,11 @@ try {
   // A page in a loop: the box, and Reload draws it again (the hang is told after Chromium's own wait).
   await answer(1)
   const hung = s.pid
-  void app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.executeJavaScript("for (;;) {}").catch(() => {}) })
+  void app.evaluate(({ BaseWindow }) => { BaseWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.executeJavaScript("for (;;) {}").catch(() => {}) })
   // (Chromium tells of a hang only when input goes unanswered: a key now and then, as a person would press)
   // (a click and a letter: a lone modifier isn't input it waits on)
-  const poke = () => app.evaluate(({ BrowserWindow }) => {
-    const wc = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1"))?.webContents
+  const poke = () => app.evaluate(({ BaseWindow }) => {
+    const wc = BaseWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1"))?.webContents
     for (const e of [{ type: "mouseDown", x: 5, y: 5, button: "left", clickCount: 1 }, { type: "mouseUp", x: 5, y: 5, button: "left", clickCount: 1 }, { type: "keyDown", keyCode: "a" }, { type: "keyUp", keyCode: "a" }]) wc?.sendInputEvent(e)
   }).catch(() => {})
   const askedNow = async () => (await boxes()).some((b) => /isn't responding/.test(b))
@@ -87,7 +87,7 @@ try {
   // (a window never focused, as here, gets no input Chromium waits on, so it never tells: told as Chromium would)
   if (!asked) {
     console.log("Chromium didn't tell of the hang (no focused window here): the window told it is unresponsive")
-    await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.emit("unresponsive") })
+    await app.evaluate(({ BaseWindow }) => { BaseWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.emit("unresponsive") })
     for (let i = 0; i < 40 && !asked; i++) { await wait(250); asked = await askedNow() }
   }
   check("a page in a loop: asked to wait or reload", asked, await boxes())

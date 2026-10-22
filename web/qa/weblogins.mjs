@@ -52,13 +52,13 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const command = async (id) => { await ui({ action: "command", id }); await wait(700) }
 
 /** The visible web page: its address, what it says, and its session's partition. */
-const visible = () => app.evaluate(async ({ BrowserWindow, session }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const visible = () => app.evaluate(async ({ BaseWindow, session }) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   if (!v) return null
   const parts = ["persist:web", "persist:web-2", "persist:web-3"]
@@ -77,12 +77,12 @@ async function openLink(n) {
   await win.mouse.move(5, 400) // (off the link: its preview would cover the page)
 }
 /** Every web page over the window (for a failure's message). */
-const all = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const all = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents).map((v) => ({ url: v.webContents.getURL(), visible: v.getVisible() }))
 })
-const inPage = (code) => app.evaluate(({ BrowserWindow }, code) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inPage = (code) => app.evaluate(({ BaseWindow }, code) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
   return v ? v.webContents.executeJavaScript(code) : null
 }, code)
@@ -143,8 +143,8 @@ const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method:
 check("a page sees notifications granted", await inPage("Notification.permission") === "granted", await inPage("Notification.permission"))
 const page = `${SITE}/whoami?again`
 /** Run JavaScript in the page at `page`, on screen or not. */
-const inThat = (code) => app.evaluate(({ BrowserWindow }, [code, url]) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const inThat = (code) => app.evaluate(({ BaseWindow }, [code, url]) => {
+  const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.webContents.getURL() === url)
   return v ? v.webContents.executeJavaScript(code) : null
 }, [code, page])

@@ -78,14 +78,14 @@ async function launch() {
   origin = new URL(win.url()).origin
 }
 await launch()
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }) })
+await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }) })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 const events = async () => (await (await fetch(`${origin}/api/inbox/events?limit=100`)).json()).events
 const titled = async (t) => (await events()).filter((e) => e.title === t)
 const setting = (id, o) => fetch(`${origin}/api/config/plugin/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 /** Every web page over the window, with its logins (the profile its partition is named for). */
-const all = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
+const all = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
   return w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents)
     .map((v) => ({ url: v.webContents.getURL(), visible: v.getVisible(), profile: (v.webContents.session.storagePath ?? "").split("/").pop() }))
 })
