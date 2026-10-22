@@ -460,6 +460,9 @@ export default function App() {
       {/* Behind a hidden sidebar slid in, the page dims a little (index.css: it starts once the sidebar is in, so
           brushing the edge never flashes it). Clicks pass through: one on the page puts the sidebar away. */}
       {peekShade && (hideLeft || hideRight) && <div aria-hidden data-peek-shade="" data-shown={peek ? "" : undefined} className="pointer-events-none fixed inset-0 z-[35]" />}
+      {/* Over a frame (an HTML file, a PDF) the window hears no pointer: these catch it at the edges meanwhile (core/peek.ts). */}
+      {hideLeft && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 left-0 z-[38] w-[6px]" />}
+      {hideRight && hasRight && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 right-0 z-[38] w-[3px]" />}
       {!popout && <>
       <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && peek !== "left"} onContextMenu={menuFor(panelMenu)}
         className={cn(

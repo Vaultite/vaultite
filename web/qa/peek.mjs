@@ -1,8 +1,9 @@
 // Sidebars without rails (Zen): hidden, each takes no room and is off the window with its toggle; at its edge of the
 // window it slides in as a floating panel, as far from the window's top as from its side, and its toggle rides on it,
 // mid-slide too, sitting in it where it sits beside the pinned sidebar, centred on its top row (the Mac's traffic
-// lights come once the left one is in: lights.mjs, not in a browser). Writes appearance.json and
-// sidebars.json (put back after): throwaway server only.
+// lights come once the left one is in: lights.mjs, not in a browser). Over a frame at the window's edges, whose page the
+// window doesn't hear, each still slides in and out. Writes appearance.json and sidebars.json (put back after):
+// throwaway server only.
 //   node web/qa/peek.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -54,6 +55,26 @@ try {
     const back = await until(async () => { const s = await at(side); return s.peek === null && s }, 2000)
     check(`${side}: its toggle pins it, the toggle back in place`, !!back && Math.abs(back.dx - pinned.dx) < 0.01 && Math.abs(back.dy - pinned.dy) < 0.01, back || await at(side))
     await page.mouse.move(W / 2, 450)
+  }
+
+  // Both hidden, a frame over the whole window (as a PDF or an app's card can reach its edges): the window hears nothing
+  // over its page, yet each edge slides its sidebar in, and back on the frame it slides out.
+  for (const side of ["left", "right"]) await page.click(side === "left" ? "[data-sidebar-toggle='']" : "[data-sidebar-toggle=right]")
+  await page.mouse.move(W / 2, 450)
+  await page.evaluate(() => {
+    const f = Object.assign(document.createElement("iframe"), { srcdoc: "<body style='margin:0;height:100vh;background:#cde'>Frame", title: "QA frame" })
+    f.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:30"
+    document.body.append(f)
+  })
+  const peekOf = (side) => page.evaluate((side) => document.querySelector(`aside[data-side=${side}]`).dataset.peek, side)
+  for (const side of ["left", "right"]) {
+    await page.mouse.move(W / 2 + 10, 450)
+    await wait(400)
+    await page.mouse.move(side === "left" ? 1 : W - 1, 450, { steps: 12 })
+    check(`frame: at its edge the ${side} sidebar slides in`, await until(async () => (await peekOf(side)) === "true", 2000), await peekOf(side))
+    await wait(300)
+    await page.mouse.move(W / 2, 450, { steps: 12 })
+    check(`frame: back on the frame the ${side} sidebar slides out`, await until(async () => (await peekOf(side)) === "false", 2000), await peekOf(side))
   }
 } finally {
   await api("config/appearance", { method: "PUT", body: JSON.stringify(appearance) })

@@ -994,6 +994,8 @@ html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(-
 
 /* Behind a hidden sidebar slid in (appearance `peekShade`): a soft dim that waits for the sidebar to be in, so brushing
    the window's edge never flashes the page, and lifts at once. Stronger in dark, where a dark page hardly darkens. */
+[data-peek-edge] { pointer-events: none; }
+:root[data-in-frame] [data-peek-edge] { pointer-events: auto; }
 [data-peek-shade] { background: rgb(0 0 0 / 0.08); opacity: 0; transition: opacity 120ms ease-in; }
 .dark [data-peek-shade] { background: rgb(0 0 0 / 0.4); }
 [data-peek-shade][data-shown] { opacity: 1; transition: opacity 280ms ease-out 140ms; }

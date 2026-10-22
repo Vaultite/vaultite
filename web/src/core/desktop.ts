@@ -167,6 +167,8 @@ export type WebPages = {
 export type WebEvent =
   | { type: "state"; id: number; state: WebPageState }
   | { type: "open"; id: number; url: string }
+  /** The pointer moved over a page near the window's left or right edge, or just left there (window CSS px). */
+  | { type: "pointer"; x: number; y: number }
   | { type: "focus"; id: number }
   | { type: "clip"; id: number }
   | { type: "block"; id: number; x: number; y: number }

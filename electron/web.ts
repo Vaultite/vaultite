@@ -173,6 +173,8 @@ function freeName(dir: string, name: string) {
   return out
 }
 
+/** How near the window's left or right edge (CSS px) a page's pointer is told to the window. */
+const EDGE = 12
 const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
 const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.sound, p.view.webContents.isCurrentlyAudible(), Date.now())
@@ -354,6 +356,18 @@ function make(win: AppWindow, url: string, profile: string, tab: string): Page {
     if (!title && !body) return
     if (waiting.length < QUEUED) waiting.push({ title, body, url }); else more++
     drain()
+  })
+
+  // The window doesn't hear the pointer over the page: near its edges it's told, for a hidden sidebar to slide in
+  // (web/src/core/peek.ts), and once as it leaves them.
+  let atEdge = false
+  wc.on("before-mouse-event", (_e, m) => {
+    if (m.type !== "mouseMove" || p.player || p.full || p.win.isDestroyed()) return
+    const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
+    const x = (b.x + m.x) / z, edge = x <= EDGE || x >= w / z - EDGE
+    if (!edge && !atEdge) return
+    atEdge = edge
+    tell(p.win, { type: "pointer", x, y: (b.y + m.y) / z })
   })
 
   wc.on("before-input-event", (e, i) => {

@@ -2,7 +2,7 @@
 // the window, as Zen's compact mode does, and slides out once the pointer has left it.
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { getDrag } from "@/core/drag"
-import { hasLights, showLights } from "@/core/desktop"
+import { hasLights, showLights, webPages } from "@/core/desktop"
 import { space } from "@/lib/utils"
 
 export type Peek = "left" | "right" | null
@@ -81,6 +81,9 @@ const summons = new Set<(side: Side) => boolean>()
  *  pinning it open. False: that sidebar isn't hidden this way (it has a rail, or it's open). */
 export const peekSidebar = (side: Side) => [...summons].some((f) => f(side))
 
+/** What the window never hears the pointer over: it's in the frame's own page. */
+const FRAME = "iframe, embed, object"
+
 /** Which hidden sidebar is slid in: `left` / `right` say which sidebars are hidden now. */
 export function usePeek(left: boolean, right: boolean): Peek {
   const [peek, setPeek] = useState<Peek>(null)
@@ -105,29 +108,46 @@ export function usePeek(left: boolean, right: boolean): Peek {
     const stopOpening = () => { if (opening) clearTimeout(opening.t); opening = null }
     const stopClosing = () => { if (closing) clearTimeout(closing); closing = null }
     const aside = () => (peek ? document.querySelector(`aside[data-side=${peek}]`) : null)
-    const move = (e: PointerEvent) => {
-      if (e.pointerType === "touch") return
-      const side = left && e.clientX <= EDGE.left.px ? "left" : right && e.clientX >= innerWidth - 1 - EDGE.right.px ? "right" : null
+    const closeSoon = () => {
+      if (!summoned.current && !closing) closing = setTimeout(() => { closing = null; if (!held(aside())) setPeek(null) }, LINGER)
+    }
+    const at = (x: number) => {
+      const side = left && x <= EDGE.left.px ? "left" : right && x >= innerWidth - 1 - EDGE.right.px ? "right" : null
       if (peek) {
         const box = aside()?.getBoundingClientRect()
-        const inside = !!box && e.clientX >= box.left - 8 && e.clientX <= box.right + 8
+        const inside = !!box && x >= box.left - 8 && x <= box.right + 8
         if (inside || side === peek) { summoned.current = false; stopClosing(); return }
-        if (summoned.current) return
-        if (!closing) closing = setTimeout(() => { closing = null; if (!held(aside())) setPeek(null) }, LINGER)
+        closeSoon()
         return
       }
       if (side && opening?.side !== side) { stopOpening(); opening = { side, t: setTimeout(() => { opening = null; setPeek(side) }, EDGE[side].ms) } }
       else if (!side) stopOpening()
     }
+    const move = (e: PointerEvent) => { if (e.pointerType !== "touch") at(e.clientX) }
+    // Over a frame (an HTML file, a PDF) the window hears nothing more: the edges catch the pointer meanwhile
+    // (App's data-peek-edge), and a sidebar slid in goes once the pointer has left it for one.
+    const root = document.documentElement.dataset
+    const over = (e: PointerEvent) => {
+      const t = e.target as Element
+      if (t.closest?.("[data-peek-edge]")) return
+      if (e.pointerType === "touch" || !t.matches?.(FRAME)) { delete root.inFrame; return }
+      root.inFrame = ""
+      if (peek && !aside()?.contains(t)) closeSoon()
+    }
     // A click on the page puts it away at once; Escape too, unless it's the editor's or a menu's.
     const down = (e: PointerEvent) => { if (peek && !aside()?.contains(e.target as Node) && !(e.target as Element).closest?.("[role=menu], [data-sidebar-toggle]")) setPeek(null) }
     const key = (e: KeyboardEvent) => { if (peek && e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[role=menu]")) setPeek(null) }
     addEventListener("pointermove", move, { passive: true })
+    addEventListener("pointerover", over, { passive: true })
     addEventListener("pointerdown", down, true)
     addEventListener("keydown", key)
+    // A browser tab's page is drawn over the window, which hears nothing there: the desktop app tells the moves near its
+    // edges (electron/web.ts).
+    const off = webPages?.on((m) => { if (m.type === "pointer") at(m.x) })
     return () => {
-      stopOpening(); stopClosing()
+      stopOpening(); stopClosing(); off?.()
       removeEventListener("pointermove", move)
+      removeEventListener("pointerover", over)
       removeEventListener("pointerdown", down, true)
       removeEventListener("keydown", key)
     }
