@@ -155,10 +155,13 @@ async function lookup(port: number): Promise<Caller | null> {
   if (known) return known[1]
   // Both at once, as the request starts: a quick caller (curl) is gone by the time it's answered.
   // (Linux: iproute2's ss, there by default, where lsof often isn't; it names the processes of this user's sockets)
+  // (Windows: netstat's line whose local end is the caller's port names its process last)
   let [sockets, table] = await Promise.all([process.platform === "linux"
     ? run("ss", ["-Htnp", "state", "established", `( sport = :${port} )`])
+    : process.platform === "win32" ? run("netstat", ["-ano", "-p", "TCP"])
     : run(fs.existsSync("/usr/sbin/lsof") ? "/usr/sbin/lsof" : "lsof", ["-nP", "-a", `-iTCP:${port}`, "-sTCP:ESTABLISHED", "-Fp"]), processes()])
   const pids = (process.platform === "linux" ? [...sockets.matchAll(/pid=(\d+)/g)].map((m) => Number(m[1]))
+    : process.platform === "win32" ? [...sockets.matchAll(new RegExp(`^\\s*TCP\\s+\\S+:${port}\\s+\\S+:${process.env.PORT || 8793}\\s+ESTABLISHED\\s+(\\d+)`, "gm"))].map((m) => Number(m[1]))
     : sockets.split("\n").filter((l) => l.startsWith("p")).map((l) => Number(l.slice(1)))).filter((p) => p && p !== process.pid)
   let pid = pids[0]
   if (pid) {

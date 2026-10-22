@@ -24,10 +24,12 @@ type Transcriber =
 type Found = { available: boolean; name?: string; why?: string; t?: Transcriber }
 
 /** Where programs are looked for: PATH (launchd's is short), then the usual places. */
-const dirs = () => [...new Set([...(process.env.PATH ?? "").split(":"), "/opt/homebrew/bin", "/usr/local/bin", `${HOME}/.local/bin`,
+const dirs = () => [...new Set([...(process.env.PATH ?? "").split(path.delimiter), "/opt/homebrew/bin", "/usr/local/bin", `${HOME}/.local/bin`,
   `${HOME}/miniforge3/bin`, `${HOME}/mambaforge/bin`, `${HOME}/miniconda3/bin`, `${HOME}/anaconda3/bin`, "/usr/bin"].filter(Boolean))]
 const runnable = (p: string) => { try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile() } catch { return false } }
-const which = (name: string) => dirs().map((d) => path.join(d, name)).find(runnable) ?? null
+/** (Windows' programs end in one of PATHEXT's: whisper.exe, ffmpeg.exe) */
+const EXTS = process.platform === "win32" ? ["", ...(process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";").filter(Boolean)] : [""]
+const which = (name: string) => dirs().flatMap((d) => EXTS.map((x) => path.join(d, name + x))).find(runnable) ?? null
 
 /** Not a program in the vault. */
 function outsideVault(p: string) {
