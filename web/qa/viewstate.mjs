@@ -126,11 +126,12 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
     return v.state.doc.lineAt(b.from).number - 1 - (fm.match(/\n/g)?.length ?? 0)
   })
   // Halfway down, then the card there lined up with the top of the pane (the hard case: a place at a part's very top
-  // can read back as the line above it, and switching back would show the part before).
+  // can read back as the line above it, and switching back would show the part before); in the gap between two rows, the next.
   await page.evaluate(() => { const b = document.getElementById("main-scroll"); b.scrollTop = (b.scrollHeight - b.clientHeight) / 2 }); await wait(400)
   await page.evaluate(() => {
     const b = document.getElementById("main-scroll"), top = b.getBoundingClientRect().top + 8
-    const el = [...b.querySelectorAll("[data-line]")].find((e) => { const r = e.getBoundingClientRect(); return r.height && r.top <= top && r.bottom > top })
+    const cards = [...b.querySelectorAll("[data-line]")].filter((e) => e.getBoundingClientRect().height)
+    const el = cards.find((e) => { const r = e.getBoundingClientRect(); return r.top <= top && r.bottom > top }) ?? cards.find((e) => e.getBoundingClientRect().top > top)
     if (el) b.scrollTop += el.getBoundingClientRect().top - b.getBoundingClientRect().top
   }); await wait(400)
   const c0 = await card()

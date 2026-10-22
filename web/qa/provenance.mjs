@@ -152,7 +152,11 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   check("tokens: shown once turned on", await until(async () => (await tokens.count()) === 1, 8000))
   await go(page, PLAIN) // (the workspace's tabs may have been put back meanwhile)
   const t0 = Number(await tokens.getAttribute("data-tokens"))
-  const last = await page.evaluate(() => { const t = document.querySelector("[role=status] [data-tokens]"); return t?.parentElement?.lastElementChild === t && /words/.test(t.parentElement.textContent) })
+  // (each item is its own slot in the bar: the tokens' after the words' and characters')
+  const last = await page.evaluate(() => {
+    const keys = [...document.querySelectorAll("[role=status] [data-status-items] > [data-status-key]")].filter((e) => e.textContent).map((e) => e.dataset.statusKey)
+    return keys.at(-1) === "token-count:tokens" && keys.includes("core:words") && keys.includes("core:characters")
+  })
   check("tokens: after the words and characters, as ~N tokens", last && /^~\d+ tokens$/.test((await tokens.innerText()).trim()), await tokens.innerText())
   await shown(page, PLAIN, ".cm-content").click()
   await page.keyboard.press("End")

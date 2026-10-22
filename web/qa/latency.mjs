@@ -13,7 +13,7 @@
 // profile (Chrome DevTools opens it) and lists the functions that took the most. --runs N (default 3): medians of N.
 // With a vault path, it first adds 20 made-up vault plugins there (~550 KB of bundles, as a big vault has), turned on
 // and allowed, so the load waits for bundles as a real one does; they stay (run it again without the path).
-// WRITES: a "Latency" folder of notes, workspace 1's tabs (one tab at each run's start, then splits), and with a vault path its plugins: throwaway server only.
+// WRITES: a "Latency" folder of notes (600 in its Many folder), workspace 1's tabs (one tab at each run's start, then splits), and with a vault path its plugins: throwaway server only.
 //   node web/qa/latency.mjs <base url> [vault path] [--runs 3] [--only load] [--phone] [--profile <step>] [--out r.json] [--compare r.json]
 import fs from "node:fs"
 import path from "node:path"
@@ -34,7 +34,7 @@ const api = async (method, p, body) => {
 }
 
 // ---------- the notes it works on ----------
-const DIR = "Latency", NOTES = 12, LONG = `${DIR}/Long note.md`
+const DIR = "Latency", NOTES = 12, LONG = `${DIR}/Long note.md`, MANY = `${DIR}/Many`
 const words = "the keeper climbs one hundred steps every evening to light the lamp while fog rolls in from the north sea".split(" ")
 const line = (i) => Array.from({ length: 8 + (i % 9) }, (_, k) => words[(i * 7 + k * 3) % words.length]).join(" ")
 function longNote(n = 3000) {
@@ -52,6 +52,8 @@ const note = (i) => `---\ntype: note\n---\n\nMarker ${i} lighthouse\n\n${Array.f
 const name = (i) => `${DIR}/Note ${String(i).padStart(2, "0")}.md`
 for (let i = 1; i <= NOTES; i++) await api("PUT", "file", { path: name(i), text: note(i) })
 await api("PUT", "file", { path: LONG, text: longNote() })
+// (a big folder for the file explorer: 600 short notes, 25 at a time)
+for (let i = 0; i < 600; i += 25) await Promise.all(Array.from({ length: 25 }, (_, k) => api("PUT", "file", { path: `${MANY}/Note ${String(i + k).padStart(3, "0")}.md`, text: `${line(i + k)}\n` })))
 
 // ---------- made-up vault plugins (with a vault path) ----------
 if (VAULT) {
@@ -283,7 +285,7 @@ async function press(s, sel, middle) {
 async function run(n) {
   // (each run from one tab in one pane: the last run's tabs and splits are kept in the workspace's file)
   const one = { root: { id: "g0", tabs: [{ id: "tlat0", to: `file:${name(1)}` }], active: "tlat0" } }
-  await api("PUT", "file", { path: ".vaultite/plugins/workspaces/1.json", text: `${JSON.stringify({ layout: one })}\n` })
+  await api("PUT", "workspaces/1", { layout: one, focus: "g0" })
   await wait(500)
   const s = await session()
   const r = {}
@@ -344,15 +346,15 @@ async function run(n) {
     r.sidebar = combine(sb)
 
     // A folder of 600 notes in the file explorer opened, then closed.
-    const big = await s.page.evaluate(() => [...document.querySelectorAll("aside [role=tree] [data-tree-folder]")].map((e) => e.dataset.treePath)
-      .find((p) => p === "Notes"))
+    await reveal(s, MANY)
+    const big = await s.page.locator(treeRow(MANY)).count() ? MANY : null
     if (big) {
       const fo = []
-      const open = () => !!document.querySelector('aside [role=tree] [data-tree-path^="Notes/"]')
+      const open = () => !!document.querySelector('aside [role=tree] [data-tree-path^="Latency/Many/"]')
       if (await s.page.evaluate(open)) { await press(s, treeRow(big)); await wait(300) } // (open from the last run)
       for (let k = 0; k < 2; k++) {
-        fo.push(await step(s, "folder", () => press(s, treeRow(big)), () => document.querySelectorAll('aside [role=tree] [data-tree-path^="Notes/"]').length > 20))
-        await step(s, "folderClose", () => press(s, treeRow(big)), () => !document.querySelector('aside [role=tree] [data-tree-path^="Notes/"]'))
+        fo.push(await step(s, "folder", () => press(s, treeRow(big)), () => document.querySelectorAll('aside [role=tree] [data-tree-path^="Latency/Many/"]').length > 20))
+        await step(s, "folderClose", () => press(s, treeRow(big)), () => !document.querySelector('aside [role=tree] [data-tree-path^="Latency/Many/"]'))
       }
       r.folder = combine(fo)
     }
