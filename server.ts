@@ -590,7 +590,7 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
     // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
     busy: async () => {
       await ready
-      const r = await LOADED[0]?.desktop("agent:busy").catch(() => null) as { busy?: boolean; why?: string } | null
+      const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null) as { busy?: boolean; why?: string } | null
       return r?.busy ? String(r.why || "the browser is busy") : null
     } })
 }

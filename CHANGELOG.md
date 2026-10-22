@@ -13,7 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   than starting its own. Agents' tabs outlast the server restarting. Other machines' agents use an always-on machine's
   browser; a laptop's app answers only its own agents.
 - **Updates wait for agents**: the desktop app restarts into an update only once its browser is idle (no agent call
-  under way, no page waiting on you, no agent at work in the last 10 minutes).
+  under way, no page waiting on you, no agent at work in the last 10 minutes); its server's update waits only for agents
+  at work, since the app's tabs and asks outlast the server restarting.
 - **A server that updates itself**: `vau service install --updates main` has a service install follow a branch, taking
   each commit CI passed on (fast-forward only, a clean checkout, never while agents use the browser), building it and
   restarting when its own code changed; a failure keeps the version before and shows in `vau errors`. `vau version`
