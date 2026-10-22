@@ -74,6 +74,18 @@ export function setHole(id: number, box: HTMLElement, r: DOMRect | null) {
   schedule()
 }
 const same = (a: DOMRect, b: DOMRect) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
+export const sameRect = (a: DOMRect | null, b: DOMRect | null) => (a && b ? same(a, b) : a === b)
+/** Where `a` and `b` overlap (null: nowhere). */
+export function overlap(a: DOMRect, b: DOMRect) {
+  const l = Math.max(a.left, b.left), r = Math.min(a.right, b.right), t = Math.max(a.top, b.top), btm = Math.min(a.bottom, b.bottom)
+  return l < r && t < btm ? new DOMRect(l, t, r - l, btm - t) : null
+}
+/** Once the holes as set now are on screen: two frames after the one that cuts them (it's then been shown). */
+export const painted = () => new Promise<void>((done) => {
+  if (document.hidden) { setTimeout(done, 50); return }
+  const after = (n: number) => requestAnimationFrame(() => (n ? after(n - 1) : done()))
+  after(2)
+})
 const schedule = () => { if (!soon) soon = requestAnimationFrame(apply) }
 
 const STYLE = `[data-web-hole] { background-color: transparent !important; background-image: var(--web-hole-image) !important;

@@ -1,7 +1,7 @@
 // The Browser's logins in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
 // script serves on 127.0.0.1 (a cookie login): signed in on a page in workspace 1, a page in workspace 2 isn't (its own
-// session, persist:web-2) and workspace 1 still is (persist:web, the one pages shared before); the Sites panel (in
-// a tab, plugins/core/web-viewer/Sites.tsx) lists the site signed in to (a tracker's cookie as one line, Clear) under
+// session, persist:web-2) and workspace 1 still is (persist:web, the one pages shared before); the Sites tab (every
+// set of logins, plugins/core/web-viewer/Sites.tsx) lists the site signed in to (a tracker's cookie as one line, Clear) under
 // its workspace's logins, and Sign out (after asking) clears it; with logins "shared", a page in workspace 2 gets workspace 1's session. Notifications: a page's becomes an Inbox event linking to its tab
 // (one from another workspace's logins says so and links nowhere), a frame inside the page can't make one, none with
 // notifications off, and a burst is cut short.
@@ -95,17 +95,16 @@ await until(async () => (await visible())?.text === "signed in", 10000)
 await inPage(`location.href = ${JSON.stringify(`${SITE}/whoami`)}`)
 check("… signed in there", await until(async () => (await visible())?.text === "who:Alice", 10000), await visible())
 
-// ---------- the panel, in a tab ----------
+// ---------- the Sites tab: every set of logins ----------
+const logins = (name) => win.locator("[data-web-sites-view] section", { has: win.locator("[data-web-logins-heading]", { hasText: new RegExp(`^${name}$`) }) })
 await command("web:sites-tab")
-check("Sites: the site signed in to", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site='127.0.0.1']").count()) === 1, 10000),
-  await win.locator("[data-web-sites-panel]").innerText().catch(() => ""))
-check("… in workspace 1's logins", (await win.locator("[data-web-sites-panel] [data-web-logins]").innerText().catch(() => "")) === "Workspace 1",
-  await win.locator("[data-web-sites-panel] [data-web-logins]").innerText().catch(() => ""))
-check("… a tracker's cookie as a tracker, not a site", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-trackers='1']").count()) === 1
-  && (await win.locator("[data-web-sites-panel] [data-web-site='localhost']").count()) === 0, 10000), await win.locator("[data-web-sites-panel]").innerText().catch(() => ""))
-await win.locator("[data-web-trackers]").click()
+check("Sites: the site signed in to, in workspace 1's logins", await until(async () => (await logins("Workspace 1").locator("[data-web-site='127.0.0.1']").count()) === 1, 10000),
+  await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
+check("… a tracker's cookie as a tracker, not a site", await until(async () => (await logins("Workspace 1").locator("[data-web-trackers='1']").count()) === 1
+  && (await win.locator("[data-web-sites-view] [data-web-site='localhost']").count()) === 0, 10000), await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
+await logins("Workspace 1").locator("[data-web-trackers]").click()
 await win.locator("dialog[open] button", { hasText: "Clear" }).click()
-check("Clear: the tracker's cookie goes, the site's stays", await until(async () => (await win.locator("[data-web-trackers]").count()) === 0, 10000)
+check("Clear: the tracker's cookie goes, the site's stays", await until(async () => (await win.locator("[data-web-sites-view] [data-web-trackers]").count()) === 0, 10000)
   && (await cookiesIn("persist:web")).join() === "who=Alice", await cookiesIn("persist:web"))
 
 // ---------- workspace 2: logins of its own ----------
@@ -114,20 +113,22 @@ await openLink(0)
 check("workspace 2: a web page in persist:web-2", await until(async () => (await visible())?.partition === "persist:web-2", 15000), await visible())
 check("… not signed in", await until(async () => (await visible())?.text === "who:nobody", 10000), await visible())
 await command("web:sites-tab")
-check("… its panel: no sites, in its own logins", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site]").count()) === 0
-  && (await win.locator("[data-web-sites-panel] [data-web-logins]").innerText().catch(() => "")) === "Workspace 2", 10000), await win.locator("[data-web-sites-panel]").innerText().catch(() => ""))
+check("… Sites: workspace 2's logins have no sites", await until(async () => (await logins("Workspace 2").count()) === 1 && (await logins("Workspace 2").locator("[data-web-site]").count()) === 0, 10000),
+  await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
 check("workspace 1's logins kept", (await cookiesIn("persist:web")).includes("who=Alice"), await cookiesIn("persist:web"))
 
 // ---------- sign out, in workspace 1 ----------
 await command("workspace:1")
-await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site='127.0.0.1']").count()) === 1, 10000)
-await win.locator("[data-web-site='127.0.0.1']").hover()
-await win.locator("[data-web-site='127.0.0.1'] [data-row-more]").click()
+await command("web:sites-tab")
+const site = logins("Workspace 1").locator("[data-web-site='127.0.0.1']")
+await until(async () => (await site.count()) === 1, 10000)
+await site.hover()
+await site.locator("[data-row-more]").click()
 await win.locator("[role=menuitem]", { hasText: /^Sign out/ }).click()
 check("Sign out asks first", await until(async () => (await win.locator("dialog[open]").count()) > 0, 10000), null)
 await win.locator("dialog[open] button", { hasText: "Sign out" }).click()
 check("… then the site's cookies go", await until(async () => !(await cookiesIn("persist:web")).includes("who=Alice"), 10000), await cookiesIn("persist:web"))
-check("… and it leaves the panel", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site]").count()) === 0, 10000), null)
+check("… and it leaves Sites", await until(async () => (await win.locator("[data-web-sites-view] [data-web-site]").count()) === 0, 10000), null)
 
 // ---------- logins shared ----------
 await fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ logins: "shared" }) })

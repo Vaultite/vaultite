@@ -8,10 +8,11 @@ import {
   type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
-import { coverOf, passPointer, setCover, setHole } from "./layers"
+import { coverOf, overlap, painted, passPointer, sameRect, setCover, setHole } from "./layers"
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
+import { manageContainers } from "./Sites"
 import { argOf, containerById, profileIn, ruleFor, splitArg } from "./containers"
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
@@ -93,7 +94,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => {
     if (locked !== false || blank) return
     let gone = false, mine = 0
-    const leave = (id: number) => { void web.release(id); if (tab && !stillWeb(tab)) void web.close(tab) }
+    // (once the window paints behind it again: hidden before, it leaves a see-through hole for a frame)
+    const leave = (id: number) => void painted().then(() => { void web.release(id); if (tab && !stillWeb(tab)) void web.close(tab) })
     settingsRead().then(() => {
       // A site that always opens in a container, opened in none: its tab goes there (drawn afresh, index.tsx).
       const rule = container ? null : ruleFor(arg)
@@ -170,10 +172,21 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => {
     const el = box.current
     if (!id || !el || away) return
-    let raf = 0, last = "", hidden = true, covered = false, gone = false
-    const sync = async () => {
-      raf = 0
-      if (gone) return
+    let raf = 0, covered = false, gone = false, busy = false, again = false
+    /** Where the page is now (null: hidden). */
+    let at: DOMRect | null = null
+    // The window is see-through only where the page is, in every frame (App windows make it transparent): the hole
+    // shrinks and is painted before the page moves or hides, and grows only once the page is there.
+    const move = async (to: DOMRect | null) => {
+      const both = at && to ? overlap(at, to) : null
+      if (!sameRect(both, at)) { setHole(id, el, both); await painted() }
+      if (gone) return undefined
+      const placed = await web.place(id, to && { x: to.left, y: to.top, width: to.width, height: to.height }).catch(() => undefined)
+      at = placed?.shown === false ? null : to
+      if (!gone) setHole(id, el, at)
+      return placed
+    }
+    const step = async () => {
       const r = pageArea(el.getBoundingClientRect())
       const show = !live.current.error && r.width >= 2 && r.height >= 2
       const cover = show ? coverOf(el, r) : null
@@ -184,24 +197,19 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       const mine = el.closest("[data-pane]")?.id === "main-scroll"
       if (covered && cover !== "app" && free && mine) void web.go(id, "focus")
       covered = cover === "app"
-      if (!show) {
-        if (hidden) return
-        hidden = true
-        last = ""
-        setHole(id, el, null)
-        await web.place(id, null).catch(() => {})
-        schedule() // (it may have gone meanwhile)
-        return
-      }
-      const rect = { x: r.left, y: r.top, width: r.width, height: r.height }
-      const key = `${rect.x},${rect.y},${rect.width},${rect.height}`
-      if (!hidden && key === last) return
-      const wasHidden = hidden
-      hidden = false
-      last = key
-      setHole(id, el, r)
-      const placed = await web.place(id, rect).catch(() => undefined)
+      if (!show) { if (at) await move(null); return }
+      if (sameRect(at, r)) return
+      const wasHidden = !at
+      const placed = await move(r)
       if (wasHidden && free && (placed?.focused || mine)) void web.go(id, "focus")
+    }
+    // One step at a time: a move waits for the paint before it.
+    const sync = async () => {
+      raf = 0
+      if (gone) return
+      if (busy) { again = true; return }
+      busy = true
+      try { await step() } finally { busy = false; if (again) { again = false; schedule() } }
     }
     // (A window that's hidden or covered gets no animation frames: a timer then, so the page is in place when it shows.)
     const schedule = () => {
@@ -257,7 +265,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} className="@max-xs/bar:hidden" />
         <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")} />
         <AddressBar url={state.url} current={tabArg} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }}
-          lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} />}
+          lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} manage={manageContainers} />}
           trail={id > 0 && onWeb ? <ShieldsButton id={id} url={state.url} loading={state.loading} /> : null} />
         {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />

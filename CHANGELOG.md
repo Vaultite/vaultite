@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: switching between web tabs no longer flashes see-through for a frame. A tab's container menu is only for
+  choosing one (Open in, Always open here, New container, Manage containers); containers are added and changed in
+  Sites (the panel's + and the picked one's options, the Sites tab with every container and its options), which also
+  pins the sites each always opens. Menus mixing icons and checks put the check at the end, so no row starts indented.
 - Reading view runs plugins over a note's blocks (`reading` in the plugin API): Obsidian plugins' Markdown
   post-processors now reach a note being read, so Simple Embeds turns a YouTube link into a player there, Banners draws
   its banner and Supercharged Links marks links; blocks no plugin changed draw as before.

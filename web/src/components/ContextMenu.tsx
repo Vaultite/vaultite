@@ -329,8 +329,9 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const hits = query ? found(shown, query) : null
   const rows = hits ? hits.map((f) => f.it) : shown
   const lead = rows.some((it) => it.icon || it.items)
-  // A check and an icon each (a panel's): the rows without one keep their place for it.
-  const twin = rows.some((it) => it.checked !== undefined && it.icon)
+  // Rows with an icon of their own and a check (a container, a panel): the check goes at the end, so no row keeps two
+  // empty columns at its start.
+  const trailing = rows.some((it) => it.checked !== undefined && it.icon)
   // The open submenu, by its row's label: a menu drawn again (a `keep` click) can have rows come and go above it.
   const [sub, setSub] = useState<{ label: string; rect: DOMRect; focus: boolean } | null>(null)
   const subAt = sub ? rows.findIndex((it) => it.label === sub.label) : -1
@@ -443,10 +444,11 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
             }}
             className={cn("flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
               it.danger && "text-destructive", subAt === i && "bg-foreground/[0.07]")}>
-            {(twin || it.checked !== undefined) && <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />}
-            {(twin || it.checked === undefined) && (it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />)}
+            {!trailing && it.checked !== undefined && <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />}
+            {(trailing || it.checked === undefined) && (it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />)}
             <span className="flex-1">{it.label}</span>
             {it.hint && <span className="pl-4 text-muted-foreground">{it.hint}</span>}
+            {trailing && it.checked !== undefined && <Check className={cn(icon, "-mr-1", !it.checked && "invisible")} strokeWidth={2.5} />}
             {it.items && (it.split
               // A finger's target of its own on phones (44px, a line before it); on desktop hovering opens it anyway.
               ? <span data-menu-more className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center border-l-[0.5px] border-border md:-mr-2.5 md:h-7 md:w-7 md:border-l-0">

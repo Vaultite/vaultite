@@ -121,7 +121,7 @@ export type WebPages = {
   open: (url: string, rect: WebRect | null, profile?: string, tab?: string) => Promise<{ id: number; state: WebPageState }>
   /** Move it over `rect`, or hide it (null). Shown again: `focused` when it had the keyboard as it was hidden (builds
    *  from before answer nothing). */
-  place: (id: number, rect: WebRect | null) => Promise<{ focused?: boolean } | undefined | void>
+  place: (id: number, rect: WebRect | null) => Promise<{ focused?: boolean; shown?: boolean } | undefined | void>
   /** Its tab went to the background (a tab or workspace switch): hidden, kept for the tab's next `open`. */
   release: (id: number) => Promise<unknown>
   /** Tab `tab` closed, left this window or stopped showing a web page: its page ends. */

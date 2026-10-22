@@ -1,7 +1,7 @@
 // Shields in the Browser: a page's count of blocked requests and its menu (the parts hidden, the site's style). The
 // desktop app blocks (electron/browser/adblock.ts); the settings here are handed to it, and the rules the user hid by.
 import { useEffect, useState } from "react"
-import { EyeOff, MousePointerSquareDashed, Paintbrush, Shield, ShieldOff } from "lucide-react"
+import { EyeOff, FileText, MousePointerSquareDashed, Paintbrush, Settings2, Shield, ShieldOff } from "lucide-react"
 import { cell, cn, getStore, menuBelow, notify, notifyError, numberText, op, openFile, openPluginSettings, useStore, webPages, type MenuItem } from "@vaultite"
 import { BLOCKED, onSite, PRESETS, type ElementRule } from "./elements"
 import type { SiteStyle } from "./sitestyles"
@@ -84,11 +84,11 @@ function hiddenItems(id: number, site: string, note: ElementRule[], hide: string
   }
   return [
     { label: "Block an element…", icon: MousePointerSquareDashed, sep: true, run: () => void pickElement(id, site) },
-    ...presets.map((p): MenuItem => ({ label: p.name, checked: hide.includes(p.id), keep: true, run: () => setPreset(p.id, !(settings.get().hide ?? []).includes(p.id)) })),
+    ...presets.map((p): MenuItem => ({ label: p.name, icon: EyeOff, checked: hide.includes(p.id), keep: true, run: () => setPreset(p.id, !(settings.get().hide ?? []).includes(p.id)) })),
     ...(mine.length ? [{ label: `Hidden on ${site}`, icon: EyeOff, hint: numberText(mine.length), run: () => {}, items: [
       { caption: true, label: "Click one to show it again", run: () => {} },
       ...mine.map((r): MenuItem => ({ label: r.rule.slice(r.rule.indexOf("##") + 2), checked: true, run: () => void showRule(r.rule) })),
-      { label: "Open the list", sep: true, run: () => openFile(BLOCKED) },
+      { label: "Open the list", icon: FileText, sep: true, run: () => openFile(BLOCKED) },
     ] }] : []),
   ]
 }
@@ -99,8 +99,8 @@ function styleItems(site: string, styles: SiteStyle[], unstyled: string[]): Menu
   if (!style) return [{ label: "Style this site…", icon: Paintbrush, sep: true, run: () => void editStyle(site) }]
   const on = !unstyled.includes(style.site)
   return [
-    { label: `Style for ${style.site}`, checked: on, sep: true, run: () => setStyled(style.site, !on) },
-    { label: "Edit its style…", icon: Paintbrush, run: () => void editStyle(style.site) },
+    { label: `Style for ${style.site}`, icon: Paintbrush, checked: on, sep: true, run: () => setStyled(style.site, !on) },
+    { label: "Edit its style…", icon: FileText, run: () => void editStyle(style.site) },
   ]
 }
 
@@ -141,10 +141,10 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
   const menu = (): MenuItem[] => [
     { caption: true, label: !on ? "Shields are off for every site" : !up ? `Nothing is blocked on ${site}`
       : count ? `${numberText(count)} ${count === 1 ? "request" : "requests"} blocked on this page` : "Nothing blocked on this page", run: () => {} },
-    on ? { label: `Shields for ${site}`, checked: up, run: () => void setDown(up) } : { label: "Shields", checked: false, run: () => void turnOn() },
+    on ? { label: `Shields for ${site}`, icon: Shield, checked: up, run: () => void setDown(up) } : { label: "Shields", icon: Shield, checked: false, run: () => void turnOn() },
     ...hiddenItems(id, site, note, s.hide ?? []),
     ...styleItems(site, styles, s.unstyled ?? []),
-    { label: "Browser settings…", sep: true, run: () => openPluginSettings("web-viewer", "shields") },
+    { label: "Browser settings…", icon: Settings2, sep: true, run: () => openPluginSettings("web-viewer", "shields") },
   ]
   const Icon = up ? Shield : ShieldOff
   return (

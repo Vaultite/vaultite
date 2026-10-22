@@ -1,7 +1,7 @@
 // The container chip at the address's left: which container the tab is in (its colour and name), and a menu to move the
-// tab to another, always open its site there, and add, rename, recolour or delete containers.
-import type { MouseEvent } from "react"
-import { Box } from "lucide-react"
+// tab to another or always open its site there. A container's own options (containerItems) are in Sites.
+import { useEffect, useState, type MouseEvent } from "react"
+import { Bot, Box, Fingerprint, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
 import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
 import {
   addContainer, argOf, colorOf, containerById, containers, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
@@ -9,8 +9,14 @@ import {
 } from "./containers"
 
 /** Whether this Mac can ask for Touch ID (asked once). */
-let lockable: Promise<boolean> | null = null
-const canLock = () => (lockable ??= Promise.resolve(webPages?.engine?.("lock:can")).then((v) => v === true, () => false))
+let lockable: Promise<boolean> | null = null, lockKnown = false
+const canLock = () => (lockable ??= Promise.resolve(webPages?.engine?.("lock:can")).then((v) => (lockKnown = v === true), () => false))
+export const canLockNow = () => { void canLock(); return lockKnown }
+export function useCanLock() {
+  const [can, set] = useState(lockKnown)
+  useEffect(() => { void canLock().then(set) }, [])
+  return can
+}
 
 /** Ask for a name (a new container's, or a new name for one). */
 function askName(title: string, current: string, done: (name: string) => void) {
@@ -39,39 +45,44 @@ async function deleteContainer(c: Container) {
   } catch (e) { notifyError(e, "Couldn't delete the container") }
 }
 
-/** Rename, recolour, delete the tab's container. */
-const editItems = (c: Container, canLock: boolean): MenuItem[] => [
-  ...(canLock || c.lock ? [{ label: "Lock with Touch ID", checked: !!c.lock, run: () => void updateContainer(c.id, { lock: !c.lock }) }] : []),
-  { label: "Agents", run: () => {}, items: [
-    { label: "Can't use it", checked: !c.agents, run: () => void updateContainer(c.id, { agents: undefined }) },
-    { label: "Can read pages", checked: c.agents === "read", run: () => void updateContainer(c.id, { agents: "read" }) },
-    { label: "Can read and act", checked: c.agents === "act", run: () => void updateContainer(c.id, { agents: "act" }) },
-  ] },
-  { label: `Rename ${c.name}…`, run: () => askName(`Rename ${c.name}`, c.name, (name) => void updateContainer(c.id, { name })) },
-  { label: "Colour", run: () => {}, items: colorItems(c.color, (color) => void updateContainer(c.id, { color })) },
-  { label: `Delete ${c.name}…`, danger: true, run: () => void deleteContainer(c) },
+const AGENTS: { v: Container["agents"]; label: string; says: string }[] = [
+  { v: undefined, label: "None", says: "" },
+  { v: "read", label: "Read pages", says: "Agents can read pages" },
+  { v: "act", label: "Read and act", says: "Agents can read and act" },
 ]
+/** What agents may do in `c`'s pages, said for a row ("" when nothing). */
+export const agentsSay = (c: Container) => AGENTS.find((a) => a.v === c.agents)?.says ?? ""
 
-/** The container menu for a tab showing `url` in `container`; `reopen` takes the tab's new arg. */
-export function containerMenu(container: string | null, url: string, reopen: (arg: string) => void, canLock = false): MenuItem[] {
+/** A container's own options: its name, colour, Touch ID, what agents may do and deleting it. */
+export const containerItems = (c: Container, canLock: boolean): MenuItem[] => [
+  { label: "Rename…", icon: Pencil, run: () => askName(`Rename ${c.name}`, c.name, (name) => void updateContainer(c.id, { name })) },
+  { label: "Colour", icon: dotIcon(colorOf(c)), run: () => {}, items: colorItems(c.color, (color) => void updateContainer(c.id, { color })) },
+  ...(canLock || c.lock ? [{ label: "Lock with Touch ID", icon: Fingerprint, checked: !!c.lock, keep: true, run: () => void updateContainer(c.id, { lock: !c.lock }) }] : []),
+  { label: "Agent access", icon: Bot, hint: AGENTS.find((a) => a.v === c.agents)?.label, run: () => {},
+    items: AGENTS.map((a) => ({ label: a.label, checked: c.agents === a.v, run: () => void updateContainer(c.id, { agents: a.v }) })) },
+  { label: `Delete ${c.name}…`, icon: Trash2, danger: true, sep: true, run: () => void deleteContainer(c) },
+]
+/** The container menu for a tab showing `url` in `container`; `reopen` takes the tab's new arg. Only choosing: a
+ *  container's own options are in Sites (`manage`). */
+export function containerMenu(container: string | null, url: string, reopen: (arg: string) => void, manage: () => void): MenuItem[] {
   const list = containers(), site = siteOf(url), rule = site ? ruleFor(url) : null
   const here = containerById(container)
   return [
     { label: "Open in", caption: true, run: () => {} },
     { label: "No container", icon: Box, checked: !here, run: () => { if (here) reopen(url) } },
     ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, run: () => { if (c.id !== here?.id) reopen(argOf(url, c.id)) } })),
-    ...(site && here ? [{ label: `Always open ${site} in ${here.name}`, checked: rule === here.id, sep: true,
+    ...(site && here ? [{ label: `Always open ${site} here`, icon: Pin, checked: rule === here.id, sep: true,
       run: () => void setSiteRule(site, rule === here.id ? null : here.id) }] : []),
-    ...(site && !here && rule ? [{ label: `Stop opening ${site} in ${containerById(rule)?.name ?? rule}`, sep: true, run: () => void setSiteRule(site, null) }] : []),
-    { label: "New container…", sep: true, run: () => newContainer((c) => reopen(argOf(url, c.id))) },
-    ...(here ? editItems(here, canLock) : []),
+    ...(site && !here && rule ? [{ label: `Stop opening ${site} in ${containerById(rule)?.name ?? rule}`, icon: PinOff, sep: true, run: () => void setSiteRule(site, null) }] : []),
+    { label: "New container…", icon: Plus, sep: true, run: () => newContainer((c) => reopen(argOf(url, c.id))) },
+    { label: "Manage containers…", icon: Settings2, run: manage },
   ]
 }
 
 /** Inside the page bar's address (a narrow bar, `@container/bar`: the dot alone). */
-export function ContainerButton({ container, url, reopen }: { container: string | null; url: string; reopen: (arg: string) => void }) {
+export function ContainerButton({ container, url, reopen, manage }: { container: string | null; url: string; reopen: (arg: string) => void; manage: () => void }) {
   const c = containerById(container)
-  const open = (e: MouseEvent) => { const at = { currentTarget: e.currentTarget } as MouseEvent; void canLock().then((can) => menuBelow(at, containerMenu(container, url, reopen, can))) }
+  const open = (e: MouseEvent) => menuBelow(e, containerMenu(container, url, reopen, manage))
   if (!c) {
     return (
       <button type="button" onClick={open} aria-label="Container" aria-haspopup="menu" data-tip="Open in a container" data-web-container=""

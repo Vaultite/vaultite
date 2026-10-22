@@ -6,7 +6,8 @@ import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, groupT
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
-import { SitesPanel, SitesSettings, SitesView } from "./Sites"
+import { painted } from "./layers"
+import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView } from "./Sites"
 import { ExtensionsView } from "./Extensions"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { ReplaysView } from "./Replays"
@@ -198,7 +199,8 @@ export default definePlugin({
         return s ? { icon: s.muted ? VolumeX : Volume2, label: s.muted ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.muted ? "unmute" : "mute") } : null
       },
       // (a tab's page is its own, whatever else shows the address)
-      onTabClose: (_arg, tab) => void webPages?.close(tab),
+      // (once the window paints behind it again, as WebPage lets go of one)
+      onTabClose: (_arg, tab) => void painted().then(() => webPages?.close(tab)),
       tabMenu: (arg) => {
         const { url } = splitArg(arg), sound = soundOf(arg)
         return [
@@ -217,7 +219,7 @@ export default definePlugin({
   files: { types: ["bookmarks"], icon: Bookmark },
   sidebar: {
     "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
-      render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} /> },
+      menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} /> },
   },
   webLink: (url, { mod }) => {
     if (!webPages || mod || !linksInViewer()) return false
@@ -237,7 +239,7 @@ export default definePlugin({
     { id: "web:address", name: "Edit current web page's address", when: () => !!focusedPage(), run: () => focusedPage()?.focusAddress(), icon: PencilLine },
     { id: "web:search-selection", name: "Search the web for selected text", desktop: true, when: () => !!webPages && !!selectedText().trim(), run: () => openWebLink(searchUrl(selectedText().replace(/\s+/g, " "), settings.get().search)), icon: Search },
     { id: "web:extensions", name: "Extensions", desktop: true, when: hasExtensions, run: openExtensions, icon: Puzzle },
-    { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: () => openView("web-pages", { newTab: !isViewOpen("view:web-pages") }) },
+    { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: manageContainers },
     { id: "web:history", name: "Show history", keys: isMac ? ["Mod+Y"] : ["Mod+H"], desktop: true, when: () => !!webPages?.engine, run: () => openView("web-history", { newTab: !isViewOpen("view:web-history") }), icon: History },
     { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: askClear, icon: Eraser },
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),

@@ -674,8 +674,8 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !p.view.getVisible()
     place(p, r)
     // (shown again: whether it had the keyboard when it was hidden)
-    if (r && wasHidden && p.view.getVisible()) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had } }
-    return { focused: false }
+    if (r && wasHidden && p.view.getVisible()) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had, shown: true } }
+    return { focused: false, shown: p.view.getVisible() }
   },
   // The window focused something of its own (desktop.ts): the keyboard comes to it from a page that has it.
   "web:take": (win) => {

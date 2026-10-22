@@ -2,7 +2,8 @@
 // script serves on 127.0.0.1 (a cookie login): a tab in Work (persist:web-c-work) signed in, the same site in Personal
 // isn't, nor in no container; the bar shows the tab's container (a chip inside the address; the active tab tinted
 // with appearance tabTint); a site set to always open in Work goes there from a
-// plain link; the container menu moves a tab to another; deleting a container clears its logins. A link from another
+// plain link; the container menu moves a tab to another and only chooses (every row led by its icon), containers are
+// added and deleted in Sites, deleting clearing its logins; switching web tabs is never see-through. A link from another
 // app opens in a web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
 // speaker unmutes it; a video keeps its speaker through a quiet scene, till it pauses.
 // WRITES: the throwaway vault only.
@@ -100,9 +101,59 @@ await win.locator("[data-web-page] [data-web-container='']:visible").click()
 await win.locator("[role^=menuitem]", { hasText: /^Work$/ }).click()
 check("moved to Work from the menu: signed in", await until(async () => { const v = await visible(); return v?.partition === "persist:web-c-work" && v.text === "who:Alice" }, 15000), await visible())
 
+// ---------- the container menu only chooses: its options are in Sites ----------
+const SHOTS = process.env.SHOTS
+const shot = async (name) => { if (SHOTS) await win.screenshot({ path: path.join(SHOTS, `${name}.png`) }) }
+await win.locator("[data-web-page] [data-web-container=work]:visible").click()
+const rows = await win.locator("[role=menu] [role^=menuitem]").allInnerTexts()
+check("the container menu: choosing, adding, managing", ["No container", "Work", "New container", "Manage containers"].every((w) => rows.some((r) => r.startsWith(w)))
+  && !rows.some((r) => /^(Rename|Delete|Colour|Agent access|Lock)/.test(r)), rows)
+// (an empty first column is a bare span: an icon is an svg or a coloured dot)
+const leads = await win.locator("[role=menu] > button[role^=menuitem]").evaluateAll((bs) => bs.map((b) => { const f = b.firstElementChild; return f?.tagName === "SPAN" && !f.childElementCount && !f.getAttribute("style") ? "empty" : "icon" }))
+check("… every row led by its icon (its check at the end)", leads.every((t) => t === "icon"), leads)
+await shot("container-menu")
+await win.keyboard.press("Escape")
+
+// ---------- switching web tabs: never see-through ----------
+// (the window is see-through where it cuts a hole for a page: each moment one's cut, a page must be on screen there)
+await app.evaluate(({ BaseWindow, WebContentsView }) => {
+  const w = BaseWindow.getAllWindows()[0]
+  let proto = WebContentsView.prototype
+  while (proto && !Object.prototype.hasOwnProperty.call(proto, "setVisible")) proto = Object.getPrototypeOf(proto)
+  const set = proto.setVisible
+  const shown = () => w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.getVisible()).length
+  globalThis.qaShown = [{ t: Date.now(), n: shown() }]
+  proto.setVisible = function (v) { const r = set.call(this, v); globalThis.qaShown.push({ t: Date.now(), n: shown(), v, url: this.webContents?.getURL?.().slice(-8) }); return r }
+})
+await win.evaluate(() => {
+  const cut = () => !!document.querySelector("[data-web-hole]")
+  window.qaCut = [{ t: Date.now(), cut: cut() }]
+  window.qaFrames = []
+  const tick = () => { window.qaFrames.push(Date.now()); requestAnimationFrame(tick) }
+  requestAnimationFrame(tick)
+  new MutationObserver((ms) => window.qaCut.push({ t: Date.now(), cut: cut(), what: [...document.querySelectorAll("[data-web-hole]")].map((e) => e.tagName + (e.dataset.pane !== undefined ? "[pane]" : "") + (e.hasAttribute("data-web-box") ? "[box]" : "")).join(" ") })).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["data-web-hole"] })
+})
+await open(`view:web/${SITE}/whoami?a`)
+await open(`view:web/${SITE}/whoami?b`)
+await until(async () => (await visible())?.url.endsWith("?b"), 15000)
+const tabs = win.locator("[role=tablist] [role=tab]")
+const at = await win.evaluate(() => [...document.querySelectorAll("[role=tablist] [role=tab]")].findIndex((t) => t.getAttribute("aria-selected") === "true"))
+for (let i = 0; i < 6; i++) { await tabs.nth(i % 2 ? at : at - 1).click(); await wait(400) }
+const shownLog = await app.evaluate(() => globalThis.qaShown)
+const cutLog = await win.evaluate(() => window.qaCut)
+const frames = await win.evaluate(() => window.qaFrames)
+// (a hole taken back is on screen once the next frame has begun)
+const cutAt = (t) => { const i = cutLog.findLastIndex((c) => c.t <= t); return i >= 0 && (cutLog[i].cut || (i > 0 && cutLog[i - 1].cut && !frames.some((f) => f > cutLog[i].t && f <= t))) }
+const gaps = shownLog.flatMap((s, i) => (s.n === 0 ? [{ from: s.t, to: shownLog[i + 1]?.t ?? Date.now() }] : []))
+const bad = gaps.filter((g) => cutAt(g.from) || cutLog.some((c) => c.cut && c.t > g.from && c.t < g.to))
+check("switching web tabs: the window is never see-through with no page there", bad.length === 0 && shownLog.length > 6,
+  { bad, shown: shownLog.length, near: bad.map((g) => ({ cut: cutLog.filter((c) => c.t > g.from - 100 && c.t < g.to + 50).map((c) => [c.t - g.from, c.cut, c.what]), shown: shownLog.filter((c) => c.t > g.from - 100 && c.t < g.to + 50).map((c) => [c.t - g.from, c.n, c.v, c.url]) })) })
+
 // ---------- a site always opens in Work ----------
 await setting({ containers: [{ id: "personal", name: "Personal", color: "blue" }, { id: "work", name: "Work", color: "orange", sites: ["127.0.0.1"] }, { id: "shop", name: "Shopping", color: "pink" }] })
-await wait(1500)
+await open("view:web-pages")
+check("Sites: Work's always-open site is pinned", await until(async () => (await win.locator("[data-web-logins-section=work] [data-web-site='127.0.0.1'] [data-web-always]").count()) === 1, 15000),
+  await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
 await open(`view:web/${SITE}/whoami?rule`)
 check("a site set to always open in Work goes there", await until(async () => { const v = await visible(); return v?.url.endsWith("?rule") && v.partition === "persist:web-c-work" && v.text === "who:Alice" }, 15000), await visible())
 
@@ -110,6 +161,13 @@ check("a site set to always open in Work goes there", await until(async () => { 
 await open(`view:web/@shop/${SITE}/whoami?shop`)
 await until(async () => (await visible())?.partition === "persist:web-c-shop", 15000)
 await win.locator("[data-web-page] [data-web-container=shop]:visible").click()
+await win.locator("[role^=menuitem]", { hasText: /^Manage containers/ }).click()
+check("Manage containers: the Sites tab, every container in it", await until(async () => (await win.locator("[data-web-logins-heading]:visible").count()) >= 4, 10000),
+  await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
+await win.locator("[data-web-logins-heading=shop]:visible").hover()
+await shot("sites-tab")
+await win.locator("[data-web-logins-heading=shop]:visible button[aria-label='Options for Shopping']").click()
+await shot("container-options")
 await win.locator("[role^=menuitem]", { hasText: /^Delete Shopping/ }).click()
 await win.locator("dialog[open] button", { hasText: "Delete" }).click()
 await wait(1000)
@@ -118,6 +176,29 @@ check("Delete: the container goes", await until(async () => settingsFile().inclu
 check("… Work's logins stay", (await cookiesIn("persist:web-c-work")).includes("who=Alice"), await cookiesIn("persist:web-c-work"))
 await win.evaluate(() => window.vaultite?.web?.engine?.("containers:clear", "c-work"))
 check("clearing Work: its logins go", await until(async () => !(await cookiesIn("persist:web-c-work")).length, 5000), await cookiesIn("persist:web-c-work"))
+
+// ---------- a new container, from Sites ----------
+await win.locator("[data-web-sites-view] [data-web-new-container]:visible").click()
+await win.keyboard.type("Travel"); await win.keyboard.press("Enter")
+check("New container in Sites: it's added", await until(async () => settingsFile().includes("\"travel\""), 5000), settingsFile())
+
+// ---------- the Sites panel: + adds a container and shows its sites ----------
+const bars = path.join(VAULT, ".vaultite/sidebars.json")
+fs.writeFileSync(bars, JSON.stringify({ ...JSON.parse(fs.existsSync(bars) ? fs.readFileSync(bars, "utf8") : "{}"), right: ["web-viewer:web-pages"] }) + "\n")
+const panel = win.locator("[data-web-sites-panel]:visible")
+if (!(await until(async () => (await panel.count()) === 1, 3000))) await win.locator("[data-sidebar-toggle=right]").click()
+check("the Sites panel shows", await until(async () => (await panel.count()) === 1, 10000), null)
+await panel.locator("[data-web-logins]").click()
+const picks = await win.locator("[role=menu] [role^=menuitem]").allInnerTexts()
+check("… its picker: every set of logins, New container, Manage containers", ["Work", "New container", "Manage containers"].every((w) => picks.some((r) => r.startsWith(w))), picks)
+await shot("sites-panel-picker")
+await win.keyboard.press("Escape")
+await panel.hover()
+await panel.locator("[data-web-new-container]").click()
+await win.keyboard.type("Errands"); await win.keyboard.press("Enter")
+check("… + adds a container and shows it", await until(async () => settingsFile().includes("\"errands\"") && (await panel.locator("[data-web-logins]").innerText()) === "Errands", 5000),
+  await panel.locator("[data-web-logins]").innerText().catch(() => ""))
+await shot("sites-panel")
 
 // ---------- a container that needs Touch ID ----------
 await open(`view:web/@personal/${SITE}/whoami?locked`)

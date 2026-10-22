@@ -10,8 +10,9 @@ address. Commands: "Open web page…", "Clip current web page", "Open web pages 
 apart from the app's, on the Mac running the desktop app; nothing about them is kept in the vault.
 - Containers: a tab can open in a container (Personal, Work, or ones you add), each with logins of its own, so one site
   has several accounts side by side. `view:web/@<container id>/<address>` opens one in a container; the page's bar
-  shows it (its colour, under the tab's icon too) and its menu moves the tab, always opens its site there, and adds,
-  renames, recolours or deletes containers (deleting clears its logins). They're the plugin's `containers` setting:
+  shows it (its colour, under the tab's icon too) and its menu moves the tab, always opens its site there or adds a
+  container. Containers are managed in Sites (Manage containers…): add one, and a container's options (rename, colour,
+  Touch ID, agent access, delete: deleting clears its logins) on its heading's … or right-click. They're the plugin's `containers` setting:
   `[{ "id": "work", "name": "Work", "color": "orange", "sites": ["linear.app"] }]` (colours: blue, orange, green, red,
   purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there). What's opened
   from a page in a container opens in it too. `"lock": true` makes a container need Touch ID: its pages don't open or
@@ -34,10 +35,11 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   window instead.
 - Logins: each workspace's pages have their own (a different account per workspace for the same site; workspace 1 keeps
   the ones pages shared before), or with `logins: shared` every page shares one.
-- The Sites panel (in the sidebar's Panels menu; "Show sites and logins"): the sites opened in this workspace's logins
-  ("Default" without workspaces) or a container's, picked on its heading's right, with the account for Claude and
-  ChatGPT (Sign out clears a site's cookies and storage), then one line for trackers (cookies other sites' pages left),
-  which clears them. The Browser's settings have the same for every set of logins, under Sites and logins.
+- The Sites panel (in the sidebar's Panels menu): the sites opened in this workspace's logins ("Default" without
+  workspaces) or a container's, picked on its heading's right (+ adds a container), with the account for Claude and
+  ChatGPT (Sign out clears a site's cookies and storage), a container's always-open sites pinned, then one line for
+  trackers (cookies other sites' pages left), which clears them. The Sites tab ("Show sites and logins") has every set
+  of logins, each container with its options. The Browser's settings have the same for every set of logins, under Sites and logins.
 - Notifications: a page's notifications become Inbox events (source: the site, kind `web`, linking to its tab), so
   they're toasts and the Mac's notifications too; `notifications: false` drops them.
 - Claude Code on the web: with claude.ai signed in in a workspace's logins, the desktop app reads its sessions every 5
