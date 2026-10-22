@@ -4,7 +4,7 @@ import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState
 import { Ellipsis, PanelBottom } from "lucide-react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
 import { Catch, Drawn } from "@/components/Guard"
-import { MODES, status_, statusSubs, VIEWS } from "@/components/fileState"
+import { MODES, status_, statusSubs, viewItems, VIEWS } from "@/components/fileState"
 import { useCommands } from "@/core/commands"
 import { countText, type Counts } from "@/core/counts"
 import { numberText } from "@/core/data"
@@ -239,7 +239,7 @@ export function StatusBar() {
       if (views.length < 2) return null
       const cur = MODES[mode], tip = `Current view: ${VIEWS.find((v) => v.value === mode)!.label.toLowerCase()}`
       // Click: the file's views (three, or reading and source), the current one checked.
-      const menu = (e: MouseEvent) => menuAbove(e, views.map((v) => ({ label: v.label, checked: v.value === mode, run: () => setMode(v.value) })))
+      const menu = (e: MouseEvent) => menuAbove(e, viewItems(views, mode, setMode))
       return (
         <button type="button" onClick={menu} aria-label={`${tip}. Change view`} aria-haspopup="menu" data-tip={tip} data-tip-side="top"
           className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground">

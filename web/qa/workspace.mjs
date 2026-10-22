@@ -112,6 +112,12 @@ for (const dark of [false, true]) {
     check("view tooltip says current view", /Current view: (reading|editing)/.test(await page.locator("[role=tooltip]").innerText().catch(() => "")))
     await shot("view-tooltip")
     await viewBtn.click(); await wait(300)
+    // Right-clicked: every view, the check at the end of each row (after its icon).
+    await viewBtn.click({ button: "right" }); await wait(200)
+    const all = await page.locator("[role=menu] [role=menuitemradio]").allInnerTexts()
+    check("view button right-click: the three views", all.join("|") === "Reading view|Live preview|Source mode", all)
+    check("...icon first, check last", await page.locator("[role=menu] [aria-checked=true]").evaluate((b) => b.firstElementChild?.tagName === "svg" && b.lastElementChild?.tagName === "svg" && b.children.length === 3))
+    await page.keyboard.press("Escape"); await wait(100)
     // Status bar button: a click lists the three views, above it; picking one switches.
     // The view button (the bar also has property chips: Provenance's origin, 321233a)
     const sb = page.locator("[role=status] button[aria-label^='Current view']")

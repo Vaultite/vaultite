@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The view button picks any view, source mode too: right-click it, or hold it on phones. The views' menus show each
+  view's icon, with the check at the row's end.
+
 ## 0.7.0 (2026-10-22)
 
 The web viewer becomes a browser (Shields, containers, Chrome extensions, agents using it), tab groups and vertical

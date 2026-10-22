@@ -3,7 +3,7 @@
 import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { AlertTriangle, BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
-import { menuFor } from "@/components/ContextMenu"
+import { menuFor, menuOnCard } from "@/components/ContextMenu"
 import { copyToVault, copyToVaultItem, revealItem } from "@/components/FileActions"
 import { mediaItems } from "@/components/EmbedMenu"
 import { typingIn, useCommandKeys, useCommands } from "@/core/commands"
@@ -57,7 +57,7 @@ import type { EditorApi } from "@/editor/Editor"
 import { Editor } from "@/editor/lazy"
 import type { PreviewConfig } from "@/editor/livePreview"
 
-import { beforeMode, CODE_VIEWS, editMode, MODES, SOURCE_VIEWS, useMode, usePublish, VIEWS, type Mode } from "@/components/fileState"
+import { beforeMode, CODE_VIEWS, editMode, MODES, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
 import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps, spotOf, useTextFocus, type Spot } from "@/components/filePlace"
 
 // The editor is its own chunk (editor/lazy.ts: one chunk for FileView and the editors in a canvas's cards).
@@ -147,13 +147,14 @@ async function rename(path: string, typed: string, settle: () => Promise<void>, 
 
 /** Desktop: the bar on top of a file. Where it is (each folder finds itself in the tree; the name renames the file
  *  when clicked), and one button showing the view, which switches between reading and editing. */
-const PathBar = memo(function PathBar({ path, mode, setMode, edit, settle, locked, head, className }: { path: string; settle: () => Promise<void>
+const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle, locked, head, className }: { path: string; settle: () => Promise<void>
   /** The file as plugins' items in the bar get it (FileBarItem); none: they draw nothing. */
   head?: FileHead
   /** The bar's own classes (a pane-filling file: no room under it, its drawing starts right there). */
   className?: string
-  /** The view, and the editing view it switches to; none (an image, code): no view button. */
-  mode?: Mode; setMode?: (m: Mode) => void; edit?: Mode
+  /** The view, the editing view it switches to and the file's views (its right-click); none (an image, code): no view
+   *  button. */
+  mode?: Mode; setMode?: (m: Mode) => void; edit?: Mode; views?: typeof VIEWS
   /** Can't be renamed (read-only). */
   locked: boolean }) {
   const outside = isOutside(path)
@@ -170,7 +171,7 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, settle, locke
     return () => removeEventListener("vaultite:rename", check)
   }, [path])
   const crumb = "h-6 min-w-0 cursor-pointer truncate rounded-[4px] px-1 leading-6 hover:bg-foreground/[0.06]"
-  const view = mode && setMode && edit && <ViewToggle mode={mode} setMode={setMode} edit={edit} />
+  const view = mode && setMode && edit && views && <ViewToggle mode={mode} setMode={setMode} edit={edit} views={views} />
   return (
     <ViewBar right={<>
       {head && <FileBar head={head} place="bar" />}{view}
@@ -250,25 +251,26 @@ function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, p
   )
 }
 
-/** The view button (⌘E): reading <-> editing, showing what a tap does. Small in the desktop path bar, 44pt on phones
- *  in the sheet's or the phone's header. */
-const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, phone }: { mode: Mode; setMode: (m: Mode) => void; edit: Mode; phone?: "sheet" | "header" }) {
+/** The view button (⌘E): reading <-> editing, showing what a tap does; a right-click (a hold on phones) picks any of the
+ *  file's views, source mode too. Small in the desktop path bar, 44pt on phones in the sheet's or the phone's header. */
+const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, views, phone }: { mode: Mode; setMode: (m: Mode) => void; edit: Mode; views: typeof VIEWS; phone?: "sheet" | "header" }) {
   const host = usePortalHost(phone ? (phone === "sheet" ? "sheet-actions" : "phone-actions") : null)
   const toggleKeys = useCommandKeys("view:toggle", true)
   const reading = mode === "read"
   // It shows what a click does: a pencil while reading, a book while editing.
   const Icon = MODES[reading ? "live" : "read"].icon
   const label = reading ? "Edit" : "Read"
+  const menu = menuOnCard(() => viewItems(views, mode, setMode))
   if (!phone) {
     return (
-      <button type="button" onClick={() => setMode(reading ? edit : "read")} aria-label={label}
-        data-tip={`Current view: ${MODES[mode].label}\n${reading ? "Click to edit" : "Click to read"}${toggleKeys}`} className={barButton}>
+      <button type="button" onClick={() => setMode(reading ? edit : "read")} onContextMenu={menu} aria-label={label}
+        data-tip={`Current view: ${MODES[mode].label}\n${reading ? "Click to edit" : "Click to read"}${toggleKeys}\nRight-click for all views`} className={barButton}>
         <Icon className="size-4" strokeWidth={2} />
       </button>
     )
   }
   const button = (
-    <button type="button" data-view-toggle={mode} onClick={() => { haptic(); setMode(reading ? edit : "read") }} aria-label={label} aria-pressed={!reading}
+    <button type="button" data-view-toggle={mode} onClick={() => { haptic(); setMode(reading ? edit : "read") }} onContextMenu={menu} aria-label={label} aria-pressed={!reading}
       className="grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50 md:text-muted-foreground md:transition-colors md:hover:text-foreground">
       <Icon className="size-[21px] md:size-[18px]" strokeWidth={2} />
     </button>
@@ -849,9 +851,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const column = pane || wideSheet
   // A drawn file that takes its whole pane in a tab (`layout: "pane"`: a canvas): the bar, then the drawing edge to edge.
   const fills = pane && layout === "pane"
-  const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit}
+  const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit} views={views}
     settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />
-  const phoneToggle = phoneTab && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="header" />
+  const phoneToggle = phoneTab && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="header" />
   // A note in a tab has its own text size (core/textsize.ts: ⌘+scroll over it, the commands, Settings > Appearance):
   // everything under the path bar is zoomed, and its column widens with it, so the lines keep their length.
   const note = pane && isMd(path) && !dash && !format && !json && !notebook && !code
@@ -913,7 +915,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
         {!page && (!pane || phoneTab) && (
           <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={folderLine(path)} head={fileHead} pane={pane}
-            toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="sheet" />} />
+            toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} views={views} phone="sheet" />} />
         )}
         {/* The inline title (Settings > Editor): off, the name is only in the tab and the path bar (a sheet, having
             neither, keeps it). */}

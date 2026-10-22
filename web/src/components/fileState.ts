@@ -2,6 +2,7 @@
 // only the tab in front (keeping its place: beforeMode); and what the status bar shows (usePublish).
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
 import { BookOpen, Code2, Pencil, type LucideIcon } from "lucide-react"
+import type { MenuItem } from "@/components/ContextMenu"
 import type { FileHead } from "@/core/define"
 import { isDesktop } from "@/core/platform"
 import { usePane } from "@/core/pane"
@@ -83,6 +84,10 @@ export const MODES: Record<Mode, { label: string; icon: LucideIcon }> = {
   live: { label: "editing", icon: Pencil },
   source: { label: "source", icon: Code2 },
 }
+/** A file's views as menu rows, each with its icon and the current one checked (at the row's end, with the icons): the
+ *  status bar's view and the view button's right-click (a hold on phones). */
+export const viewItems = (views: typeof VIEWS, mode: Mode, setMode: (m: Mode) => void): MenuItem[] =>
+  views.map((v) => ({ label: v.label, icon: MODES[v.value].icon, checked: v.value === mode, run: () => setMode(v.value) }))
 
 type Status_ = { path: string; mode: Mode; setMode: (m: Mode) => void; body: string; views: typeof VIEWS
   /** Its frontmatter (the block, as in the file) and what plugins' items get (StatusItem); none: not text (an image). */

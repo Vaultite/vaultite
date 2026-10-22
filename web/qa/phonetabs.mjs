@@ -158,6 +158,24 @@ try {
   await P.screenshot({ path: `${OUT}note-edit.png` })
   await toggle.click(); await wait(300)
   check("note in a tab: back to reading", (await toggle.getAttribute("aria-label")) === "Edit")
+  // Held: every view, each with its icon and the current one checked; source mode is one of them.
+  {
+    cdp ??= await pctx.newCDPSession(P)
+    const holdToggle = async () => {
+      const b = await toggle.boundingBox(), x = b.x + b.width / 2, y = b.y + b.height / 2
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] }); await wait(600)
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await wait(400)
+    }
+    const pick = async (label) => { await holdToggle(); await P.locator("[role=menu] [role=menuitemradio]", { hasText: label }).click(); await wait(400) }
+    await holdToggle()
+    const rows = await P.$$eval("[role=menu] [role=menuitemradio]", (els) => els.map((e) => [e.innerText.trim(), e.getAttribute("aria-checked"), e.querySelectorAll("svg").length]))
+    check("view button held: the three views, reading checked, each with an icon and a check", rows.map((r) => r[0]).join() === "Reading view,Live preview,Source mode" && rows[0][1] === "true" && rows.every((r) => r[2] === 2), rows)
+    await P.screenshot({ path: `${OUT}view-menu.png` })
+    await P.locator("[role=menu] [role=menuitemradio]", { hasText: "Source mode" }).click(); await wait(400)
+    check("view button held: source mode picked", (await toggle.getAttribute("data-view-toggle")) === "source", await toggle.getAttribute("data-view-toggle"))
+    // (live preview again, the editing view the rest expects, then reading)
+    await pick("Live preview"); await toggle.click(); await wait(300)
+  }
   // In the sheet: the same toggle in its header, and no "open in a new tab" button.
   await P.evaluate((h) => { location.hash = `${h}/file/${encodeURIComponent("Qa tabs/Four.md")}` }, hash("Three")); await wait(700)
   const sheetToggle = P.locator("dialog[open] #sheet-actions [data-view-toggle]")
@@ -223,7 +241,7 @@ try {
   check("tab list: a note's card previews its text", (await P.locator("[data-tab-row]", { has: P.locator(`button[aria-label="Three"]`) }).innerText()).includes("Three text"), await P.locator("[data-tab-row]", { has: P.locator(`button[aria-label="Three"]`) }).innerText())
   await P.screenshot({ path: `${OUT}phone-list.png` })
   // Swipe to close: the card follows the finger, fading; short of the threshold it springs back.
-  cdp = await pctx.newCDPSession(P)
+  cdp ??= await pctx.newCDPSession(P)
   const cellOf = (name) => P.locator("[data-tab-row]", { has: P.locator(`button[aria-label="${name}"]`) }).getAttribute("data-tab-row")
   const four = await cellOf("Four")
   const cardSel = `[data-tab-row="${four}"] [data-tab-card]`
