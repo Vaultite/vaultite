@@ -131,17 +131,32 @@ export function writeText(p: string, text: string) {
   writeAtomic(p, crlf ? text.replace(/\r?\n/g, "\r\n") : text)
 }
 
-/** fs.renameSync, retried a moment on Windows, which won't replace or move a file another process has open (a reader,
- *  the search indexer, antivirus) until it lets go (EPERM, EACCES or EBUSY). */
+/** Windows won't replace or move a file another process, or this one's own reads under way, has open (a reader, the
+ *  search indexer, antivirus): EPERM, EACCES or EBUSY until it lets go. */
+const held = (e: unknown) => process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException)?.code ?? "")
+
+/** fs.renameSync, retried a moment on Windows while another process holds the file (a read of this one's can't end
+ *  while it waits). */
 export function renameFile(from: string, to: string) {
-  for (let wait = 10; ; wait *= 2) {
+  for (let wait = 5; ; wait *= 2) {
     try { return fs.renameSync(from, to) } catch (e) {
-      if (process.platform !== "win32" || wait > 1280 || !["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e
+      if (!held(e) || wait > 160) throw e
       // (a folder there, or a read-only file, won't let go)
       const st = fs.statSync(to, { throwIfNoEntry: false })
       if (st && (st.isDirectory() || !(st.mode & 0o200))) throw e
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
     }
+  }
+}
+
+/** The temporary copy `tmp` in place of `p`: renamed, or on Windows, while `p` is held open, written over it at once
+ *  (its readers share writing, not replacing; waiting would hold this process's own). */
+function replace(tmp: string, p: string, data: string | Buffer) {
+  try { fs.renameSync(tmp, p) } catch (e) {
+    const st = held(e) ? fs.statSync(p, { throwIfNoEntry: false }) : null
+    if (!st?.isFile() || !(st.mode & 0o200)) throw e
+    fs.writeFileSync(p, data)
+    fs.rmSync(tmp, { force: true })
   }
 }
 
@@ -155,7 +170,7 @@ export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?:
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
     fs.writeFileSync(tmp, text, mode === undefined ? "utf8" : { encoding: "utf8", mode })
-    renameFile(tmp, p)
+    replace(tmp, p, text)
   } catch (e) {
     // (a write macOS refused, EPERM from a server whose app was replaced under it, leaves no copy behind in the vault)
     fs.rmSync(tmp, { force: true })
