@@ -101,6 +101,12 @@ export const focusedPage = () => (focused ? shown.get(focused) ?? null : null)
 /** That page's id (0: none). */
 export const focusedPageId = () => (focused && shown.has(focused) ? focused : 0)
 
+/** The page the desktop app last said took the keyboard (0: none, or the window's own page has it since). */
+let keyboard = 0
+export const pageTookKeyboard = (id: number) => { keyboard = id }
+export const hasKeyboard = (id: number) => keyboard === id
+if (typeof window !== "undefined") addEventListener("focus", () => { keyboard = 0 })
+
 /** Bookmark a page: a line in the bookmarks note (⌘D, the bar's … menu). */
 export async function bookmark(url: string, title: string) {
   if (!/^https?:\/\//i.test(url)) return

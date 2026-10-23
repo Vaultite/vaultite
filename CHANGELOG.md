@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Back, Forward and Reload open a new tab**: a middle-click or ⌘-click on them in the Browser opens that page in a
   tab of its own beside this one (Reload's a copy of it), this page staying where it is, as in other browsers.
+- **Two web pages side by side stay still**: the keyboard no longer bounces between them many times a second, the
+  focused pane flickering in the tab list and the app busy, after it moved from one to the other quickly.
 - **Agents' lines are no longer drawn by default**: Provenance still keeps which lines agents wrote (for `vau blame`,
   the recap and a right-click's "Written by"), but the bar by them is now a choice, in its setting Agents' lines.
 - **Replies that don't land say so**: a reply to an agent that it never starts on comes back with an error, your

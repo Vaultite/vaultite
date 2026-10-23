@@ -16,7 +16,7 @@ import { liveTitle, LiveView } from "./LiveView"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, passkeyAsks, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, pageTookKeyboard, passkeyAsks, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
@@ -153,7 +153,7 @@ function Background() {
       const id = m.id, on = !!m.on
       pausedPages.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
     }
-    else if (m.type === "focus") { const s = shown.get(m.id); if (s) focusGroup(s.group) }
+    else if (m.type === "focus") { pageTookKeyboard(m.id); const s = shown.get(m.id); if (s) focusGroup(s.group) }
     else if (m.type === "address") shown.get(m.id)?.focusAddress()
     else if (m.type === "clip") shown.get(m.id)?.clip()
     else if (m.type === "block") void pickElement(m.id, undefined, { x: m.x, y: m.y })

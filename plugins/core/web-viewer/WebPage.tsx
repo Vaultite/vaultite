@@ -18,7 +18,7 @@ import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
 import { Passkey } from "./Passkey"
-import { agentNews, bookmark, helpAsks, passkeyAsks, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
+import { agentNews, bookmark, hasKeyboard, helpAsks, passkeyAsks, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -171,8 +171,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => {
     if (!id) return
     setFocusedPage(id, focused)
-    // The pane was focused (its tab clicked, a pane switch): the keyboard goes to the page, unless it's typing elsewhere.
-    if (focused && !typingIn(document.activeElement)) void web.go(id, "focus")
+    // The pane was focused (its tab clicked, a pane switch): the keyboard goes to the page, unless it's typing elsewhere
+    // or the page has it (the pane followed it: handing it back after it moved on, two pages would trade it forever).
+    if (focused && !hasKeyboard(id) && !typingIn(document.activeElement)) void web.go(id, "focus")
     return () => setFocusedPage(id, false)
   }, [id, focused, web])
 
