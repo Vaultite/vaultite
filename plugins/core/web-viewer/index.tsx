@@ -29,9 +29,9 @@ const openPage = (url: string, container: string | null = null) => openView(`web
 const openExtensions = () => openView("web-extensions", { newTab: !isViewOpen("view:web-extensions") })
 setExtensionsOpener(openExtensions)
 
-/** A new web tab (in `container`), its address ready to type, with suggestions. */
+/** A new web tab (in `container`), its address ready to type, with suggestions: always its own, never another blank one. */
 function askAddress(container: string | null = null) {
-  openView(`web/${argOf("", container)}`, { newTab: true })
+  openView(`web/${argOf("", container)}`, { another: true })
 }
 
 /** Bookmark the page in the focused pane. */

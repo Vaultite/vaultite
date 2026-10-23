@@ -358,7 +358,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
-- `openView(to, opts?)`: Open a plugin's view.
+- `openView(to, opts?)`: Open a plugin's view, shown once: a tab that has it shows it (no two terminal tabs fighting over its size), else a new tab or the group to the right.
 - `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).

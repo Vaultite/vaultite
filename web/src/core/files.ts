@@ -13,7 +13,7 @@ import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
 import { isDesktop } from "@/core/platform"
-import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, openBehind, retarget, targetOf } from "@/core/workspace"
+import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, openBehind, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
@@ -164,10 +164,11 @@ onUiAction((m) => {
   if (m.action === "open" && m.path) openAsked(m.path, m.split, !!m.newTab, !!m.background)
 })
 
-/** Open a plugin's view. A view is shown once: already open anywhere, that tab shows whatever `newTab` or `split` say,
- *  so a terminal never gets two tabs fighting over its size. Else a new tab, or the group to the right. */
-export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean } = {}) {
+/** Open a plugin's view, shown once: a tab that has it shows it (no two terminal tabs fighting over its size), else a new
+ *  tab or the group to the right. `another`: a tab of its own anyway, in the focused pane (a blank web page). */
+export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean; another?: boolean } = {}) {
   const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
+  if (opts.another) return goAnother(target)
   if (findOpen(target)) return opts.focus === false ? undefined : go(target)
   if (opts.split) return openInSplit(target, "right", opts.focus !== false)
   go(target, opts.newTab)

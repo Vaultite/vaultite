@@ -7,7 +7,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's
-  gone, and a pane squeezed too thin comes back at an even share.
+  gone, a pane squeezed too thin comes back at an even share, and Open web page always opens a new tab.
 - **No more rules ping-pong**: two machines on different versions sharing a vault no longer rewrite `.vaultite/AGENTS.md`
   back and forth; each writes it only when its own rules change.
 - **Agents' tabs stay**: short of memory, the browser no longer discards a tab an agent opened or one waiting on you,

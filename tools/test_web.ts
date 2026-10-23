@@ -982,6 +982,11 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   two([A], [C], "gL"); ts.openInSet("view:web/https://z.test/", "Agent/other")
   check("agent tabs: the first of a task goes beside the user's pane, in a new group of its name, the focus staying",
     runs() === `a | c,${ws.groups()[1].tabs[1].id}(Agent/other)` && ws.getWorkspace().focus === "gL", runs())
+  const WB = { id: "wb", to: "view:web/" }
+  two([A], [WB], "gL"); ws.goAnother("view:web/")
+  check("new web page: a tab of its own in the focused pane, though another pane has a blank page", tabs() === "file:a.md,view:web/ * | view:web/", tabs())
+  one([A, N], "n"); ws.goAnother("view:web/")
+  check("new web page: from a blank tab, in it", tabs() === "file:a.md,view:web/ *", tabs())
   two([A, B], [C], "gL"); sp.moveToSplit("right", "b"); sp.moveTabTo("b", "gL", "center")
   check("panes: one made beside another and gone again leaves it its room", shares() === "0.50,0.50", shares())
   ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [1 - 2 ** -20, 2 ** -20], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gR", tabs: [C], active: "c" }] }, focus: "gL" })

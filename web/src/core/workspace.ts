@@ -245,6 +245,14 @@ export function go(to: string, newTab = false, push = true) {
   show(to, push)
 }
 
+/** `to` in a tab of its own though another shows it (a browser's New tab), in the focused pane: its blank tab, else a
+ *  new one beside the active tab. */
+export function goAnother(to: string) {
+  const cur = activeTab()
+  set(withGroup(state.focus, (g) => (isBlank(cur) ? mapTabs(g, cur.id, (t) => moveOn(t, to)) : withTabAfter(g, cur.id, to))))
+  show(to, true)
+}
+
 /** A new tab showing `to` beside the active one, the user staying where they are (a browser's ⌘-click); one already open
  *  anywhere is left as it is. What agents open goes here: they never take the focus. */
 export function openBehind(to: string) {
