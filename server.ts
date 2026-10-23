@@ -1,5 +1,6 @@
 // Vaultite's server: the web app and a JSON API over the vault (core/app.ts). The desktop app runs one per vault as
 // its child (VAULTITE_DESKTOP=1, outside files over IPC: core/outside.ts); the web can switch vaults (core/vaults.ts).
+import "./core/winspawn.ts"
 import { errorContext, onServerError, startServerLog } from "./core/serverlog.ts"
 import { execFile, spawn } from "node:child_process"
 import crypto from "node:crypto"
