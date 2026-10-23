@@ -1528,13 +1528,13 @@ const DISPATCH = (file: string, text: string) => settings().prompt.replace(/\{(p
 const atPrompt = (state?: string) => state === "idle" || state === "done"
 const busy = (state?: string) => state === "working" || state === "blocked"
 
-/** Type a message into an agent at its prompt and send it: when it isn't working a few seconds later, its Enter didn't
- *  take (Claude Code's vim mode can keep a long text as typed), so Escape, then Enter again. */
-async function submit(ctx: OpCtx, id: string, text: string) {
+/** Type a message into an agent at its prompt and send it: not working a few seconds later, Escape, then Enter again
+ *  (Claude Code's vim mode can keep it as typed); still not, an error, so the reply goes back to the user, not lost. */
+export async function submit(ctx: Pick<OpCtx, "api">, id: string, text: string, tick = 500) {
   const t = encodeURIComponent(id)
   const working = async () => {
     for (let i = 0; i < 8; i++) {
-      await new Promise((res) => setTimeout(res, 500))
+      await new Promise((res) => setTimeout(res, tick))
       const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: { id: string; state?: string }[] }
       if (busy(sessions.find((s) => s.id === id)?.state)) return true
     }
@@ -1545,6 +1545,8 @@ async function submit(ctx: OpCtx, id: string, text: string) {
   await ctx.api("POST", `terminals/${t}/send`, { text: "\x1b", enter: false })
   await new Promise((res) => setTimeout(res, 300))
   await ctx.api("POST", `terminals/${t}/send`, { text: "", enter: true })
+  if (await working()) return
+  throw new OpError(`the agent didn't start on it (${id} is still at its prompt): open its session to see why, then send it again`, 409)
 }
 
 /** Words past which a voice note isn't handed to the front door (about ten minutes of talk). */
