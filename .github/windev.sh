@@ -5,8 +5,9 @@ step() { echo "::group::$*"; "$@" 2>&1 | tee -a windev-out/log.txt; local s=${PI
 # Who holds a file the server can't replace (EPERM): Sysinternals' handle, polled while test_web runs
 curl -sL -o /tmp/handle.zip https://download.sysinternals.com/files/Handle.zip && unzip -oq /tmp/handle.zip -d /tmp/handle
 ( for i in $(seq 1 400); do /tmp/handle/handle64.exe -accepteula -nobanner "Alice Park.md" 2>&1 | grep -v "No matching handles" ; sleep 0.1; done ) > windev-out/handles.txt 2>&1 &
-step node tools/test_web.ts
+TRACE_LOG="$PWD/windev-out/trace.txt" NODE_OPTIONS="--import=file:///$(cygpath -m "$PWD")/.github/windev-trace.mjs" step node tools/test_web.ts
 wait
+echo "::group::trace"; grep -v "^    at " windev-out/trace.txt | awk '{print $2, $3, $4}' | sort | uniq -c | head -40; echo "::endgroup::"
 echo "::group::handles"; sort windev-out/handles.txt | uniq -c | sort -rn | head -40; echo "::endgroup::"
 step npm run check
 step npm run build

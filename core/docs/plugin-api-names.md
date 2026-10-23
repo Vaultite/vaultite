@@ -682,6 +682,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HTTPError`
 - `inDesktop()`: Whether this server has a desktop app on this machine to ask (its browser).
 - `isColor(c)`
+- `isOutside(p)`: An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x.
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.

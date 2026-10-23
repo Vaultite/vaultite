@@ -154,8 +154,7 @@ async function lookup(port: number): Promise<Caller | null> {
   const known = cached(byPort, port)
   if (known) return known[1]
   // Both at once, as the request starts: a quick caller (curl) is gone by the time it's answered.
-  // (Linux: iproute2's ss, there by default, where lsof often isn't; it names the processes of this user's sockets)
-  // (Windows: netstat's line whose local end is the caller's port names its process last)
+  // (Linux: iproute2's ss, there by default, where lsof often isn't; Windows: netstat, its line from the caller's port)
   let [sockets, table] = await Promise.all([process.platform === "linux"
     ? run("ss", ["-Htnp", "state", "established", `( sport = :${port} )`])
     : process.platform === "win32" ? run("netstat", ["-ano", "-p", "TCP"])
