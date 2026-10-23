@@ -53,3 +53,6 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   key, never the extension itself (its worker would act on what it found mid-copy): Chromium keeps each chrome.storage
   area as a LevelDB folder, which a session of its own reads as its local area. Written through the storage shim, so
   the sync area lands where the extension reads it.
+- Pages say they're a plain Chrome (web.ts strips Electron and the app's name from the user agent: Google's sign-in turns
+  away Electron), but Cloudflare's human check finds Electron in the page and fails that lie: its requests say Electron
+  (challenges.ts), with which it passes, the user's click or none.

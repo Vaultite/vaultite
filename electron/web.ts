@@ -76,8 +76,9 @@ function webSession(profile: string) {
   const had = sessions.get(profile)
   if (had) return had
   const s = session.fromPartition(partitionOf(profile))
-  // A plain Chrome: some sites turn away "embedded" browsers by their user agent.
-  s.setUserAgent(s.getUserAgent().replace(/\s(Electron|vaultite|Vaultite)\/\S+/g, ""))
+  // A plain Chrome: some sites turn away "embedded" browsers by their user agent (the app's name is its channel's too:
+  // VaultiteMain/0.7.0). Cloudflare's check is told the truth (browser/challenges.ts).
+  s.setUserAgent(s.getUserAgent().replace(/\s(Electron|Vaultite[A-Za-z]*)\/\S+/gi, ""))
   s.registerPreloadScript({ type: "frame", filePath: PRELOAD })
   s.setPermissionRequestHandler((wc, perm, ok, details) => void askPermission(profile, wc, perm, details).then(ok, () => ok(false)))
   s.setPermissionCheckHandler((_wc, perm, origin, details) => {
