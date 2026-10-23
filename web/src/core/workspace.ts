@@ -303,13 +303,14 @@ export function followHash(tab: string) {
   stamp()
 }
 
-/** Show a tab. On phones that's a history entry (Back returns to the tab that was on screen); on desktop the address
- *  just follows. */
+/** Show a tab (false: there's none). On phones that's a history entry (Back returns to the tab that was on screen); on
+ *  desktop the address just follows. */
 export function selectTab(id: string) {
   const g = groupOfTab(id)
-  if (!g) return
+  if (!g) return false
   set(withGroup(g.id, (x) => ({ ...x, active: id }), { focus: g.id }))
   show(g.tabs.find((t) => t.id === id)!.to, !isDesktop())
+  return true
 }
 
 /** How many tabs the focused pane has. */

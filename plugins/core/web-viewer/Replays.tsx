@@ -2,8 +2,10 @@
 // by step with the page as it was after each, kept on this Mac a fortnight (electron/browser/agent.ts).
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bot, ChevronLeft, ChevronRight, Globe, Pause, Play } from "lucide-react"
-import { Button, cn, dateText, FilterField, notifyError, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, webPages } from "@vaultite"
+import { Button, cn, dateText, FilterField, get, notifyError, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, webPages } from "@vaultite"
 import { hostOf } from "./address"
+import type { LiveTab } from "./livetabs"
+import { showAppTab } from "./LiveView"
 
 type Run = { run: string; by: string; task: string; summary: string; steps: number; start: number; end: number; title: string; url: string }
 type Step = { t: number; tab: number; by: string; url: string; title: string; action: string; ref?: string; name?: string; value?: string
@@ -85,7 +87,8 @@ export function ReplaysView() {
 
 /** A tab an agent is at work in: its page as it is now, who, what for and its last step. */
 function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => void }) {
-  const show = () => { if (l.appTab) selectTab(l.appTab) }
+  // (its container from the owner's list: the tab may be gone, made anew there)
+  const show = () => { if (l.appTab && !selectTab(l.appTab)) void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => { const t = r.tabs.find((x) => x.tab === l.tab); if (t) showAppTab(t) }, (e) => notifyError(e, "Couldn't show the tab")) }
   const [paused, choose] = useChosen(!!l.paused)
   const pause = () => choose(!paused, () => Promise.resolve(webPages?.engine?.("agents:pause", l.tab, !paused)), paused ? "Couldn't resume it" : "Couldn't pause it")
   return (

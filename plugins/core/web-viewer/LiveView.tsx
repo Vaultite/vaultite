@@ -2,14 +2,20 @@
 // the desktop app): whose each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closeTab, cn, dateText, errorText, get, post, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, usePaneTopBar, viewsChanged, webPages } from "@vaultite"
+import { Button, closeTab, cn, dateText, errorText, get, openInSplit, post, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, usePaneTopBar, viewsChanged, webPages } from "@vaultite"
 import { hostOf } from "./address"
-import { colorOf, containerById } from "./containers"
+import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab } from "./livetabs"
 
 const titles = new Map<number, string>()
 /** A watched tab's title, for its tab. */
 export const liveTitle = (tab: number) => titles.get(tab)
+
+/** Show a desktop page's tab: its own, or one made anew beside the user's work when its tab is gone (the page went on
+ *  through a restart of the window), which the page comes back to. */
+export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
+  if (!selectTab(t.appTab)) openInSplit(`view:web/${argOf(t.url, t.container)}`, "right", true, t.appTab)
+}
 function keepTitle(tab: number, title: string) {
   if (!title || titles.get(tab) === title) return
   titles.set(tab, title)
@@ -126,7 +132,7 @@ function Watch({ tab, back }: { tab: number; back: () => void }) {
     if (!webPages?.engine || !own) return
     void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => {
       const t = r.tabs.find((x) => x.tab === tab)
-      if (t?.appTab) { selectTab(t.appTab); closeTab(own, true) }
+      if (t?.appTab) { showAppTab(t); closeTab(own, true) }
     }, () => {})
   }, [tab, own])
 

@@ -242,17 +242,18 @@ export function splitTab(side: Side, id = activeTab().id) {
   show(tab.to, true)
 }
 
-/** `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is. */
-export function openInSplit(to: string, side: "right" | "bottom" = "right", focusIt = true) {
+/** `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
+ *  `tabId`: the new tab's id (a desktop web page whose tab is gone comes back to the tab of that id). */
+export function openInSplit(to: string, side: "right" | "bottom" = "right", focusIt = true, tabId?: string) {
   const { root, focus } = getWorkspace()
   const right = neighbourOf(root, focus, side)
   if (!right) {
-    const id = newId(), g: Group = { id: `g${newId()}`, tabs: [{ id, to }], active: id }
+    const id = tabId ?? newId(), g: Group = { id: `g${newId()}`, tabs: [{ id, to }], active: id }
     set({ root: beside(root, focus, g, side), focus: focusIt ? g.id : focus })
     return focusIt ? show(to, true) : undefined
   }
-  const blankTab = right.tabs.find((t) => t.id === right.active && t.to === "new")
-  const id = blankTab?.id ?? newId()
+  const blankTab = tabId ? undefined : right.tabs.find((t) => t.id === right.active && t.to === "new")
+  const id = blankTab?.id ?? tabId ?? newId()
   const tabs = blankTab ? right.tabs.map((t) => (t.id === id ? { ...t, to } : t)) : [...right.tabs, { id, to }]
   set(withGroup(right.id, (x) => ({ ...x, tabs, active: id }), { focus: focusIt ? right.id : focus }))
   if (focusIt) show(to, true)
