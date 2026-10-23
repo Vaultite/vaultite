@@ -362,6 +362,12 @@ export type AgentStart = {
 /** A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12),
  *  and the keys that answer it, each written apart. Terminal tells the inbox of one shown before the agent's hooks run. */
 export type AgentAsk = { id: string; match: RegExp; says: string; approve: string[]; deny: string[]; lines?: number }
+/** A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them. */
+export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
+/** What a session waits on the user for, as it said it (the service "agent-asking:<name>"): questions, or a plan. */
+export type Asking = { kind: "question"; questions: Question[] } | { kind: "plan"; plan: string }
+/** A question's answer: its options' numbers (from 1), or text typed as its own answer. */
+export type Choice = number[] | string
 /** How a session is started, besides its id and first prompt. */
 export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
 

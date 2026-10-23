@@ -1,6 +1,9 @@
 // A Claude Code session's transcript as a conversation: what the user said, Claude's answers (Markdown) and each tool
 // call with its result; attachments, thinking, sidechains and meta lines are skipped.
-import { truncate, type Entry, type Head, type Tool, toolSummary } from "../../../core/agents.ts"
+import { type Asking, truncate, type Entry, type Head, type Question, type Tool, toolSummary } from "../../../core/agents.ts"
+// (a transcript line: untrusted JSON, each field checked where it's read)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any
 
 /** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
 export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"custom-title"']
@@ -101,4 +104,46 @@ export class Conversation {
       }
     }
   }
+}
+
+const words = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "")
+
+/** AskUserQuestion's input as questions (at most 4, of 2 to 6 options each), or none when it isn't one. */
+export function questionsOf(input: unknown): Question[] {
+  const qs = (input as { questions?: unknown })?.questions
+  if (!Array.isArray(qs)) return []
+  return qs.slice(0, 4).flatMap((q): Question[] => {
+    const question = words(q?.question, 500)
+    const options = (Array.isArray(q?.options) ? q.options : []).slice(0, 6).flatMap((o: unknown) => {
+      const label = words((o as Json)?.label, 120), description = words((o as Json)?.description, 300)
+      return label ? [{ label, ...(description ? { description } : {}) }] : []
+    })
+    const header = words(q?.header, 40)
+    return question && options.length ? [{ question, ...(header ? { header } : {}), ...(q?.multiSelect === true ? { multi: true } : {}), options }] : []
+  })
+}
+
+/** What a transcript's tail waits on: its last tool call still without a result, when that's AskUserQuestion (its
+ *  questions) or ExitPlanMode (its plan). A prompt after it, or another tool waiting, means it asks nothing. */
+export function askingIn(tail: string): Asking | null {
+  const answered = new Set<string>()
+  const lines = tail.split("\n")
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!WANTED.slice(0, 2).some((w) => lines[i].includes(w))) continue
+    let d: Json
+    try { d = JSON.parse(lines[i]) } catch { continue }
+    const content = d?.message?.content
+    if (d?.isSidechain || d?.isMeta) continue
+    if (d.type === "user" && !Array.isArray(content)) return null
+    for (const c of Array.isArray(content) ? [...content].reverse() : []) {
+      if (c?.type === "tool_result") answered.add(String(c.tool_use_id))
+      else if (d.type === "user" && c?.type === "text" && userText([c])) return null
+      else if (c?.type === "tool_use" && !answered.has(String(c.id))) {
+        if (c.name === "AskUserQuestion") { const questions = questionsOf(c.input); return questions.length ? { kind: "question", questions } : null }
+        if (c.name === "ExitPlanMode" && typeof c.input?.plan === "string" && c.input.plan.trim()) return { kind: "plan", plan: c.input.plan.trim().slice(0, 8000) }
+        return null
+      }
+    }
+  }
+  return null
 }

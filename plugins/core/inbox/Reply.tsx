@@ -43,8 +43,8 @@ function PlanLine({ plan, how, setHow }: { plan: Plan | null; how: "resume" | "n
 
 /** A reply box for `to` (a report's path, or a session's event id): `kept`, how many replies it has kept (a report's),
  *  so what was sent shows until it's there; `sent`, what happens once it went. */
-export function ReplyBox({ to, name, kept = 0, open, sent: done }: {
-  to: string; name: string; kept?: number; open: () => Promise<void>; sent?: () => void
+export function ReplyBox({ to, name, kept = 0, open, sent: done, placeholder = "Answer its questions, or ask for more" }: {
+  to: string; name: string; kept?: number; open: () => Promise<void>; sent?: () => void; placeholder?: string
 }) {
   const [text, setDraft] = useState(() => draftOf(to))
   const setText = (t: string) => { setDraft(t); keepDraft(to, t) }
@@ -86,7 +86,7 @@ export function ReplyBox({ to, name, kept = 0, open, sent: done }: {
           <div className="whitespace-pre-wrap text-[15px] leading-[20px] md:text-[14px]">{sent.text}</div>
         </div>
       )}
-      <textarea value={text} rows={3} aria-label="Your reply" placeholder="Answer its questions, or ask for more"
+      <textarea value={text} rows={3} aria-label="Your reply" placeholder={placeholder}
         onChange={(e) => setText(e.target.value)} onKeyDown={onKey} className={field} data-reply />
       <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
         <PlanLine plan={plan} how={how} setHow={setHow} />

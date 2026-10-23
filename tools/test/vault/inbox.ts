@@ -13,7 +13,7 @@ export default async ($: VaultTest) => {
   const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
-    const { byThread, categoryOf, findEvent, fromHook, previewOf, prune, settled, waitsOnYou } = await import("../../../plugins/core/inbox/plugin.ts")
+    const { byThread, categoryOf, choiceOf, findEvent, fromHook, previewOf, prune, settled, waitsOnYou } = await import("../../../plugins/core/inbox/plugin.ts")
     const { judge, sure, SYSTEM } = await import("../../../plugins/core/inbox/needs.ts")
     const { service } = await import("../../../core/plugins.ts")
     check("inbox push: by default only what waits on you (a session that needs you, its report), not a quiet turn, an error or news",
@@ -233,6 +233,28 @@ export default async ($: VaultTest) => {
       check("inbox:state: Codex's working -> idle is a turn's end: its answer to the user's question needs you, titled as its session; starting up isn't a turn",
         r.length === 1 && r[0].kind === "waiting" && r[0].ask === "answer" && r[0].body === "2 + 2 = 4." && r[0].title === "Answer 2+2" && r[0].session === "cx-sess", r)
       await api("DELETE", `inbox/events/${r[0].id}`)
+      // A question in its own words (agent-asking), whatever its hooks call it: Claude Code's say permission.
+      const askWas = cc.services["agent-asking:claude"]
+      const qs = [{ question: "How should it sign builds?", header: "Signing", options: [{ label: "Local cert (Recommended)", description: "Made here once" }, { label: "Not now" }] }]
+      cc.services["agent-asking:claude"] = async (terminal: string) => (terminal === "claude-osc75014" ? { kind: "question", questions: qs } : null)
+      tell({ terminal: "claude-osc75014", agent: "claude", state: "working", from: "hooks", at })
+      tell({ terminal: "claude-osc75014", agent: "claude", state: "blocked", kind: "permission", from: "hooks", at })
+      r = (await rows()).filter((e) => e.terminal === "claude-osc75014")
+      check("inbox:state: a question its hooks call a permission is a question, whole: its options in the body, a line saying them",
+        r[0]?.ask === "question" && r[0].questions?.[0].options.length === 2 && r[0].body.includes("1. **Local cert (Recommended)**: Made here once") &&
+        r[0].preview === "How should it sign builds? Local cert (Recommended) or Not now" && categoryOf(r[0]) === "reply", r)
+      check("choice: a number, a name (Recommended or not, any case), else typed; a multi-select's by commas", JSON.stringify([choiceOf(qs[0], "2"),
+        choiceOf(qs[0], "local cert"), choiceOf(qs[0], "Use the M4's"), choiceOf({ ...qs[0], multi: true }, "1, not now")]) === '[[2],[1],"Use the M4\'s",[1,2]]')
+      const as = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
+        headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+      const [byAgent] = await api("POST", "ops/inbox.answer", { id: r[0].id, answer: "pick", picks: ["1"] }, as("cli", "claude-code"))
+      ;[st, b] = await api("POST", "ops/inbox.answer", { id: r[0].id, answer: "pick", picks: ["1"] }, as("app/desktop"))
+      check("pick: the user's alone (an agent's refused), and only while its terminal shows the question", byAgent === 403 && st === 409, [byAgent, st, b])
+      tell({ terminal: "claude-osc75014", agent: "claude", state: "working", from: "hooks", at })
+      r = (await rows()).filter((e) => e.terminal === "claude-osc75014")
+      check("answered in its terminal: read, nothing left to pick", r[0]?.read === true && !r[0].questions, r)
+      await api("DELETE", `inbox/events/${r[0].id}`)
+      cc.services["agent-asking:claude"] = askWas
       cx.services["agent-turn:codex"] = cxTurn
       cc.services["agent-turn:claude"] = was.turn; cc.services.sample = was.sample
     }

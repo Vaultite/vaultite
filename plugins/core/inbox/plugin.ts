@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId, type SampleAsk } from "../../../core/agents.ts"
+import { type Asking, type Choice, type Question, startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId, type SampleAsk } from "../../../core/agents.ts"
 import {
   bullets, fmtAgo, stampMs, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, NOT_THE_USER, type OpCtx, type Request, userSurface, whoOf,
@@ -87,6 +87,8 @@ export type InboxEvent = {
   /** Why it needs the user (needs.ts' Need): permission (to run a tool: Approve and Deny answer it), question, auth,
    *  plan, answer (its last message is for them to read), report (an Inbox/ result: link), error. */
   ask?: string
+  /** What a session asks, in its own words (its agent's "agent-asking"): picked from its sheet, or a reply. */
+  questions?: Question[]
   /** Its body as one plain line, for what can't draw Markdown (the phone's widgets, the watch, push). */
   preview?: string
   /** When it last told the user (a toast, the Mac's and the phone's notifications): set only when it may, so every app
@@ -351,8 +353,11 @@ const BLOCKED = new Set(["permission", "question", "auth", "plan"])
 /** The agent's question was answered (it went from blocked back to working): its row, if it asked, is read. Not an
  *  answer it left: it may go on by itself (a background task ending), which isn't the user reading it. */
 function resolve(terminal: string, session: string) {
-  const hit = list().filter((e) => !e.read && e.kind === "waiting" && BLOCKED.has(str(e.ask)) && ((terminal && e.terminal === terminal) || (session && e.session === session)))
-  if (hit.length) markRead(new Set(hit.map((e) => e.id)))
+  const hit = list().filter((e) => e.kind === "waiting" && BLOCKED.has(str(e.ask)) && (!e.read || e.questions) && ((terminal && e.terminal === terminal) || (session && e.session === session)))
+  if (!hit.length) return
+  // (its questions are answered: nothing to pick any more)
+  if (hit.some((e) => e.questions)) changed(list().map((e) => (hit.includes(e) && e.questions ? { ...e, questions: undefined } : e)))
+  markRead(new Set(hit.map((e) => e.id)))
 }
 
 // ---------- live: /api/inbox/live (?local=1: this machine's events only, what another machine follows)
@@ -630,7 +635,7 @@ function pushed(e: InboxEvent) {
   const mode = settings().push
   if (e.read || mode === "off" || (mode === "waiting" && !waitsOnYou(e)) || !push.devices().length) return
   void push.send(apns(), {
-    title: e.title, body: e.preview || e.body, category: categoryOf(e),
+    title: e.title, body: e.questions ? questionLine(e.questions, true) : e.preview || e.body, category: categoryOf(e),
     thread: e.terminal || e.session || e.source, urgent: e.kind === "waiting" && BLOCKED.has(str(e.ask)),
     data: { event: e.id },
   }).then((r) => { if (r.failed.length) console.error(`inbox: push failed: ${r.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))
@@ -741,8 +746,10 @@ export async function heard(h: Heard) {
     return
   }
   if (h.state === "blocked") {
-    const ask = BLOCKED.has(str(h.kind)) ? str(h.kind) : "question"
-    await sessionRow(who, { kind: "waiting", ask, body: h.msg || ASKING[ask], read: false, link: undefined }, true, h.cwd)
+    const said = BLOCKED.has(str(h.kind)) ? str(h.kind) : "question"
+    const asking = await askingOf(who, said), ask = asking?.kind ?? said
+    await sessionRow(who, { kind: "waiting", ask, read: false, link: undefined, questions: asking?.kind === "question" ? asking.questions : undefined,
+      body: asking?.kind === "question" ? questionsText(asking.questions) : asking?.kind === "plan" ? asking.plan : h.msg || ASKING[ask] }, true, h.cwd)
     return
   }
   // Out of a question without working again: refused or interrupted, which the user did.
@@ -753,6 +760,29 @@ export async function heard(h: Heard) {
 /** Why a row needs the user, in a word or two (vau inbox). */
 const NEEDS: Record<string, string> = { permission: "asks permission", question: "asks", auth: "sign in", plan: "plan", answer: "answered", report: "report", error: "failed" }
 const ASKING: Record<string, string> = { permission: "Asks permission", question: "Asks you something", auth: "Needs you to sign in", plan: "A plan to approve" }
+
+/** What a blocked session asks, in its own words (its agent's "agent-asking"): a question its hooks call a permission
+ *  (Claude Code's says so of its own questions) is one. Its transcript can trail its screen a moment. */
+async function askingOf(who: Who, said: string): Promise<Asking | null> {
+  if (said === "auth") return null
+  for (let i = 0; i < (said === "permission" ? 1 : 4); i++) {
+    if (i) await new Promise((r) => setTimeout(r, 400))
+    const a = await plugin.ask<Asking | null>(`agent-asking:${who.agent}`, null, who.terminal, who.session).catch(() => null)
+    if (a) return a
+  }
+  return null
+}
+
+const or = (xs: string[], word = "or") => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${word} ${xs.at(-1)}`)
+/** Questions as Markdown: each, then its options numbered as they're picked. */
+export const questionsText = (qs: Question[]) => qs.map((q) => `${q.question}${q.multi ? " (any of them)" : ""}\n\n` +
+  q.options.map((o, i) => `${i + 1}. **${o.label}**${o.description ? `: ${o.description}` : ""}`).join("\n")).join("\n\n")
+/** The first question and its options in a line (the row, the toast); `lines`: an option a line, for a notification. */
+export function questionLine(qs: Question[], lines = false) {
+  const q = qs[0], more = qs.length > 1 ? ` (${qs.length - 1} more question${qs.length > 2 ? "s" : ""})` : ""
+  const labels = q.options.map((o) => o.label)
+  return lines ? `${q.question}${more}\n${labels.map((l, i) => `${i + 1}. ${l}`).join("\n")}` : `${q.question} ${or(labels, q.multi ? "and" : "or")}${more}`.slice(0, 300)
+}
 
 type Who = { agent: string; terminal: string; session: string }
 /** An agent's last turn as its plugin reads it (the service "agent-turn:<agent>"): the user's message, its last answer. */
@@ -783,8 +813,8 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   const v = await judge({ prompt, text, error: h.state === "error" } satisfies Turn, sample)
   const body = text ? (text.length > BODY ? `${text.slice(0, BODY)}\n\n…` : text) : undefined
   const now = list().find(rowOf(who))
-  if (v.needs) await sessionRow(who, { kind: "waiting", ask: v.why as Need, body, read: false, link: undefined }, true, h.cwd)
-  else if (!now || now.read) await sessionRow(who, { kind: "done", ask: undefined, body, read: true, link: undefined }, false, h.cwd)
+  if (v.needs) await sessionRow(who, { kind: "waiting", ask: v.why as Need, body, read: false, link: undefined, questions: undefined }, true, h.cwd)
+  else if (!now || now.read) await sessionRow(who, { kind: "done", ask: undefined, body, read: true, link: undefined, questions: undefined }, false, h.cwd)
   else told(now) // (still to read: it stays as it was)
   endHanded(who.terminal)
 }
@@ -823,7 +853,8 @@ async function sessionRow(k: Who, patch: Partial<InboxEvent>, news: boolean, cwd
   const old = es.find(rowOf(k)) ?? null
   const e = { ...(old ?? { id: newId(Date.now()) }), t: Date.now(), source: k.agent, title: title || old?.title || `${agentLabel(k.agent)} session`, ...patch,
     ...(k.terminal ? { terminal: k.terminal } : {}), ...(k.session ? { session: k.session } : {}) } as InboxEvent
-  if (e.body) e.preview = previewOf(e.body)
+  if (e.questions) e.preview = questionLine(e.questions)
+  else if (e.body) e.preview = previewOf(e.body)
   else delete e.preview
   for (const f of Object.keys(e) as (keyof InboxEvent)[]) if (e[f] === undefined) delete e[f]
   return put(e, old, es, news)
@@ -1109,7 +1140,7 @@ two or three plain sentences, no jargon; the push says it too.
     }
     const file = `${r.id}.md`
     // Its session's row is the report now, needing the user (it's what they sent it to do), linking the file.
-    const report = { kind: "waiting", ask: "report", title: str(r.title), body: tldr, link: file, read: false }
+    const report = { kind: "waiting", ask: "report", title: str(r.title), body: tldr, link: file, read: false, questions: undefined }
     if (terminal || session) await sessionRow({ agent: agent || "vau", terminal, session }, report, true)
     else addEvent({ source: agent || "vau", ...report })
     return { path: file, title: r.title, images, terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
@@ -1187,9 +1218,20 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
   const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: { id: string; state?: string }[] }
   const alive = (id: string) => !!id && sessions.some((s) => s.id === id)
+  const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
+  // (a reply to its one question is its answer: an option by number or name, else typed as its own)
+  if (asks && e.questions?.length === 1 && !e.questions[0].multi) {
+    if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
+    return { how: "type", terminal: (await pickIn(ctx, e, [line])).terminal }
+  }
   const plan = await replyPlan(sessionOfRow(e), alive, how)
   if (!plan) throw new OpError(`its terminal ${e.terminal} has ended and it names no session to resume`, 409)
-  if (plan.how === "type") {
+  if (plan.how === "type" && asks && (e.questions || e.ask === "question")) {
+    // (its questions put away, as Esc does in its terminal, so the reply is a message, not keys in its choices)
+    await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: "\x1b", enter: false })
+    await new Promise((r) => setTimeout(r, 800))
+    await submit(ctx, plan.to, line)
+  } else if (plan.how === "type") {
     if (atPrompt(sessions.find((s) => s.id === plan.to)?.state)) await submit(ctx, plan.to, line)
     else await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: line, enter: true })
   } else if (plan.how === "resume") await startAgent(ctx, plan.to, line)
@@ -1200,6 +1242,40 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   }
   changed(list().map((x) => (x.id !== e.id ? x : { ...readThere(x), terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })))
   return { how: plan.how, terminal: plan.to }
+}
+
+/** One question's answer as given: an option's number or name (several, comma-separated, in a multi-select), else
+ *  text typed as its own answer. */
+export function choiceOf(q: Question, given: string): Choice {
+  const said = given.trim().replace(/\s+/g, " "), name = (s: string) => s.toLowerCase().replace(/\s*\(recommended\)$/, "").trim()
+  const one = (s: string) => {
+    const n = /^\d+$/.test(s.trim()) ? Number(s) : q.options.findIndex((o) => name(o.label) === name(s)) + 1
+    return n >= 1 && n <= q.options.length ? n : 0
+  }
+  if (!said) throw new OpError(`"${q.question}": an answer`)
+  if (!q.multi) return one(said) ? [one(said)] : said
+  const ns = said.split(",").map(one)
+  if (ns.includes(0)) throw new OpError(`"${q.question}" takes some of its ${q.options.length} options, by number or name`)
+  return [...new Set(ns)]
+}
+
+/** Answer the questions session row `e` asks in its terminal (`picks`: one per question, choiceOf's), with the keys its
+ *  agent gives; first checked on its screen, so an answer can't go into something else it shows by then. */
+async function pickIn(ctx: OpCtx, e: InboxEvent, picks: string[]) {
+  const qs = e.questions, pick = plugin.service(`agent-pick:${e.source}`)
+  if (!qs?.length || !e.terminal || e.kind !== "waiting" || !pick) throw new OpError("it doesn't ask anything to pick from now", 409)
+  if (picks.length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`)
+  const choices = qs.map((q, i) => choiceOf(q, picks[i]))
+  const t = `terminals/${encodeURIComponent(e.terminal)}`
+  const squash = (s: string) => s.replace(/\s+/g, "")
+  const { lines } = await ctx.api("GET", `${t}/screen?lines=40`).catch(() => ({ lines: [] })) as { lines: string[] }
+  if (!squash(lines.join("")).includes(squash(qs[0].question).slice(0, 80))) throw new OpError("its terminal doesn't show that question any more", 409)
+  for (const [i, k] of (pick(qs, choices) as string[]).entries()) {
+    if (i) await new Promise((r) => setTimeout(r, 200))
+    await ctx.api("POST", `${t}/send`, { text: k, enter: false })
+  }
+  resolve(e.terminal, "")
+  return { terminal: e.terminal, choices }
 }
 
 plugin.op({
@@ -1377,30 +1453,36 @@ plugin.op({
 plugin.op({
   id: "inbox.answer",
   cli: "inbox answer",
-  summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, reply to a session that needs you, or read.",
+  summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, pick answers to its questions, reply to a session that needs you, or read.",
   help: `approve and deny press the keys the agent's plugin gives for the question its terminal shows (Claude Code's
 permission: Enter, its first choice Yes, or Escape): for an agent asking permission in an app terminal (the event's ask
-is permission) while its terminal still shows the question, or a question the server waits on (an app's tool): only from
-the app or the user's phone, never an agent nor vau. reply (with text) is
-inbox.reply to its session. read marks it read. Another machine's event is answered there, where its session runs; a
+is permission) while its terminal still shows the question, or a question the server waits on (an app's tool). reply
+(with text) is inbox.reply to its session (to a session asking one question, its answer). pick answers the questions it
+asks (the event's questions): picks, one per question, an option's number or name (several, comma-separated, in a
+multi-select), or text typed as its own answer. approve, deny and pick are the user's alone: only from the app or their
+phone, never an agent nor vau. read marks it read. Another machine's event is answered there, where its session runs; a
 bare id from a notification another machine sent is found too.
 
   vau inbox answer lzk3p2-a1b2c3 approve
+  vau inbox answer lzk3p2-a1b2c3 pick --picks 2
+  vau inbox answer lzk3p2-a1b2c3 pick --picks "Local cert" --picks "1,3"
   vau inbox answer lzk3p2-a1b2c3 reply --text "Yes, the second one"`,
   kind: "write",
   params: {
     id: { type: "string", required: true, description: "the event's id (vau inbox lists them)" },
-    answer: { type: "string", enum: ["approve", "deny", "reply", "read"], required: true, description: "approve, deny, reply or read" },
+    answer: { type: "string", enum: ["approve", "deny", "pick", "reply", "read"], required: true, description: "approve, deny, pick, reply or read" },
+    picks: { type: "array", items: { type: "string" }, description: "with pick: an answer for each question, in order" },
     text: { type: "string", description: "with reply: what to tell it" },
   },
   args: ["id", "answer"],
-  run: async ({ id, answer, text }, ctx) => {
+  run: async ({ id, answer, text, picks }, ctx) => {
     const e = await eventFor(ctx, id)
-    // (a gate, or an agent's question in a terminal: the user's alone, never an agent saying yes to itself or another)
-    if ((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
+    // (a gate, an agent's permission or its questions: the user's alone, never an agent saying yes to itself or another)
+    if (((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") || answer === "pick") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     const bare = splitMachine(e.id)[0]
-    if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}) })
+    if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}) })
     if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await replyToRow(ctx, e, str(text))) }
+    if (answer === "pick") return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, (picks ?? []).map(str))) }
     if (answer !== "read") {
       if (e.gate) {
         await ctx.api("POST", `inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
@@ -1415,7 +1497,7 @@ bare id from a notification another machine sent is found too.
     await ctx.api("POST", "inbox/events/read", { ids: [e.id] })
     return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
   },
-  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "reply" ? `Sent to ${r.terminal}.`
+  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "reply" || r.answer === "pick" ? `Sent to ${r.terminal}.`
     : `${r.answer === "approve" ? "Approved" : "Denied"}${r.terminal ? ` in ${r.terminal}` : `: ${r.title}`}.`),
 })
 

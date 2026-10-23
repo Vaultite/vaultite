@@ -361,7 +361,7 @@ export function whoOf(client: string | null, agent: string | null): Who {
 export const userSurface = (w: { client: string | null; agent: string | null }) => !w.agent && !!w.client
   && (w.client.startsWith("app/") || w.client.startsWith("machine/") || w.client === "iphone" || w.client === "watch")
 /** Why a caller may not answer for the user, as its refusal says. */
-export const NOT_THE_USER = "only you approve or deny what waits on you, in the app or on your phone: never an agent, nor vau"
+export const NOT_THE_USER = "only you answer what waits on you (approve, deny, pick), in the app or on your phone: never an agent, nor vau"
 
 /** The user's own hand: the app (`app/<device>`) or vau typed by hand (`cli` naming no coding agent). Anyone else is an
  *  agent or a script: what it opens never takes the user's focus. */

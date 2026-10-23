@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents' questions in the inbox**: a question Claude Code asks shows whole in the inbox and its notifications, each
+  option with its description, no longer one cut line or "Asks permission"; tap an option to answer it, or reply with
+  its number, its name or your own words. A plan to approve shows the plan.
 - **Agents log in with your passwords, never seeing them**: give the browser a KeePass file for agents (KeeShare's export
   of an Agents group) on the Mac it runs on, and `vau browser login` fills a site's username, password and one-time code
   from it. Entries not tagged agent-free wait for your yes, given with a passkey on your phone, and nothing an agent reads

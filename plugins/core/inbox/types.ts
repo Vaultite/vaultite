@@ -16,6 +16,9 @@ export type InboxItem = {
   agent?: string; session?: string; terminal?: string; machine?: string
 }
 
+/** A question an agent asks (core/agents.ts' Question). */
+export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
+
 /** Something an agent said, or an agent's session (one row each): plugin.ts' InboxEvent. */
 export type InboxEvent = {
   id: string; t: number; source: string; kind: string; title: string; body?: string
@@ -26,6 +29,8 @@ export type InboxEvent = {
   kept?: boolean
   /** Why it needs the user (waiting): permission, question, auth, plan, answer, report, error. */
   ask?: string
+  /** What a session asks, in its own words: picked in its sheet (Questions.tsx). */
+  questions?: Question[]
   /** Its body as one plain line. */
   preview?: string
   /** When it last told the user (toast, notifications): announced when this changes. */

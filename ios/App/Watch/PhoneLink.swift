@@ -24,8 +24,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
 
         /// An agent waiting on a permission in an app terminal: Approve and Deny answer it.
         var approvable: Bool { kind == "waiting" && ask == "permission" && !terminal.isEmpty && !read }
-        /// An agent's session at its prompt (not asking a question there): a reply goes back into it.
-        var repliable: Bool { (!terminal.isEmpty || !session.isEmpty) && ["answer", "report", "error", ""].contains(ask) && (kind == "waiting" || kind == "done") }
+        /// An agent's session at its prompt, or asking its own question (a reply answers it): a reply goes back into it.
+        var repliable: Bool { (!terminal.isEmpty || !session.isEmpty) && ["answer", "report", "error", "question", ""].contains(ask) && (kind == "waiting" || kind == "done") }
     }
 
     /// A voice note sent: on its way, saved (what it said), or failed (why).

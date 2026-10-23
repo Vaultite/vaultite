@@ -4,12 +4,12 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type AgentAsk, type AgentMeter, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+import { type AgentAsk, type AgentMeter, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage, lastTurn, parseTerminal } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
-import { Conversation, WANTED } from "./transcript.ts"
+import { askingIn, Conversation, WANTED } from "./transcript.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
@@ -532,20 +532,44 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
 /** A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox
  *  reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
-  let sid = session || parseTerminal(terminal)?.resume || ""
-  if (!sid && terminal) {
-    for (const { a, s, pid, sid: id, tmux } of running(accounts())) {
-      if (!id || a.private) continue
-      const key = `${pid}@${s.procStart}`
-      const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
-      if (t) terminals.set(key, t)
-      if (t === terminal) { sid = id; break }
-    }
-  }
+  const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null
   const t = found ? await transcript(found.file) : null
   return t ? { session: sid, ...lastTurn(t.talk.entries) } : null
 })
+
+/** What a session waits on the user for, its open AskUserQuestion or ExitPlanMode (the service "agent-asking:claude":
+ *  the Inbox shows it whole). The session in `terminal` when `session` isn't given; never a private account's. */
+plugin.provide("agent-asking:claude", async (terminal: string, session = ""): Promise<Asking | null> => {
+  const sid = session || await sessionIn(terminal)
+  const found = sid ? sessionFile(sid) : null, t = found && tail(found.file)
+  return t ? askingIn(t.text) : null
+})
+
+/** The keys answering its questions with `choices` ("agent-pick:claude"): a digit picks (in a multi-select toggles, Tab
+ *  goes on), the one after the options types an answer; 1 submits the review several questions or a multi-select end in. */
+plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[]): string[] => {
+  const keys = questions.flatMap((q, i) => {
+    const c = choices[i]
+    if (typeof c === "string") return [String(q.options.length + 1), c, "\r"]
+    return q.multi ? [...c.map(String), "\t"] : [String(c[0])]
+  })
+  return questions.length > 1 || questions.some((q) => q.multi) ? [...keys, "1"] : keys
+})
+
+/** The session running in app terminal `terminal`, if any (not a private account's). */
+async function sessionIn(terminal: string) {
+  const sid = parseTerminal(terminal)?.resume || ""
+  if (sid || !terminal) return sid
+  for (const { a, s, pid, sid: id, tmux } of running(accounts())) {
+    if (!id || a.private) continue
+    const key = `${pid}@${s.procStart}`
+    const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+    if (t) terminals.set(key, t)
+    if (t === terminal) return id
+  }
+  return ""
+}
 
 /** The model a session runs now, as said ("Opus 5.5"): its transcript's last answer's (the service "agent-model:claude-code":
  *  Provenance says who wrote a line). Read again only when the transcript grew. */

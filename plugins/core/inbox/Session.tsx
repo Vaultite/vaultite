@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { Bot, Check, SquareTerminal, X } from "lucide-react"
 import { Button, Empty, fmtAgo, haptic, Markdown, notify, notifyError, SheetHead, useAgents } from "@vaultite"
 import { agentOf, answerable, answerAsk, getEvents, markRead, openSession, useEvents } from "./events"
+import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
 
@@ -36,7 +37,9 @@ export function SessionSheet({ id }: { id: string }) {
   return (
     <div data-session-sheet={e.id} data-ask={e.ask ?? ""}>
       <SheetHead icon={agent?.icon ?? Bot} tint={agent?.tint ?? "var(--inbox)"} kicker="Inbox" title={e.title} sub={sub} />
-      {e.body
+      {e.questions && blocked
+        ? <Questions e={{ ...e, questions: e.questions }} />
+        : e.body
         ? <Markdown text={e.body} className="mb-5 break-words" />
         : <Empty>{e.kind === "done" ? "It finished with nothing to say." : "It said nothing more."}</Empty>}
       {asks && (
@@ -45,10 +48,12 @@ export function SessionSheet({ id }: { id: string }) {
           <Button className="h-11 px-4 md:h-8" data-gate="deny" onClick={() => void answer(e, "deny")}><X className="size-4" /> Deny</Button>
         </div>
       )}
-      {/* (while it asks, a reply would be typed into its question: it's answered there, or with Approve and Deny) */}
-      {blocked
+      {/* (while it asks, a reply would be typed into its question: it's answered there, or with Approve and Deny; its
+          own questions take a reply as their answer) */}
+      {blocked && !e.questions
         ? <Button look="quiet" className="h-11 px-3 md:h-8" onClick={() => void open().catch((err) => notifyError(err, "Couldn't open it"))}><SquareTerminal className="size-4" /> Open session</Button>
-        : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])} />}
+        : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])}
+          placeholder={!e.questions ? undefined : e.questions.length === 1 && !e.questions[0].multi ? "Or answer in your own words" : "Or tell it something else instead"} />}
     </div>
   )
 }

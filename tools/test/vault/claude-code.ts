@@ -37,6 +37,29 @@ export default async ($: VaultTest) => {
       t.entries[0].kind === "assistant", [t.start, t.entries?.length])
     ;[, t] = await api("GET", `claude-code/session/${sid}?limit=2&before=4`)
     check("claude session: earlier pages", t.start === 2 && t.entries[0].name === "Bash", [t.start])
+    // What it waits on (agent-asking): its last tool call without a result, an AskUserQuestion or a plan; and the keys.
+    {
+      const { askingIn } = await import("../../../plugins/core/claude-code/transcript.ts")
+      const ask = { type: "assistant", message: { content: [{ type: "tool_use", id: "tu1", name: "AskUserQuestion", input: { questions: [
+        { question: "Which fruit?", header: "Fruit", options: [{ label: "Apple", description: "Red" }, { label: "Banana" }] },
+        { question: "Toppings?", multiSelect: true, options: [{ label: "Cheese" }, { label: "Basil" }, { label: "" }] }] } }] } }
+      const answered = { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu1", content: "Apple" }] } }
+      const lines = (...xs: unknown[]) => `{"partial\n${xs.map((x) => JSON.stringify(x)).join("\n")}\n`
+      const a = askingIn(lines({ type: "user", message: { content: "Ask me" } }, ask)) as Any
+      check("asking: an open AskUserQuestion, its questions and options (an empty one left out)", a?.kind === "question" && a.questions.length === 2 &&
+        a.questions[0].header === "Fruit" && a.questions[0].options[0].description === "Red" && !a.questions[0].multi &&
+        a.questions[1].multi === true && a.questions[1].options.length === 2, a)
+      const plan = { type: "assistant", message: { content: [{ type: "tool_use", id: "tu2", name: "ExitPlanMode", input: { plan: "## Plan\n1. Do it" } }] } }
+      const bash = { type: "assistant", message: { content: [{ type: "tool_use", id: "tu3", name: "Bash", input: { command: "ls" } }] } }
+      check("asking: answered, a plan, another tool waiting, or a prompt after it",
+        askingIn(lines(ask, answered)) === null && (askingIn(lines(plan)) as Any)?.plan === "## Plan\n1. Do it" &&
+        askingIn(lines(ask, answered, bash)) === null && askingIn(lines(ask, { type: "user", message: { content: "Never mind" } })) === null)
+      const keys = (await import("../../../plugins/core/claude-code/plugin.ts")).plugin.services["agent-pick:claude"] as (q: Any, c: Any) => string[]
+      const one = [{ question: "Q", options: [{ label: "A" }, { label: "B" }, { label: "C" }] }]
+      check("pick keys: a digit; typed: the one after the options, the text, Enter; several or a multi-select end with 1 on the review",
+        keys(one, [[2]]).join("|") === "2" && keys(one, ["my own"]).join("|") === "4|my own|\r" &&
+        keys([...one, { question: "M", multi: true, options: [{ label: "x" }, { label: "y" }] }], [[3], [1, 2]]).join("|") === "3|1|2|\t|1")
+    }
     // A running session: lines appended are read on from where it stopped; a long output is cut.
     fs.appendFileSync(tfile, JSON.stringify({ type: "assistant", sessionId: sid, cwd: "/Users/sam/lighthouse", timestamp: "2026-09-28T09:02:00.000Z",
       message: { model: "claude-opus-5-5", id: "msg_9", role: "assistant", content: [{ type: "tool_use", id: "toolu_9", name: "Grep", input: { pattern: "retry", path: "src" } }] } }) + "\n" +
