@@ -35,18 +35,12 @@ export const at = (v: unknown, path: string) => nonempty(path.split(".").reduce(
 /** "alice" → "@alice"; nothing for anything but a handle. */
 const handle = (v: string, max = 30) => (new RegExp(`^[\\w.]{1,${max}}$`).test(v) ? `@${v}` : null)
 
-/** Discord's open app: the user it remembers (its own stores, never the token), signed out at its login page. */
-const DISCORD_LOOK = `(() => { const get = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null") } catch { return null } }
-  if (/^\\/(login|register)/.test(location.pathname)) return { out: true }
-  const id = get("user_id_cache"); if (!id || !location.pathname.startsWith("/channels")) return null
-  const u = ((get("MultiAccountStore") || {})._state || {}).users || []
-  return { name: (u.find((x) => x && x.id === id) || {}).username || "" } })()`
 /** WhatsApp Web: its chats (the number it's linked to, as it keeps it), or the QR code to link it. */
 const WHATSAPP_LOOK = `(() => { if (document.querySelector("#pane-side")) return { phone: String(localStorage.getItem("last-wid-md") || "") }
   return document.querySelector("[data-ref] canvas") ? { out: true } : null })()`
 
-/** Sites whose account we know how to ask for, by site ("ycombinator.com" for news.ycombinator.com): adding one is an
- *  entry here and a test in tools/test_web.ts. */
+/** Sites whose account we know how to ask for, by site ("ycombinator.com" for news.ycombinator.com), each tested in
+ *  tools/test_web.ts. Never discord.com: running anything in its pages (a look, a page fetch) signs you out. */
 export const ACCOUNTS: Record<string, Rule> = {
   "claude.ai": { url: "https://claude.ai/api/account", page: true, signed: "sessionKey", read: (b) => at(b, "email_address") || at(b, "account.email_address") || at(b, "full_name") },
   "chatgpt.com": { url: "https://chatgpt.com/api/auth/session", page: true, read: (b) => ({ account: at(b, "user.email") || at(b, "user.name"), avatar: at(b, "user.image") }) },
@@ -87,7 +81,6 @@ export const ACCOUNTS: Record<string, Rule> = {
     const slug = decodeURIComponent(/linkedin\.com\/in\/([^/?#]+)/.exec(url)?.[1] ?? "")
     return slug && slug !== "me" && /^[\p{L}\p{N}_-]{3,100}$/u.test(slug) ? slug : null
   } },
-  "discord.com": { look: { code: DISCORD_LOOK, read: (v) => looked(v, (o) => handle(nonempty(o.name), 32) ?? "") } },
   "whatsapp.com": { look: { code: WHATSAPP_LOOK, read: (v) => looked(v, (o) => phoneOf(nonempty(o.phone))) } },
   "cloudflare.com": { url: "https://dash.cloudflare.com/api/v4/user", headers: { "x-cross-site-security": "dash" }, signed: "vses2", read: (b) => at(b, "result.email") },
   "cursor.com": { url: "https://cursor.com/api/auth/me", signed: "WorkosCursorSessionToken", read: (b) => ({ account: at(b, "email"), avatar: at(b, "picture") }) },
