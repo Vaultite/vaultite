@@ -66,9 +66,10 @@ export const joinPath = (folder: string, name: string) => (folder ? `${folder}/$
 /** Characters a file name can't have (the server refuses * " \ < > : | ?) or a [[link]] can't reach (# ^ [ ]). */
 const UNNAMEABLE = /[*"\\<>:|?#^[\]]/g
 /** A name as typed, made one a file can have, as the server's safeName: "/" makes folders, ":" a dash, other
- *  characters names can't have and runs of spaces one space. */
-export const cleanName = (typed: string) => typed.split("/").map((p) => p.replaceAll(":", " -").replace(UNNAMEABLE, " ").replace(/\s+/g, " ").trim())
-  .filter((p) => p && p !== "." && p !== "..").join("/")
+ *  characters names can't have and runs of spaces one space; no dot at the end and no Windows device name (CON). */
+export const cleanName = (typed: string) => typed.split("/").map((p) => p.replaceAll(":", " -").replace(UNNAMEABLE, " ").replace(/\s+/g, " ")
+  .replace(/[\s.]+$/, "").trim()).filter((p) => p && p !== "." && p !== "..")
+  .map((p) => (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(p) ? `${p}_` : p)).join("/")
 /** Whether a file can have the name typed; if not, a toast says which characters it can't (a rename refuses them, as
  *  Obsidian does). */
 export function nameable(typed: string) {

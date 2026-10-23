@@ -6,6 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { check, freePort, results, sleep, summary, testServer } from "./test/lib.ts"
 const began = Date.now()
+if (process.platform === "win32") { console.log("skip stall: FIFOs stand in for a slow file, and Windows has none"); process.exit(0) }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-stall-test-"))
 const VAULT = path.join(tmp, "vault")

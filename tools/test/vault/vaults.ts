@@ -17,7 +17,7 @@ export default async ($: VaultTest) => {
   check("vaults: a hidden folder can't be browsed", vr.status === 403 || vr.status === 404, vr)
   vr = await vh("POST", "open", {}, { path: home })
   check("vaults: home itself can't be a vault", vr.status === 403 && !opened.length, vr)
-  vr = await vh("POST", "open", {}, { path: "/etc" })
+  vr = await vh("POST", "open", {}, { path: process.platform === "win32" ? process.env.SystemRoot || "C:\\Windows" : "/etc" })
   check("vaults: never a system folder", vr.status === 403 && !opened.length, vr)
   vr = await vh("POST", "open", {}, { path: "/" })
   check("vaults: nor the root folder", vr.status === 403 && !opened.length, vr)

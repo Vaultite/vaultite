@@ -15,7 +15,7 @@ const { args: [B, VAULT], check, done } = await qa(import.meta.url, { chrome: fa
 const BASE = B.replace(/\/+$/, "")
 const read = (rel) => { try { return fs.readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 /** The vault's files (hidden folders left out), and one by its name wherever the vault keeps it (People/, Personal/People/). */
-const files = () => (fs.readdirSync(VAULT, { recursive: true })).map(String).filter((f) => !f.split("/").some((x) => x.startsWith(".")))
+const files = () => (fs.readdirSync(VAULT, { recursive: true })).map((f) => String(f).split(path.sep).join("/")).filter((f) => !f.split("/").some((x) => x.startsWith(".")))
 const at = (name) => files().find((f) => f === name || f.endsWith(`/${name}`)) ?? name
 /** A page of a plugin in the app (People's), wherever the vault keeps its pages. */
 const PAGE = await pagePath(B, "People")

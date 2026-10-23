@@ -5,6 +5,8 @@ step() { echo "::group::$*"; "$@" 2>&1 | tee -a windev-out/log.txt; local s=${PI
 # (windows-cli: vau's own; the full list is on the windows branch)
 step npx tsc -p tsconfig.server.json --noEmit
 step node tools/test_setup.ts
+step node tools/test_vault.ts vau
+step node tools/test_selfupdate.ts
 step bash .github/windev/cli.sh
 printf 'FAILED: %s\n' "${fails[@]}"
 [ ${#fails[@]} = 0 ]

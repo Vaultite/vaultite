@@ -65,10 +65,14 @@ export function slug(s: unknown) {
   return str(s).toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 }
 
-/** File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names. */
+/** Names Windows keeps for devices, with any extension (CON, nul.md, COM1). */
+export const DEVICE_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i
+
+/** File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names, and Windows (where a synced
+ *  vault may go) a name ending in a dot or one of its device names. */
 export function safeName(title: unknown) {
-  const name = str(title).replaceAll(":", " -").replace(/[*"\\/<>|?#^[\]]/g, " ")
-  return name.replace(/\s+/g, " ").trim() || "Untitled"
+  const name = str(title).replaceAll(":", " -").replace(/[*"\\/<>|?#^[\]\x00-\x1f]/g, " ").replace(/\s+/g, " ").replace(/[\s.]+$/, "").trim()
+  return !name ? "Untitled" : DEVICE_NAME.test(name) ? `${name}_` : name
 }
 
 /** Python-like truthiness: "", 0, null, false, [] and {} are all false. */
@@ -133,6 +137,9 @@ export function renameFile(from: string, to: string) {
   for (let wait = 10; ; wait *= 2) {
     try { return fs.renameSync(from, to) } catch (e) {
       if (process.platform !== "win32" || wait > 1280 || !["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e
+      // (a folder there, or a read-only file, won't let go)
+      const st = fs.statSync(to, { throwIfNoEntry: false })
+      if (st && (st.isDirectory() || !(st.mode & 0o200))) throw e
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
     }
   }

@@ -15,7 +15,7 @@ import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
-import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
+import { cmp, DEVICE_NAME, type Entry, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -55,6 +55,10 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
     throw new HTTPError(400, `not a path in the vault: '${p ?? "None"}'`)
   }
   if (parts.some((x) => /[*"\\<>:|?]/.test(x))) throw new HTTPError(400, 'names can\'t contain * " \\ < > : | ?')
+  // (Windows drops a trailing dot or space, and its device names aren't files: written, they'd be another file or none)
+  if (process.platform === "win32" && parts.some((x) => /[. ]$/.test(x) || DEVICE_NAME.test(x))) {
+    throw new HTTPError(400, "Windows names can't end in a dot or a space, or be CON, PRN, AUX, NUL, COM1-9 or LPT1-9")
+  }
   const rel = parts.join("/")
   if (mustExist && vault && !fs.existsSync(vault.abs(rel))) throw new HTTPError(404, `no file '${rel}'`)
   return rel
@@ -444,7 +448,7 @@ const searchText = (t: string) => t.replace(DATA_URL, "$1…")
  *  undefined while it's only in iCloud (asked for, not waited on: tried again next time). */
 async function readIndexed(abs: string, rel: string, reader: Reader | null, room: number): Promise<string | null | undefined> {
   const st = await fs.promises.stat(abs)
-  if (st.blocks === 0 && st.size > 0) { fetchFromICloud(abs, { errno: 11 }); return undefined }
+  if (iCloud.on && iCloud.evicted(abs, st)) { fetchFromICloud(abs, { errno: 11 }); return undefined }
   if (reader) {
     const text = String(reader(await fs.promises.readFile(abs), rel) ?? "")
     return text.length > room ? DISK : text

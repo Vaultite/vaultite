@@ -77,7 +77,7 @@ export { formatDate, parseDate, type DateOptions } from "./dates.ts"
 export { unzip, xmlDecode, zipText } from "./unzip.ts"
 /** A file from outside the vault the desktop app let this window open (an absolute path), or an HTTPError 404: what a
  *  format's backend serves for one (HTML's /v/). core/outside.ts. */
-export { allowedPath as outsidePath } from "./outside.ts"
+export { allowedPath as outsidePath, isOutside } from "./outside.ts"
 /** A safe path in the vault from what a request names, or an HTTPError: 400 for one outside it (`..`) or hidden while
  *  hidden files aren't shown, 404 (`mustExist`) for one that isn't there (core/files.ts's `clean`). */
 export { clean as vaultPath } from "./files.ts"

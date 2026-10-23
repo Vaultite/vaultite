@@ -682,6 +682,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HTTPError`
 - `inDesktop()`: Whether this server has a desktop app on this machine to ask (its browser).
 - `isColor(c)`
+- `isOutside(p)`: An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x.
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
@@ -779,6 +780,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ConfigError`: A settings file that can't be read safely for a read-modify-write: `busy` (mid-sync, try again: 503), else broken (409).
 - `ConflictError`: A write the vault refuses because the file isn't in a state it can safely change (the API answers 409).
 - `CreateHook`: onCreate's hooks (Vault.onCreate): the keys to add to a new file.
+- `DEVICE_NAME`: Names Windows keeps for devices, with any extension (CON, nul.md, COM1).
 - `dirOf(rel)`: The folder a path is in ("" at the top).
 - `effectiveType(kindType, fm)`: A file's type: its kind's (`kindType`, when a kind owns the file), else its frontmatter `type` when that's text, else a plugin's mark on it.
 - `Entry`
@@ -818,10 +820,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readBytes(p)`: A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says.
 - `readSoon(p, wait?, { join }?)`: A file's bytes off the main thread (a placeholder iCloud left: once down), so iCloud never holds the server; null after `wait` ms, or at once while an earlier read of it is held (no second thread…
 - `readText(p)`: A text file, line endings as \n.
+- `renameFile(from, to)`: fs.renameSync, retried a moment on Windows, which won't replace or move a file another process has open (a reader, the search indexer, antivirus) until it lets go (EPERM, EACCES or EBUSY).
 - `renameProperty(text, from, to)`: A file's text with its frontmatter key `from` renamed `to`, nothing else changed (core/textedit.ts renameKey); null when it has no such key, already has `to`, or its header can't be changed line…
 - `renameTagText(text, from, to)`: A file's text with tag `from`, and those nested under it, renamed `to`: in its frontmatter `tags` (a list or text, as it was written; a tag twice once) and its #tags.
 - `requestWriter`: Set by the API around each request that came over HTTP (core/app.ts), read by the hooks that run on its writes.
-- `safeName(title)`: File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names.
+- `safeName(title)`: File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names, and Windows (where a synced vault may go) a name ending in a dot or one of its device names.
 - `sameFile(a, b)`
 - `SaveHook`: onSave's hooks (Vault.onSave): the keys to set in a file the app saves over its older text (`was`).
 - `setPropertyText(text, key, value)`: A file's text with one frontmatter key set to `value` (undefined: removed), only that key's lines rewritten; null when the header can't be patched line by line (it's left alone then).

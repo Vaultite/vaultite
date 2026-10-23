@@ -355,6 +355,15 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
     fp.attachmentDir("Files/Pasted/", "A/N.md") === "Files/Pasted")
 }
 
+// ---------- File names from titles: ones every system (Windows too, where a vault may sync) can have ----------
+{
+  const { safeName } = await import(pathToFileURL(path.join(ROOT, "core", "vault.ts")).href)
+  const pairs = [["CON", "CON_"], ["nul.md", "nul.md_"], ["Notes...", "Notes"], ["a: b?", "a - b"], ["Trip. ", "Trip"], ["\u0007Bell", "Bell"],
+    ["COM1 plan", "COM1 plan"], ["", "Untitled"]]
+  const off = pairs.filter(([t, want]) => safeName(t) !== want)
+  check("names: no Windows device name, trailing dot or control character", !off.length, off.map(([t]) => [t, safeName(t)]))
+}
+
 // ---------- Markdown's extras: headings and blocks to go to, tags, comments, highlights, note embeds ----------
 
 // The editor reads a frontmatter of any size as one block (read on until it closes, not only its first MB).
