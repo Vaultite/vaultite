@@ -631,4 +631,32 @@ export default async ($: VaultTest) => {
       await followMachines()
     }
   }
+
+  // A gate (a permission the server waits on: an MCP app's tool, inbox:ask) is the user's to answer, never an agent's.
+  {
+    const ask = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask") as (b: Any) => string
+    const answerOf = app.plugins.find((p) => p.id === "inbox")!.service("inbox:answer") as (id: string, ms?: number) => Promise<string>
+    // (each from this machine, as its owner: what tells them apart is who they say they are)
+    const from = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
+      headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+    const gate = ask({ source: "mcp", key: "gate-agents", title: "Grok Bot asks to run file.delete", body: "file.delete {}" })
+    const tries = [
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("mcp")),
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli", "claude-code")),
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "deny" }, from("cli", "codex")),
+      await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("mcp")),
+      await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("app/desktop", "claude-code")),
+      await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("a-script")),
+    ]
+    check("inbox gates: an agent (MCP, a coding agent's vau, a script) can't answer one, by the op or the route", tries.every(([st, b]) => st === 403 && /only you/.test(String(b.error)))
+      && await answerOf(gate) === "waiting", tries)
+    const [byHand] = await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli"))
+    check("inbox gates: the user's own vau answers it", byHand === 200 && await answerOf(gate) === "approve", byHand)
+    const gate2 = ask({ source: "mcp", key: "gate-phone", title: "Grok Bot asks to run file.move", body: "file.move {}" })
+    const [phone] = await api("POST", "ops/inbox.answer", { id: gate2, answer: "deny" }, from("iphone"))
+    check("inbox gates: the phone's notification answers it", phone === 200 && await answerOf(gate2) === "deny", phone)
+    const gate3 = ask({ source: "mcp", key: "gate-app", title: "Grok Bot asks to run file.copy", body: "file.copy {}" })
+    const [inApp] = await api("POST", `inbox/events/${gate3}/answer`, { answer: "approve" }, from("app/desktop"))
+    check("inbox gates: the app's buttons answer it", inApp === 200 && await answerOf(gate3) === "approve", inApp)
+  }
 }

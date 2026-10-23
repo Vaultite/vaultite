@@ -7,7 +7,7 @@ import { type RawData, WebSocket } from "ws"
 import { startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId, type SampleAsk } from "../../../core/agents.ts"
 import {
   bullets, fmtAgo, stampMs, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
-  type Machine, type OpCtx, type Request,
+  type Machine, type OpCtx, type Request, whoOf,
 } from "../../../core/plugins.ts"
 import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import { judge, type Need, type Turn } from "./needs.ts"
@@ -563,10 +563,19 @@ plugin.route("POST", "inbox/events/unread", async (req) => {
   return { unread: unread(local) }
 })
 
+/** Who answers a gate: the user's own hands (the app, their phone and watch, vau typed with no agent in it) or a machine
+ *  passing one of those on; never an agent, which would be saying yes to itself. What a caller says it is can be lied
+ *  about: a yes that must be the user's needs more (a passkey: browser logins). */
+export const answersGates = (w: { client: string | null; agent: string | null }) => !w.agent && !!w.client
+  && (w.client.startsWith("app/") || w.client.startsWith("machine/") || ["iphone", "watch", "cli"].includes(w.client))
+const NOT_AGENTS = "only you answer a permission the server waits on (in the app, on your phone, or in vau typed yourself), never an agent"
+
 /** Answer a permission the server waits on (gate: the service "inbox:ask"): approve or deny. The owner's only, so what
  *  asked can't answer itself. */
 plugin.route("POST", "inbox/events/*/answer", async (req) => {
   await owner(req)
+  const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
+  if (req.http && !answersGates(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_AGENTS)
   const answer = str((req.body as Item)?.answer)
   if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
   const [bare, there] = splitMachine(req.arg(0))
@@ -1391,6 +1400,7 @@ bare id from a notification another machine sent is found too.
   args: ["id", "answer"],
   run: async ({ id, answer, text }, ctx) => {
     const e = await eventFor(ctx, id)
+    if (e.gate && (answer === "approve" || answer === "deny") && !answersGates(ctx.who)) throw new OpError(NOT_AGENTS, 403)
     const bare = splitMachine(e.id)[0]
     if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}) })
     if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await replyToRow(ctx, e, str(text))) }
