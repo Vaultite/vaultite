@@ -348,7 +348,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `OpenFile`: The file a status item is drawn for: its head, and its whole text, frontmatter included ("" for a file that isn't text: an image), as typed (each change redraws it, a moment after the keystroke).
 - `openingSoon(path, now?)`
 - `openInList(newTab?)`: Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab).
-- `openInSplit(to, side?, focusIt?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
+- `openInSplit(to, side?, focusIt?, tabId?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
@@ -471,7 +471,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `selectedText(ed?)`: The text selected in an editor (the one the user means by default): its selections, or in reading view the page's selection inside it; "" for none.
 - `selectionFor(list, key, letGo?)`: What a right-click or a drag on this row is about: every selected key when it's one of several, else null (and a right-click elsewhere lets the selection go, as in Finder).
 - `selectItem(list, key)`: Phones (no keys): "Select" in a row's menu starts selecting with it.
-- `selectTab(id)`: Show a tab.
+- `selectTab(id)`: Show a tab (false: there's none).
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
