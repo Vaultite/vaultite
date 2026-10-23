@@ -8,6 +8,8 @@ import crypto from "node:crypto"
 import http from "node:http"
 import { WebSocket } from "ws"
 
+if (process.platform === "win32") { console.log("skip machines: the dial-in agent (dial.py) is for Linux and macOS machines"); process.exit(0) }
+
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-machines-test-"))
 const vault = path.join(tmp, "vault"), home = path.join(tmp, "vm")
 fs.mkdirSync(path.join(vault, ".vaultite/plugins/machines"), { recursive: true })
