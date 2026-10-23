@@ -67,13 +67,13 @@ iPhone apps, tests and how to send a change: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Run it on a server
 
-On a box at home or a VPS (Linux or a Mac), next to your agents. Open it from the desktop app (Connect to a server) or
+On a box at home or a VPS (Linux, a Mac or Windows), next to your agents. Open it from the desktop app (Connect to a server) or
 a browser on your tailnet.
 
 ```sh
 git clone https://github.com/Vaultite/vaultite && cd vaultite
 npm ci && npm run build                          # on Linux, node-pty builds with build-essential and python3
-node bin/vau service install --vault ~/Vault     # a systemd user unit (launchd on a Mac), running now and at boot
+node bin/vau service install --vault ~/Vault     # a systemd user unit (launchd on a Mac, a scheduled task on Windows), running now and at boot
 tailscale serve --bg --https=8447 http://127.0.0.1:8793
 ```
 

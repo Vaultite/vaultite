@@ -8,6 +8,8 @@ are the only copy, and the user reads them too.
   you mean to (`vau edit`: just the text you name). A long answer comes in pages: it ends saying the next `offset`.
 - Before writing a kind of file, read its format: `vau docs <topic>` (`vau docs` lists them). A file's kind is its
   `type:` field; new files go where files of their kind already are. Don't invent fields.
+- On Windows `vau` runs in PowerShell, cmd and Git Bash (from PowerShell and cmd, quote words holding `& | < > ^ %`); in
+  WSL it's Windows' vau (`vau wsl install`): it reaches the app there and prints paths as WSL's (`/mnt/c/...`).
 - `vau context` shows what the user is looking at; `vau render <file>` a file with its views filled in as text.
 
 ## Rules

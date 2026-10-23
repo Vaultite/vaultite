@@ -324,12 +324,12 @@ async function foreign(req: http.IncomingMessage) {
   return ""
 }
 
-/** POST /api/file/open {path, reveal}: open a file in this machine's default app, or show it in its folder (Finder, or
- *  Linux's file manager). Only for the app running on this machine, never from another device. */
+/** POST /api/file/open {path, reveal}: open a file in this machine's default app, or show it in its folder (Finder,
+ *  Explorer, Linux's file manager; Explorer from WSL). Only for the app running on this machine, never another device. */
 async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   if (!fromThisMachine(req)) return json(res, { error: "files only open in their app from this machine" }, 403)
-  if (process.platform !== "darwin" && process.platform !== "linux") return json(res, { error: "opening files in their app needs macOS or Linux" }, 501)
-  if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY)
+  if (process.platform !== "darwin" && process.platform !== "linux" && process.platform !== "win32") return json(res, { error: "opening files in their app needs macOS, Windows or Linux" }, 501)
+  if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY && !inWsl())
     return json(res, { error: "this server has no desktop to open files on (no DISPLAY or WAYLAND_DISPLAY)" }, 501)
   const body = await bodyOf(req) as { path?: unknown; reveal?: unknown } | undefined
   let abs: string
@@ -345,7 +345,23 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
   // reveal: show it in Finder (open -R).
   if (process.platform === "darwin") return void execFile("/usr/bin/open", body?.reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
+  if (process.platform === "win32") return void explorer(abs, !!body?.reveal).then(() => done(null), done)
+  if (inWsl()) return void execFile("wslpath", ["-w", abs], { timeout: 10000 }, (e, win) => (e ? done(e) : explorer(win.trim(), !!body?.reveal).then(() => done(null), done)))
   openOnLinux(abs, !!body?.reveal).then(() => done(null), done)
+}
+
+/** A Linux server in WSL, which runs Windows' programs (its interop on). */
+const inWsl = () => process.platform === "linux" && ["WSLInterop", "WSLInterop-late"].some((f) => fs.existsSync(`/proc/sys/fs/binfmt_misc/${f}`))
+
+/** Windows: the file in its default app, or selected in Explorer. On Windows its command line is written as Explorer
+ *  reads it (a path can't hold "; from WSL, interop quotes it). Explorer answers 1 even when it worked: only not starting fails. */
+function explorer(win: string, reveal: boolean) {
+  const q = process.platform === "win32" ? `"${win}"` : win
+  return new Promise<void>((ok, fail) => {
+    const p = spawn("explorer.exe", [reveal ? `/select,${q}` : q], { windowsVerbatimArguments: true, stdio: "ignore", detached: true })
+    p.on("error", fail)
+    p.on("spawn", () => { p.unref(); ok() })
+  })
 }
 
 function liveFolder(p: string) {

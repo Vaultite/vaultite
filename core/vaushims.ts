@@ -24,3 +24,34 @@ export function vauShims(s: Shim, platform: string = process.platform): Record<s
   }
   return out
 }
+
+/** What crosses into Windows' vau from WSL (WSLENV): Vaultite's variables (VAULTITE_VAULT and VAULTITE_LOCAL as paths)
+ *  and those that say which agent calls (core/cli.ts' Ctx). */
+const CROSS = "VAULTITE_[A-Za-z0-9_]*|CODEX_[A-Za-z0-9_]*|CLAUDECODE|CLAUDE_CODE_SESSION_ID|CLAUDE_MODEL|CLAUDE_EFFORT|CLAUDE_CODE_EFFORT_LEVEL|ANTHROPIC_MODEL|OPENCODE|CURSOR_AGENT|GEMINI_CLI"
+
+/** vau in WSL: runs Windows' vau (`exe`, `script`: Windows paths) by WSL's interop, so it reaches Windows' 127.0.0.1 in
+ *  any networking mode; WSL's paths among its arguments go as Windows', VAULTITE_WSL has it print WSL's (core/cli.ts). */
+export function wslShim(s: Shim): string {
+  const env = Object.entries(s.env ?? {})
+  return ["#!/bin/sh", `# ${s.mark}`,
+    `exe=$(wslpath -u ${sh(s.exe)}) || exit 1`,
+    ...env.map(([k, v]) => `export ${k}=${sh(v)}`),
+    'export ELECTRON_RUN_AS_NODE=1 VAULTITE_WSL="${WSL_DISTRO_NAME:-wsl}"',
+    `w=${["ELECTRON_RUN_AS_NODE", ...env.map(([k]) => k)].join(":")}`,
+    `for v in $(env | sed -nE 's/^(${CROSS})=.*/\\1/p'); do`,
+    '  case $v in VAULTITE_VAULT|VAULTITE_LOCAL) v="$v/p" ;; esac',
+    '  case ":$w:" in *":${v%/p}:"*|*":${v%/p}/p:"*) ;; *) w="$w:$v" ;; esac',
+    "done",
+    'export WSLENV="${WSLENV:+$WSLENV:}$w"',
+    "# (absolute paths of files that are there, as Windows reaches them: /home/a/x is \\\\wsl.localhost\\<distro>\\home\\a\\x)",
+    "n=$#",
+    'while [ "$n" -gt 0 ]; do',
+    '  a=$1; shift; n=$((n - 1))',
+    "  case $a in",
+    '    /?*) [ -e "$a" ] && a=$(wslpath -w "$a") ;;',
+    '    --*=/?*) p=${a#*=}; [ -e "$p" ] && a="${a%%=*}=$(wslpath -w "$p")" ;;',
+    "  esac",
+    '  set -- "$@" "$a"',
+    "done",
+    `exec "$exe" ${sh(s.script)} "$@"`, ""].join("\n")
+}

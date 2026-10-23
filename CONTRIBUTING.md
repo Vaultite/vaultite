@@ -30,7 +30,10 @@ TypeScript directly) and, for the QA scripts, Playwright's Chromium (`npx playwr
   pull request.
 - iPhone app: `npm run ios` (needs Xcode); put your team in `ios/App/Local.xcconfig` (`DEVELOPMENT_TEAM = <team id>`).
   On the phone, add the address your Mac serves Vaultite at on the tailnet (`tailscale serve --https=8447 <port>`).
-- `vau service install --vault <folder>` keeps the server running (launchd on macOS, systemd on Linux).
+- `vau service install --vault <folder>` keeps the server running (launchd on macOS, systemd on Linux, Task Scheduler
+  on Windows). A server in WSL (`npm start` there, or `vau service` with systemd on in `/etc/wsl.conf`) answers
+  Windows' browser and app at `http://localhost:8793`: WSL forwards localhost.
+- Windows: `bin/vau.cmd` runs vau from cmd and PowerShell (Git Bash runs `bin/vau`); `vau wsl install` puts it in WSL.
 
 | Variable | Default | What it is |
 | --- | --- | --- |
