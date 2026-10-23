@@ -15,7 +15,7 @@ plugin.serve("v", (req) => {
   const headers = { "Content-Security-Policy": CSP, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" }
   if (ARTIFACT.test(req.arg(0)) && req.query.frame !== "1") {
     // (what the page would refuse, the wrapper refuses too)
-    if (!req.arg(0).startsWith("/")) vaultPath(req.arg(0), true, vault)
+    if (!isOutside(req.arg(0))) vaultPath(req.arg(0), true, vault)
     else try { outsidePath(req.arg(0)) } catch { throw new HTTPError(404, "not found") }
     return new Text(wrapper(req.rawPath, req.query.theme === "dark"), "text/html; charset=utf-8", { ...headers, "Content-Security-Policy": WRAP_CSP })
   }
