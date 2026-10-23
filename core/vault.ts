@@ -137,6 +137,9 @@ export function renameFile(from: string, to: string) {
   for (let wait = 10; ; wait *= 2) {
     try { return fs.renameSync(from, to) } catch (e) {
       if (process.platform !== "win32" || wait > 1280 || !["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e
+      // (a folder there, or a read-only file, won't let go)
+      const st = fs.statSync(to, { throwIfNoEntry: false })
+      if (st && (st.isDirectory() || !(st.mode & 0o200))) throw e
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
     }
   }

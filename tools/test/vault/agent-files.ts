@@ -56,16 +56,19 @@ export default async ($: VaultTest) => {
     await setRoot(false)
     fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n")
     // Rules that can't be read aren't taken for no file (the rewrite would drop the user's own); tried again after a wait.
-    const file = path.join(VAULT, ".vaultite/AGENTS.md"), mine = read(".vaultite/AGENTS.md") + "\nKeep this.\n"
-    fs.writeFileSync(file, mine)
-    fs.chmodSync(file, 0o000)
-    await setRoot(true)
-    fs.chmodSync(file, 0o644)
-    check("the rules: unreadable, left as they are", read(".vaultite/AGENTS.md") === mine)
-    await new Promise((r) => setTimeout(r, 2_100))
-    await api("GET", "state")
-    check("the rules: tried again after the wait, the user's rules kept", read(".vaultite/AGENTS.md").includes("## Rules") && read(".vaultite/AGENTS.md").endsWith("Keep this.\n"), read(".vaultite/AGENTS.md").slice(-200))
-    await setRoot(false)
+    // (Windows has no unreadable mode: chmod there only sets read-only)
+    if (process.platform !== "win32") {
+      const file = path.join(VAULT, ".vaultite/AGENTS.md"), mine = read(".vaultite/AGENTS.md") + "\nKeep this.\n"
+      fs.writeFileSync(file, mine)
+      fs.chmodSync(file, 0o000)
+      await setRoot(true)
+      fs.chmodSync(file, 0o644)
+      check("the rules: unreadable, left as they are", read(".vaultite/AGENTS.md") === mine)
+      await new Promise((r) => setTimeout(r, 2_100))
+      await api("GET", "state")
+      check("the rules: tried again after the wait, the user's rules kept", read(".vaultite/AGENTS.md").includes("## Rules") && read(".vaultite/AGENTS.md").endsWith("Keep this.\n"), read(".vaultite/AGENTS.md").slice(-200))
+      await setRoot(false)
+    }
     // A write that fails leaves no temporary copy behind.
     const { writeAtomic } = await import("../../../core/vault.ts")
     fs.mkdirSync(path.join(VAULT, "Taken/x"), { recursive: true })
