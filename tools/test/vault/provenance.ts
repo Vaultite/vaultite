@@ -96,7 +96,7 @@ export default async ($: VaultTest) => {
     const blame = await app.callOp("provenance.blame", { path: "Auth/Talk.md" }) as { result: Any; text: string }
     check("authorship: vau blame lists agents' lines by number", blame.result.runs.map((r: Any) => `${r.from}:${r.by}`).join() === "3:Claude,7:Claude" && /2 of \d+ lines by agents/.test(blame.text), blame)
     const [, got] = await api("GET", "provenance/authorship?path=Auth/Talk.md")
-    check("authorship: the app reads the spans and the setting (gutter by default)", got.mode === "gutter" && got.spans.length === 2, got)
+    check("authorship: the app reads the spans and the setting (kept, not shown, by default)", got.mode === "hidden" && got.spans.length === 2, got)
     const { LOADED } = await import("../../../core/plugins.ts")
     const today = await LOADED.find((x) => x.id === "provenance")!.ask<Any[]>("provenance:authored", [], "Auth/Talk.md", Date.now() - 60_000, Date.now() + 1000)
     check("authorship: the recap hears what agents wrote that day, by who", today.length === 1 && today[0].by === "Claude" && today[0].lines === 2, today)

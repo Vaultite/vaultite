@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents' lines are no longer drawn by default**: Provenance still keeps which lines agents wrote (for `vau blame`,
+  the recap and a right-click's "Written by"), but the bar by them is now a choice, in its setting Agents' lines.
 - **Agents' questions in the inbox**: a question Claude Code asks shows whole in the inbox and its notifications, each
   option with its description, no longer one cut line or "Asks permission"; tap an option to answer it, or reply with
   its number, its name or your own words. A plan to approve shows the plan.

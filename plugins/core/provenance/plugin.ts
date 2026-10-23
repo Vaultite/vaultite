@@ -37,10 +37,11 @@ const agentValue = () => (plugin.settings().label_agents === false ? "" : aiValu
 /** Whether the user's own new notes are labelled (`label_user`, off unless set). */
 const labelsUser = () => plugin.settings().label_user === true
 
-/** How agents' lines show (`authorship`): off (not kept either), a bar by them (gutter), or washed in their colour. */
-const authorship = (): "off" | "gutter" | "tint" => {
+/** How agents' lines show (`authorship`): kept but not drawn (hidden), a bar by them (gutter), washed in their colour
+ * (tint), or off (not kept either). */
+const authorship = (): "off" | "hidden" | "gutter" | "tint" => {
   const v = plugin.settings().authorship
-  return v === "off" || v === "tint" ? v : "gutter"
+  return v === "off" || v === "gutter" || v === "tint" ? v : "hidden"
 }
 
 plugin.state(() => ({ provenance: { values: values(), defaults: DEFAULT_VALUES, labelUser: labelsUser(), authorship: authorship() } }))

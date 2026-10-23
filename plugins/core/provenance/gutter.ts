@@ -1,11 +1,11 @@
 // Agents' lines in a note's editor: a bar in the writer's colour (dashed: the user edited it too), who on hover or menu,
-// the text washed in it with `authorship: tint`. Sidecar spans (plugin.ts) found in the text a moment after each change.
+// the text washed in it with `authorship: tint`; with `hidden`, only the menu says who. Sidecar spans (plugin.ts) found in the text a moment after each change.
 import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { type EditorCtx, fmtStamp, fmtTime, get, onVaultChange } from "@vaultite"
 import { type Author, authorText, type Mark, resolve, type Span } from "./authorship"
 
-type Mode = "off" | "gutter" | "tint"
+type Mode = "off" | "hidden" | "gutter" | "tint"
 type Got = { mode: Mode; spans: Span[] }
 
 const sameDay = (t: number) => new Date(t).toDateString() === new Date().toDateString()
@@ -37,7 +37,7 @@ const marks = StateEffect.define<DecorationSet>()
 
 /** The decorations of `marks` found in `doc`. */
 function decorate(view: EditorView, got: Got): DecorationSet {
-  if (got.mode === "off" || !got.spans.length) return Decoration.none
+  if (got.mode === "off" || got.mode === "hidden" || !got.spans.length) return Decoration.none
   const doc = view.state.doc, found = resolve(doc.toString(), got.spans)
   const b = new RangeSetBuilder<Decoration>()
   const at = (n: number) => found.get(n)

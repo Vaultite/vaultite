@@ -4,7 +4,7 @@
   "category": "agents",
   "alwaysOn": true,
   "name": "Provenance",
-  "description": "Who wrote a file and, in a note, which lines: you, an AI whose text you reviewed, you and an AI together, or an AI. One property, origin, shown and changed in every file's header and the status bar, with values you can change; those agents make through the API are marked AI, and yours can be marked too (a setting). Images and other files keep theirs in a list (their bytes are never changed), and an image that carries the IPTC mark for AI-made media (ChatGPT's, Gemini's) shows as AI. Agents' lines show with a bar in their colour. A label, not a lock.",
+  "description": "Who wrote a file and, in a note, which lines: you, an AI whose text you reviewed, you and an AI together, or an AI. One property, origin, shown and changed in every file's header and the status bar, with values you can change; those agents make through the API are marked AI, and yours can be marked too (a setting). Images and other files keep theirs in a list (their bytes are never changed), and an image that carries the IPTC mark for AI-made media (ChatGPT's, Gemini's) shows as AI. Agents' lines are kept too, and can show with a bar in their colour. A label, not a lock.",
   "settings": {
     "label_user": {
       "type": "boolean",
@@ -20,11 +20,11 @@
     },
     "authorship": {
       "type": "enum",
-      "values": ["off", "gutter", "tint"],
-      "default": "gutter",
+      "values": ["off", "hidden", "gutter", "tint"],
+      "default": "hidden",
       "label": "Agents' lines",
-      "labels": { "off": "Off", "gutter": "A bar by them", "tint": "Tinted" },
-      "description": "which lines of a note agents wrote, kept beside it (never in its text) and shown in their colour: a thin bar by each line (hover for who, model and when), or the text washed in it too; off, it isn't kept either. A line you edit after an agent shows as both"
+      "labels": { "off": "Off", "hidden": "Kept, not shown", "gutter": "A bar by them", "tint": "Tinted" },
+      "description": "which lines of a note agents wrote, kept beside it (never in its text): not shown (a right-click or a held finger on a line still says who), a thin bar in their colour by each line (hover for who, model and when), or the text washed in it too; off, it isn't kept either. A line you edit after an agent shows as both"
     },
     "agent": {
       "type": "string",
