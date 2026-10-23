@@ -21,7 +21,7 @@ const PER_MINUTE = 30, KEEP = 50, MAX_OUT = 4 << 20
 // ---------- checking a manifest ----------
 
 // The server's own Node, for `node` and `vau` (#!/usr/bin/env node) in commands: launchd's PATH has no Homebrew.
-const NODE_DIR = path.basename(process.execPath) === "node" ? path.dirname(process.execPath) : ""
+const NODE_DIR = /^node(\.exe)?$/i.test(path.basename(process.execPath)) ? path.dirname(process.execPath) : ""
 
 /** What's wrong with a command: an argv array of strings, its program a name on PATH, an absolute path, or a path in
  *  the plugin's folder. */
@@ -160,7 +160,14 @@ export class Hooks {
       VAULTITE_PLUGIN_ID: p.id, VAULTITE_PLUGIN_DIR: p.dir, VAULTITE_PLUGIN_STATE: this.stateDir(p.id),
       PATH: [path.join(ROOT, "bin"), NODE_DIR, process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
     })
-    const prog = command[0].includes("/") && !path.isAbsolute(command[0]) ? path.resolve(p.dir, command[0]) : command[0]
+    let prog = command[0].includes("/") && !path.isAbsolute(command[0]) ? path.resolve(p.dir, command[0]) : command[0]
+    let args = command.slice(1)
+    // (on Windows `node` and `vau` are this Node: a .cmd can't run without a shell, and the desktop app has no node.exe)
+    if (process.platform === "win32" && (prog === "node" || prog === "vau")) {
+      if (prog === "vau") args = [path.join(ROOT, "bin", "vau"), ...args]
+      prog = process.execPath
+      if (process.versions.electron) env.ELECTRON_RUN_AS_NODE = "1"
+    }
     return new Promise<{ exit: number | null; stdout: string; stderr: string; error?: string; timedOut: boolean }>((resolve) => {
       let stdout = "", stderr = "", timedOut = false, error: string | undefined, ended = false
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -178,7 +185,7 @@ export class Hooks {
       }
       let child: ReturnType<typeof spawn>
       try {
-        child = spawn(prog, command.slice(1), { cwd: p.dir, env, stdio: ["pipe", "pipe", "pipe"] })
+        child = spawn(prog, args, { cwd: p.dir, env, stdio: ["pipe", "pipe", "pipe"] })
       } catch (e) {
         error = String((e as Error).message)
         return finish(null, null)
