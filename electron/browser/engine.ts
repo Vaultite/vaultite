@@ -1,11 +1,27 @@
 // The browser engine's hooks: each feature (blocking, extensions, history...) adds itself here for every web session
-// and page as they're made, so web.ts makes them once and doesn't know the features.
-import type { OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
-import type { AppWindow } from "../appwindow.ts"
+// and page as they're made, so web.ts makes them once and doesn't know the features. The app hands it its windows.
+import type { BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents } from "electron"
+
+/** One of the app's windows: its page is `webContents`, the Browser's pages are views in it. */
+export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
+/** What the engine needs of the app (main.ts hands it once, before any page opens). */
+export type EngineHost = { windows: () => EngineWindow[] }
+let host: EngineHost = { windows: () => [] }
+export const setEngineHost = (h: EngineHost) => { host = h }
+/** The app's windows, open now. */
+export const appWindows = () => host.windows().filter((w) => !w.isDestroyed())
+export const focusedWindow = () => appWindows().find((w) => w.isFocused()) ?? null
+export const windowById = (id: number) => appWindows().find((w) => w.id === id) ?? null
+/** The window whose own page `wc` is. */
+export const windowOfPage = (wc: WebContents) => appWindows().find((w) => w.webContents === wc) ?? null
+
+const PARTITION = "persist:web"
+/** The session's partition for a profile ("" or a workspace's "2", a container's "c-work"; anything else is the shared one). */
+export const partitionOf = (profile: string) => (/^[a-z0-9-]{1,32}$/.test(profile) ? `${PARTITION}-${profile}` : PARTITION)
 
 type SessionSetup = (s: Session, profile: string) => void | Promise<void>
 /** A page as features see it: its contents, its logins (profile) and the window it's in. */
-export type EnginePage = { id: number; wc: WebContents; profile: string; win: AppWindow
+export type EnginePage = { id: number; wc: WebContents; profile: string; win: EngineWindow
   /** The address it was opened at. */
   url: string
   /** Take it off the screen (its tab shows it again when it asks to). */
@@ -178,11 +194,11 @@ export const allPages = () => [...pages.values()]
 
 // ---------- talking with the app ----------
 
-type Handler = (win: AppWindow, ...args: unknown[]) => unknown
+type Handler = (win: EngineWindow, ...args: unknown[]) => unknown
 const handlers = new Map<string, Handler>()
 /** What the app may ask a feature (`webPages.engine(name, ...args)` in the window, through `web:engine`). */
 export function handle(name: string, fn: Handler) { handlers.set(name, fn) }
-export async function engineCall(win: AppWindow, name: unknown, args: unknown[]) {
+export async function engineCall(win: EngineWindow, name: unknown, args: unknown[]) {
   if (typeof name === "string" && !handlers.has(name)) await engineLoaded()
   const fn = typeof name === "string" ? handlers.get(name) : undefined
   if (!fn) throw new Error(`no browser feature answers ${String(name)}`)
@@ -190,7 +206,7 @@ export async function engineCall(win: AppWindow, name: unknown, args: unknown[])
 }
 /** What the vault's server may ask (its agents' calls, core/desktopapp.ts): only the `agent:` names, never the app's own
  *  (unlocking a container, its access, clearing logins). */
-export function serverCall(win: AppWindow | undefined, name: unknown, args: unknown[]) {
+export function serverCall(win: EngineWindow | undefined, name: unknown, args: unknown[]) {
   if (typeof name !== "string" || !name.startsWith("agent:")) throw new Error(`the server can't ask ${String(name)}`)
   if (!win || win.isDestroyed()) throw new Error("the vault's window isn't open")
   return engineCall(win, name, args)
@@ -217,14 +233,17 @@ export function engineBusy(of: "app" | "server" = "app"): string | null {
 }
 
 /** Tell a window something: the Browser hears it as a `WebEvent` whose `type` starts "engine:". */
-export const tell = (win: AppWindow, msg: { type: `engine:${string}` } & Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+export const tell = (win: EngineWindow, msg: EngineEvent) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
+type EngineEvent = { type: `engine:${string}` } & Record<string, unknown>
+/** Tell every window. */
+export const tellAll = (msg: EngineEvent) => { for (const w of appWindows()) tell(w, msg) }
 
-type ServerSink = (win: AppWindow, name: string, data: unknown) => void
+type ServerSink = (win: EngineWindow, name: string, data: unknown) => void
 let sink: ServerSink = () => {}
 /** How to reach a window's vault server: main.ts hands it (core/desktopapp.ts onDesktopEvent hears it there). */
 export const setServerSink = (fn: ServerSink) => { sink = fn }
 /** Tell the server of `win`'s vault something unasked (the live view's frames). */
-export const tellServer = (win: AppWindow, name: string, data: unknown) => { if (!win.isDestroyed()) sink(win, name, data) }
+export const tellServer = (win: EngineWindow, name: string, data: unknown) => { if (!win.isDestroyed()) sink(win, name, data) }
 
 // ---------- the DevTools protocol, one session per page (agents' input and snapshots, the window's passed pointer) ----------
 

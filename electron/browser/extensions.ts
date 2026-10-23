@@ -1,14 +1,12 @@
 // Chrome extensions in web pages: each installed one (extstore.ts) loaded into every web session, the APIs Electron
 // lacks from extapi.ts, popups over the page. The app asks `ext:*`; it's told engine:ext:changed, :open, :show, :close.
 import { app, dialog, session, WebContentsView, type Session } from "electron"
-import { AppWindow } from "../appwindow.ts"
-import { allPages, eachPage, eachSession, handle, opens, tell, type EnginePage } from "./engine.ts"
+import { allPages, eachPage, eachSession, handle, opens, partitionOf, tell, tellAll, type EnginePage, type EngineWindow } from "./engine.ts"
 import { actionsChanged, buttonOf, closeNatives, closeOffscreen, emit, expect, forgetActions, popupOf, popups, setFront, tabMade, unlisten, setSessions, watchCookies, watchPage, watchWindow,
   watchWorkers } from "./extapi.ts"
 import * as store from "./extstore.ts"
 import { applyPolicy, problems, watchPolicy } from "./extpolicy.ts"
 import { read as readSettings, write as writeSettings } from "./extsettings.ts"
-import { partitionOf } from "../web.ts"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -92,7 +90,7 @@ opens((u) => {
 
 const changed = () => {
   actionsChanged()
-  for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:ext:changed" })
+  tellAll({ type: "engine:ext:changed" })
 }
 
 async function turn(x: store.Installed, on: boolean) {
@@ -160,7 +158,7 @@ function listed() {
   }).sort((a, b) => a.name.localeCompare(b.name))
 }
 
-const pageById = (win: AppWindow, id: unknown) => allPages().find((p) => p.id === Number(id) && p.win === win)
+const pageById = (win: EngineWindow, id: unknown) => allPages().find((p) => p.id === Number(id) && p.win === win)
 const known = (id: unknown) => { const x = typeof id === "string" ? store.get(id) : undefined; if (!x) throw new Error("no such extension"); return x }
 
 handle("ext:list", () => listed())
@@ -250,7 +248,7 @@ const tabOfPage = (p: EnginePage) => ({ id: p.wc.id, windowId: p.win.id, url: p.
 // ---------- popups ----------
 
 type Rect = { x: number; y: number; width: number; height: number }
-type Popup = { view: WebContentsView; win: AppWindow; ext: string; page: EnginePage }
+type Popup = { view: WebContentsView; win: EngineWindow; ext: string; page: EnginePage }
 let popup: Popup | null = null
 /** The last one closed (a click on its own button closes it first: it isn't opened again). */
 let closed = { ext: "", at: 0 }

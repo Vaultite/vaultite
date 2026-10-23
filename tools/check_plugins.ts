@@ -362,6 +362,11 @@ for (const f of sources.filter((f) => /\.(ts|tsx|mjs)$/.test(f))) {
   flush()
 }
 
+// The browser engine stands alone (electron/browser/CLAUDE.md): it reaches the app only through its host.
+for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(ts|cjs|js)$/.test(f)))
+  for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))
+    problems.push(`${path.relative(ROOT, f)}: imports ${m[1]}: the engine imports nothing of the app's (setEngineHost)`)
+
 if (warnings.length) console.log(`Warnings (vault plugins: they still load):\n${warnings.join("\n")}\n`)
 console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared and drawn as text; every operation checked`)
 process.exit(problems.length ? 1 : 0)

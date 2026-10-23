@@ -4,9 +4,8 @@ import { app, dialog, safeStorage, systemPreferences } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { AppWindow } from "../appwindow.ts"
 import { acting, byOf, pageFor, press, record, serve, settle, taskOf } from "./agent.ts"
-import { allPages, cdp, handle, tell, type EnginePage } from "./engine.ts"
+import { allPages, cdp, handle, tellAll, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { loginForm, type Input } from "./loginform.ts"
 import { docOf, filling, keep, markFilled, markHeld, ranNear, siteOf } from "./pagesecrets.ts"
@@ -79,7 +78,7 @@ function savePasskeys(list: Passkey[]) {
   const tmp = `${PASSKEYS()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, safeStorage.encryptString(JSON.stringify(list)), { mode: 0o600 })
   fs.renameSync(tmp, PASSKEYS())
-  for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:logins:passkeys" })
+  tellAll({ type: "engine:logins:passkeys" })
 }
 
 /** Links to add a passkey (the app's, shown as a QR code): a challenge each, used once. */

@@ -1,19 +1,18 @@
 // What extensions ask that Electron doesn't answer (extensions.preload.cjs asks): tabs (a page, by its WebContents'
 // id) and windows (a vault window), the toolbar button, events about pages, permissions, cookies, native messaging.
 import { dialog, ipcMain, Notification, webFrameMain, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent, type ServiceWorkerMain, type Session, type WebContents, type WebFrameMain } from "electron"
-import { AppWindow } from "../appwindow.ts"
-import { allPages, tell, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, focusedWindow, tell, tellAll, windowById, windowOfPage, type EnginePage, type EngineWindow } from "./engine.ts"
 import { dirOf, get, imageOf, manifestOf, nativeHost, said, change, type Installed } from "./extstore.ts"
 import { spawn, type ChildProcess } from "node:child_process"
 import crypto from "node:crypto"
 
 /** Who asks: the extension, its session, the window and tab it's in (a popup's: its page's), and its frame or worker. */
-export type Ctx = { ext: Installed; s: Session; win?: AppWindow; tab?: number; frame?: WebFrameMain; scope?: string }
+export type Ctx = { ext: Installed; s: Session; win?: EngineWindow; tab?: number; frame?: WebFrameMain; scope?: string }
 
 // ---------- tabs and windows ----------
 
 /** Each window's tab in front: the page last focused or whose button was clicked. */
-const front = new WeakMap<AppWindow, number>()
+const front = new WeakMap<EngineWindow, number>()
 export const setFront = (p: EnginePage) => {
   const was = front.get(p.win)
   front.set(p.win, p.wc.id)
@@ -28,12 +27,12 @@ export const setIcon = (wc: WebContents, url: string) => { icons.set(wc.id, url)
 function current(c: Ctx) {
   if (c.win && !c.win.isDestroyed()) return c.win
   const mine = windows(c.s), any = [...new Set(allPages().map((p) => p.win))].filter((w) => !w.isDestroyed())
-  const focused = AppWindow.getFocusedWindow()
+  const focused = focusedWindow()
   return mine.find((w) => w.isFocused()) ?? mine[mine.length - 1] ?? any[any.length - 1]
-    ?? (focused && !focused.getParentWindow() ? focused : AppWindow.getAllWindows().find((w) => !w.getParentWindow()))
+    ?? (focused && !focused.getParentWindow() ? focused : appWindows().find((w) => !w.getParentWindow()))
 }
 const windows = (s: Session) => [...new Set(pagesIn(s).map((p) => p.win))]
-const frontOf = (win: AppWindow, s: Session) => front.get(win) ?? pagesIn(s).filter((p) => p.win === win).pop()?.wc.id
+const frontOf = (win: EngineWindow, s: Session) => front.get(win) ?? pagesIn(s).filter((p) => p.win === win).pop()?.wc.id
 
 function tabOf(p: EnginePage) {
   const wc = p.wc, s = wc.session
@@ -47,7 +46,7 @@ function tabOf(p: EnginePage) {
     discarded: false, autoDiscardable: true, frozen: false, groupId: -1, splitViewId: -1, width, height, lastAccessed: Date.now(),
   }
 }
-function windowOf(win: AppWindow, s: Session, populate?: boolean) {
+function windowOf(win: EngineWindow, s: Session, populate?: boolean) {
   const b = win.getBounds()
   return {
     id: win.id, focused: win.isFocused(), top: b.y, left: b.x, width: b.width, height: b.height, incognito: false, type: "normal",
@@ -71,7 +70,7 @@ function matches(pattern: string, url: string) {
 }
 const glob = (g: string) => new RegExp(`^${g.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`)
 
-const opening: { win: AppWindow; done: (p: EnginePage) => void }[] = []
+const opening: { win: EngineWindow; done: (p: EnginePage) => void }[] = []
 /** A page was made: an extension waiting for the tab it asked for gets it. */
 export function tabMade(p: EnginePage) {
   const i = opening.findIndex((o) => o.win === p.win)
@@ -80,7 +79,7 @@ export function tabMade(p: EnginePage) {
 }
 
 /** A new web tab in `win` (as web.ts's `open`), resolved with its tab once the window made it. */
-function openTab(win: AppWindow, s: Session, url: string, active = true) {
+function openTab(win: EngineWindow, s: Session, url: string, active = true) {
   return new Promise<(ReturnType<typeof tabOf> & { pendingUrl: string }) | null>((done) => {
     const o = { win, done: (p: EnginePage) => { clearTimeout(t); done({ ...tabOf(p), url, pendingUrl: url }) } }
     const t = setTimeout(() => { opening.splice(opening.indexOf(o), 1); done(null) }, 5000)
@@ -114,7 +113,7 @@ let changing: ReturnType<typeof setTimeout> | null = null
 export function actionsChanged() {
   changing ??= setTimeout(() => {
     changing = null
-    for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:ext:changed" })
+    tellAll({ type: "engine:ext:changed" })
   }, 50)
 }
 export const forgetActions = (ext: string) => { for (const s of sessionsOf()) actions.get(s)?.delete(ext) }
@@ -336,7 +335,7 @@ const CALLS: Record<string, Call> = {
   "tabs.get": (c, id) => { const p = pageOf(c.s, id); if (!p) throw new Error(`No tab with id: ${id}.`); return tabOf(p) },
   "tabs.getCurrent": (c) => { const p = c.tab === undefined ? undefined : pageOf(c.s, c.tab); return p ? tabOf(p) : undefined },
   "tabs.create": async (c, o: Record<string, unknown> = {}) => {
-    const win = (typeof o.windowId === "number" && AppWindow.fromId(o.windowId)) || current(c)
+    const win = (typeof o.windowId === "number" && windowById(o.windowId)) || current(c)
     if (!win) throw new Error("No current window")
     return openTab(win, c.s, addressFor(c, o.url) || "https://duckduckgo.com/", o.active !== false)
   },
@@ -501,7 +500,7 @@ function ctxOfFrame(e: IpcMainInvokeEvent | IpcMainEvent): Ctx | null {
   if (!ext?.on) return null
   const wc = e.sender, s = wc.session
   const page = popups.get(wc.id) ?? allPages().find((p) => p.wc === wc)
-  return { ext, s, win: page?.win ?? AppWindow.fromWebContents(wc) ?? undefined, tab: page?.wc.id, frame: e.senderFrame ?? undefined }
+  return { ext, s, win: page?.win ?? windowOfPage(wc) ?? undefined, tab: page?.wc.id, frame: e.senderFrame ?? undefined }
 }
 
 async function answer(c: Ctx | null, name: unknown, args: unknown) {
@@ -594,10 +593,10 @@ export function watchCookies(s: Session) {
 }
 
 /** Windows' focus, for windows.onFocusChanged. */
-export function watchWindow(win: AppWindow) {
+export function watchWindow(win: EngineWindow) {
   if (watched.has(win)) return
   watched.add(win)
   win.on("focus", () => emitAll("windows.onFocusChanged", [win.id]))
-  win.on("blur", () => { if (!AppWindow.getFocusedWindow()) emitAll("windows.onFocusChanged", [-1]) })
+  win.on("blur", () => { if (!focusedWindow()) emitAll("windows.onFocusChanged", [-1]) })
 }
-const watched = new WeakSet<AppWindow>()
+const watched = new WeakSet<EngineWindow>()

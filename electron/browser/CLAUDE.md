@@ -2,6 +2,8 @@
 
 The browser engine under the Browser's pages (`electron/web.ts` makes the pages and their sessions). Each feature is
 a file here that adds itself through `engine.ts` and is imported by `index.ts`; web.ts never names a feature.
+- It imports nothing of the app's (`npm run check`): the app hands it its windows (`setEngineHost`), so it could be a
+  library of its own. What a feature needs of the app goes through the host, kept small.
 - A feature sets up every session (`eachSession`: a profile's logins, a container's) and every page (`eachPage`), never
   one web.ts handed it by hand: containers make sessions at any time.
 - The app reaches a feature by name, `webPages.engine("<feature>:<what>", ...)` (`handle`); a feature tells windows with

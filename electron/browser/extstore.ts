@@ -1,13 +1,20 @@
 // Extensions installed on this Mac: files in userData/extensions/<id>/<version>, state in extensions.json. From the
 // Chrome Web Store, a folder or .crx file, or another browser of this Mac (one the store dropped, as MV2's).
 import { app, net } from "electron"
-import { writeAtomic } from "../setup.ts"
 import { idOfKey, openCrx, unzip } from "./crx.ts"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
+
+/** A file written whole or not at all (a crash mid-write leaves the old one). */
+function writeAtomic(p: string, text: string) {
+  fs.mkdirSync(path.dirname(p), { recursive: true })
+  const tmp = `${p}.vaultite-${process.pid}.tmp`
+  fs.writeFileSync(tmp, text)
+  fs.renameSync(tmp, p)
+}
 
 export type Installed = {
   id: string; name: string; version: string

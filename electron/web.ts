@@ -2,7 +2,7 @@
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade, sessionReady } from "./browser/engine.ts"
+import { cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
@@ -13,6 +13,8 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+
+setEngineHost({ windows: () => AppWindow.getAllWindows() })
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
@@ -46,9 +48,6 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
  *  its last visit, and `other` when no page of it was opened (its cookies came with other sites' pages: trackers). */
 export type WebSite = { site: string; signed?: boolean; account?: string; more?: string[]; avatar?: string; with?: string[]; last?: number; other?: boolean }
 
-const PARTITION = "persist:web"
-/** The session's partition for a profile ("" or a workspace's "2"; anything else is the shared one). */
-export const partitionOf = (profile: string) => (/^[a-z0-9-]{1,32}$/.test(profile) ? `${PARTITION}-${profile}` : PARTITION)
 const profileOf = (x: unknown) => (typeof x === "string" && /^[a-z0-9-]{1,32}$/.test(x) ? x : "")
 const MAC = process.platform === "darwin"
 /** Keys a page keeps even when the app has a shortcut on them: editing text, finding, a rich editor's marks. */
