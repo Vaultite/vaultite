@@ -1,5 +1,5 @@
-// Set up Vaultite's machine side (web/onboarding.html): where vaults go, Obsidian's vaults, and `vau` as a script running
-// bin/vau with the app as Node, in ~/.local/bin (no password). No Electron: tools/test_setup.ts tests it.
+// Set up Vaultite's machine side (web/onboarding.html): where vaults go, Obsidian's vaults, and `vau` running bin/vau with
+// the app as Node, in ~/.local/bin (Windows: a folder on the user's PATH; no password). tools/test_setup.ts tests it.
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
