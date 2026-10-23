@@ -19,6 +19,7 @@ import { usePaneHasTopBar } from "@/core/pane"
 import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
+import { useCommandKeys } from "@/core/commands"
 import { fileIcon } from "@/components/FileTree"
 import { copyText, copyToVaultItem, fileMenu, revealItem } from "@/components/FileActions"
 import { Badged, IconAction, type Dot } from "@/components/kit"
@@ -374,6 +375,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   const { fileIcons, tabBar, paneTitles, tabTint } = usePrefs()
   // Without tab bar or titles, a pane's top bar (a file's, the Browser's) is its title row (index.css): a right-click on
   // its empty part is the strip's menu.
+  const closeKeys = useCommandKeys("pane:close", true)
   const hasTopBar = usePaneHasTopBar(group.id), merged = !tabBar && !paneTitles && hasTopBar
   const strip = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -468,7 +470,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   )
   // Without the tabs' own X: closes the pane, pinned tabs too (⌘⇧T brings it back). Not the only one.
   const closer = !alone && (
-    <button type="button" data-pane-close={group.id} aria-label="Close pane" data-tip={d ? undefined : "Close pane"} onClick={() => closePane(group.id)}
+    <button type="button" data-pane-close={group.id} aria-label="Close pane" data-tip={d ? undefined : `Close pane${closeKeys}`} onClick={() => closePane(group.id)}
       className="grid h-7 w-5 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 transition-opacity group-hover/bar:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100">
       <X className="size-4" strokeWidth={2} />
     </button>

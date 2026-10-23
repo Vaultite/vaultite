@@ -339,7 +339,8 @@ export default function App() {
       if (!t.pinned) return closeTab(t.id)
       notify(canClosePane() ? "Pinned: unpin it or close the pane" : "Pinned: unpin it to close it", { id: "pinned", action: { label: "Unpin", run: () => togglePinTab(t.id) } })
     } },
-    { id: "pane:close", name: "Close pane", when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
+    // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs.)
+    { id: "pane:close", name: "Close pane", keys: ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
     { id: "tab:toggle-stacked", name: "Stack tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers, nameWhenOn: "Unstack tabs", on: isStacked },
     // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).

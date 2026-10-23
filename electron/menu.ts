@@ -185,7 +185,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       sep,
       cmd("tab:close", "Close tab", "x", { key: "Mod+W", always: true }),
       cmd("tab:close-others", "Close other tabs", undefined, { always: true }),
-      cmd("pane:close", "Close pane", "square-x", { always: true }),
+      cmd("pane:close", "Close pane", "square-x", { key: "Mod+Alt+Shift+W", always: true }),
       { label: "Close window", accelerator: `Shift+${MOD}+W`, role: "close" },
       !MAC && sep, ...(MAC ? [] : settings()),
       !MAC && sep, !MAC && { role: "quit", accelerator: "Ctrl+Q" },

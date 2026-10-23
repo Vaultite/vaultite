@@ -1,7 +1,7 @@
 // Close pane (core/workspace.ts closePane), with the tab bar and pane titles off (appearance `tabBar`, `paneTitles`):
 // Close current tab on a pinned tab leaves it open and says why; the thin strip's X (on hover) closes the pane, pinned
-// tabs too, and Reopen closed tab brings it back whole, where it sat (its size, tabs, pin, shown tab); the strip's menu
-// and the palette's Close pane do the same; the only pane has neither. With titles on, the title row has the X too.
+// tabs too, and Reopen closed tab brings it back whole, where it sat (its size, tabs, pin, shown tab); the strip's menu,
+// the palette's Close pane and ⌥⇧⌘W do the same; the only pane has neither. With titles on, the title row has the X too.
 // WRITES the vault's appearance.json (put back): throwaway server only.
 //   node web/qa/closepane.mjs <base url> <vault path>
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -74,6 +74,10 @@ try {
   // The palette's, on the focused pane.
   check("the palette has Close pane", await command(page, "Close pane"))
   check("…closing the focused pane", await until(async () => same((await panes()).map((p) => p.tabs), [[a]])), await panes())
+  // Its keys, ⌥⇧⌘W.
+  await command(page, "Reopen closed tab"); await until(async () => (await panes()).length === 2)
+  await page.keyboard.press("ControlOrMeta+Alt+Shift+KeyW")
+  check("⌥⇧⌘W closes the focused pane too", await until(async () => same((await panes()).map((p) => p.tabs), [[a]])), await panes())
 
   // The only pane: nothing to close it with.
   check("the only pane: no Close pane in the palette", !(await command(page, "Close pane")))
