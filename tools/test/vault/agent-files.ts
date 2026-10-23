@@ -51,6 +51,13 @@ export default async ($: VaultTest) => {
     await api("GET", "state")
     check("the rules: the app's part is rewritten, the user's own rules stay", rc === 200 && read(".vaultite/AGENTS.md").includes("## Rules") &&
       read(".vaultite/AGENTS.md").endsWith("## Your own rules\n<!-- The app rewrites everything above this heading; what you write under it stays. -->\n\nProjects live in Work/.\n"), read(".vaultite/AGENTS.md").slice(-300))
+    // Another machine's version writing its own rules isn't written back (the two rewrote it back and forth): this one
+    // writes again only once its own text changes.
+    const theirs = read(".vaultite/AGENTS.md").replace("## Rules", "## Rules, as another version writes them")
+    fs.writeFileSync(path.join(VAULT, ".vaultite/AGENTS.md"), theirs)
+    await api("GET", "state")
+    await api("GET", "state")
+    check("the rules: another machine's version of them is left alone", read(".vaultite/AGENTS.md") === theirs, read(".vaultite/AGENTS.md").slice(0, 200))
     await setRoot(true)
     check("the rules: the pointer joins the vault's CLAUDE.md", read("CLAUDE.md") === "@AGENTS.md\n\n@.vaultite/AGENTS.md\n", read("CLAUDE.md"))
     await setRoot(false)
