@@ -17,15 +17,22 @@ function live() {
 
 const MASK = "•••"
 const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-/** `text` with each secret put out of sight: as is, and as an address or a form encodes it (any case). */
+const patterns = new Map<string, RegExp>()
+/** A secret however an address or a form encodes it: each character as is or %-encoded (any case), a space as +. */
+function pattern(s: string) {
+  let re = patterns.get(s)
+  if (re) return re
+  const hex = (b: number) => `%${b.toString(16).padStart(2, "0").toUpperCase().replace(/[A-F]/g, (x) => `[${x}${x.toLowerCase()}]`)}`
+  re = new RegExp([...s].map((c) => `(?:${literal(c)}|${[...new TextEncoder().encode(c)].map(hex).join("")}${c === " " ? "|\\+" : ""})`).join(""), "g")
+  if (patterns.size > 100) patterns.clear()
+  patterns.set(s, re)
+  return re
+}
+/** `text` with each secret put out of sight: as is, and as an address or a form encodes it. */
 export function scrub(text: string, secrets: Iterable<string> = live()): string {
   let out = text
   // (the longest first: one secret inside another leaves none of the longer one)
-  for (const s of [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)) {
-    out = out.split(s).join(MASK)
-    const enc = encodeURIComponent(s)
-    for (const v of new Set([enc, enc.replace(/%20/g, "+")])) if (v !== s) out = out.replace(new RegExp(literal(v), "gi"), MASK)
-  }
+  for (const s of [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)) out = out.replace(pattern(s), MASK)
   return out
 }
 /** Every string in `v` scrubbed (an answer to an agent, whatever its shape). */

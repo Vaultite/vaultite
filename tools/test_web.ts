@@ -1858,10 +1858,10 @@ await section("agent logins", async () => {
   check("agent logins: a page with no login form has none", loginForm([search, input({ type: "checkbox" })]).kind === "none")
 
   // What agents see of a page that holds a filled secret: never the secret, as is or as an address encodes it.
-  const s = "p@ss word&1"
-  const out = scrub(`Shown: ${s}; in a link /?pw=${encodeURIComponent(s)}&x=1 or a form's ${encodeURIComponent(s).replace(/%20/g, "+")}; lower ${encodeURIComponent(s).toLowerCase()}`, [s])
-  check("agent logins: a secret is scrubbed from text, as is and URL-encoded", !out.includes(s) && !out.includes(encodeURIComponent(s)) && !out.toLowerCase().includes(encodeURIComponent(s).toLowerCase())
-    && !out.includes("p%40ss+word") && out.startsWith("Shown: •••"), out)
+  const s = "p@ss wörd&1!"
+  const encoded = [s, encodeURIComponent(s), encodeURIComponent(s).toLowerCase(), new URLSearchParams([["pw", s]]).toString().slice(3), encodeURI(s)]
+  const out = scrub(`Shown: ${encoded.join(" | ")} end`, [s])
+  check("agent logins: a secret is scrubbed from text, as is and however an address or a form encodes it", out === `Shown: ${encoded.map(() => "•••").join(" | ")} end`, [out, encoded])
   check("agent logins: text without a secret is unchanged", scrub("nothing here", [s]) === "nothing here" && scrub("p@ss", []) === "p@ss")
 })
 

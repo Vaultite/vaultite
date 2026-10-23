@@ -1,16 +1,17 @@
 // The agents' KeePass file (agents.kdbx, the user's KeeShare export), read for logins.ts: which entries name a page's site
 // and, only as the app fills them, an entry's secrets. Node only (no Electron), so its tests run without the app.
+import { argon2dAsync, argon2idAsync } from "@noble/hashes/argon2.js"
 import crypto from "node:crypto"
 import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEntry, type KdbxGroup } from "kdbxweb"
 import { getDomain } from "tldts-experimental"
 
-// (Argon2, which KDBX 4 files are keyed with, from Node's own crypto: no native module to ship)
-// (Node has Argon2 1.3 only, which every KDBX 4 file KeePassXC writes uses)
-CryptoEngine.setArgon2Impl((password, salt, memory, iterations, length, parallelism, type, version) => new Promise((done, fail) => {
-  if (version !== 0x13) return fail(new Error("an old Argon2 version"))
-  crypto.argon2(type === 2 ? "argon2id" : "argon2d", { message: Buffer.from(password), nonce: Buffer.from(salt), memory,
-    passes: iterations, parallelism, tagLength: length }, (e, key) => (e ? fail(new Error("the file's key couldn't be derived")) : done(new Uint8Array(key).buffer)))
-}))
+// Argon2, which KDBX 4 files are keyed with: Electron's crypto has none, so noble's (plain JS), yielding as it goes so
+// the app's main process never stalls.
+CryptoEngine.setArgon2Impl(async (password, salt, memory, iterations, length, parallelism, type, version) => {
+  const fn = type === 2 ? argon2idAsync : argon2dAsync
+  const key = await fn(new Uint8Array(password), new Uint8Array(salt), { m: memory, t: iterations, p: parallelism, dkLen: length, version, asyncTick: 10 })
+  return key.slice().buffer
+})
 
 /** The tag (KeePassXC's Tags field) that lets agents use an entry without asking the user each time. */
 export const FREE_TAG = "agent-free"
