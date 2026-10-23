@@ -7,7 +7,7 @@ import { type RawData, WebSocket } from "ws"
 import { startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId, type SampleAsk } from "../../../core/agents.ts"
 import {
   bullets, fmtAgo, stampMs, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
-  type Machine, type OpCtx, type Request, whoOf,
+  type Machine, NOT_THE_USER, type OpCtx, type Request, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import { judge, type Need, type Turn } from "./needs.ts"
@@ -563,18 +563,14 @@ plugin.route("POST", "inbox/events/unread", async (req) => {
   return { unread: unread(local) }
 })
 
-/** Who answers a gate: the app, the phone's and watch's notifications, or a machine passing one on; never vau (a person's
- *  shell looks like an agent's). Callers can still lie: a yes that must be the user's takes a passkey (browser logins). */
-export const answersGates = (w: { client: string | null; agent: string | null }) => !w.agent && !!w.client
-  && (w.client.startsWith("app/") || w.client.startsWith("machine/") || w.client === "iphone" || w.client === "watch")
-const NOT_AGENTS = "only you answer a permission the server waits on, in the app or on your phone, never an agent nor vau"
 
 /** Answer a permission the server waits on (gate: the service "inbox:ask"): approve or deny. The owner's only, so what
  *  asked can't answer itself. */
 plugin.route("POST", "inbox/events/*/answer", async (req) => {
   await owner(req)
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
-  if (req.http && !answersGates(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_AGENTS)
+  // (callers can still lie about who they are: a yes that must be the user's takes a passkey, as browser logins do)
+  if (req.http && !userSurface(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_THE_USER)
   const answer = str((req.body as Item)?.answer)
   if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
   const [bare, there] = splitMachine(req.arg(0))
@@ -1384,8 +1380,8 @@ plugin.op({
   summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, reply to a session that needs you, or read.",
   help: `approve and deny press the keys the agent's plugin gives for the question its terminal shows (Claude Code's
 permission: Enter, its first choice Yes, or Escape): for an agent asking permission in an app terminal (the event's ask
-is permission) while its terminal still shows the question; a question the server waits on (an app's tool) is answered
-only in the app or on the user's phone, never here. reply (with text) is
+is permission) while its terminal still shows the question, or a question the server waits on (an app's tool): only from
+the app or the user's phone, never an agent nor vau. reply (with text) is
 inbox.reply to its session. read marks it read. Another machine's event is answered there, where its session runs; a
 bare id from a notification another machine sent is found too.
 
@@ -1400,7 +1396,8 @@ bare id from a notification another machine sent is found too.
   args: ["id", "answer"],
   run: async ({ id, answer, text }, ctx) => {
     const e = await eventFor(ctx, id)
-    if (e.gate && (answer === "approve" || answer === "deny") && !answersGates(ctx.who)) throw new OpError(NOT_AGENTS, 403)
+    // (a gate, or an agent's question in a terminal: the user's alone, never an agent saying yes to itself or another)
+    if ((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     const bare = splitMachine(e.id)[0]
     if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}) })
     if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await replyToRow(ctx, e, str(text))) }

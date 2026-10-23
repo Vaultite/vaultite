@@ -8,7 +8,7 @@ import { type RawData, WebSocket } from "ws"
 import { type AgentAsk, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
-  type Request, type Access, accessOf,
+  type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
   asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, type AgentRun, type Backend,
@@ -1081,6 +1081,9 @@ plugin.route("POST", "terminals/*", async (req) => {
  *  one run by hand in a plain shell); 409 when it shows none. */
 plugin.route("POST", "terminals/*/answer", async (req) => {
   await owner(req)
+  const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
+  // (the user's yes or no, never an agent's: inbox.answer checks its caller, then asks this in-process)
+  if (req.http && !userSurface(whoOf(h("x-vaultite-client"), h("x-vaultite-agent")))) throw new HTTPError(403, NOT_THE_USER)
   const id = localId(req), answer: unknown = req.body?.answer
   if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
   await mustRun(id)

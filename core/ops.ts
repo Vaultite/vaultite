@@ -356,6 +356,13 @@ export function whoOf(client: string | null, agent: string | null): Who {
   return { client, agent: null, label: client ?? "the API", source: client ?? "api" }
 }
 
+/** Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and
+ *  watch's notifications, or a machine passing one on; never vau, since a person's shell looks like an agent's. */
+export const userSurface = (w: { client: string | null; agent: string | null }) => !w.agent && !!w.client
+  && (w.client.startsWith("app/") || w.client.startsWith("machine/") || w.client === "iphone" || w.client === "watch")
+/** Why a caller may not answer for the user, as its refusal says. */
+export const NOT_THE_USER = "only you approve or deny what waits on you, in the app or on your phone: never an agent, nor vau"
+
 /** The user's own hand: the app (`app/<device>`) or vau typed by hand (`cli` naming no coding agent). Anyone else is an
  *  agent or a script: what it opens never takes the user's focus. */
 export const byUser = (w: { client: string | null; agent: string | null }) => !!w.client?.startsWith("app/") || (w.client === "cli" && !w.agent)

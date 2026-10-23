@@ -699,6 +699,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.
 - `noDesktop()`
+- `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
 - `opcodes(a, b)`: How to turn a into b: equal runs and changed runs (replace / delete / insert).
 - `OpError`: What an op can't do, with what to do instead: a 400 over HTTP (`status`), the tool's error over MCP.
@@ -761,6 +762,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typeOf(types, key)`: The type of `key`: declared (exactly, else in any case), else implied, else null (the value's own).
 - `typeProblem(type, v)`: Why a value isn't a `type` (a short phrase after its key), or null when it is or it's empty.
 - `unzip(buf)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read.
+- `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
 - `VAULT_PATH`
 - `vaultHere(vaultPath)`: A vault on this machine: its real path and key (that path's hash), under which what's kept here for it goes (<LOCAL>/<what>/<key>).
 - `vaultPath(p, mustExist?, vault?, explicit?, trash?)`: A safe vault-relative path, or a 400.
