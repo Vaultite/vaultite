@@ -46,8 +46,8 @@ function modelName(model: string) {
 type Account = { id: string; dir: string; label: string; private: boolean }
 const ACCOUNT_ID = /^[a-z0-9]{1,32}$/
 
-/** Every account: the default folder, its siblings <folder>-<name> with sessions, and folders the settings add; minus
- *  hidden ones. One folder is one account (a sibling's name wins over "default"). */
+/** Every account: the default folder, its siblings <folder>-<name> Claude Code has run in (signed in, maybe no session
+ *  yet), and folders the settings add; minus hidden ones. One folder is one account (a sibling's name wins over "default"). */
 function accounts(): Account[] {
   const set = plugin.loaded ? (plugin.settings({}).accounts ?? {}) as Item : {}
   const byDir = new Map<string, string>([[DEFAULT_DIR, "default"]])
@@ -56,7 +56,8 @@ function accounts(): Account[] {
   try { names = fs.readdirSync(parent) } catch { /* none */ }
   for (const n of names.sort()) {
     const id = n.startsWith(base + "-") ? n.slice(base.length + 1).toLowerCase() : ""
-    if (ACCOUNT_ID.test(id) && fs.existsSync(path.join(parent, n, "projects"))) byDir.set(path.join(parent, n), id)
+    const ran = ["projects", ".claude.json"].some((f) => fs.existsSync(path.join(parent, n, f)))
+    if (ACCOUNT_ID.test(id) && ran) byDir.set(path.join(parent, n), id)
   }
   for (const [id, o] of Object.entries(set)) {
     if (ACCOUNT_ID.test(id) && o && typeof o === "object" && typeof o.dir === "string" && o.dir) byDir.set(expandHome(o.dir), id)

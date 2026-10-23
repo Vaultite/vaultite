@@ -133,6 +133,11 @@ export default async ($: VaultTest) => {
     ;[, accts] = await api("GET", "claude-code/accounts")
     check("claude accounts: a hidden one isn't read", accts.length === 1 && accts[0].id === "default", accts)
     fs.rmSync(path.join(VAULT, ".vaultite/plugins/claude-code/data.json"))
+    const fresh = path.join(tmp, "claude-lab")
+    fs.mkdirSync(fresh); fs.writeFileSync(path.join(fresh, ".claude.json"), "{}")
+    ;[, accts] = await api("GET", "claude-code/accounts")
+    check("claude accounts: a sibling signed in but with no sessions yet is one", accts.some((a: Any) => a.id === "lab"), accts)
+    fs.rmSync(fresh, { recursive: true })
     fs.rmSync(WORK, { recursive: true })
   }
 }
