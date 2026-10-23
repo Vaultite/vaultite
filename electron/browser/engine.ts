@@ -23,12 +23,14 @@ const pageSetups: PageSetup[] = []
 const made = new Map<string, Session>()
 const pages = new Map<number, EnginePage>()
 
-const run = (fn: () => void | Promise<void>) => {
-  try { void Promise.resolve(fn()).catch((e) => console.error("vaultite: a browser feature's setup failed:", e)) }
-  catch (e) { console.error("vaultite: a browser feature's setup failed:", e) }
+/** A feature's setup, its failure logged: settled once what it returned is (never rejected). */
+const run = (fn: () => void | Promise<void>): Promise<void> => {
+  try { return Promise.resolve(fn()).catch((e) => console.error("vaultite: a browser feature's setup failed:", e)) }
+  catch (e) { console.error("vaultite: a browser feature's setup failed:", e); return Promise.resolve() }
 }
 
-/** `fn` runs for each web session, the ones made already included. */
+/** `fn` runs for each web session, the ones made already included. What it returns, the session's pages wait for
+ *  (`sessionReady`): a setup that returns a promise keeps it short. */
 export function eachSession(fn: SessionSetup) {
   sessionSetups.push(fn)
   for (const [profile, s] of made) run(() => fn(s, profile))
@@ -42,9 +44,24 @@ export function eachPage(fn: PageSetup) {
 /** A web session was made (web.ts webSession): every feature sets it up. */
 export function sessionMade(s: Session, profile: string) {
   made.set(profile, s)
-  for (const fn of sessionSetups) run(() => fn(s, profile))
+  ready.set(profile, Promise.all(sessionSetups.map((fn) => run(() => fn(s, profile)))))
   wire(s)
 }
+const ready = new Map<string, Promise<unknown>>()
+
+const flushers: (() => Promise<unknown>)[] = []
+/** `fn` writes what a feature keeps, now: the app awaits it before it restarts (`engineFlush`). */
+export const onFlush = (fn: () => Promise<unknown>) => { flushers.push(fn) }
+/** What the browser keeps, on disk before the app quits (at most `ms`): every session's cookies (Chromium writes them
+ *  in batches) and what features keep. */
+export function engineFlush(ms = 2000): Promise<void> {
+  const all = [...[...made.values()].map((s) => s.cookies.flushStore()), ...flushers.map((fn) => fn())]
+  return Promise.race([Promise.all(all.map((p) => p.catch((e) => console.error("vaultite: the browser couldn't save:", e)))).then(() => {}),
+    new Promise<void>((done) => setTimeout(done, ms))])
+}
+/** A profile's session is set up: what features do as it's made (its session cookies set again) is done, so its pages'
+ *  first requests have it (web.ts awaits it before a page opens, or reading its cookies). */
+export const sessionReady = (profile: string) => ready.get(profile) ?? Promise.resolve()
 
 // ---------- requests: Electron takes one webRequest listener per event and session, so the engine holds them ----------
 

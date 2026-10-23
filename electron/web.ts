@@ -2,7 +2,7 @@
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade } from "./browser/engine.ts"
+import { cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade, sessionReady } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { ACCOUNTS, covers, nonempty, type Who } from "./siteaccounts.ts"
@@ -109,6 +109,13 @@ function webSession(profile: string) {
   })
   sessions.set(profile, s)
   sessionMade(s, profile)
+  return s
+}
+/** A profile's session once the engine set it up (the cookies it keeps across restarts back in): before its first page
+ *  opens, or its cookies are read. */
+async function readySession(profile: string) {
+  const s = webSession(profile)
+  await sessionReady(profile)
   return s
 }
 
@@ -735,6 +742,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     await engineLoaded()
     const u = str(url), prof = profileOf(profile), owner = tabOf(tab)
     if (!shows(u)) throw new Error("only http and https pages")
+    await readySession(prof)
     if (!mayOpen(prof)) throw new Error("this container is locked")
     const { reuse, end: other } = claim(pages.values(), win, owner, prof)
     for (const x of other) end(x)
@@ -799,7 +807,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     .map((p) => ({ id: p.id, profile: p.profile, tab: p.tab, shown: p.holds > 0, ...stateOf(p) })),
   "web:sites": (_win, profile) => sitesOf(profileOf(profile)),
   "web:forget": async (_win, profile, site) => {
-    const prof = profileOf(profile), s = webSession(prof), name = str(site).toLowerCase()
+    const prof = profileOf(profile), s = await readySession(prof), name = str(site).toLowerCase()
     for (const c of await s.cookies.get({})) {
       const host = (c.domain ?? "").replace(/^\./, "")
       if (siteOf(host) !== name) continue
@@ -915,7 +923,7 @@ async function accountOf(profile: string, site: string, cookies: Electron.Cookie
 }
 
 async function sitesOf(profile: string): Promise<WebSite[]> {
-  const cookies = await webSession(profile).cookies.get({})
+  const cookies = await (await readySession(profile)).cookies.get({})
   const names = [...new Set(cookies.map((c) => siteOf(c.domain ?? "")).filter(Boolean))]
   const been = visitedOf(profile)
   for (const p of pages.values()) if (p.profile === profile) been.add(siteOf(hostOfUrl(p.view.webContents.getURL())))
@@ -1153,7 +1161,7 @@ let cloudReading = false
 async function cloudGet(profile: string, url: string, headers: Record<string, string>): Promise<{ status: number; json: unknown }> {
   const page = [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === CLOUD.site)
   if (page) return await page.view.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: `fetch(${JSON.stringify(url)}, { credentials: "include", headers: ${JSON.stringify(headers)} }).then(async (r) => ({ status: r.status, json: r.ok ? await r.json() : null }))` }])
-  const r = await webSession(profile).fetch(url, { credentials: "include", headers })
+  const r = await (await readySession(profile)).fetch(url, { credentials: "include", headers })
   return { status: r.status, json: r.ok ? await r.json() : null }
 }
 
@@ -1162,7 +1170,7 @@ async function cloudSignedInTo(profile: string) {
   if (had && Date.now() - had.at < CLOUD.cookiesFor) return had.in
   // (logins never used have no folder: not made just to look, which would set up a session, extensions and all)
   if (!sessions.has(profile) && !fs.existsSync(path.join(app.getPath("userData"), "Partitions", partitionOf(profile).replace(/^persist:/, "")))) return false
-  const cookies = await webSession(profile).cookies.get({ url: CLOUD_BASE })
+  const cookies = await (await readySession(profile)).cookies.get({ url: CLOUD_BASE })
   const signed = cookies.some((c) => c.name.startsWith("sessionKey"))
   cloudCookies.set(profile, { at: Date.now(), in: signed })
   return signed

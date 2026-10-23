@@ -56,3 +56,8 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
 - Pages say they're a plain Chrome (web.ts strips Electron and the app's name from the user agent: Google's sign-in turns
   away Electron), but Cloudflare's human check finds Electron in the page and fails that lie: its requests say Electron
   (challenges.ts), with which it passes, the user's click or none.
+- Chromium drops session cookies (no expiry) at every launch (Electron never sets persist_session_cookies), so every
+  restart into an update signed out of sites that use one: sessioncookies.ts follows each persistent session's as they
+  change and writes them encrypted (safeStorage, never plain: Electron already keeps persistent cookies unencrypted, no
+  fuse) into its partition's folder, setting them again as the session is made. A session setup that returns a promise
+  holds the session's pages and cookie reads (`sessionReady`); a restart into an update awaits `engineFlush` first.

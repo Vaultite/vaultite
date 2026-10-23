@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
 import { revive, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
-import { engineBusy, serverCall, setServerSink } from "./browser/engine.ts"
+import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
@@ -1230,8 +1230,8 @@ function restartToUpdate() {
     if (!ready || !releases) return
     quitting = true // its windows close before the app quits: they're reopened after
     restarting(ready)
-    // A beat for the toast to draw before the windows close.
-    return void setTimeout(() => releases!.quitAndInstall(), 150)
+    // A beat for the toast to draw before the windows close, and the browser's logins on disk.
+    return void afterFlush(() => releases!.quitAndInstall())
   }
   if (!ready || ready !== built() || !replaceable()) return
   stopChecking()
@@ -1241,7 +1241,12 @@ function restartToUpdate() {
     { detached: true, stdio: ["ignore", log, log] }).unref()
   fs.closeSync(log)
   restarting(ready.slice(0, 7))
-  setTimeout(() => app.quit(), 150)
+  afterFlush(() => app.quit())
+}
+/** `quit` once the toast had a beat to draw and the browser's cookies are written (Chromium writes them in batches;
+ *  session cookies are the engine's to keep, browser/sessioncookies.ts). */
+function afterFlush(quit: () => void) {
+  void Promise.all([engineFlush(), new Promise((done) => setTimeout(done, 150))]).then(quit, quit)
 }
 
 /** electron-updater, once a release build first checks. */
