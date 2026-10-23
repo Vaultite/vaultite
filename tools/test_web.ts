@@ -970,6 +970,24 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tab groups: a tab moved into another pane's middle joins no group", runs() === "b | a(Both),c(Both),d", runs())
   const saved = JSON.parse(JSON.stringify(ws.getWorkspace())); ws.replaceWorkspace(saved)
   check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "b | a(Both),c(Both),d", runs())
+  // An agent's web tabs, each in its task's tab group, with the focus in that group's pane (an ask shown there): the pane
+  // keeps its size (a pane made for each and emptied again halved it, till it drew nothing).
+  const shares = () => ws.getWorkspace().root.sizes?.map((x: number) => x.toFixed(2)).join(",")
+  two([A], [C], "gR"); ts.makeSet(["c"], { name: "Agent/task" })
+  const task = ts.allSets()[0].id
+  for (let i = 0; i < 20; i++) { const id = sp.openInSplit(`view:web/https://x.test/${i}`, "right", false); ts.addToSet([id], task, id) }
+  for (let i = 0; i < 20; i++) ts.openInSet(`view:web/https://y.test/${i}`, "Agent/task")
+  check("agent tabs: twenty opened into their group's pane leave the split as it was", shares() === "0.50,0.50" && ws.groups()[1].tabs.length === 41
+    && ws.groups()[1].tabs.every((t: Any) => t.set) && ws.getWorkspace().focus === "gR" && ws.groups()[1].active === ws.groups()[1].tabs.at(-1).id, shares())
+  two([A], [C], "gL"); ts.openInSet("view:web/https://z.test/", "Agent/other")
+  check("agent tabs: the first of a task goes beside the user's pane, in a new group of its name, the focus staying",
+    runs() === `a | c,${ws.groups()[1].tabs[1].id}(Agent/other)` && ws.getWorkspace().focus === "gL", runs())
+  two([A, B], [C], "gL"); sp.moveToSplit("right", "b"); sp.moveTabTo("b", "gL", "center")
+  check("panes: one made beside another and gone again leaves it its room", shares() === "0.50,0.50", shares())
+  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [1 - 2 ** -20, 2 ** -20], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gR", tabs: [C], active: "c" }] }, focus: "gL" })
+  check("panes: one squeezed too thin to draw (a layout saved so) comes back at an even share", shares() === "0.50,0.50", shares())
+  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.6, 0.3, 0.1], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gM", tabs: [B], active: "b" }, { id: "gR", tabs: [C], active: "c" }] }, focus: "gL" })
+  check("panes: a thin one the user dragged to stays", shares() === "0.60,0.30,0.10", shares())
 }
 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------

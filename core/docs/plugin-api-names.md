@@ -220,7 +220,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
 - `grouped(groups)`: A menu made of groups, a line between each two (empty groups left out): the file menus' one shape.
-- `groupTab(to, name)`: Put the tab showing `to` (the one on screen in its pane, as a tab just opened is) in the tab group named `name`: an agent's tabs, "<agent>/<task>".
 - `haptic(weight?)`
 - `Haptic`: iOS's kinds: impacts (light: a menu, a swipe past its mark, a tick; medium: picked up, put down, a row's action done), `selection` (an item passing another, a choice ticked), notifications…
 - `hashOf(to)`: The hash for a tab's target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new".
@@ -348,6 +347,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `OpenFile`: The file a status item is drawn for: its head, and its whole text, frontmatter included ("" for a file that isn't text: an image), as typed (each change redraws it, a moment after the keystroke).
 - `openingSoon(path, now?)`
 - `openInList(newTab?)`: Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab).
+- `openInSet(to, name)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying; no such group: beside the focused pane, in a new one of that name.
 - `openInSplit(to, side?, focusIt?, tabId?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openMenu(at, items, up?, again?)`

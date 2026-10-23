@@ -2,7 +2,7 @@
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, groupTab, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSet, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
@@ -125,8 +125,7 @@ function Background() {
     // An agent's tab: beside the user's work, without taking the keyboard, in its task's tab group.
     else if (m.type === "engine:agent:open" && typeof m.url === "string" && typeof m.profile === "string") {
       const to = `view:web/${argOf(m.url, containerOfProfile(m.profile))}`
-      openInSplit(to, "right", false)
-      if (typeof m.group === "string" && m.group) groupTab(to, m.group)
+      openInSet(to, typeof m.group === "string" ? m.group : "")
     } else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
     else if (m.type === "engine:agent:help" && typeof m.id === "number") {
       const id = m.id, on = !!m.on

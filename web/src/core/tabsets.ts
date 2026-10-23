@@ -3,6 +3,7 @@
 import { COLORS, isColor, type Color } from "../../../core/colors.ts"
 import { beside, inSet, isBlank, leaves, mapGroups, newId, outsideSets, runOf, type Group, type Layout, type Side, type Tab, type TabSet } from "@/core/layout"
 import { closeTabIds, getWorkspace, groupOfTab, groups, set, show, showActive } from "@/core/workspace"
+import { openInSplit } from "@/core/splits"
 import { answerUi } from "@/core/live"
 import { signal } from "@/core/signal"
 
@@ -83,17 +84,21 @@ export function addToSet(ids: string[], setId: string, shown?: string) {
   set({ ...getWorkspace(), root: gather(tabs, where.g.id, at, setId, undefined, shown) })
 }
 
-/** Put the tab showing `to` (the one on screen in its pane, as a tab just opened is) in the tab group named `name`: an
- *  agent's tabs, "<agent>/<task>". Its pane's group of that name, else another pane's, else a new one. */
-export function groupTab(to: string, name: string) {
-  const all = groups()
-  const g = all.find((x) => x.tabs.some((t) => t.id === x.active && t.to === to)) ?? all.find((x) => x.tabs.some((t) => t.to === to))
-  const tab = g && (g.tabs.find((t) => t.id === g.active && t.to === to) ?? g.tabs.find((t) => t.to === to))
-  if (!g || !tab || !name.trim()) return
-  const named = g.sets?.find((s) => s.name === name) ?? allSets().find((s) => s.name === name)
-  // (on screen it stays, in that group's pane too: an agent's web tab hidden there would get no page)
-  if (named) addToSet([tab.id], named.id, tab.id === g.active ? tab.id : undefined)
-  else makeSet([tab.id], { name })
+/** `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying;
+ *  no such group: beside the focused pane, in a new one of that name. Returns its id. */
+export function openInSet(to: string, name: string): string {
+  const named = name.trim() ? allSets().find((s) => s.name === name) : undefined
+  const where = named && setById(named.id)
+  if (!named || !where) {
+    const id = openInSplit(to, "right", false)
+    if (name.trim()) makeSet([id], { name })
+    return id
+  }
+  // (straight there: a pane made for it and emptied again squeezed the one it went beside, till it drew nothing)
+  const tab: Tab = { id: newId(), to }
+  const at = (g: Group) => { const r = runOf(g, named.id); return r.n ? r.at + r.n : g.tabs.length }
+  set({ ...getWorkspace(), root: gather([tab], where.g.id, at, named.id, undefined, tab.id) })
+  return tab.id
 }
 
 /** Take tabs out of their tab groups: each goes right after what's left of its group, as in a browser. */

@@ -43,21 +43,38 @@ export const okGroup = (g: Group | undefined): g is Group => !!g && Array.isArra
 /** A group with one blank tab. */
 export const blankGroup = (id = `g${newId()}`): Group => { const t = newId(); return { id, tabs: [{ id: t, to: "new" }], active: t } }
 
-/** The tree without empty groups, splits of one, or a split inside another going the same way (its parts join it). */
+/** A part of a split thinner than this share (or half an even one) is too thin to use: no divider drags one there
+ *  (Workspace's 200px, up to 4000px wide). */
+const THIN = 0.05
+
+/** The tree without empty groups, splits of one, or a split inside another going the same way (its parts join it). A
+ *  part gone leaves its room to its neighbour (beside's undo); one too thin to use comes back at an even share. */
 export function tidy(n: Layout | null): Layout | null {
   if (!n) return null
   if (!isSplit(n)) return n.tabs.length ? n : null
   const kids: Layout[] = [], sizes: number[] = []
+  let left = 0 // the room of parts gone before any stayed
   n.kids.forEach((k, i) => {
     const t = tidy(k)
     const s = n.sizes[i] > 0 ? n.sizes[i] : 1 / n.kids.length
-    if (!t) return
+    if (!t) { if (sizes.length) sizes[sizes.length - 1] += s; else left += s; return }
+    const at = sizes.length
     if (isSplit(t) && t.dir === n.dir) t.kids.forEach((x, j) => { kids.push(x); sizes.push(s * t.sizes[j]) })
     else { kids.push(t); sizes.push(s) }
+    sizes[at] += left
+    left = 0
   })
   if (kids.length < 2) return kids[0] ?? null
   const sum = sizes.reduce((a, b) => a + b, 0)
-  return { ...n, kids, sizes: sizes.map((s) => s / sum) }
+  return { ...n, kids, sizes: unthinned(sizes.map((s) => s / sum)) }
+}
+/** Shares (adding up to 1) with each too thin to use at an even one, the others making room in proportion. */
+function unthinned(shares: number[]) {
+  const even = 1 / shares.length, thin = Math.min(THIN, even / 2)
+  const n = shares.filter((s) => s < thin).length
+  if (!n) return shares
+  const rest = shares.reduce((a, s) => (s < thin ? a : a + s), 0)
+  return shares.map((s) => (s < thin ? even : (s * (1 - n * even)) / rest))
 }
 
 /** A saved tree, checked: bad groups are dropped. */
