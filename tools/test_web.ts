@@ -1876,7 +1876,7 @@ await section("login approvals", async () => {
   const crypto = await import("node:crypto")
   const RP = "m1.example.ts.net", ORIGIN = `https://${RP}:8447`
   const sha = (b: Buffer | string) => crypto.createHash("sha256").update(b).digest()
-  const b64u = (b: Buffer) => b.toString("base64url")
+  const b64u = (b: Uint8Array) => Buffer.from(b).toString("base64url")
   const device = () => {
     const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" })
     const j = publicKey.export({ format: "jwk" })
@@ -1885,7 +1885,7 @@ await section("login approvals", async () => {
   }
   const authData = (rp: string, flags: number, counter: number, attested?: { id: Buffer; cose: Buffer }) => {
     const c = Buffer.alloc(4); c.writeUInt32BE(counter)
-    const parts = [sha(rp), Buffer.from([flags]), c]
+    const parts: Uint8Array[] = [sha(rp), Buffer.from([flags]), c]
     if (attested) { const n = Buffer.alloc(2); n.writeUInt16BE(attested.id.length); parts.push(Buffer.alloc(16), n, attested.id, attested.cose) }
     return Buffer.concat(parts)
   }
@@ -1893,7 +1893,7 @@ await section("login approvals", async () => {
   const created = (d: ReturnType<typeof device>, challenge: Buffer, o: { rp?: string; flags?: number; origin?: string } = {}) => ({
     clientDataJSON: b64u(client("webauthn.create", challenge, o.origin)),
     attestationObject: b64u(encode(new Map<string, unknown>([["fmt", "none"], ["attStmt", new Map()], ["authData", authData(o.rp ?? RP, o.flags ?? 0x45, 0, d)]]) as never)) })
-  const signed = (d: ReturnType<typeof device>, challenge: Buffer, o: { rp?: string; flags?: number; origin?: string; counter?: number; key?: crypto.KeyObject } = {}) => {
+  const signed = (d: ReturnType<typeof device>, challenge: Buffer, o: { rp?: string; flags?: number; origin?: string; counter?: number; key?: import("node:crypto").KeyObject } = {}) => {
     const ad = authData(o.rp ?? RP, o.flags ?? 0x05, o.counter ?? 0), cd = client("webauthn.get", challenge, o.origin)
     const signature = crypto.sign("sha256", Buffer.concat([ad, sha(cd)]), { key: o.key ?? d.privateKey, dsaEncoding: "der" })
     return { id: b64u(d.id), clientDataJSON: b64u(cd), authenticatorData: b64u(ad), signature: b64u(signature) }

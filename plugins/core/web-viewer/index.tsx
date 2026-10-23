@@ -1,7 +1,7 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
+import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, KeyRound, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
 import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSet, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
@@ -11,6 +11,7 @@ import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView 
 import { ExtensionsView } from "./Extensions"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { ReplaysView } from "./Replays"
+import { AgentPasskeys } from "./AgentPasskeys"
 import { liveTitle, LiveView } from "./LiveView"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
@@ -224,6 +225,7 @@ export default definePlugin({
       },
     },
     "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <ReplaysView /> },
+    "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <AgentPasskeys /> },
     // (from the web app: the desktop app's tabs, one watched live by its number)
     "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(Number(arg)) || "Browser tab" : "Browser tabs"), argState: true, full: true,
       render: ({ arg, setArg }) => <LiveView arg={arg} setArg={setArg} /> },

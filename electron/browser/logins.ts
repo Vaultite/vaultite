@@ -1,14 +1,16 @@
 // Agents' logins (`vau browser login`): the app fills a username, password or one-time code from the agents' KeePass file
 // (set up on this Mac); agents hear only what happened, and what's filled is hidden from them after (pagesecrets.ts).
-import { app, dialog, safeStorage } from "electron"
+import { app, dialog, safeStorage, systemPreferences } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { AppWindow } from "../appwindow.ts"
 import { acting, byOf, pageFor, press, record, serve, settle } from "./agent.ts"
-import { cdp, handle, type EnginePage } from "./engine.ts"
+import { allPages, cdp, handle, tell, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { loginForm, type Input } from "./loginform.ts"
 import { docOf, filling, keep, markFilled, markHeld, ranNear, siteOf } from "./pagesecrets.ts"
+import { register, verify, type Asserted, type Created, type Passkey } from "./presence.ts"
 
 // (its reader, kdbxweb, loads at the first login: a Mac whose agents never log in never loads it)
 const keepass = () => import("./keepass.ts")
@@ -36,15 +38,125 @@ async function database(): Promise<Database> {
   try { return await openDatabase(data, password) } catch (e) { throw new Error(`the agents' passwords file doesn't open (${(e as Error).message}): ${SETUP}`) }
 }
 
-// ---------- approvals: an entry without the agent-free tag needs the user's yes, asked through the Inbox by the server ----------
+// ---------- approvals: an entry without the agent-free tag needs the user's yes, given with their passkey ----------
+// Checked here, by the app that fills (the server passes the page's answer on): only the user's passkey signs a yes.
 
 /** A yes lasts this long, for that entry and that agent. */
 const APPROVAL_MS = 15 * 60_000
-/** An ask waits this long for the user's answer. */
+/** An ask, and a link to add a passkey, wait this long. */
 const ASK_MS = 10 * 60_000
-const approvals = new Map<string, number>()
-/** Asks waiting, by entry and agent: the grant the server comes back with, the Inbox's answer beside it. */
-const pending = new Map<string, { grant: string; until: number }>()
+/** Yeses, by entry and agent: till when, and which passkey said it. */
+const approvals = new Map<string, { until: number; by: string }>()
+/** Logins waiting on the user, by their grant (the approval page's address has it): the challenge it last gave the page,
+ *  good for one answer. */
+type Grant = { key: string; tab: number; site: string; entry: Entry; agent: string; until: number; challenge: Buffer | null
+  state: "waiting" | "approved" | "denied"; waiters: Set<() => void> }
+const grants = new Map<string, Grant>()
+const b64u = (b: Buffer) => b.toString("base64url")
+
+function decide(g: Grant, state: "approved" | "denied", by = "") {
+  g.state = state
+  const p = allPages().find((x) => x.id === g.tab)
+  if (p) void record(p, { name: g.agent }, { action: "login", value: named(g.entry), site: g.site, result: state === "approved" ? `approved with ${by}` : "denied on the approval page" })
+  for (const done of [...g.waiters]) done()
+}
+function grantFor(id: unknown) {
+  const g = grants.get(String(id))
+  if (!g || g.until < Date.now()) throw new Error("this approval has expired: the agent asks again")
+  return g
+}
+
+// ---------- the user's passkeys, this Mac's: encrypted with the Keychain's key, so only the app adds one ----------
+
+const PASSKEYS = () => path.join(app.getPath("userData"), "agent-approvals.bin")
+function passkeys(): Passkey[] {
+  try {
+    const list = JSON.parse(safeStorage.decryptString(fs.readFileSync(PASSKEYS()))) as unknown
+    return Array.isArray(list) ? list as Passkey[] : []
+  } catch { return [] }
+}
+function savePasskeys(list: Passkey[]) {
+  const tmp = `${PASSKEYS()}.${process.pid}.tmp`
+  fs.writeFileSync(tmp, safeStorage.encryptString(JSON.stringify(list)), { mode: 0o600 })
+  fs.renameSync(tmp, PASSKEYS())
+  for (const w of AppWindow.getAllWindows()) tell(w, { type: "engine:logins:passkeys" })
+}
+
+/** Links to add a passkey (the app's, shown as a QR code): a challenge each, used once. */
+const additions = new Map<string, { challenge: Buffer; user: Buffer; until: number }>()
+function additionFor(token: unknown) {
+  const a = additions.get(String(token))
+  if (!a || a.until < Date.now()) throw new Error("this link to add a passkey has expired: start again in the app (Passwords for agents)")
+  return a
+}
+/** The user, at this Mac: Touch ID. A passkey added without it could be an agent's own (computer use clicks the app). */
+async function here(reason: string) {
+  if (!app.isPackaged && process.env.VAULTITE_TEST_TOUCHID === "yes") return true // (QA: no finger in a test)
+  if (process.platform !== "darwin" || !systemPreferences.canPromptTouchID()) {
+    throw new Error("this Mac can't ask for Touch ID now (its lid closed?), which confirms a new passkey")
+  }
+  return systemPreferences.promptTouchID(reason).then(() => true, () => false)
+}
+
+handle("logins:passkeys", () => passkeys().map((k) => ({ id: k.id, name: k.name, site: k.rpId, added: k.added })))
+handle("logins:passkey-start", () => {
+  const token = b64u(crypto.randomBytes(16))
+  additions.set(token, { challenge: crypto.randomBytes(32), user: crypto.randomBytes(16), until: Date.now() + ASK_MS })
+  return { token }
+})
+handle("logins:passkey-remove", (_win, id) => savePasskeys(passkeys().filter((k) => k.id !== String(id))))
+
+// (the server's, from the pages the phone opens: each checked here, whoever calls)
+serve("agent:passkey-options", (_win, token) => {
+  const a = additionFor(token)
+  return { challenge: b64u(a.challenge), user: b64u(a.user), exclude: passkeys().map((k) => k.id) }
+})
+serve("agent:passkey-add", async (_win, token, given, name) => {
+  const a = additionFor(token)
+  additions.delete(String(token))
+  const pk = register((given && typeof given === "object" ? given : {}) as Created, a.challenge, String(name ?? "").trim() || "A passkey")
+  if (!await here(`add a passkey (${pk.name}) to approve agents' logins`)) throw new Error("not added: Touch ID on this Mac confirms a new passkey")
+  savePasskeys([...passkeys().filter((k) => k.id !== pk.id), pk])
+  return { name: pk.name, site: pk.rpId }
+})
+serve("agent:login-options", (_win, id) => {
+  const g = grantFor(id)
+  const shown = { site: g.site, entry: { title: g.entry.title, username: g.entry.username }, agent: g.agent, state: g.state }
+  if (g.state !== "waiting") return shown
+  const keys = passkeys()
+  if (!keys.length) throw new Error("no passkey is set up to approve agents' logins")
+  g.challenge = crypto.randomBytes(32)
+  return { ...shown, challenge: b64u(g.challenge), allow: keys.map((k) => k.id) }
+})
+serve("agent:login-answer", (_win, id, given) => {
+  const g = grantFor(id)
+  if (g.state !== "waiting") throw new Error(`it was ${g.state} already`)
+  const a = (given && typeof given === "object" ? given : {}) as Asserted & { deny?: unknown }
+  if (a.deny === true) { decide(g, "denied"); return { state: g.state } }
+  // (one answer per challenge: a replayed one finds none)
+  const challenge = g.challenge
+  g.challenge = null
+  if (!challenge) throw new Error("load the approval page again")
+  const keys = passkeys()
+  const { passkey, counter } = verify(a, keys, challenge)
+  if (counter !== passkey.counter) savePasskeys(keys.map((k) => (k.id === passkey.id ? { ...k, counter } : k)))
+  approvals.set(g.key, { until: Date.now() + APPROVAL_MS, by: `the user's passkey (${passkey.name})` })
+  decide(g, "approved", `the user's passkey (${passkey.name})`)
+  return { state: g.state }
+})
+// (till the user answered, at most a minute: the op then says it's waiting)
+serve("agent:login-wait", async (_win, id, ms) => {
+  const g = grants.get(String(id))
+  if (!g || g.until < Date.now()) return "gone"
+  if (g.state === "waiting") {
+    await new Promise<void>((done) => {
+      const end = () => { clearTimeout(timer); g.waiters.delete(end); done() }
+      const timer = setTimeout(end, Math.min(60_000, Math.max(0, Number(ms) || 0)))
+      g.waiters.add(end)
+    })
+  }
+  return g.state
+})
 
 // ---------- the app's: setting it up ----------
 
@@ -73,13 +185,13 @@ handle("logins:set", async (_win, file, password) => {
   fs.writeFileSync(tmp, JSON.stringify({ file, key: safeStorage.encryptString(password).toString("base64") }), { mode: 0o600 })
   fs.renameSync(tmp, CONFIG())
   approvals.clear()
-  pending.clear()
+  grants.clear()
   return { file, entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
 })
 handle("logins:forget", () => {
   fs.rmSync(CONFIG(), { force: true })
   approvals.clear()
-  pending.clear()
+  grants.clear()
 })
 
 // ---------- the page's login form, read over the DevTools protocol ----------
@@ -127,11 +239,10 @@ async function focus(p: EnginePage, id: number) {
 // ---------- the call ----------
 
 type Opts = { entry?: unknown; submit?: unknown }
-type Decided = { grant?: unknown; answer?: unknown }
 const shown = (e: Entry) => ({ title: e.title, username: e.username })
 const named = (e: Entry) => (e.username ? `${e.title} (${e.username})` : e.title)
 
-async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>, decided: Decided | null) {
+async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
   const url = p.wc.getURL(), host = new URL(url).host
   const log = (result: string, e?: Entry, approved?: string) => void record(p, who, { action: "login", value: e ? named(e) : "", site: host, result, ...(approved ? { approved } : {}) })
   const db = await database()
@@ -151,28 +262,21 @@ async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>, decid
   }
 
   const key = `${e.id}\n${who.session || who.name || "agent"}`
-  let approved = e.free ? "free (agent-free tag)" : (approvals.get(key) ?? 0) > Date.now() ? "the user's yes, given earlier" : ""
+  const ask = crypto.createHash("sha256").update(key).digest("hex").slice(0, 24)
+  const yes = approvals.get(key)
+  const approved = e.free ? "free (agent-free tag)" : yes && yes.until > Date.now() ? yes.by : ""
   if (!approved) {
-    const waiting = pending.get(key)
-    const live = waiting && waiting.until > Date.now() ? waiting : null
-    if (decided && live && decided.grant === live.grant) {
-      pending.delete(key)
-      if (decided.answer !== "approve") {
-        log("denied by the user", e)
-        throw new Error(`the user said no to logging in to ${host} as ${e.username || e.title}: don't try again`)
-      }
-      approvals.set(key, Date.now() + APPROVAL_MS)
-      approved = "the user, in the Inbox"
-    } else {
-      const grant = live?.grant ?? crypto.randomBytes(16).toString("hex")
-      pending.set(key, { grant, until: Date.now() + ASK_MS })
-      if (!live) log("asked the user", e)
-      const ask = crypto.createHash("sha256").update(key).digest("hex").slice(0, 24)
-      return { status: "approval", tab: p.id, site: host, entry: shown(e), grant, ask }
+    let id = [...grants].find(([, g]) => g.key === key && g.state === "waiting" && g.until > Date.now())?.[0]
+    if (!id) {
+      id = b64u(crypto.randomBytes(16))
+      grants.set(id, { key, tab: p.id, site: host, entry: e, agent: who.name || "An agent", until: Date.now() + ASK_MS, challenge: null, state: "waiting", waiters: new Set() })
+      log("asked the user", e)
     }
+    const keys = passkeys()
+    return { status: "approval", tab: p.id, site: host, entry: shown(e), grant: id, ask, approve: keys.length ? `${keys.at(-1)!.origin}/api/web-viewer/approve?grant=${id}` : null }
   }
   try {
-    return await fill(p, e, db, o, who, approved)
+    return { ...await fill(p, e, db, o, who, approved), ...(e.free ? {} : { ask }) }
   } catch (err) {
     log(`failed: ${(err as Error).message}`, e, approved)
     throw err
@@ -240,6 +344,5 @@ async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnT
   return { status: "filled", ...r, site: host, entry: shown(e), filled, submitted: o.submit === true, approved }
 }
 
-// (the server's call: it asks the user through the Inbox for an entry that needs it, then comes back with the answer)
-serve("agent:login", (_win, tab, opts, by, decided) => login(pageFor(tab, "act"), (opts && typeof opts === "object" ? opts : {}) as Opts, byOf(by),
-  decided && typeof decided === "object" ? decided as Decided : null))
+// (the server's call: for an entry that needs the user's yes, it tells them (the Inbox) and waits (agent:login-wait))
+serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act"), (opts && typeof opts === "object" ? opts : {}) as Opts, byOf(by)))

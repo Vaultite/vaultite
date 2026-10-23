@@ -1,6 +1,6 @@
 // Passwords for agents: the KeePass file (agents.kdbx) the browser fills agents' logins from on this Mac
 // (electron/browser/logins.ts), and its password, given here and kept in this Mac's Keychain, never in the vault.
-import { choose, notify, notifyError, secretDialog, webPages } from "@vaultite"
+import { choose, notify, notifyError, openView, secretDialog, webPages } from "@vaultite"
 
 type Status = { file: string; entries?: number; free?: number; error?: string } | null
 const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.engine?.(name, ...args))
@@ -16,7 +16,7 @@ async function useFile() {
   try {
     const r = (await engine("logins:set", file, given.value)) as { error?: string; entries?: number; free?: number }
     if (r.error) notify(`Couldn't use ${fileName(file)}: ${r.error}`, { kind: "error" })
-    else notify(`Agents can log in with ${fileName(file)}: ${count(r.entries ?? 0, r.free ?? 0)}`)
+    else notify(`Agents can log in with ${fileName(file)}: ${count(r.entries ?? 0, r.free ?? 0)}`, { action: { label: "Passkeys", run: () => openView("agent-passkeys") } })
   } catch (e) { notifyError(e, `Couldn't use ${fileName(file)}`) }
 }
 
@@ -28,9 +28,10 @@ export async function passwordsForAgents() {
   choose({
     title: "Passwords for agents", placeholder: "Passwords for agents",
     heading: `${fileName(st.file)}: ${st.error ?? count(st.entries ?? 0, st.free ?? 0)}`,
-    items: [{ id: "file", label: "Use another file…" }, { id: "forget", label: "Stop using it" }],
+    items: [{ id: "passkeys", label: "Passkeys that approve logins…" }, { id: "file", label: "Use another file…" }, { id: "forget", label: "Stop using it" }],
     onPick: (it) => {
-      if (it.id === "file") void useFile()
+      if (it.id === "passkeys") openView("agent-passkeys")
+      else if (it.id === "file") void useFile()
       else void engine("logins:forget").then(() => notify("Agents no longer log in with your passwords on this Mac"), (e) => notifyError(e, "Couldn't stop it"))
     },
   })

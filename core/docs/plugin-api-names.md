@@ -739,6 +739,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchError`
 - `searchMatches(n, d)`: Whether a file matches.
 - `section(title, ...parts)`: ## Title, then the parts (blank ones left out).
+- `servedAt(port)`: Where Tailscale Serve serves this machine's `port` over https ("https://m1.tail1234.ts.net:8447"), or "" when it doesn't (a phone's Safari reaches it there: passkeys need https).
 - `serverUrl()`: This server, as commands on this machine reach it (a shell's VAULTITE_URL, an agent's hooks).
 - `service(plugins, name)`: The first plugin's service called `name` (plugin.provide), or null when no plugin offers it.
 - `serviceFor(plugins, kind, rel)`: The service `<kind>:<ext>` a plugin offers for a file by its extension (a double one first: "excalidraw.md"), or null.

@@ -563,9 +563,8 @@ plugin.route("POST", "inbox/events/unread", async (req) => {
   return { unread: unread(local) }
 })
 
-/** Who answers a gate: the user's own hands (the app, their phone and watch, vau typed with no agent in it) or a machine
- *  passing one of those on; never an agent, which would be saying yes to itself. What a caller says it is can be lied
- *  about: a yes that must be the user's needs more (a passkey: browser logins). */
+/** Who answers a gate: the user's hands (the app, their phone and watch, vau with no agent in it) or a machine passing
+ *  one on; never an agent. Callers can lie about it: a yes that must be the user's takes a passkey (browser logins). */
 export const answersGates = (w: { client: string | null; agent: string | null }) => !w.agent && !!w.client
   && (w.client.startsWith("app/") || w.client.startsWith("machine/") || ["iphone", "watch", "cli"].includes(w.client))
 const NOT_AGENTS = "only you answer a permission the server waits on (in the app, on your phone, or in vau typed yourself), never an agent"
