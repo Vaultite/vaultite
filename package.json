@@ -104,6 +104,7 @@
     "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/ios": "^8.5.3",
+    "@electron/fuses": "^1.8.0",
     "@noble/hashes": "^2.4.0",
     "@types/d3-force": "^3.0.10",
     "@types/node": "^24.19.2",

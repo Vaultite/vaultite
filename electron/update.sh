@@ -30,6 +30,9 @@ build)
   new=$(git rev-parse "origin/$branch")
   if [ -n "$want" ]; then new=$(git rev-parse --verify --quiet "$want^{commit}") || { echo "$want isn't fetched from $branch"; exit 1; }; fi
   [ "$new" = "$running" ] && exit 3
+  # One from before cookie encryption (electron/sign.cjs's fuse) can't read this app's cookies, and drops them: never
+  # back to one, even for a server that runs it.
+  git show "$new:electron/sign.cjs" 2>/dev/null | grep -q EnableCookieEncryption || { echo "not building $new: it's from before cookie encryption, and would sign you out of every site"; exit 1; }
   # Built already (an earlier check the app hasn't restarted for): nothing to do.
   if [ "$(cat "$next/commit" 2>/dev/null)" != "$new" ]; then
     echo "@building $new"

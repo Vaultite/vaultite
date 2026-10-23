@@ -101,7 +101,20 @@ function staple(file, tries = 5) {
   }
 }
 
+// Chromium encrypts the cookies it keeps on disk, as Chrome does, with the app's key: its "<name> Safe Storage" Keychain
+// item on a Mac (the one safeStorage uses), the keyring on Linux. That's Electron's EnableCookieEncryption fuse, a byte in
+// its binary, flipped here before the app is signed: a change after breaks the signature (electron-builder's own
+// `electronFuses` flips them after afterPack, so after this has signed). Cookies saved in plain text before still load,
+// and are encrypted once a site sets them again. A build without the fuse can't read them, and drops every cookie of a
+// site with one it can't decrypt: update.sh never goes back to one (it looks for EnableCookieEncryption in this file),
+// and a run from source gets the fuse too (start.ts).
+async function fuses(context) {
+  const { FuseVersion, FuseV1Options } = require("@electron/fuses")
+  await context.packager.addElectronFuses(context, { version: FuseVersion.V1, [FuseV1Options.EnableCookieEncryption]: true })
+}
+
 exports.default = async function sign(context) {
+  await fuses(context)
   if (context.electronPlatformName !== "darwin") return
   await require("./natives.cjs").default(context)
   const appex = require("./quicklook.cjs").default(context)

@@ -58,6 +58,10 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   (challenges.ts), with which it passes, the user's click or none.
 - Chromium drops session cookies (no expiry) at every launch (Electron never sets persist_session_cookies), so every
   restart into an update signed out of sites that use one: sessioncookies.ts follows each persistent session's as they
-  change and writes them encrypted (safeStorage, never plain: Electron already keeps persistent cookies unencrypted, no
-  fuse) into its partition's folder, setting them again as the session is made. A session setup that returns a promise
+  change and writes them encrypted (safeStorage, never plain) into its partition's folder, setting them again as the
+  session is made.
+- Persistent cookies are encrypted in the Cookies databases (the EnableCookieEncryption fuse, electron/sign.cjs), with
+  the "<app name> Safe Storage" Keychain key safeStorage uses. Rows saved plain before still load and are encrypted when a
+  site sets them again. Chromium deletes every cookie of a site with one it can't decrypt (a build without the fuse, a
+  Keychain that refuses): never run a build without it on a profile. A session setup that returns a promise
   holds the session's pages and cookie reads (`sessionReady`); a restart into an update awaits `engineFlush` first.

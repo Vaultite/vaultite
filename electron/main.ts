@@ -1151,6 +1151,7 @@ function buildUpdate(byHand: boolean, want: string) {
     } else if (byHand && !quitting) {
       updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check."
         : /not building an update signed ad hoc/.test(out) ? "The new version couldn't be signed: the keychain may be locked. The next check tries again."
+        : /from before cookie encryption/.test(out) ? "Its server runs a version from before cookie encryption, which would sign you out of every site: update the server first."
         : "The new version didn't build.")
     }
     if (ready !== built()) ready = null
