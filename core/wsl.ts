@@ -1,6 +1,7 @@
 // Windows' WSL, from the Windows side: its distros, and paths between the two (C:\x is /mnt/c/x there; a distro's own
 // files are \\wsl.localhost\<distro>\... here). Pure but for distros(), so both sides and the tests share it.
 import { execFile } from "node:child_process"
+import fs from "node:fs"
 
 /** WSL's distros on this machine, the default first (none off Windows, or without WSL). Docker Desktop's are its own. */
 export function distros(): Promise<string[]> {
@@ -30,4 +31,16 @@ export function fromWsl(p: string, distro: string): string {
   const drive = /^\/mnt\/([a-z])(?:\/(.*))?$/i.exec(p)
   if (drive) return `${drive[1].toUpperCase()}:\\${(drive[2] ?? "").replace(/\//g, "\\")}`
   return `\\\\wsl.localhost\\${distro}${p.replace(/\//g, "\\")}`.replace(/\\$/, "")
+}
+
+/** Text with the Windows paths in it as WSL reaches them (a drive's, this distro's \\wsl.localhost\...). A path may hold
+ *  spaces: it's the longest run of its words that `exists`, else its first word. */
+export function wslText(text: string, distro: string, exists = (p: string) => fs.existsSync(p)): string {
+  return text.replace(/(?<![\w\\])(?:[a-z]:\\|\\\\wsl(?:\.localhost|\$)\\)[^\r\n"'`<>|*?(),;]*/gi, (m) => {
+    const words = m.split(" "), at = (k: number) => words.slice(0, k).join(" ").replace(/[.:]+$/, "")
+    let k = words.length
+    while (k > 1 && !exists(at(k))) k--
+    const p = at(k)
+    return (toWsl(p, distro) ?? p) + m.slice(p.length)
+  })
 }

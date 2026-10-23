@@ -14,5 +14,6 @@ step node tools/test_desktophost.ts
 step node tools/test_machines.ts
 step npx playwright-core install chromium
 step npm run smoke
+step bash .github/windev/cli.sh
 printf 'FAILED: %s\n' "${fails[@]}"
 [ ${#fails[@]} = 0 ]

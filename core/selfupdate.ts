@@ -99,7 +99,8 @@ function fixSpawnHelper(root: string) {
 /** One look: fetch, and update when the branch is ahead, CI passed, the tree is clean and nobody's busy. Never throws. */
 export async function checkForUpdate(o: UpdaterOptions): Promise<UpdateStatus> {
   const git = async (...args: string[]) => (await exec("git", args, { cwd: o.root, timeout: 120_000, maxBuffer: 16 << 20 })).stdout.trim()
-  const npm = o.npm ?? ((args: string[]) => exec("npm", args, { cwd: o.root, timeout: 30 * MINUTE, maxBuffer: 64 << 20 }))
+  // (Windows' npm is npm.cmd, which only a shell runs; the arguments are fixed words)
+  const npm = o.npm ?? ((args: string[]) => exec("npm", args, { cwd: o.root, timeout: 30 * MINUTE, maxBuffer: 64 << 20, shell: process.platform === "win32", windowsHide: true }))
   let kept: Pick<UpdateStatus, "last" | "error"> = {}
   try { kept = JSON.parse(fs.readFileSync(o.stateFile, "utf8")) } catch { /* none yet */ }
   const keep = () => { try { fs.mkdirSync(path.dirname(o.stateFile), { recursive: true }); fs.writeFileSync(o.stateFile, JSON.stringify({ last: kept.last, error: kept.error })) } catch { /* shown, not kept */ } }

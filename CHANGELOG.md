@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **vau on Windows**: Set up puts vau on your PATH for PowerShell, cmd and Git Bash; `vau wsl install` puts it in WSL's
+  distros, where it reaches the app on Windows; `vau service` runs the server at login as a scheduled task, with no
+  window; files open in their app and show in Explorer. `vau service status` says whether the service runs.
 - **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
   paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
