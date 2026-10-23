@@ -820,7 +820,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readBytes(p)`: A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says.
 - `readSoon(p, wait?, { join }?)`: A file's bytes off the main thread (a placeholder iCloud left: once down), so iCloud never holds the server; null after `wait` ms, or at once while an earlier read of it is held (no second thread…
 - `readText(p)`: A text file, line endings as \n.
-- `renameFile(from, to)`: fs.renameSync, retried a moment on Windows, which won't replace or move a file another process has open (a reader, the search indexer, antivirus) until it lets go (EPERM, EACCES or EBUSY).
+- `renameFile(from, to)`: fs.renameSync, retried a moment on Windows while another process holds the file (a read of this one's can't end while it waits).
 - `renameProperty(text, from, to)`: A file's text with its frontmatter key `from` renamed `to`, nothing else changed (core/textedit.ts renameKey); null when it has no such key, already has `to`, or its header can't be changed line…
 - `renameTagText(text, from, to)`: A file's text with tag `from`, and those nested under it, renamed `to`: in its frontmatter `tags` (a list or text, as it was written; a tag twice once) and its #tags.
 - `requestWriter`: Set by the API around each request that came over HTTP (core/app.ts), read by the hooks that run on its writes.
