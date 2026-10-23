@@ -14,7 +14,7 @@ function tree(dir: string) {
   const out: Record<string, string> = {}
   for (const f of (fs.readdirSync(dir, { recursive: true }) as string[]).sort()) {
     const p = path.join(dir, f)
-    if (fs.statSync(p).isFile()) out[f] = crypto.createHash("sha1").update(fs.readFileSync(p)).digest("hex")
+    if (fs.statSync(p).isFile()) out[f.split(path.sep).join("/")] = crypto.createHash("sha1").update(fs.readFileSync(p)).digest("hex")
   }
   return out
 }

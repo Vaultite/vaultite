@@ -62,7 +62,7 @@ export default async ($: VaultTest) => {
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")
     await open(own)
-    const files = fs.readdirSync(own, { recursive: true }).map(String).filter((f) => !f.startsWith(".vaultite")).sort()
+    const files = fs.readdirSync(own, { recursive: true }).map((f) => String(f).split(path.sep).join("/")).filter((f) => !f.startsWith(".vaultite")).sort()
     check("a folder of notes: Standard, and nothing added among its files", !(conf(own, "plugins")?.enabled ?? []).length && JSON.stringify(files) === '["Ideas","Ideas/One.md"]'
       && fs.readFileSync(path.join(own, "Ideas/One.md"), "utf8") === "An idea.\n", files)
     check("new vault: its settings start up to date (core/migrations.ts)", conf(fresh, "migrations")?.done?.includes("plugins-opt-in-2026-10") && conf(fresh, "migrations")?.done?.includes("daily-notes-2026-10") && !(pj?.enabled ?? []).includes("codex"), conf(fresh, "migrations"))

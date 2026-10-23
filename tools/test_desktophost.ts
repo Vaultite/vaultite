@@ -11,15 +11,15 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-host-test-"))
 const VAULT = path.join(tmp, "vault")
 fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ enabled: ["web-viewer", "machines"], disabled: [] }))
-// (its own runtime folder, where the claim is (core/runtime.ts): TMPDIR on a Mac, XDG_RUNTIME_DIR/vaultite on Linux)
+// (its own runtime folder, where the claim is (core/runtime.ts): TMPDIR on a Mac, TEMP on Windows, XDG_RUNTIME_DIR/vaultite on Linux)
 const RUN = path.join(tmp, "run")
 fs.mkdirSync(RUN, { mode: 0o700 })
-const CLAIMS = process.platform === "darwin" ? RUN : path.join(RUN, "vaultite")
+const CLAIMS = process.platform === "linux" ? path.join(RUN, "vaultite") : RUN
 const claimFile = () => fs.existsSync(CLAIMS) ? fs.readdirSync(CLAIMS).find((f) => f.startsWith("vaultite-serves-")) : undefined
 
 function serve(port: number, env: Record<string, string> = {}) {
   const s = testServer({ stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, `local-${port}`), PORT: String(port), HOST: "127.0.0.1", VAULTITE_DESKTOP: "", TMPDIR: RUN, XDG_RUNTIME_DIR: RUN, ...env } })
+    env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, `local-${port}`), PORT: String(port), HOST: "127.0.0.1", VAULTITE_DESKTOP: "", TMPDIR: RUN, TEMP: RUN, TMP: RUN, XDG_RUNTIME_DIR: RUN, ...env } })
   let log = ""
   s.stdout!.on("data", (d) => { log += d })
   s.stderr!.on("data", (d) => { log += d })
@@ -46,7 +46,8 @@ const one = serve(port)
   await one.up()
   const c = claimed()
   check("serving: the server claims its vault (pid, port, a key only this user reads)", c.pid === one.s.pid && c.port === port && c.key.length > 20 &&
-    (fs.statSync(path.join(CLAIMS, claimFile()!)).mode & 0o077) === 0, c)
+    // (Windows' own: a user's TEMP is theirs by its ACL)
+    (process.platform === "win32" || (fs.statSync(path.join(CLAIMS, claimFile()!)).mode & 0o077) === 0), c)
 
   const two = serve(await freePort())
   const code = await Promise.race([two.exited, sleep(30_000).then(() => "running")])
