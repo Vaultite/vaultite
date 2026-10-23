@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **vau on Windows**: Set up puts vau on your PATH for PowerShell, cmd and Git Bash; `vau wsl install` puts it in WSL's
   distros, where it reaches the app on Windows; `vau service` runs the server at login as a scheduled task, with no
   window; files open in their app and show in Explorer. `vau service status` says whether the service runs.
+- **No more rules ping-pong**: two machines on different versions sharing a vault no longer rewrite `.vaultite/AGENTS.md`
+  back and forth; each writes it only when its own rules change.
 - **Agents' tabs stay**: short of memory, the browser no longer discards a tab an agent opened or one waiting on you,
   so its number and its ask last.
 - **Security pass**: a page reaching the app under another site's name (DNS rebinding) can't read plugins' pages,

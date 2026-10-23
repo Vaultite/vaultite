@@ -70,13 +70,19 @@ export function point(abs: (rel: string) => string, name: string, on: boolean) {
   return true
 }
 
+/** What this server last wrote: a file another machine's version wrote differently is left alone till this one's own
+ *  text changes (two versions sharing a vault rewrote it back and forth hundreds of times). */
+let wanted: string | null | undefined
+
 /** Write the rules (on), or leave only the user's part of them (off: none, no file). */
 function writeRules(on: boolean) {
   const file = plugin.vault.abs(RULES), cur = read(file), own = ownPart(cur)
   const want = on ? rulesText(own) : own ? `${OWN}\n\n${own}\n` : null
-  if (want === cur) return
+  if (want === cur) return void (wanted = want)
+  if (want === wanted && cur !== null) return
   if (want === null) fs.rmSync(file, { force: true })
   else writeAtomic(file, want)
+  wanted = want
 }
 
 let pointed: boolean | null = null
