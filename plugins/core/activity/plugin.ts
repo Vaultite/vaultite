@@ -268,7 +268,7 @@ function describe(method: string, route: string, query: Record<string, string>, 
   if (route === "file/move") { const f = str(b.from), t = str(b.to); return { action: "move", text: `Moved ${f} to ${t}`, paths: [f, t].filter(Boolean) } }
   if (route === "file/restore") return { action: "create", text: `Restored ${p} from the trash`, paths: p ? [p] : [] }
   if (route === "file/copy") return { action: "create", text: `Duplicated ${p}`, paths: p ? [p] : [] }
-  if (route === "file/open") return { action: "ui", text: `${b.reveal ? "Showed" : "Opened"} ${p} in ${b.reveal ? (process.platform === "darwin" ? "Finder" : "its folder") : "its app"}`, paths: p ? [p] : [] }
+  if (route === "file/open") return { action: "ui", text: `${b.reveal ? "Showed" : "Opened"} ${p} in ${b.reveal ? (process.platform === "darwin" ? "Finder" : process.platform === "win32" ? "Explorer" : "its folder") : "its app"}`, paths: p ? [p] : [] }
   if (route === "folder") return { action: "create", text: `Made the folder ${p}`, paths: p ? [p] : [] }
   if (route === "upload") return { action: "create", text: `Added ${p}`, paths: p ? [p] : [] }
   if (route === "upload/name") return null

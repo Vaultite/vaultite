@@ -262,6 +262,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard).
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
+- `isWindows`: A Windows computer.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
 - `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
@@ -439,7 +440,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
 - `revealInTree(path, opts?)`: Open every folder above a file.
-- `revealLabel`: Showing a file where it is: Finder on a Mac, the file manager elsewhere.
+- `revealLabel`: Showing a file where it is: Finder on a Mac, Explorer on Windows, the file manager elsewhere.
 - `revealPanel(key)`: Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel unfolded.
 - `rightClickBelow(e)`: For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows.
 - `Ring({ value, goal, color, size })`: Progress ring for "x of goal this week".

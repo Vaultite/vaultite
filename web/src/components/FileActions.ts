@@ -11,7 +11,7 @@ import { setProperty } from "@/core/frontmatter"
 import { shortestLink } from "@/core/links"
 import { PLUGINS, isEnabled } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
-import { isDesktop, isLinux, isMac, revealLabel } from "@/core/platform"
+import { isDesktop, isLinux, isMac, isWindows, revealLabel } from "@/core/platform"
 import { openInSplit } from "@/core/splits"
 import type { MenuItem } from "@/components/ContextMenu"
 import { choose } from "@/components/Chooser"
@@ -80,7 +80,7 @@ export function renameItem(path: string, rename: () => void): MenuItem {
 
 /** Finder or the file manager only answers this computer: the desktop app, or a browser on the server's own machine
  *  (the server checks too: POST /api/file/open). */
-export const canReveal = () => /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && (isMac || isLinux)
+export const canReveal = () => /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && (isMac || isLinux || isWindows)
 
 /** Open a vault file or folder in this computer's own app (`reveal`: show it in Finder); what fails is an error notice. */
 export const openOnComputer = (path: string, reveal?: boolean) =>
