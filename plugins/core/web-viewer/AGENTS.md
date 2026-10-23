@@ -59,7 +59,7 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   elsewhere) opens them in the system browser, as does every link with `openLinks: browser`.
 - Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,
   `browser_act`, `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
-  `browser_evaluate`, `browser_ask_user`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a
+  `browser_evaluate`, `browser_ask_user`, `browser_login`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a
   machine: the app attaches to the always-on one there); a server without one passes each call to an always-on machine
   in Machines that has one (its tab numbers, its Downloads), never to a laptop's app, and says so when none has. `vau browser tabs` lists the tabs, whose each is
   (yours, another agent's, the user's) and what agents may do in it; `vau browser open <url> --task "<task>"` opens one
@@ -83,6 +83,21 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   --helped` waits for Done. "Show agents in the browser": the tabs agents are at work in now, each a live picture with
   Show tab and Pause, then past runs searched by agent, task or summary; each agent's steps are kept on the Mac for 14
   days, with pictures, to replay (never what's typed into a password field).
+- Passwords for agents: agents log in without ever seeing a password. On the Mac whose browser agents use, an Agents
+  container's menu has "Passwords for agents…": a KeePass file and its password, kept in that Mac's Keychain, never the
+  vault. Make it with KeePassXC's KeeShare, exporting a group of the entries agents may use (Agents) to that file, with a
+  long generated password; the main database never leaves the Mac it's on. `vau browser login <tab>` (`browser_login`;
+  `--entry <title or username>` when the site has several, `--submit` presses Enter) fills what the page asks for from the
+  entry for its site: username and password, a username alone, or a one-time code (TOTP, as KeePassXC or KeePass keep
+  it). Matching is strict, as a password manager's: an entry's address (and its KP2A_URL ones) names a host, `example.com`
+  with its www., `*.example.com` every subdomain (never a public suffix's, like `*.co.uk`), an http page only for an http
+  entry, ports exact. An entry tagged `agent-free` fills at once; any other asks the user first (an Inbox event with
+  Approve and Deny, on their phone and watch too), and a yes lasts 15 minutes for that entry and agent. Agents hear only
+  what happened (filled, entries to pick from, waiting for the user, no entry, said no). What's filled can't be read back:
+  snapshot, read, wait, run, act's changes, tabs and the steps kept to replay show it as •••, however the page shows it
+  (revealed, in its title, in its address); evaluate is off in a page holding it (or with any password typed in),
+  screenshot and pdf while the page shows it, and copying there; and a page an agent's script ran in gets no login till it
+  loads again. Each attempt is kept with the agent's steps (site, entry, result, who said yes) and in Activity.
 - History: every page's visits (address, title, time, logins, typed or a link) are kept on the Mac running the desktop
   app, never in the vault, ranked by frecency. The address bar completes a site inline as you type and lists the search,
   open tabs ("Switch to tab"), bookmarks and history (⇧⌦ removes a history row); "Open web page…" is a new web tab with

@@ -399,7 +399,7 @@ plugin.op({
   summary: "Ask the user to do something in a tab you can't (sign in, a captcha, a passkey): shown in its bar, and in their Inbox.",
   help: `The tab comes to the front with what you asked in its bar and a Done button, and the user hears of it (the Inbox,
 their phone). Then wait for their Done with browser wait --helped (a minute at a time), or for what the page shows once
-they did it (--text, --url). Never ask for their password: they type it themselves.
+they did it (--text, --url). Never ask for their password: they type it themselves, or you log in with browser login.
 
   vau browser ask 3 "Sign in to your bank, then click Done"
   vau browser wait 3 --helped --timeout 60`,
