@@ -201,6 +201,9 @@ export default async ($: VaultTest) => {
       let bad = ""
       try { parseSource("fleet/plugins/../x") } catch (e) { bad = (e as Error).message }
       check("several in one: a folder can't climb out", bad.includes("isn't a plugin's source"), bad)
+      let dash = ""
+      try { parseSource("-u@evil:x") } catch (e) { dash = (e as Error).message }
+      check("a source can't be read as git's option", dash.includes("starts with a dash"), dash)
       const dinghy = (version: string) => JSON.stringify({ id: "dinghy", name: "Dinghy", description: "A made-up plugin, one of several in a repository.", version,
         author: "Alice Park", repo: "fleet/plugins", apiVersion: 1, disclosures: {} })
       const skiff = JSON.stringify({ id: "skiff", name: "Skiff", description: "Made up.", version: "1.0.0", author: "Alice Park", repo: "fleet/plugins", disclosures: {} })

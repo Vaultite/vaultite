@@ -60,7 +60,7 @@ const enc = encodeURIComponent
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
 const page = watch(await ctx.newPage(), { label: "desktop" })
 const frameOf = (name) => until(async () => {
-  const f = page.frames().find((x) => x.url().includes(`/v/QA/${enc(name)}`))
+  const f = page.frames().find((x) => x.url().includes(`/v/QA/${enc(name)}`) && x.url().includes("frame=1"))
   return f && (await f.evaluate(() => window.__t?.ready || window.__t?.error || window.__db !== undefined)) ? f : null
 }, 15000, 250)
 const t = (f) => f.evaluate(() => window.__t)
@@ -90,7 +90,7 @@ writeFileSync(`${VAULT}/QA/QA claude note.md`, `# Two views\n\n![[${NAME}|200]]\
 const other = watch(await ctx.newPage(), { label: "second view" })
 await other.goto(`${B}#file/${enc("QA/QA claude note.md")}`)
 const f2 = await until(async () => {
-  const x = other.frames().find((y) => y.url().includes(`/v/QA/${enc(NAME)}`))
+  const x = other.frames().find((y) => y.url().includes(`/v/QA/${enc(NAME)}`) && y.url().includes("frame=1"))
   return x && (await x.evaluate(() => window.__t?.snaps?.length)) ? x : null
 }, 15000, 250)
 await f.evaluate(() => window.add(11))
@@ -130,7 +130,7 @@ await f.evaluate(() => window.pub())
 const rewritten = await until(() => readFileSync(`${VAULT}/QA/${NAME}`, "utf8").includes("version two"), 4000)
 check("publish rewrites the file", rewritten)
 const reloaded = await until(async () => {
-  const fr = page.frames().find((x) => x.url().includes(`/v/QA/${enc(NAME)}`))
+  const fr = page.frames().find((x) => x.url().includes(`/v/QA/${enc(NAME)}`) && x.url().includes("frame=1"))
   try { return (await fr?.evaluate(() => document.getElementById("ver")?.textContent)) === "version two" && fr } catch { return null }
 }, 8000, 250)
 check("the frame reloads into it", !!reloaded)

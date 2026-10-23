@@ -42,7 +42,7 @@ async function open(width, height, mobile = false) {
 }
 const frameOf = async (page, name = "QA%20artifact.html") => {
   for (let i = 0; i < 40; i++) {
-    const f = page.frames().find((x) => x.url().includes(`/v/QA/${name}`))
+    const f = page.frames().find((x) => x.url().includes(`/v/QA/${name}`) && x.url().includes("frame=1"))
     if (f) { try { await f.waitForFunction(() => window.__t && window.__t.rows !== undefined && window.__t.net && window.__t.api, null, { timeout: 8000 }); return f } catch { /* still loading */ } }
     await wait(250)
   }
@@ -91,7 +91,7 @@ writeFileSync(`${VAULT}/QA/QA table.csv`, readFileSync(`${VAULT}/QA/QA table.csv
 let live = false
 for (let i = 0; i < 30 && !live; i++) {
   await wait(500)
-  const fr = page.frames().find((x) => x.url().includes("/v/QA/"))
+  const fr = page.frames().find((x) => x.url().includes("/v/QA/") && x.url().includes("frame=1"))
   try { live = (await fr?.evaluate(() => window.__t?.rows)) === 4 } catch { /* reloading */ }
 }
 check("a changed CSV redraws the artifact", live)
@@ -99,7 +99,7 @@ check("a changed CSV redraws the artifact", live)
 // Links: a web link opens a new tab; a vault link opens the note in the app.
 if (f) {
   const pop = page.context().waitForEvent("page", { timeout: 4000 }).catch(() => null)
-  const fr = page.frames().find((x) => x.url().includes("/v/QA/"))
+  const fr = page.frames().find((x) => x.url().includes("/v/QA/") && x.url().includes("frame=1"))
   await fr.click("#ext")
   const p2 = await pop
   check("web link opens a new tab", !!p2 && p2.url().startsWith("https://example.com"), p2?.url())
@@ -146,6 +146,13 @@ check("phone: artifact opens", !!f)
 const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
 check("phone: no sideways scroll", over <= 0, over)
 await page.screenshot({ path: `${OUT}artifact-phone.png` })
+
+// It can't navigate itself off this server, carrying what it read.
+writeFileSync(`${VAULT}/QA/QA leak.html`, `<!doctype html><p>leak</p><script>setTimeout(() => { location.href = "https://example.com/?leak=1" }, 200)</script>`)
+await page.goto(`${B}#file/${enc("QA/QA leak.html")}`)
+await wait(3000)
+const away = page.frames().map((x) => x.url()).filter((u) => u.startsWith("https://example.com"))
+check("an artifact can't navigate itself to another site", !away.length, away)
 
 // As text, for AIs.
 const text = await (await fetch(`${B}api/render?path=${enc("QA/QA note.md")}`)).text()

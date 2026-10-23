@@ -42,7 +42,7 @@ Live.web = webBuild
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
-const { tooBig } = await import("./core/filetypes.ts")
+const { RUNS_CODE, tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
@@ -344,9 +344,12 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
     return json(res, { error: (e as Error).message }, e instanceof HTTPError ? e.status : 400)
   }
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
+  // (as the desktop app does: a script or an app, which opening would run, is shown in its folder instead)
+  let reveal = !!body?.reveal
+  try { const st = fs.statSync(abs); reveal ||= RUNS_CODE.test(abs) || (st.isFile() && (st.mode & 0o111) !== 0) } catch { /* opened as asked */ }
   // reveal: show it in Finder (open -R).
-  if (process.platform === "darwin") return void execFile("/usr/bin/open", body?.reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
-  openOnLinux(abs, !!body?.reveal).then(() => done(null), done)
+  if (process.platform === "darwin") return void execFile("/usr/bin/open", reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
+  openOnLinux(abs, reveal).then(() => done(null), done)
 }
 
 function liveFolder(p: string) {
@@ -479,6 +482,8 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     ? { "Cache-Control": "public, max-age=31536000, immutable" }
     : { "Last-Modified": modified, "Cache-Control": "no-cache" }
   if (COMPRESSIBLE.test(type)) headers.Vary = "Accept-Encoding"
+  // (another site's page can't frame the app to steer clicks onto it: Allow, Turn on)
+  if (type.startsWith("text/html")) Object.assign(headers, { "Content-Security-Policy": "frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN" })
   const since = req.headers["if-modified-since"]
   if (since && Math.floor(st.mtimeMs / 1000) <= Math.floor(Date.parse(since) / 1000)) {
     res.writeHead(304, headers)

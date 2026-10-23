@@ -16,6 +16,7 @@ import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, sentence } from "../core/plainerror.ts"
+import { RUNS_CODE } from "../core/filetypes.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 
@@ -64,9 +65,8 @@ if (LINUX) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWi
 let behind = !!process.env.VAULTITE_BEHIND
 // What macOS runs rather than shows when opened (an app, a script, a link to one): a vault file of these, which a
 // synced or shared vault may bring, is shown in Finder instead of opened.
-const RUNS = /\.(app|command|tool|sh|bash|zsh|csh|ksh|fish|terminal|workflow|action|scpt|scptd|applescript|osascript|jar|pkg|mpkg|prefpane|saver|fileloc|inetloc|py|pyw|rb|pl|php|js|mjs|cjs|lua|exe|bat|cmd|com|scr|vbs|ps1)$/i
 function openVaultFile(abs: string) {
-  let runs = RUNS.test(abs)
+  let runs = RUNS_CODE.test(abs)
   try { const st = fs.statSync(abs); runs ||= st.isDirectory() || (st.mode & 0o111) !== 0 } catch { return }
   if (runs) shell.showItemInFolder(abs); else void shell.openPath(abs)
 }

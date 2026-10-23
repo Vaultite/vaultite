@@ -55,7 +55,9 @@ function blockedV6(g: number[]) {
   const v4 = (hi: number, lo: number) => [hi >> 8, hi & 255, lo >> 8, lo & 255]
   if (g.slice(0, 6).every((x) => x === 0)) return blockedV4(v4(g[6], g[7])) // ::, ::1, ::a.b.c.d
   if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return blockedV4(v4(g[6], g[7])) // ::ffff:a.b.c.d
+  if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0) return blockedV4(v4(g[6], g[7])) // ::ffff:0:a.b.c.d
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return blockedV4(v4(g[6], g[7])) // NAT64
+  if ((g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) || (g[0] === 0x2001 && g[1] === 0)) return true // local NAT64, Teredo
   if (g[0] === 0x2002) return blockedV4(v4(g[1], g[2])) // 6to4
   return (g[0] & 0xfe00) === 0xfc00 // unique local (the tailnet's fd7a:115c:a1e0::/48 among them)
     || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 // link-local, site-local

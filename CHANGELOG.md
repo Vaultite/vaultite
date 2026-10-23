@@ -6,8 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- **Tighter network checks**: a page reaching the app under another site's name (DNS rebinding) can't read plugins'
-  pages either, and requests through Tailscale Funnel (the internet) are refused.
+- **Security pass**: a page reaching the app under another site's name (DNS rebinding) can't read plugins' pages,
+  requests through Tailscale Funnel are refused, an HTML artifact can't take what it read to another site, files from
+  the artifacts' CDN cache never run as pages, other sites can't frame the app, and opening a script or an app kept in
+  the vault shows it in Finder instead of running it.
 - **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
   paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
