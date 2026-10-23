@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, busyWhen, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, tell, type EnginePage } from "./engine.ts"
+import { allPages, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, tell, type EnginePage } from "./engine.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -35,20 +35,6 @@ function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
   // (an extension's own page, Focus's blocked page and its ask for time among them, is the user's alone)
   if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("agents use web pages only, not an extension's or the app's")
   return p
-}
-
-// ---------- the DevTools protocol, one session per page ----------
-
-const attached = new WeakSet<WebContents>()
-export async function cdp<T = Record<string, unknown>>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
-  if (!attached.has(wc)) {
-    try { wc.debugger.attach("1.3") } catch (e) {
-      if (!wc.debugger.isAttached()) throw new Error(`couldn't attach to the page (${(e as Error).message}): is its DevTools open?`)
-    }
-    attached.add(wc)
-    wc.debugger.on("detach", () => attached.delete(wc))
-  }
-  return (await wc.debugger.sendCommand(method, params)) as T
 }
 
 // ---------- snapshots ----------

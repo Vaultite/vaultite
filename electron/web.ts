@@ -2,7 +2,7 @@
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade } from "./browser/engine.ts"
+import { cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { ACCOUNTS, covers, nonempty, type Who } from "./siteaccounts.ts"
@@ -1315,6 +1315,23 @@ function pointer(p: Page, m: unknown) {
   const wc = p.view.webContents
   // (the click landed on the window's view, which macOS gave the keyboard: a press in the page takes it, as a real one does)
   if (e.type === "mouseDown" && !wc.isFocused()) wc.focus()
-  if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true })
-  else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount })
+  const direct = () => {
+    if (e.type === "mouseWheel") wc.sendInputEvent({ type: "mouseWheel", x, y, deltaX: -num(e.dx), deltaY: -num(e.dy), canScroll: true })
+    else if (e.type === "mouseMove" || e.type === "mouseDown" || e.type === "mouseUp" || e.type === "mouseLeave") wc.sendInputEvent({ type: e.type, x, y, button, clickCount })
+  }
+  // Over the DevTools protocol, which finds the frame under the pointer as the Mac's input does: sendInputEvent never
+  // reaches a frame from another site (a captcha, "Sign in with Google"). At the page's CSS pixels; a leave has none.
+  const type = ({ mouseMove: "mouseMoved", mouseDown: "mousePressed", mouseUp: "mouseReleased", mouseWheel: "mouseWheel" } as const)[e.type as string]
+  if (!type) { if (e.type === "mouseLeave") { held.delete(wc); direct() } return }
+  const bit = { left: 1, right: 2, middle: 4 }[button]
+  const was = held.get(wc) ?? 0, now = type === "mousePressed" ? was | bit : type === "mouseReleased" ? was & ~bit : was
+  held.set(wc, now)
+  const pz = wc.getZoomFactor() || 1
+  const at = { x: Math.round(num(e.x) * z / pz), y: Math.round(num(e.y) * z / pz) }
+  const params = type === "mouseWheel" ? { type, ...at, deltaX: num(e.dx) * z / pz, deltaY: num(e.dy) * z / pz }
+    : type === "mouseMoved" ? { type, ...at, button: now ? (now & 1 ? "left" : now & 2 ? "right" : "middle") : "none", buttons: now }
+    : { type, ...at, button, buttons: now, clickCount }
+  void cdp(wc, "Input.dispatchMouseEvent", params).catch(direct)
 }
+/** The buttons held in each page, by the window's passed pointer. */
+const held = new WeakMap<WebContents, number>()

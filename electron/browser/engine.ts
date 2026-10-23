@@ -206,3 +206,17 @@ let sink: ServerSink = () => {}
 export const setServerSink = (fn: ServerSink) => { sink = fn }
 /** Tell the server of `win`'s vault something unasked (the live view's frames). */
 export const tellServer = (win: AppWindow, name: string, data: unknown) => { if (!win.isDestroyed()) sink(win, name, data) }
+
+// ---------- the DevTools protocol, one session per page (agents' input and snapshots, the window's passed pointer) ----------
+
+const attached = new WeakSet<WebContents>()
+export async function cdp<T = Record<string, unknown>>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
+  if (!attached.has(wc)) {
+    try { wc.debugger.attach("1.3") } catch (e) {
+      if (!wc.debugger.isAttached()) throw new Error(`couldn't attach to the page (${(e as Error).message}): is its DevTools open?`)
+    }
+    attached.add(wc)
+    wc.debugger.on("detach", () => attached.delete(wc))
+  }
+  return (await wc.debugger.sendCommand(method, params)) as T
+}

@@ -8,8 +8,9 @@
   till the first paint, so that flashed. Not a hidden page till it paints either: a hidden or off-window view never paints.
 - It's native, a view above the window's own page: while anything covers it, the window's page goes over it
   (`layers.ts`, electron/appwindow.ts), see-through behind it (only backgrounds are cut), so the page stays live. A new
-  overlay that doesn't take the pointer needs `data-floats` (the pointer then goes on to the page). Small ambient bits
-  the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window.
+  overlay that doesn't take the pointer needs `data-floats` (the pointer then goes on to the page over the DevTools
+  protocol: sendInputEvent never reaches a frame from another site, a captcha's or "Sign in with Google"). Small
+  ambient bits the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window.
 - A tab owns its page by the tab's id (`usePane().tab`; electron/webpages.ts decides): hidden in the background, the same
   one when shown again, ended when the tab closes or leaves the window (`onTabClose`) or shows something else. None
   outlives its tab: a reloaded window's tabs take theirs back within seconds or they end. Never match pages by address:

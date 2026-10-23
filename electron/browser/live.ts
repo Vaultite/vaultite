@@ -1,8 +1,8 @@
 // A page watched and driven by its owner from the app's web client (a phone, another Mac: plugins/core/web-viewer's
 // live routes, owner only, never ops): its frames pushed to the server while someone watches, their input made real.
 import type { NativeImage } from "electron"
-import { agentState, cdp, helped, press, setPaused } from "./agent.ts"
-import { allPages, busyWhen, eachPage, handle, mayOpen, tellServer, type EnginePage } from "./engine.ts"
+import { agentState, helped, press, setPaused } from "./agent.ts"
+import { allPages, busyWhen, cdp, eachPage, handle, mayOpen, tellServer, type EnginePage } from "./engine.ts"
 
 /** At most this many frames a second reach the server, at most this big (device pixels). */
 const FPS = 8
