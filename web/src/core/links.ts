@@ -6,7 +6,7 @@ import { type Choice, choose } from "@/components/Chooser"
 import { desktop } from "@/core/desktop"
 import { splitAnchor, tagName } from "../../../core/sections.ts"
 import { openAt } from "@/core/anchors"
-import { runCommandId } from "@/core/commands"
+import { runCommandId, runCommandLink } from "@/core/commands"
 import { detailPath } from "@/core/define"
 import { cleanName, createNamed, folderOf, inVault, openView, stem, type VaultFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
@@ -104,7 +104,7 @@ if (typeof window !== "undefined") {
 }
 
 /** A Markdown link that runs one of the app's commands: `[Open Claude Code](vaultite://command/terminal:claude-split)`.
- *  A click is the user running it, as from the palette (the sandbox's Start here opens Claude Code this way). */
+ *  One that does more than open something asks first (runCommandLink): the note may not be the user's. */
 const COMMAND_LINK = /^vaultite:\/\/command\/([\w:.-]+)$/i
 /** Addresses that run code where they open: never followed. */
 const UNSAFE = /^(javascript|data|vbscript|blob):/i
@@ -125,7 +125,7 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
   let wiki = link.wiki ?? ""
   if (link.url) {
     const cmd = COMMAND_LINK.exec(link.url)
-    if (cmd) { if (!runCommandId(cmd[1])) notify("That isn't available here"); return }
+    if (cmd) { if (!runCommandLink(cmd[1])) notify("That isn't available here"); return }
     if (/^https?:/i.test(link.url)) return openWebLink(link.url, newTab)
     if (/^[a-z][a-z0-9+.-]*:/i.test(link.url)) return openOtherLink(link.url, newTab)
     wiki = mdTarget(s, link.url, from)

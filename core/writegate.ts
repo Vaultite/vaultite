@@ -13,13 +13,19 @@ export const byUser = <T>(fn: () => T): T => acting.run(null, fn)
 /** The plugin acting on its own now, or null. */
 const actor = () => acting.getStore() ?? null
 
+/** Set while answering Vaultite Connect with owner tools off (plugins/core/mcp/connect.ts). */
+const connect = new AsyncLocalStorage<boolean>()
+export const overConnect = <T>(fn: () => T): T => connect.run(true, fn)
+/** What turns plugins on or steers this Mac's agents: only this Mac changes it (APFS ignores case). */
+const MACHINE_ONLY = /^\.vaultite(\/(plugins|plugins-lock|grants)\.json|\/agents\.md)?$/i
+
 /** A write the gate refused: a 403 for the API. */
 export class WriteRefused extends Error {
   status = 403
   plugin: string
   path: string
-  constructor(plugin: string, rel: string) {
-    super(`${plugin} may not write ${rel} on its own: allow it in its settings (Writes on its own)`)
+  constructor(plugin: string, rel: string, why = `${plugin} may not write ${rel} on its own: allow it in its settings (Writes on its own)`) {
+    super(why)
     this.plugin = plugin
     this.path = rel
   }
@@ -67,9 +73,13 @@ const ungated = (rel: string) => rel === ".vaultite" || rel.startsWith(".vaultit
 /** Throws WriteRefused when the plugin acting now may not write `abs` (a file or folder about to be written, moved or
  *  deleted). The core's own work ("core") isn't a plugin's. */
 export function guard(abs: string) {
+  const full = path.resolve(abs)
+  if (connect.getStore()) for (const root of gates.keys()) {
+    const rel = inside(root, full)
+    if (rel !== null && MACHINE_ONLY.test(rel)) throw new WriteRefused("connect", rel, `${rel} is changed only on this Mac (or with owner tools on over Connect, in Connections)`)
+  }
   const id = actor()
   if (!id || id === "core") return
-  const full = path.resolve(abs)
   for (const [root, gate] of gates) {
     const rel = inside(root, full)
     if (rel === null || ungated(rel)) continue

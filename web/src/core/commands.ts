@@ -6,6 +6,7 @@ import { noteActivity } from "@/core/activity"
 import { isDesktop, isMac as MAC } from "@/core/platform"
 import { notifyError } from "@/core/notify"
 import { signal } from "@/core/signal"
+import { confirmDialog } from "@/components/ConfirmDialog"
 
 export type Command = {
   id: string
@@ -15,6 +16,9 @@ export type Command = {
   /** Shortcuts, first shown: "Mod+K" (⌘ on a Mac, Ctrl elsewhere), "Mod+Shift+F", "Mod+\\", or a sequence ("G G"). */
   keys?: string[]
   run: () => unknown
+  /** It only opens or shows something: a link (in a note, or vaultite://command/<id> from another app) runs it without
+   *  asking. Any other command a link names asks first. */
+  fromLink?: boolean
   /** Offered only while this holds (a file is open...). */
   when?: () => boolean
   /** Its keys act only while this holds too: where the keyboard is (a note's keys only in that note), which the
@@ -407,4 +411,15 @@ export function runCommandId(id: string) {
   const c = available(list).find((x) => x.id === id)
   if (c) runOrSay(c.run, commandName(c))
   return !!c
+}
+
+/** A command a link names (runCommandId otherwise): whoever wrote the link may not be the user, so one that does more
+ *  than open something runs once they say so. False when there's no such command (yet). */
+export function runCommandLink(id: string) {
+  const c = available(list).find((x) => x.id === id)
+  if (!c) return false
+  const name = commandName(c)
+  if (c.fromLink) runOrSay(c.run, name)
+  else void confirmDialog({ title: `${name.replace(/…$/, "")}?`, body: "A link asks to run this command.", confirm: "Run" }).then((ok) => { if (ok) runOrSay(c.run, name) })
+  return true
 }

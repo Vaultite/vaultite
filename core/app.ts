@@ -8,7 +8,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
-import { overNetwork, ownerRefusal } from "./owner.ts"
+import { CONNECT_HEADER, overNetwork, ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
 import { migrate, migrateMoved } from "./migrations.ts"
 import { installFrom } from "./coreops/installs.ts"
@@ -34,7 +34,7 @@ import { hookOps } from "./hooks.ts"
 import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
 import { digestOf, VaultPlugins } from "./vaultplugins.ts"
 import * as G from "./grants.ts"
-import { byUser, notHereYet, onItsOwn, runHook, WriteRefused } from "./writegate.ts"
+import { byUser, notHereYet, onItsOwn, overConnect, runHook, WriteRefused } from "./writegate.ts"
 import { asLocked, type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
 import { autoUpdates } from "./updates.ts"
 import { disclosuresOf, saysMore } from "./pluginmeta.ts"
@@ -479,7 +479,9 @@ export class App {
       const go = () => this.respond(method, parts, query, body, http)
       const writer = { client: h("x-vaultite-client"), agent: h("x-vaultite-agent"), terminal: h("x-vaultite-terminal"), session: h("x-vaultite-session"),
         model: h("x-vaultite-model"), effort: h("x-vaultite-effort") }
-      return http ? await as(() => requestWriter.run(writer, go)) : await go()
+      // (Connect without owner tools: CONNECT_HEADER, which only Connect sets; core/writegate.ts refuses what runs code)
+      const via = <T>(fn: () => T) => (http && CONNECT_HEADER in http.headers ? overConnect(fn) : fn())
+      return http ? await via(() => as(() => requestWriter.run(writer, go))) : await go()
     } catch (e) {
       console.error(e)
       return reply(500, { error: String((e as Error).message ?? e) })

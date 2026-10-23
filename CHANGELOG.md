@@ -13,7 +13,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Security pass**: a page reaching the app under another site's name (DNS rebinding) can't read plugins' pages,
   requests through Tailscale Funnel are refused, an HTML artifact can't take what it read to another site, files from
   the artifacts' CDN cache never run as pages, other sites can't frame the app, and opening a script or an app kept in
-  the vault shows it in Finder instead of running it.
+  the vault shows it in Finder instead of running it. A `vaultite://command` link (in a note or from another app) asks
+  before running a command that does more than open something, and Vaultite Connect without owner tools can't turn
+  plugins on or edit the agents' rules.
 - **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
   paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the

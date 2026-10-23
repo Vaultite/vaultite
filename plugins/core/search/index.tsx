@@ -15,7 +15,7 @@ export default definePlugin({
     },
   },
   commands: [
-    { id: "search:open-tab", name: "Open search in a tab", keys: ["Mod+Shift+F"], run: () => (isViewOpen("search") ? openView("search") : openView("search", { newTab: true })) },
+    { id: "search:open-tab", name: "Open search in a tab", keys: ["Mod+Shift+F"], run: () => (isViewOpen("search") ? openView("search") : openView("search", { newTab: true })), fromLink: true },
     // (the editor's right-click menu has it as Search for "…")
     { id: "search:selection", name: "Search for selected text", when: () => !!selectedText().trim(), run: () => openView(`search/${selectedText().replace(/\s+/g, " ").trim()}`) },
   ],

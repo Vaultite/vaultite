@@ -1,6 +1,6 @@
 // The desktop app's side of the page (`window.vaultite`; null in a browser). Chromium moves focus between native views
 // without telling this page, so every focus here asks the main process for the keyboard back (`web.take`).
-import { available, commandList, commandName, isCustom, isOn, isSetting, keysOf, onCommandsChanged, runCommandId } from "@/core/commands"
+import { available, commandList, commandName, isCustom, isOn, isSetting, keysOf, onCommandsChanged, runCommandId, runCommandLink } from "@/core/commands"
 import { onSwitches } from "@/core/switches"
 import { getStore, onStore } from "@/core/data"
 import { get, post, upload as uploadFile } from "@/core/http"
@@ -408,7 +408,7 @@ export function startDesktop() {
   desktop.on((m) => {
     if (m.type === "command" && m.id) runCommandId(m.id)
     // A vaultite://command/<id> from another app: tried until the app has that command (just opened, still starting).
-    else if (m.type === "link" && m.id) { const id = m.id; let n = 0; const go = () => { if (!runCommandId(id) && ++n < 40) setTimeout(go, 150) }; go() }
+    else if (m.type === "link" && m.id) { const id = m.id; let n = 0; const go = () => { if (!runCommandLink(id) && ++n < 40) setTimeout(go, 150) }; go() }
     // A bundle's link (vaultite://bundle/<owner>/<name>): its preview.
     else if (m.type === "link" && m.bundle) void import("@/core/bundles").then((b) => b.openBundleLink(m.bundle!))
     else if (m.type === "open" && m.path) open(m.path)

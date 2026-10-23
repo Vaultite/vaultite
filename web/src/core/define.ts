@@ -537,6 +537,8 @@ export type PluginCommand = { id: string; name: string; keys?: string[]; when?: 
   keysWhen?: () => boolean
   /** Only on computers (a split, the sidebar: phones have neither). */
   desktop?: boolean
+  /** It only opens or shows something: a link runs it without asking (core/commands.ts runCommandLink). */
+  fromLink?: boolean
   /** Its icon (a component, or a Lucide name: `mic`; its plugin's when left out) and a shorter name where it's a button
    *  (a blank tab's: core/newtab.ts). After `run` in the source. */
   icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string; label?: string

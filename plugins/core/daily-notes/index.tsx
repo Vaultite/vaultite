@@ -37,7 +37,7 @@ function DayBlock({ store, options }: BlockCtx) {
 
 export default definePlugin({
   commands: [
-    { id: "daily-notes:today", name: "Open today's daily note", keys: ["Mod+Shift+D"], run: () => openDay(today()), label: "Daily note" },
+    { id: "daily-notes:today", name: "Open today's daily note", keys: ["Mod+Shift+D"], run: () => openDay(today()), fromLink: true, label: "Daily note" },
     { id: "daily-notes:tomorrow", name: "Open tomorrow's daily note", run: () => openDay(addDays(today(), 1)), label: "Daily note" },
   ],
   blocks: { day: (ctx) => <DayBlock {...ctx} /> },

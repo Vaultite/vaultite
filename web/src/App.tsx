@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
-import { runCommandId, useCommands } from "@/core/commands"
+import { runCommandLink, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
@@ -268,7 +268,7 @@ export default function App() {
     else if (desktop && !detail && store) replaceHash(hashOf(activeTab().to))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, desktop, known, !!store])
-  useEffect(() => takeLinks({ command: runCommandId, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true },
+  useEffect(() => takeLinks({ command: runCommandLink, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true },
     bundle: (repo) => { if (!getStore()) return false; void openBundleLink(repo); return true } }), [])
   // First load with no address: show the tab that was open last time.
   useEffect(() => {
@@ -310,11 +310,11 @@ export default function App() {
   const besideText = () => { const ed = currentEditor(); return !!ed?.undo && keysInEditor(ed) }
   useCommands(() => [
     // (`label` and `icon`: as a blank tab's buttons, core/newtab.ts' default ones.)
-    { id: "switcher:open", name: "Open quick switcher", keys: ["Mod+O"], run: () => setPalette((p) => (p === "search" ? null : "search")), label: "Open a file", icon: FileText },
+    { id: "switcher:open", name: "Open quick switcher", keys: ["Mod+O"], run: () => setPalette((p) => (p === "search" ? null : "search")), fromLink: true, label: "Open a file", icon: FileText },
     { id: "palette:open", name: "Open command palette", keys: ["Mod+P"], run: () => setPalette((p) => (p === "commands" ? null : "commands")), icon: CommandIcon },
     { id: "icon:search", name: "Search icons", run: () => pickIcon({ title: "Search icons", onPick: (n) => copyText(n).then(() => notify(`Copied ${n}: use it as an icon:`, { id: "copied" }), notifyError) }), icon: Smile },
     // ⌘N, ⌘T, ⌘W are the browser's: the desktop app has them (its menu), the web gets another key or none.
-    { id: "file:new", name: "Create new note", keys: desktopApp ? ["Mod+N"] : ["Mod+Alt+N"], run: () => void newNote(), label: "New note", icon: FilePlus },
+    { id: "file:new", name: "Create new note", keys: desktopApp ? ["Mod+N"] : ["Mod+Alt+N"], run: () => void newNote(), fromLink: true, label: "New note", icon: FilePlus },
     // On a phone the sidebars are drawers (components/PhoneDrawer.tsx).
     { id: "sidebar:toggle", name: "Show left sidebar", keys: ["Mod+\\"],
       run: () => (isDesktop() ? setPrefs({ sidebar: !getPrefs().sidebar }) : openDrawer(drawerOut() === "left" ? null : "left")), icon: PanelLeft,
