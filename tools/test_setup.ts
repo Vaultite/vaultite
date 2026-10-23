@@ -14,7 +14,9 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-setup-test-"))
 const home = path.join(tmp, "home")
 const put = (rel: string, text: string) => { const p = path.join(home, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); return p }
 // Node as "the app's executable": the shim runs bin/vau with it, as the app runs it with Electron.
-const w = { home, exe: process.execPath, root: ROOT, userData: path.join(tmp, "userData"), env: { VAULTITE_USER_DATA: path.join(tmp, "userData") } }
+// (macOS' and Linux' logic on Windows too: its own below)
+const w = { home, exe: process.execPath, root: ROOT, userData: path.join(tmp, "userData"), env: { VAULTITE_USER_DATA: path.join(tmp, "userData") },
+  platform: process.platform === "win32" ? "linux" : process.platform }
 fs.mkdirSync(home, { recursive: true })
 
 // ---------- places, Obsidian ----------
@@ -40,8 +42,10 @@ const v1 = S.installVau(w)
 check("vau: written to ~/.local/bin", v1.path === path.join(home, ".local/bin/vau") && (fs.statSync(v1.path).mode & 0o111) !== 0, v1)
 check("vau: again is nothing to do", S.installVau(w).did.startsWith("vau is already"))
 check("vau: on the PATH when ~/.local/bin is", S.vauStatus(w, [path.join(home, ".local/bin")]).onPath && !S.vauStatus(w, ["/usr/bin"]).onPath)
-const out = execFileSync(v1.path, ["--help"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home } })
-check("vau: runs with no node on the PATH", /vau: drive Vaultite/.test(out), out.slice(0, 200))
+if (process.platform !== "win32") {
+  const out = execFileSync(v1.path, ["--help"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: home } })
+  check("vau: runs with no node on the PATH", /vau: drive Vaultite/.test(out), out.slice(0, 200))
+}
 check("vau: the shim passes the app's userData on", fs.readFileSync(v1.path, "utf8").includes(`VAULTITE_USER_DATA='${w.userData}'`))
 // Someone else's vau in ~/.local/bin stays; ours goes in userData.
 const home2 = path.join(tmp, "home2"), w2 = { ...w, home: home2 }
@@ -67,6 +71,10 @@ check("vau on Windows: a REG_SZ PATH stays one", S.addToPath(fakeReg, wbin) && !
 reg = null
 check("vau on Windows: no PATH of the user's yet makes one", S.addToPath(fakeReg, wbin) && reg!.value === wbin && reg!.expand)
 check("vau on Windows: status reads the PATH's folders (any case, a trailing slash)", S.vauStatus(ww, [wbin.toUpperCase() + "\\"]).onPath && !S.vauStatus(ww, ["C:\\Tools"]).onPath && S.vauStatus(ww, []).path === wv.path)
+if (process.platform === "win32") {
+  const out = execFileSync("cmd.exe", ["/d", "/c", wv.path, "--help"], { encoding: "utf8", env: { SystemRoot: process.env.SystemRoot, PATH: "C:\\Windows\\System32" } })
+  check("vau on Windows: vau.cmd runs with no node on the PATH", /vau: drive Vaultite/.test(out), out.slice(0, 200))
+}
 check("vau on Windows: a made-up home never touches the registry", !/PATH/.test(S.installVau({ ...ww, home: path.join(tmp, "winhome2") }).did))
 
 // ---------- vau in WSL: the script, with a stand-in wslpath and Windows executable ----------

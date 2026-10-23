@@ -602,7 +602,8 @@ server.listen(PORT, HOST, () => {
 if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
   const { startUpdater } = await import("./core/selfupdate.ts")
   startUpdater({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
-    restart: () => process.kill(process.pid, "SIGTERM"),
+    // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told)
+    restart: () => bye(143),
     // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
     busy: async () => {
       await ready

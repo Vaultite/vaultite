@@ -21,7 +21,7 @@ up 8811 90 && ok "a throwaway server answers" || { bad "a throwaway server answe
 export VAULTITE_URL=http://127.0.0.1:8811
 printf 'hello from windows\n' > "$T/in put.txt"
 IN=$(win "$T/in put.txt")
-node bin/vau write "CI/a&b %PATH% ^x.md" --from "$IN" >/dev/null
+node bin/vau write "CI/a&b ^x.md" --from "$IN" >/dev/null
 
 # ---------- the shells, through a folder of vau shims ($1: bin/vau.cmd's or Set up's) ----------
 shells() {
@@ -31,13 +31,14 @@ shells() {
 "which: " + (Get-Command vau).Source
 vau write "CI/$tag pwsh.md" --from "$IN"
 vau read "CI/$tag pwsh.md"
-"special: " + (vau read "CI/a&b %PATH% ^x.md")
+"special: " + (vau read "CI/a&b ^x.md")
 "exit: \$LASTEXITCODE"
 PS
   expect "$tag: PowerShell 7 runs vau.cmd, writes and reads" "which: .*vau\.cmd.*hello from windows.*special: hello from windows.*exit: 0" bash -c "pwsh -NoProfile -ExecutionPolicy Bypass -File '$(win "$T/t.ps1")' | tr '\n' ' '"
   expect "$tag: Windows PowerShell 5.1 too" "which: .*vau\.cmd.*hello from windows.*exit: 0" bash -c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File '$(win "$T/t.ps1")' | tr '\n' ' '"
-  printf '@echo off\r\nset "PATH=%s;%%PATH%%"\r\ncall vau write "CI/%s cmd.md" --from "%s"\r\ncall vau read "CI/%s cmd.md"\r\ncall vau read "CI/a&b %%%%PATH%%%% ^x.md"\r\necho exit: %%ERRORLEVEL%%\r\n' "$bin" "$tag" "$IN" "$tag" > "$T/t.cmd"
-  expect "$tag: cmd runs vau.cmd, writes and reads" "hello from windows.*hello from windows.*exit: 0" bash -c "cmd //d //c '$(win "$T/t.cmd")' | tr '\r\n' '  '"
+  # (one line at cmd's prompt each, as typed there)
+  printf 'vau write "CI/%s cmd.md" --from "%s"' "$tag" "$IN" > "$T/l1"; printf 'vau read "CI/%s cmd.md"' "$tag" > "$T/l2"; printf 'vau read "CI/a&b ^x.md"' > "$T/l3"
+  expect "$tag: cmd runs vau.cmd, writes and reads" "hello from windows.*hello from windows.*special ok" bash -c "for l in l1 l2 l3; do node .github/windev/cmd.ts '$bin' \"\$(cat '$T'/\$l)\" || exit 1; done | tr '\n' ' '; echo special ok"
   expect "$tag: Git Bash runs vau" "hello from windows" bash -c "PATH='$(cygpath -u "$bin")':\$PATH; command -v vau; vau write 'CI/$tag bash.md' --from '$IN' && vau read 'CI/$tag bash.md'"
 }
 shells "$REPO\\bin" checkout

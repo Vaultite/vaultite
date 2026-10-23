@@ -227,7 +227,8 @@ function readStdin(implicit = false): Promise<string> {
   piped ??= new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = []
     let socket = false
-    try { socket = fs.fstatSync(0).isSocket() } catch { /* closed: nothing comes */ }
+    // (Windows' pipes, a spawned process' too, read as FIFOs)
+    try { const st = fs.fstatSync(0); socket = st.isSocket() || (process.platform === "win32" && st.isFIFO()) } catch { /* closed: nothing comes */ }
     const quiet = implicit && socket ? setTimeout(() => { process.stdin.destroy(); resolve("") }, UNASKED_MS) : null
     process.stdin.on("data", (c: Buffer) => { if (quiet) clearTimeout(quiet); chunks.push(c) })
     process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
@@ -528,7 +529,8 @@ Options: --json (machine-readable output), --count (how many a list answer holds
 is a prompt (Tab completes, with history).
 Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the
 app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal).
-Windows: vau runs in PowerShell, cmd and Git Bash; in WSL, \`vau wsl install\` puts Windows' vau there.
+Windows: vau runs in PowerShell, cmd and Git Bash (there cmd expands %VAR% in arguments: such text goes by --from or
+stdin). In WSL (\`vau wsl install\` from Windows) it's Windows' vau: paths it prints are WSL's.
 Settings and data both go through the server (settings key by key, the rest of each file kept); the app follows
 every change live. File formats: vau docs.`
 }
@@ -715,7 +717,7 @@ export async function toClipboard(text: string, platform: string = process.platf
   const { spawn } = await import("node:child_process")
   for (const [cmd, ...args] of tools) {
     const ok = await new Promise<boolean>((resolve) => {
-      const p = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], env: env as NodeJS.ProcessEnv })
+      const p = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], env: env as NodeJS.ProcessEnv, windowsHide: true })
       p.on("error", () => resolve(false))
       p.on("close", (code) => resolve(code === 0))
       p.stdin.on("error", () => {})
