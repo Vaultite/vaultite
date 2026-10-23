@@ -36,9 +36,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   live and tap, type and scroll in it, stop or resume its agents, see what they did there, and say Done to what an agent
   asked (signing in, a check): the Inbox item a browser ask makes opens it.
 - **Sites, tidied**: each container is a card in its colour and leads with who you're signed in as, now on Google
-  (YouTube and its country sites in the same row, other Google accounts beside it), X, Reddit, GitHub and Hacker News
-  too, with their pictures; a site whose login cookie is there shows signed in even when it won't say who, and keeps
-  the name it last gave. The rest fold behind "N more sites", latest visited first, and a filter finds a site or account.
+  (YouTube and its country sites in the same row, other Google accounts beside it), X, Reddit, GitHub, GitLab, Hacker
+  News, Instagram, Facebook, LinkedIn, Cloudflare, Cursor, Apple, Perplexity and Wikipedia too, Discord and WhatsApp as
+  their open page last showed, with their pictures; a site whose login cookie is there shows signed in even when it
+  won't say who, and keeps the name it last gave. Each site is asked only every few hours per login, again when you
+  sign in to another account. The rest fold behind "N more sites", latest visited first, and a filter finds a site or account.
   Drag a container by its name (or Move up and down in its menu) to reorder it everywhere it's listed. The address bar's container menu says who you'd be in
   each container. A page's own icon (Google Maps) no longer replaces its site's on every other tab.
 - **Answered at once**: what you do shows straight away instead of after the server replies. Forgetting a device,

@@ -5,7 +5,7 @@ import { AppWindow } from "./appwindow.ts"
 import { cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade, sessionReady } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
-import { ACCOUNTS, covers, nonempty, type Who } from "./siteaccounts.ts"
+import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
@@ -815,6 +815,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     }
     await s.clearData({ origins: [`https://${name}`, `https://www.${name}`], dataTypes: ["cookies", "localStorage", "indexedDB", "serviceWorkers", "cache", "fileSystems"] }).catch(() => {})
     accounts.delete(`${prof} ${name}`)
+    keepKnown(prof, name, "", null)
     for (const k of Object.keys(loadAnswers()[prof]?.[name] ?? {})) answer(prof, name, k, null) // what it may use is asked again
     // Its pages in that profile show it signed out.
     for (const p of pages.values()) if (p.profile === prof && siteOf(hostOfUrl(p.view.webContents.getURL())) === name) p.view.webContents.reload()
@@ -857,13 +858,15 @@ function siteOf(host: string) {
 }
 const hostOfUrl = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
 
-/** Accounts found lately, by "<profile> <site>", with their picture as an icon: asked again after a minute. null:
- *  asked, nobody signed in; an empty account: signed in, its name not had. */
-const accounts = new Map<string, { at: number; who: Who | null }>()
+/** Accounts found lately, by "<profile> <site>": `login` the login they were found for (see loginOf). null: nobody
+ *  signed in; an empty account: signed in, its name not had. */
+const accounts = new Map<string, { at: number; login: string; who: Who | null }>()
+/** How long a site isn't asked again for the same login: named, or not (it may say later); a page's look is free. */
+const ASK_NAMED = 6 * 3_600_000, ASK_UNNAMED = 30 * 60_000, ASK_LOOK = 60_000
 
-/** The last account named for each login (by profile, site, and a hash of its login cookie, so another login asks
- *  again), for when its site won't say: in userData, never the vault. */
-type Known = Record<string, Record<string, { login: string; who: Who }>>
+/** The last account named for each login (by profile, site, and a hash of its login, so another login asks again),
+ *  for when its site won't say and so a restart doesn't ask again: in userData, never the vault. */
+type Known = Record<string, Record<string, { login: string; who: Who; at?: number }>>
 let known: Known | null = null
 const knownFile = () => path.join(app.getPath("userData"), "web-accounts.json")
 function loadKnown(): Known {
@@ -872,54 +875,74 @@ function loadKnown(): Known {
 }
 function keepKnown(profile: string, site: string, login: string, who: Who | null) {
   const k = loadKnown(), had = k[profile]?.[site]
-  if (who ? had?.login === login && JSON.stringify(had.who) === JSON.stringify(who) : !had) return
-  if (who) (k[profile] ??= {})[site] = { login, who }
+  if (who ? had?.login === login && JSON.stringify(had.who) === JSON.stringify(who) && Date.now() - (had.at ?? 0) < ASK_NAMED / 2 : !had) return
+  if (who) (k[profile] ??= {})[site] = { login, who, at: Date.now() }
   else delete k[profile]?.[site]
   try { writeAtomic(knownFile(), JSON.stringify(k)) } catch { /* asked again next time */ }
 }
 const loginHash = (value: string) => crypto.createHash("sha256").update(value).digest("hex").slice(0, 16)
+/** What says it's still the same login: its login cookie, else which cookies the site keeps (signing in or out changes
+ *  them); a site only an open page tells, its last look. */
+function loginOf(how: Rule, mine: Electron.Cookie[], login?: Electron.Cookie) {
+  if (login) return loginHash(login.value)
+  return how.url || how.read ? loginHash(mine.map((c) => c.name).sort().join(" ")) : "look"
+}
 
-/** Who's signed in to `site` in a profile (its cookies given). A site with a login cookie is signed in by it alone:
- *  its name is asked, else the one last named for that login. */
+/** Who's signed in to `site` in a profile (its cookies given), asked as rarely as its rule allows. A site with a login
+ *  cookie is signed in by it alone: its name is asked, else the one last named for that login. */
 async function accountOf(profile: string, site: string, cookies: Electron.Cookie[]): Promise<Who | null> {
   const how = ACCOUNTS[site]
   if (!how) return null
-  const key = `${profile} ${site}`
-  const login = how.signed ? cookies.find((c) => siteOf(c.domain ?? "") === site && c.name.startsWith(how.signed!) && c.value) : undefined
-  if (how.signed && !login) { accounts.set(key, { at: Date.now(), who: null }); keepKnown(profile, site, "", null); return null }
-  const had = accounts.get(key)
-  if (had && Date.now() - had.at < 60_000) return had.who
+  const key = `${profile} ${site}`, now = Date.now()
+  const mine = cookies.filter((c) => siteOf(c.domain ?? "") === site)
+  const login = how.signed ? mine.find((c) => c.name.startsWith(how.signed!) && c.value) : undefined
+  if (how.signed && !login) { accounts.set(key, { at: now, login: "", who: null }); keepKnown(profile, site, "", null); return null }
+  const id = loginOf(how, mine, login), lookOnly = id === "look"
+  const open = [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)
+  const had = accounts.get(key), kept = loadKnown()[profile]?.[site]
+  const wait = lookOnly ? ASK_LOOK : had?.who?.account ? ASK_NAMED : ASK_UNNAMED
+  if (had && (had.login === id ? now - had.at < wait : now - had.at < ASK_LOOK)) return had.who
+  if (!had && !lookOnly && kept?.login === id && now - (kept.at ?? 0) < ASK_NAMED) { accounts.set(key, { at: kept.at!, login: id, who: kept.who }); return kept.who }
+  if (lookOnly && !open) return kept?.who ?? null // (as an open page last showed it)
+
+  const s = webSession(profile)
+  const found = await askWho(s, how, open).catch(() => null)
   let who: Who | null = null
-  try {
-    const s = webSession(profile)
-    const open = [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)
-    const cookie = async (domain: string, name: string) => (await s.cookies.get({ domain, name }).catch(() => []))[0]?.value ?? ""
-    let w: Who | null = null
-    if (how.look && open) w = how.look.read(await open.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: how.look.code }]).catch(() => null))
-    if (!w) {
-      const page = how.page && open
-      const as = how.text ? "text" : "json"
-      const body = !how.url ? null : page
-        ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: `fetch(${JSON.stringify(how.url)}, { credentials: "include" }).then((r) => r.ok ? r.${as}() : null).catch(() => null)` }])
-        : await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers: { accept: how.text ? "text/html,*/*" : "application/json" } } as RequestInit)
-          .then((r) => (r.ok ? r[as]() : null)).catch(() => null)
-      const v = body || !how.url ? await how.read(body, cookie) : null
-      w = typeof v === "string" ? { account: v } : v
-    }
-    const account = nonempty(w?.account).slice(0, 200)
-    if (w && account) {
-      who = { account, ...(w.more?.length ? { more: w.more.map((m) => m.slice(0, 200)).slice(0, 9) } : {}) }
-      const pic = w.avatar && /^https:\/\//.test(w.avatar) ? await iconBytes(s, w.avatar).then((b) => b && iconOf(b), () => null) : null
-      if (pic && isIcon(pic)) who.avatar = pic
-    }
-  } catch { /* the site changed, or didn't answer: no name */ }
-  if (login) {
-    const hash = loginHash(login.value), kept = loadKnown()[profile]?.[site]
-    if (who) keepKnown(profile, site, hash, who)
-    else who = kept?.login === hash ? kept.who : { account: "" }
+  if (found === false) keepKnown(profile, site, "", null)
+  else if (found?.account) {
+    who = { account: found.account.slice(0, 200), ...(found.more?.length ? { more: found.more.map((m) => m.slice(0, 200)).slice(0, 9) } : {}) }
+    const pic = found.avatar && /^https:\/\//.test(found.avatar) ? await iconBytes(s, found.avatar).then((b) => b && iconOf(b), () => null) : null
+    if (pic && isIcon(pic)) who.avatar = pic
+    keepKnown(profile, site, id, who)
   }
-  accounts.set(key, { at: Date.now(), who })
+  // Not named now: the name last had for this login, else signed in when its cookie or page says so.
+  else if (kept?.login === id && (!lookOnly || found === null)) who = kept.who
+  else if (found || login) who = { account: "" }
+  accounts.set(key, { at: now, login: id, who })
   return who
+}
+
+/** What a site's rule finds: who (an empty account: signed in, not named), false: signed out, null: it can't tell. */
+async function askWho(s: Electron.Session, how: Rule, open: Page | undefined): Promise<Who | false | null> {
+  const inPage = (code: string) => open!.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code }]) as Promise<unknown>
+  const cookie = async (domain: string, name: string) => (await s.cookies.get({ domain, name }).catch(() => []))[0]?.value ?? ""
+  if (how.look && open) {
+    const w = how.look.read(await inPage(how.look.code).catch(() => null))
+    if (w !== null || !how.read) return w
+  }
+  if (!how.read) return null
+  let res: { url: string; body: unknown } | null = null
+  if (how.url) {
+    const as = how.text ? "text" : "json", headers = { accept: how.text ? "text/html,*/*" : "application/json", ...how.headers }
+    // (from its open page as its own scripts would, else, or when that page is on another of its hosts, from here)
+    if (how.page && open && !how.method) res = await inPage(`fetch(${JSON.stringify(how.url)}, { credentials: "include", headers: ${JSON.stringify(headers)} })
+      .then(async (r) => r.ok ? { url: r.url, body: await r.${as}() } : null).catch(() => null)`).catch(() => null) as typeof res
+    res ??= await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers } as RequestInit)
+      .then(async (r) => (r.ok ? { url: r.url, body: await r[as]() as unknown } : null)).catch(() => null)
+    if (!res?.body) return null
+  }
+  const v = await how.read(res?.body ?? null, cookie, res?.url ?? "")
+  return typeof v === "string" ? (v ? { account: v } : null) : v && nonempty(v.account) ? { ...v, account: nonempty(v.account) } : null
 }
 
 async function sitesOf(profile: string): Promise<WebSite[]> {

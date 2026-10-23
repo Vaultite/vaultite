@@ -11,41 +11,117 @@ export const nonempty = (v: unknown) => (typeof v === "string" && v.trim() ? v.t
 const X_LOOK = `(() => { const a = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]'); const img = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"] img')
   return a ? { handle: (a.getAttribute("href") || "").slice(1), avatar: img ? img.src : "" } : null })()`
 
-/** Sites whose account we know how to ask for (`page`: from an open page; `look`: read off one), what names it, `with`
- *  sites the same login covers by its cookie there, and `signed`: the login's cookie, which alone says it's signed in. */
-export const ACCOUNTS: Record<string, {
-  url?: string; page?: true; text?: true; method?: "POST"; with?: Record<string, string>; signed?: string
-  look?: { code: string; read: (v: unknown) => Who | null }
-  read: (body: unknown, cookie: (domain: string, name: string) => Promise<string>) => Who | string | null | Promise<Who | string | null>
-}> = {
-  "claude.ai": { url: "https://claude.ai/api/account", page: true, signed: "sessionKey", read: (b) => { const j = obj(b); return nonempty(j.email_address) || nonempty(obj(j.account).email_address) || nonempty(j.full_name) } },
-  "chatgpt.com": { url: "https://chatgpt.com/api/auth/session", page: true, read: (b) => { const u = obj(obj(b).user); return { account: nonempty(u.email) || nonempty(u.name), avatar: nonempty(u.image) } } },
+/** One site's way to say who's signed in, with a set of logins' own cookies. Only a name, handle or email: never a
+ *  token or a cookie's secret. */
+export type Rule = {
+  /** A "who am I" address its own pages ask, read by `read`; `text`: a page, not JSON. */
+  url?: string; text?: true; method?: "POST"
+  /** The fixed headers its pages send with it (an app id), never a secret. */
+  headers?: Record<string, string>
+  /** Asked from an open page of the site when there is one, as its own scripts would. */
+  page?: true
+  /** The login's cookie, which alone says it's signed in (and that it's still the same login). */
+  signed?: string
+  /** Sites the same login covers, by its cookie there. */
+  with?: Record<string, string>
+  /** Read off an open page instead (`code` in a world of its own): who, false when plainly signed out, null unsure. */
+  look?: { code: string; read: (v: unknown) => Who | false | null }
+  /** Who the answer names (given the address it ended at), null for nobody. */
+  read?: (body: unknown, cookie: (domain: string, name: string) => Promise<string>, url: string) => Who | string | null | Promise<Who | string | null>
+}
+
+/** A string at a dotted path of a JSON answer ("user.email"), or "". */
+export const at = (v: unknown, path: string) => nonempty(path.split(".").reduce((o, k) => obj(o)[k], v))
+/** "alice" → "@alice"; nothing for anything but a handle. */
+const handle = (v: string, max = 30) => (new RegExp(`^[\\w.]{1,${max}}$`).test(v) ? `@${v}` : null)
+
+/** Discord's open app: the user it remembers (its own stores, never the token), signed out at its login page. */
+const DISCORD_LOOK = `(() => { const get = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null") } catch { return null } }
+  if (/^\\/(login|register)/.test(location.pathname)) return { out: true }
+  const id = get("user_id_cache"); if (!id || !location.pathname.startsWith("/channels")) return null
+  const u = ((get("MultiAccountStore") || {})._state || {}).users || []
+  return { name: (u.find((x) => x && x.id === id) || {}).username || "" } })()`
+/** WhatsApp Web: its chats (the number it's linked to, as it keeps it), or the QR code to link it. */
+const WHATSAPP_LOOK = `(() => { if (document.querySelector("#pane-side")) return { phone: String(localStorage.getItem("last-wid-md") || "") }
+  return document.querySelector("[data-ref] canvas") ? { out: true } : null })()`
+
+/** Sites whose account we know how to ask for, by site ("ycombinator.com" for news.ycombinator.com): adding one is an
+ *  entry here and a test in tools/test_web.ts. */
+export const ACCOUNTS: Record<string, Rule> = {
+  "claude.ai": { url: "https://claude.ai/api/account", page: true, signed: "sessionKey", read: (b) => at(b, "email_address") || at(b, "account.email_address") || at(b, "full_name") },
+  "chatgpt.com": { url: "https://chatgpt.com/api/auth/session", page: true, read: (b) => ({ account: at(b, "user.email") || at(b, "user.name"), avatar: at(b, "user.image") }) },
+  "perplexity.ai": { url: "https://www.perplexity.ai/api/auth/session", page: true, read: (b) => at(b, "user.email") || at(b, "user.username") },
   // (the list Chrome asks for its own sign-in: every Google account signed in, the first the default one)
   "google.com": { url: "https://accounts.google.com/ListAccounts?gpsia=1&source=ChromiumBrowser&json=standard", method: "POST", text: true,
     signed: "SID", with: { "youtube.com": "SID", "google.*": "SID" }, read: (b) => googleAccounts(String(b)) },
-  "reddit.com": { url: "https://www.reddit.com/api/me.json", read: (b) => {
-    const d = obj(obj(b).data), name = nonempty(d.name)
-    return name ? { account: `u/${name}`, avatar: nonempty(d.icon_img).replace(/&amp;/g, "&") } : null
+  "reddit.com": { url: "https://www.reddit.com/api/me.json", page: true, read: (b) => {
+    const name = at(b, "data.name")
+    return name ? { account: `u/${name}`, avatar: at(b, "data.icon_img").replace(/&amp;/g, "&") } : null
   } },
   "github.com": { url: "https://github.com/", text: true, signed: "user_session", read: (b) => {
     const login = /<meta name="user-login" content="([A-Za-z0-9-]{1,39})"/.exec(String(b))?.[1]
     return login ? { account: login, avatar: `https://github.com/${login}.png?size=64` } : null
   } },
+  // (its API takes the web session's cookie)
+  "gitlab.com": { url: "https://gitlab.com/api/v4/user", read: (b) => ({ account: at(b, "username"), avatar: at(b, "avatar_url") }) },
   // (its page names the signed-in user among others: theirs is the one whose id the twid cookie has; its bot check
   // often turns that away, so an open page's sidebar says it too)
   "x.com": { url: "https://x.com/home", text: true, signed: "auth_token", look: { code: X_LOOK, read: xLooked }, read: async (b, cookie) => {
     const id = /u%3D(\d+)|u=(\d+)/.exec(decodeURIComponent(await cookie("x.com", "twid")))?.slice(1).find(Boolean)
     if (!id) return null
-    const html = String(b), at = html.indexOf(`"id_str":"${id}"`)
-    if (at < 0) return null
+    const html = String(b), i = html.indexOf(`"id_str":"${id}"`)
+    if (i < 0) return null
     // (its fields, up to the next user's)
-    const rest = html.slice(at + 10, at + 6000), own = rest.slice(0, (rest.indexOf('"id_str":"') + 1 || rest.length + 1) - 1)
+    const rest = html.slice(i + 10, i + 6000), own = rest.slice(0, (rest.indexOf('"id_str":"') + 1 || rest.length + 1) - 1)
     const name = /"screen_name":"(\w{1,15})"/.exec(own)?.[1]
     const pic = /"profile_image_url_https":"([^"]+)"/.exec(own)?.[1]?.replace(/\\\//g, "/")
     return name ? { account: `@${name}`, avatar: pic ?? "" } : null
   } },
+  // (its web app's id, as its pages send it)
+  "instagram.com": { url: "https://www.instagram.com/api/v1/accounts/edit/web_form_data/", headers: { "x-ig-app-id": "936619743392459" }, signed: "sessionid",
+    read: (b) => handle(at(b, "form_data.username")) },
+  // (any page of its has the user it's for; c_user, the login's user id, says which)
+  "facebook.com": { url: "https://www.facebook.com/settings/", text: true, page: true, signed: "c_user", read: async (b, cookie) => facebookName(String(b), await cookie("facebook.com", "c_user")) },
+  // (/in/me/ takes you to your own profile: its address names you)
+  "linkedin.com": { url: "https://www.linkedin.com/in/me/", text: true, signed: "li_at", read: (_b, _c, url) => {
+    const slug = decodeURIComponent(/linkedin\.com\/in\/([^/?#]+)/.exec(url)?.[1] ?? "")
+    return slug && slug !== "me" && /^[\p{L}\p{N}_-]{3,100}$/u.test(slug) ? slug : null
+  } },
+  "discord.com": { look: { code: DISCORD_LOOK, read: (v) => looked(v, (o) => handle(nonempty(o.name), 32) ?? "") } },
+  "whatsapp.com": { look: { code: WHATSAPP_LOOK, read: (v) => looked(v, (o) => phoneOf(nonempty(o.phone))) } },
+  "cloudflare.com": { url: "https://dash.cloudflare.com/api/v4/user", headers: { "x-cross-site-security": "dash" }, signed: "vses2", read: (b) => at(b, "result.email") },
+  "cursor.com": { url: "https://cursor.com/api/auth/me", signed: "WorkosCursorSessionToken", read: (b) => ({ account: at(b, "email"), avatar: at(b, "picture") }) },
+  // An Apple Account (developer.apple.com's, App Store Connect's): the session App Store Connect's pages ask for
+  "apple.com": { url: "https://appstoreconnect.apple.com/olympus/v1/session", signed: "myacinfo", read: (b) => at(b, "user.emailAddress") || at(b, "user.fullName") },
+  "wikipedia.org": { url: "https://en.wikipedia.org/w/api.php?action=query&meta=userinfo&format=json", read: (b) => {
+    const u = obj(obj(obj(b).query).userinfo)
+    return Number(u.id) > 0 && !("anon" in u) ? nonempty(u.name) || null : null // (signed out, it names your IP address)
+  } },
   // Hacker News: its login cookie is "<name>&<hash>"
   "ycombinator.com": { signed: "user", read: async (_b, cookie) => /^[\w-]{2,15}(?=&)/.exec(await cookie("news.ycombinator.com", "user"))?.[0] ?? null },
+}
+
+/** What a look found: signed out, can't tell, or who (its name as `name` makes it, "" when it doesn't say). */
+function looked(v: unknown, name: (o: Json) => string | null): Who | false | null {
+  if (!v || typeof v !== "object") return null
+  const o = v as Json
+  return o.out ? false : { account: name(o) ?? "" }
+}
+
+/** WhatsApp's own id for the number ("5511987654321:12@c.us", maybe quoted) → "+5511987654321". */
+export function phoneOf(wid: string) {
+  const n = /^"?(\d{8,15})[:@]/.exec(wid)?.[1]
+  return n ? `+${n}` : ""
+}
+
+/** Facebook's page: the name of the user it's for, if that's `id` (its c_user cookie). */
+export function facebookName(html: string, id: string) {
+  const i = html.indexOf('"CurrentUserInitialData"')
+  if (i < 0 || !/^\d+$/.test(id)) return null
+  const data = html.slice(i, i + 3000)
+  if (/"USER_ID":"(\d+)"/.exec(data)?.[1] !== id) return null
+  const name = /"NAME":"((?:[^"\\]|\\.)+)"/.exec(data)?.[1]
+  try { return name ? nonempty(JSON.parse(`"${name}"`)) || null : null } catch { return null }
 }
 
 /** Whether `site` is one a `with` key names. */
