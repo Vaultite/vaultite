@@ -227,8 +227,9 @@ function readStdin(implicit = false): Promise<string> {
   piped ??= new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = []
     let socket = false
-    // (Windows' pipes, a spawned process' too, read as FIFOs)
-    try { const st = fs.fstatSync(0); socket = st.isSocket() || (process.platform === "win32" && st.isFIFO()) } catch { /* closed: nothing comes */ }
+    // (Windows: any pipe, which fstat may not even describe, as a socket: a spawned process' stdin is one)
+    const win = process.platform === "win32"
+    try { const st = fs.fstatSync(0); socket = st.isSocket() || (win && !st.isFile() && !st.isCharacterDevice()) } catch { socket = win }
     const quiet = implicit && socket ? setTimeout(() => { process.stdin.destroy(); resolve("") }, UNASKED_MS) : null
     process.stdin.on("data", (c: Buffer) => { if (quiet) clearTimeout(quiet); chunks.push(c) })
     process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))

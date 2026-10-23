@@ -76,7 +76,7 @@ for (;;) {
 /** What it writes and runs, without doing it: the job's file and the commands that start or stop it. */
 export function servicePlan(platform: string, o: ServiceOptions): ServicePlan {
   const home = o.home ?? os.homedir()
-  const server = path.join(o.root, "server.ts")
+  const server = (platform === "win32" ? path.win32 : path.posix).join(o.root, "server.ts")
   // Login shells set their own PATH; this one is for what the server runs itself (git, tailscale, the agents' CLIs).
   // (Linux: also where its package managers put CLIs, when they're there: snap, linuxbrew, bun, cargo, volta, npm's -g)
   const extra = platform === "linux" ? ["/snap/bin", "/home/linuxbrew/.linuxbrew/bin", ...[".bun/bin", ".cargo/bin", ".volta/bin", ".npm-global/bin"].map((d) => path.join(home, d))]

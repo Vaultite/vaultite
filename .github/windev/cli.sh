@@ -34,7 +34,7 @@ vau read "CI/$tag pwsh.md"
 "special: " + (vau read "CI/a&b ^x.md")
 "exit: \$LASTEXITCODE"
 PS
-  expect "$tag: PowerShell 7 runs vau.cmd, writes and reads" "which: .*vau\.cmd.*hello from windows.*special: hello from windows.*exit: 0" bash -c "pwsh -NoProfile -ExecutionPolicy Bypass -File '$(win "$T/t.ps1")' | tr '\n' ' '"
+  expect "$tag: PowerShell 7 runs vau.cmd, writes and reads" "which: .*vau\.cmd.*hello from windows.*special: hello from windows.*exit: 0" bash -c "pwsh -NoProfile -ExecutionPolicy Bypass -File '$(win "$T/t.ps1")' | tr '\r\n' '  '"
   expect "$tag: Windows PowerShell 5.1 too" "which: .*vau\.cmd.*hello from windows.*exit: 0" bash -c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File '$(win "$T/t.ps1")' | tr '\n' ' '"
   # (one line at cmd's prompt each, as typed there)
   printf 'vau write "CI/%s cmd.md" --from "%s"' "$tag" "$IN" > "$T/l1"; printf 'vau read "CI/%s cmd.md"' "$tag" > "$T/l2"; printf 'vau read "CI/a&b ^x.md"' > "$T/l3"

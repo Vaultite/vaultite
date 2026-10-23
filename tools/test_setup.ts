@@ -39,7 +39,7 @@ check("obsidian: Linux's own config first", JSON.stringify(S.obsidianVaults(w).m
 // ---------- vau ----------
 check("vau: not installed", S.vauStatus(w, []).path === null)
 const v1 = S.installVau(w)
-check("vau: written to ~/.local/bin", v1.path === path.join(home, ".local/bin/vau") && (fs.statSync(v1.path).mode & 0o111) !== 0, v1)
+check("vau: written to ~/.local/bin", v1.path === path.join(home, ".local/bin/vau") && (process.platform === "win32" || (fs.statSync(v1.path).mode & 0o111) !== 0), v1)
 check("vau: again is nothing to do", S.installVau(w).did.startsWith("vau is already"))
 check("vau: on the PATH when ~/.local/bin is", S.vauStatus(w, [path.join(home, ".local/bin")]).onPath && !S.vauStatus(w, ["/usr/bin"]).onPath)
 if (process.platform !== "win32") {
@@ -127,7 +127,7 @@ check("service: not elsewhere", (() => { try { SV.servicePlan("aix", so); return
 const realNode = fs.realpathSync(process.execPath), binDir = path.join(tmp, "bin")
 fs.mkdirSync(binDir, { recursive: true })
 fs.symlinkSync(realNode, path.join(binDir, "node"))
-check("service: the node on PATH when it's this one (outlives a Homebrew upgrade)", SV.stableNode(realNode, `/nowhere:${binDir}`) === path.join(binDir, "node") &&
+check("service: the node on PATH when it's this one (outlives a Homebrew upgrade)", SV.stableNode(realNode, `/nowhere${path.delimiter}${binDir}`) === path.join(binDir, "node") &&
   SV.stableNode(realNode, "/nowhere") === realNode)
 
 fs.rmSync(tmp, { recursive: true, force: true })
