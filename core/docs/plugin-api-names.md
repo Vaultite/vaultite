@@ -458,6 +458,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `scrollPage(top, smooth?)`: Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window.
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`
+- `secretDialog(opts, ended?)`: Ask for a secret (opts.field: hidden text, or a file); null when cancelled or `ended` (the asker stopped waiting).
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
 - `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it).
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).

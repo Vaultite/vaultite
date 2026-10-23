@@ -7,7 +7,7 @@ import { allPages, eachPage, type EnginePage } from "./engine.ts"
 /** A filled secret is scrubbed this long after (a page may show it later: in its address, revealed). Memory only. */
 const KEEP_MS = 12 * 3600_000
 const kept = new Map<string, number>()
-export const keep = (secret: string) => { if (secret) kept.set(secret, Date.now() + KEEP_MS) }
+export const keep = (secret: string, ms = KEEP_MS) => { if (secret) kept.set(secret, Math.max(kept.get(secret) ?? 0, Date.now() + ms)) }
 export const forgetSecrets = () => kept.clear()
 function live() {
   const now = Date.now()

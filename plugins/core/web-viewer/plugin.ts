@@ -416,6 +416,70 @@ they did it (--text, --url). Never ask for their password: they type it themselv
   did: (p) => ({ action: "run", text: `Asked for help in browser tab ${String(p.tab)}: ${String(p.reason).slice(0, 80)}` }),
 })
 
+// ---------- logging in with the user's passwords for agents (electron/browser/logins.ts fills; agents never see one) ----------
+
+type Shown = { title: string; username: string }
+type Login = Page & { status: "filled" | "choose" | "approval" | "waiting"; site: string; entry?: Shown; entries?: Shown[]; filled?: string[]
+  submitted?: boolean; approved?: string; navigated?: boolean; grant?: string; ask?: string }
+/** How long a login waits for the user's yes before saying it waits. */
+const APPROVAL_WAIT = 60_000
+const as = (e: Shown) => (e.username ? `${e.title} (${e.username})` : e.title)
+
+plugin.op({
+  id: "web-viewer.login",
+  cli: "browser login",
+  mcp: "browser_login",
+  summary: "Log in to a tab's site with the user's passwords for agents: the app fills the username, password or one-time code itself, and you hear only whether it did.",
+  help: `The passwords are the user's KeePass file for agents, set up on the Mac whose browser it is; you never get one: what
+it answers has no value, and what it filled can't be read back (snapshot and read hide it, evaluate, screenshot and pdf
+refuse while the page shows it). It fills what the page asks for: a username and password, a username alone (a
+username-first sign-in), or a one-time code (run it again on the page asking for one); --submit presses Enter after. Only
+an entry for the page's own site fills (its address; www. too, and every subdomain only for an entry saying *.site).
+Several for the site: it lists their titles and usernames, and --entry picks one. An entry the user didn't tag
+agent-free needs their yes (on their phone, in the Inbox; it lasts 15 minutes for that entry): it waits a minute, then
+says it's waiting; tell them, and run it again with the same arguments once they said yes. After browser evaluate ran in
+the site's pages, load the page again (browser go <tab> reload) before logging in. No entry: ask the user (browser ask).
+
+  vau browser login 3 --submit
+  vau browser login 3 --entry alice@example.com --submit`,
+  kind: "write",
+  lock: false,
+  params: {
+    tab,
+    entry: { type: "string", description: "which entry, by its title or username, when the site has several" },
+    submit: { type: "boolean", description: "press Enter once it's filled" },
+    task,
+    terminal,
+  },
+  args: ["tab"],
+  run: async (p, ctx) => {
+    const who = by(ctx, p), asked = { entry: p.entry ?? "", submit: p.submit === true }
+    const r = await ask<Login>("agent:login", p.tab, asked, who, null)
+    if (r.status !== "approval") return r
+    // (the user's yes through the Inbox, as for an app's gated tool: plugins/core/mcp/public.ts)
+    const askUser = plugin.service("inbox:ask") as ((b: Record<string, unknown>) => Promise<string> | string) | null
+    const answerOf = plugin.service("inbox:answer") as ((id: string, ms: number) => Promise<string>) | null
+    const waiting = { tab: r.tab, url: r.url, title: r.title, status: "waiting" as const, site: r.site, entry: r.entry }
+    if (!askUser || !answerOf) throw new OpError(`${as(r.entry!)} needs the user's yes each time, asked through the Inbox, which is off: they can turn it on, or tag the entry agent-free`, 409)
+    const key = `login-${r.ask}`
+    const event = await askUser({ source: "browser", key, title: `${ctx.who.label} asks to log in to ${r.site}`,
+      body: `As ${as(r.entry!)}, from the passwords for agents, in browser tab ${p.tab}${p.task ? ` (${p.task})` : ""}. A yes lets it log in with that entry for 15 minutes; it never sees the password.`,
+      link: `view:web-live/${p.tab}` })
+    const answer = await answerOf(event, APPROVAL_WAIT)
+    if (answer === "waiting") return waiting
+    plugin.service("inbox:drop")?.("browser", key)
+    if (answer === "gone") throw new OpError("the request for the user's yes is gone: run it again to ask again", 409)
+    const done = await ask<Login>("agent:login", p.tab, asked, who, { grant: r.grant, answer })
+    return done.status === "approval" ? waiting : done
+  },
+  text: (r: Login) => r.status === "choose"
+    ? `${r.site} has ${r.entries!.length} entries: ${r.entries!.map(as).join(", ")}. Pick one with --entry (its title or username).`
+    : r.status === "waiting"
+      ? `Waiting for the user's yes to log in to ${r.site} as ${as(r.entry!)}: they were asked on their phone and in the Inbox. Tell them, and run this again with the same arguments once they said yes.`
+      : `Filled the ${r.filled!.join(" and ")} for ${r.site} (${as(r.entry!)})${r.submitted ? " and submitted" : ""}.${r.navigated ? " Went to another page." : ""}\n${where(r)}`,
+  did: (p) => ({ action: "run", text: `Logged in with the passwords for agents in browser tab ${String(p.tab)}${p.entry ? ` (${clean(p.entry, 80)})` : ""}` }),
+})
+
 // ---------- bookmarks ----------
 
 plugin.kind(new Kind({

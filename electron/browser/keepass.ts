@@ -5,8 +5,10 @@ import { CryptoEngine, Credentials, Kdbx, KdbxError, ProtectedValue, type KdbxEn
 import { getDomain } from "tldts-experimental"
 
 // (Argon2, which KDBX 4 files are keyed with, from Node's own crypto: no native module to ship)
-CryptoEngine.setArgon2Impl((password, salt, memory, iterations, length, parallelism, type) => new Promise((done, fail) => {
-  crypto.argon2(type === 2 ? "argon2id" : type === 1 ? "argon2i" : "argon2d", { message: Buffer.from(password), nonce: Buffer.from(salt), memory,
+// (Node has Argon2 1.3 only, which every KDBX 4 file KeePassXC writes uses)
+CryptoEngine.setArgon2Impl((password, salt, memory, iterations, length, parallelism, type, version) => new Promise((done, fail) => {
+  if (version !== 0x13) return fail(new Error("an old Argon2 version"))
+  crypto.argon2(type === 2 ? "argon2id" : "argon2d", { message: Buffer.from(password), nonce: Buffer.from(salt), memory,
     passes: iterations, parallelism, tagLength: length }, (e, key) => (e ? fail(new Error("the file's key couldn't be derived")) : done(new Uint8Array(key).buffer)))
 }))
 

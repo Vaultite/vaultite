@@ -1771,7 +1771,7 @@ await section("agent logins", async () => {
   check("agent logins: an expired entry says so", opened.entries.find((e) => e.title === "Old")!.expired && !light.expired)
   check("agent logins: entries list no secret (only the fill reads them)", !JSON.stringify(opened.entries).includes(SECRET) && light.otp && !admin.otp)
   const got = opened.secrets(light.id)
-  check("agent logins: an entry's secrets, read for the fill", got?.password === SECRET && got.username === "alice" && got.otp?.digits === 6, got && { ...got, password: "(hidden)" })
+  check("agent logins: an entry's secrets, read for the fill", got?.password === SECRET && got.username === "alice" && got.otp !== "steam" && got.otp?.digits === 6, got && { ...got, password: "(hidden)" })
   let wrong = ""
   try { await kp.openDatabase(file, "not it") } catch (e) { wrong = (e as Error).message }
   check("agent logins: a wrong password says so, plainly", /password/i.test(wrong) && !wrong.includes("not it"), wrong)

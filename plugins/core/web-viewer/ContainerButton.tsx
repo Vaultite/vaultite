@@ -1,9 +1,10 @@
 // The container chip at the address's left: which container the tab is in (its colour and name), and a menu to move the
 // tab to another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
-import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
 import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
 import { accountIn, askSites } from "./accounts"
+import { passwordsForAgents } from "./agentlogins"
 import {
   addContainer, argOf, colorOf, containerById, containers, moveContainer, profileIn, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
   type Container,
@@ -63,6 +64,8 @@ export const containerItems = (c: Container, canLock: boolean): MenuItem[] => {
   ...(canLock || c.lock ? [{ label: "Lock with Touch ID", icon: Fingerprint, checked: !!c.lock, keep: true, run: () => void updateContainer(c.id, { lock: !c.lock }) }] : []),
   { label: "Agent access", icon: Bot, hint: AGENTS.find((a) => a.v === c.agents)?.label, run: () => {},
     items: AGENTS.map((a) => ({ label: a.label, checked: c.agents === a.v, run: () => void updateContainer(c.id, { agents: a.v }) })) },
+  // (this Mac's, for every container agents act in: the logins agents ask the app to fill)
+  ...(c.agents === "act" ? [{ label: "Passwords for agents…", icon: KeyRound, run: () => void passwordsForAgents() }] : []),
   ...(i > 0 ? [{ label: "Move up", icon: ArrowUp, sep: true, run: () => void moveContainer(c.id, list[i - 1].id) }] : []),
   ...(i >= 0 && i < list.length - 1 ? [{ label: "Move down", icon: ArrowDown, sep: i === 0, run: () => void moveContainer(c.id, list[i + 2]?.id ?? null) }] : []),
   { label: `Delete ${c.name}…`, icon: Trash2, danger: true, sep: true, run: () => void deleteContainer(c) },
