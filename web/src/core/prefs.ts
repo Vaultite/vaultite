@@ -66,6 +66,8 @@ export type Prefs = {
   /** The plugins' items in a file's top bar, in order ("companion:presence"); null: by their `sort`. One docked in a
    *  sidebar is a panel there (sidebars.json) instead. */
   fileBar: string[] | null
+  /** The plugins' items in the left sidebar's header, in order ("inbox:inbox"); null: every one, by their `sort`. */
+  sidebarHeader: string[] | null
   /** The commands a page pulled down on a phone offers, left, straight down, right (components/PullActions.tsx); null:
    *  the default ones. */
   pullActions: string[] | null
@@ -104,9 +106,9 @@ type File = keyof typeof FILES
 const WHOLE = { sidebars: "sidebars" } as const
 
 /** Whether a saved value has its default's shape (a list of names, a number, a flag): a settings file edited by hand to
- *  `"disabled": null` would otherwise stop the app on every load. `statusBar`, `fileBar` and `pullActions` may be null. */
+ *  `"disabled": null` would otherwise stop the app on every load. `statusBar`, `fileBar`, `sidebarHeader` and `pullActions` may be null. */
 function fits(k: keyof Prefs, v: unknown) {
-  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "fileBar" || k === "pullActions"
+  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "fileBar" || k === "sidebarHeader" || k === "pullActions"
   if (Array.isArray(d) || nullable) return (v === null && nullable) || (Array.isArray(v) && v.every((x) => typeof x === "string"))
   if (d === null) return v === null || (typeof v === "object" && !Array.isArray(v))
   if (typeof d === "number") return typeof v === "number" && Number.isFinite(v)

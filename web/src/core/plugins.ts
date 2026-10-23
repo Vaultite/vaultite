@@ -265,7 +265,7 @@ export function setSwitch(p: Plugin, on: boolean, quiet = false) {
 
 function turn(p: Plugin, on: boolean) {
   const { disabled, enabled } = getPrefs()
-  if (on) { showPanelsOf(p); showSectionsOf(p); showBarItemsOf(p) }
+  if (on) { showPanelsOf(p); showSectionsOf(p); showBarItemsOf(p); showHeaderItemsOf(p) }
   // Turned on: what it writes on its own is asked now, once (core/grants.ts).
   if (on) void askGrant(p.id)
   const next = switched({ disabled, enabled }, p.id, on, optIn(p))
@@ -618,6 +618,24 @@ function slotItems<K extends "header" | "status" | "fileBar" | "noteTop">(slot: 
 }
 /** The sidebar's header (see HeaderItem), the status bar (StatusItem) and a file's header (FileBarItem). */
 export const headerItems = (disabled: string[], order: string[]) => slotItems("header", disabled, order)
+/** The header's items shown (appearance `sidebarHeader`, in its order; unset: every one). */
+export function shownHeaderItems(disabled: string[], order: string[], saved = getPrefs().sidebarHeader) {
+  const all = headerItems(disabled, order)
+  if (!saved) return all
+  return saved.flatMap((k) => all.find((x) => x.key === k) ?? [])
+}
+/** Show or hide a header item; shown again, before the next one shown after its default place. */
+export function setHeaderItemShown(key: string, on: boolean, before: string | null = null) {
+  const { disabled, order } = getPrefs()
+  const all = headerItems(disabled, order).map((x) => x.key), keys = shownHeaderItems(disabled, order).map((x) => x.key)
+  const next = all.slice(all.indexOf(key) + 1).find((k) => keys.includes(k)) ?? null
+  return setPrefs({ sidebarHeader: on ? placeKey(keys, key, before ?? next) : keys.filter((k) => k !== key) })
+}
+/** A plugin was turned on: its header items join a saved list, each at its default place. */
+function showHeaderItemsOf(p: Plugin) {
+  if (!getPrefs().sidebarHeader) return
+  for (const name of Object.keys(p.header ?? {})) void setHeaderItemShown(`${p.id}:${name}`, true)
+}
 export const statusItems = (disabled: string[], order: string[]) => slotItems("status", disabled, order)
 /** A file's top bar items, in the user's order (appearance.json `fileBar`), the ones it doesn't name after by `sort`. */
 export function fileBarItems(disabled: string[], order: string[], saved = getPrefs().fileBar) {

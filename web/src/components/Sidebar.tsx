@@ -2,14 +2,14 @@
 // turning them off empties it). The components here are exported to plugins.
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
-import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
+import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
-import { dockAtEnd, dockPanel, drawerPanels, hidePanel, isBarItem, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
+import { dockAtEnd, dockPanel, drawerPanels, headerItems, hidePanel, isBarItem, setHeaderItemShown, shownHeaderItems, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -292,6 +292,19 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
     // (a top bar item's own menu has Move to top bar, which this would be)
     ...(isBarItem(key) ? [] : [{ label: `Hide ${me.title}`, icon: EyeOff, run: () => hidePanel(key) }]),
   ]
+}
+
+/** The sidebar header's menu: the sidebar's, with Header ▸ ticking which plugins' items it shows (few: no More). */
+export function headerMenu(): MenuItem[] {
+  const { disabled, order } = getPrefs()
+  const all = headerItems(disabled, order), shown = new Set(shownHeaderItems(disabled, order).map((x) => x.key))
+  const menu = panelMenu()
+  if (!all.length) return menu
+  const items: MenuItem[] = all.map((x) => ({ label: x.plugin.name, icon: x.plugin.icon, checked: shown.has(x.key), keep: true,
+    run: () => void setHeaderItemShown(x.key, !shown.has(x.key)) }))
+  const at = menu.findIndex((m) => m.label === "Customize sidebars…")
+  const header: MenuItem = { label: "Header", icon: PanelTop, sep: true, run: () => {}, items }
+  return at < 0 ? [...menu, header] : [...menu.slice(0, at), header, { ...menu[at], sep: false }, ...menu.slice(at + 1)]
 }
 
 /** The sidebar's geometry in Tailwind spacing units so it follows density (rows h-7, icons size-4, rail 11 units):

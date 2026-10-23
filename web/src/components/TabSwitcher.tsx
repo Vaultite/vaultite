@@ -12,7 +12,7 @@ import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, use
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
 import type { WorkspaceInfo } from "@/core/define"
 import { newPhoneTab, pickTab } from "@/core/phoneTabs"
-import { headerItems, viewFor } from "@/core/plugins"
+import { shownHeaderItems, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { haptic } from "@/core/haptics"
 import { Badged, PageHeader, usePortalHost } from "@/components/kit"
@@ -455,10 +455,10 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const [kept, keep] = useState({ ws: live, cur: liveCur })
   if (!left && kept.ws !== live) keep({ ws: live, cur: liveCur })
   const { ws, cur } = left ? kept : { ws: live, cur: liveCur }
-  const { disabled, order } = usePrefs()
+  const { disabled, order, sidebarHeader } = usePrefs()
   const panes = leaves(ws.root)
   const labels = paneNames(ws)
-  const header = headerItems(disabled, order)
+  const header = shownHeaderItems(disabled, order, sidebarHeader)
   const box = useRef<HTMLDivElement>(null)
   const [opened, setOpened] = useState<string | null>(null)
   const [query, setQuery] = useState<string | null>(null)

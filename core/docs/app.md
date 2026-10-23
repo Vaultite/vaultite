@@ -107,6 +107,8 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   the palette shows or hides each. `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
   fit). `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
   unset: their default places); one dragged into a sidebar (or Move to sidebar) is a panel there, in `sidebars.json`.
+  `sidebarHeader`: the plugins' items in the left sidebar's header, in order (`["workspaces:numbers"]`; unset: every one;
+  `[]`: none). Right-click the header to show or hide each.
   `pullActions`: the three commands a page pulled down past its top offers on a phone, by palette command id: left,
   straight down (what a plain pull runs), right (`["file:new", "switcher:open", "tab:close"]`, the default; one left
   out or empty keeps its default).

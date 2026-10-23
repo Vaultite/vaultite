@@ -19,5 +19,6 @@
   "statusBar": null,
   "statusBarMore": [],
   "fileBar": null,
+  "sidebarHeader": null,
   "pullActions": null
 }

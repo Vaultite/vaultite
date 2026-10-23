@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The sidebar header's items hide**: right-click the left sidebar's header, Header ▸ ticks which show (the Inbox
+  button, Workspaces' numbers), on every device; `sidebarHeader` in appearance.json.
 - **Back, Forward and Reload open a new tab**: a middle-click or ⌘-click on them in the Browser opens that page in a
   tab of its own beside this one (Reload's a copy of it), this page staying where it is, as in other browsers.
 - **Two web pages side by side stay still**: the keyboard no longer bounces between them many times a second, the

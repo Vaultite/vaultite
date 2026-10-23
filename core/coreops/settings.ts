@@ -64,6 +64,8 @@ const APPEARANCE: Record<string, Setting> = {
     about: "those of statusBar's items kept in the status bar's tray (its more button) whatever room there is: a JSON list or names separated by commas", parse: names },
   fileBar: {
     about: "the plugins' items in a file's top bar, in order, as <plugin>:<name> (companion:presence, provenance:origin): a JSON list or names separated by commas; ones left out follow by their default place", parse: names },
+  sidebarHeader: {
+    about: "the plugins' items in the left sidebar's header, in order, as <plugin>:<name> (workspaces:numbers, inbox:inbox): a JSON list or names separated by commas; [] for none; unset: every one", parse: names },
   pullActions: {
     about: "the commands a page pulled down on a phone offers, left, straight down, right, by command id (default file:new, switcher:open, tab:close): a JSON list or ids separated by commas", parse: names },
   lineNumbers: { about: "true or false: line numbers beside a file's text while editing it (code files always have them)", parse: bool("lineNumbers") },

@@ -19,7 +19,7 @@ import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedir
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
-import { backgrounds, detailFor, headerItems, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
+import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
 import { askRenameSet, leaveSet, makeSet } from "@/core/tabsets"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
@@ -30,7 +30,7 @@ import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
 import { setSheetFile } from "@/components/TargetView"
 import { newNote, revealInTree } from "@/components/FileTree"
-import { panelMenu, RAIL, SidebarPanels, SidebarToggle } from "@/components/Sidebar"
+import { headerMenu, panelMenu, RAIL, SidebarPanels, SidebarToggle } from "@/components/Sidebar"
 import { FileView } from "@/components/FileView"
 import { StatusBar } from "@/components/StatusBar"
 import { Catch, Drawn, Guard } from "@/components/Guard"
@@ -216,7 +216,7 @@ export default function App() {
   const lingering = useLingeringSheet()
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
-  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, typingFade, disabled, enabled, order } = usePrefs()
+  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, typingFade, disabled, enabled, order, sidebarHeader } = usePrefs()
   // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
   const home = store ? homeTab(store, disabled, order) : null
   const isFileTab = tab.startsWith("file/") || tab === "file"
@@ -419,7 +419,7 @@ export default function App() {
   // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).
   const hideLeft = desktop && !popout && !rails && !sidebar
   const side = popout || hideLeft ? "0px" : sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)
-  const header = headerItems(disabled, order)
+  const header = shownHeaderItems(disabled, order, sidebarHeader)
   // The right sidebar is there while
   // panels are in it; with none it takes no room, only its dimmed toggle (a click opens it empty to drop panels in).
   const rightCount = panelsIn("right", useSidebars(), disabled, order).length
@@ -472,7 +472,7 @@ export default function App() {
         )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", peek === "left") } : { width: side }}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
-        <div data-titlebar className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !leftOpen && "pointer-events-none opacity-0")}>
+        <div data-titlebar onContextMenu={menuFor(headerMenu)} className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !leftOpen && "pointer-events-none opacity-0")}>
           {store && desktop && leftOpen && header.map(({ key, item }) => (
             <div key={key} data-header-item={key} className="flex min-w-0 shrink-0 items-center"><Guard what="This item"><Drawn draw={() => item.render({ store, open: true, file: filePath, tab: targetOf(tab) })} /></Guard></div>
           ))}
