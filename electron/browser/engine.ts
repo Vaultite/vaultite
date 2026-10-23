@@ -179,6 +179,11 @@ export function serverCall(win: AppWindow | undefined, name: unknown, args: unkn
 
 // ---------- busy: what a restart (an update) would cut short ----------
 
+const keeps: ((id: number) => boolean)[] = []
+/** `fn` says page `id` mustn't be discarded under memory pressure (an agent's: its tab number and ask would go). */
+export const keepPage = (fn: (id: number) => boolean) => { keeps.push(fn) }
+export const pageKept = (id: number) => keeps.some((fn) => fn(id))
+
 const holds: { fn: () => string | null; appOnly: boolean }[] = []
 /** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. `appOnly`:
  *  what only the app's restart loses (a pending ask), not its server's (the app attaches again). */

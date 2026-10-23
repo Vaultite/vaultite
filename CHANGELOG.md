@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents' tabs stay**: short of memory, the browser no longer discards a tab an agent opened or one waiting on you,
+  so its number and its ask last.
 - **Security pass**: a page reaching the app under another site's name (DNS rebinding) can't read plugins' pages,
   requests through Tailscale Funnel are refused, an HTML artifact can't take what it read to another site, files from
   the artifacts' CDN cache never run as pages, other sites can't frame the app, and opening a script or an app kept in
