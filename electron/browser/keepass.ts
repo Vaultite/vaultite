@@ -109,6 +109,19 @@ export function matchesSite(entryUrl: string, page: string): boolean {
 /** The entries for a page: those one of whose addresses names its site. */
 export const entriesFor = (db: Database, page: string) => db.entries.filter((e) => e.urls.some((u) => matchesSite(u, page)))
 
+/** Entries for another host of the page's domain (retellai.com, for a sign-in at auth.retellai.com), which don't fill
+ *  there: each with that address of its. */
+export function nearlyFor(db: Database, page: string): { entry: Entry; url: string; domain: string }[] {
+  let host: string
+  try { host = bare(new URL(page).hostname) } catch { return [] }
+  const domain = isIp(host) ? null : getDomain(host, { allowPrivateDomains: true })
+  if (!domain) return []
+  return db.entries.flatMap((entry) => {
+    const url = entry.urls.find((u) => { const r = ruleOf(u); return !!r && getDomain(r.host, { allowPrivateDomains: true }) === domain })
+    return url ? [{ entry, url, domain }] : []
+  })
+}
+
 // ---------- one-time codes ----------
 
 function base32(s: string): Buffer | null {

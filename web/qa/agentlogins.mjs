@@ -310,7 +310,7 @@ const denied = await denying
 check("their no: refused, nothing filled", /said no/.test(String(denied.error)), denied)
 const none = await op("open", { url: `${NONE}/login` })
 const noEntry = await op("login", { tab: none.tab })
-check("a site with no entry (another port: another site) says so", /no entry for 127\.0\.0\.1:\d+/.test(String(noEntry.error)), noEntry)
+check("a site with no entry (another port: another site) says so", /no login for 127\.0\.0\.1:\d+/.test(String(noEntry.error)), noEntry)
 
 // ---------- nothing kept anywhere has it ----------
 /** Every file under `dir` (none when it isn't there); one that can't be read (a socket, a dangling link) left out alone. */

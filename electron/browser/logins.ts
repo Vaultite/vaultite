@@ -246,10 +246,16 @@ async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
   const url = p.wc.getURL(), host = new URL(url).host
   const log = (result: string, e?: Entry, approved?: string) => void record(p, who, { action: "login", value: e ? named(e) : "", site: host, result, ...(approved ? { approved } : {}) })
   const db = await database()
-  const all = (await keepass()).entriesFor(db, url)
+  const { entriesFor, nearlyFor } = await keepass()
+  const all = entriesFor(db, url)
   if (!all.length) {
     log("no entry")
-    throw new Error(`no entry for ${host} in the agents' passwords: the user adds one to the Agents group, or signs in themselves (browser ask)`)
+    const near = nearlyFor(db, url)
+    if (near.length) {
+      const here = new URL(url).hostname
+      throw new Error(`no login for ${here}: ${near.map((x) => `${named(x.entry)} is for ${x.url}`).join(", ")}. The user adds ${here} to its addresses in KeePassXC (or *.${near[0].domain}, for every subdomain), or signs in themselves (browser ask)`)
+    }
+    throw new Error(`no login for ${host} in the agents' passwords: the user adds one to the Agents group, or signs in themselves (browser ask)`)
   }
   const want = String(o.entry ?? "").trim().toLowerCase()
   const picked = want ? all.filter((e) => e.title.toLowerCase() === want || e.username.toLowerCase() === want) : all

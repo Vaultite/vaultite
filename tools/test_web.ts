@@ -1818,6 +1818,10 @@ await section("agent logins", async () => {
   check("agent logins: a page's entries are those naming its site", forLight === "Lighthouse,Lighthouse admin", forLight)
   check("agent logins: additional URLs (KeePassXC's KP2A_URL) match too", kp.entriesFor(opened, "https://harbor.example.net/").length === 1
     && kp.entriesFor(opened, "https://eu.harbor.example.org/").length === 1 && !kp.entriesFor(opened, "https://harbor.example.com/").length)
+  const near = kp.nearlyFor(opened, "https://auth.example.com/u/login").map((x) => `${x.entry.title}=${x.url}@${x.domain}`).sort().join()
+  check("agent logins: a sign-in on another host of an entry's domain names the entry (for the error to say what to add)",
+    near === "Lighthouse admin=lighthouse.example.com@example.com,Lighthouse=https://lighthouse.example.com/login@example.com,Old=https://old.example.com@example.com"
+    && !kp.nearlyFor(opened, "https://bob.github.io/").length && !kp.nearlyFor(opened, "http://127.0.0.1/").length, near)
 
   // RFC 6238's vectors (its SHA-1 key, 8 digits), then the forms KeePassXC and KeePass keep a one-time code in.
   const rfc = { key: Buffer.from("12345678901234567890"), period: 30, digits: 8, algorithm: "sha1" as const }
