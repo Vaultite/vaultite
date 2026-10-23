@@ -62,6 +62,10 @@ const handler = (req, res) => {
     if (u.pathname === "/login-get") return res.end(page("Sign in", `<form method="get" action="/after"><input name="user" autocomplete="username"><input name="pw" type="password"><button>Go</button></form>`))
     if (u.pathname === "/after") return res.end(page("Signed in", "<h1>Signed in</h1>"))
     if (u.pathname === "/other") return res.end(page("Other", "<h1>Another page</h1>"))
+    // (a username-first sign-in, as x.com's: its password fields are there, sized, but no one could type in them yet)
+    if (u.pathname === "/first") return res.end(page("Sign in", `<form><label>Email or username <input name="text" autocomplete="username"></label>
+<input type="password" name="password" aria-hidden="true" tabindex="-1" style="position:absolute;left:0;top:0;width:20px;height:20px;opacity:0">
+<input type="password" name="password2" style="visibility:hidden;width:20px;height:20px"><button>Next</button></form>`))
     res.end(page("Lighthouse", "<h1>Lighthouse</h1>"))
   })
 }
@@ -166,6 +170,10 @@ check("on the page asking for a code: the app fills the one-time code and submit
 check("… the code isn't in what it answered", !JSON.stringify(code).includes(saw.at(-1)?.code ?? "none"), code)
 const ok = await op("evaluate", { tab: t, expression: "document.title" })
 check("a new page, nothing filled in it: evaluate works again", ok?.value === '"Home"', ok)
+
+await op("navigate", { tab: t, to: `${SITE}/first` })
+const first = await op("login", { tab: t })
+check("a username-first page with hidden password fields: only the username fills", first?.status === "filled" && first.filled?.join() === "username", first)
 
 const split = await op("navigate", { tab: t, to: `${SITE}/split` })
 const boxes = await op("login", { tab: t })

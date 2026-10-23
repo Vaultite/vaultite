@@ -200,6 +200,10 @@ type DomNode = { backendNodeId: number; nodeName: string; attributes?: string[];
   contentDocument?: DomNode; shadowRoots?: DomNode[]; templateContent?: DomNode }
 type Field = { input: Input; frame: string }
 
+type AxNode = { ignored?: boolean; properties?: { name: string; value: { value?: unknown } }[] }
+/** An accessibility node's boolean property (`focusable`, `focused`). */
+const axProp = (n: AxNode | undefined, name: string) => { const v = n?.properties?.find((x) => x.name === name)?.value?.value; return v === true || v === "true" }
+
 /** Every input of the page and its frames in this process, with the address of the document it's in. */
 async function fieldsOf(p: EnginePage): Promise<Field[]> {
   const { root } = await cdp<{ root: DomNode }>(p.wc, "DOM.getDocument", { depth: -1, pierce: true })
@@ -218,11 +222,15 @@ async function fieldsOf(p: EnginePage): Promise<Field[]> {
     for (const c of [...(n.shadowRoots ?? []), ...(n.children ?? []), ...(n.contentDocument ? [n.contentDocument] : [])]) walk(c, frame, name === "#DOCUMENT" ? 0 : form)
   }
   walk(root, p.wc.getURL(), 0)
-  // (shown: it has a box on the page; hidden ones are decoys or another step's)
+  // (shown: it has a box on the page, and a person could type in it, as the accessibility tree says (not hidden from
+  // it, inert or unfocusable); others are decoys, or another step's: a username-first page's password field)
   await Promise.all(out.map(async (f) => {
     if (f.input.type === "hidden") return
     const box = await cdp<{ model: { width: number; height: number } }>(p.wc, "DOM.getBoxModel", { backendNodeId: f.input.id }).catch(() => null)
-    f.input.visible = !!box && box.model.width > 0 && box.model.height > 0
+    if (!box || box.model.width <= 0 || box.model.height <= 0) return
+    const ax = await cdp<{ nodes: AxNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: f.input.id, fetchRelatives: false }).catch(() => null)
+    const node = ax?.nodes[0]
+    f.input.visible = !!node && !node.ignored && axProp(node, "focusable") === true
   }))
   return out
 }
@@ -231,9 +239,8 @@ async function fieldsOf(p: EnginePage): Promise<Field[]> {
 async function focus(p: EnginePage, id: number) {
   await cdp(p.wc, "DOM.scrollIntoViewIfNeeded", { backendNodeId: id }).catch(() => {})
   await cdp(p.wc, "DOM.focus", { backendNodeId: id })
-  const { nodes } = await cdp<{ nodes: { properties?: { name: string; value: { value?: unknown } }[] }[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
-  const focused = nodes[0]?.properties?.find((x) => x.name === "focused")?.value?.value
-  return focused === true || focused === "true"
+  const { nodes } = await cdp<{ nodes: AxNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
+  return axProp(nodes[0], "focused")
 }
 
 // ---------- the call ----------
