@@ -70,3 +70,6 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   `serve`. A new agent output does the same. An agent's script (evaluate) can inject code that stays listening in the
   page's document, so the app fills nothing on that site's pages till they load again; this holds only because Electron
   has no back/forward cache (web/qa/agentlogins.mjs checks).
+- A login an entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes the
+  server or anything an agent calls could give. A passkey is added only by a code the app shows, then Touch ID: agents
+  have computer use, so a click in the app proves nothing. The list is encrypted with the Keychain's key.

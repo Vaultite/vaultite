@@ -91,8 +91,12 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   entry for its site: username and password, a username alone, or a one-time code (TOTP, as KeePassXC or KeePass keep
   it). Matching is strict, as a password manager's: an entry's address (and its KP2A_URL ones) names a host, `example.com`
   with its www., `*.example.com` every subdomain (never a public suffix's, like `*.co.uk`), an http page only for an http
-  entry, ports exact. An entry tagged `agent-free` fills at once; any other asks the user first (an Inbox event with
-  Approve and Deny, on their phone and watch too), and a yes lasts 15 minutes for that entry and agent. Agents hear only
+  entry, ports exact. An entry tagged `agent-free` fills at once; any other waits for the user's yes, given with a
+  passkey (Face ID, Touch ID) on a page of this server they open from the Inbox event (their phone hears of it): a yes
+  lasts 15 minutes for that entry and agent, and nothing else gives one, an agent least of all. The passkeys are the
+  Mac's, kept in its Keychain: "Passkeys for agents' logins" (Passwords for agents…) lists them and adds one from a
+  phone, by a QR code its Safari opens (the Mac's Vaultite served over https on the tailnet: `tailscale serve`), then
+  Touch ID on the Mac confirms it. Agents hear only
   what happened (filled, entries to pick from, waiting for the user, no entry, said no). What's filled can't be read back:
   snapshot, read, wait, run, act's changes, tabs and the steps kept to replay show it as •••, however the page shows it
   (revealed, in its title, in its address); evaluate is off in a page holding it (or with any password typed in),
