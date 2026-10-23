@@ -397,10 +397,12 @@ function agentReady(id: string, agent: string) {
 }
 
 const asksOf = (agent: string) => plugin.ask<AgentAsk[]>(`agent-asks:${agent}`, []).catch(() => [] as AgentAsk[])
-/** Which of `asks` terminal `id` shows at its bottom now, if any. */
+/** Which of `asks` terminal `id` shows at its bottom now, if any (each looked for in its last `lines`). */
 export async function askOn(b: Pick<Backend, "screen">, id: string, asks: AgentAsk[]) {
-  const text = asks.length ? (await b.screen(id, 12).catch(() => "")).replace(/\s+$/, "").split("\n").slice(-12).join("\n") : ""
-  return asks.find((a) => a.match.test(text)) ?? null
+  if (!asks.length) return null
+  const most = Math.max(...asks.map((a) => a.lines ?? 12))
+  const all = (await b.screen(id, most).catch(() => "")).replace(/\s+$/, "").split("\n")
+  return asks.find((a) => a.match.test(all.slice(-(a.lines ?? 12)).join("\n"))) ?? null
 }
 
 /** Watches agent terminal `id` for a question its agent declares (Approve and Deny press its keys) until its hooks or,

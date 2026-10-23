@@ -146,6 +146,16 @@ export default async ($: VaultTest) => {
       JSON.stringify(codexAsk.approve) === JSON.stringify(["\r"]) && JSON.stringify(codexAsk.deny) === JSON.stringify(["\x1b"]), codexAsk)
     const above = await term.askOn(showing(["Do you want to proceed?", ...Array.from({ length: 20 }, (_, i) => `output ${i}`)].join("\n")), "t", asks)
     check("terminal: a question scrolled up isn't asked now", above === null, above)
+    // Four choices wrapped in a narrow terminal put its question more than 12 lines up: still asked, Enter for Yes.
+    const tall = ["──────────────────────────────────────", " Read file", "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌", " Read(/tmp/m1s.png)", "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌",
+      " Do you want to proceed?", " ❯ 1. Yes", "   2. Yes, allow reading from /tmp", "      and /private/tmp during this", "      session", "   3. Yes, and always allow access", "      to tmp/ from this project",
+      "   4. No, and tell Claude", "      what to do", "      differently", "", " Esc to cancel · Tab to amend ·", " ctrl+e to explain"]
+    const narrow = await term.askOn(showing(["❯ Look at the screenshot", "", "⏺ Reading /tmp/m1s.png", ...tall].join("\n")), "t", asks)
+    check("terminal: a permission whose question is far above the bottom is asked now", narrow?.id === "permission", narrow)
+    const moved = await term.askOn(showing(tall.map((l) => l.replace(" ❯ 1. Yes", "   1. Yes").replace("   4. No", " ❯ 4. No")).join("\n")), "t", asks)
+    check("terminal: Approve doesn't press Enter while another choice than Yes is chosen", moved === null, moved)
+    const gone = await term.askOn(showing([...tall.slice(5, 8), "", "⏺ Done.", "", "─".repeat(38), "❯ ", "─".repeat(38), "  ? for shortcuts"].join("\n")), "t", asks)
+    check("terminal: a dialog above the user's prompt was answered", gone === null, gone)
     // What a page gets back from a backend without pictures: the last `scrollback` lines, whole chunks, and a line
     // redrawn without end (a progress bar) held to its share.
     const { Tail } = await import("../../../plugins/core/terminal/backend.ts")

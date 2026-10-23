@@ -515,10 +515,11 @@ plugin.provide("agent:claude", async ({ resume, context, state, report, profile,
   }
 })
 
-/** Its dialogs: folder trust shows before its hooks run, its default No; a permission's first choice is Yes. */
+/** Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question
+ *  can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now. */
 plugin.provide("agent-asks:claude", (): AgentAsk[] => [
   { id: "trust", match: /Yes, I trust this folder/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\x1b[B", "\r"], deny: ["\x1b"] },
-  { id: "permission", match: /Do you want to/, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
+  { id: "permission", match: /Do you want to.*(?:\n(?![❯>]).*)*\n *[❯>] 1\. Yes(?:\n(?![❯>]).*)*$/, lines: 40, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
 ])
 
 /** A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes
