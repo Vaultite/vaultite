@@ -1528,8 +1528,8 @@ const DISPATCH = (file: string, text: string) => settings().prompt.replace(/\{(p
 const atPrompt = (state?: string) => state === "idle" || state === "done"
 const busy = (state?: string) => state === "working" || state === "blocked"
 
-/** Type a message into an agent at its prompt and send it: not working a few seconds later, Escape, then Enter again
- *  (Claude Code's vim mode can keep it as typed); still not, an error, so the reply goes back to the user, not lost. */
+/** Type a message into an agent at its prompt, Enter once it shows (a dialog's Enter would pick an option); not working a
+ *  few seconds later, Escape, then Enter again (vim mode); not shown or still not working, an error: not lost. */
 export async function submit(ctx: Pick<OpCtx, "api">, id: string, text: string, tick = 500) {
   const t = encodeURIComponent(id)
   const working = async () => {
@@ -1540,7 +1540,20 @@ export async function submit(ctx: Pick<OpCtx, "api">, id: string, text: string, 
     }
     return false
   }
-  await ctx.api("POST", `terminals/${t}/send`, { text, enter: true })
+  // (shown: its end in the lines that changed, spaces aside as the agent wraps it, or a long one as a paste's marker)
+  const screen = async () => ((await ctx.api("GET", `terminals/${t}/screen?lines=200`)) as { lines: string[] }).lines
+  const squash = (s: string) => s.replace(/\s+/g, "")
+  const end = squash(text).slice(-24)
+  const before = new Set(await screen())
+  await ctx.api("POST", `terminals/${t}/send`, { text, enter: false })
+  let shown = false
+  for (let i = 0; i < 8 && !shown; i++) {
+    await new Promise((res) => setTimeout(res, tick / 2))
+    const changed = (await screen()).filter((l) => !before.has(l)).join("")
+    shown = squash(changed).includes(end) || /\[Pasted /.test(changed)
+  }
+  if (!shown) throw new OpError(`the agent didn't take it (something over ${id}'s prompt, a question or an offer, has the keys): open its session to see it, then send it again`, 409)
+  await ctx.api("POST", `terminals/${t}/send`, { text: "", enter: true })
   if (await working()) return
   await ctx.api("POST", `terminals/${t}/send`, { text: "\x1b", enter: false })
   await new Promise((res) => setTimeout(res, 300))

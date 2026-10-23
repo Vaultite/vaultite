@@ -442,26 +442,35 @@ export default async ($: VaultTest) => {
     check("reply: only to a report that names its session", st === 409, [st, b])
     ;[st, b] = await api("POST", "ops/inbox.reply", { to: "Inbox/Nope.md", text: "hi" })
     check("reply: to a report that's there", st === 404, [st, b])
-    // A reply typed at an agent's prompt: sent once it works on it, Escape and Enter again when not, else an error (not lost).
+    // A reply typed at an agent's prompt: Enter once it shows there, sent once it works on it, Escape and Enter again when
+    // not, else an error (not lost); a dialog over the prompt (its keys taken, nothing shown) gets no Enter.
     {
       const { submit } = await import("../../../plugins/core/inbox/plugin.ts")
-      const fake = (works: (sent: string[]) => boolean) => {
+      const fake = (works: (sent: string[]) => boolean, shows = true) => {
         const sent: string[] = []
-        const api = async (method: string, _route: string, body?: unknown) => {
+        const api = async (method: string, route: string, body?: unknown) => {
           if (method === "POST") { sent.push(JSON.stringify(body)); return {} }
+          if (route.includes("/screen")) {
+            const prompt = shows && sent.length ? "❯ Ship it" : "❯ yes, ship it"
+            return { lines: ["Want me to ship it?", "────", prompt, "────"] }
+          }
           return { sessions: [{ id: "claude-k3j2h1g0", state: works(sent) ? "working" : "idle" }] }
         }
         return { sent, ctx: { api } as unknown as Parameters<typeof submit>[0] }
       }
-      const at = fake((s) => s.length > 0)
+      const at = fake((s) => s.length > 1)
       await submit(at.ctx, "claude-k3j2h1g0", "Ship it", 1)
-      const vim = fake((s) => s.length > 2)
+      const vim = fake((s) => s.length > 3)
       await submit(vim.ctx, "claude-k3j2h1g0", "Ship it", 1)
       const lost = fake(() => false)
       const err = await submit(lost.ctx, "claude-k3j2h1g0", "Ship it", 1).then(() => null, (e: Any) => e)
-      check("reply typed in: sent once it works, Escape and Enter again when it doesn't, an error when it still doesn't",
-        at.sent.length === 1 && vim.sent.length === 3 && vim.sent[1] === '{"text":"\\u001b","enter":false}' &&
-        lost.sent.length === 3 && err?.status === 409 && /didn't start on it/.test(err.message), [at.sent, vim.sent, lost.sent, err?.message])
+      const dialog = fake(() => false, false)
+      const over = await submit(dialog.ctx, "claude-k3j2h1g0", "Ship it", 1).then(() => null, (e: Any) => e)
+      check("reply typed in: Enter once it shows, Escape and Enter again when it doesn't start, an error when it still doesn't",
+        at.sent.length === 2 && at.sent[1] === '{"text":"","enter":true}' && vim.sent.length === 4 && vim.sent[2] === '{"text":"\\u001b","enter":false}' &&
+        lost.sent.length === 4 && err?.status === 409 && /didn't start on it/.test(err.message), [at.sent, vim.sent, lost.sent, err?.message])
+      check("reply typed in: no Enter when it doesn't show at the prompt (a dialog has the keys), an error",
+        dialog.sent.length === 1 && over?.status === 409 && /didn't take it/.test(over.message), [dialog.sent, over?.message])
     }
     // Where a reply goes once the session ended: resumed while its prompt cache lasts (the TTL its transcript wrote with),
     // else a new session; a handed terminal ends when the turn that reported does.
