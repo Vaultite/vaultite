@@ -38,4 +38,21 @@ export default async ($: VaultTest) => {
     check("mentions: aliases, longest name first, unicode words", JSON.stringify(findMentions("Met Zoë and Zoë Souza; zoëlle no", ["Zoë Souza", "Zoë"]).map((m) => m.text)) ===
       JSON.stringify(["Zoë", "Zoë Souza"]), findMentions("Met Zoë and Zoë Souza; zoëlle no", ["Zoë Souza", "Zoë"]))
   }
+  // A web page's links: the notes about it (`source`), linking it however it's written, and elsewhere on its site.
+  {
+    write("Links test/Web about.md", "---\ntype: note\nsource: https://www.example.com/posts/one/\n---\n\nMy notes.\n")
+    write("Links test/Web linked.md", "Read [the post](https://example.com/posts/one?utm_source=x#top), then <https://example.com/posts/two>.\n```\nhttps://example.com/posts/three\n```\n")
+    write("Links test/Web other.md", "See https://example.com/about. And https://elsewhere.org/posts/one too.\n")
+    const [c, w] = await api("GET", "backlinks/web?url=https://example.com/posts/one")
+    const paths = (xs: Any[]) => xs.map((x) => x.path).sort().join("|")
+    check("web: the note about it, by its source (www, a trailing slash)", c === 200 && paths(w.about) === "Links test/Web about.md", w)
+    check("web: notes linking it (tracking keys and #part ignored), not those about it", paths(w.linked) === "Links test/Web linked.md" && /the post/.test(w.linked[0].line), w)
+    check("web: elsewhere on its site, not in code, nor other sites", w.site === "example.com" && JSON.stringify(w.elsewhere.filter((x: Any) => x.path.includes("/Web ")).map((x: Any) => x.url).sort()) ===
+      JSON.stringify(["https://example.com/about", "https://example.com/posts/two"]), w.elsewhere)
+    const [bad] = await api("GET", "backlinks/web?url=notes")
+    check("web: an address that isn't one is a 400", bad === 400, bad)
+    const { urlsIn } = await import("../../../plugins/core/backlinks/weblinks.ts")
+    check("web: an address keeps its own parentheses, not the link's", JSON.stringify(urlsIn("[w](https://en.wikipedia.org/wiki/Foo_(bar)) (https://a.org/x).").map((u) => u.url)) ===
+      JSON.stringify(["https://en.wikipedia.org/wiki/Foo_(bar)", "https://a.org/x"]), urlsIn("[w](https://en.wikipedia.org/wiki/Foo_(bar)) (https://a.org/x)."))
+  }
 }

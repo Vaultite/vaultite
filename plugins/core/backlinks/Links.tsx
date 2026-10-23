@@ -1,11 +1,12 @@
-// One file's links, backlinks and outgoing links in one: linked and unlinked mentions ("Link" makes
-// one a [[link]]) and outgoing links. A sidebar panel, or a tab following the other panes' file.
+// One file's links, backlinks and outgoing links in one: linked and unlinked mentions ("Link" makes one a [[link]])
+// and outgoing links; on a web page, the notes about it and linking it. A sidebar panel, or a tab following the file.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { FileQuestion, FileText, SquareArrowOutUpRight } from "lucide-react"
+import { FileQuestion, FileText, Globe, NotebookPen, SquareArrowOutUpRight } from "lucide-react"
 import {
-  backlinks, Bar, cn, Foldable, HeadingButton, openDetail, openFile, openView, post, resolver, SidebarHeading, snippet, startDrag, stem, useFocusedFile,
-  useKeptCount, useLive, useNearEnd, useVaultChange, type SidebarCtx, type Store,
+  backlinks, Bar, cn, createNamed, Foldable, get, getStore, HeadingButton, isDesktop, newNoteFolder, openDetail, openFile, openInSplit, openView, post, resolver,
+  SidebarHeading, snippet, startDrag, stem, useFocusedFile, useKeptCount, useLive, useNearEnd, useVaultChange, viewInfo, type SidebarCtx, type Store,
 } from "@vaultite"
+import { siteOf } from "./weblinks"
 
 type Mention = { path: string; line: string; nth: number; col: number; len: number; text: string }
 type Unlinked = { total: number; files: number; mentions: Mention[] }
@@ -153,11 +154,59 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
 }
 
 
+/** What GET backlinks/web answers for a page (plugin.ts). */
+type WebLinked = { site: string; about: { path: string }[]; linked: { path: string; line: string }[]; elsewhere: { path: string; url: string; line: string }[]; total: number }
+
+/** The web page a tab shows ("view:web/@work/https://…": its address), or "". */
+export const webPageOf = (tab: string) => /^view:web\/(?:@[^/]+\/)?(https?:\/\/.+)$/i.exec(tab)?.[1] ?? ""
+
+/** A web page's note: the newest note whose `source` it is, else a new one named after the page, opened beside it (a
+ *  phone: in its place). */
+export async function openPageNote(url: string, title: string) {
+  const r = await get<WebLinked>(`backlinks/web?url=${encodeURIComponent(url)}&limit=1`)
+  // (a "/" in a page's title would be a folder: createNamed cleans the rest)
+  const name = title.replaceAll("/", " - ").trim().slice(0, 100) || siteOf(url)
+  const path = r.about[0]?.path ?? (await createNamed(newNoteFolder(getStore()), name, `---\nsource: ${/\s/.test(url) ? JSON.stringify(url) : url}\n---\n`))?.path
+  if (!path) return
+  if (isDesktop()) openInSplit(`file:${path}`); else openFile(path)
+}
+
+/** A web page's links: the notes about it and linking it, then links elsewhere on its site. */
+function WebLinksList({ url, title, pane }: { url: string; title: string; pane?: string }) {
+  const [v, setV] = useState(() => Date.now())
+  useVaultChange(() => setV(Date.now()), (p) => !p.startsWith("."))
+  const { data } = useLive<WebLinked>(`backlinks/web?url=${encodeURIComponent(url)}`, v)
+  const looking = useKeptCount(`links:web:${url}`, data ? data.about.length + data.linked.length : undefined, 0, 6)
+  const open = (p: string) => openFile(p, { pane })
+  const site = siteOf(url)
+  return (
+    <div className="flex flex-col" data-links-for={url}>
+      <Foldable data-links-group="page" keep="links.page" title="This page" count={data ? data.about.length + data.linked.length : null}>
+        {!data ? <Looking count={looking} /> : <>
+          {data.about.map(({ path }) => <Item key={`a:${path}`} icon={NotebookPen} title={stem(path)} context="A note on this page" onOpen={() => open(path)} path={path} />)}
+          {data.linked.map(({ path, line }) => <Item key={`l:${path}`} icon={FileText} title={stem(path)} context={snippet(line)} onOpen={() => open(path)} path={path} />)}
+          {!data.about.length && !data.linked.length && empty("No note links here yet.")}
+          <button type="button" data-page-note onClick={() => void openPageNote(url, title)}
+            className="flex h-6 cursor-pointer items-center gap-2 rounded-[5px] pl-1.5 text-[13px] text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
+            <NotebookPen className="size-4 shrink-0" strokeWidth={2} />{data.about.length ? "Open its note" : "New note on this page"}
+          </button>
+        </>}
+      </Foldable>
+      {site && <Foldable data-links-group="site" keep="links.site" title={`Elsewhere on ${site}`} count={data ? data.total : null}>
+        {!data ? <Looking count={0} /> : data.elsewhere.length ? <>{data.elsewhere.map(({ path, url: to, line }, i) => (
+          <Item key={`${path}:${i}`} icon={Globe} title={stem(path)} context={snippet(line)} tip={to} onOpen={() => open(path)} path={path} />
+        ))}{data.total > data.elsewhere.length && empty(`${data.total - data.elsewhere.length} more`)}</> : empty("No note links its other pages.")}
+      </Foldable>}
+    </div>
+  )
+}
+
 /** The sidebar's Links panel, for the focused tab's file, as tall as its links (the sidebar scrolls). In the icon rail
  *  it's the flyout's (index.tsx: `flyout`), which scrolls it. */
-export function LinksPanel({ store, open, file: focused }: SidebarCtx) {
-  // A tab that isn't a file (this panel's own tab, a terminal): the file focused last.
+export function LinksPanel({ store, open, file: focused, tab }: SidebarCtx) {
+  // A web page: its links. Another tab that isn't a file (this panel's own tab, a terminal): the file focused last.
   const last = useFocusedFile()
+  const page = focused ? "" : webPageOf(tab)
   const file = focused || last.path
   if (!open) return null
   return (
@@ -165,7 +214,7 @@ export function LinksPanel({ store, open, file: focused }: SidebarCtx) {
       <SidebarHeading title="Links" open={open}>
         <HeadingButton icon={SquareArrowOutUpRight} label="Open links in a tab" tip="Open in a tab" onClick={() => openView("links", { newTab: true })} />
       </SidebarHeading>
-      {file ? (
+      {page ? <WebLinksList url={page} title={viewInfo(tab).label} /> : file ? (
         <LinksList store={store} path={file} />
       ) : <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Open a file to see its links.</p>}
     </div>

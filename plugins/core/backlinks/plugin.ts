@@ -1,9 +1,10 @@
-// Links' server side: unlinked mentions (a file's name written as plain text elsewhere), which only the server can
-// see, and linking one as a small edit of that line (409 if it changed since).
+// Links' server side: unlinked mentions (a file's name written as plain text elsewhere) and notes linking a web page,
+// which only the server can see, and linking a mention as a small edit of that line (409 if it changed since).
 import fs from "node:fs"
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
 import { sortBy, stemOf, writeAtomic, type Entry } from "../../../core/vault.ts"
 import { findMentions, linkMention, type Mention } from "./mentions.ts"
+import { pageKey, siteOf, sourcesOf, urlsIn } from "./weblinks.ts"
 
 export const plugin = new Plugin(import.meta.url)
 const PAGE = 100
@@ -56,6 +57,38 @@ plugin.route("GET", "backlinks/unlinked", (req) => {
     }
   }
   return { total, files, mentions }
+})
+
+/** Each note's web addresses (its sources, then its body's), by its stat: only changed notes are read again. */
+const addresses = new Map<string, { ns: bigint; about: string[]; links: { url: string; line: string }[] }>()
+function addressesOf(e: Entry) {
+  const hit = addresses.get(e.rel)
+  if (hit && hit.ns === e.stat.ns) return hit
+  const next = { ns: e.stat.ns, about: sourcesOf(e.fm), links: /https?:\/\//i.test(e.body) ? urlsIn(e.body) : [] }
+  addresses.set(e.rel, next)
+  return next
+}
+
+/** GET backlinks/web?url=&limit=: the notes about a web page (`source:` it, newest first), those linking it (with the
+ *  line), and up to `limit` links elsewhere on its site, with how many there are. */
+plugin.route("GET", "backlinks/web", (req) => {
+  const url = String(req.query.url ?? ""), key = pageKey(url), site = siteOf(url)
+  if (!key) throw new HTTPError(400, `'${url}' isn't a web address`)
+  const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
+  const about: { path: string }[] = [], linked: { path: string; line: string }[] = [], elsewhere: { path: string; url: string; line: string }[] = []
+  let more = 0
+  const all = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel.endsWith(".md") && !plugin.vault.excluded(e.rel)), (e) => -Number(e.stat.ns / 1000000n))
+  for (const e of all) {
+    const a = addressesOf(e)
+    if (a.about.some((u) => pageKey(u) === key)) about.push({ path: e.rel })
+    const here = a.links.find((l) => pageKey(l.url) === key)
+    if (here) linked.push({ path: e.rel, line: here.line })
+    for (const l of a.links) {
+      if (siteOf(l.url) !== site || pageKey(l.url) === key) continue
+      if (elsewhere.length < limit) elsewhere.push({ path: e.rel, ...l }); else more++
+    }
+  }
+  return { site, about, linked: linked.filter((l) => !about.some((x) => x.path === l.path)), elsewhere, total: elsewhere.length + more }
 })
 
 plugin.route("POST", "backlinks/link", (req) => {

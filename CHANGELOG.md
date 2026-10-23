@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Links on web pages**: on a Browser tab the Links panel lists the notes about the page and those linking it, and
+  other pages of its site your notes link; "Note on this page" (its … menu, or the panel) opens or makes its note.
 - **Close pane**: a pane's menu (right-click its bar, its strip or its title), the palette and an X by its handle close
   it, pinned tabs too; Reopen closed tab (⇧⌘T) brings it back whole, where it was. ⌘W on a pinned tab says why it stays.
 - **The sidebar header's items hide**: right-click the left sidebar's header, Header ▸ ticks which show (the Inbox
