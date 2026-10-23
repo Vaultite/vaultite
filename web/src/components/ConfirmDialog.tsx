@@ -33,8 +33,9 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => set({ ...opts, done: resolve }))
 }
 
-/** Ask for a secret (opts.field); null when cancelled or `ended` (the asker stopped waiting). */
-function secretDialog(opts: ConfirmOptions & { field: "secret" | "file" }, ended?: AbortSignal): Promise<Given | null> {
+/** Ask for a secret (opts.field: hidden text, or a file); null when cancelled or `ended` (the asker stopped waiting). It
+ *  goes where the caller sends it, never kept or shown. */
+export function secretDialog(opts: ConfirmOptions & { field: "secret" | "file" }, ended?: AbortSignal): Promise<Given | null> {
   asking?.done(false)
   return new Promise((resolve) => {
     const a: Ask = { ...opts, done: (ok, given) => resolve(ok && given ? given : null) }

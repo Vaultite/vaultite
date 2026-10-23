@@ -458,6 +458,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `scrollPage(top, smooth?)`: Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window.
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`
+- `secretDialog(opts, ended?)`: Ask for a secret (opts.field: hidden text, or a file); null when cancelled or `ended` (the asker stopped waiting).
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
 - `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it).
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
@@ -698,6 +699,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.
 - `noDesktop()`
+- `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
 - `opcodes(a, b)`: How to turn a into b: equal runs and changed runs (replace / delete / insert).
 - `OpError`: What an op can't do, with what to do instead: a 400 over HTTP (`status`), the tool's error over MCP.
@@ -738,6 +740,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchError`
 - `searchMatches(n, d)`: Whether a file matches.
 - `section(title, ...parts)`: ## Title, then the parts (blank ones left out).
+- `servedAt(port)`: Where Tailscale Serve serves this machine's `port` over https ("https://m1.tail1234.ts.net:8447"), or "" when it doesn't (a phone's Safari reaches it there: passkeys need https).
 - `serverUrl()`: This server, as commands on this machine reach it (a shell's VAULTITE_URL, an agent's hooks).
 - `service(plugins, name)`: The first plugin's service called `name` (plugin.provide), or null when no plugin offers it.
 - `serviceFor(plugins, kind, rel)`: The service `<kind>:<ext>` a plugin offers for a file by its extension (a double one first: "excalidraw.md"), or null.
@@ -759,6 +762,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typeOf(types, key)`: The type of `key`: declared (exactly, else in any case), else implied, else null (the value's own).
 - `typeProblem(type, v)`: Why a value isn't a `type` (a short phrase after its key), or null when it is or it's empty.
 - `unzip(buf)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read.
+- `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
 - `VAULT_PATH`
 - `vaultHere(vaultPath)`: A vault on this machine: its real path and key (that path's hash), under which what's kept here for it goes (<LOCAL>/<what>/<key>).
 - `vaultPath(p, mustExist?, vault?, explicit?, trash?)`: A safe vault-relative path, or a 400.

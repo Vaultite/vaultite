@@ -30,7 +30,7 @@ export function Passkey({ ask }: { ask: PasskeyAsk }) {
 }
 
 /** Dark on light whatever the theme: phones' cameras read it so. */
-function Qr({ text }: { text: string }) {
+export function Qr({ text }: { text: string }) {
   const { path, size } = useMemo(() => {
     const qr = encode(text, { ecc: "L", border: 2 })
     let d = ""

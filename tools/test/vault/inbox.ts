@@ -9,6 +9,8 @@ export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, write } = $
   const { vau } = $.vars
   let cr: Any
+  /** A request from the app on this machine: only the user's surfaces approve or deny what waits on them. */
+  const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
     const { byThread, categoryOf, findEvent, fromHook, previewOf, prune, settled, waitsOnYou } = await import("../../../plugins/core/inbox/plugin.ts")
@@ -236,8 +238,8 @@ export default async ($: VaultTest) => {
     }
     ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-p9p9p9p9", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "perm", message: "Claude needs your permission to use Bash" })
     const permId = (await rows()).find((e) => e.session === "perm")?.id
-    ;[st, b] = await api("POST", "ops/inbox.answer", { id: permId, answer: "approve" })
-    check("answer: approving needs the terminal running (its question on screen)", st >= 400, [st, b])
+    ;[st, b] = await api("POST", "ops/inbox.answer", { id: permId, answer: "approve" }, asApp)
+    check("answer: approving needs the terminal running (its question on screen)", st >= 400 && st !== 403, [st, b])
     await (await import("../../../plugins/core/inbox/plugin.ts")).stillWaiting(0)
     ;[, list] = await api("GET", "inbox/events")
     check("a permission whose terminal no longer asks it (here: none runs) is read", list.events.find((e: Any) => e.id === permId)?.read === true, list.events)
@@ -602,8 +604,8 @@ export default async ($: VaultTest) => {
         for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
         await waitFor(async () => (await api("GET", "inbox/events"))[1].events.some((e: Any) => e.id === "mvp6abcd-a1b2c3@box"), 3000, 50)
         seen.length = 0
-        const [a1] = await api("POST", "ops/inbox.answer", { id: "mvp6abcd-a1b2c3@box", answer: "approve" })
-        const [a2] = await api("POST", "ops/inbox.answer", { id: "mvp6abcd-a1b2c3", answer: "deny" })
+        const [a1] = await api("POST", "ops/inbox.answer", { id: "mvp6abcd-a1b2c3@box", answer: "approve" }, asApp)
+        const [a2] = await api("POST", "ops/inbox.answer", { id: "mvp6abcd-a1b2c3", answer: "deny" }, asApp)
         const [a3] = await api("POST", "ops/inbox.reply", { to: "mvp6abcd-a1b2c3@box", text: "Push it" })
         check("inbox machines: a permission there approved, denied and replied to there", a1 === 200 && a2 === 200 && a3 === 200 &&
           seen.includes(`POST /api/ops/inbox.answer {"id":"mvp6abcd-a1b2c3","answer":"approve"}`) && seen.includes(`POST /api/ops/inbox.answer {"id":"mvp6abcd-a1b2c3","answer":"deny"}`) &&
@@ -630,5 +632,57 @@ export default async ($: VaultTest) => {
       fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
       await followMachines()
     }
+  }
+
+  // A gate (a permission the server waits on: an MCP app's tool, inbox:ask) is the user's to answer, never an agent's.
+  {
+    const ask = app.plugins.find((p) => p.id === "inbox")!.service("inbox:ask") as (b: Any) => string
+    const answerOf = app.plugins.find((p) => p.id === "inbox")!.service("inbox:answer") as (id: string, ms?: number) => Promise<string>
+    // (each from this machine, as its owner: what tells them apart is who they say they are)
+    const from = (client: string, agent: string | null = null) => ({ socket: { remoteAddress: "127.0.0.1" },
+      headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
+    const gate = ask({ source: "mcp", key: "gate-agents", title: "Grok Bot asks to run file.delete", body: "file.delete {}" })
+    const tries = [
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("mcp")),
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli", "claude-code")),
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "deny" }, from("cli", "codex")),
+      await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("mcp")),
+      await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("app/desktop", "claude-code")),
+      await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("a-script")),
+      // (vau naming no agent too: the server can't tell a person's shell from an agent's that unset its variables)
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli")),
+    ]
+    check("inbox gates: an agent (MCP, vau with or without an agent, a script) can't answer one, by the op or the route", tries.every(([st, b]) => st === 403 && /only you/.test(String(b.error)))
+      && await answerOf(gate) === "waiting", tries)
+    const [relayed] = await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("machine/studio"))
+    check("inbox gates: another machine passing on the user's answer answers it", relayed === 200 && await answerOf(gate) === "approve", relayed)
+    const gate2 = ask({ source: "mcp", key: "gate-phone", title: "Grok Bot asks to run file.move", body: "file.move {}" })
+    const [phone] = await api("POST", "ops/inbox.answer", { id: gate2, answer: "deny" }, from("iphone"))
+    check("inbox gates: the phone's notification answers it", phone === 200 && await answerOf(gate2) === "deny", phone)
+    const gate3 = ask({ source: "mcp", key: "gate-app", title: "Grok Bot asks to run file.copy", body: "file.copy {}" })
+    const [inApp] = await api("POST", `inbox/events/${gate3}/answer`, { answer: "approve" }, from("app/desktop"))
+    check("inbox gates: the app's buttons answer it", inApp === 200 && await answerOf(gate3) === "approve", inApp)
+
+    // An agent asking permission in a terminal: the same, by the op or the terminal's own route.
+    const [, asked] = await api("POST", "inbox/events", { source: "claude", kind: "waiting", ask: "permission", title: "Beacon", body: "Run git push?", terminal: "claude-perm1234" })
+    const perm = asked?.id ?? (await api("GET", "inbox/events"))[1].events.find((e: Any) => e.terminal === "claude-perm1234")?.id
+    const refused = [
+      await api("POST", "ops/inbox.answer", { id: perm, answer: "approve" }, from("mcp")),
+      await api("POST", "ops/inbox.answer", { id: perm, answer: "approve" }, from("cli", "claude-code")),
+      await api("POST", "ops/inbox.answer", { id: perm, answer: "deny" }, from("cli")),
+      await api("POST", "terminals/claude-perm1234/answer", { answer: "approve" }, from("cli", "codex")),
+      await api("POST", "terminals/claude-perm1234/answer", { answer: "approve" }, from("cli")),
+      await api("POST", "terminals/claude-perm1234/answer", { answer: "approve" }, from("a-script")),
+    ]
+    check("inbox permissions: an agent, vau or a script can't approve or deny a terminal's question, by the op or the terminal's route", !!perm && refused.every(([st, b]) => st === 403 && /only you/.test(String(b.error))), refused)
+    // (the user's surfaces get past that: here its terminal isn't running, so it's that which stops them)
+    const allowed = [
+      await api("POST", "ops/inbox.answer", { id: perm, answer: "approve" }, from("app/desktop")),
+      await api("POST", "ops/inbox.answer", { id: perm, answer: "deny" }, from("iphone")),
+      await api("POST", "terminals/claude-perm1234/answer", { answer: "approve" }, from("app/desktop")),
+    ]
+    check("inbox permissions: the app and the phone answer it", allowed.every(([st]) => st !== 403), allowed)
+    const [readIt] = await api("POST", "ops/inbox.answer", { id: perm, answer: "read" }, from("cli", "claude-code"))
+    check("inbox permissions: marking one read is anyone's", readIt === 200, readIt)
   }
 }

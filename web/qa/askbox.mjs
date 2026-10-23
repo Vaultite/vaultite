@@ -11,6 +11,8 @@ import { apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [arg, OUT = "/tmp/askbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = arg.endsWith("/") ? arg : `${arg}/`
 const api = apiAt(B, { "X-Vaultite-Client": "cli" })
+/** As the app's own Approve: only the user's surfaces answer a terminal's question. */
+const asApp = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 mkdirSync(OUT, { recursive: true })
 const PROMPT = "Reply with just the word pong."
 const box = (p) => p.locator("[data-ask-box]")
@@ -72,7 +74,7 @@ try {
     // (the trust question shows once Claude Code has started; a folder trusted before has none)
     let last = ""
     const answered = async () => { const t = last = ((await api("POST", "ops/terminal.screen", { id: fresh.id, lines: 40 })).lines ?? []).join("\n"); return /a stand-in for QA|⏺ pong[\s\S]*haiku/i.test(t) ? t : null }
-    await until(async () => (await api("POST", `terminals/${fresh.id}/answer`, { answer: "approve" }))?.answer === "approve" || await answered(), 20000, 1000)
+    await until(async () => (await asApp("POST", `terminals/${fresh.id}/answer`, { answer: "approve" }))?.answer === "approve" || await answered(), 20000, 1000)
     const screen = await until(answered, 60000, 1500)
     check(/stand-in/.test(screen ?? "") ? "the session runs claude (QA's stand-in)" : "the session runs Claude Code on haiku and answers", !!screen, last.slice(-1500))
   }

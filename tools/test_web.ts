@@ -1736,5 +1736,198 @@ await section("passkeys", async () => {
   server.close()
 })
 
+// ---------- Browser: agents' logins from a KeePass file (electron/browser/keepass.ts, loginform.ts, pagesecrets.ts) ----------
+// A made-up agents.kdbx written here; never a real one.
+await section("agent logins", async () => {
+  const kp = await import("../electron/browser/keepass.ts")
+  const { loginForm } = await import("../electron/browser/loginform.ts")
+  const { keep, scrub, scrubDeep } = await import("../electron/browser/pagesecrets.ts")
+  const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
+  const PASSWORD = "correct horse battery staple", SECRET = "Lighthouse-7!pw"
+  const db = Kdbx.create(new Credentials(ProtectedValue.fromString(PASSWORD)), "Agents")
+  const add = (title: string, fields: Record<string, string>, tags: string[] = [], group = db.getDefaultGroup()) => {
+    const e = db.createEntry(group)
+    e.fields.set("Title", title)
+    for (const [k, v] of Object.entries(fields)) e.fields.set(k, k === "Password" || k === "otp" ? ProtectedValue.fromString(v) : v)
+    e.tags = tags
+    return e
+  }
+  add("Lighthouse", { UserName: "alice", Password: SECRET, URL: "https://lighthouse.example.com/login", otp: "otpauth://totp/Lighthouse:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&period=30&digits=6" }, ["agent-free"])
+  add("Lighthouse admin", { UserName: "admin", Password: "admin-pw", URL: "lighthouse.example.com" })
+  add("Harbor", { UserName: "alice@example.com", Password: "harbor-pw", URL: "https://*.harbor.example.org", KP2A_URL_1: "https://harbor.example.net" })
+  const old = add("Old", { UserName: "old", Password: "old-pw", URL: "https://old.example.com" })
+  old.times.expires = true
+  old.times.expiryTime = new Date(Date.now() - 86400_000)
+  const binned = add("Binned", { UserName: "gone", Password: "gone-pw", URL: "https://lighthouse.example.com" })
+  db.createRecycleBin()
+  db.move(binned, db.getGroup(db.meta.recycleBinUuid!)!)
+  const file = new Uint8Array(await db.save())
+
+  const opened = await kp.openDatabase(file, PASSWORD)
+  const titles = opened.entries.map((e) => e.title).sort().join()
+  check("agent logins: a KeePass file opens with its password, the recycle bin left out", titles === "Harbor,Lighthouse,Lighthouse admin,Old", titles)
+  const light = opened.entries.find((e) => e.title === "Lighthouse")!, admin = opened.entries.find((e) => e.title === "Lighthouse admin")!
+  check("agent logins: the agent-free tag frees an entry; untagged ones ask the user", light.free && !admin.free)
+  check("agent logins: an expired entry says so", opened.entries.find((e) => e.title === "Old")!.expired && !light.expired)
+  check("agent logins: entries list no secret (only the fill reads them)", !JSON.stringify(opened.entries).includes(SECRET) && light.otp && !admin.otp)
+  const got = opened.secrets(light.id)
+  check("agent logins: an entry's secrets, read for the fill", got?.password === SECRET && got.username === "alice" && got.otp !== "steam" && got.otp?.digits === 6, got && { ...got, password: "(hidden)" })
+  let wrong = ""
+  try { await kp.openDatabase(file, "not it") } catch (e) { wrong = (e as Error).message }
+  check("agent logins: a wrong password says so, plainly", /password/i.test(wrong) && !wrong.includes("not it"), wrong)
+  let junk = ""
+  try { await kp.openDatabase(new TextEncoder().encode("not a database"), PASSWORD) } catch (e) { junk = (e as Error).message }
+  check("agent logins: a file that isn't KeePass's says so", /KeePass/.test(junk) && !junk.includes(PASSWORD), junk)
+
+  // Strict matching, as a password manager's: never a lookalike, subdomains only when the entry says so.
+  const M: [string, string, boolean][] = [
+    ["https://github.com", "https://github.com/login", true],
+    ["github.com", "https://github.com/login", true],
+    ["https://github.com", "https://www.github.com/", true],
+    ["https://github.com", "https://gist.github.com/", false],
+    ["https://github.com", "https://github.com.evil.com/", false],
+    ["https://github.com", "https://evilgithub.com/", false],
+    ["https://github.com", "https://xn--gthub-n4a.com/", false],
+    ["https://github.com", "https://github.com@evil.com/", false],
+    ["https://github.com", "http://github.com/", false],
+    ["http://intranet.example.com", "https://intranet.example.com/", true],
+    ["http://intranet.example.com", "http://intranet.example.com/", true],
+    ["https://github.com", "https://github.com:8443/", false],
+    ["https://github.com:8443", "https://github.com:8443/", true],
+    ["https://github.com", "https://github.com./", true],
+    ["https://accounts.example.com", "https://accounts.example.com/", true],
+    ["https://accounts.example.com", "https://www.accounts.example.com/", false],
+    ["https://accounts.example.com", "https://example.com/", false],
+    ["https://*.example.com", "https://a.b.example.com/", true],
+    ["https://*.example.com", "https://example.com/", true],
+    ["https://*.example.com", "https://badexample.com/", false],
+    ["https://*.com", "https://example.com/", false],
+    ["https://*.co.uk", "https://bank.co.uk/", false],
+    ["https://*.github.io", "https://alice.github.io/", false],
+    ["https://alice.github.io", "https://alice.github.io/", true],
+    ["https://alice.github.io", "https://bob.github.io/", false],
+    ["http://127.0.0.1:8080", "http://127.0.0.1:8080/login", true],
+    ["http://127.0.0.1:8080", "http://127.0.0.2:8080/login", false],
+    ["https://github.com", "file:///etc/passwd", false],
+    ["", "https://github.com/", false],
+    ["https://github.com", "not a url", false],
+  ]
+  const bad = M.filter(([e, p, want]) => kp.matchesSite(e, p) !== want)
+  check("agent logins: an entry's address matches its own site only (lookalikes, other subdomains, http, ports, public suffixes)", !bad.length, bad)
+  const forLight = kp.entriesFor(opened, "https://lighthouse.example.com/login?next=/").map((e) => e.title).sort().join()
+  check("agent logins: a page's entries are those naming its site", forLight === "Lighthouse,Lighthouse admin", forLight)
+  check("agent logins: additional URLs (KeePassXC's KP2A_URL) match too", kp.entriesFor(opened, "https://harbor.example.net/").length === 1
+    && kp.entriesFor(opened, "https://eu.harbor.example.org/").length === 1 && !kp.entriesFor(opened, "https://harbor.example.com/").length)
+
+  // RFC 6238's vectors (its SHA-1 key, 8 digits), then the forms KeePassXC and KeePass keep a one-time code in.
+  const rfc = { key: Buffer.from("12345678901234567890"), period: 30, digits: 8, algorithm: "sha1" as const }
+  const codes = [59, 1111111109, 1234567890, 2000000000].map((s) => kp.totp(rfc, s * 1000))
+  check("agent logins: one-time codes as RFC 6238 computes them", codes.join() === "94287082,07081804,89005924,69279037", codes)
+  const sha256 = kp.totp({ key: Buffer.from("12345678901234567890123456789012"), period: 30, digits: 8, algorithm: "sha256" }, 59_000)
+  check("agent logins: SHA-256 codes too", sha256 === "46119246", sha256)
+  const B32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+  const forms = [
+    kp.otpOf({ otp: `otpauth://totp/x?secret=${B32}&period=30&digits=8&algorithm=SHA1` }),
+    kp.otpOf({ otp: `key=${B32}&step=30&size=8` }),
+    kp.otpOf({ "TOTP Seed": B32.toLowerCase().replace(/(.{4})/g, "$1 "), "TOTP Settings": "30;8" }),
+    kp.otpOf({ "TimeOtp-Secret-Base32": B32, "TimeOtp-Length": "8" }),
+    kp.otpOf({ "TimeOtp-Secret": "12345678901234567890", "TimeOtp-Length": "8" }),
+  ]
+  const formCodes = forms.map((o) => (o && o !== "steam" ? kp.totp(o, 59_000) : String(o)))
+  check("agent logins: codes from otpauth, KeeOtp, KeePassXC's old fields and KeePass's TimeOtp fields", formCodes.every((c) => c === "94287082"), formCodes)
+  check("agent logins: Steam's codes are named, not computed wrong", kp.otpOf({ otp: `otpauth://totp/Steam:a?secret=${B32}&encoder=steam` }) === "steam"
+    && kp.otpOf({ "TOTP Seed": B32, "TOTP Settings": "30;S" }) === "steam")
+  check("agent logins: an entry without a one-time code has none", kp.otpOf({ URL: "https://x.com" }) === null)
+
+  // The page's login form: which inputs get what.
+  let n = 0
+  const input = (o: Partial<import("../electron/browser/loginform.ts").Input>) => ({ id: ++n, type: "text", hint: "", autocomplete: "", form: 0, visible: true, disabled: false, maxLength: -1, ...o })
+  const user = input({ type: "email", hint: "email", form: 1 }), pw = input({ type: "password", hint: "password", form: 1 }), search = input({ hint: "search" })
+  const f1 = loginForm([search, user, pw])
+  check("agent logins: a sign-in form's username and password", f1.kind === "password" && f1.password?.id === pw.id && f1.username?.id === user.id, f1)
+  const f2 = loginForm([input({ type: "password", form: 2 }), input({ type: "password", form: 2 })])
+  check("agent logins: two password fields in a form is a sign-up or a change, not a login", f2.kind === "none", f2)
+  const f3 = loginForm([input({ type: "password", visible: false }), input({ autocomplete: "username" })])
+  check("agent logins: a hidden password field doesn't count; a username-first page fills its username", f3.kind === "username" && !!f3.username, f3)
+  const code = input({ autocomplete: "one-time-code", inputMode: "numeric" })
+  const f4 = loginForm([search, code])
+  check("agent logins: a page asking for a one-time code", f4.kind === "otp" && f4.otp.length === 1 && f4.otp[0].id === code.id, f4)
+  const boxes = Array.from({ length: 6 }, () => input({ maxLength: 1, form: 3 }))
+  const f5 = loginForm([search, ...boxes])
+  check("agent logins: a code split in a box per digit", f5.kind === "otp" && f5.otp.length === 6, f5)
+  check("agent logins: a page with no login form has none", loginForm([search, input({ type: "checkbox" })]).kind === "none")
+
+  // What agents see of a page that holds a filled secret: never the secret, as is or as an address encodes it.
+  const s = "p@ss wörd&1!"
+  const encoded = [s, encodeURIComponent(s), encodeURIComponent(s).toLowerCase(), new URLSearchParams([["pw", s]]).toString().slice(3), encodeURI(s)]
+  const out = scrub(`Shown: ${encoded.join(" | ")} end`, [s])
+  check("agent logins: a secret is scrubbed from text, as is and however an address or a form encodes it", out === `Shown: ${encoded.map(() => "•••").join(" | ")} end`, [out, encoded])
+  check("agent logins: text without a secret is unchanged", scrub("nothing here", [s]) === "nothing here" && scrub("p@ss", []) === "p@ss")
+  keep("482913", 60_000)
+  const answer = scrubDeep({ tab: 3, title: "Code 482913", lines: ["a 482913"], png: "iVBORw0K482913AAAA" })
+  check("agent logins: an answer's every string is scrubbed, a picture's bytes left whole", answer.title === "Code •••" && answer.lines[0] === "a •••" && answer.png === "iVBORw0K482913AAAA" && answer.tab === 3, answer)
+})
+
+// ---------- Browser: the user's passkeys approving agents' logins (electron/browser/presence.ts) ----------
+// A made-up authenticator here (a P-256 key, as a phone's passkey has), WebAuthn's bytes built by hand.
+await section("login approvals", async () => {
+  const pr = await import("../electron/browser/presence.ts")
+  const { encode } = await import("../electron/browser/cbor.ts")
+  const crypto = await import("node:crypto")
+  const RP = "m1.example.ts.net", ORIGIN = `https://${RP}:8447`
+  const sha = (b: Buffer | string) => crypto.createHash("sha256").update(b).digest()
+  const b64u = (b: Uint8Array) => Buffer.from(b).toString("base64url")
+  const device = () => {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" })
+    const j = publicKey.export({ format: "jwk" })
+    const cose = encode(new Map<number, Buffer | number>([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(j.x!, "base64url")], [-3, Buffer.from(j.y!, "base64url")]]))
+    return { privateKey, cose, id: crypto.randomBytes(16) }
+  }
+  const authData = (rp: string, flags: number, counter: number, attested?: { id: Buffer; cose: Buffer }) => {
+    const c = Buffer.alloc(4); c.writeUInt32BE(counter)
+    const parts: Uint8Array[] = [sha(rp), Buffer.from([flags]), c]
+    if (attested) { const n = Buffer.alloc(2); n.writeUInt16BE(attested.id.length); parts.push(Buffer.alloc(16), n, attested.id, attested.cose) }
+    return Buffer.concat(parts)
+  }
+  const client = (type: string, challenge: Buffer, origin = ORIGIN) => Buffer.from(JSON.stringify({ type, challenge: b64u(challenge), origin, crossOrigin: false }))
+  const created = (d: ReturnType<typeof device>, challenge: Buffer, o: { rp?: string; flags?: number; origin?: string } = {}) => ({
+    clientDataJSON: b64u(client("webauthn.create", challenge, o.origin)),
+    attestationObject: b64u(encode(new Map<string, unknown>([["fmt", "none"], ["attStmt", new Map()], ["authData", authData(o.rp ?? RP, o.flags ?? 0x45, 0, d)]]) as never)) })
+  const signed = (d: ReturnType<typeof device>, challenge: Buffer, o: { rp?: string; flags?: number; origin?: string; counter?: number; key?: import("node:crypto").KeyObject } = {}) => {
+    const ad = authData(o.rp ?? RP, o.flags ?? 0x05, o.counter ?? 0), cd = client("webauthn.get", challenge, o.origin)
+    const signature = crypto.sign("sha256", Buffer.concat([ad, sha(cd)]), { key: o.key ?? d.privateKey, dsaEncoding: "der" })
+    return { id: b64u(d.id), clientDataJSON: b64u(cd), authenticatorData: b64u(ad), signature: b64u(signature) }
+  }
+  const fails = (fn: () => unknown) => { try { fn(); return "" } catch (e) { return (e as Error).message || "failed" } }
+
+  const phone = device(), c1 = crypto.randomBytes(32)
+  const pk = pr.register(created(phone, c1), c1, "iPhone")
+  check("login approvals: a passkey registers, for the page's own site", pk.id === b64u(phone.id) && pk.rpId === RP && pk.origin === ORIGIN && pk.name === "iPhone", pk)
+  const refusedReg = {
+    "another challenge": fails(() => pr.register(created(phone, c1), crypto.randomBytes(32), "x")),
+    "no user verification": fails(() => pr.register(created(phone, c1, { flags: 0x41 }), c1, "x")),
+    "another site's hash": fails(() => pr.register(created(phone, c1, { rp: "evil.example" }), c1, "x")),
+    "an http page": fails(() => pr.register(created(phone, c1, { origin: `http://${RP}` }), c1, "x")),
+  }
+  check("login approvals: a registration for another challenge, without Face ID or Touch ID, of another site or over http fails", Object.values(refusedReg).every(Boolean), refusedReg)
+
+  const c2 = crypto.randomBytes(32)
+  const ok = pr.verify(signed(phone, c2), [pk], c2)
+  check("login approvals: the phone's assertion verifies", ok.passkey.id === pk.id, ok)
+  const other = device()
+  const refused = {
+    "forged (another key)": fails(() => pr.verify(signed(phone, c2, { key: other.privateKey }), [pk], c2)),
+    "an unknown passkey": fails(() => pr.verify(signed(other, c2), [pk], c2)),
+    "another challenge (replayed)": fails(() => pr.verify(signed(phone, c2), [pk], crypto.randomBytes(32))),
+    "no user verification": fails(() => pr.verify(signed(phone, c2, { flags: 0x01 }), [pk], c2)),
+    "another site": fails(() => pr.verify(signed(phone, c2, { rp: "evil.example", origin: "https://evil.example" }), [pk], c2)),
+    "another origin for its site": fails(() => pr.verify(signed(phone, c2, { origin: "https://evil.example" }), [pk], c2)),
+    "its client data changed": fails(() => pr.verify({ ...signed(phone, c2), clientDataJSON: b64u(Buffer.from(JSON.stringify({ type: "webauthn.get", challenge: b64u(c2), origin: ORIGIN, crossOrigin: true }))) }, [pk], c2)),
+    "a counter gone back": fails(() => pr.verify(signed(phone, c2, { counter: 3 }), [{ ...pk, counter: 5 }], c2)),
+  }
+  check("login approvals: forged, unknown, replayed, unverified, other sites', changed or counted-back assertions fail", Object.values(refused).every(Boolean), refused)
+  check("login approvals: a counter that goes up is new", pr.verify(signed(phone, c2, { counter: 6 }), [{ ...pk, counter: 5 }], c2).counter === 6)
+})
+
 fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("web", t0))

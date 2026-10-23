@@ -65,3 +65,11 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   site sets them again. Chromium deletes every cookie of a site with one it can't decrypt (a build without the fuse, a
   Keychain that refuses): never run a build without it on a profile. A session setup that returns a promise
   holds the session's pages and cookie reads (`sessionReady`); a restart into an update awaits `engineFlush` first.
+- Agents never read a secret the app filled (logins.ts, from agents.kdbx): every agent answer goes through `serve`, which
+  scrubs it (pagesecrets.ts), and what a page shows is scrubbed at its source too, since `run` composes calls without
+  `serve`. A new agent output does the same. An agent's script (evaluate) can inject code that stays listening in the
+  page's document, so the app fills nothing on that site's pages till they load again; this holds only because Electron
+  has no back/forward cache (web/qa/agentlogins.mjs checks).
+- A login an entry's tag doesn't free waits for the user's passkey, verified here (presence.ts), never for a yes the
+  server or anything an agent calls could give. A passkey is added only by a code the app shows, then Touch ID: agents
+  have computer use, so a click in the app proves nothing. The list is encrypted with the Keychain's key.

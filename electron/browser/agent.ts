@@ -5,6 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { allPages, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, tell, type EnginePage } from "./engine.ts"
+import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -22,7 +23,7 @@ const accessOf = (p: EnginePage): Access => (!mayOpen(p.profile) ? "none" : acce
 const levels: Record<Access, number> = { none: 0, read: 1, act: 2 }
 
 /** The page `tab` if agents may `need` there, else why not. */
-function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
+export function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   const a = accessOf(p)
@@ -32,6 +33,7 @@ function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
       : "agents may only read this tab: its container lets them read, not act")
   }
   if (need === "act" && paused.has(p.id)) throw new Error("the user paused agents in this tab")
+  if (need === "act" && filling.has(p.id)) throw new Error("the app is filling a login in this tab: try again in a moment")
   // (an extension's own page, Focus's blocked page and its ask for time among them, is the user's alone)
   if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("agents use web pages only, not an extension's or the app's")
   return p
@@ -54,11 +56,9 @@ const refsOf = (wc: WebContents) => {
   if (!r) refs.set(wc, (r = { byRef: new Map(), byNode: new Map(), n: 0 }))
   return r
 }
-/** Each page's tree as an agent last saw it, and which document it was (`docs` counts them): what act's diff is against. */
+/** Each page's tree as an agent last saw it, and which document it was (docOf): what act's diff is against. */
 const seen = new WeakMap<WebContents, { lines: string[]; doc: number }>()
-const docs = new WeakMap<WebContents, number>()
 eachPage((p) => p.wc.on("did-navigate", () => {
-  docs.set(p.wc, (docs.get(p.wc) ?? 0) + 1)
   const r = refs.get(p.wc)
   r?.byRef.clear()
   r?.byNode.clear()
@@ -80,6 +80,8 @@ async function tree(p: EnginePage) {
   const walk = (node: AXNode | undefined, depth: number) => {
     if (!node || size > MAX_TREE) return
     const role = text(node.role), name = text(node.name).slice(0, 200)
+    // (a field the app filled a secret into: its value, and the text inside it, never shown)
+    const filled = !!node.backendDOMNodeId && wasFilled(p.wc, node.backendDOMNodeId)
     const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name)
     let d = depth
     if (shown) {
@@ -91,17 +93,19 @@ async function tree(p: EnginePage) {
         if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
         line += ` [ref=${ref}]`
       }
-      const value = text(node.value)
+      // (a password field's dots say its length: never)
+      const value = filled || /^[•●*]+$/.test(text(node.value)) ? (text(node.value) ? "•••" : "") : text(node.value)
       if (value && value !== name) line += `: ${value.slice(0, 200)}`
       for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") line += ` [${k}]`
+      line = scrub(line)
       size += line.length + 1
       lines.push(line)
       d = depth + 1
     }
-    for (const c of node.childIds ?? []) walk(byId.get(c), d)
+    if (!filled) for (const c of node.childIds ?? []) walk(byId.get(c), d)
   }
   walk(root, 0)
-  seen.set(p.wc, { lines, doc: docs.get(p.wc) ?? 0 })
+  seen.set(p.wc, { lines, doc: docOf(p.wc) })
   return lines
 }
 
@@ -112,7 +116,7 @@ const cut = (lines: string[], max = MAX_SNAPSHOT) => {
 }
 async function snapshot(p: EnginePage) {
   const lines = await tree(p)
-  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), snapshot: cut(lines) }
+  return { tab: p.id, url: scrub(p.wc.getURL()), title: scrub(p.wc.getTitle()), snapshot: cut(lines) }
 }
 
 /** What changed between two trees: lines gone (-) then new (+), by what they say, not their depth (a wrapper added moves
@@ -220,6 +224,8 @@ const KEYS: Record<string, { code: string; key: string; vk: number; text?: strin
   home: { code: "Home", key: "Home", vk: 36 }, end: { code: "End", key: "End", vk: 35 }, pageup: { code: "PageUp", key: "PageUp", vk: 33 },
   pagedown: { code: "PageDown", key: "PageDown", vk: 34 },
 }
+/** Copying and cutting: never where a filled secret could be selected (a revealed password). */
+const COPY = /^(?:(?:meta|cmd|control|ctrl)\+(?:shift\+)?[cx]|(?:control|ctrl|shift)\+(?:insert|delete))$/i
 /** A key with modifiers ("Enter", "Meta+a", "Shift+Tab"). */
 export async function press(p: EnginePage, combo: string) {
   const parts = combo.split("+").map((x) => x.trim()).filter(Boolean)
@@ -236,7 +242,7 @@ export async function press(p: EnginePage, combo: string) {
 }
 
 /** After an action: a moment for what it started (a navigation, a menu, a download) to settle. */
-async function settle(p: EnginePage, was: string, since = Date.now()) {
+export async function settle(p: EnginePage, was: string, since = Date.now()) {
   const until = Date.now() + 8000
   await new Promise((r) => setTimeout(r, 250))
   while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
@@ -245,7 +251,7 @@ async function settle(p: EnginePage, was: string, since = Date.now()) {
   while (Date.now() < short && started().some((d) => d.state === "progressing")) await new Promise((r) => setTimeout(r, 100))
   const url = p.wc.isDestroyed() ? "" : p.wc.getURL()
   const got = started()
-  return { tab: p.id, url, title: p.wc.isDestroyed() ? "" : p.wc.getTitle(), navigated: url !== was, ...(got.length ? { downloads: got.map(shownDownload) } : {}) }
+  return { tab: p.id, url: scrub(url), title: p.wc.isDestroyed() ? "" : scrub(p.wc.getTitle()), navigated: url !== was, ...(got.length ? { downloads: got.map(shownDownload) } : {}) }
 }
 
 type Field = { ref: string; value: string }
@@ -270,8 +276,10 @@ async function step(p: EnginePage, a: Act) {
       break
     }
     case "press": {
+      const key = String(need(a.key ?? a.value, "a key")).replace(/\s+/g, "")
+      if (COPY.test(key) && heldNear(p)) throw new Error("no copying in a page the app filled a login in")
       if (a.ref) { const n = await nodeOf(p, a.ref); await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {}) }
-      await press(p, String(need(a.key ?? a.value, "a key")))
+      await press(p, key)
       break
     }
     case "check": case "uncheck": {
@@ -356,7 +364,7 @@ async function act(p: EnginePage, a: Act) {
   await quiet(p)
   const lines = await tree(p).catch(() => null)
   if (!lines) return r
-  const page = !before || before.doc !== (docs.get(p.wc) ?? 0)
+  const page = !before || before.doc !== docOf(p.wc)
   const all = page ? lines : changes(before.lines, lines)
   return { ...r, navigated: r.navigated || page, diff: { page, lines: all.slice(0, limit), more: Math.max(0, all.length - limit) } }
 }
@@ -377,7 +385,7 @@ const latest = new Map<number, { by: By; run: string; t: number; step: Record<st
 /** Live: a page an agent opened, or did something in this last while. */
 const LIVE_MS = 120_000
 
-async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
+export async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
   // (a step not naming its task is the one the tab was opened for)
   const owner = owners.get(p.id)
   const by = { ...asked, task: asked.task || owner?.task, summary: asked.summary || (owner && sameAgent(owner, asked) ? owner.summary : undefined) }
@@ -388,7 +396,8 @@ async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
     const dir = path.join(RUNS(), run)
     fs.mkdirSync(dir, { recursive: true })
     let shot = ""
-    if (p.visible() && !p.wc.isDestroyed()) {
+    // (no picture of a page showing a filled secret: the runs are files on this Mac)
+    if (p.visible() && !p.wc.isDestroyed() && !await exposed(p)) {
       const img = await p.wc.capturePage().catch(() => null)
       if (img && !img.isEmpty()) {
         shot = `${t}.jpg`
@@ -396,8 +405,8 @@ async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
         fs.writeFileSync(path.join(dir, shot), (width > 1200 ? img.resize({ width: 1200 }) : img).toJPEG(70))
       }
     }
-    fs.appendFileSync(path.join(dir, "steps.jsonl"), JSON.stringify({ t, tab: p.id, by: by.name ?? "", ...(by.task ? { task: by.task } : {}),
-      ...(by.summary ? { summary: by.summary } : {}), url: p.wc.getURL(), title: p.wc.getTitle(), ...step, ...(shot ? { shot } : {}) }) + "\n")
+    fs.appendFileSync(path.join(dir, "steps.jsonl"), scrub(JSON.stringify({ t, tab: p.id, by: by.name ?? "", ...(by.task ? { task: by.task } : {}),
+      ...(by.summary ? { summary: by.summary } : {}), url: p.wc.getURL(), title: p.wc.getTitle(), ...step, ...(shot ? { shot } : {}) })) + "\n")
   } catch (e) { console.error("vaultite: an agent's step wasn't kept:", e) }
 }
 setTimeout(() => {
@@ -411,7 +420,7 @@ setTimeout(() => {
 }, 60_000).unref()
 
 /** Tell the window an agent is at work in a tab (its bar shows who and what, a moment). */
-const acting = (p: EnginePage, by: By, what: string) => tell(p.win, { type: "engine:agent:acting", id: p.id, by: by.name || "An agent", what })
+export const acting = (p: EnginePage, by: By, what: string) => tell(p.win, { type: "engine:agent:acting", id: p.id, by: by.name || "An agent", what })
 
 /** An element's name for the log ("Sign in"), from its ref. */
 async function nameOf(p: EnginePage, ref: unknown) {
@@ -432,7 +441,7 @@ async function logged(p: EnginePage, ref: string | undefined, value: unknown) {
 
 // ---------- the calls, the server's and a run's alike ----------
 
-const byOf = (x: unknown): By => {
+export const byOf = (x: unknown): By => {
   if (!x || typeof x !== "object") return {}
   const s = (k: keyof By, n = 80) => String((x as By)[k] ?? "").replace(/\s+/g, " ").trim().slice(0, n) || undefined
   return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300) }
@@ -457,13 +466,15 @@ async function actIn(p: EnginePage, a: Act, who: By) {
 
 async function readIn(p: EnginePage) {
   const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: "({ url: location.href, title: document.title, text: document.body ? document.body.innerText : '' })" }]) as { url: string; title: string; text: string }
-  return { tab: p.id, ...r, text: r.text.length > 200_000 ? `${r.text.slice(0, 200_000)}\n… (cut short)` : r.text }
+  const text = scrub(r.text)
+  return { tab: p.id, url: scrub(r.url), title: scrub(r.title), text: text.length > 200_000 ? `${text.slice(0, 200_000)}\n… (cut short)` : text }
 }
 
 type Wait = { text?: string; url?: string; download?: boolean; helped?: boolean }
 async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   const wait = Math.min(60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
-  const code = `(() => { const t = ${JSON.stringify(String(w.text ?? ""))}; return !t || (document.body?.innerText ?? "").includes(t) })()`
+  // (the text is looked for here, in what the page shows scrubbed: never an oracle for a filled secret)
+  const shows = async () => !w.text || scrub(String(await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code: "document.body ? document.body.innerText : ''" }]).catch(() => ""))).includes(String(w.text))
   const last = () => (downloads.get(p.wc) ?? []).at(-1)
   if (w.helped && asks.has(p.id)) {
     // (the user's Done ends it at once, not at the next look)
@@ -478,9 +489,8 @@ async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   }
   for (;;) {
     const d = last()
-    const ok = (!w.url || p.wc.getURL().includes(String(w.url))) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading()
-      && await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code }]).catch(() => false)
-    if (ok) return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), ...(w.download && d ? { download: shownDownload(d) } : {}) }
+    const ok = (!w.url || scrub(p.wc.getURL()).includes(String(w.url))) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading() && await shows()
+    if (ok) return { tab: p.id, url: scrub(p.wc.getURL()), title: scrub(p.wc.getTitle()), ...(w.download && d ? { download: shownDownload(d) } : {}) }
     if (Date.now() > until) {
       throw new Error(`waited ${Math.round(wait / 1000)} s: ${w.text ? `no "${w.text}"` : w.url ? `not at ${w.url}` : w.download ? (d ? `${d.name} is still downloading` : "nothing downloaded in this tab") : "still loading"}`)
     }
@@ -632,6 +642,8 @@ export function setPaused(id: number, on: boolean) {
   for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:paused", id: p.id, on })
 }
 handle("agents:pause", (_win, id, on) => setPaused(Number(id), !!on))
+/** The task page `id` was opened for by an agent ("" for the user's). */
+export const taskOf = (id: number) => owners.get(id)?.task ?? ""
 /** Whose page `id` is (an agent's, else the user's), whether agents are paused in it and what one asked the user there. */
 export const agentState = (id: number) => ({ by: owners.get(id) ?? null, paused: paused.has(id), ask: asks.get(id) ?? null })
 // The pages agents are at work in now, each with a small picture of it as it is.
@@ -681,10 +693,10 @@ keepPage((id) => owners.has(id) || asks.has(id))
 busyWhen(() => asks.size ? "a page waits on the user for an agent" : null, true)
 busyWhen(() => inFlight ? "an agent's call is under way"
   : Date.now() - lastStep < BUSY_MS ? "an agent acted in a page in the last 10 minutes" : null)
-/** An agent call, counted while it runs. */
-const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
+/** An agent call, counted while it runs. What it answers, or fails with, never has a secret the app filled. */
+export const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
   inFlight++
-  try { return await fn(...a) } finally { inFlight-- }
+  try { return scrubDeep(await fn(...a)) } catch (e) { throw new Error(scrub((e as Error).message ?? String(e))) } finally { inFlight-- }
 })
 
 // ---------- the server's (its agents', checked here whatever the server says) ----------
@@ -727,8 +739,13 @@ serve("agent:close", async (_win, tab) => {
 })
 /** At most this wide, so a picture costs an agent less (a Retina page is twice the size). */
 const SHOT_WIDTH = 1280
+/** No picture of a page showing a secret the app filled (a revealed password, a one-time code in its field). */
+async function unexposed(p: EnginePage) {
+  if (await exposed(p)) throw new Error("the page shows a secret the app filled (a password shown, a one-time code): no picture of it now")
+  return p
+}
 serve("agent:screenshot", async (_win, tab) => {
-  const p = pageFor(tab, "read")
+  const p = await unexposed(pageFor(tab, "read"))
   // (a tab in the background is drawn for it, and stays hidden)
   const img = await p.wc.capturePage(undefined, { stayHidden: true })
   if (img.isEmpty()) throw new Error("the page drew nothing yet")
@@ -736,17 +753,30 @@ serve("agent:screenshot", async (_win, tab) => {
   return { tab: p.id, png: (width > SHOT_WIDTH ? img.resize({ width: SHOT_WIDTH }) : img).toPNG().toString("base64") }
 })
 serve("agent:pdf", async (_win, tab, by) => {
-  const p = pageFor(tab, "read")
+  const p = await unexposed(pageFor(tab, "read"))
   const pdf = await p.wc.printToPDF({ printBackground: true })
   if (pdf.length > 50 << 20) throw new Error("the page makes a PDF over 50 MB")
   void record(p, byOf(by), { action: "pdf" })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), pdf: pdf.toString("base64") }
 })
+/** Whether a password field the page's code (and so an agent's script) can reach has a value. */
+const PASSWORD_GIVEN = `(() => { const any = (root) => [...root.querySelectorAll("*")].some((el) => (el.tagName === "INPUT" && el.type === "password" && el.value)
+  || (el.shadowRoot && any(el.shadowRoot)) || ((el.tagName === "IFRAME" || el.tagName === "FRAME") && (() => { try { return !!el.contentDocument && any(el.contentDocument) } catch { return false } })()))
+  return any(document) })()`
 serve("agent:evaluate", async (_win, tab, expression, by) => {
   const p = pageFor(tab, "act")
   const code = String(expression ?? "")
   if (!code.trim()) throw new Error("evaluate needs an expression")
   const who = byOf(by)
+  // Never where it could read a password: one the app filled (its code could also stay, listening, so a page it ran in
+  // gets no login till it loads again: pagesecrets.ts), or one in a field now.
+  const held = heldNear(p)
+  if (held) throw new Error(`evaluate is off in this page: ${held}`)
+  if (p.wc.isLoadingMainFrame()) throw new Error("the page is loading: wait for it (browser wait), then evaluate")
+  markRan(p)
+  if (await p.wc.executeJavaScriptInIsolatedWorld(1015, [{ code: PASSWORD_GIVEN }]).catch(() => true)) {
+    throw new Error("evaluate is off in this page: a password field in it has something typed in it")
+  }
   acting(p, who, "running a script")
   // A world of its own: the DOM, never the page's scripts or their variables (nor they the agent's).
   const value = await Promise.race([p.wc.executeJavaScriptInIsolatedWorld(1013, [{ code }]),

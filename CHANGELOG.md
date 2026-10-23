@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents log in with your passwords, never seeing them**: give the browser a KeePass file for agents (KeeShare's export
+  of an Agents group) on the Mac it runs on, and `vau browser login` fills a site's username, password and one-time code
+  from it. Entries not tagged agent-free wait for your yes, given with a passkey on your phone, and nothing an agent reads
+  of the page shows what was filled.
+- **Agents can't say yes for you**: an agent's permission prompt in a terminal, and one the server waits on (an app's
+  tool through MCP), are approved or denied only in the app or on your phone, never by an agent or vau.
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's
   gone, a pane squeezed too thin comes back at an even share, and Open web page always opens a new tab.
 - **No more rules ping-pong**: two machines on different versions sharing a vault no longer rewrite `.vaultite/AGENTS.md`

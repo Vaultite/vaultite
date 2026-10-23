@@ -41,6 +41,19 @@ export async function tailnetNames(): Promise<string[]> {
   return [...new Set([...out, ...out.map((n) => n.split(".")[0])])]
 }
 
+/** Where Tailscale Serve serves this machine's `port` over https ("https://m1.tail1234.ts.net:8447"), or "" when it
+ *  doesn't (a phone's Safari reaches it there: passkeys need https). */
+export function servedAt(port: number): Promise<string> {
+  const ours = new RegExp(`^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${port}/?$`)
+  return new Promise((resolve) => execFile(TAILSCALE, ["serve", "status", "--json"], { timeout: 10000, maxBuffer: 4 << 20 }, (err, stdout) => {
+    try {
+      const web = (err ? {} : JSON.parse(stdout).Web ?? {}) as Record<string, { Handlers?: Record<string, { Proxy?: string }> }>
+      const hit = Object.entries(web).find(([, w]) => ours.test(w.Handlers?.["/"]?.Proxy ?? ""))
+      resolve(hit ? `https://${hit[0].replace(/:443$/, "")}` : "")
+    } catch { resolve("") }
+  }))
+}
+
 /** A Host header's name, without its port or an IPv6 address's brackets. */
 export const hostName = (host: unknown) => String(host ?? "").toLowerCase().replace(/:\d+$/, "").replace(/^\[|\]$/g, "")
 
