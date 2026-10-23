@@ -166,8 +166,12 @@ const ok = await op("evaluate", { tab: t, expression: "document.title" })
 check("a new page, nothing filled in it: evaluate works again", ok?.value === '"Home"', ok)
 
 const split = await op("navigate", { tab: t, to: `${SITE}/split` })
-const splitIn = await op("login", { tab: t, submit: true })
-check("a code split in a box per digit: each gets its digit", splitIn?.status === "filled" && /Welcome alice/.test((await op("read", { tab: t }))?.text ?? ""), [split, splitIn, saw.at(-1)])
+const boxes = await op("login", { tab: t })
+const digits = await op("snapshot", { tab: t })
+check("a code split in a box per digit: no box shows its digit", boxes?.status === "filled" && (digits?.snapshot ?? "").match(/textbox "Digit \d" \[ref=e\d+\]: •••/g)?.length === 6, digits?.snapshot)
+check("… nor a picture of them", /no picture of it now/.test(String((await op("screenshot", { tab: t })).error)), null)
+await op("act", { tab: t, action: "press", key: "Enter" })
+check("… and the site got each digit", /Welcome alice/.test((await op("read", { tab: t }))?.text ?? ""), [split, boxes, saw.at(-1)])
 
 // ---------- a GET form puts the password in the address: still never seen (in Work, which agents may act in too) ----------
 await fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" },

@@ -67,6 +67,14 @@ export function siteOf(url: string) {
 /** Documents an agent's script ran in (evaluate), and ones the app filled a login in (its sites: a form in a frame). */
 const ran = new WeakMap<WebContents, { doc: number; site: string }>()
 const held = new WeakMap<WebContents, { doc: number; sites: Set<string> }>()
+/** The fields the app filled a secret into, in the document it was (a code split a digit a box: no box shows its own). */
+const filledFields = new WeakMap<WebContents, { doc: number; ids: Set<number> }>()
+export function markFilled(p: EnginePage, id: number) {
+  const m = filledFields.get(p.wc)
+  if (m && m.doc === docOf(p.wc)) m.ids.add(id); else filledFields.set(p.wc, { doc: docOf(p.wc), ids: new Set([id]) })
+}
+/** Whether node `id` (its backend id) of `wc`'s document is a field the app filled a secret into. */
+export const wasFilled = (wc: WebContents, id: number) => { const m = filledFields.get(wc); return !!m && m.doc === docOf(wc) && m.ids.has(id) }
 /** Pages the app is filling a login in: agents wait for it to end. */
 export const filling = new Set<number>()
 
@@ -99,16 +107,17 @@ export function heldNear(p: EnginePage) {
 export async function exposed(p: EnginePage): Promise<boolean> {
   if (!live().length) return false
   if (hasSecret(`${p.wc.getURL()}\n${p.wc.getTitle()}`)) return true
-  const code = `(() => { const out = []
+  // (the fields' values together too: a code split a digit a box shows whole only so)
+  const code = `(() => { const out = [], values = []
     const walk = (root) => {
       if (root.body) out.push(root.body.innerText)
       for (const el of root.querySelectorAll("*")) {
-        if ((el.tagName === "INPUT" && el.type !== "password") || el.tagName === "TEXTAREA") out.push(el.value)
+        if ((el.tagName === "INPUT" && el.type !== "password") || el.tagName === "TEXTAREA") values.push(el.value)
         if (el.shadowRoot) { out.push(el.shadowRoot.textContent || ""); walk(el.shadowRoot) }
       }
     }
     walk(document)
-    return out.join("\\n") })()`
+    return [...out, ...values, values.join("")].join("\\n") })()`
   for (const f of p.wc.mainFrame.framesInSubtree) {
     const text = await f.executeJavaScript(code).catch(() => "")
     if (typeof text === "string" && hasSecret(text)) return true

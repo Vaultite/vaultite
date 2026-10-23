@@ -8,7 +8,7 @@ import { acting, byOf, pageFor, press, record, serve, settle } from "./agent.ts"
 import { cdp, handle, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { loginForm, type Input } from "./loginform.ts"
-import { docOf, filling, keep, markHeld, ranNear, siteOf } from "./pagesecrets.ts"
+import { docOf, filling, keep, markFilled, markHeld, ranNear, siteOf } from "./pagesecrets.ts"
 
 // (its reader, kdbxweb, loads at the first login: a Mac whose agents never log in never loads it)
 const keepass = () => import("./keepass.ts")
@@ -228,6 +228,7 @@ async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnT
       if (!await focus(p, x.input.id)) throw new Error("the page moved the focus away from its field: nothing more was filled")
       if (x.input.maxLength !== 1) { await press(p, process.platform === "darwin" ? "Meta+a" : "Control+a"); await press(p, "Backspace") }
       if (docOf(p.wc) !== doc) throw new Error("the page changed while the app was filling it: nothing more was filled")
+      if (x.what !== "username") markFilled(p, x.input.id)
       await cdp(p.wc, "Input.insertText", { text: x.value })
       did.add(x.what)
     }

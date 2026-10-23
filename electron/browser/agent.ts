@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { allPages, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, tell, type EnginePage } from "./engine.ts"
-import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep } from "./pagesecrets.ts"
+import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -80,6 +80,8 @@ async function tree(p: EnginePage) {
   const walk = (node: AXNode | undefined, depth: number) => {
     if (!node || size > MAX_TREE) return
     const role = text(node.role), name = text(node.name).slice(0, 200)
+    // (a field the app filled a secret into: its value, and the text inside it, never shown)
+    const filled = !!node.backendDOMNodeId && wasFilled(p.wc, node.backendDOMNodeId)
     const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name)
     let d = depth
     if (shown) {
@@ -92,7 +94,7 @@ async function tree(p: EnginePage) {
         line += ` [ref=${ref}]`
       }
       // (a password field's dots say its length: never)
-      const value = /^[•●*]+$/.test(text(node.value)) ? "•••" : text(node.value)
+      const value = filled || /^[•●*]+$/.test(text(node.value)) ? (text(node.value) ? "•••" : "") : text(node.value)
       if (value && value !== name) line += `: ${value.slice(0, 200)}`
       for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") line += ` [${k}]`
       line = scrub(line)
@@ -100,7 +102,7 @@ async function tree(p: EnginePage) {
       lines.push(line)
       d = depth + 1
     }
-    for (const c of node.childIds ?? []) walk(byId.get(c), d)
+    if (!filled) for (const c of node.childIds ?? []) walk(byId.get(c), d)
   }
   walk(root, 0)
   seen.set(p.wc, { lines, doc: docOf(p.wc) })
