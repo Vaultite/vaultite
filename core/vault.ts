@@ -135,16 +135,20 @@ export function writeText(p: string, text: string) {
  *  search indexer, antivirus): EPERM, EACCES or EBUSY until it lets go. */
 const held = (e: unknown) => process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException)?.code ?? "")
 
-/** fs.renameSync, retried a moment on Windows while another process holds the file (a read of this one's can't end
- *  while it waits). */
+/** fs.renameSync, retried a moment on Windows while another process holds the file; one this process reads can't end
+ *  while it waits, so then, to a name that's free, it's copied and the original removed (its readers share deleting). */
 export function renameFile(from: string, to: string) {
   for (let wait = 5; ; wait *= 2) {
     try { return fs.renameSync(from, to) } catch (e) {
-      if (!held(e) || wait > 160) throw e
+      if (!held(e)) throw e
       // (a folder there, or a read-only file, won't let go)
       const st = fs.statSync(to, { throwIfNoEntry: false })
       if (st && (st.isDirectory() || !(st.mode & 0o200))) throw e
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
+      if (wait <= 160) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait); continue }
+      if (st) throw e
+      fs.cpSync(from, to, { recursive: true, preserveTimestamps: true, errorOnExist: true, force: false })
+      fs.rmSync(from, { recursive: true, force: true })
+      return
     }
   }
 }

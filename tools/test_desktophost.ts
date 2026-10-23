@@ -93,6 +93,8 @@ const one = serve(port)
 
   one.s.kill("SIGTERM")
   await one.exited
-  check("serving: a server that stops lets its vault go", !claimFile())
+  // (Windows ends a process at once, so its claim stays behind: it's its dead pid's, which counts for nothing)
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
+  check("serving: a server that stops lets its vault go", !claimFile() || (process.platform === "win32" && !alive(claimed().pid)))
 }
 process.exit(summary("desktophost", began))

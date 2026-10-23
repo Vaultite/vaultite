@@ -47,7 +47,7 @@ const { tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
-const { claim, servingKey } = await import("./core/serving.ts")
+const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts")
 const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
@@ -61,7 +61,8 @@ const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 // `ready`. A vault that can't be opened still ends the server.
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
 await vaultThere(VAULT_AT)
-const servedBy = claim(VAULT_AT, PORT, DESKTOP)
+let servedBy = claim(VAULT_AT, PORT, DESKTOP)
+if (servedBy && process.platform === "win32" && !(await answers(servedBy.port))) servedBy = reclaim(VAULT_AT, PORT, DESKTOP)
 if (servedBy) {
   console.error(`vaultite: ${VAULT_AT} is served on this machine already (pid ${servedBy.pid}, port ${servedBy.port}): one server per vault`)
   process.exit(1)
