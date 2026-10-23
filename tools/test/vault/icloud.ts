@@ -34,18 +34,19 @@ export default async ($: VaultTest) => {
   {
     const { iCloud, slowReads } = await import("../../../core/vault.ts")
     const away = new Map<string, number>(), asked: string[] = [] // placeholders, and how long iCloud takes to give each
+    const at = (p: unknown) => path.resolve(String(p)) // (as the file system takes it: Windows reads C:\v\a/b.md as C:\v\a\b.md)
     const was = { ...iCloud }, readSync = fs.readFileSync, readAsync = fs.promises.readFile
     const deadlock = () => Object.assign(new Error("Resource deadlock avoided"), { code: "EDEADLK", errno: -11 })
     fs.readFileSync = ((p: fs.PathOrFileDescriptor, ...a: unknown[]) => {
-      if (typeof p === "string" && away.has(p)) throw deadlock()
+      if (typeof p === "string" && away.has(at(p))) throw deadlock()
       return (readSync as (...x: unknown[]) => unknown)(p, ...a)
     }) as typeof fs.readFileSync
-    fs.promises.readFile = ((p: string, ...a: unknown[]) => away.has(String(p)) ? Promise.reject(deadlock())
+    fs.promises.readFile = ((p: string, ...a: unknown[]) => away.has(at(p)) ? Promise.reject(deadlock())
       : (readAsync as (...x: unknown[]) => Promise<unknown>)(p, ...a)) as typeof fs.promises.readFile
     Object.assign(iCloud, {
       on: true,
-      evicted: (abs: string) => away.has(abs),
-      download: (p: string, done: (e: Error | null) => void) => { asked.push(p); setTimeout(() => { away.delete(p); done(null) }, away.get(p) ?? 0) },
+      evicted: (abs: string) => away.has(at(abs)),
+      download: (p: string, done: (e: Error | null) => void) => { asked.push(at(p)); setTimeout(() => { away.delete(at(p)); done(null) }, away.get(at(p)) ?? 0) },
     })
     const evict = (rel: string, ms = 300) => away.set(path.join(VAULT, rel), ms)
     try {
