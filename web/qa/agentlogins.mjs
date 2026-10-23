@@ -266,8 +266,23 @@ const unknown = await route("POST", "approve", { grant, ...signed(stranger, opts
 const pending = await Promise.race([asking.then(() => "answered"), wait(1500).then(() => "waiting")])
 check("no yes but the passkey's: an agent answering the Inbox, a forged signature, an unknown passkey: the login still waits", asAgent >= 400 && asApp >= 400
   && /signature/.test(String(forged.error)) && /isn't a passkey set up/.test(String(unknown.error)) && pending === "waiting", [asAgent, asApp, forged, unknown, pending])
+// (the page as a browser draws it, in a window of the app's own, never shown)
+const facts = await app.evaluate(async ({ BrowserWindow }, url) => {
+  const w = new BrowserWindow({ show: false })
+  await w.loadURL(url)
+  for (let i = 0; i < 50; i++) {
+    const t = await w.webContents.executeJavaScript("document.getElementById('facts').innerText + '|' + document.getElementById('yes').textContent")
+    if (t.length > 1) { w.destroy(); return t }
+    await new Promise((r) => setTimeout(r, 100))
+  }
+  w.destroy()
+  return ""
+}, `${origin}/api/web-viewer/approve?grant=${grant}`)
+check("the approval page shows the site, the entry (title and username), the agent and its task before the passkey's prompt", ["Site", `localhost:${PORT}`, "Entry", "Harbor", "Username", "alice@example.com", "Agent", "Claude Code", "Task", "harbor"].every((x) => facts.includes(x))
+  && facts.endsWith("|Approve with your passkey"), facts)
 const opts3 = await route("GET", `approve/options?grant=${grant}`)
-check("the approval page names the site, entry and agent", opts3.site === `localhost:${PORT}` && opts3.entry?.title === "Harbor" && opts3.agent === "Claude Code" && opts3.allow?.length === 1, opts3)
+check("… from what the desktop app says of the login", opts3.site === `localhost:${PORT}` && opts3.entry?.title === "Harbor"
+  && opts3.entry?.username === "alice@example.com" && opts3.agent === "Claude Code" && opts3.task === "harbor" && opts3.allow?.length === 1, opts3)
 const yes = signed(phone, opts3.challenge)
 const passed = await route("POST", "approve", { grant, ...yes })
 const approved = await asking

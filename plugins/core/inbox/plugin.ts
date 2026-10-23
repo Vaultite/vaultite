@@ -563,11 +563,11 @@ plugin.route("POST", "inbox/events/unread", async (req) => {
   return { unread: unread(local) }
 })
 
-/** Who answers a gate: the user's hands (the app, their phone and watch, vau with no agent in it) or a machine passing
- *  one on; never an agent. Callers can lie about it: a yes that must be the user's takes a passkey (browser logins). */
+/** Who answers a gate: the app, the phone's and watch's notifications, or a machine passing one on; never vau (a person's
+ *  shell looks like an agent's). Callers can still lie: a yes that must be the user's takes a passkey (browser logins). */
 export const answersGates = (w: { client: string | null; agent: string | null }) => !w.agent && !!w.client
-  && (w.client.startsWith("app/") || w.client.startsWith("machine/") || ["iphone", "watch", "cli"].includes(w.client))
-const NOT_AGENTS = "only you answer a permission the server waits on (in the app, on your phone, or in vau typed yourself), never an agent"
+  && (w.client.startsWith("app/") || w.client.startsWith("machine/") || w.client === "iphone" || w.client === "watch")
+const NOT_AGENTS = "only you answer a permission the server waits on, in the app or on your phone, never an agent nor vau"
 
 /** Answer a permission the server waits on (gate: the service "inbox:ask"): approve or deny. The owner's only, so what
  *  asked can't answer itself. */
@@ -1384,8 +1384,8 @@ plugin.op({
   summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, reply to a session that needs you, or read.",
   help: `approve and deny press the keys the agent's plugin gives for the question its terminal shows (Claude Code's
 permission: Enter, its first choice Yes, or Escape): for an agent asking permission in an app terminal (the event's ask
-is permission) while its terminal still shows the question, or a question the server waits on (only the user answers
-one: the app, their phone, vau typed by them; never an agent). reply (with text) is
+is permission) while its terminal still shows the question; a question the server waits on (an app's tool) is answered
+only in the app or on the user's phone, never here. reply (with text) is
 inbox.reply to its session. read marks it read. Another machine's event is answered there, where its session runs; a
 bare id from a notification another machine sent is found too.
 

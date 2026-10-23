@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { AppWindow } from "../appwindow.ts"
-import { acting, byOf, pageFor, press, record, serve, settle } from "./agent.ts"
+import { acting, byOf, pageFor, press, record, serve, settle, taskOf } from "./agent.ts"
 import { allPages, cdp, handle, tell, type EnginePage } from "./engine.ts"
 import type { Database, Entry } from "./keepass.ts"
 import { loginForm, type Input } from "./loginform.ts"
@@ -49,7 +49,7 @@ const ASK_MS = 10 * 60_000
 const approvals = new Map<string, { until: number; by: string }>()
 /** Logins waiting on the user, by their grant (the approval page's address has it): the challenge it last gave the page,
  *  good for one answer. */
-type Grant = { key: string; tab: number; site: string; entry: Entry; agent: string; until: number; challenge: Buffer | null
+type Grant = { key: string; tab: number; site: string; entry: Entry; agent: string; task: string; until: number; challenge: Buffer | null
   state: "waiting" | "approved" | "denied"; waiters: Set<() => void> }
 const grants = new Map<string, Grant>()
 const b64u = (b: Buffer) => b.toString("base64url")
@@ -121,7 +121,7 @@ serve("agent:passkey-add", async (_win, token, given, name) => {
 })
 serve("agent:login-options", (_win, id) => {
   const g = grantFor(id)
-  const shown = { site: g.site, entry: { title: g.entry.title, username: g.entry.username }, agent: g.agent, state: g.state }
+  const shown = { site: g.site, entry: { title: g.entry.title, username: g.entry.username }, agent: g.agent, task: g.task, state: g.state }
   if (g.state !== "waiting") return shown
   const keys = passkeys()
   if (!keys.length) throw new Error("no passkey is set up to approve agents' logins")
@@ -269,7 +269,7 @@ async function login(p: EnginePage, o: Opts, who: ReturnType<typeof byOf>) {
     let id = [...grants].find(([, g]) => g.key === key && g.state === "waiting" && g.until > Date.now())?.[0]
     if (!id) {
       id = b64u(crypto.randomBytes(16))
-      grants.set(id, { key, tab: p.id, site: host, entry: e, agent: who.name || "An agent", until: Date.now() + ASK_MS, challenge: null, state: "waiting", waiters: new Set() })
+      grants.set(id, { key, tab: p.id, site: host, entry: e, agent: who.name || "An agent", task: who.task || taskOf(p.id), until: Date.now() + ASK_MS, challenge: null, state: "waiting", waiters: new Set() })
       log("asked the user", e)
     }
     const keys = passkeys()

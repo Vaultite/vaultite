@@ -647,11 +647,13 @@ export default async ($: VaultTest) => {
       await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("mcp")),
       await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("app/desktop", "claude-code")),
       await api("POST", `inbox/events/${gate}/answer`, { answer: "approve" }, from("a-script")),
+      // (vau naming no agent too: the server can't tell a person's shell from an agent's that unset its variables)
+      await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli")),
     ]
-    check("inbox gates: an agent (MCP, a coding agent's vau, a script) can't answer one, by the op or the route", tries.every(([st, b]) => st === 403 && /only you/.test(String(b.error)))
+    check("inbox gates: an agent (MCP, vau with or without an agent, a script) can't answer one, by the op or the route", tries.every(([st, b]) => st === 403 && /only you/.test(String(b.error)))
       && await answerOf(gate) === "waiting", tries)
-    const [byHand] = await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("cli"))
-    check("inbox gates: the user's own vau answers it", byHand === 200 && await answerOf(gate) === "approve", byHand)
+    const [relayed] = await api("POST", "ops/inbox.answer", { id: gate, answer: "approve" }, from("machine/studio"))
+    check("inbox gates: another machine passing on the user's answer answers it", relayed === 200 && await answerOf(gate) === "approve", relayed)
     const gate2 = ask({ source: "mcp", key: "gate-phone", title: "Grok Bot asks to run file.move", body: "file.move {}" })
     const [phone] = await api("POST", "ops/inbox.answer", { id: gate2, answer: "deny" }, from("iphone"))
     check("inbox gates: the phone's notification answers it", phone === 200 && await answerOf(gate2) === "deny", phone)

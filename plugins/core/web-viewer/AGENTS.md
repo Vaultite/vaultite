@@ -93,10 +93,11 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   with its www., `*.example.com` every subdomain (never a public suffix's, like `*.co.uk`), an http page only for an http
   entry, ports exact. An entry tagged `agent-free` fills at once; any other waits for the user's yes, given with a
   passkey (Face ID, Touch ID) on a page of this server they open from the Inbox event (their phone hears of it): a yes
-  lasts 15 minutes for that entry and agent, and nothing else gives one, an agent least of all. The passkeys are the
-  Mac's, kept in its Keychain: "Passkeys for agents' logins" (Passwords for agents…) lists them and adds one from a
-  phone, by a QR code its Safari opens (the Mac's Vaultite served over https on the tailnet: `tailscale serve`), then
-  Touch ID on the Mac confirms it. Agents hear only
+  lasts 15 minutes for that entry and agent, and nothing else gives one, an agent least of all. The page shows the site,
+  the entry (title and username), the agent and its task. The passkeys are the Mac's, kept encrypted in its Keychain.
+  Adding one, at that Mac: serve its Vaultite over https on the tailnet (`tailscale serve --https=8447 8793`), open
+  Passwords for agents… > Passkeys that approve logins… > Add a passkey…, scan the QR code with the phone (Safari adds
+  the passkey), then confirm with Touch ID on the Mac. The code works once, for 10 minutes. Agents hear only
   what happened (filled, entries to pick from, waiting for the user, no entry, said no). What's filled can't be read back:
   snapshot, read, wait, run, act's changes, tabs and the steps kept to replay show it as •••, however the page shows it
   (revealed, in its title, in its address); evaluate is off in a page holding it (or with any password typed in),

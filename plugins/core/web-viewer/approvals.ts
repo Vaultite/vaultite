@@ -14,7 +14,9 @@ h1 { font-size: 22px; font-weight: 600; margin: 0 0 8px } p { margin: 8px 0; col
 button { font: inherit; font-weight: 600; width: 100%; min-height: 50px; border: 0; border-radius: 12px; margin-top: 12px; cursor: pointer }
 .yes { background: #0a84ff; color: white } .no { background: color-mix(in srgb, currentColor 10%, transparent); color: inherit }
 button[hidden] { display: none }
-</style></head><body><h1 id="title">${title}</h1><p id="what"></p><p id="say"></p>
+dl { text-align: left; margin: 20px 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px } dt { color: color-mix(in srgb, currentColor 60%, transparent) }
+dd { margin: 0; font-weight: 600; overflow-wrap: anywhere }
+</style></head><body><h1 id="title">${title}</h1><dl id="facts"></dl><p id="what"></p><p id="say"></p>
 <button class="yes" id="yes" hidden></button><button class="no" id="no" hidden></button>
 <script>(async () => {
   const $ = (id) => document.getElementById(id)
@@ -34,7 +36,14 @@ button[hidden] { display: none }
 const APPROVE = `
   const grant = new URLSearchParams(location.search).get("grant") || ""
   const o = await api("GET", "approve/options?grant=" + encodeURIComponent(grant))
-  $("what").textContent = o.agent + " asks to log in to " + o.site + " as " + (o.entry.username || o.entry.title) + " (" + o.entry.title + "). It never sees the password; your yes lasts 15 minutes for this login."
+  // (what Face ID says yes to, in full: the site, the entry, who asks and for what)
+  for (const [k, v] of [["Site", o.site], ["Entry", o.entry.title], ["Username", o.entry.username], ["Agent", o.agent], ["Task", o.task]]) {
+    if (!v) continue
+    const dt = document.createElement("dt"), dd = document.createElement("dd")
+    dt.textContent = k; dd.textContent = v
+    $("facts").append(dt, dd)
+  }
+  $("what").textContent = "The app fills the password; the agent never sees it. Your yes lasts 15 minutes, for this entry and this agent."
   if (o.state !== "waiting") return say(o.state === "approved" ? "Approved." : "You said no.")
   $("yes").textContent = "Approve with your passkey"; $("yes").hidden = false
   $("no").textContent = "Deny"; $("no").hidden = false

@@ -11,7 +11,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   from it. Entries not tagged agent-free wait for your yes, given with a passkey on your phone, and nothing an agent reads
   of the page shows what was filled.
 - **Agents can't say yes for you**: a permission the server waits on (an app's tool through MCP) is answered only in the
-  app, on your phone or in vau you type, never by an agent.
+  app or on your phone, never by an agent or vau.
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's
   gone, a pane squeezed too thin comes back at an even share, and Open web page always opens a new tab.
 - **No more rules ping-pong**: two machines on different versions sharing a vault no longer rewrite `.vaultite/AGENTS.md`

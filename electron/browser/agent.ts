@@ -642,6 +642,8 @@ export function setPaused(id: number, on: boolean) {
   for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:paused", id: p.id, on })
 }
 handle("agents:pause", (_win, id, on) => setPaused(Number(id), !!on))
+/** The task page `id` was opened for by an agent ("" for the user's). */
+export const taskOf = (id: number) => owners.get(id)?.task ?? ""
 /** Whose page `id` is (an agent's, else the user's), whether agents are paused in it and what one asked the user there. */
 export const agentState = (id: number) => ({ by: owners.get(id) ?? null, paused: paused.has(id), ask: asks.get(id) ?? null })
 // The pages agents are at work in now, each with a small picture of it as it is.
