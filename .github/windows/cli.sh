@@ -1,5 +1,5 @@
-# Windows proofs for vau (temporary, run by windev.sh in Git Bash): the shells, Set up's PATH, the service, WSL.
-out=windev-out
+# vau on Windows (windows.yml, in Git Bash): the shells, Set up's PATH, opening files, the service, WSL.
+out=windows-out
 mkdir -p $out
 fails=()
 ok() { echo "ok   $1"; }
@@ -38,18 +38,18 @@ PS
   expect "$tag: Windows PowerShell 5.1 too" "which: .*vau\.cmd.*hello from windows.*exit: 0" bash -c "powershell.exe -NoProfile -ExecutionPolicy Bypass -File '$(win "$T/t.ps1")' | tr '\n' ' '"
   # (one line at cmd's prompt each, as typed there)
   printf 'vau write "CI/%s cmd.md" --from "%s"' "$tag" "$IN" > "$T/l1"; printf 'vau read "CI/%s cmd.md"' "$tag" > "$T/l2"; printf 'vau read "CI/a&b ^x.md"' > "$T/l3"
-  expect "$tag: cmd runs vau.cmd, writes and reads" "hello from windows.*hello from windows.*special ok" bash -c "for l in l1 l2 l3; do node .github/windev/cmd.ts '$bin' \"\$(cat '$T'/\$l)\" || exit 1; done | tr '\n' ' '; echo special ok"
+  expect "$tag: cmd runs vau.cmd, writes and reads" "hello from windows.*hello from windows.*special ok" bash -c "for l in l1 l2 l3; do node .github/windows/cmd.ts '$bin' \"\$(cat '$T'/\$l)\" || exit 1; done | tr '\n' ' '; echo special ok"
   expect "$tag: Git Bash runs vau" "hello from windows" bash -c "PATH='$(cygpath -u "$bin")':\$PATH; command -v vau; vau write 'CI/$tag bash.md' --from '$IN' && vau read 'CI/$tag bash.md'"
 }
 shells "$REPO\\bin" checkout
 
 H="$T/home"
-SETUPBIN=$(node .github/windev/setupbin.ts "$(win "$H")" | tail -1)
+SETUPBIN=$(node .github/windows/setupbin.ts "$(win "$H")" | tail -1)
 echo "Set up's folder: $SETUPBIN"; ls -la "$(cygpath -u "$SETUPBIN")"
 shells "$SETUPBIN" setup
 
 # ---------- Set up's PATH, on the real registry once (then put back as it was) ----------
-expect "setup: the user's PATH in the registry gets the folder, kept as it was, then put back" "added kept (Expand)?String.*again adds nothing: true.*restored" bash -c "node .github/windev/registry.ts | tr '\n' ' '"
+expect "setup: the user's PATH in the registry gets the folder, kept as it was, then put back" "added kept (Expand)?String.*again adds nothing: true.*restored" bash -c "node .github/windows/registry.ts | tr '\n' ' '"
 echo "user PATH now:"; reg query 'HKCU\Environment' //v Path
 
 # ---------- /api/file/open: Explorer ----------

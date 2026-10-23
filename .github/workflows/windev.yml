@@ -1,5 +1,5 @@
 # Temporary, while Windows support is built: each push to a windows* branch runs .github/windev.sh on Windows (its
-# windev-out/ folder kept as an artifact). Removed before landing.
+# windows-out/ folder kept as an artifact). Removed before landing.
 name: windev
 on:
   push:
@@ -33,5 +33,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windev-${{ matrix.runner }}
-          path: windev-out/
+          path: windows-out/
           if-no-files-found: ignore

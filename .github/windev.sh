@@ -1,7 +1,7 @@
 # What windev.yml runs on Windows (temporary). Each step runs whatever the last did; the summary says which failed.
-mkdir -p windev-out
+mkdir -p windows-out
 fails=()
-step() { echo "::group::$*"; "$@" 2>&1 | tee -a windev-out/log.txt; local s=${PIPESTATUS[0]}; echo "::endgroup::"; [ "$s" = 0 ] || fails+=("$*"); }
+step() { echo "::group::$*"; "$@" 2>&1 | tee -a windows-out/log.txt; local s=${PIPESTATUS[0]}; echo "::endgroup::"; [ "$s" = 0 ] || fails+=("$*"); }
 step npm run check
 step npm run build
 step node tools/test_web.ts
@@ -14,6 +14,6 @@ step node tools/test_desktophost.ts
 step node tools/test_machines.ts
 step npx playwright-core install chromium
 step npm run smoke
-step bash .github/windev/cli.sh
+step bash .github/windows/cli.sh
 printf 'FAILED: %s\n' "${fails[@]}"
 [ ${#fails[@]} = 0 ]
