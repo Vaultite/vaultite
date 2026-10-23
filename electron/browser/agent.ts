@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, busyWhen, eachPage, eachSession, engineBusy, handle, mayOpen, tell, type EnginePage } from "./engine.ts"
+import { allPages, busyWhen, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, tell, type EnginePage } from "./engine.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -690,6 +690,7 @@ let inFlight = 0
 let lastStep = 0
 /** An agent that acted this recently is likely mid-task, between calls. */
 const BUSY_MS = 10 * 60_000
+keepPage((id) => owners.has(id) || asks.has(id))
 // (an ask can wait for days: it holds only the app's restart, which would lose it)
 busyWhen(() => asks.size ? "a page waits on the user for an agent" : null, true)
 busyWhen(() => inFlight ? "an agent's call is under way"

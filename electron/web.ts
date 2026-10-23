@@ -2,7 +2,7 @@
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
+import { engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { ACCOUNTS, covers, nonempty, type Who } from "./siteaccounts.ts"
@@ -508,9 +508,9 @@ function end(p: Page) {
 }
 
 /** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
- *  one in a player is on screen, whatever its tab. */
+ *  one in a player is on screen, whatever its tab, and an agent's is never let go (browser/agent.ts). */
 async function trim() {
-  const keep = (p: Page) => !!p.player || playingNow(p)
+  const keep = (p: Page) => !!p.player || playingNow(p) || pageKept(p.id)
   if ((!spare && !discardable(pages.values(), keep).length) || !(await shortOfMemory())) return
   endSpare()
   for (const p of discardable(pages.values(), keep)) end(p)
