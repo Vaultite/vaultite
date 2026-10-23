@@ -42,13 +42,13 @@ export default async ($: VaultTest) => {
       const { askingIn } = await import("../../../plugins/core/claude-code/transcript.ts")
       const ask = { type: "assistant", message: { content: [{ type: "tool_use", id: "tu1", name: "AskUserQuestion", input: { questions: [
         { question: "Which fruit?", header: "Fruit", options: [{ label: "Apple", description: "Red" }, { label: "Banana" }] },
-        { question: "Toppings?", multiSelect: true, options: [{ label: "Cheese" }, { label: "Basil" }, { label: "" }] }] } }] } }
+        { question: "Toppings?", multiSelect: true, options: [{ label: "Cheese", description: "cheese" }, { label: "Basil" }, { label: "" }] }] } }] } }
       const answered = { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "tu1", content: "Apple" }] } }
       const lines = (...xs: unknown[]) => `{"partial\n${xs.map((x) => JSON.stringify(x)).join("\n")}\n`
       const a = askingIn(lines({ type: "user", message: { content: "Ask me" } }, ask)) as Any
-      check("asking: an open AskUserQuestion, its questions and options (an empty one left out)", a?.kind === "question" && a.questions.length === 2 &&
+      check("asking: an open AskUserQuestion, its questions and options (an empty one left out, a description saying only its label too)", a?.kind === "question" && a.questions.length === 2 &&
         a.questions[0].header === "Fruit" && a.questions[0].options[0].description === "Red" && !a.questions[0].multi &&
-        a.questions[1].multi === true && a.questions[1].options.length === 2, a)
+        a.questions[1].multi === true && a.questions[1].options.length === 2 && !a.questions[1].options[0].description, a)
       const plan = { type: "assistant", message: { content: [{ type: "tool_use", id: "tu2", name: "ExitPlanMode", input: { plan: "## Plan\n1. Do it" } }] } }
       const bash = { type: "assistant", message: { content: [{ type: "tool_use", id: "tu3", name: "Bash", input: { command: "ls" } }] } }
       check("asking: answered, a plan, another tool waiting, or a prompt after it",

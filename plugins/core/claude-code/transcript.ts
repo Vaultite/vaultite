@@ -116,7 +116,8 @@ export function questionsOf(input: unknown): Question[] {
     const question = words(q?.question, 500)
     const options = (Array.isArray(q?.options) ? q.options : []).slice(0, 6).flatMap((o: unknown) => {
       const label = words((o as Json)?.label, 120), description = words((o as Json)?.description, 300)
-      return label ? [{ label, ...(description ? { description } : {}) }] : []
+      // (one that only says its label again says nothing)
+      return label ? [{ label, ...(description && description.toLowerCase() !== label.toLowerCase() ? { description } : {}) }] : []
     })
     const header = words(q?.header, 40)
     return question && options.length ? [{ question, ...(header ? { header } : {}), ...(q?.multiSelect === true ? { multi: true } : {}), options }] : []
