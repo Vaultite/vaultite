@@ -62,7 +62,7 @@ try {
   const csp = signIn.headers.get("content-security-policy") ?? ""
   check("the sign-in page names its own origin for its poll (Safari's 'self' matches nothing once Vaultite Cloud sandboxes it)", csp.includes(`connect-src 'self' ${PUB}`), csp)
   const page = await signIn.text()
-  const code = /<div class="code"[^>]*>([^<]+)</.exec(page)?.[1]?.replace(/\s/g, "")
+  const code = /<div class="code"[^>]*>(?:<span[^>]*>)?([^<]+)</.exec(page)?.[1]?.replace(/\s/g, "")
   const id = /const id = "([^"]+)"/.exec(page)?.[1]
   check("the sign-in page shows a code", code?.length === 6 && !!id, page.slice(0, 300))
   const st = async () => (await json(await fetch(`${PUB}/authorize/status?id=${encodeURIComponent(id)}`))).body
@@ -133,7 +133,7 @@ try {
   const byName = await rpc("tools/call", { name: "call", arguments: { id: "plugin on", params: { id: "qa-gate" } } })
   check("a gated op called by its CLI name waits too", byName.body?.result?.isError === true && /Waiting for the user's yes/.test(byName.body.result.content[0].text), byName.body)
   for (const e of (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.filter((e) => e.gate && !e.answer) ?? []) {
-    await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(e.id)}/answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answer: "deny" }) })
+    await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(e.id)}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: "deny" }) })
   }
   const docs = await rpc("tools/call", { name: "call", arguments: { id: "docs.list" } })
   check("call runs an ungated op at once", docs.body?.result?.isError === false && docs.body.result.content[0].text.includes("api"), docs.body)
@@ -150,7 +150,8 @@ try {
   check("the app can't approve itself", selfApprove.body?.result?.isError === true, selfApprove.body)
   const askedAgain = await rpc("tools/call", gatedArgs)
   check("asked again, it doesn't ask twice", askedAgain.body?.result?.isError === true && ((await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.filter((e) => e.gate && e.title.includes("settings")).length === 1), askedAgain.body)
-  const yes = await json(await fetch(`${BASE}/api/ops/inbox.answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: asks[0]?.id, answer: "approve" }) }))
+  // (as the app's Approve does: a gate is answered only by the user's own surfaces)
+  const yes = await json(await fetch(`${BASE}/api/ops/inbox.answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ id: asks[0]?.id, answer: "approve" }) }))
   check("the owner approves (inbox.answer)", yes.status === 200, yes)
   const ran = await rpc("tools/call", gatedArgs)
   check("called again once approved, it runs", ran.body?.result?.isError === false && JSON.parse(fs.readFileSync(gatedFile, "utf8")).note === note, ran.body)
@@ -160,7 +161,7 @@ try {
   const pending = rpc("tools/call", { name: "call", arguments: { id: "plugin.enable", params: { id: "qa-gate" } } })
   await wait(300)
   const ask3 = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.find((e) => e.gate && !e.answer && e.title.includes("turn on a plugin"))
-  await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(ask3?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answer: "deny" }) })
+  await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(ask3?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: "deny" }) })
   const denied = await pending
   check("a call waiting for its answer hears a no at once", denied.body?.result?.isError === true && /said no/.test(denied.body.result.content[0].text), denied.body)
   // Dispatch (Vaultite/plugins, from its checkout beside the app): the owner's op an app may ask for. A file that isn't
