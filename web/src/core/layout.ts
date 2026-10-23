@@ -150,6 +150,35 @@ export function beside(n: Layout, at: string, g: Group, side: Side): Layout {
   return { ...n, kids, sizes }
 }
 
+/** Where a group sat, to put it back (a pane closed, then reopened): beside `next`, the part its room goes to when it
+ *  closes (tidy: the one before it, else after), on the `after` side, with its `share` of the room the two had. */
+export type Spot = { next: string; dir: Split["dir"]; after: boolean; share: number }
+export function spotOf(n: Layout, gid: string): Spot | null {
+  if (!isSplit(n)) return null
+  const i = n.kids.findIndex((k) => !isSplit(k) && k.id === gid)
+  if (i < 0) return n.kids.reduce<Spot | null>((s, k) => s ?? spotOf(k, gid), null)
+  const j = i > 0 ? i - 1 : i + 1
+  return { next: n.kids[j].id, dir: n.dir, after: i > 0, share: n.sizes[i] / (n.sizes[i] + n.sizes[j]) }
+}
+/** `n` with group `g` back at `spot`, taking its share of the room `next` has now; null if `next` is gone. */
+export function putBack(n: Layout, g: Group, { next, dir, after, share }: Spot): Layout | null {
+  const two = (s: number) => (after ? [s * (1 - share), s * share] : [s * share, s * (1 - share)])
+  const i = isSplit(n) ? n.kids.findIndex((k) => k.id === next) : -1
+  if (isSplit(n) && i >= 0 && n.dir === dir) {
+    const kids = [...n.kids], sizes = [...n.sizes]
+    kids.splice(after ? i + 1 : i, 0, g)
+    sizes.splice(i, 1, ...two(sizes[i]))
+    return { ...n, kids, sizes }
+  }
+  if (n.id === next) return { id: `s${newId()}`, dir, kids: after ? [n, g] : [g, n], sizes: two(1) }
+  if (!isSplit(n)) return null
+  for (const [j, k] of n.kids.entries()) {
+    const put = putBack(k, g, { next, dir, after, share })
+    if (put) return { ...n, kids: n.kids.map((x, m) => (m === j ? put : x)) }
+  }
+  return null
+}
+
 /** Where each group sits, as shares of the workspace (x, y, width, height from 0 to 1), and the dividers between
  *  the parts of each split: `at` is where the divider is, `rect` the split's own box. */
 export type Rect = { x: number; y: number; w: number; h: number }

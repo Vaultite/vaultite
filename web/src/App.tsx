@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandLink, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
@@ -11,7 +11,7 @@ import { useTypingFade } from "@/core/typing"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canReopenTab, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { activeTab, askRename, canClosePane, canReopenTab, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "@/core/layout"
@@ -333,8 +333,13 @@ export default function App() {
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
-    // (A pinned tab stays open: closed from its menu, or unpinned first.)
-    { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, run: () => { if (!activeTab().pinned) closeTab(activeTab().id) }, label: "Close tab", icon: X },
+    // (A pinned tab stays open: closed from its menu, with its pane, or unpinned first; the toast says so.)
+    { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, label: "Close tab", icon: X, run: () => {
+      const t = activeTab()
+      if (!t.pinned) return closeTab(t.id)
+      notify(canClosePane() ? "Pinned: unpin it or close the pane" : "Pinned: unpin it to close it", { id: "pinned", action: { label: "Unpin", run: () => togglePinTab(t.id) } })
+    } },
+    { id: "pane:close", name: "Close pane", when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
     { id: "tab:toggle-stacked", name: "Stack tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers, nameWhenOn: "Unstack tabs", on: isStacked },
     // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).

@@ -185,6 +185,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       sep,
       cmd("tab:close", "Close tab", "x", { key: "Mod+W", always: true }),
       cmd("tab:close-others", "Close other tabs", undefined, { always: true }),
+      cmd("pane:close", "Close pane", "square-x", { always: true }),
       { label: "Close window", accelerator: `Shift+${MOD}+W`, role: "close" },
       !MAC && sep, ...(MAC ? [] : settings()),
       !MAC && sep, !MAC && { role: "quit", accelerator: "Ctrl+Q" },
@@ -306,7 +307,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
 
 /** Commands every vault window has (App.tsx's own, and the file's while one is open): shown greyed while unavailable. */
 const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new", "tab:new", "switcher:open",
-  "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "tab:reopen", "find:open", "find:replace",
+  "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "pane:close", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
   "setting:line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",
   "tab:toggle-pin", "tab:toggle-stacked"])

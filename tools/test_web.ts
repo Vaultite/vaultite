@@ -993,6 +993,24 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("panes: one squeezed too thin to draw (a layout saved so) comes back at an even share", shares() === "0.50,0.50", shares())
   ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.6, 0.3, 0.1], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gM", tabs: [B], active: "b" }, { id: "gR", tabs: [C], active: "c" }] }, focus: "gL" })
   check("panes: a thin one the user dragged to stays", shares() === "0.60,0.30,0.10", shares())
+  // Close pane (pinned tabs too), and ⌘⇧T bringing it back whole, where it sat.
+  const tree = (n: Any = ws.getWorkspace().root): string => n.kids ? `${n.dir}(${n.kids.map((k: Any, i: number) => `${tree(k)}:${n.sizes[i].toFixed(2)}`).join(" ")})` : n.tabs.map((t: T) => t.to.slice(5, 6)).join("")
+  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.6, 0.3, 0.1], kids: [{ id: "gL", tabs: [A], active: "a" },
+    { id: "gM", tabs: [B, { ...C, pinned: true }], active: "c" }, { id: "gR", tabs: [D], active: "d" }] }, focus: "gM" })
+  ws.closePane()
+  check("close pane: every tab, pinned ones too; its room goes to the pane before it", tree() === "row(a:0.90 d:0.10)" && ws.getWorkspace().focus === "gR", tree())
+  ws.reopenTab()
+  const back = ws.groups()[1]
+  check("close pane: ⌘⇧T brings it back where it sat, its share, pins and shown tab, focused", tree() === "row(a:0.60 bc:0.30 d:0.10)"
+    && back.id === "gM" && back.active === "c" && back.tabs[1].pinned && ws.getWorkspace().focus === "gM", tree())
+  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.7, 0.3], kids: [{ id: "gL", tabs: [A], active: "a" },
+    { id: "s1", dir: "col", sizes: [0.25, 0.75], kids: [{ id: "gT", tabs: [B], active: "b" }, { id: "gB", tabs: [C], active: "c" }] }] }, focus: "gL" })
+  ws.closePane("gT"); ws.closePane("gL")
+  check("close pane: two closed, the splits closing up", tree() === "c", tree())
+  ws.reopenTab(); ws.reopenTab()
+  check("close pane: reopened in turn, each where it sat", tree() === "row(a:0.70 col(b:0.25 c:0.75):0.30)", tree())
+  one([A], "a"); ws.closePane()
+  check("close pane: not the only one", tree() === "a" && !ws.canClosePane(), tree())
 }
 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------

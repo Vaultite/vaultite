@@ -6,7 +6,7 @@ import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Headi
 import type { Store } from "@/core/data"
 import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
-import { askRename, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, newTab, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
+import { askRename, canClosePane, closePane, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, newTab, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
 import { moveTabsTo, hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { leaves, vaultPath, type Group, type Tab, type TabSet } from "@/core/layout"
@@ -176,8 +176,8 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
   ]
 }
 
-/** How a pane shows its tabs: stacked or in a row, and the tab bar on or off (appearance `tabBar`). Also the menu of
- *  the bar's empty space. */
+/** How a pane shows its tabs: stacked or in a row, and the tab bar on or off (appearance `tabBar`); and closing it,
+ *  pinned tabs too. Also the menu of the bar's empty space. */
 function barItems(group: Group): MenuItem[] {
   const { tabBar, paneTitles } = getPrefs()
   // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone).
@@ -187,6 +187,7 @@ function barItems(group: Group): MenuItem[] {
     ...commandItems("tab:sidebar"),
     ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
     ...(tabBar ? [] : [{ label: paneTitles ? "Hide pane titles" : "Show pane titles", icon: Heading1, run: () => setPrefs({ paneTitles: !paneTitles }) }]),
+    ...(canClosePane() ? [{ label: "Close pane", icon: X, sep: true, run: () => closePane(group.id) }] : []),
   ]
 }
 
@@ -465,14 +466,21 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       <GripVertical className="size-4" strokeWidth={2} />
     </button>
   )
-  // Nor pane titles (appearance `paneTitles`): a thin strip keeps the drag strip, the handle (on hover) and the menu.
+  // Without the tabs' own X: closes the pane, pinned tabs too (⌘⇧T brings it back). Not the only one.
+  const closer = !alone && (
+    <button type="button" data-pane-close={group.id} aria-label="Close pane" data-tip={d ? undefined : "Close pane"} onClick={() => closePane(group.id)}
+      className="grid h-7 w-5 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 transition-opacity group-hover/bar:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100">
+      <X className="size-4" strokeWidth={2} />
+    </button>
+  )
+  // Nor pane titles (appearance `paneTitles`): a thin strip keeps the drag strip, the handle and X (on hover) and the menu.
   if (!tabBar && !paneTitles) {
     return (
       <div ref={strip} role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare data-merged={merged || undefined} onContextMenu={menuFor(() => barMenu(group))}
         className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
         {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
         <div className="h-full min-w-0 flex-1" />
-        <div className="relative z-10 mt-0.5 self-start">{handle}</div>
+        <div className="relative z-10 mt-0.5 flex self-start">{closer}{handle}</div>
       </div>
     )
   }
@@ -489,6 +497,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
           <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>
           {tabs.length > 1 && <span className="shrink-0 text-tertiary">{tabs.length} tabs</span>}
         </div>
+        {closer}
         {handle}
       </div>
     )
