@@ -43,7 +43,7 @@ Live.web = webBuild
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
-const { tooBig } = await import("./core/filetypes.ts")
+const { RUNS_CODE, tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
@@ -310,12 +310,13 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
 // Other names this server is reached by (a reverse proxy's own domain), besides its addresses, localhost and its own names.
 const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
 
-/** Why a request isn't from this app's own pages, or "": another site's page (its Origin), or a page reaching this server
- *  under another site's name (DNS rebinding): the Host must be an address, localhost, or this machine's own name. */
-async function foreign(req: http.IncomingMessage) {
+/** Why a request isn't from this app's pages, or "": another site's (its Origin, unless `origin` is false), the internet
+ *  (Funnel), or a page under another site's name (DNS rebinding): the Host is an address, localhost or this machine's. */
+async function foreign(req: http.IncomingMessage, origin = true) {
   const h = req.headers
+  if ("tailscale-funnel-request" in h) return "this app doesn't answer the internet (Tailscale Funnel)"
   const hosts = [h.host, h["x-forwarded-host"]].map((x) => String(x ?? "").toLowerCase())
-  if (h.origin !== undefined && !hosts.includes(originHost(req) || "-")) return "the page asking isn't this app"
+  if (origin && h.origin !== undefined && !hosts.includes(originHost(req) || "-")) return "the page asking isn't this app"
   for (const host of hosts.filter(Boolean)) {
     const name = hostName(host)
     if (net.isIP(name) || name === "localhost" || name.endsWith(".localhost")) continue
@@ -345,11 +346,14 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
     return json(res, { error: (e as Error).message }, e instanceof HTTPError ? e.status : 400)
   }
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
+  // (as the desktop app does: a script or an app, which opening would run, is shown in its folder instead)
+  let reveal = !!body?.reveal
+  try { const st = fs.statSync(abs); reveal ||= RUNS_CODE.test(abs) || (st.isFile() && (st.mode & 0o111) !== 0) } catch { /* opened as asked */ }
   // reveal: show it in Finder (open -R).
-  if (process.platform === "darwin") return void execFile("/usr/bin/open", body?.reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
-  if (process.platform === "win32") return void explorer(abs, !!body?.reveal).then(() => done(null), done)
-  if (inWsl()) return void execFile("wslpath", ["-w", abs], { timeout: 10000 }, (e, win) => (e ? done(e) : explorer(win.trim(), !!body?.reveal).then(() => done(null), done)))
-  openOnLinux(abs, !!body?.reveal).then(() => done(null), done)
+  if (process.platform === "darwin") return void execFile("/usr/bin/open", reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
+  if (process.platform === "win32") return void explorer(abs, reveal).then(() => done(null), done)
+  if (inWsl()) return void execFile("wslpath", ["-w", abs], { timeout: 10000 }, (e, win) => (e ? done(e) : explorer(win.trim(), reveal).then(() => done(null), done)))
+  openOnLinux(abs, reveal).then(() => done(null), done)
 }
 
 /** A Linux server in WSL, which runs Windows' programs (its interop on). */
@@ -398,6 +402,9 @@ async function served(req: http.IncomingMessage, res: http.ServerResponse, url: 
   if (slash < 1 || slash === raw.length - 1) return false
   const prefix = decode(raw.slice(0, slash))
   if (prefix === "api" || fs.existsSync(path.join(DIST, prefix))) return false
+  // (sandboxed pages ask for these with Origin "null": only the Host is checked, so a rebound name can't read the vault)
+  const why = await foreign(req, false)
+  if (why) { void send(res, 403, why, "text/plain; charset=utf-8"); return true }
   await ready
   await app.syncPlugins()
   const query = Object.fromEntries(url.searchParams)
@@ -493,6 +500,8 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     ? { "Cache-Control": "public, max-age=31536000, immutable" }
     : { "Last-Modified": modified, "Cache-Control": "no-cache" }
   if (COMPRESSIBLE.test(type)) headers.Vary = "Accept-Encoding"
+  // (another site's page can't frame the app to steer clicks onto it: Allow, Turn on)
+  if (type.startsWith("text/html")) Object.assign(headers, { "Content-Security-Policy": "frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN" })
   const since = req.headers["if-modified-since"]
   if (since && Math.floor(st.mtimeMs / 1000) <= Math.floor(Date.parse(since) / 1000)) {
     res.writeHead(304, headers)
@@ -513,14 +522,14 @@ const server = http.createServer(async (req, res) => {
   // "//x" would parse as a host (and "//" throw): read the request line as a path only
   const url = new URL((req.url ?? "/").replace(/^\/+/, "/"), "http://localhost")
   try {
-    // What the window shows while the vault is read: whether it's read, and the files iCloud is still downloading.
-    if (url.pathname === "/api/loading") {
-      const root = path.join(vault?.path ?? VAULT_AT, "/")
-      return json(res, { ready: !!vault, downloading: slowReads().filter((p) => p.startsWith(root)).map((p) => p.slice(root.length)) })
-    }
     if (url.pathname.startsWith("/api/")) {
       const why = await foreign(req)
       if (why) return json(res, { error: why }, 403)
+      // What the window shows while the vault is read: whether it's read, and the files iCloud is still downloading.
+      if (url.pathname === "/api/loading") {
+        const root = path.join(vault?.path ?? VAULT_AT, "/")
+        return json(res, { ready: !!vault, downloading: slowReads().filter((p) => p.startsWith(root)).map((p) => p.slice(root.length)) })
+      }
       await ready // Activity's hook is the app's: it's there once the vault is read
       const t = performance.now(), end = started(req, url), id = (++requests).toString(36)
       // (the id ties this line to the errors the request logged: errorContext)
@@ -609,7 +618,7 @@ if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".
     // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
     busy: async () => {
       await ready
-      const r = await LOADED[0]?.desktop("agent:busy").catch(() => null) as { busy?: boolean; why?: string } | null
+      const r = await LOADED[0]?.desktop("agent:busy", "server").catch(() => null) as { busy?: boolean; why?: string } | null
       return r?.busy ? String(r.why || "the browser is busy") : null
     } })
 }

@@ -1,6 +1,7 @@
 // One server per vault on a machine (core/serving.ts), and a desktop app attaching its browser to it (core/desktopapp.ts):
 // who may, another protocol, calls answered, its going. `node tools/test_desktophost.ts` (npm test)
 import fs from "node:fs"
+import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
@@ -52,6 +53,14 @@ const one = serve(port)
   const two = serve(await freePort())
   const code = await Promise.race([two.exited, sleep(30_000).then(() => "running")])
   check("serving: a second server for the vault on this machine doesn't start, saying which serves it", code === 1 && /served on this machine already/.test(two.log()), [code, two.log().slice(-300)])
+
+  const get = (p: string, headers: Record<string, string>) => new Promise<number>((r) =>
+    http.get({ host: "127.0.0.1", port, path: p, headers }, (res) => { res.resume(); r(res.statusCode ?? 0) }).on("error", () => r(0)))
+  const rebound = { host: `attacker.example:${port}` }
+  const [loading, served, api, own] = [await get("/api/loading", rebound), await get("/v/Note.md", rebound), await get("/api/files", rebound), await get("/v/Note.md", {})]
+  check("dns rebinding: a page under another name reads nothing (the API, loading, plugins' pages)", loading === 403 && served === 403 && api === 403 && own !== 403, [loading, served, api, own])
+  const funnel = await get("/api/files", { "tailscale-funnel-request": "?1" })
+  check("funnel: the internet through Tailscale Funnel is refused", funnel === 403, funnel)
 
   const none = await op(port, "web-viewer.tabs")
   check("no app attached: the browser op says to open one", none.status >= 400 && /none is attached to this server/.test(JSON.stringify(none.body)), none)

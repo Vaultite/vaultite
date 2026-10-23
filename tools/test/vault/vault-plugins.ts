@@ -60,6 +60,10 @@ export default async ($: VaultTest) => {
     check("trust: its data, hidden files, the app's plugins and other settings still wait",
       [".vaultite/plugins/lighthouse/data.json", ".vaultite/plugins/lighthouse/.x.ts", ".vaultite/plugins/lighthouse/../people/data.json",
         ".vaultite/plugins/people/x.json", ".vaultite/plugins.json", ".vaultite/plugins/lighthouse"].every((f) => !code(f) && gateOf("file.write", "write", { path: f }, code) !== ""))
+    check("trust: a settings path written another way still waits (./, \\, its case, nested in a param)",
+      ["./.vaultite/AGENTS.md", "\\.vaultite\\plugins.json", ".VAULTITE/AGENTS.md", " //./.vaultite/plugins.json"].every((f) => gateOf("file.write", "write", { path: f }, code) !== "")
+        && gateOf("file.edit", "write", { edits: [{ path: "./.vaultite/AGENTS.md" }] }, code) !== "" && gateOf("file.write", "write", { files: { "./.vaultite/x.json": "{}" } }, code) !== ""
+        && gateOf("file.write", "write", { path: "./.vaultite/plugins/lighthouse/plugin.ts" }, code) === "")
     const [hc] = await api("POST", "ops/plugin.allow", { id: "lighthouse", hash: "0000" })
     check("trust: allowing files other than the ones shown is refused", hc === 409 && !(await vplugin()).loaded, hc)
   }

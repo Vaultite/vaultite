@@ -690,8 +690,9 @@ let inFlight = 0
 let lastStep = 0
 /** An agent that acted this recently is likely mid-task, between calls. */
 const BUSY_MS = 10 * 60_000
+// (an ask can wait for days: it holds only the app's restart, which would lose it)
+busyWhen(() => asks.size ? "a page waits on the user for an agent" : null, true)
 busyWhen(() => inFlight ? "an agent's call is under way"
-  : asks.size ? "a page waits on the user for an agent"
   : Date.now() - lastStep < BUSY_MS ? "an agent acted in a page in the last 10 minutes" : null)
 /** An agent call, counted while it runs. */
 const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
@@ -701,7 +702,7 @@ const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => han
 
 // ---------- the server's (its agents', checked here whatever the server says) ----------
 
-handle("agent:busy", () => { const why = engineBusy(); return { busy: !!why, why } })
+handle("agent:busy", (_win, of) => { const why = engineBusy(of === "server" ? "server" : "app"); return { busy: !!why, why } })
 
 serve("agent:tabs", (_win, by) => listOf(byOf(by)))
 serve("agent:open", async (win, url, container, by) => {

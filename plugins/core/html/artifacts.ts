@@ -15,7 +15,7 @@ export const ARTIFACT = /\.html?$/i
 /** For every file served under /v/: its own opaque origin (no allow-same-origin), no network, no popups. Forms fire
  *  their submit event (artifacts handle it) but never submit (form-action 'none'). */
 export const CSP = [
-  "sandbox allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms",
+  "sandbox allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms", // (FLAGS)
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
@@ -29,6 +29,32 @@ export const CSP = [
   "object-src 'none'",
   "base-uri 'self'",
 ].join("; ")
+
+/** The page the app frames instead: the artifact in a frame of its own, relaying messages both ways. A sandboxed frame
+ *  may navigate itself anywhere, carrying what it read; this page's frame-src keeps it on this server. */
+const FLAGS = "allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"
+export const WRAP_CSP = `sandbox ${FLAGS}; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'self'; base-uri 'none'`
+
+/** The wrapper for the artifact at /v/<rawPath> (as requested: encoded, with its query); its frame asks with frame=1. */
+export function wrapper(rawPath: string, dark: boolean) {
+  const q = rawPath.indexOf("?"), file = q < 0 ? rawPath : rawPath.slice(0, q), search = q < 0 ? "" : rawPath.slice(q)
+  const inner = `${file.slice(file.lastIndexOf("/") + 1)}${search ? `${search}&` : "?"}frame=1`
+  const relay = () => {
+    const f = document.querySelector("iframe")!
+    addEventListener("message", (e) => {
+      if (parent === window) return
+      if (e.source === f.contentWindow) parent.postMessage(e.data, "*")
+      else if (e.source === parent) {
+        if (e.data?.type === "theme") document.documentElement.style.colorScheme = e.data.dark ? "dark" : "light"
+        f.contentWindow?.postMessage(e.data, "*")
+      }
+    })
+  }
+  return `<!doctype html><html style="color-scheme:${dark ? "dark" : "light"}"><meta charset="utf-8">` +
+    "<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}iframe{display:block;border:0;width:100%;height:100%}</style>" +
+    `<iframe sandbox="${FLAGS}" src="${inner.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}" title=""></iframe>` +
+    `<script>(${relay.toString()})()</script></html>`
+}
 
 // ---------- public CDNs, through the local cache ----------
 

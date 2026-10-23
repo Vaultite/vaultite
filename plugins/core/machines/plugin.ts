@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, GUEST_HEADER, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import type { Item } from "../../../core/vault.ts"
 
@@ -233,10 +233,12 @@ plugin.route("GET", "machines/*/**", async (req) => {
     return agentFs(id, rest, req.query)
   }
   const qs = new URLSearchParams(req.query).toString()
+  // (that machine sees this one's tailnet login, the owner's: someone else asking here stays someone else there)
+  const guest: Record<string, string> = req.http && await plugin.refusal(req.http) ? { [GUEST_HEADER]: "1" } : {}
   let r: Response
   try {
     r = await fetch(`${m.url}/api/${rest.split("/").map(encodeURIComponent).join("/")}${qs ? `?${qs}` : ""}`,
-      { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(15000) })
+      { headers: { ...MACHINE_CLIENT, ...guest }, signal: AbortSignal.timeout(15000) })
   } catch {
     throw new HTTPError(502, `${m.label} doesn't answer`)
   }

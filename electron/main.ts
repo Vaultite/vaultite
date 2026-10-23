@@ -16,6 +16,7 @@ import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, sentence } from "../core/plainerror.ts"
+import { RUNS_CODE } from "../core/filetypes.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 
@@ -64,9 +65,8 @@ if (LINUX) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWi
 let behind = !!process.env.VAULTITE_BEHIND
 // What macOS runs rather than shows when opened (an app, a script, a link to one): a vault file of these, which a
 // synced or shared vault may bring, is shown in Finder instead of opened.
-const RUNS = /\.(app|command|tool|sh|bash|zsh|csh|ksh|fish|terminal|workflow|action|scpt|scptd|applescript|osascript|jar|pkg|mpkg|prefpane|saver|fileloc|inetloc|py|pyw|rb|pl|php|js|mjs|cjs|lua|exe|bat|cmd|com|scr|vbs|ps1)$/i
 function openVaultFile(abs: string) {
-  let runs = RUNS.test(abs)
+  let runs = RUNS_CODE.test(abs)
   try { const st = fs.statSync(abs); runs ||= st.isDirectory() || (st.mode & 0o111) !== 0 } catch { return }
   if (runs) shell.showItemInFolder(abs); else void shell.openPath(abs)
 }
@@ -474,7 +474,8 @@ function guard(win: AppWindow, origin: string) {
   // the page's own menu (plugins/core/editing/menu.ts). There's no menu of Electron's.
   win.webContents.on("context-menu", (_e, p) => win.webContents.send("vaultite", { type: "spelling", word: p.misspelledWord, suggestions: p.dictionarySuggestions }))
   win.webContents.on("will-navigate", (e, url) => {
-    if (url.startsWith(origin + "/") || url === origin) return
+    // (the app's page only: a vault's own file served under its origin, /v/ or /api/raw, would get the bridge)
+    if (appPage(url, origin)) return
     e.preventDefault()
     openLink(url)
   })
@@ -492,6 +493,10 @@ function guard(win: AppWindow, origin: string) {
     } else openLink(url)
     return { action: "deny" }
   })
+}
+
+const appPage = (url: string, origin: string) => {
+  try { const u = new URL(url); return u.origin === origin && (u.pathname === "/" || u.pathname === "/index.html") } catch { return false }
 }
 
 /** Tell a window to open a file (a vault path or an allowed outside file), once its page is listening. */
@@ -792,9 +797,9 @@ function copyIn(w: Win, paths: string[], folder: string, move: boolean) {
 /** The vault window a request came from (null: the manager), after checking it's our page asking. */
 function who(e: IpcMainInvokeEvent): Win | null {
   const url = e.senderFrame?.url ?? ""
-  for (const w of wins.values()) if (w.win.webContents === e.sender && url.startsWith(`http://127.0.0.1:${w.port}/`)) return w
+  for (const w of wins.values()) if (w.win.webContents === e.sender && appPage(url, `http://127.0.0.1:${w.port}`)) return w
   const pop = popouts.get(e.sender)
-  if (pop && url.startsWith(`http://127.0.0.1:${pop.port}/`)) return pop
+  if (pop && appPage(url, `http://127.0.0.1:${pop.port}`)) return pop
   if (manager && e.sender === manager.webContents && url.startsWith(pathToFileURL(DIST).href)) return null
   throw new Error("not a Vaultite window")
 }

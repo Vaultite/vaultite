@@ -677,6 +677,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fromInternet(req)`
 - `frontmatterLinks(fm)`: The [[links]] in a file's frontmatter, with the key each is under (`project: "[[Lighthouse]]"`, a list's items, and `project: [[Lighthouse]]` unquoted too): [key, target].
 - `frontmatterTargets(fm)`: The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`).
+- `GUEST_HEADER`: Set by a machine passing a request on (Machines) for someone who isn't its owner: it only takes rights away.
 - `Handler`
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).

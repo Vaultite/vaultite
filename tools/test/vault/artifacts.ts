@@ -33,6 +33,10 @@ export default async ($: VaultTest) => {
   check("an artifact's storage follows it", exists(".vaultite/artifacts/Finance/Spend.html.json") && !exists(".vaultite/artifacts/Money/Spend.html.json"))
   // The HTML plugin serves them outside /api/ (plugin.serve), sandboxed; with HTML and Tables off they're plain files.
   let page = await app.serve("v", "Finance/Spend.html", "Finance/Spend.html?theme=dark", { theme: "dark" })
+  const wrap = String((page?.body as Any)?.text ?? "")
+  check("an artifact is framed by a page that keeps its frame on this server", page?.status === 200 && /frame-src 'self'/.test((page?.body as Any)?.headers["Content-Security-Policy"])
+    && /^sandbox /.test((page?.body as Any)?.headers["Content-Security-Policy"]) && wrap.includes('src="Spend.html?theme=dark&amp;frame=1"') && !wrap.includes("parseCsv"), [page?.status, wrap.slice(0, 300)])
+  page = await app.serve("v", "Finance/Spend.html", "Finance/Spend.html?theme=dark&frame=1", { theme: "dark", frame: "1" })
   const pageText = String((page?.body as Any)?.text ?? "")
   check("an artifact is served sandboxed, with its bridge first", page?.status === 200 && /connect-src 'none'/.test((page?.body as Any)?.headers["Content-Security-Policy"])
     && /^<!doctype html><html><head><script>/.test(pageText) && pageText.includes("parseCsv"), [page?.status, pageText.slice(0, 80)])
@@ -52,7 +56,7 @@ export default async ($: VaultTest) => {
     page = await app.serve("v", ext, ext.slice(1), {})
     check("an outside page nobody allowed isn't served", page?.status === 404, page?.status)
     O.allow([ext])
-    page = await app.serve("v", ext, ext.slice(1), {})
+    page = await app.serve("v", ext, `${ext.slice(1)}?frame=1`, { frame: "1" })
     const text = String((page?.body as Any)?.text ?? "")
     check("an allowed outside page is served sandboxed, its storage empty", page?.status === 200 && /connect-src 'none'/.test((page?.body as Any)?.headers["Content-Security-Policy"]) &&
       /^<!doctype html><html><head><script>/.test(text) && text.includes('"state":{}') && text.includes("made up"), [page?.status, text.slice(0, 80)])
@@ -71,7 +75,7 @@ export default async ($: VaultTest) => {
       side.storage.personal.k === "v" && side.storage.shared.s === "2", side)
     ;[code] = await api("POST", "artifact/data", { path: "Claude/Drill.html", db: [{ path: "odd", data: {} }] })
     check("artifact data: a document path has an even number of segments", code === 400, code)
-    page = await app.serve("v", "Claude/Drill.html", "Claude/Drill.html", {})
+    page = await app.serve("v", "Claude/Drill.html", "Claude/Drill.html?frame=1", { frame: "1" })
     const served = String((page?.body as Any)?.text ?? "")
     check("the page starts with its data and the runtime", served.includes('"pairs":{"A-D":31}') && served.includes("claudeRuntime") && served.includes("u_owner"), served.slice(0, 200))
     const st = await import("../../../plugins/core/html/claude.ts")

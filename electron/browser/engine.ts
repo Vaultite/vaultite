@@ -179,12 +179,16 @@ export function serverCall(win: AppWindow | undefined, name: unknown, args: unkn
 
 // ---------- busy: what a restart (an update) would cut short ----------
 
-const holds: (() => string | null)[] = []
-/** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. */
-export const busyWhen = (fn: () => string | null) => { holds.push(fn) }
-/** Why the browser is busy, or null when a restart loses nothing. */
-export function engineBusy(): string | null {
-  for (const fn of holds) { try { const why = fn(); if (why) return why } catch (e) { console.error("vaultite: a browser feature couldn't say if it's busy:", e) } }
+const holds: { fn: () => string | null; appOnly: boolean }[] = []
+/** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. `appOnly`:
+ *  what only the app's restart loses (a pending ask), not its server's (the app attaches again). */
+export const busyWhen = (fn: () => string | null, appOnly = false) => { holds.push({ fn, appOnly }) }
+/** Why the browser is busy, or null when a restart (of the app, or of its server) loses nothing. */
+export function engineBusy(of: "app" | "server" = "app"): string | null {
+  for (const h of holds) {
+    if (of === "server" && h.appOnly) continue
+    try { const why = h.fn(); if (why) return why } catch (e) { console.error("vaultite: a browser feature couldn't say if it's busy:", e) }
+  }
   return null
 }
 

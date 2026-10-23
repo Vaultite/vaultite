@@ -51,12 +51,14 @@ export default async ($: VaultTest) => {
   check("link preview: entities", ents === "a & b <c> 'd'  &bogus; &#0;", ents)
   const localHosts = ["localhost", "app.localhost", "printer.local", "box.tail1234.ts.net", "nas", "router.lan", "127.0.0.1", "10.1.2.3",
     "172.20.0.1", "192.168.1.10", "169.254.169.254", "100.100.100.100", "100.64.0.1", "0.0.0.0", "[::1]", "[::]", "[fe80::1]",
-    "[fd7a:115c:a1e0::1]", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]", "[64:ff9b::a00:1]", "[2002:c0a8:101::1]", "224.0.0.1", "255.255.255.255", "localhost."]
+    "[fd7a:115c:a1e0::1]", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]", "[64:ff9b::a00:1]", "[2002:c0a8:101::1]", "[::ffff:0:7f00:1]", "[64:ff9b:1::a00:1]", "[2001:0:4136:e378::1]", "224.0.0.1", "255.255.255.255", "localhost."]
   const leaked = localHosts.filter((h) => !blockedHost(h))
   check("link preview: local, private and tailnet hosts are refused", leaked.length === 0, leaked)
   const publicHosts = ["example.com", "www.example.org", "93.184.215.14", "[2606:4700::6810:84e5]", "100.128.0.1", "172.32.0.1"]
   const refused = publicHosts.filter((h) => blockedHost(h))
   check("link preview: public hosts are fetched", refused.length === 0, refused)
+  const sneaky = ["http://2130706433/", "http://0x7f.1/", "http://017700000001/", "http://127.1/", "http://[::ffff:127.0.0.1]/", "http://0/"].filter((u) => typeof previewable(u) !== "string")
+  check("link preview: local addresses written as numbers are refused", !sneaky.length, sneaky)
   check("link preview: DNS answers are checked as addresses", blockedAddress("10.0.0.5") && blockedAddress("fd00::5") && blockedAddress("::ffff:192.168.0.1") && blockedAddress("not an ip") && !blockedAddress("8.8.8.8") && !blockedAddress("2001:4860:4860::8888"))
   check("link preview: only http(s), no logins", typeof previewable("ftp://example.com/") === "string" && typeof previewable("https://ana:pw@example.com/") === "string" && typeof previewable("file:///etc/hosts") === "string" && previewable("https://example.com/a#b") instanceof URL)
   const [lbad] = await api("GET", "canvas/link?url=ftp://example.com/x") // (this helper doesn't decode the query)

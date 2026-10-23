@@ -9,6 +9,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **vau on Windows**: Set up puts vau on your PATH for PowerShell, cmd and Git Bash; `vau wsl install` puts it in WSL's
   distros, where it reaches the app on Windows; `vau service` runs the server at login as a scheduled task, with no
   window; files open in their app and show in Explorer. `vau service status` says whether the service runs.
+- **Security pass**: a page reaching the app under another site's name (DNS rebinding) can't read plugins' pages,
+  requests through Tailscale Funnel are refused, an HTML artifact can't take what it read to another site, files from
+  the artifacts' CDN cache never run as pages, other sites can't frame the app, and opening a script or an app kept in
+  the vault shows it in Finder instead of running it.
 - **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
   paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
@@ -16,7 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   than starting its own. Agents' tabs outlast the server restarting. Other machines' agents use an always-on machine's
   browser; a laptop's app answers only its own agents.
 - **Updates wait for agents**: the desktop app restarts into an update only once its browser is idle (no agent call
-  under way, no page waiting on you, no agent at work in the last 10 minutes).
+  under way, no page waiting on you, no agent at work in the last 10 minutes); its server's update waits only for agents
+  at work, since the app's tabs and asks outlast the server restarting.
 - **A server that updates itself**: `vau service install --updates main` has a service install follow a branch, taking
   each commit CI passed on (fast-forward only, a clean checkout, never while agents use the browser), building it and
   restarting when its own code changed; a failure keeps the version before and shows in `vau errors`. `vau version`

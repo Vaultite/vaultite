@@ -42,18 +42,27 @@ export default async ($: VaultTest) => {
     check("ops: an op whose route only the owner may use is refused the same (the request goes with ctx.api)", await refused("inbox.clear", {}) === "refused")
     check("ops: in-process (no request) nothing is refused", (await app.runOp("ops.list", {})).result !== undefined)
     // MCP lets a login the owner allowed (allowUsers) in, and its tools run for that request: the owner's ops stay refused.
+    const { setTailscaleStatus } = await import("../../../core/owner.ts")
+    setTailscaleStatus({ Self: { UserID: 1, DNSName: "vault.example.ts.net." }, User: { 1: { LoginName: "owner@example.com" } } })
     await api("PATCH", "config/plugin/mcp", { allowUsers: ["stranger@example.com"] })
-    const viaMcp = async (name: string, args: Any) => {
-      const served = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any // (through Tailscale Serve)
+    const viaMcp = async (name: string, args: Any, host = "vault.example.ts.net") => {
+      const served = { headers: { host, "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any // (through Tailscale Serve)
       const r = await app.run("POST", ["mcp"], {}, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, served)
       return r.status === 200 ? JSON.parse((r.body as Any).text).result : { status: r.status, body: r.body }
     }
     const listed = await viaMcp("docs", {})
     check("mcp: a login allowUsers names gets in (its tools run)", listed.isError === false, listed)
+    const proxied = await viaMcp("docs", {}, "vault.example.com")
+    check("mcp: not when it came through another proxy on loopback (a tunnel passes on the login its client sent)", proxied.status === 403, proxied)
+    const tunnel = { headers: { host: "vault.example.com", "tailscale-user-login": "owner@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any
+    const asOwner = (http: Any) => app.runOp("terminal.list", {}, { http }).then(() => "ran", (e) => e.status)
+    const [shell, served] = [await asOwner(tunnel), await asOwner({ ...tunnel, headers: { ...tunnel.headers, host: "vault.example.ts.net:8447" } })]
+    check("owner: a forged owner's login through a tunnel to the app's port isn't the owner; through Tailscale Serve it is", shell === 403 && served === "ran", [shell, served])
     const term = await viaMcp("call", { id: "terminal.list" })
     check("mcp: an owner-only op through MCP is refused to that login (the MCP request goes with the op)", term.isError === true && /owner|only/i.test(term.content[0].text), term)
     const inbox = await viaMcp("call", { id: "inbox.clear" })
     check("mcp: and an op whose route only the owner may use", inbox.isError === true, inbox)
     await api("PATCH", "config/plugin/mcp", { allowUsers: null })
+    setTailscaleStatus(null)
   }
 }

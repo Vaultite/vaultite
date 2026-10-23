@@ -25,6 +25,9 @@ function tailscale() {
   return status
 }
 
+/** Tests: Tailscale's status as given (null: ask Tailscale again). */
+export function setTailscaleStatus(st: Awaited<NonNullable<typeof status>> | null) { status = st ? Promise.resolve(st) : null }
+
 /** The tailnet login of this machine's owner ("" if Tailscale isn't there or doesn't say). */
 async function ownerLogin(): Promise<string> {
   const st = await tailscale()
@@ -59,7 +62,8 @@ const localName = (name: string) => name === "localhost" || name.endsWith(".loca
 export const fromThisMachine = (req: IncomingMessage) =>
   !overNetwork(req) && localName(hostName(req.headers.host)) && originHost(req) === String(req.headers.host ?? "").toLowerCase()
 
-export type Access = { allowRemote?: boolean; allowUsers?: string[]; owner: string }
+/** `tailnet`: this machine's tailnet names (tailnetNames), the Host a login through Tailscale Serve comes with. */
+export type Access = { allowRemote?: boolean; allowUsers?: string[]; owner: string; tailnet?: string[] }
 
 /** Requests from apps on the internet (MCP's public listener): never the owner, whatever their headers say. */
 const internet = new WeakSet<IncomingMessage>()
@@ -67,20 +71,25 @@ export const fromInternet = (req: IncomingMessage) => { internet.add(req) }
 /** Set by Connect (plugins/core/mcp/connect.ts) on what it hands the app while the owner's tools are off over it. */
 export const CONNECT_HEADER = "x-vaultite-connect"
 
+/** Set by a machine passing a request on (Machines) for someone who isn't its owner: it only takes rights away. */
+export const GUEST_HEADER = "x-vaultite-guest"
+
 /** Why this request may not have what `what` ("the terminal") hands out, or "" when it may. */
-export function refusal(req: IncomingMessage, { allowRemote, allowUsers, owner }: Access, what = "this"): string {
+export function refusal(req: IncomingMessage, { allowRemote, allowUsers, owner, tailnet = [] }: Access, what = "this"): string {
   if (internet.has(req)) return `${what} only answers this machine's owner, not an app on the internet`
   if (CONNECT_HEADER in req.headers) return `${what} is off over Vaultite Connect (turn on owner tools in Connections on this Mac)`
+  if (GUEST_HEADER in req.headers) return `${what} only answers its machine's owner, not someone asking through another machine`
   const h = req.headers
   if (h.origin !== undefined && originHost(req) !== String(h.host ?? "").toLowerCase()) return "the page asking isn't this app"
   if (allowRemote) return ""
   const local = LOOPBACK.has(req.socket.remoteAddress ?? "")
   const login = h["tailscale-user-login"]
   if (typeof login === "string" && login) {
-    // Through Tailscale Serve (it runs on this machine, so it connects from loopback).
+    // Through Tailscale Serve (it runs on this machine, so it connects from loopback, for its own name): another proxy
+    // on loopback (a tunnel, a reverse proxy for VAULTITE_HOSTS) passes on what its client sent.
     const who = login.toLowerCase()
     const users = (allowUsers ?? []).map((u) => String(u).toLowerCase())
-    if (local && ((owner && who === owner) || users.includes(who))) return ""
+    if (local && tailnet.includes(hostName(h.host)) && ((owner && who === owner) || users.includes(who))) return ""
     return `${what} only answers this machine's owner on the tailnet, not ${login} (add them to allowUsers in its settings)`
   }
   if (PROXY_HEADERS.some((k) => k in h) || Object.keys(h).some((k) => k.startsWith("tailscale-"))) {
@@ -94,5 +103,5 @@ export function refusal(req: IncomingMessage, { allowRemote, allowUsers, owner }
 /** refusal() with the owner looked up (only when it matters: a tailnet login asking, `allowRemote` off). */
 export async function ownerRefusal(req: IncomingMessage, access: Omit<Access, "owner">, what = "this") {
   const needs = typeof req.headers["tailscale-user-login"] === "string" && !access.allowRemote
-  return refusal(req, { ...access, owner: needs ? await ownerLogin() : "" }, what)
+  return refusal(req, { ...access, owner: needs ? await ownerLogin() : "", tailnet: needs ? await tailnetNames() : [] }, what)
 }

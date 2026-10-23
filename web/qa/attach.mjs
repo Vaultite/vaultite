@@ -57,6 +57,10 @@ const listed = async () => (await op(ORIGIN, "tabs"))
 check("… and is listed", Array.isArray(await listed()) && (await listed()).some((t) => t.tab === opened.tab), await listed())
 const busy = await fetch(`${ORIGIN}/api/machines/desktop`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "agent:busy" }) }).then((r) => r.json())
 check("an agent at work: the browser says it's busy (updates wait)", busy.value?.busy === true && typeof busy.value.why === "string", busy)
+const desk = (args) => fetch(`${ORIGIN}/api/machines/desktop`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "agent:busy", args }) }).then((r) => r.json())
+await op(ORIGIN, "ask", { tab: opened.tab, reason: "Sign in, then Done" })
+const [forApp, forServer] = [await desk([]), await desk(["server"])]
+check("a pending ask holds the app's restart, the server's only while agents act", /waits on the user/.test(forApp.value?.why ?? "") && !/waits on the user/.test(forServer.value?.why ?? ""), [forApp, forServer])
 
 server.kill("SIGTERM")
 await new Promise((r) => server.once("exit", r))

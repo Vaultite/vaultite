@@ -51,6 +51,8 @@ const GIT_TIMEOUT = 120_000
 export function parseSource(given: string, tag?: string | null): Source {
   let s = given.trim()
   let at: string | null = tag?.trim() || null
+  // (git would read it as an option: -u<cmd> runs a command)
+  if (s.startsWith("-") || at?.startsWith("-")) throw new OpError(`'${given}' isn't a plugin's source: it starts with a dash`)
   const cut = (re: RegExp) => { const m = re.exec(s); if (m) { s = s.slice(0, m.index); at ??= m[1] } }
   const local = /^(\/|~\/|\.\.?\/|\.\.?$)/.test(s)
   if (local) {
