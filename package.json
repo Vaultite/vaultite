@@ -11,10 +11,10 @@
     "vau": "bin/vau"
   },
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "dev": "vite",
     "start": "node server.ts",
-    "build": "tsc -b & vite build; v=$?; wait $! && exit $v",
+    "build": "node tools/build.ts",
     "build:demo": "vite build -c vite.demo.config.ts",
     "test": "node tools/test_web.ts && node tools/test_vault.ts && node tools/test_sandbox.ts && node tools/test_setup.ts && node tools/test_selfupdate.ts && node tools/test_stall.ts && node tools/test_desktophost.ts && node tools/test_machines.ts",
     "check": "node tools/check_plugins.ts",
