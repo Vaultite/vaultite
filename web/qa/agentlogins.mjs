@@ -8,11 +8,13 @@
 // WRITES: the throwaway vault only.
 //   node web/qa/agentlogins.mjs <vault copy>
 import { _electron } from "playwright-core"
+import crypto from "node:crypto"
 import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { encode } from "../../electron/browser/cbor.ts"
 import { totp, otpOf } from "../../electron/browser/keepass.ts"
 
 const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
@@ -81,7 +83,7 @@ fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.e
 const USER_DATA = path.join(TMP, "userData"), LOCAL_DIR = path.join(TMP, "local")
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: USER_DATA, VAULTITE_LOCAL: LOCAL_DIR },
+  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: USER_DATA, VAULTITE_LOCAL: LOCAL_DIR, VAULTITE_TEST_TOUCHID: "yes" },
 })
 let output = ""
 app.process().stdout?.on("data", (d) => { output += d })
@@ -207,20 +209,82 @@ const h = (await op("open", { url: `${LOCAL}/login`, task: "harbor" })).tab
 const many = await op("login", { tab: h })
 check("a site with two entries: their titles and usernames, to pick", many?.status === "choose" && many.entries?.map((e) => e.title).sort().join() === "Harbor,Harbor admin" && !has(many) && !JSON.stringify(many).includes(HARBOR), many)
 const inbox = () => fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.json()).then((j) => j.events ?? [])
-const answer = (id, a) => fetch(`${origin}/api/inbox/events/${encodeURIComponent(id)}/answer`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin, "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: a }) })
+const noKey = await op("login", { tab: h, entry: "alice@example.com", task: "harbor" })
+check("an entry not tagged agent-free, and no passkey set up: refused, saying how", /none is set up/.test(String(noKey.error)), noKey)
+
+// The user's passkey: a made-up one here (a P-256 key, as a phone's), for a made-up https address of this server.
+const RP = "vault.example.ts.net", ORIGIN = `https://${RP}:8447`
+const sha = (b) => crypto.createHash("sha256").update(b).digest()
+const b64u = (b) => Buffer.from(b).toString("base64url")
+const device = () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" })
+  const j = publicKey.export({ format: "jwk" })
+  return { privateKey, id: crypto.randomBytes(16), cose: encode(new Map([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(j.x, "base64url")], [-3, Buffer.from(j.y, "base64url")]])) }
+}
+const authData = (flags, d) => {
+  const parts = [sha(RP), Buffer.from([flags]), Buffer.alloc(4)]
+  if (d) { const n = Buffer.alloc(2); n.writeUInt16BE(d.id.length); parts.push(Buffer.alloc(16), n, d.id, d.cose) }
+  return Buffer.concat(parts)
+}
+const clientData = (type, challenge) => Buffer.from(JSON.stringify({ type, challenge, origin: ORIGIN }))
+const route = async (method, p, body) => {
+  const r = await fetch(`${origin}/api/web-viewer/${p}`, { method, headers: { "Content-Type": "application/json", Origin: origin, "X-Vaultite-Client": "app/approvals" }, body: body && JSON.stringify(body) })
+  const j = await r.json().catch(() => ({}))
+  return r.ok ? j : { error: j.error ?? r.status }
+}
+const created = (d, challenge) => ({ clientDataJSON: b64u(clientData("webauthn.create", challenge)),
+  attestationObject: b64u(encode(new Map([["fmt", "none"], ["attStmt", new Map()], ["authData", authData(0x45, d)]]))) })
+const signed = (d, challenge, key = d.privateKey) => {
+  const ad = authData(0x05), cd = clientData("webauthn.get", challenge)
+  return { id: b64u(d.id), clientDataJSON: b64u(cd), authenticatorData: b64u(ad), signature: b64u(crypto.sign("sha256", Buffer.concat([ad, sha(cd)]), { key, dsaEncoding: "der" })) }
+}
+const phone = device()
+const forgedAdd = await route("POST", "passkey", { token: "made-up", name: "Agent", ...created(device(), b64u(crypto.randomBytes(32))) })
+check("adding a passkey without the app's code: refused", /expired/.test(String(forgedAdd.error)), forgedAdd)
+const { token } = await engine("logins:passkey-start")
+const addOpts = await route("GET", `passkey/options?token=${token}`)
+const added = await route("POST", "passkey", { token, name: "iPhone", ...created(phone, addOpts.challenge) })
+check("the phone's passkey added, from the app's code (Touch ID confirms it on a real Mac)", added?.name === "iPhone" && added.site === RP, added)
+const reAdd = await route("POST", "passkey", { token, name: "Agent", ...created(device(), addOpts.challenge) })
+check("… its code works once", /expired/.test(String(reAdd.error)), reAdd)
+check("… the app lists it", (await engine("logins:passkeys"))?.map((k) => k.name).join() === "iPhone", null)
+
 const asking = op("login", { tab: h, entry: "alice@example.com", task: "harbor" })
 const ask = await until(async () => (await inbox()).find((e) => e.source === "browser" && e.kind === "waiting" && /log in to localhost/.test(e.title)), 15000)
-check("an entry not tagged agent-free: the user is asked in the Inbox, naming the site and entry, no secret", !!ask && /Harbor \(alice@example.com\)/.test(ask.body) && !JSON.stringify(ask).includes(HARBOR), ask)
-const answered = await answer(ask?.id, "approve")
+const grant = /[?&]grant=([\w-]+)/.exec(ask?.link ?? "")?.[1]
+check("an entry not tagged agent-free: the user is told in the Inbox, with the page to approve it at, no secret", !!ask && !!grant && ask.link.startsWith(`${ORIGIN}/api/web-viewer/approve?grant=`)
+  && /Harbor \(alice@example.com\)/.test(ask.body) && !JSON.stringify(ask).includes(HARBOR), ask)
+const asAgent = await fetch(`${origin}/api/ops/inbox.answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" },
+  body: JSON.stringify({ id: ask?.id, answer: "approve" }) }).then((r) => r.status)
+const asApp = await fetch(`${origin}/api/inbox/events/${encodeURIComponent(ask?.id)}/answer`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin, "X-Vaultite-Client": "app/qa" },
+  body: JSON.stringify({ answer: "approve" }) }).then((r) => r.status)
+const opts1 = await route("GET", `approve/options?grant=${grant}`)
+const forged = await route("POST", "approve", { grant, ...signed(phone, opts1.challenge, device().privateKey) })
+const stranger = device()
+const opts2 = await route("GET", `approve/options?grant=${grant}`)
+const unknown = await route("POST", "approve", { grant, ...signed(stranger, opts2.challenge) })
+const pending = await Promise.race([asking.then(() => "answered"), wait(1500).then(() => "waiting")])
+check("no yes but the passkey's: an agent answering the Inbox, a forged signature, an unknown passkey: the login still waits", asAgent >= 400 && asApp >= 400
+  && /signature/.test(String(forged.error)) && /isn't a passkey set up/.test(String(unknown.error)) && pending === "waiting", [asAgent, asApp, forged, unknown, pending])
+const opts3 = await route("GET", `approve/options?grant=${grant}`)
+check("the approval page names the site, entry and agent", opts3.site === `localhost:${PORT}` && opts3.entry?.title === "Harbor" && opts3.agent === "Claude Code" && opts3.allow?.length === 1, opts3)
+const yes = signed(phone, opts3.challenge)
+const passed = await route("POST", "approve", { grant, ...yes })
 const approved = await asking
-check("their yes: it fills", answered.ok && approved?.status === "filled" && /Inbox/.test(approved.approved ?? ""), approved)
-check("… and the ask leaves the Inbox", !(await inbox()).some((e) => e.id === ask?.id && !e.answer), null)
+check("the passkey's yes: it fills", passed?.state === "approved" && approved?.status === "filled" && /passkey \(iPhone\)/.test(approved.approved ?? ""), [passed, approved])
+check("… and the ask leaves the Inbox", !(await inbox()).some((e) => e.id === ask?.id), null)
+const replayed = await route("POST", "approve", { grant, ...yes })
+check("the same yes again: refused", !!replayed.error, replayed)
 await op("navigate", { tab: h, to: "reload" })
 const again = await op("login", { tab: h, entry: "Harbor", task: "harbor" })
 check("their yes lasts: the same entry fills again without asking", again?.status === "filled", again)
 const denying = op("login", { tab: h, entry: "admin", task: "harbor" })
-const ask2 = await until(async () => (await inbox()).find((e) => e.source === "browser" && e.kind === "waiting" && /Harbor admin/.test(e.body ?? "") && !e.answer), 15000)
-await answer(ask2?.id, "deny")
+const ask2 = await until(async () => (await inbox()).find((e) => e.source === "browser" && e.kind === "waiting" && /Harbor admin/.test(e.body ?? "")), 15000)
+const grant2 = /[?&]grant=([\w-]+)/.exec(ask2?.link ?? "")?.[1]
+await route("GET", `approve/options?grant=${grant2}`)
+const replayedElsewhere = await route("POST", "approve", { grant: grant2, ...yes })
+check("a yes given for another login: refused there", /another request/.test(String(replayedElsewhere.error)), replayedElsewhere)
+await route("POST", "approve", { grant: grant2, deny: true })
 const denied = await denying
 check("their no: refused, nothing filled", /said no/.test(String(denied.error)), denied)
 const none = await op("open", { url: `${NONE}/login` })
@@ -234,7 +298,7 @@ const leaks = (dir) => files(dir).filter((f) => { const b = fs.readFileSync(f); 
 const runs = path.join(USER_DATA, "agent-runs")
 const steps = files(runs).filter((f) => f.endsWith("steps.jsonl")).map((f) => fs.readFileSync(f, "utf8")).join("")
 check("each login is kept with the agent's steps: site, entry, result and who approved", /"action":"login"[^\n]*"site":"127\.0\.0\.1:\d+"[^\n]*"result":"filled the username and password"[^\n]*"approved":"free/.test(steps)
-  && /"result":"denied by the user"/.test(steps) && /"approved":"the user, in the Inbox"/.test(steps), steps.split("\n").filter((l) => l.includes("login")).slice(0, 4))
+  && /"result":"denied on the approval page"/.test(steps) && /"approved":"the user's passkey \(iPhone\)"/.test(steps), steps.split("\n").filter((l) => l.includes("login")).slice(0, 4))
 check("no secret in the agents' runs (steps and pictures)", files(runs).length > 2 && !leaks(runs).length, leaks(runs))
 const visits = await engine("history:list", { limit: 500 }).catch(() => null)
 const hist = files(USER_DATA).filter((f) => /web-history\.sqlite/.test(f))
