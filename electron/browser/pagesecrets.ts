@@ -35,12 +35,16 @@ export function scrub(text: string, secrets: Iterable<string> = live()): string 
   for (const s of [...secrets].filter(Boolean).sort((a, b) => b.length - a.length)) out = out.replace(pattern(s), MASK)
   return out
 }
-/** Every string in `v` scrubbed (an answer to an agent, whatever its shape). */
+/** An answer's binary parts (base64): left whole, since a short secret (a code's six digits) turns up in a picture's
+ *  bytes by chance; what they show is checked before they're made (exposed). */
+const BINARY = new Set(["png", "pdf"])
+/** Every string in `v` scrubbed (an answer to an agent, whatever its shape) but its binary parts. */
 export function scrubDeep<T>(v: T): T {
   const secrets = live()
   if (!secrets.length) return v
   const go = (x: unknown): unknown => typeof x === "string" ? scrub(x, secrets) : Array.isArray(x) ? x.map(go)
-    : x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype ? Object.fromEntries(Object.entries(x).map(([k, y]) => [k, go(y)])) : x
+    : x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype
+      ? Object.fromEntries(Object.entries(x).map(([k, y]) => [k, BINARY.has(k) && typeof y === "string" ? y : go(y)])) : x
   return go(v) as T
 }
 /** Whether `text` has a secret in it. */

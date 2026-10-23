@@ -1741,7 +1741,7 @@ await section("passkeys", async () => {
 await section("agent logins", async () => {
   const kp = await import("../electron/browser/keepass.ts")
   const { loginForm } = await import("../electron/browser/loginform.ts")
-  const { scrub } = await import("../electron/browser/pagesecrets.ts")
+  const { keep, scrub, scrubDeep } = await import("../electron/browser/pagesecrets.ts")
   const { Credentials, Kdbx, ProtectedValue } = await import("kdbxweb")
   const PASSWORD = "correct horse battery staple", SECRET = "Lighthouse-7!pw"
   const db = Kdbx.create(new Credentials(ProtectedValue.fromString(PASSWORD)), "Agents")
@@ -1863,6 +1863,9 @@ await section("agent logins", async () => {
   const out = scrub(`Shown: ${encoded.join(" | ")} end`, [s])
   check("agent logins: a secret is scrubbed from text, as is and however an address or a form encodes it", out === `Shown: ${encoded.map(() => "•••").join(" | ")} end`, [out, encoded])
   check("agent logins: text without a secret is unchanged", scrub("nothing here", [s]) === "nothing here" && scrub("p@ss", []) === "p@ss")
+  keep("482913", 60_000)
+  const answer = scrubDeep({ tab: 3, title: "Code 482913", lines: ["a 482913"], png: "iVBORw0K482913AAAA" })
+  check("agent logins: an answer's every string is scrubbed, a picture's bytes left whole", answer.title === "Code •••" && answer.lines[0] === "a •••" && answer.png === "iVBORw0K482913AAAA" && answer.tab === 3, answer)
 })
 
 fs.rmSync(tmp, { recursive: true, force: true })

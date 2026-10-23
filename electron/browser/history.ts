@@ -5,6 +5,7 @@ import { AppWindow } from "../appwindow.ts"
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import path from "node:path"
 import { eachPage, handle, tell } from "./engine.ts"
+import { hasSecret, scrub } from "./pagesecrets.ts"
 
 /** How a visit came: typed in the address (or picked from its suggestions), a link, a bookmark, a form, or the app
  *  (a link in a note, back and forward). */
@@ -103,18 +104,20 @@ function changed() {
   }, 1000)
 }
 
+// (an address a login the app filled put its password in, a GET form's, is never kept: nor a title showing one)
 function record(url: string, title: string, profile: string, how: How) {
-  if (!web(url)) return
+  if (!web(url) || hasSecret(url)) return
   try {
-    tx(() => { const v = addVisit(url, title, Date.now(), profile, how); if (v.added) rescore(v.id) })
+    tx(() => { const v = addVisit(url, scrub(title), Date.now(), profile, how); if (v.added) rescore(v.id) })
     changed()
   } catch (e) { console.error("vaultite: a visit wasn't kept in the history:", e) }
 }
 
 /** A page's title, as it changes (a visit's title is its page's last). */
 function retitle(url: string, title: string) {
-  if (!web(url) || !title) return
-  try { if (Number(sql("UPDATE urls SET title = ? WHERE url = ? AND title <> ?").run(title, url, title).changes)) changed() } catch { /* kept as it was */ }
+  if (!web(url) || !title || hasSecret(url)) return
+  const t = scrub(title)
+  try { if (Number(sql("UPDATE urls SET title = ? WHERE url = ? AND title <> ?").run(t, url, t).changes)) changed() } catch { /* kept as it was */ }
 }
 
 const noHash = (u: string) => u.replace(/#.*$/, "")

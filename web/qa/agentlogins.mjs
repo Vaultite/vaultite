@@ -137,13 +137,13 @@ const copy = await op("act", { tab: t, action: "press", ref: pwRef, key: "Meta+c
 check("copying out of the page: refused", /no copying/.test(String(copy.error)), copy)
 const cut = await op("act", { tab: t, action: "press", ref: pwRef, key: "Control+x" })
 check("… cutting too", /no copying/.test(String(cut.error)), cut)
-const run = await op("run", { tab: t, script: `const s = await snapshot(); const r = await read(); let w = "found"; try { await wait({ text: ${JSON.stringify(SECRET.slice(0, 6))}, timeout: 1 }) } catch (e) { w = e.message }
-  return { s, r, w, ref: await ref(${JSON.stringify(SECRET)}) }` })
-check("run: a script's snapshot, read, wait and ref give nothing of it", !run.error && !has(run) && !/^found$/.test(JSON.parse(run.value ?? "{}").w ?? "found") && JSON.parse(run.value ?? "{}").ref === null, run)
 const shown = await op("act", { tab: t, action: "click", ref: showRef })
 check("revealing the field (the page's Show password): act's diff has nothing of it", !shown.error && !has(shown), shown)
 check("… nor a snapshot", !has(await op("snapshot", { tab: t })), null)
 check("… nor read", !has(await op("read", { tab: t })), null)
+const run = await op("run", { tab: t, script: `const s = await snapshot(); const r = await read(); let w = "found"; try { await wait({ text: ${JSON.stringify(SECRET.slice(0, 6))}, timeout: 1 }) } catch (e) { w = e.message }
+  return { s, r, w, ref: await ref(${JSON.stringify(SECRET)}) }` })
+check("… nor a script's snapshot, read, wait and ref (run)", !run.error && !has(run) && !/^found$/.test(JSON.parse(run.value ?? "{}").w ?? "found") && JSON.parse(run.value ?? "{}").ref === null, run)
 const tabs = await op("tabs")
 check("… nor the tabs' titles (the page put it in its own)", Array.isArray(tabs) && tabs.some((x) => x.tab === t && /Sign in •••/.test(x.title)) && !has(tabs), tabs)
 const shot = await op("screenshot", { tab: t })
@@ -169,13 +169,15 @@ const split = await op("navigate", { tab: t, to: `${SITE}/split` })
 const splitIn = await op("login", { tab: t, submit: true })
 check("a code split in a box per digit: each gets its digit", splitIn?.status === "filled" && /Welcome alice/.test((await op("read", { tab: t }))?.text ?? ""), [split, splitIn, saw.at(-1)])
 
-// ---------- a GET form puts the password in the address: still never seen ----------
-await op("navigate", { tab: t, to: `${SITE}/login-get` })
-const got = await op("login", { tab: t, submit: true })
+// ---------- a GET form puts the password in the address: still never seen (in Work, which agents may act in too) ----------
+await fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ containers: [{ id: "agents", name: "Agents", color: "purple", agents: "act" }, { id: "work", name: "Work", color: "orange", agents: "act" }] }) })
+const w = await until(async () => { const o = await op("open", { url: `${SITE}/login-get`, container: "work" }); return o.tab ? o : null }, 15000)
+const got = await op("login", { tab: w?.tab, submit: true })
 check("a GET form: filled and sent", got?.status === "filled" && got.url?.includes("/after?"), got)
 check("… its address has the password in it, scrubbed in the answer", !has(got) && /pw=•••/.test(got?.url ?? ""), got?.url)
-check("… and in tabs, read and wait --url", !has(await op("tabs")) && !has(await op("read", { tab: t })) && !!(await op("wait", { tab: t, url: encodeURIComponent(SECRET).slice(0, 10), timeout: 1 })).error, null)
-const evGet = await op("evaluate", { tab: t, expression: "location.href" })
+check("… and in tabs, read and wait --url", !has(await op("tabs")) && !has(await op("read", { tab: w?.tab })) && !!(await op("wait", { tab: w?.tab, url: encodeURIComponent(SECRET).slice(0, 10), timeout: 1 })).error, null)
+const evGet = await op("evaluate", { tab: w?.tab, expression: "location.href" })
 check("… evaluate refused there: its address holds it", /its address has a secret/.test(String(evGet.error)), evGet)
 
 // ---------- a script run in the page first: no login till it loads again ----------
@@ -222,14 +224,19 @@ const noEntry = await op("login", { tab: none.tab })
 check("a site with no entry (another port: another site) says so", /no entry for 127\.0\.0\.1:\d+/.test(String(noEntry.error)), noEntry)
 
 // ---------- nothing kept anywhere has it ----------
-const files = (dir) => { try { return fs.readdirSync(dir, { recursive: true }).map((f) => path.join(dir, String(f))).filter((f) => fs.statSync(f).isFile()) } catch { return [] } }
+/** Every file under `dir` (none when it isn't there); one that can't be read (a socket, a dangling link) left out alone. */
+const files = (dir) => { try { return fs.readdirSync(dir, { recursive: true }).map((f) => path.join(dir, String(f))).filter((f) => { try { return fs.statSync(f).isFile() } catch { return false } }) } catch { return [] } }
 const leaks = (dir) => files(dir).filter((f) => { const b = fs.readFileSync(f); return [...FORMS.slice(0, 3), HARBOR, ADMIN].some((s) => b.includes(s)) })
 const runs = path.join(USER_DATA, "agent-runs")
 const steps = files(runs).filter((f) => f.endsWith("steps.jsonl")).map((f) => fs.readFileSync(f, "utf8")).join("")
 check("each login is kept with the agent's steps: site, entry, result and who approved", /"action":"login"[^\n]*"site":"127\.0\.0\.1:\d+"[^\n]*"result":"filled the username and password"[^\n]*"approved":"free/.test(steps)
   && /"result":"denied by the user"/.test(steps) && /"approved":"the user, in the Inbox"/.test(steps), steps.split("\n").filter((l) => l.includes("login")).slice(0, 4))
-check("no secret in the agents' runs (steps and pictures)", !leaks(runs).length, leaks(runs))
-check("no secret in the vault, nor the server's own files", !leaks(VAULT).length && !leaks(LOCAL_DIR).length, [...leaks(VAULT), ...leaks(LOCAL_DIR)])
+check("no secret in the agents' runs (steps and pictures)", files(runs).length > 2 && !leaks(runs).length, leaks(runs))
+const visits = await engine("history:list", { limit: 500 }).catch(() => null)
+const hist = files(USER_DATA).filter((f) => /web-history\.sqlite/.test(f))
+check("nor the browser's history (the GET form's address isn't kept, nor a title showing it)", JSON.stringify(visits ?? "").includes("/login-get") && !has(visits)
+  && hist.length > 0 && !leaks(USER_DATA).some((f) => hist.includes(f)), [hist, JSON.stringify(visits ?? "").slice(0, 300)])
+check("no secret in the vault, nor the server's own files", files(VAULT).length > 10 && files(LOCAL_DIR).length > 0 && !leaks(VAULT).length && !leaks(LOCAL_DIR).length, [...leaks(VAULT), ...leaks(LOCAL_DIR)])
 check("no secret in the app's or the server's output", ![SECRET, HARBOR, ADMIN, DB_PASSWORD].some((s) => output.includes(s)), output.slice(-500))
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
