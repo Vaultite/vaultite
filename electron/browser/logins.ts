@@ -316,9 +316,8 @@ async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnT
 
   // From here till it's filled: no script of an agent's in the site's pages (checked, then held, with no wait between)
   const sites = new Set([siteOf(url), ...puts.map((x) => siteOf(frameOf(x.input)))])
-  if ([...sites].some((site) => ranNear(p, site))) {
-    throw new Error("a script of yours (browser evaluate) ran in this site's pages since they loaded, and could read what's filled: load this one again (browser go <tab> reload), then log in")
-  }
+  const ran = [...sites].map((site) => ranNear(p, site)).find(Boolean)
+  if (ran) throw new Error(ran)
   filling.add(p.id)
   const did = new Set<string>()
   try {

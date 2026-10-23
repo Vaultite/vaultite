@@ -79,17 +79,25 @@ export const wasFilled = (wc: WebContents, id: number) => { const m = filledFiel
 export const filling = new Set<number>()
 
 /** The pages a script in `p` could reach, a site's in the same logins: any page of `site` there (a script reaches the
- *  pages its page opened, and the one that opened it). */
-const near = (p: EnginePage, site: string, of: WeakMap<WebContents, { doc: number; site?: string; sites?: Set<string> }>) => allPages().some((q) => {
-  const m = of.get(q.wc)
-  return q.profile === p.profile && !q.wc.isDestroyed() && !!m && m.doc === docOf(q.wc) && (m.site === site || !!m.sites?.has(site))
-})
+ *  pages its page opened, and the one that opened it). The one marked in `of`, `p` first; else undefined. */
+const near = (p: EnginePage, site: string, of: WeakMap<WebContents, { doc: number; site?: string; sites?: Set<string> }>) =>
+  [p, ...allPages().filter((q) => q !== p)].find((q) => {
+    const m = of.get(q.wc)
+    return q.profile === p.profile && !q.wc.isDestroyed() && !!m && m.doc === docOf(q.wc) && (m.site === site || !!m.sites?.has(site))
+  })
+/** "this page", or "tab 7": where a guard's page is, said to the agent asking in `p`. */
+const where = (p: EnginePage, q: EnginePage) => (q === p ? "this page" : `tab ${q.id}`)
 
 /** An agent's script runs in `p`'s document now. */
 export const markRan = (p: EnginePage) => ran.set(p.wc, { doc: docOf(p.wc), site: siteOf(p.wc.getURL()) })
-/** Whether an agent's script ran in a page of `site` (in `p`'s logins) since it last loaded: its code may still be
- *  there, listening, so the app fills nothing on that site till it loads again. */
-export const ranNear = (p: EnginePage, site: string) => near(p, site, ran)
+/** Why the app fills nothing on `site` in `p` now, or "": an agent's script ran in a page of it (in `p`'s logins) since
+ *  that page last loaded, and its code may still be there, listening. */
+export function ranNear(p: EnginePage, site: string) {
+  const q = near(p, site, ran)
+  if (!q) return ""
+  if (q === p) return "an agent's script (browser evaluate) ran in this page since it loaded, and could read what's filled: load it again (browser go <tab> reload), then log in"
+  return `an agent's script (browser evaluate) ran in tab ${q.id}, a page of ${site}, since it loaded, and could read what's filled here: log in once that tab is loaded again (browser go ${q.id} reload) or closed; if it's another agent's, once it's done`
+}
 /** The app fills a login into `p`'s document now, in a frame of `site`. */
 export function markHeld(p: EnginePage, site: string) {
   const m = held.get(p.wc)
@@ -97,7 +105,8 @@ export function markHeld(p: EnginePage, site: string) {
 }
 /** Why an agent's script may not run in `p` now (a secret it could read), or "". */
 export function heldNear(p: EnginePage) {
-  if (near(p, siteOf(p.wc.getURL()), held)) return "the app filled a login on this site, and the page still has it: load it again (browser go <tab> reload) once you're signed in"
+  const q = near(p, siteOf(p.wc.getURL()), held)
+  if (q) return `the app filled a login in ${where(p, q)} of this site, and it still has it: load it again (browser go ${q === p ? "<tab>" : q.id} reload) once signed in`
   if (hasSecret(p.wc.getURL())) return "its address has a secret the app filled in it"
   return ""
 }
