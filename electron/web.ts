@@ -574,6 +574,9 @@ function go(p: Page, action: string, url?: string): unknown {
   if (action === "back" && canBack(p)) h.goBack()
   else if (action === "forward" && h.canGoForward()) h.goForward()
   else if (action === "reload") wc.reload()
+  // (where Back or Forward would go, for a tab of its own)
+  else if (action === "back-address") return canBack(p) ? h.getEntryAtIndex(h.getActiveIndex() - 1)?.url : undefined
+  else if (action === "forward-address") return h.canGoForward() ? h.getEntryAtIndex(h.getActiveIndex() + 1)?.url : undefined
   else if (action === "stop") wc.stop()
   else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
   // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)

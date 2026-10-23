@@ -1,6 +1,6 @@
 // The Browser in the desktop app (Electron) against pages this script serves on 127.0.0.1: a web link opens a web
 // tab, a native view laid over its pane (splits, sidebar, dividers, zoom), live under the window's page while the
-// palette, a menu, a drag or a toast is over it (the window raised, see-through there, a toast's pointer passed on), kept on tab switches; links, back, new tabs and other schemes; no bridge into the app; app
+// palette, a menu, a drag or a toast is over it (the window raised, see-through there, a toast's pointer passed on), kept on tab switches; links, back, new tabs (a middle-click on Back, a ⌘-click on Reload) and other schemes; no bridge into the app; app
 // shortcuts from the page; Save to vault, downloads, an image's menu; a tab's page is its own (a slow one switched away
 // from and back, two tabs of one address, ⌘⇧T); closing ends the page. SHOW=1 shows the window;
 // screenshots (screencapture, so the native view is in them) go to <out dir>.
@@ -341,6 +341,16 @@ await win.locator("[data-web-address]").click()
 await win.keyboard.type("127.0.0.1:" + PORT + "/two")
 await win.keyboard.press("Enter")
 check("an address typed in the bar", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000), await pages())
+// A middle-click on Back, a ⌘-click on Reload: that page in a new tab, this one staying where it is.
+const newTabOf = async (url) => (await pages()).some((p) => p.visible && p.url === url) && (await pages()).some((p) => !p.visible && p.url === `${SITE}/two`)
+await win.locator("[data-web-page] button[aria-label=Back]").click({ button: "middle" })
+check("a middle-click on Back: the page before in a new tab", await until(() => newTabOf(`${SITE}/article`), 10000), await pages())
+await menuClick("Close tab")
+await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000)
+await win.locator("[data-web-page] button[aria-label=Reload]").click({ modifiers: ["ControlOrMeta"] })
+check("a ⌘-click on Reload: a copy in a new tab", await until(async () => (await pages()).filter((p) => p.url === `${SITE}/two`).length === 2, 10000), await pages())
+await menuClick("Close tab")
+await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000)
 await win.locator("[data-web-page] button[aria-label=Back]").click()
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/article`), 10000)
 

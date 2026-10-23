@@ -126,7 +126,8 @@ export type WebPages = {
   release: (id: number) => Promise<unknown>
   /** Tab `tab` closed, left this window or stopped showing a web page: its page ends. */
   close: (tab: string) => Promise<unknown>
-  go: (id: number, action: "back" | "forward" | "reload" | "stop" | "load" | "focus" | "mute" | "unmute" | "pip", url?: string) => Promise<unknown>
+  /** `back-address`, `forward-address`: where Back or Forward would go (older builds answer nothing). */
+  go: (id: number, action: "back" | "forward" | "reload" | "back-address" | "forward-address" | "stop" | "load" | "focus" | "mute" | "unmute" | "pip", url?: string) => Promise<unknown>
   /** Into its player, a window of its own its main video fills (`fullScreen`: on a Space of its own), or back in its tab
    *  (`on` false). Older builds don't have it. */
   player?: (id: number, on: boolean, fullScreen?: boolean) => Promise<unknown>

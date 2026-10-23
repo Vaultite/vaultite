@@ -286,15 +286,19 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     void web.go(id, "focus")
   }
 
+  // (a tab of its own even when another shows that address: a copy is what Reload's asked for)
+  const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openView(`web/${argOf(to, container)}`, { another: true }) }
+
   const onWeb = http(state.url)
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
   return (
     <div className="flex h-full min-h-0 flex-col" data-web-page={id || ""}>
       {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
       <div ref={bar} className="@container/bar flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5" data-web-bar>
-        <BarButton icon={ArrowLeft} label="Back" disabled={!state.back} onClick={() => void web.go(id, "back")} />
-        <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} className="@max-xs/bar:hidden" />
-        <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")} />
+        <BarButton icon={ArrowLeft} label="Back" disabled={!state.back} onClick={() => void web.go(id, "back")} onNewTab={() => void web.go(id, "back-address").then(inNewTab)} />
+        <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} onNewTab={() => void web.go(id, "forward-address").then(inNewTab)} className="@max-xs/bar:hidden" />
+        <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")}
+          onNewTab={state.loading ? undefined : () => inNewTab(state.url)} />
         <AddressBar url={state.url} current={tabArg} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} manage={manageContainers} />}
           trail={id > 0 && onWeb ? <ShieldsButton id={id} url={state.url} loading={state.loading} /> : null} />
@@ -418,9 +422,11 @@ function Problem({ error, url, onRetry }: { error: string; url: string; onRetry:
   )
 }
 
-function BarButton({ icon: Icon, label, onClick, disabled, className }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean; className?: string }): ReactNode {
+/** `onNewTab`: a middle-click or ⌘-click, as on a link (Back's page in a new tab, Reload's a copy of this one). */
+function BarButton({ icon: Icon, label, onClick, onNewTab, disabled, className }: { icon: LucideIcon; label: string; onClick: () => void; onNewTab?: () => void; disabled?: boolean; className?: string }): ReactNode {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} data-tip={label} className={cn(BAR_ICON, className)}>
+    <button type="button" onClick={(e) => { if (onNewTab && (e.metaKey || e.ctrlKey)) onNewTab(); else onClick() }} disabled={disabled} aria-label={label} data-tip={label}
+      onAuxClick={(e) => { if (e.button === 1 && onNewTab) { e.preventDefault(); onNewTab() } }} className={cn(BAR_ICON, className)}>
       <Icon className="size-4" strokeWidth={2} />
     </button>
   )
