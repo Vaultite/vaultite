@@ -45,7 +45,7 @@ enum Feed {
         let id: String
         let title: String
         let body: String?
-        let preview: String?
+        var preview: String? = nil
         let ask: String?
         let terminal: String?
         var answerable: Bool { ask == "permission" && terminal != nil }
