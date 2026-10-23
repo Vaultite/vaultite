@@ -4,7 +4,8 @@
 // with node_modules in it (some 26,000 files) that's more than macOS lets a process have open (EMFILE).
 //
 // With a code signing identity in the keychain it signs with that: VAULTITE_SIGN_IDENTITY (a name or its SHA-1), else
-// the first "Developer ID Application", else the first "Apple Development". macOS keeps privacy permissions (Files and
+// the first "Developer ID Application", else the first "Apple Development", else (not for a release) any other trusted
+// code signing identity, like a self-signed one made for a Mac that builds its own updates. macOS keeps privacy permissions (Files and
 // Folders, iCloud Drive, the microphone) for an app signed so across builds, since they're tied to its team and bundle
 // id; an app signed ad hoc is a new app to macOS on every build, and its shells lose the vault until they're granted
 // again. With no identity (or one that can't sign: a keychain locked over ssh) it signs ad hoc, and says so.
@@ -34,7 +35,7 @@ function identity() {
   const ids = [...out.matchAll(/^\s*\d+\)\s+([0-9A-F]{40})\s+"([^"]+)"/gm)].map((m) => ({ hash: m[1], name: m[2] }))
   const dev = ids.find((x) => x.name.startsWith("Developer ID Application:"))
   if (RELEASE) return dev ? dev.hash : null
-  const pick = dev ?? ids.find((x) => x.name.startsWith("Apple Development:"))
+  const pick = dev ?? ids.find((x) => x.name.startsWith("Apple Development:")) ?? ids[0]
   return pick ? pick.hash : null
 }
 
@@ -136,7 +137,12 @@ exports.default = async function sign(context) {
       if (process.env.VAULTITE_UPDATING) throw new Error(`sign.cjs: couldn't sign with ${id} (a locked keychain?): not building an update signed ad hoc`)
       console.warn(`sign.cjs: couldn't sign with ${id} (a locked keychain?): signing ad hoc, so macOS will ask for its permissions again`)
     }
-  } else console.warn("sign.cjs: no code signing identity in the keychain: signing ad hoc, so macOS will ask for its permissions again after each build")
+  } else {
+    // An update signed ad hoc is a new app to macOS: its cookies' Keychain key (sign.cjs's cookie encryption) then asks
+    // for a password on a screen nobody may be at, and unanswered, every site signs out.
+    if (process.env.VAULTITE_UPDATING) throw new Error("sign.cjs: no code signing identity in the keychain: not building an update signed ad hoc (Setup: a self-signed code signing certificate will do)")
+    console.warn("sign.cjs: no code signing identity in the keychain: signing ad hoc, so macOS will ask for its permissions again after each build")
+  }
   execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" })
   sealed(app, appex, ["--force", "--sign", "-"])
 }

@@ -1150,6 +1150,7 @@ function buildUpdate(byHand: boolean, want: string) {
       dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${BUILD!.commit.slice(0, 7)}, ${want ? "the version its server runs" : `the newest on ${BRANCH}`}.` })
     } else if (byHand && !quitting) {
       updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check."
+        : /no code signing identity in the keychain: not building/.test(out) ? "This Mac has no code signing identity, and an update signed without one would sign you out of every site: add one (a self-signed code signing certificate will do)."
         : /not building an update signed ad hoc/.test(out) ? "The new version couldn't be signed: the keychain may be locked. The next check tries again."
         : /from before cookie encryption/.test(out) ? "Its server runs a version from before cookie encryption, which would sign you out of every site: update the server first."
         : "The new version didn't build.")
