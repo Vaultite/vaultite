@@ -14,4 +14,5 @@ wrap(fs, "close", (o) => function (fd, ...a) { if (fds.has(fd)) { log("close", f
 wrap(fs.promises, "open", (o) => async function (p, ...a) { const h = await o.call(this, p, ...a); if (want(p)) { log("promises.open", p, h.fd); const c = h.close.bind(h); h.close = async () => { log("promises.close", p, h.fd); return c() } } return h })
 wrap(fs.promises, "readFile", (o) => async function (p, ...a) { if (want(p)) log("promises.readFile start", p); try { return await o.call(this, p, ...a) } finally { if (want(p)) log("promises.readFile end", p) } })
 wrap(fs, "readFile", (o) => function (p, ...a) { const cb = a.pop(); if (want(p)) log("readFile start", p); return o.call(this, p, ...a, (...r) => { if (want(p)) log("readFile end", p); cb(...r) }) })
+wrap(fs, "createReadStream", (o) => function (p, ...a) { if (want(p)) log("openSync createReadStream", p); return o.call(this, p, ...a) })
 syncBuiltinESMExports()
