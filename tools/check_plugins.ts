@@ -174,7 +174,7 @@ for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, [...
 
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
-  ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f)), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
+  ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f.split(path.sep).join("/"))), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
   ...walk(APP_BUNDLES).filter((f) => f.endsWith(".md")), ...walk(path.join(ROOT, "skills")).filter((f) => f.endsWith(".md"))]
 for (const f of docs) {
   const text = fs.readFileSync(f, "utf8"), rel = path.relative(ROOT, f)

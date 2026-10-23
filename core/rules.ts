@@ -395,7 +395,7 @@ export function iconNames(root: string): Set<string> {
   let lucide = ""
   try { lucide = fs.readFileSync(path.join(root, "node_modules", "lucide-react", "dist", "esm", "icons", "index.mjs"), "utf8") } catch { /* none */ }
   const out = new Set([...lucide.matchAll(/from '\.\/([\w-]+)\.mjs'/g)].map((m) => m[1]))
-  for (const d of walk(path.join(root, "plugins", "core")).filter((f) => f.endsWith("/index.tsx"))) for (const k of defKeys(fs.readFileSync(d, "utf8"), "icons")) out.add(k)
+  for (const d of walk(path.join(root, "plugins", "core")).filter((f) => path.basename(f) === "index.tsx")) for (const k of defKeys(fs.readFileSync(d, "utf8"), "icons")) out.add(k)
   // (and the app's own names: web/src/core/pages.ts ICONS)
   let own = ""
   try { own = /export const ICONS[^=]*=\s*\{([^}]*)\}/.exec(fs.readFileSync(path.join(root, "web", "src", "core", "pages.ts"), "utf8"))?.[1] ?? "" } catch { /* none */ }

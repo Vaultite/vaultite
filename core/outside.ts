@@ -23,7 +23,8 @@ export function allow(paths: unknown) {
   for (const p of paths) if (typeof p === "string" && path.isAbsolute(p)) allowed.add(real(p))
 }
 
-export const isOutside = (p: unknown) => typeof p === "string" && p.startsWith("/")
+/** An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x. */
+export const isOutside = (p: unknown) => typeof p === "string" && /^(\/|[a-z]:[\\/]|\\\\)/i.test(p)
 
 function check(p: string) {
   if (!allowed.has(real(p))) throw new HTTPError(404, `no file '${p}'`)

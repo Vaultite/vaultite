@@ -1,7 +1,7 @@
 // HTML pages' server side: pages served sandboxed at /v/ and CDN files at /cdn/ (plugin.serve, so nothing runs while
 // it's off), plus `text:html` and `looks:html`. Known limit: a page can navigate its own frame away.
 import fs from "node:fs"
-import { contentType, HTTPError, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
+import { contentType, HTTPError, isOutside, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
 import type { Item, Vault } from "../../../core/vault.ts"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
@@ -14,7 +14,7 @@ plugin.serve("v", (req) => {
   const vault = plugin.vault
   const headers = { "Content-Security-Policy": CSP, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" }
   // A page from outside the vault, one the desktop app allowed (only the .html itself: nothing next to it).
-  if (req.arg(0).startsWith("/")) {
+  if (isOutside(req.arg(0))) {
     const abs = outsidePath(req.arg(0))
     if (!ARTIFACT.test(abs)) throw new HTTPError(404, "not found")
     try {

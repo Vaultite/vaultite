@@ -87,10 +87,11 @@ export function parseSource(given: string, tag?: string | null): Source {
     tag: at && dir && !at.includes("/") ? `${dir}/${at}` : at }
 }
 
-/** git with these arguments (never a shell; no prompts for a password): its output, or an OpError with its message. */
+/** git with these arguments (never a shell; no prompts for a password): its output, or an OpError with its message.
+ *  Files come out as they're stored: Windows' git turns LF into CRLF by default, and they'd no longer be the ones recorded. */
 export function git(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" } },
+    execFile("git", ["-c", "core.autocrlf=false", ...args], { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" } },
       (err, stdout, stderr) => (err ? reject(new OpError(`git ${args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c")}: ${(String(stderr).trim().split("\n").at(-1) || err.message).slice(0, 300)}`, 502)) : resolve(String(stdout))))
   })
 }
