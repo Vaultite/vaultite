@@ -34,8 +34,11 @@ export default definePlugin({
 `)
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-const errs = []
+const errs = [], causes = []
 page.on("pageerror", (e) => errs.push(String(e)))
+// React wraps an error it recovered from in a concurrent render (#520), the cause only in the page: logged from there.
+await page.addInitScript(() => addEventListener("error", (e) => { if (e.error?.cause) console.log(`qa-cause: ${e.error.cause}`) }))
+page.on("console", (m) => { if (m.text().startsWith("qa-cause: ")) causes.push(m.text()) })
 const stopped = () => page.$("#vau-boot-error").then((e) => !!e)
 const drawn = () => until(async () => !!(await page.$("[role=tree]")) && !(await stopped()), 15000)
 const ui = (body) => fetch(`${B}api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
@@ -99,7 +102,7 @@ try {
   await toast.getByRole("button", { name: "Turn back on" }).click()
   await wait(2500)
   check("Turn back on: no toast, Brittle's view draws again", await drawn() && (await page.locator("[data-sonner-toast]", { hasText: "Vault plugins are off" }).count()) === 0 && await brittle())
-  check("no page errors but Brittle's own", errs.every((e) => /qa: brittle/.test(e)), errs.slice(0, 5))
+  check("no page errors but Brittle's own", errs.every((e) => /qa: brittle|React error #520/.test(e)) && causes.every((c) => /qa: brittle/.test(c)), [...errs, ...causes].slice(0, 5))
 } finally {
   rmSync(abs(".vaultite/plugins/brittle"), { recursive: true, force: true })
   if (was.plugins) write(".vaultite/plugins.json", was.plugins)
