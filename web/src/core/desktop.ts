@@ -46,7 +46,7 @@ export type DesktopApi = {
    *  page saying whether a restart would lose nothing now. Older builds don't have it. */
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
   /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
-  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
+  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; name?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
   /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
    *  have it. */
   syncMenu?: (snap: MenuSnapshot) => Promise<unknown>
@@ -425,7 +425,7 @@ export function startDesktop() {
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spelled({ word: m.word ?? "", suggestions: m.suggestions ?? [] })
     else if (m.type === "update") {
-      notify(`A new version of Vaultite is ready (${m.version})${m.auto ? ". It restarts into it while you're away" : ""}`,
+      notify(`A new version of ${m.name ?? "Vaultite"} is ready (${m.version})${m.auto ? ". It restarts into it while you're away" : ""}`,
         { id: "update", duration: Infinity, action: { label: "Restart to update", run: () => desktop.restartToUpdate() } })
       if (m.auto) reportSafety(desktop)
     }

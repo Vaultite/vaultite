@@ -1191,7 +1191,7 @@ function built() {
 /** Offer the update in a window (a toast with Restart); automatic, the window says when it's safe to restart. */
 function tell(w: Win) {
   if (!w.ready || !ready) return
-  const msg = { type: "update", version: RELEASE ? ready : ready.slice(0, 7), auto: updates === "automatic" }
+  const msg = { type: "update", name: app.getName(), version: RELEASE ? ready : ready.slice(0, 7), auto: updates === "automatic" }
   w.win.webContents.send("vaultite", msg)
   for (const [wc, of] of popouts) if (of === w && !wc.isDestroyed()) wc.send("vaultite", msg)
 }

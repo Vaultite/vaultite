@@ -130,7 +130,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   dot by each line is the setting Comments: In the sidebar.
 - An app a LaunchAgent keeps running stays under it after updating itself, so a crash still restarts it.
 - Vaultite Main on Linux updates itself again: since 2026-10-20 it built each update and never offered it (run
-  `npm run app:install` once to get the fix).
+  `npm run app:install` once to get the fix). Its update toast names the app
+  that's ready (Vaultite Main, Vaultite Nightly), not always Vaultite.
 - Linux: an agent's terminal tab is named after the agent (Codex, not your prompt's "user@host: folder") until it
   names itself.
 - Linux: Review has the text from just before an AI's change made right after a write of yours, instead of sometimes
