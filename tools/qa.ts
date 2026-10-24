@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
-import { freePort, record, sleep, testServer } from "./test/lib.ts"
+import { freePort, record, sleep, stopTerminals, testServer } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
@@ -86,9 +86,7 @@ async function serve(vault: string, local: string, env: Record<string, string>):
 }
 function stop(s: Server) {
   if (s.proc.exitCode === null) s.proc.kill()
-  const pid = path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${s.port}.sock.pid`)
-  try { process.kill(Number(fs.readFileSync(pid, "utf8"))) } catch {}
-  spawnSync("tmux", ["-L", `vaultite-${s.port}`, "kill-server"], { stdio: "ignore" })
+  stopTerminals(s.port)
 }
 
 async function run(name: string): Promise<{ ok: boolean, ms: number, out: string, skipped?: string }> {

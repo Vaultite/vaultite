@@ -16,13 +16,13 @@ import os from "node:os"
 import path from "node:path"
 import { CHROME, ROOT, freePort, launch, qa, wait } from "./lib/qa.mjs"
 import { officialBundles, officialRepos } from "../../tools/test/official.ts"
-import { testServer } from "../../tools/test/lib.ts"
+import { stopTerminals, testServer } from "../../tools/test/lib.ts"
 const { check, fails } = await qa(import.meta.url, { chrome: false })
 if (!fs.existsSync(CHROME)) { console.log("boot: skipped (no Google Chrome here)"); process.exit(0) }
 if (!process.argv[2] && !fs.existsSync(path.join(ROOT, "web/dist/index.html"))) { console.error("boot: no web/dist (npm run build first)"); process.exit(1) }
 
 // The server: the one given, else this checkout's on a sandbox vault of its own (stopped by its own handle, and its
-// terminals' tmux by its port, at the end).
+// terminals by its port, at the end).
 const servers = []
 async function serve(vault, local) {
   const port = await freePort()
@@ -54,7 +54,7 @@ if (!base.endsWith("/")) base += "/"
 function stop() {
   for (const { server, port } of servers) {
     if (server.exitCode === null) server.kill()
-    spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
+    stopTerminals(port)
   }
   // (a server just killed may still be writing its last files: retried)
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })

@@ -8,7 +8,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, freePort, qa, until, wait } from "./lib/qa.mjs"
-import { testServer } from "../../tools/test/lib.ts"
+import { stopTerminals, testServer } from "../../tools/test/lib.ts"
 
 const { args: ids, browser, check, watch, done } = await qa(import.meta.url)
 const BUNDLES = path.join(ROOT, "bundles")
@@ -45,8 +45,7 @@ async function serve(vault, local) {
 }
 function stop({ port, proc }) {
   if (proc.exitCode === null) proc.kill()
-  try { process.kill(Number(fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* none */ }
-  spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
+  stopTerminals(port)
 }
 
 /** The window as a picture at PICTURE's size (scaled in the page, so it's smoothed as a browser draws it). */

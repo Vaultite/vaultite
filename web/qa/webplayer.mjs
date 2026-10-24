@@ -14,6 +14,7 @@ import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { stopTerminals } from "../../tools/test/lib.ts"
 
 const { args: [VAULT, OUT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 if (OUT) fs.mkdirSync(OUT, { recursive: true })
@@ -204,8 +205,7 @@ check("no page errors", !errs.filter((e) => !/favicon|ERR_/.test(e)).length, err
 await app.close()
 // (and its terminal keeper, which outlives the app: CLAUDE.md, Running and verifying)
 const port = new URL(origin).port
-try { const pid = fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8").trim(); if (/^\d+$/.test(pid)) process.kill(Number(pid)) } catch { /* none */ }
-try { execFileSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" }) } catch { /* none */ }
+stopTerminals(port)
 server.close(); other.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 await done()

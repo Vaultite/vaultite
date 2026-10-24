@@ -7,7 +7,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { parse as parseYaml } from "yaml"
-import { type Any, check, section, skip, summary, testServer, waitFor } from "../test/lib.ts"
+import { type Any, check, section, skip, stopTerminals, summary, testServer, waitFor } from "../test/lib.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..")
 const LIVE = process.argv.includes("--live")
@@ -183,8 +183,7 @@ async function live() {
     console.log(`\nlive: $${cost.toFixed(4)} in all`)
   } finally {
     server.kill()
-    try { process.kill(Number(fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* no keeper */ }
-    spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
+    stopTerminals(port)
   }
 }
 
