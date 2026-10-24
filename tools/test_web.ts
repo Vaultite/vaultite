@@ -1598,6 +1598,14 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 }
 
 {
+  // A manifest's "⌥⌘F" reads as Linux and Windows name the keys there, a Mac's as written.
+  const { keysText } = await import("../web/src/core/platform.ts")
+  const off = (t: string) => keysText(t, false)
+  check("keys in text: off a Mac, Ctrl, Alt and Shift", off("Find (⌘F), and replace (⌥⌘F); ⇧⌘T") === "Find (Ctrl+F), and replace (Ctrl+Alt+F); Ctrl+Shift+T", off("Find (⌘F), and replace (⌥⌘F); ⇧⌘T"))
+  check("keys in text: a key alone, or before -click", off("hold ⌘. ⌘-click, ⌘ held") === "hold Ctrl. Ctrl-click, Ctrl held" && keysText("⌥⌘F", true) === "⌥⌘F", off("hold ⌘. ⌘-click, ⌘ held"))
+}
+
+{
   // Every scheme's ten colours (tab groups, workspaces, labels pick from them) tell apart: CIE76 distance at least 10.
   const { COLORS } = await import("../core/colors.ts")
   const lab = (hex: string) => {

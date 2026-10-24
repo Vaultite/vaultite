@@ -15,6 +15,13 @@ export const showLabel = isMac ? "Show in Finder" : "Show in folder"
 /** The app's Mod key in words, for "⌘-click" / "Ctrl-click". */
 export const modKey = isMac ? "⌘" : "Ctrl"
 
+const GLYPH: Record<string, string> = { "⌃": "Ctrl", "⌘": "Ctrl", "⌥": "Alt", "⇧": "Shift" }
+/** A Mac's key glyphs in text (a manifest's "⌥⌘F", "⌘-click") as this computer names them: "Ctrl+Alt+F", "Ctrl-click". */
+export const keysText = (s: string, mac = isMac) => mac ? s : s.replace(/([⌃⌘⌥⇧]+)(?=([^\s\-.,;:)]?))/g, (g, _m, next: string) => {
+  const names = [...new Set([...g].map((c) => GLYPH[c]))].sort((a, b) => ["Ctrl", "Alt", "Shift"].indexOf(a) - ["Ctrl", "Alt", "Shift"].indexOf(b))
+  return names.join("+") + (next ? "+" : "")
+})
+
 const DESKTOP = "(min-width: 768px)"
 /** A computer's width (the desktop's panes), not a phone's. */
 export const isDesktop = () => matchMedia(DESKTOP).matches

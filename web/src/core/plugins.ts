@@ -14,7 +14,7 @@ import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { peekSidebar } from "@/core/peek"
-import { isDesktop } from "@/core/platform"
+import { isDesktop, isMac, keysText } from "@/core/platform"
 import { canonical, keyCaps, keysOf, setMissingCommand } from "@/core/commands"
 import { setFenceLookup, setFormatLookup, type Drawn } from "@/core/formats"
 import { reload } from "@/core/data"
@@ -42,13 +42,19 @@ const pages = { ...import.meta.glob<string>("../../../plugins/core/*/pages/*.md"
 
 const folder = (path: string) => path.split("/").slice(-3, -1).join("/") // "core/people"
 
+/** Settings' words as this computer names its keys (keysText): labels and descriptions. */
+const keyedDecls = <D extends Record<string, { label?: string; description?: string; labels?: Record<string, string> }>>(decls: D): D => isMac ? decls
+  : Object.fromEntries(Object.entries(decls).map(([k, d]) => [k, { ...d, label: d.label && keysText(d.label), description: d.description && keysText(d.description),
+    labels: d.labels && Object.fromEntries(Object.entries(d.labels).map(([v, l]) => [v, keysText(l)])) }])) as D
+
 /** Every plugin: the app's (fixed), then the vault's (setVaultPlugins). */
 export const PLUGINS: Plugin[] = Object.entries(manifests)
-  .map(([path, { blocks: decls, settings, ...m }]) => {
+  .map(([path, { blocks: decls, settings, ...read }]) => {
+    const m = { ...read, description: read.description && keysText(read.description) }
     const f = folder(path)
     const def = Object.entries(modules).find(([p]) => folder(p) === f)?.[1] ?? {}
     const icon = BUILT_IN_ICONS[m.id] // (a name: one it adds itself)
-    return { ...m, ...def, icon: (typeof icon === "string" ? def.icons?.[icon] : icon) ?? Puzzle, blockDecls: decls ?? {}, settingsDecls: settings ?? {}, tier: "core" } as Plugin
+    return { ...m, ...def, icon: (typeof icon === "string" ? def.icons?.[icon] : icon) ?? Puzzle, blockDecls: decls ?? {}, settingsDecls: keyedDecls(settings ?? {}), tier: "core" } as Plugin
   })
 
 /** Plugins' colours: a manifest's `tint` ("orange") makes --<id> (--today: var(--orange)). At no specificity
@@ -83,7 +89,7 @@ export const vaultPluginsIn = () => vaultIn
 export function setVaultPlugins(list: Plugin[]) {
   const app = PLUGINS.filter((p) => p.tier === "core"), hosted = PLUGINS.filter((p) => p.tier === "hosted")
   const was = signature(PLUGINS.filter((p) => p.tier === "vault"))
-  PLUGINS.splice(0, PLUGINS.length, ...app, ...list, ...hosted)
+  PLUGINS.splice(0, PLUGINS.length, ...app, ...(isMac ? list : list.map((p) => ({ ...p, description: p.description && keysText(p.description), settingsDecls: keyedDecls(p.settingsDecls) }))), ...hosted)
   setMarks(PLUGINS as unknown as Record<string, unknown>[])
   writeTints()
   const first = !vaultIn

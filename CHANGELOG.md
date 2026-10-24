@@ -40,6 +40,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the same; each now has a colour of its own.
 - **Search reads as text**: the search tab's matching lines and the quick switcher's previews show a note as it reads,
   without link brackets, task boxes, callout types or TeX.
+- **Keys named as each computer names them**: plugins' descriptions and settings say Ctrl, Alt and Shift on Linux and
+  Windows (Find, Ctrl+F) instead of a Mac's ⌘ and ⌥.
 - **Two web pages side by side stay still**: the keyboard no longer bounces between them many times a second, the
   focused pane flickering in the tab list and the app busy, after it moved from one to the other quickly.
 - **Agents' lines are no longer drawn by default**: Provenance still keeps which lines agents wrote (for `vau blame`,
