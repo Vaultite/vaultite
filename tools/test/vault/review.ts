@@ -47,6 +47,14 @@ export default async ($: VaultTest) => {
     !!(await pending(MAYA, "ChatGPT")) && !!(await pending(MAYA, "chatgpt")) && !(await pending(MAYA, "Claude")), await list("Claude"))
   let d = await detail(MAYA)
   check("review: the diff's base is the text just before the AI's change", d.pending && d.base?.text === "# Maya\n\nLikes tea.\nLives in Lisbon.\n" && d.exact && !d.yours, d)
+  // Linux dates a write from a coarse clock: the file's mtime can be before the request that wrote it began.
+  const ZOE = "Rev/Zoe.md", t0 = Date.now()
+  await heard("PUT", "file", { path: ZOE, text: "# Zoe\n\nLikes chess.\n" })
+  fs.utimesSync(path.join(VAULT, ZOE), new Date(), new Date(t0 - 4))
+  await call("file.edit", { path: ZOE, old: "Likes chess.", new: "Likes chess.\nRuns on Sundays." }, chatgpt)
+  d = await detail(ZOE)
+  check("review: a version dated a tick before the write that made it is still the text just before", d.pending && d.exact && d.base?.text === "# Zoe\n\nLikes chess.\n", d)
+  await call("review.keep", { path: ZOE })
   const [, acts] = await api("GET", "activity?actor=agent&limit=20")
   check("activity: an app on the internet is named as its connection is, not by its slug", acts.events.some((e: Any) => e.actor.name === "ChatGPT" && e.paths?.includes(MAYA)), acts.events.slice(0, 3))
 

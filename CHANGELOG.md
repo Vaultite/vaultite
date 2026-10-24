@@ -123,6 +123,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `npm run app:install` once to get the fix).
 - Linux: an agent's terminal tab is named after the agent (Codex, not your prompt's "user@host: folder") until it
   names itself.
+- Linux: Review has the text from just before an AI's change made right after a write of yours, instead of sometimes
+  saying no earlier version is kept.
 - Passkeys work in the browser: a site asking for one shows a QR code that your phone scans, and the phone's passkey (an
   iPhone's iCloud Keychain, an Android's) signs you in or is saved there. Bluetooth needs to be on, on both.
 - **Your devices, live**: the Tabs panel marks which of your other devices are open now, and on those a tab can be

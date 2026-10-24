@@ -18,6 +18,9 @@ const DAY = 86_400_000
 const HOOK_LAG = 3000
 /** And a change on disk is noticed up to this long after it was written. */
 const NOTICE_LAG = 10_000
+/** A version is dated by its file's mtime, which Linux takes from a coarse clock: up to a tick (1 to 10 ms) before the
+ *  write, so before the request that made it began. */
+const MTIME_LAG = 20
 
 /** An AI app or a coding agent: what Activity calls an agent (an MCP app, the CLI or the API under a coding agent, a
  *  coding agent's own edits). Not the user, vau typed by hand, scripts or changes on disk. */
@@ -120,7 +123,7 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
     // Anyone's change between the version kept and the AI's: that version isn't the text just before (it was written
     // within File history's interval). An event is a run of writes (t to last): one whose start or end is in between.
     const here = changes.filter((e) => e.paths?.includes(p) && !f.own.has(e) && !(e.actor.kind === "script" && e.actor.name === "Vaultite"))
-    const inside = (e: Change, x: number) => x > before!.t + (e.method ? 0 : NOTICE_LAG) && x < f.first
+    const inside = (e: Change, x: number) => x > before!.t + (e.method ? MTIME_LAG : NOTICE_LAG) && x < f.first
     const exact = created || (!!before && !here.some((e) => inside(e, e.t) || inside(e, e.last ?? e.t)))
     const yours = here.some((e) => !byAi(e) && (e.last ?? e.t) > f.first)
     let base: Found["base"] = null, added: number | undefined, removed: number | undefined
