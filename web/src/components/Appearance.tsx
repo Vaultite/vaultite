@@ -224,7 +224,7 @@ export function AppearancePanel() {
           <Segmented<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })} className="w-full shrink-0 sm:w-[220px]"
             options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
         </SettingRow>
-        {["file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"])].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        {["translucent", "file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"])].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <NewTabsRow />
         {["typing-fade", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}

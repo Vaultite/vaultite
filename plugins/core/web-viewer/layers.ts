@@ -184,5 +184,5 @@ function minus(a: DOMRect, h: DOMRect): DOMRect[] {
 
 // (a theme or a pane's colour changing changes what's painted behind: cut again)
 if (typeof MutationObserver !== "undefined") {
-  new MutationObserver(() => { if (holes.size) schedule() }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] })
+  new MutationObserver(() => { if (holes.size) schedule() }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme", "data-translucent"] })
 }

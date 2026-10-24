@@ -3,6 +3,7 @@
 import { getPrefs, onPrefs } from "@/core/prefs"
 import { SCHEMES, schemeId } from "@/themes/schemes"
 import { signal } from "@/core/signal"
+import type { DesktopApi, Translucency } from "@/core/desktop"
 
 export type VaultTheme = { name: string; author: string; version: string; modes: ("light" | "dark")[]; mtime: number; problem?: string }
 export type VaultSnippet = { name: string; mtime: number; path: string }
@@ -114,7 +115,9 @@ function apply() {
   else delete root.dataset.density
   // What index.html puts in place before the app's code has loaded (no flash of the other theme): "system" when it
   // follows the system's, which the page checks itself.
-  const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "" }
+  askTranslucent(p.translucent)
+  const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "",
+    ...(translucency.on ? { translucent: true } : {}) }
   if (previewing === null) try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }
   const vars: [string, string][] = [["--font-ui", p.interfaceFont], ["--font-text", p.textFont], ["--font-code", p.monoFont]]
   for (const [k, v] of vars) {
@@ -136,6 +139,36 @@ function apply() {
 }
 let linked = "", applied = ""
 
+
+// ---------- translucent (appearance `translucent`): the window's chrome over the system's blur, in the desktop app
+
+const native = (window as { vaultite?: DesktopApi }).vaultite?.translucent
+const reduced = matchMedia("(prefers-reduced-transparency: reduce)")
+let translucency: Translucency = { on: document.documentElement.hasAttribute("data-translucent") }
+let asked: boolean | null = null
+const translucencyChanged = signal()
+function setTranslucency(t: Translucency) {
+  const next = { on: t.on, ...(t.why ? { why: t.why } : {}) }
+  if (JSON.stringify(next) === JSON.stringify(translucency)) return
+  translucency = next
+  document.documentElement.toggleAttribute("data-translucent", next.on)
+  apply()
+  translucencyChanged.notify()
+}
+/** The window asked to be translucent, or not. Solid at once, see-through only once its blur is there. */
+function askTranslucent(want: boolean) {
+  const ask = want && !!native && !reduced.matches
+  if (ask === asked) return
+  asked = ask
+  if (!ask) setTranslucency({ on: false, ...(want ? { why: native ? "reduced" as const : "system" as const } : {}) })
+  if (native) void native.set(ask).then((t) => { if (ask && asked) setTranslucency(t) }, () => {})
+}
+native?.on((t) => { if (asked) setTranslucency(t) })
+reduced.addEventListener("change", () => askTranslucent(getPrefs().translucent))
+/** Whether this window may be (the desktop app on a Mac or Windows), is now, and why not while it's asked for. */
+export const canTranslucent = !!native
+export const getTranslucency = () => translucency
+export const onTranslucency = (fn: () => void) => translucencyChanged.subscribe(fn)
 
 // Light or dark and the scheme on <html>, however they got there (the app's first paint, a test, another script).
 new MutationObserver(lookChanged).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "data-density", "style"] })

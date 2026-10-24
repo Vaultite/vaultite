@@ -2,6 +2,7 @@
  *  electron/appwindows.swift (the Accessibility API, as AeroSpace does); given back when its tab, window or app closes. */
 import { app, globalShortcut, screen } from "electron"
 import { AppWindow } from "./appwindow.ts"
+import { coverTranslucent } from "./translucency.ts"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -35,6 +36,12 @@ function hotkey() {
     win.focus()
     win.webContents.send("vaultite", { type: "command", id: "palette:open" })
   })
+}
+/** What's shown changed: the palette's hotkey, and translucency, off while a window shows an app (its hole would be
+ *  blurred over). */
+function changed() {
+  hotkey()
+  for (const w of AppWindow.getAllWindows()) if (hosts.has(w)) coverTranslucent(w, [...shown.values()].some((s) => s.win === w && !!s.rect))
 }
 /** The windows letting the pointer through to an app (`apps:through`). The page only hears the pointer leave a hole
  *  while it's forwarded, which an inactive app doesn't always get: so the cursor is watched here too, and it's ended. */
@@ -121,7 +128,7 @@ async function ask(req: Record<string, unknown>): Promise<Record<string, unknown
 function gone(wid: number) {
   const s = shown.get(wid)
   shown.delete(wid)
-  hotkey()
+  changed()
   if (s && !s.win.isDestroyed()) s.win.webContents.send("vaultite:apps", { type: "gone", wid })
 }
 
@@ -204,7 +211,7 @@ function drop(win: AppWindow, wid: unknown) {
   const id = widOf(wid)
   if (!id || shown.get(id)?.win !== win) return 0
   shown.delete(id)
-  hotkey()
+  changed()
   return id
 }
 
@@ -228,7 +235,7 @@ export const appHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     // (raised behind it now only if that can't cover anything: the window is focused, or the app is in front anyway)
     const behind = (had?.win === win && had.behind) || (!!r && (win.isFocused() || (await ask({ op: "front" })).bundle === b))
     shown.set(id, { bundle: b, win, rect: r, behind, at: had?.win === win ? had.at : null })
-    hotkey()
+    changed()
     const res = await put(id, win, r)
     if (behind && !had?.behind) void ask({ op: "raise", wid: id })
     return { ...res, wid: id, ...(typeof title === "string" ? { title } : {}) }
@@ -274,7 +281,7 @@ export function appsWindow(win: AppWindow) {
   hosts.add(win)
   const releaseAll = () => {
     for (const [id, s] of [...shown]) if (s.win === win) { shown.delete(id); void ask({ op: "release", wid: id, keep: true }) }
-    hotkey()
+    changed()
     setThrough(win, false)
   }
   for (const e of ["move", "resize", "minimize", "restore", "show", "hide"] as const) win.on(e as "move", () => follow(win))

@@ -56,6 +56,9 @@ export type Prefs = {
   peekShade: boolean
   /** The bars above files fade while typing in one, back once the pointer moves. */
   typingFade: boolean
+  /** The desktop app's window chrome (sidebars, tab bar, status bar) lets the desktop show through, blurred by the
+   *  system (core/translucency.ts says where it can). */
+  translucent: boolean
   /** Line numbers beside the text of a file being edited (Markdown, source mode, JSON);
    *  code files always have them. */
   lineNumbers: boolean

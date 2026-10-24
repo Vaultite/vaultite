@@ -51,6 +51,9 @@ export default async ($: VaultTest) => {
     write(".vaultite/appearance.json", JSON.stringify({ theme: "dark" }) + "\n")
     cr = await vau("appearance", "theme")
     check("vau appearance <key>: its value", cr.code === 0 && cr.out === 'theme: "dark"', cr)
+    cr = await vau("appearance", "translucent", "true")
+    const bad = await vau("appearance", "translucent", "glassy")
+    check("vau appearance translucent: a true or false, kept with the look", cr.code === 0 && conf("appearance").translucent === true && bad.code === 1 && conf("appearance").translucent === true, [cr, bad, conf("appearance")])
 
     cr = await vau("item.create", "note", JSON.stringify({ title: "Item op", ext_id: "item-op", body: "From item.create." }))
     check("item.create: a note of any kind's fields", cr.code === 0 && exists("Notes/Item op.md") && read("Notes/Item op.md").includes("From item.create."), cr)

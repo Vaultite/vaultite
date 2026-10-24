@@ -78,7 +78,14 @@ export type DesktopApi = {
   /** Show a Mac window's traffic lights at `at` (CSS px: `x` right of where they sit, centred on the line `mid` down),
    *  or hide them (null). Builds from before it don't have it; ones from before `at` show them in place. */
   lights?: (at: Lights | null) => Promise<unknown>
+  /** Ask for the window's sidebars and bars see-through to the desktop, blurred (appearance `translucent`), and hear
+   *  whenever that changes. A Mac's and Windows'; builds from before it don't have it. */
+  translucent?: { set: (on: boolean) => Promise<Translucency>; on: (fn: (t: Translucency) => void) => void }
 }
+
+/** Whether the window is translucent now, and why not while asked (electron/translucency.ts): this computer can't,
+ *  Reduce transparency, another app's window in a tab, or a Mac window opened solid (it shows once reopened). */
+export type Translucency = { on: boolean; why?: "system" | "reduced" | "apps" | "reopen" }
 
 export type Lights = { x: number; mid: number }
 

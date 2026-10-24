@@ -1029,3 +1029,34 @@ html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(-
 @media (prefers-reduced-motion: reduce) {
   [data-peek-shade], [data-peek-shade][data-shown], [data-view-bar], :root[data-typing] [data-view-bar] { transition: none; }
 }
+
+/* Translucent window (appearance `translucent`; core/appearance.ts sets data-translucent only while the desktop app's
+   window has the system's blur under it): the chrome shows it in the scheme's own colours, what's read stays solid. */
+:root { --translucent-tint: 70%; } /* (more in light: its muted text over a dark desktop) */
+.dark { --translucent-tint: 60%; }
+html[data-translucent] {
+  --chrome: color-mix(in srgb, var(--background) var(--translucent-tint), transparent);
+  --chrome-sidebar: color-mix(in srgb, var(--sidebar) var(--translucent-tint), transparent);
+}
+html[data-translucent], html[data-translucent] body { background: transparent; }
+html[data-translucent] [data-pane-body] { background: var(--background); }
+html[data-translucent] aside[data-side] { background: var(--chrome-sidebar); }
+html[data-translucent] section[data-top] > [data-tab-bar] { background: var(--chrome); }
+/* The rail's top row is the tab bar's, one title bar (above): its colour, over nothing else. */
+html[data-translucent][data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] {
+  background: linear-gradient(var(--chrome), var(--chrome)) top / 100% calc(var(--spacing) * 10) no-repeat, var(--chrome-sidebar);
+}
+html[data-translucent][data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed]::before { background: none; }
+/* Over the page rather than the desktop (a hidden sidebar slid in, the status bar, a heading its panel scrolls under):
+   glass, blurring what's under it. Menus nearly solid, to read. */
+html[data-translucent] :is(aside[data-peek], [data-status-bar]) {
+  background: color-mix(in srgb, var(--sidebar) 82%, transparent); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+}
+html[data-translucent] aside[data-side] [data-panel-handle].sticky { background: none; container-type: scroll-state; }
+/* (only while stuck: a backdrop blur over the sidebar's own tint would tint it twice) */
+@container scroll-state(stuck: top) {
+  html[data-translucent] aside[data-side] [data-panel-handle].sticky::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  }
+}
+html[data-translucent]:not([data-over-pages]) .glass-strong { background: linear-gradient(var(--popover), var(--popover)) color-mix(in srgb, var(--background) 70%, transparent); }

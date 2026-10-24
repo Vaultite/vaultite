@@ -94,6 +94,12 @@ export default async ($: VaultTest) => {
     const toStandard = await snipsTo("standard"), toLife = await snipsTo("life-os")
     check("bundles: another bundle turns off a bundle's snippet, keeping the user's", JSON.stringify(toStandard?.to) === JSON.stringify(["Wide lines"]), toStandard)
     check("bundles: a bundle's own snippet stays on with it", !toLife, toLife)
+    // A restyle (only appearance.json) changes the keys it names, never another bundle's snippet.
+    write(".vaultite/bundles/glassy/bundle.json", JSON.stringify({ name: "Glassy" }))
+    write(".vaultite/bundles/glassy/appearance.json", JSON.stringify({ translucent: true }))
+    const restyle = (await api("GET", "bundles/glassy"))[1].plan?.appearance ?? []
+    check("bundles: a restyle sets only its own keys, other bundles' snippets kept", restyle.length === 1 && restyle[0].key === "translucent", restyle)
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/glassy"), { recursive: true })
     setConf("appearance", lookThen)
 
     // A bundle of the user's that brings a vault plugin (runs code) and tries to set a `local` setting.

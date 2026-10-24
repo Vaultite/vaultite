@@ -12,6 +12,7 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
+import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
@@ -329,15 +330,16 @@ async function openVault(p: string, file?: string) {
   const starting = there ? null : serverFor(v)
   // The window (and its renderer process) is made while the server starts; its page loads once the server listens.
   const b = v.bounds
-  const apps = appsOn(p)
+  const apps = appsOn(p), glass = translucentAt(p), clear = apps || (MAC && glass)
   const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
     title: nameOf(p), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
     // (a click in a window that's behind acts too, as in a browser: a web page's field it lands on gets the keyboard,
     // not whatever had it in the app before)
     acceptFirstMouse: true,
-    // (App windows on: transparent, the page paints itself and leaves app tabs see-through, electron/apps.ts)
-    ...(apps ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }),
+    // (App windows on: transparent, the page paints itself and leaves app tabs see-through, electron/apps.ts; translucent:
+    // the system's blur shows only through a transparent window, electron/translucency.ts)
+    ...(clear ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }),
     // bypassHeatCheck: V8 caches the app's compiled scripts on the first launch, not the third (like VS Code).
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true, v8CacheOptions: "bypassHeatCheck" },
   })
@@ -430,6 +432,7 @@ async function openVault(p: string, file?: string) {
   hangs(win, nameOf(p))
   guard(win, `http://127.0.0.1:${port}`)
   webWindow(win)
+  translucentWindow(win, clear, glass)
   if (apps) appsWindow(win)
   await win.loadURL(`http://127.0.0.1:${port}/`)
   if (manager && !manager.isDestroyed()) manager.close() // opening a vault closes the manager
@@ -456,8 +459,10 @@ function guard(win: AppWindow, origin: string) {
   if (MAC) { win.on("focus", again); win.on("blur", again); win.on("show", again); win.on("restore", again); win.on("resized", again); win.on("leave-full-screen", again) }
   // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
   const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences) => {
+    const glass = translucentAt(w.vault.path), clear = MAC && glass
     const child = new AppWindow({ width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset",
-      trafficLightPosition: LIGHTS, backgroundColor: background(), acceptFirstMouse: true, webPreferences }, page)
+      trafficLightPosition: LIGHTS, acceptFirstMouse: true, webPreferences,
+      ...(clear ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }) }, page)
     popouts.set(page, w)
     const closeIt = () => { if (!child.isDestroyed()) child.close() }
     win.once("closed", closeIt)
@@ -467,6 +472,7 @@ function guard(win: AppWindow, origin: string) {
     hangs(child, nameOf(w.vault.path))
     guard(child, origin)
     webWindow(child)
+    translucentWindow(child, clear, glass)
     if (appsOn(w.vault.path)) appsWindow(child)
     return page
   }
@@ -995,6 +1001,12 @@ ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | n
   else setLights(w, null)
   const v = [...wins.values()].find((x) => x.win === w)?.vault
   if (v && !!v.lightsOff !== !at) { if (at) delete v.lightsOff; else v.lightsOff = true; save() }
+})
+// The page's appearance `translucent` (electron/translucency.ts): what the window can do of it, now.
+ipcMain.handle("window:translucent", (e, on: unknown) => {
+  who(e)
+  const w = AppWindow.fromWebContents(e.sender)
+  return w ? setTranslucent(w, on === true) : { on: false }
 })
 // `vau dev screenshot` (core/coreops/dev.ts, owner-only): the asking page as a PNG, halved while it's too big for the socket back.
 ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: number; height: number }) => {

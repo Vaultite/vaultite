@@ -1,6 +1,7 @@
 // On/off settings, declared once (a plugin's: a boolean in its manifest): Settings, its search, the palette, menus and
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
-import { ArrowDownUp, Archive, BookOpenText, Brackets, Eye, Heading, Heading1, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { canTranslucent, getTranslucency, onTranslucency } from "@/core/appearance"
 import type { Command } from "@/core/commands"
 import { reload } from "@/core/data"
 import { editorSet, editorSettings, setEditor, type EditorSettings } from "@/core/editorPrefs"
@@ -11,6 +12,7 @@ import { openPluginSettings, pluginSettings, revealRow, settingDefault } from "@
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "@/core/prefs"
 import { signal } from "@/core/signal"
 import { quickTextSizeSub } from "@/core/textsize"
+import { isMac } from "@/core/platform"
 import { capitalize } from "@/lib/utils"
 
 export type SwitchDef = {
@@ -44,6 +46,16 @@ const editor = (k: EditorFlag) => ({
 /** One of File explorer's, kept in files.json (its sheet: components/FilesSettings.tsx). */
 const files = (k: "showHidden" | "showArchived" | "autoReveal", sub: string) => ({ plugin: { id: "files", key: k }, sub: () => sub, ...pref(k) })
 
+/** What Translucent window does here, or why it can't. */
+function translucentSub() {
+  const { why } = getTranslucency()
+  if (!canTranslucent || why === "system") return "In the desktop app on a Mac or Windows 11: the desktop shows through the sidebars and bars"
+  if (why === "reduced") return isMac ? "Solid while Reduce transparency is on in System Settings" : "Solid while transparency effects are off in Windows' settings"
+  if (why === "apps") return "Solid while a tab shows another app's window"
+  if (why === "reopen") return "Shows once this window is opened again"
+  return "The desktop shows through the sidebars and bars, blurred; pages stay solid"
+}
+
 // (`id` and `name` first, literal: the server lists commands from the source, core/appsource.ts.)
 const CORE: SwitchDef[] = [
   { id: "setting:file-icons", name: "File icons", section: "appearance", icon: Shapes, ...pref("fileIcons") },
@@ -52,6 +64,7 @@ const CORE: SwitchDef[] = [
   { id: "setting:tab-tint", name: "Tint the active tab", section: "appearance", icon: PaintBucket, sub: () => "In its colour, lightly: a web page's container", words: "tabs colour color container wash", ...pref("tabTint") },
   { id: "setting:rails", name: "Sidebar rails", section: "sidebars", icon: PanelLeftDashed, sub: () => "Off, a hidden sidebar slides in when the pointer reaches the window's edge", words: "rail icons compact zen hover edge sidebars", ...pref("rails") },
   { id: "setting:peek-shade", name: "Dim the page behind a sidebar", section: "sidebars", icon: SunDim, sub: () => "With rails off, while a hidden sidebar is slid in", words: "darken shade focus zen backdrop", ...pref("peekShade") },
+  { id: "setting:translucent", name: "Translucent window", section: "appearance", icon: Blend, sub: translucentSub, words: "transparent transparency vibrancy blur glass frosted mica see-through desktop", ...pref("translucent") },
   { id: "setting:typing-fade", name: "Fade the file bar while typing", section: "appearance", icon: PenLine, sub: () => "Back when the pointer moves", words: "hide path breadcrumb focus zen writing distraction", ...pref("typingFade") },
   { id: "setting:line-numbers", name: "Line numbers", section: "appearance", icon: ListOrdered, words: "gutter", ...pref("lineNumbers") },
   { id: "setting:sidebar-scroll", name: "Scroll sidebar panels separately", section: "sidebars", icon: ArrowDownUp, words: "sidebars",
@@ -142,7 +155,7 @@ const heard = new Set<string>()
 let started = false
 // Prefs, and each plugin's settings file once (a vault plugin that arrives later joins on the next call).
 function follow() {
-  if (!started) { started = true; onPrefs(changed.notify) }
+  if (!started) { started = true; onPrefs(changed.notify); onTranslucency(changed.notify) }
   for (const p of PLUGINS) {
     if (heard.has(p.id) || !Object.values(p.settingsDecls ?? {}).some((d) => d.type === "boolean" || d.type === "enum")) continue
     heard.add(p.id)

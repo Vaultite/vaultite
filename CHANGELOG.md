@@ -6,14 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Translucent window**: in the Mac and Windows 11 apps, the desktop can show through the sidebars, the tab bar and the
+  status bar, blurred and in your colour scheme, while pages stay solid (Settings, Appearance; solid with Reduce
+  transparency).
 - **Every dialog an agent waits on shows**: a Claude Code session waiting on any of its dialogs (a one-time question,
   a usage limit, not only a permission) is marked as needing you in Terminals and the inbox, no longer as working, and
   its choices show there to pick from, as its questions do.
 - **The quick switcher is the browser's command bar**: it finds your open web tabs (picking one goes to it), bookmarks and
   history, and opens what you type as an address or searches the web for it. New tabs can open the switcher as a launcher
   or a web page (Settings > Appearance > New tabs open, `vau newtab opens`).
-- **Close pane**: a pane's menu (right-click its bar, its strip or its title), the palette and an X by its handle close
-  it, pinned tabs too; Reopen closed tab (⇧⌘T) brings it back whole, where it was. ⌘W on a pinned tab says why it stays.
 - **Links on web pages**: on a Browser tab the Links panel lists the notes about the page and those linking it, and
   other pages of its site your notes link; "Note on this page" (its … menu, or the panel) opens or makes its note.
 - **Close pane**: a pane's menu (right-click its bar, its strip or its title), the palette, ⌥⇧⌘W and an X by its handle

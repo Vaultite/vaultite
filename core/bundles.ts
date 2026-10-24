@@ -526,7 +526,8 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
   }
   const look = { ...json(b, "appearance.json") }, snippets = strs(v.config("appearance").snippets), bringsCss = broughtSnippets(host)
   const ownCss = [...strs(look.snippets), ...snippets.filter((s) => !strs(look.snippets).includes(s) && !bringsCss.has(s))]
-  if (Object.hasOwn(look, "snippets") || ownCss.length < snippets.length) look.snippets = ownCss
+  // (only by one that says its snippets: a restyle that doesn't keeps another bundle's)
+  if (Object.hasOwn(look, "snippets")) look.snippets = ownCss
   const appearance = diff("appearance", "appearance", look, LOOK_DEFAULTS), editor = diff("editor", "editor", json(b, "editor.json") ?? {}, EDITOR_DEFAULTS)
   const hotkeys = diff("hotkeys", "hotkey", json(b, "hotkeys.json") ?? {})
   // The new tab's page as this vault has it (a page that isn't here: the sections stay; one whose file is skipped: as it is).

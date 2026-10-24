@@ -4,7 +4,7 @@
 // Everything goes through electron/main.ts, which checks that the page asking is one of its own windows.
 const { contextBridge, ipcRenderer, webUtils } = require("electron")
 
-const MAC = process.platform === "darwin"
+const MAC = process.platform === "darwin", WIN = process.platform === "win32"
 const mark = () => {
   const html = document.documentElement
   if (html) { html.setAttribute("data-electron", ""); html.setAttribute("data-platform", process.platform) }
@@ -57,6 +57,8 @@ contextBridge.exposeInMainWorld("vaultite", {
   learnWord: call("text:learn"),
   capture: call("page:capture"),
   lights: call("window:lights"),
+  // The window's chrome see-through to the desktop (electron/translucency.ts): asked for, told whenever it changes.
+  translucent: MAC || WIN ? { set: call("window:translucent"), on: (fn) => { ipcRenderer.on("vaultite:translucent", (_e, t) => fn(t)) } } : undefined,
   on: (fn) => { ipcRenderer.on("vaultite", (_e, msg) => fn(msg)) },
   // The Browser's pages (electron/web.ts). The pages themselves get no preload: nothing of this reaches them.
   web: {

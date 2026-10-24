@@ -24,6 +24,7 @@
         if (look.scheme) root.dataset.scheme = look.scheme
         else delete root.dataset.scheme
         if (look.density) root.dataset.density = look.density
+        if (look.translucent && window.vaultite?.translucent && !matchMedia("(prefers-reduced-transparency: reduce)").matches) root.setAttribute("data-translucent", "")
       } catch {}
     </script>
     <!-- If the app can't start (its code threw before drawing, or didn't load), say why instead of a blank window. Errors
