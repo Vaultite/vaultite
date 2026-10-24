@@ -47,8 +47,6 @@ export const leaderOn = () => deviceOn() && settings.get().leader !== false
 let mode: string | null = null
 /** The keys typed so far in that editor (d2...). */
 let keys = ""
-export const editorMode = () => mode
-export const editorKeys = () => keys
 export function setEditorMode(m: string | null, k = "") {
   if (m === mode && k === keys) return
   mode = m
@@ -57,8 +55,6 @@ export function setEditorMode(m: string | null, k = "") {
 }
 export const useEditorMode = () => useSyncExternalStore(subscribe, () => mode)
 export const useEditorKeys = () => useSyncExternalStore(subscribe, () => keys)
-/** An editor in normal or visual mode has the keyboard: it hands the app its window and leader keys. */
-export const vimNormal = () => mode !== null && mode !== "insert" && mode !== "replace"
 
 /** A file switched from reading to editing with `i`: Escape in normal mode there switches back. */
 let peek: string | null = null

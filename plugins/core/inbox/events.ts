@@ -108,18 +108,6 @@ export const answerable = (e: InboxEvent) => (e.gate ? !e.answer : e.kind === "w
 /** An agent's session's row (not a server's question or news): its sheet shows it, and it's replied to. */
 export const isSession = (e: InboxEvent) => !e.gate && !!(e.terminal || e.session) && (e.kind === "waiting" || e.kind === "done")
 
-/** Reply to a session's row: typed into its session (on the machine it runs on); read here at once. */
-export async function replyTo(e: InboxEvent, text: string, how: "resume" | "new" | "" = "") {
-  const before = getEvents().events
-  set(before.map((x) => (x.id === e.id ? { ...x, read: true, kept: undefined } : x)))
-  try {
-    return await op<{ how: string; terminal: string }>("inbox.reply", { to: e.id, text, ...(how ? { how } : {}) })
-  } catch (err) {
-    set(getEvents().events.map((x) => (x.id === e.id ? before.find((b) => b.id === e.id) ?? x : x)))
-    throw err
-  }
-}
-
 /** A session's terminal if it still runs, else its session resumed in a new one: on the machine it ran on (a session
  *  is kept there). */
 export async function openSession({ terminal = "", session = "", agent = "", machine = "" }: { terminal?: string; session?: string; agent?: string; machine?: string }) {

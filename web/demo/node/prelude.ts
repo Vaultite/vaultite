@@ -5,7 +5,7 @@ const g = globalThis as Record<string, unknown>
 g.Buffer = Buffer
 g.global = globalThis
 g.process = {
-  env: { HOME: "/home", VAULTITE_VAULT: "/Sandbox", VAULTITE_LOCAL: "/local", VAULTITE_DEMO: "1" },
+  env: { HOME: "/home", VAULTITE_VAULT: "/Sandbox", VAULTITE_LOCAL: "/local" },
   platform: "browser", arch: "wasm", pid: 1, version: "v24.0.0", versions: { node: "24.0.0" }, execPath: "/node", argv: [], exitCode: 0,
   cwd: () => "/", uptime: () => performance.now() / 1000, memoryUsage: () => ({ rss: 0, heapUsed: 0, heapTotal: 0, external: 0 }),
   hrtime: Object.assign(() => [0, 0], { bigint: () => BigInt(Math.round(performance.now() * 1e6)) }),

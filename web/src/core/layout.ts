@@ -287,11 +287,6 @@ export function runOf(g: Group, set: string) {
   const at = g.tabs.findIndex((t) => t.set === set)
   return { at, n: at < 0 ? 0 : g.tabs.filter((t) => t.set === set).length }
 }
-/** The tab group a tab is in, if any. */
-export const setOf = (g: Group, tab: string): TabSet | undefined => {
-  const id = g.tabs.find((t) => t.id === tab)?.set
-  return id ? g.sets?.find((s) => s.id === id) : undefined
-}
 /** Index `at` moved out of any tab group's run (to before it), so what goes there joins none. */
 export function outsideSets(tabs: Tab[], at: number) {
   const s = tabs[at]?.set

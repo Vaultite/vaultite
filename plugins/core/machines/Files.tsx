@@ -14,9 +14,6 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/"
 const join = (dir: string, name: string) => `${dir.replace(/\/$/, "")}/${name}`
 
-/** The `machine-files` arg opening `file` (absolute) selected in its folder: other plugins deep-link files with it. */
-export const machineFileArg = (id: string, file: string) => `${id}|${parentOf(file)}|${file}`
-
 export function MachineFiles({ arg, setArg }: ViewCtx) {
   const [id, folder = "~", ...rest] = arg.split("|")
   const selected = rest.join("|") || null

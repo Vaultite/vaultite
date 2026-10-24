@@ -7,7 +7,7 @@ import {
 import { extOf, kindOf, type FileKind } from "../../../core/filetypes.ts"
 import { plural } from "@/lib/utils"
 
-export { extOf, kindOf, type FileKind } from "../../../core/filetypes.ts"
+export { kindOf, type FileKind } from "../../../core/filetypes.ts"
 
 /** Opened by a viewer, never read as text (images, PDFs, audio, video, and known binary files). */
 export const isMedia = (k: FileKind) => k === "image" || k === "pdf" || k === "audio" || k === "video" || k === "binary"

@@ -84,7 +84,6 @@ export function pin(path: string, on = true, before?: string | null, label?: str
   if (on && label && path.startsWith("view:")) relabel(path, label)
   return currentWorkspace() ? pinInWorkspace(path, on, before, pinnedOf(getStore())) : pinVault(path, on, before)
 }
-export const togglePin = (path: string) => pin(path, !isPinned(path))
 
 /** Name a pinned view (pages.json's `labels`): a conversation's title, a web page's. */
 export function relabel(key: string, label: string) {

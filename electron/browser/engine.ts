@@ -187,8 +187,6 @@ const openers: ((url: string) => boolean)[] = []
 export function opens(fn: (url: string) => boolean) { openers.push(fn) }
 export const engineOpens = (url: string) => openers.some((fn) => { try { return fn(url) } catch { return false } })
 
-/** Every web session made so far, by profile. */
-export const allSessions = () => made
 /** Every open page. */
 export const allPages = () => [...pages.values()]
 
