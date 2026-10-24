@@ -42,9 +42,24 @@ export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClas
 /** `it`, with `other` (its variant: moving instead of copying) in its submenu, or alone when that can't be done now. */
 const withVariant = (it: MenuItem, other: MenuItem): MenuItem => (other.disabled ? it : { ...it, split: true, items: [it, other] })
 
+/** Whether the tabs are drawn above each pane: the tab bar on (appearance `tabBar`), or in a pop-out when they'd be in a
+ *  sidebar, which a pop-out hasn't got (else it would show no tabs to switch, right-click or drag back). */
+export const tabBarOn = (prefs = getPrefs()) => prefs.tabBar || (isPopout() && tabsInSidebar(prefs))
+
 /** Right-click on a tab: the tab's own (closing, where it shows), then what it shows. What a bar does (stack, hide)
  *  is its empty space's, but stacked (to undo it where it shows) and where there's none to click (the bar hidden): `bar`. */
 function tabMenu(tab: Tab, last: boolean, count: number, group: Group, bar = false): MenuItem[] {
+  return [...ownItems(tab, last, count), ...(bar || group.stacked ? barItems(group) : [])]
+}
+
+/** Right-click on a pane's top while the tab bar is off (its title strip, or a file's bar that's its title row): the
+ *  tab on screen's menu, then the pane's, as the tab's row in the Tabs panel has them. */
+function paneTopMenu(group: Group): MenuItem[] {
+  const i = Math.max(0, group.tabs.findIndex((t) => t.id === group.active))
+  return [...ownItems(group.tabs[i], i === group.tabs.length - 1, group.tabs.length), ...barMenu(group).map((it, k) => (k ? it : { ...it, sep: true }))]
+}
+
+function ownItems(tab: Tab, last: boolean, count: number): MenuItem[] {
   const siblings = hasSiblings(tab.id), blank = tab.to === "new"
   return [
     { label: "Close", icon: X, run: () => closeTab(tab.id) },
@@ -62,7 +77,6 @@ function tabMenu(tab: Tab, last: boolean, count: number, group: Group, bar = fal
     withVariant({ label: "Move to new window", icon: AppWindow, run: () => popOut(tab.id, true), disabled: blank },
       { label: "Open in new window", icon: AppWindow, run: () => popOut(tab.id), disabled: blank }),
     ...tabItems(tab),
-    ...(bar || group.stacked ? barItems(group) : []),
   ]
 }
 
@@ -181,8 +195,9 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
 /** How a pane shows its tabs: stacked or in a row, and the tab bar on or off (appearance `tabBar`); and closing it,
  *  pinned tabs too. Also the menu of the bar's empty space. */
 function barItems(group: Group): MenuItem[] {
-  const { tabBar, paneTitles } = getPrefs()
-  // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone).
+  const { paneTitles } = getPrefs(), tabBar = tabBarOn()
+  // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone). (A pop-out's
+  // bar is drawn for want of a sidebar: nothing to switch there.)
   const vertical = tabsInSidebar()
   return [
     { label: group.stacked ? "Unstack tabs" : "Stack tabs", icon: Layers, sep: true, run: () => toggleStacked(group.id) },
@@ -385,7 +400,7 @@ export function tabMenuOf(id: string): MenuItem[] {
   const g = leaves(getWorkspace().root).find((x) => x.tabs.some((t) => t.id === id))
   if (!g) return []
   const i = g.tabs.findIndex((t) => t.id === id)
-  return tabMenu(g.tabs[i], i === g.tabs.length - 1, g.tabs.length, g, !getPrefs().tabBar)
+  return tabMenu(g.tabs[i], i === g.tabs.length - 1, g.tabs.length, g, !tabBarOn())
 }
 
 /** On top of its group's pane, so it never moves when a tab's page is narrower or wider than another's. */
@@ -393,7 +408,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   /** The only group (its single blank tab can't be closed). */
   alone: boolean }) {
   const { tabs, active } = group
-  const { fileIcons, tabBar, paneTitles, tabTint } = usePrefs()
+  const prefs = usePrefs(), { fileIcons, paneTitles, tabTint } = prefs, tabBar = tabBarOn(prefs)
   // Without tab bar or titles, a pane's top bar (a file's, the Browser's) is its title row (index.css): a right-click on
   // its empty part is the strip's menu.
   const closeKeys = useCommandKeys("pane:close", true)
@@ -403,7 +418,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
     const section = strip.current?.parentElement
     if (!merged || !section) return
     const menu = (e: globalThis.MouseEvent) => {
-      if (!e.defaultPrevented && (e.target as Element).matches?.("[data-view-bar], [data-view-bar-fill], [data-web-bar]")) menuFor(() => barMenu(group))(e as never)
+      if (!e.defaultPrevented && (e.target as Element).matches?.("[data-view-bar], [data-view-bar-fill], [data-web-bar]")) menuFor(() => paneTopMenu(group))(e as never)
     }
     section.addEventListener("contextmenu", menu)
     return () => section.removeEventListener("contextmenu", menu)
@@ -499,7 +514,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   // Nor pane titles (appearance `paneTitles`): a thin strip keeps the drag strip, the handle and X (on hover) and the menu.
   if (!tabBar && !paneTitles) {
     return (
-      <div ref={strip} role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare data-merged={merged || undefined} onContextMenu={menuFor(() => barMenu(group))}
+      <div ref={strip} role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare data-merged={merged || undefined} onContextMenu={menuFor(() => paneTopMenu(group))}
         className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
         {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
         <div className="h-full min-w-0 flex-1" />
@@ -512,9 +527,9 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   if (!tabBar) {
     const i = info(shown)
     return (
-      <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => barMenu(group))}
+      <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => paneTopMenu(group))}
         className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
-        <div data-pane-title onContextMenu={menuFor(() => tabMenu(shown, shown === tabs.at(-1), tabs.length, group, true))}
+        <div data-pane-title
           className={cn("flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]", item?.group === group.id && "opacity-50")}>
           {fileIcons && <Badged on={i.badge}><i.icon className={cn("size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} /></Badged>}
           <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>

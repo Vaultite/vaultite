@@ -6,7 +6,7 @@ import { kindOf } from "@/core/filekinds"
 import { post } from "@/core/http"
 import { newNoteFolder, saveAttachments } from "@/core/conventions"
 import { copyFile, deleteFile, fileOf, folderList, inTrash, isHidden, isMd, isProtected, isReadOnly, openFile, openNew, restoreFile, shownName, stem } from "@/core/files"
-import { askRename } from "@/core/workspace"
+import { askRename, isPopout } from "@/core/workspace"
 import { setProperty } from "@/core/frontmatter"
 import { shortestLink } from "@/core/links"
 import { PLUGINS, isEnabled } from "@/core/plugins"
@@ -194,7 +194,8 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
   const ro = isReadOnly(file), locked = ro || isProtected(file)
   const plug = pluginFileGroups(file)
   const rename = renameItem(file, opts.rename ?? (() => { openFile(file, { newTab: opts.inside }); askRename(file) }))
-  const reveal: MenuItem = { label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(file, { scroll: true, flash: true }) }
+  // (a pop-out window has no sidebars, so no tree)
+  const reveal: MenuItem[] = isPopout() ? [] : [{ label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(file, { scroll: true, flash: true }) }]
   const noun = !opts.inside || ro ? "" : kindOf(file) === "image" ? " image" : isMd(file) ? " note" : " file"
   const del: MenuItem[] = !isProtected(file) ? [{ label: ro ? "Delete permanently" : `Delete${noun}`, icon: Trash2, danger: true, run: () => remove(file) }] : []
   const change: MenuItem[] = locked ? [] : [{ label: "Move file to…", icon: FileInput, run: () => askMove(file) }, ...(opts.inside ? [] : [duplicateItem(file)])]
@@ -202,7 +203,7 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
   // (Delete too: not a misclick away from Close)
   if (opts.short) {
     const more = grouped([change, plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
-    return grouped([...(opts.top ?? []), [...(locked ? [] : [rename]), copyPathItem(file), reveal, ...revealItem(file),
+    return grouped([...(opts.top ?? []), [...(locked ? [] : [rename]), copyPathItem(file), ...reveal, ...revealItem(file),
       ...(more.length ? [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: more }] : [])]])
   }
   return grouped([
@@ -211,7 +212,7 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
     locked ? [] : [...(opts.phone ? iconItem(file) : [rename]), ...change],
     plug.navigate,
     ...plug.rest,
-    [copyPathItem(file), ...(opts.phone ? [] : [reveal]), ...revealItem(file), ...moreItem(plug.more)],
+    [copyPathItem(file), ...(opts.phone ? [] : reveal), ...revealItem(file), ...moreItem(plug.more)],
     [...plug.away, ...del],
   ])
 }

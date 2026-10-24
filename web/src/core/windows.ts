@@ -1,10 +1,11 @@
-// A pop-out's tabs going back to the main window (from a tab's menu, or dragged out and let go over it), handed over
-// with postMessage so it works the same in the Mac app and a browser. core/workspace.ts' popOut is the way out.
-import { setOutsideDrop } from "@/core/drag"
+// Tabs between windows, as a browser's: dragged out and let go clear of a window, they go on in a new one (core/workspace.ts
+// popOut); a pop-out's go back to the main window (a tab's menu, or let go over it) by postMessage, in the app or a browser.
+import { setOutsideDrop, type DragItem } from "@/core/drag"
 import { placeAt } from "@/core/drop"
 import type { Tab } from "../../../core/layout.ts"
+import { isDesktop } from "@/core/platform"
 import { takeTabs } from "@/core/splits"
-import { groupOfTab, groups, isPopout, takeOut } from "@/core/workspace"
+import { groupOfTab, groups, isPopout, popOut, tabCount, takeOut } from "@/core/workspace"
 
 const MESSAGE = "vaultite:tabs"
 type Handoff = { type: typeof MESSAGE; tabs: Tab[]; active: string; at?: { x: number; y: number } }
@@ -19,9 +20,20 @@ function mainWindow(): Window | null {
 }
 export const hasMainWindow = () => isPopout() && !!mainWindow()
 
-/** Whether screen point `at` is on window `w`. */
-const over = (w: Window, at: { x: number; y: number }) =>
-  at.x >= w.screenX && at.x < w.screenX + w.outerWidth && at.y >= w.screenY && at.y < w.screenY + w.outerHeight
+/** Whether screen point `at` is on window `w`, or within `margin` px of it. */
+const over = (w: Window, at: { x: number; y: number }, margin = 0) =>
+  at.x >= w.screenX - margin && at.x < w.screenX + w.outerWidth + margin && at.y >= w.screenY - margin && at.y < w.screenY + w.outerHeight + margin
+
+/** The tabs a drag carries: a pane's, several selected, or one. */
+const tabsOf = (item: DragItem) =>
+  item.group ? groups().find((g) => g.id === item.group)?.tabs.map((t) => t.id) ?? [] : item.tabs?.length ? item.tabs : item.tab ? [item.tab] : []
+/** Let go clear of the window (not just past its edge, as a slip dragging to the sidebar is): a window of their own
+ *  there, unless they're all this pop-out has (that's the window moved, its title bar's job). */
+function tearOff(ids: string[], at: { x: number; y: number }) {
+  if (over(window, at, 24) || (isPopout() && ids.length >= tabCount())) return false
+  popOut(ids, true, at)
+  return true
+}
 
 /** Move tabs `ids` from this pop-out to the main window, where screen point `at` falls on it (else its focused pane);
  *  not closed, so a terminal's shell goes on. The pop-out closes when it has none left. */
@@ -40,12 +52,11 @@ export function moveToMain(ids: string[], at?: { x: number; y: number }) {
 }
 
 if (typeof window !== "undefined") {
-  if (isPopout()) {
-    setOutsideDrop((item, at) => {
-      const ids = item.group ? groups().find((g) => g.id === item.group)?.tabs.map((t) => t.id) ?? [] : item.tab ? [item.tab] : []
-      return ids.length > 0 && moveToMain(ids, at)
-    })
-  } else {
+  setOutsideDrop((item, at) => {
+    const ids = tabsOf(item)
+    return isDesktop() && ids.length > 0 && ((isPopout() && moveToMain(ids, at)) || tearOff(ids, at))
+  })
+  if (!isPopout()) {
     addEventListener("message", (e: MessageEvent<Handoff>) => {
       if (e.origin !== location.origin || e.data?.type !== MESSAGE || !Array.isArray(e.data.tabs)) return
       const tabs = e.data.tabs.filter((t) => typeof t?.id === "string" && typeof t.to === "string")

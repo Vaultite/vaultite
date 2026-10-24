@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Tabs move between windows as a browser's**: a tab dragged out of the window and let go clear of it goes on in a
+  new window there. With the tabs in the sidebar, a new window (which has no sidebar) shows its tabs on top, so they
+  can be switched, right-clicked and moved back; and right-clicking the top of a pane has the menu of the tab it shows
+  (close, split, move to a new window, the file's actions), then the pane's.
 - **New tab ends the Tabs panel**, as in a browser's vertical tabs: a row after the last tab (its + gone from the
   heading) opens a new tab at the end of the list, in its place, and so does a double-click under the list; ⌘T still
   opens one beside the tab you're on.

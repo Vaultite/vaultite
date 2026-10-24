@@ -3,7 +3,9 @@
 // are left as they are); Open current tab in new window leaves it here too; closing a pop-out's last tab closes it.
 // Back: a pop-out tab's Move to main window, and a tab dragged out of the pop-out and let go over the main window (into
 // the pane or bar under the pointer), each closing the emptied pop-out. A tab bar's empty space: Stack tabs, Hide tab bar.
-// WRITES the vault's appearance.json (the tab bar hidden, then shown again).
+// A tab dragged out of the main window and let go clear of it goes on in a new window. With the tabs in the sidebar:
+// the top of a pane has the tab on screen's menu, and a pop-out (no sidebar) draws its tabs on top.
+// WRITES the vault's appearance.json and sidebars.json (the tab bar hidden, the tabs in the sidebar, then back on top).
 //   node web/qa/popout.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"
@@ -124,4 +126,40 @@ const pop2 = await popped2
 await pop2.waitForSelector("[data-tab-id]", { timeout: 15000 })
 check("…and it's still here", JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a, b]), await tabsOf(page, "main"))
 await pop2.close()
+
+// Torn off: a tab dragged out of the main window and let go clear of it goes on in a window of its own.
+const tb = await page.locator("[data-tab-id]").nth(1).boundingBox()
+const torn = page.waitForEvent("popup")
+await page.mouse.move(tb.x + 20, tb.y + tb.height / 2); await page.mouse.down()
+await page.mouse.move(tb.x + 40, tb.y + tb.height / 2, { steps: 3 })
+await page.mouse.move(1280 + 120, 400, { steps: 6 }); await page.mouse.up()
+const pop4 = await Promise.race([torn, wait(5000).then(() => null)])
+check("a tab dragged out of the window and let go opens a window of its own", !!pop4)
+if (pop4) {
+  await pop4.waitForSelector("[data-tab-id]", { timeout: 15000 })
+  check("…showing it", decodeURIComponent(await pop4.evaluate(() => location.hash)).includes(b), await pop4.evaluate(() => location.hash))
+  check("…and it left the main window", await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a])), await tabsOf(page, "main"))
+  await pop4.close()
+}
+
+// Tabs in the sidebar: the top of a pane is the tab on screen's (and the pane's), and a pop-out, which has no
+// sidebar, draws its tabs on top so they can be switched, right-clicked and dragged back.
+await command(page, "Open new tab"); await hash(page, b); await wait(400)
+check("Show tabs in the sidebar", await command(page, "Show tabs in the sidebar"))
+await until(async () => (await page.locator("[data-tabs-hidden]").count()) > 0)
+const top = await page.locator("[data-view-bar-fill]:visible").first().boundingBox()
+await page.mouse.click(top.x + top.width - 4, top.y + top.height / 2, { button: "right" }); await wait(200)
+const topItems = await page.locator("[role=menuitem]").allInnerTexts()
+check("the top of a pane has the tab's menu", ["Close", "Split right", "Move to new window", "Copy path", "New tab", "Show tabs on top"].every((l) => topItems.includes(l)), topItems)
+await page.keyboard.press("Escape")
+const popped5 = page.waitForEvent("popup")
+await command(page, "Move current tab to new window")
+const pop5 = watch(await popped5, { label: "popout (tabs in the sidebar)" })
+check("a pop-out draws its tabs on top when they're in the sidebar", await until(async () => (await pop5.locator("[data-tab-id]").count()) === 1, 15000))
+check("…while the main window keeps them in its sidebar", (await page.locator("[data-tabs-hidden]").count()) > 0)
+await pop5.locator("[data-tab-id]").first().click({ button: "right" })
+const gone5 = pop5.waitForEvent("close", { timeout: 5000 }).then(() => true, () => false)
+check("…whose menu has Move to main window", await menuItem(pop5, "Move to main window"))
+check("…which brings it back", await gone5 && await until(async () => (await tabsOf(page, "main"))?.includes(b)), await tabsOf(page, "main"))
+check("Show tabs on top", await command(page, "Show tabs on top"))
 await done()

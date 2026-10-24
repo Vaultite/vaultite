@@ -473,9 +473,11 @@ function guard(win: AppWindow, origin: string) {
   const again = () => applyLights(win)
   if (MAC) { win.on("focus", again); win.on("blur", again); win.on("show", again); win.on("restore", again); win.on("resized", again); win.on("leave-full-screen", again) }
   // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
-  const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences) => {
+  // `at`: where the page asked it to open (a tab dragged out of the window: core/workspace.ts popOut).
+  const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences, at?: { x?: number; y?: number }) => {
     const glass = translucentAt(w.vault.path), clear = MAC && glass
-    const child = new AppWindow({ width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), ...chrome(),
+    const place = at?.x !== undefined && at.y !== undefined ? { x: at.x, y: at.y } : {}
+    const child = new AppWindow({ width: 960, height: 760, ...place, minWidth: 480, minHeight: 360, title: win.getTitle(), ...chrome(),
       acceptFirstMouse: true, webPreferences,
       ...(clear ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }) }, page)
     popouts.set(page, w)
@@ -505,7 +507,7 @@ function guard(win: AppWindow, origin: string) {
       const w = [...wins.values()].find((x) => x.win === win) ?? popouts.get(win.webContents)
       if (!w) return { action: "deny" }
       return { action: "allow", overrideBrowserWindowOptions: { webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true } },
-        createWindow: (o) => popOut(w, (o as { webContents: WebContents }).webContents, o.webPreferences) } // (Electron puts the new page in its options)
+        createWindow: (o) => popOut(w, (o as { webContents: WebContents }).webContents, o.webPreferences, o) } // (Electron puts the new page in its options)
     }
     if (url.startsWith(origin + "/api/raw?")) { // a vault file that isn't text (an image, a PDF): the Mac's app for it
       const w = [...wins.values()].find((x) => x.win === win)

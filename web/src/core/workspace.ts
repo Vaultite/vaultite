@@ -349,18 +349,22 @@ export function selectTabAt(n: number) {
   if (t) selectTab(t.id)
 }
 
-/** Open tab `id` in a window of its own (a pop-out: POPOUT), with its history; `move`: and take it out of this one
- *  (not closed: a terminal's shell goes on in the new window). */
-export function popOut(id: string, move = false) {
-  const g = groupOfTab(id)
-  const t = g?.tabs.find((x) => x.id === id)
-  if (!g || !t) return
+/** Open tabs `ids` in a window of their own (a pop-out: POPOUT) with their history; `move`: and take them out of this
+ *  one (not closed: a terminal's shell goes on there). `at`: the screen point to open it under (a tab dragged out). */
+export function popOut(ids: string | string[], move = false, at?: { x: number; y: number }) {
+  const all = groups().flatMap((g) => g.tabs)
+  const tabs = [ids].flat().map((id) => all.find((t) => t.id === id)).filter((t): t is Tab => !!t && t.to !== "new")
+  if (!tabs.length) return
+  const g = groupOfTab(tabs[0].id)!, shown = tabs.find((t) => t.id === g.active) ?? tabs.at(-1)!
   const pid = newId(), key = `vaultite.popout.${pid}`
-  // The new window starts with a copy of this one's sessionStorage (window.open): its tab, history and all.
-  try { sessionStorage.setItem(key, JSON.stringify({ root: { id: "g0", tabs: [{ id: t.id, to: t.to, back: t.back, fwd: t.fwd }], active: t.id }, focus: "g0" })) } catch { /* the address is enough */ }
-  const w = window.open(`${location.pathname}?popout=${pid}#${hashOf(t.to)}`, `vaultite-${pid}`, "popup,width=960,height=760")
+  // The new window starts with a copy of this one's sessionStorage (window.open): its tabs, history and all.
+  const root = { id: "g0", tabs: tabs.map(({ id, to, back, fwd, pinned }) => ({ id, to, back, fwd, pinned })), active: shown.id }
+  try { sessionStorage.setItem(key, JSON.stringify({ root, focus: "g0" })) } catch { /* the address is enough */ }
+  // (its first tab under the pointer: past a Mac's traffic lights, half a tab bar down)
+  const place = at ? `,left=${Math.round(at.x - 120)},top=${Math.round(at.y - 20)}` : ""
+  const w = window.open(`${location.pathname}?popout=${pid}#${hashOf(shown.to)}`, `vaultite-${pid}`, `popup,width=960,height=760${place}`)
   try { sessionStorage.removeItem(key) } catch { /* private mode */ }
-  if (w && move) takeOut([id])
+  if (w && move) takeOut(tabs.map((t) => t.id))
 }
 
 /** Take tabs out of this window without closing them: they go on in another (popOut, core/windows.ts' moveToMain). */
