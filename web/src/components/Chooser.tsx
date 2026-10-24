@@ -34,7 +34,8 @@ export type Choose<C extends Choice = Choice> = {
   preview?: (item: C | null) => void
 }
 const iconOf = (i: LucideIcon | ReactNode) => {
-  if (isValidElement(i) || typeof i !== "object" || i === null) return i as ReactNode
+  // (a component: Lucide's are objects, an app's own icon a plain function)
+  if (isValidElement(i) || (typeof i !== "object" && typeof i !== "function") || i === null) return i as ReactNode
   const Icon = i as unknown as LucideIcon
   return <Icon className="size-4 text-muted-foreground" strokeWidth={2} />
 }

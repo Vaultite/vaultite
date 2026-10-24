@@ -1,5 +1,6 @@
 // Sidebar panels as tabs, and terminal tabs named like the Terminals panel's rows. Opens Files, Terminals, Pinned pages
-// and Search as tabs from the palette (view:files, view:terminals, view:pages, view:search/<query>); drags panels'
+// and Search as tabs from the palette (view:files, view:terminals, view:pages, view:search/<query>; the places terminals open
+// at, each with its icon; "new terminal" finding Open terminal); drags panels'
 // headings onto a pane's middle, an edge and a tab bar (a tab opens; the same panel again into a pane that has it only
 // shows it; the panel stays in the sidebar); "Open Terminals in a tab" in a heading's right-click menu; the search tab keeps its
 // query in its address and across a switch and a reload; a terminal whose process is `claude` (a stand-in: a tiny sleeping program under
@@ -51,6 +52,15 @@ try {
   await page.screenshot({ path: `${OUT}files-tab.png` })
   await palette("Open terminals in a tab")
   check("Open terminals in a tab", (await tabs()).includes("Terminals") && !!(await page.$("main [data-terminals-view]")), await tabs())
+  // Its places to pick from: each with its icon, an agent's own (a plain component) too.
+  await palette("Choose where terminals and agents open")
+  const places = await until(() => page.$$eval("[role=dialog] [role=option]", (els) => els.map((e) => ({ t: e.textContent.trim(), icon: !!e.querySelector("svg") }))), 5000)
+  check("  where they open: every place with its icon", places?.length > 0 && places.every((p) => p.icon), places)
+  await page.keyboard.press("Escape"); await wait(300)
+  await page.keyboard.press("ControlOrMeta+P"); await page.keyboard.type("new terminal"); await wait(400)
+  const offered = await page.$$eval("[role=option]", (els) => els.map((e) => e.textContent.trim()))
+  check("  \"new terminal\" finds Open terminal (the page's button says New terminal)", offered.some((t) => t.startsWith("Open terminal")), offered)
+  await page.keyboard.press("Escape"); await wait(300)
   await palette("Open pinned pages in a tab")
   check("Open pinned pages in a tab: the pages listed", (await tabs()).includes("Pinned pages") && (await page.$$("main [data-pages-view] [data-pin]")).length > 0, await tabs())
   await page.screenshot({ path: `${OUT}pages-tab.png` })

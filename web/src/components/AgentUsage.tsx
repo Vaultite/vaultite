@@ -530,9 +530,9 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
     ...(process && opens ? {
       agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(src.speaker ? { speaker: src.speaker } : {}), ...(accounts ? { accounts } : {}) } },
       commands: [
-        { ...opens.open, when, run: () => openAgent(src.agent), icon: src.icon },
+        { ...opens.open, words: "new", when, run: () => openAgent(src.agent), icon: src.icon },
         ...(opens.where ? [{ ...opens.where, when, run: () => void choosePlace({ agent: src.agent }) }] : []),
-        { ...opens.split, desktop: true, when, run: () => openAgent(src.agent, { split: true }) },
+        { ...opens.split, words: "new", desktop: true, when, run: () => openAgent(src.agent, { split: true }) },
       ],
     } : {}),
     mockLive: () => ({ [src.path]: mockUsage(demo), ...demoMore?.() }),

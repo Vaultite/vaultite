@@ -551,6 +551,8 @@ export type PluginCommand = { id: string; name: string; keys?: string[]; when?: 
   desktop?: boolean
   /** It only opens or shows something: a link runs it without asking (core/commands.ts runCommandLink). */
   fromLink?: boolean
+  /** Other words the palette finds it by ("new" for Open terminal, as its button says New terminal). */
+  words?: string
   /** Its icon (a component, or a Lucide name: `mic`; its plugin's when left out) and a shorter name where it's a button
    *  (a blank tab's: core/newtab.ts). After `run` in the source. */
   icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string; label?: string

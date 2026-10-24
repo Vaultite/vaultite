@@ -124,13 +124,13 @@ export default definePlugin({
   background: () => <><SessionNames /><AskBox /></>,
   commands: [
     // New ones open where the workspace says (chooseDefaultPlace); ⌃` is always this machine, the way out when that one's away.
-    { id: "terminal:open", name: "Open terminal", run: () => void openTerminal(), icon: SquareTerminal },
-    { id: "terminal:open-here", name: "Open terminal on this machine", keys: ["Ctrl+`"], run: () => void openTerminal({ machine: "" }), icon: SquareTerminal },
-    { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", run: () => void openTerminal({ split: true }) },
+    { id: "terminal:open", name: "Open terminal", words: "new", run: () => void openTerminal(), icon: SquareTerminal },
+    { id: "terminal:open-here", name: "Open terminal on this machine", words: "new", keys: ["Ctrl+`"], run: () => void openTerminal({ machine: "" }), icon: SquareTerminal },
+    { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", words: "new", run: () => void openTerminal({ split: true }) },
     // A question for an agent that answers in the background (Dictate's ⌘J opens it and dictates into it).
     { id: "terminal:ask", name: "Ask an agent in the background…", when: canRunAgents, run: openAsk, icon: MessageSquareText, label: "Ask" },
     { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", run: () => void choosePlace(), icon: Server },
-    { id: "terminal:home", name: "Choose where new terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
+    { id: "terminal:home", name: "Choose where terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },
     { id: "terminal:instructions", name: "Show what agents in terminals are told", run: showInstructions, icon: FileText },
     { id: "terminal:end", name: "End terminal session", when: () => !!current(), run: () => { const c = current(); if (c) void endForGood(c.id) }, icon: SquareX },

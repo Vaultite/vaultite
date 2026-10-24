@@ -18,7 +18,7 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
   keeps trying rather than starting a shell of its own). An agent in one of its accounts is
   `view:terminal/claude_<account>-<id>`.
 - New terminals and agents (Open terminal, Open Claude Code, the Terminals panel's buttons) open at the workspace's
-  default place: a machine and each agent's account ("Choose where new terminals and agents open in this workspace…",
+  default place: a machine and each agent's account ("Choose where terminals and agents open in this workspace…",
   `state["core:place"]`), else this machine when that one's away; ``⌃` `` is always this machine.
 - A screenshot pasted into it is saved on the server's machine and its path pasted (Claude Code attaches it); it stays
   while the shell runs and 30 days after.
