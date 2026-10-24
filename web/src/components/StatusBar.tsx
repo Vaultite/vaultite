@@ -405,18 +405,31 @@ function useCounts(path: string, body: string, text: boolean, code: boolean, nb:
 /** The steady items' room (`data-steady`), which never narrows while one file is open: as you type, what's left of
  *  them stays put. None kept while the bar is cramped (useFit). */
 function useSteady(row: RefObject<HTMLElement | null>, reset: string) {
-  const widest = useRef(new Map<string, { reset: string; w: number }>())
+  const widest = useRef(new Map<string, number>())
+  const watched = useRef(new Set<HTMLElement>())
+  // (measured as the page lays itself out, not by asking: a keystroke's redraw forces no layout)
+  const [ro] = useState(() => new ResizeObserver((entries) => {
+    if (row.current?.hasAttribute("data-cramped")) return
+    for (const e of entries) {
+      const el = e.target as HTMLElement, k = el.dataset.statusKey!, w = e.borderBoxSize[0]?.inlineSize ?? 0
+      if (w > (widest.current.get(k) ?? 0)) { widest.current.set(k, w); el.style.minWidth = `${w}px` }
+    }
+  }))
+  useEffect(() => () => ro.disconnect(), [ro])
+  const was = useRef("")
   useLayoutEffect(() => {
     const r = row.current
     if (!r) return
-    const cramped = r.hasAttribute("data-cramped")
-    for (const el of r.querySelectorAll<HTMLElement>("[data-steady]")) {
-      const k = el.dataset.statusKey!, was = widest.current.get(k)
-      if (cramped) { widest.current.delete(k); el.style.minWidth = ""; continue }
-      if (was?.reset !== reset) el.style.minWidth = ""
-      const w = Math.max(was?.reset === reset ? was.w : 0, el.getBoundingClientRect().width)
-      widest.current.set(k, { reset, w })
-      el.style.minWidth = `${w}px`
+    // Another file or setup, or cramped (or no longer): the room let go of, measured again.
+    const now = `${reset}\n${r.hasAttribute("data-cramped")}`, fresh = now !== was.current
+    was.current = now
+    if (fresh) widest.current.clear()
+    const els = new Set(r.querySelectorAll<HTMLElement>("[data-steady]"))
+    for (const el of watched.current) if (!els.has(el)) { ro.unobserve(el); watched.current.delete(el) }
+    for (const el of els) {
+      if (fresh) { el.style.minWidth = ""; ro.unobserve(el) }
+      ro.observe(el)
+      watched.current.add(el)
     }
   })
 }
