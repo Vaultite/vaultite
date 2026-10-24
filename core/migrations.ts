@@ -194,6 +194,14 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
     id: "status-bar-items-2026-10",
     run: (v) => eachSettings(v, (get, set) => { const look = withFileItems(get("appearance")); if (look) set("appearance", look) }),
   },
+  {
+    // plugins.json's `order`, from when the Plugins page could be dragged: nothing reads it.
+    id: "plugins-order-out-2026-10",
+    run: (v) => eachSettings(v, (get, set) => {
+      const conf = get("plugins")
+      if (conf && "order" in conf) set("plugins", Object.fromEntries(Object.entries(conf).filter(([k]) => k !== "order")))
+    }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

@@ -18,10 +18,10 @@ type Gap = { before: string | null; order: string[] }
 
 /** In the desktop path bar (`bar`), or at the end of the line above the title in a sheet or on a phone (`line`). */
 export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line" }) {
-  const { disabled, order, enabled, fileBar } = usePrefs()
+  const { disabled, enabled, fileBar } = usePrefs()
   const plugins = usePluginsVersion() // (a vault plugin's code arriving)
   const setup = useSidebars()
-  const items = useMemo(() => fileBarItems(disabled, order, fileBar).filter((x) => !sideOf(x.key, setup)), [disabled, order, enabled, plugins, fileBar, setup])
+  const items = useMemo(() => fileBarItems(disabled, fileBar).filter((x) => !sideOf(x.key, setup)), [disabled, enabled, plugins, fileBar, setup])
   const ctx = useMemo(() => ({ ...head, place }), [head, place])
   const box = useRef<HTMLDivElement>(null)
   const target = `file-bar:${useId()}`

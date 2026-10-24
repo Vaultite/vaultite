@@ -16,9 +16,9 @@ export const BUILT_IN = [
 export type BarItem = { key: string; title: string } & ({ ambient: AmbientItem; status?: undefined } | { ambient?: undefined; status?: StatusItem })
 
 /** Every item there could be now, in their default order (`defaults`: those shown where nothing's saved). */
-export function barItems(disabled: string[], order: string[]) {
-  const ambient = ambientItems(disabled, order).map((x): BarItem => ({ key: x.key, title: x.item.title, ambient: x.item }))
-  const status = statusItems(disabled, order).map((x): BarItem => ({ key: x.key, title: x.item.title ?? x.plugin.name, status: x.item }))
+export function barItems(disabled: string[]) {
+  const ambient = ambientItems(disabled).map((x): BarItem => ({ key: x.key, title: x.item.title, ambient: x.item }))
+  const status = statusItems(disabled).map((x): BarItem => ({ key: x.key, title: x.item.title ?? x.plugin.name, status: x.item }))
   const all = [...ambient, ...status.filter((x) => !x.status!.after), ...BUILT_IN.map((b): BarItem => ({ ...b })), ...status.filter((x) => x.status!.after)]
   const shownAmbient = defaultOrder(ambient.map((x) => ({ key: x.key, sort: x.ambient!.sort, hidden: x.ambient!.hidden })))
   const hiddenAmbient = ambient.filter((x) => !shownAmbient.includes(x.key)).map((x) => x.key)
@@ -30,11 +30,11 @@ export function barItems(disabled: string[], order: string[]) {
 function shownKeys(defaults: string[], saved = getPrefs().statusBar) { return saved ? keyList(saved) : defaults }
 
 /** The items the bar shows, in order, and every one there could be. */
-export function barShown(disabled: string[], order: string[], saved: string[] | null) {
-  const b = barItems(disabled, order), keys = shownKeys(b.defaults, saved)
+export function barShown(disabled: string[], saved: string[] | null) {
+  const b = barItems(disabled), keys = shownKeys(b.defaults, saved)
   return { ...b, keys, shown: keys.flatMap((k) => b.all.filter((x) => x.key === k)) }
 }
-const now = () => { const { disabled, order, statusBar } = getPrefs(); return barShown(disabled, order, statusBar) }
+const now = () => { const { disabled, statusBar } = getPrefs(); return barShown(disabled, statusBar) }
 
 /** Where `key` goes back into `list` by default: before the next one after it in the default order that's there. */
 const defaultPlace = (list: string[], order: string[], key: string) => order.slice(order.indexOf(key) + 1).find((k) => list.includes(k)) ?? null

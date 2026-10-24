@@ -37,9 +37,6 @@ export type Prefs = {
   sidebarWidth: number
   /** The right sidebar (when panels are there): open, or folded to its icon rail; its open width. This device's. */
   rightSidebar: boolean; rightSidebarWidth: number
-  /** Plugins' saved order (plugins.json `order`). Nothing sets it any more (the Plugins page is alphabetical); a saved
-   *  one still breaks ties: search results, wikilink targets, sidebar panels of equal `sort`. */
-  order: string[]
   /** Icons before file names, in the file tree and the tabs. */
   fileIcons: boolean
   /** The tabs above each pane (desktop); off, each pane's bar shows only what's on screen, and the sidebar (the Tabs
@@ -98,11 +95,11 @@ export type Prefs = {
 
 const KEY = "vaultite.prefs"
 const DEFAULTS: Prefs = {
-  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
-  appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
+  appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
 /** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */

@@ -158,7 +158,7 @@ type Found = { id: string; label: string; sub?: string; where: string; words: st
 type Show = (section: string, selector?: string) => void
 
 /** Everything in the sections and in plugins' settings that search can find. */
-function findable(store: Store, disabled: string[], order: string[], show: Show): Found[] {
+function findable(store: Store, disabled: string[], show: Show): Found[] {
   const switches = allSwitches(disabled)
   const switchOf = (plugin: string, key?: string) => switches.find((w) => w.plugin?.id === plugin && w.plugin.key === key)
   const row = (id: string, label: string, where: string, selector: string, sub = ""): Found =>
@@ -176,7 +176,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     // (its rows show only at a phone's width, where pulling works)
     ...(isDesktop() ? [] : [{ ...row("pull-actions", "Pull-down actions", "Appearance", '[data-settings-row="pull-0"]'), words: "pull down gesture phone swipe new note search close tab" }]),
     { id: "fonts", label: "Fonts", sub: "Interface, text and code", where: "Appearance", words: "font typeface monospace", run: () => openDetail("fonts") },
-    ...textSizeKinds(disabled, order).map(([kind, k]) =>
+    ...textSizeKinds(disabled).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),
     { ...row("snippets", "CSS snippets", "Appearance", 'section[aria-label="CSS snippets"]'), words: "styles custom" },
     { ...row("properties-in-document", "Properties in document", "Editor", '[data-settings-row="properties-in-document"]', "Visible, hidden or source"), words: "frontmatter yaml metadata" },
@@ -296,7 +296,7 @@ function SetupCard({ store }: { store: Store }) {
 }
 
 export function Settings({ store }: { store: Store }) {
-  const { disabled, order } = usePrefs()
+  const { disabled } = usePrefs()
   const [query, setQuery] = useState("")
   // The find picked: lit in the list, where Enter goes (else the first).
   const [picked, setPicked] = useState<string | null>(null)
@@ -317,7 +317,7 @@ export function Settings({ store }: { store: Store }) {
       if (selector) revealRow(selector)
     }
   }
-  const found = useMemo(() => (q ? search(findable(store, disabled, order, show), q) : []), [store, disabled, order, q, wide])
+  const found = useMemo(() => (q ? search(findable(store, disabled, show), q) : []), [store, disabled, q, wide])
   const lit = found.find((f) => f.id === picked) ?? null
   // (the search stays, so the next find is a click or an arrow away)
   const choose = (f: Found) => { setPicked(f.id); f.run() }

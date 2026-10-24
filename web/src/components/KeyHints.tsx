@@ -15,8 +15,8 @@ export function KeyHints() {
     const t = setTimeout(() => setShown(true), DELAY)
     return () => clearTimeout(t)
   }, [steps])
-  const { disabled, order, enabled } = usePrefs()
-  const groups = useMemo(() => keyGroupNames(disabled, order), [disabled, order, enabled])
+  const { disabled, enabled } = usePrefs()
+  const groups = useMemo(() => keyGroupNames(disabled), [disabled, enabled])
   const rows = useMemo(() => {
     if (!steps || !shown) return []
     return nextKeys(steps).map(({ step, commands, last }) => {

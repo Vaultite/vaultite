@@ -488,9 +488,9 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const [kept, keep] = useState({ ws: live, cur: liveCur })
   if (!left && kept.ws !== live) keep({ ws: live, cur: liveCur })
   const { ws, cur } = left ? kept : { ws: live, cur: liveCur }
-  const { disabled, order, sidebarHeader } = usePrefs()
+  const { disabled, sidebarHeader } = usePrefs()
   const panes = leaves(ws.root)
-  const header = shownHeaderItems(disabled, order, sidebarHeader)
+  const header = shownHeaderItems(disabled, sidebarHeader)
   const box = useRef<HTMLDivElement>(null)
   const [opened, setOpened] = useState<string | null>(null)
   const [query, setQuery] = useState<string | null>(null)

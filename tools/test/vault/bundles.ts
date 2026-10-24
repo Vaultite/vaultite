@@ -16,7 +16,7 @@ export default async ($: VaultTest) => {
     const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
     // Its plugins (Activity off) and pins are put back at the end: the areas after it need them.
     const pluginsBefore = conf("plugins"), pagesBefore = conf("pages"), editorBefore = conf("editor")
-    setConf("plugins", { disabled: ["clipper"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
+    setConf("plugins", { disabled: ["clipper"], enabled: ON, updatesOff: ["lighthouse"], custom: 1 })
     setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
     setConf("editor", { tabSize: 2, propertiesInDocument: "source" })
     setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/People.md"] })
@@ -52,7 +52,7 @@ export default async ($: VaultTest) => {
       conf("plugins-lock")?.books?.source === "Vaultite/plugins/books" && !!app.vaultPlugins.trust.approved("books", app.vaultPlugins.found.get("books")?.digest.content ?? ""), conf("plugins-lock"))
     if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
     const pj = conf("plugins"), look = conf("appearance")
-    check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.order?.[0] === "people" && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)
+    check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.custom === 1 && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)
     check("bundles: appearance is the bundle's whole look (the app's say every key); one it sets to the default is removed", !("textFont" in look) && !("theme" in look) && look.scheme === "flexoki" &&
       look.density === "comfortable", look)
     check("bundles: the editor's settings: one it sets to the default is removed, the others kept", JSON.stringify(conf("editor")) === JSON.stringify({ tabSize: 2 }), conf("editor"))

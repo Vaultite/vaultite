@@ -33,7 +33,7 @@ export default async ($: VaultTest) => {
   check("vau: a word too many names the command under it that takes one", cr.code === 1 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
   cr = await vau("nope")
   check("vau: an unknown command says so", cr.code === 2 && cr.err.includes("no command 'nope'"), cr)
-  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["random-note"], enabled: ON, order: ["people"], custom: 1 }, null, 2) + "\n")
+  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["random-note"], enabled: ON, custom: 1 }, null, 2) + "\n")
   fs.rmSync(path.join(VAULT, ".vaultite/sidebars.json"), { force: true })
   Object.assign($.vars, { execute, servers, normalizeKeys, uiLive, cliApi, vau, conf })
 }

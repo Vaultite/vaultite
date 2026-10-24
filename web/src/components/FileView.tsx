@@ -224,9 +224,9 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
 
 /** What plugins draw at the top of a note (NoteTopItem), under its properties. */
 function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
-  const { disabled, order, enabled } = usePrefs()
+  const { disabled, enabled } = usePrefs()
   const plugins = usePluginsVersion()
-  const items = useMemo(() => noteTopItems(disabled, order), [disabled, order, enabled, plugins])
+  const items = useMemo(() => noteTopItems(disabled), [disabled, enabled, plugins])
   const ctx = useMemo(() => ({ ...head, place }), [head, place])
   return <>{items.map(({ key, item }) => <Guard key={key} what="This part" reset={head.path}><Drawn draw={() => item.render(ctx)} /></Guard>)}</>
 }

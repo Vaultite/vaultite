@@ -34,9 +34,9 @@ const useDrawer = () => subs.use(() => out)
 /** Whether a sidebar has panels to show (the right one often has none: then there's no right drawer); the left one
  *  has the dock too. */
 export function useHasDrawer(side: Side) {
-  const { disabled, order } = usePrefs()
+  const { disabled } = usePrefs()
   const s = useSidebars()
-  return drawerPanels(side, s, disabled, order).length > 0 || (side === "left" && phoneDock(s, disabled, order).length > 0)
+  return drawerPanels(side, s, disabled).length > 0 || (side === "left" && phoneDock(s, disabled).length > 0)
 }
 
 const EASE = "cubic-bezier(.2,.8,.2,1)"
@@ -215,8 +215,8 @@ function DrawerBody({ side, store, file, tab, vaultName, vaultMenu }: { side: Si
 
 /** The dock: the docked panels' icons above the vault's row, where a thumb reaches them without scrolling the drawer. */
 function Dock({ store, file, tab }: { store: Store; file: string; tab: string }) {
-  const { disabled, order } = usePrefs()
-  const docked = phoneDock(useSidebars(), disabled, order)
+  const { disabled } = usePrefs()
+  const docked = phoneDock(useSidebars(), disabled)
   if (!docked.length) return null
   return (
     // Its icons in line with the vault's name.

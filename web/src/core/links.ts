@@ -46,8 +46,8 @@ export const snippet = (md: string) => plainText(md).replace(/\s+/g, " ").trim()
 /** A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in
  *  Obsidian. */
 export function openTag(tag: string) {
-  const { disabled, order } = getPrefs()
-  const on = active(disabled, order)
+  const { disabled } = getPrefs()
+  const on = active(disabled)
   if (on.some((p) => p.details?.tag)) return openDetail(detailPath("tag", tagName(tag)))
   if (on.some((p) => p.views?.search)) return openView(`search/tag:#${tagName(tag)}`)
   runCommandId("switcher:open")
@@ -69,8 +69,8 @@ function mdTarget(s: Store, href: string, from?: string) {
 
 /** A plugin that's on takes this web link (the Browser opens it in a tab): whether one did. */
 function takeWebLink(url: string, mod: boolean) {
-  const { disabled, order } = getPrefs()
-  for (const p of active(disabled, order)) {
+  const { disabled } = getPrefs()
+  for (const p of active(disabled)) {
     try { if (p.webLink?.(url, { mod })) return true } catch { /* a plugin failing leaves the link to the browser */ }
   }
   return false
@@ -78,8 +78,8 @@ function takeWebLink(url: string, mod: boolean) {
 
 /** A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did. */
 export function takeSchemeLink(url: string, mod = false) {
-  const { disabled, order } = getPrefs()
-  for (const p of active(disabled, order)) {
+  const { disabled } = getPrefs()
+  for (const p of active(disabled)) {
     try { if (p.schemeLink?.(url, { mod })) return true } catch (e) { console.error(e) }
   }
   return false
@@ -187,9 +187,9 @@ const sameTarget = (a: Target, b: Target) => a === b || (a.kind === b.kind && a.
 function linkIndexOf(s: Store): Index {
   const hit = cache.get(s)
   if (hit) return hit
-  const { disabled, order } = getPrefs()
+  const { disabled } = getPrefs()
   const targets: Target[] = []
-  for (const p of active(disabled, order)) {
+  for (const p of active(disabled)) {
     try { targets.push(...(p.links?.(s) ?? [])) } catch { /* a plugin's links failing must not break the rest */ }
   }
   const rows = new Map((s.files?.files ?? []).map((f) => [f.path.replace(/\.md$/i, ""), f]))

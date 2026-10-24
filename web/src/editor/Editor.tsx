@@ -251,7 +251,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const plugged = useRef(new Compartment())
   const nums = useRef(new Compartment())
   const prose = useRef(new Compartment())
-  const { disabled, enabled, order, lineNumbers: numbersOn } = usePrefs()
+  const { disabled, enabled, lineNumbers: numbersOn } = usePrefs()
   const settings = useEditorSettings()
   const plugins = usePluginsVersion()
   const { tab } = usePane()
@@ -472,12 +472,12 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   useEffect(() => {
     let live = true
     const kind = language !== undefined ? "code" : code ? "text" : "markdown"
-    editorExtensions({ kind, path: docPath, source: !!source }, disabled, order).then((ext) => {
+    editorExtensions({ kind, path: docPath, source: !!source }, disabled).then((ext) => {
       if (live) view.current?.dispatch({ effects: plugged.current.reconfigure(ext) })
     })
     return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [disabled, enabled, order, plugins])
+  }, [disabled, enabled, plugins])
 
   useEffect(() => {
     view.current?.dispatch({ effects: cfg.current.reconfigure(previewConfig.of(config)) })

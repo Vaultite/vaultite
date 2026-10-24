@@ -233,7 +233,7 @@ export function AppearancePanel() {
           onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
         <PullRows />
         <Fonts />
-        {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (
+        {textSizeKinds(prefs.disabled).map(([kind, k]) => (
           <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
         ))}
         <SwitchRow s={coreSwitch("setting:quick-text-size")} />

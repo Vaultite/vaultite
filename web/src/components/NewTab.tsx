@@ -30,10 +30,10 @@ type Section = SectionInfo & { heading?: string | false; render?: NewTabSection[
 
 /** Every section there is now: the app's, those of the plugins that are on, then their sidebar panels (drawn as in the
  *  sidebar: core/newtab.ts withPanels). */
-function allSections(disabled: string[], order: string[]): Section[] {
+function allSections(disabled: string[]): Section[] {
   return withPanels<Section, Section>(
-    [...CORE_SECTIONS, ...newTabSections(disabled, order).map(({ key, section: s }) => ({ key, title: s.title, sort: s.sort, hidden: s.hidden, only: s.only, heading: s.heading, render: s.render }))],
-    sidebarPanels(disabled, order).map(({ key, panel }) => ({ key, title: panel.title, heading: panel.heading ?? panel.title, sidebar: panel })),
+    [...CORE_SECTIONS, ...newTabSections(disabled).map(({ key, section: s }) => ({ key, title: s.title, sort: s.sort, hidden: s.hidden, only: s.only, heading: s.heading, render: s.render }))],
+    sidebarPanels(disabled).map(({ key, panel }) => ({ key, title: panel.title, heading: panel.heading ?? panel.title, sidebar: panel })),
   )
 }
 
@@ -47,8 +47,8 @@ export function useNewTabPage(store: Store | null): string | null {
 const labelOf = (c: Command) => c.label ?? c.name
 
 export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
-  const { disabled, order, newTab } = usePrefs()
-  const all = allSections(disabled, order)
+  const { disabled, newTab } = usePrefs()
+  const all = allSections(disabled)
   const byKey = new Map(all.map((s) => [s.key, s]))
   const shown = shownSections(newTab, all).flatMap((k) => byKey.get(k) ?? []).filter((s) => fits(s, !!phone))
   // Opened lately in this workspace (core/scope.ts), then the vault's recently changed files (without those, while
@@ -241,14 +241,14 @@ export function showNewTabSections() {
   notify("New tabs show their sections", { action: { label: "Undo", run: () => void setNewTab({ page: was }) } })
 }
 /** The sections shown now, every device's (phone-only ones too), in order. */
-const sectionsNow = () => { const { disabled, order, newTab } = getPrefs(); return shownSections(newTab, allSections(disabled, order)) }
+const sectionsNow = () => { const { disabled, newTab } = getPrefs(); return shownSections(newTab, allSections(disabled)) }
 const moved = (list: string[], key: string, where: "up" | "down") => placeKey(list, key, anchorFor(list, key, where) ?? null)
 
 /** The page's right-click menu: for the button or section right-clicked (move it, change a button's icon, take it off;
  *  the buttons' own items only on the buttons), then every section to tick (Sections ▸), and Reset when the page isn't the default. */
 function customizeMenu(phone: boolean, hit: { action?: string; section?: string }): MenuItem[] {
-  const { disabled, order, newTab } = getPrefs()
-  const all = allSections(disabled, order)
+  const { disabled, newTab } = getPrefs()
+  const all = allSections(disabled)
   const shown = shownSections(newTab, all)
   const buttons = shownActions(newTab)
   const cmds = new Map(commandList().map((c) => [c.id, c]))

@@ -28,8 +28,8 @@ const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 
 
 /** Right-click on the bar: which items it shows (a hidden one ticked again goes back to its default place). */
 const barMenu = () => {
-  const { disabled, order, statusBar } = getPrefs()
-  const { all, shown } = barShown(disabled, order, statusBar)
+  const { disabled, statusBar } = getPrefs()
+  const { all, shown } = barShown(disabled, statusBar)
   const item = (x: BarItem) => ({ key: x.key, label: x.title }), off = all.filter((x) => !shown.includes(x))
   return [
     ...checklist("status-bar", { on: shown.map(item), off: [off.filter((x) => x.ambient).map(item), off.filter((x) => !x.ambient).map(item)],
@@ -190,11 +190,11 @@ const steady = (x: BarItem) => x.key === "core:words" || x.key === "core:charact
 
 export function StatusBar() {
   const s = statusSubs.use(() => status_)
-  const { disabled, order, enabled, statusBar, statusBarMore, density, interfaceFont, snippets } = usePrefs()
+  const { disabled, enabled, statusBar, statusBarMore, density, interfaceFont, snippets } = usePrefs()
   // What the bar's width depends on but the file: a change lets go of the widths held for the setup before.
   const setup = JSON.stringify([statusBar, statusBarMore, disabled, enabled, density, interfaceFont, snippets])
   const plugins = usePluginsVersion() // (a vault plugin's code arriving)
-  const bar = useMemo(() => barShown(disabled, order, statusBar), [disabled, order, enabled, statusBar, plugins])
+  const bar = useMemo(() => barShown(disabled, statusBar), [disabled, enabled, statusBar, plugins])
   useBarCommands(bar.all)
   // Counted after the keystroke is on screen: a long note's count takes a few milliseconds. The file comes late with
   // its text, so a file just opened is never measured (useSteady) with the last one's counts.
@@ -331,7 +331,7 @@ function useBarCommands(all: BarItem[]) {
       run: () => showBarItem(x.key, !barShows(x.key)), icon: PanelBottom, on: () => barShows(x.key),
     })),
     { id: "status-bar:show-all", name: "Show all status bar items", desktop: true, run: showAllBarItems, icon: PanelBottom,
-      when: () => { const { disabled, order, statusBar } = getPrefs(), b = barShown(disabled, order, statusBar); return b.shown.length < b.all.length } },
+      when: () => { const { disabled, statusBar } = getPrefs(), b = barShown(disabled, statusBar); return b.shown.length < b.all.length } },
   ], [all.map((x) => `${x.key}\t${x.title}`).join("\n")])
 }
 

@@ -55,7 +55,6 @@ async function dragTo(key, x, y, shot) {
 }
 try {
   // Workspaces off (a workspace keeps sidebars of its own), and the default panels (Links, hidden until shown, isn't).
-  const hadOrder = Array.isArray(conf("plugins").order)
   setConf("plugins", { disabled: ["backlinks"] })
   setConf("sidebars", sidebarsOf(DEFAULT))
   await page.goto(B)
@@ -82,7 +81,7 @@ try {
   await dragTo("terminal:sessions", pg.x + 60, pg.y + 3)
   check("dragged up: above the pages", await until(async () => (await panels()).join() === "search:search,terminal:sessions,pages:pages,files:files"), await panels())
   check("saved in sidebars.json", await until(() => saved() === "search:search,terminal:sessions,pages:pages,files:files"), conf("sidebars"))
-  check("plugins.json's keys kept", Array.isArray(conf("plugins").disabled) && (!hadOrder || Array.isArray(conf("plugins").order)), conf("plugins"))
+  check("plugins.json's keys kept", Array.isArray(conf("plugins").disabled), conf("plugins"))
 
   // Files by its heading, up between Search and Terminals.
   const tm = await (await page.$("aside [data-panel='terminal:sessions']")).boundingBox()

@@ -299,32 +299,18 @@ setMissingCommand((id) => {
   return () => notify(`${keys}: ${p.name} ${why}`, { id: `plugin:${p.id}`, action: { label: "Review", run: () => openDetail(`plugin/${p.id}`) } })
 })
 
-/** Plugin ids in the saved order (prefs.order: plugins.json's `order`, from when the Plugins page could be dragged; it
- *  only breaks ties now: search, links, sidebar panels of equal `sort`); new ones after the ones in it. */
-function orderedIds(order: string[]) {
-  const ids = PLUGINS.map((p) => p.id)
-  const at = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length + ids.indexOf(id) : i }
-  return [...ids].sort((a, b) => at(a) - at(b))
-}
-
-/** Plugins in the saved order (prefs.order). */
-function ordered(order: string[]) {
-  const ids = orderedIds(order)
-  return [...PLUGINS].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
-}
-
-// The same list until the plugins or their order change: a new one each render made what keys a memo on it (the
-// command palette's rows) redo its work every time it drew.
-let orderedFor: { v: number; order: string[]; list: Plugin[] } | null = null
+// The same list until the plugins change: a new one each render made what keys a memo on it (the command palette's
+// rows) redo its work every time it drew.
+let listed: { v: number; list: Plugin[] } | null = null
 export function usePlugins() {
-  const v = usePluginsVersion(), { order } = usePrefs()
-  if (orderedFor?.v !== v || orderedFor.order !== order) orderedFor = { v, order, list: ordered(order) }
-  return orderedFor.list
+  const v = usePluginsVersion()
+  if (listed?.v !== v) listed = { v, list: [...PLUGINS] }
+  return listed.list
 }
 
 /** The enabled plugins, in order. */
-export function active(disabled: string[], order: string[]) {
-  return ordered(order).filter((p) => isEnabled(p.id, disabled))
+export function active(disabled: string[]) {
+  return PLUGINS.filter((p) => isEnabled(p.id, disabled))
 }
 
 /** The file tree's marks from the plugins that are on (`fileMarks`), by path; the first plugin's wins. */
@@ -405,8 +391,8 @@ export function useReadBlock(disabled: string[]): ReadBlock | null {
 export type PanelOf = { key: string; plugin: Plugin; panel: SidebarPanel }
 
 /** The panels of the plugins that are on, by `sort` (then the plugins' order): the order of the Panels menu. */
-export function sidebarPanels(disabled: string[], order: string[]): PanelOf[] {
-  return active(disabled, order)
+export function sidebarPanels(disabled: string[]): PanelOf[] {
+  return active(disabled)
     .flatMap((p) => [...Object.entries(p.sidebar ?? {}).map(([name, panel]) => ({ key: `${p.id}:${name}`, plugin: p, panel })),
       ...Object.entries(p.fileBar ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, panel: barPanel(`${p.id}:${name}`, p, item) }))])
     .map((x, i) => ({ ...x, i }))
@@ -414,8 +400,8 @@ export function sidebarPanels(disabled: string[], order: string[]): PanelOf[] {
 }
 
 /** Every plugin's panels (on or off), for the default setup. */
-const panelInfo = (prefs = getPrefs()) =>
-  ordered(prefs.order).flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, s]) => ({ key: `${p.id}:${name}`, sort: s.sort, hidden: s.hidden, side: s.side })))
+const panelInfo = () =>
+  PLUGINS.flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, s]) => ({ key: `${p.id}:${name}`, sort: s.sort, hidden: s.hidden, side: s.side })))
 
 // A file's top bar items (FileBarItem) are panels too, hidden until docked: in a sidebar, one is drawn there for the
 // focused file and not in the bar. FileView.tsx draws them.
@@ -432,11 +418,11 @@ function barPanel(key: string, p: Plugin, item: FileBarItem): SidebarPanel {
   return panel
 }
 /** Whether a panel key is a file's top bar item. */
-export const isBarItem = (key: string) => { const { disabled, order } = getPrefs(); return fileBarItems(disabled, order).some((x) => x.key === key) }
+export const isBarItem = (key: string) => { const { disabled } = getPrefs(); return fileBarItems(disabled).some((x) => x.key === key) }
 /** A top bar item put before `before` in the bar (null: last), out of a sidebar if it was docked in one. */
 export function moveBarItem(key: string, before: string | null) {
-  const { disabled, order } = getPrefs()
-  void setPrefs({ fileBar: placeKey(fileBarItems(disabled, order).map((x) => x.key), key, before) })
+  const { disabled } = getPrefs()
+  void setPrefs({ fileBar: placeKey(fileBarItems(disabled).map((x) => x.key), key, before) })
   if (sideIn(sidebars(), key)) hidePanel(key)
 }
 
@@ -454,7 +440,7 @@ function provided(prefs = getPrefs()) {
 /** sidebars.json as saved (null: unset, the default). */
 export const savedSidebars = (prefs = getPrefs()) => prefs.sidebars
 /** sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows). */
-export const vaultSidebars = (prefs = getPrefs()): Sidebars => prefs.sidebars ?? defaultSidebars(panelInfo(prefs))
+export const vaultSidebars = (prefs = getPrefs()): Sidebars => prefs.sidebars ?? defaultSidebars(panelInfo())
 /** The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's. */
 export const sidebars = (prefs = getPrefs()): Sidebars => provided(prefs)?.own ?? vaultSidebars(prefs)
 /** Change the setup where it's kept: the plugin that has it (the current workspace), else sidebars.json (written
@@ -482,20 +468,20 @@ export function useSidebars() {
 }
 
 /** A sidebar's panels as drawn, top to bottom: the ones whose plugin is on. */
-export function panelsIn(side: Side, s: Sidebars, disabled: string[], order: string[]): PanelOf[] {
-  const on = new Map(sidebarPanels(disabled, order).map((x) => [x.key, x]))
+export function panelsIn(side: Side, s: Sidebars, disabled: string[]): PanelOf[] {
+  const on = new Map(sidebarPanels(disabled).map((x) => [x.key, x]))
   return s[side].flatMap((k) => on.get(k) ?? [])
 }
 
 /** The panels a phone draws in its drawer's dock, in order: docked, shown, on and `dockable`. */
-export function phoneDock(s: Sidebars, disabled: string[], order: string[]): PanelOf[] {
-  const on = new Map(sidebarPanels(disabled, order).filter((x) => x.panel.dockable).map((x) => [x.key, x]))
+export function phoneDock(s: Sidebars, disabled: string[]): PanelOf[] {
+  const on = new Map(sidebarPanels(disabled).filter((x) => x.panel.dockable).map((x) => [x.key, x]))
   return (s.dock ?? []).filter((k) => sideIn(s, k)).flatMap((k) => on.get(k) ?? [])
 }
 /** A sidebar's panels as a phone's drawer stacks them: without the docked ones. */
-export function drawerPanels(side: Side, s: Sidebars, disabled: string[], order: string[]): PanelOf[] {
-  const docked = new Set(phoneDock(s, disabled, order).map((x) => x.key))
-  return panelsIn(side, s, disabled, order).filter((x) => !docked.has(x.key))
+export function drawerPanels(side: Side, s: Sidebars, disabled: string[]): PanelOf[] {
+  const docked = new Set(phoneDock(s, disabled).map((x) => x.key))
+  return panelsIn(side, s, disabled).filter((x) => !docked.has(x.key))
 }
 
 /** Which sidebar a panel is in (null: hidden). */
@@ -505,8 +491,8 @@ export const sideOf = (key: string, s = sidebars()) => sideIn(s, key)
 export function panelOfView(to: string | undefined) {
   if (!to?.startsWith("view:")) return null
   const name = to.slice(5).split("/")[0]
-  const { disabled, order } = getPrefs()
-  return sidebarPanels(disabled, order).find((x) => x.panel.view === name)?.key ?? null
+  const { disabled } = getPrefs()
+  return sidebarPanels(disabled).find((x) => x.panel.view === name)?.key ?? null
 }
 
 /** Put a panel somewhere (moved, or shown if it was hidden): see Place. */
@@ -547,7 +533,7 @@ export const togglePanelCollapsed = (key: string) => changeSidebars((s) => setCo
 
 /** The panel that lists the open tabs (SidebarPanel.tabList), while its plugin is on. */
 export function tabListPanel(prefs = getPrefs()) {
-  return sidebarPanels(prefs.disabled, prefs.order).find((x) => x.panel.tabList)?.key ?? null
+  return sidebarPanels(prefs.disabled).find((x) => x.panel.tabList)?.key ?? null
 }
 /** The tabs are in a sidebar instead of above the panes: the tab bar off and the tab list in a sidebar. */
 export function tabsInSidebar(prefs = getPrefs()) {
@@ -576,7 +562,7 @@ export const setDrawerOpener = (fn: (side: Side) => void) => { drawerOpener = fn
  *  unfolded. Not one the user hid, or whose plugin is off: false then. */
 export function revealPanel(key: string) {
   const prefs = getPrefs(), s = sidebars(prefs), side = sideIn(s, key)
-  if (!side || !sidebarPanels(prefs.disabled, prefs.order).some((x) => x.key === key)) return false
+  if (!side || !sidebarPanels(prefs.disabled).some((x) => x.key === key)) return false
   if (drawerOpener && !isDesktop()) { setSidebars(setCollapsed(s, key, false)); drawerOpener(side); return true }
   // Hidden without a rail (Zen): it slides in for this, and the setup keeps it hidden.
   if (isDesktop() && peekSidebar(side)) { setSidebars(setCollapsed(s, key, false)); return true }
@@ -605,9 +591,9 @@ function showPanelsOf(p: Plugin) {
 /** A plugin was turned on: its status bar items (not ambient ones marked `hidden`) join a saved list: an ambient one
  *  before the file's items, a file's before the app's own (or last: `after`). */
 function showBarItemsOf(p: Plugin) {
-  const { statusBar, disabled, order } = getPrefs()
+  const { statusBar, disabled } = getPrefs()
   if (!statusBar) return
-  const file = new Set(statusItems(disabled, order).map((x) => x.key))
+  const file = new Set(statusItems(disabled).map((x) => x.key))
   let list = statusBar
   const add = (key: string, before: string | null) => { if (!list.includes(key)) list = placeKey(list, key, before) }
   for (const [name, x] of Object.entries(p.ambient ?? {})) if (!x.hidden) add(`${p.id}:${name}`, list.find((k) => k.startsWith("core:") || file.has(k)) ?? null)
@@ -616,24 +602,24 @@ function showBarItemsOf(p: Plugin) {
 }
 
 /** What the plugins that are on draw in one place (`slot`: its items by name), left to right by their `sort`. */
-function slotItems<K extends "header" | "status" | "fileBar" | "noteTop">(slot: K, disabled: string[], order: string[]) {
-  return active(disabled, order)
+function slotItems<K extends "header" | "status" | "fileBar" | "noteTop">(slot: K, disabled: string[]) {
+  return active(disabled)
     .flatMap((p) => Object.entries(p[slot] ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, item: item as NonNullable<Plugin[K]>[string] })))
     .map((x, i) => ({ ...x, i }))
     .sort((a, b) => (a.item.sort ?? 100) - (b.item.sort ?? 100) || a.i - b.i)
 }
 /** The sidebar's header (see HeaderItem), the status bar (StatusItem) and a file's header (FileBarItem). */
-export const headerItems = (disabled: string[], order: string[]) => slotItems("header", disabled, order)
+export const headerItems = (disabled: string[]) => slotItems("header", disabled)
 /** The header's items shown (appearance `sidebarHeader`, in its order; unset: every one). */
-export function shownHeaderItems(disabled: string[], order: string[], saved = getPrefs().sidebarHeader) {
-  const all = headerItems(disabled, order)
+export function shownHeaderItems(disabled: string[], saved = getPrefs().sidebarHeader) {
+  const all = headerItems(disabled)
   if (!saved) return all
   return saved.flatMap((k) => all.find((x) => x.key === k) ?? [])
 }
 /** Show or hide a header item; shown again, before the next one shown after its default place. */
 export function setHeaderItemShown(key: string, on: boolean, before: string | null = null) {
-  const { disabled, order } = getPrefs()
-  const all = headerItems(disabled, order).map((x) => x.key), keys = shownHeaderItems(disabled, order).map((x) => x.key)
+  const { disabled } = getPrefs()
+  const all = headerItems(disabled).map((x) => x.key), keys = shownHeaderItems(disabled).map((x) => x.key)
   const next = all.slice(all.indexOf(key) + 1).find((k) => keys.includes(k)) ?? null
   return setPrefs({ sidebarHeader: on ? placeKey(keys, key, before ?? next) : keys.filter((k) => k !== key) })
 }
@@ -642,37 +628,37 @@ function showHeaderItemsOf(p: Plugin) {
   if (!getPrefs().sidebarHeader) return
   for (const name of Object.keys(p.header ?? {})) void setHeaderItemShown(`${p.id}:${name}`, true)
 }
-export const statusItems = (disabled: string[], order: string[]) => slotItems("status", disabled, order)
+export const statusItems = (disabled: string[]) => slotItems("status", disabled)
 /** A file's top bar items, in the user's order (appearance.json `fileBar`), the ones it doesn't name after by `sort`. */
-export function fileBarItems(disabled: string[], order: string[], saved = getPrefs().fileBar) {
-  const all = slotItems("fileBar", disabled, order)
+export function fileBarItems(disabled: string[], saved = getPrefs().fileBar) {
+  const all = slotItems("fileBar", disabled)
   const at = (k: string) => { const i = saved?.indexOf(k) ?? -1; return i < 0 ? Infinity : i }
   return saved ? [...all].sort((a, b) => at(a.key) - at(b.key)) : all
 }
-export const noteTopItems = (disabled: string[], order: string[]) => slotItems("noteTop", disabled, order)
+export const noteTopItems = (disabled: string[]) => slotItems("noteTop", disabled)
 
 /** What the plugins that are on can draw at the start of the status bar (see AmbientItem), as "<plugin>:<name>". */
-export function ambientItems(disabled: string[], order: string[]) {
-  return active(disabled, order).flatMap((p) => Object.entries(p.ambient ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, item })))
+export function ambientItems(disabled: string[]) {
+  return active(disabled).flatMap((p) => Object.entries(p.ambient ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, item })))
 }
 
 /** The names the plugins that are on give the first steps of key sequences (see `keyGroups`), by canonical steps. */
-export function keyGroupNames(disabled: string[], order: string[]) {
+export function keyGroupNames(disabled: string[]) {
   const out = new Map<string, string>()
-  for (const p of active(disabled, order)) for (const [k, name] of Object.entries(p.keyGroups ?? {})) out.set(canonical(k).toLowerCase(), name)
+  for (const p of active(disabled)) for (const [k, name] of Object.entries(p.keyGroups ?? {})) out.set(canonical(k).toLowerCase(), name)
   return out
 }
 
 /** What the plugins that are on run in the background (see `background` in PluginDef). */
-export const backgrounds = (disabled: string[], order: string[]) =>
-  active(disabled, order).filter((p) => p.background).map((p) => ({ key: p.id, Run: p.background! }))
+export const backgrounds = (disabled: string[]) =>
+  active(disabled).filter((p) => p.background).map((p) => ({ key: p.id, Run: p.background! }))
 
 /** The player of the first plugin that's on with one (see `player` in PluginDef), or null for the browser's. */
 export const playerFor = (disabled: string[]) => PLUGINS.find((p) => p.player && isEnabled(p.id, disabled))?.player ?? null
 
 /** Where a device's first tab goes (see `home` in PluginDef): the first plugin that's on and answers, or null. */
-export function homeTab(store: Store, disabled: string[], order: string[]) {
-  for (const p of active(disabled, order)) {
+export function homeTab(store: Store, disabled: string[]) {
+  for (const p of active(disabled)) {
     try { const to = p.home?.(store); if (to) return to } catch { /* a plugin failing must not keep the app from starting */ }
   }
   return null
@@ -687,7 +673,7 @@ function sectionsOf(p: Plugin): { key: string; section: NewTabSection }[] {
 
 /** The sections the plugins that are on add to a blank tab's page (see `newTab` in PluginDef); the app's own are
  *  core/newtab.ts' CORE_SECTIONS. */
-export const newTabSections = (disabled: string[], order: string[]) => active(disabled, order).flatMap(sectionsOf)
+export const newTabSections = (disabled: string[]) => active(disabled).flatMap(sectionsOf)
 
 /** A plugin's dashboards as it ships them (pages/Today.md): [{name, text}]. */
 export function templatesOf(id: string) {
@@ -846,7 +832,7 @@ export function viewFor(to: string, disabled: string[]) {
 
 /** The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target. */
 export function viewMenuItems(target: string, disabled = getPrefs().disabled): MenuItem[] {
-  return active(disabled, getPrefs().order).flatMap((p) => {
+  return active(disabled).flatMap((p) => {
     try { return (p.viewMenu?.(target) ?? []).map(({ section: _, many: __, ...it }) => ({ ...it, icon: it.icon as MenuItem["icon"] })) } catch { return [] }
   })
 }
@@ -871,7 +857,7 @@ export function viewPinLabel(target: string, disabled = getPrefs().disabled): st
 /** The main view of each plugin that's on, as a pin (its first view pinned as itself, without an arg: Inbox, Graph
  *  view), in the plugins' order: what Pinned's menu offers. */
 export function viewSurfaces(disabled = getPrefs().disabled): { key: string; label: string }[] {
-  return active(disabled, getPrefs().order).flatMap((p) => {
+  return active(disabled).flatMap((p) => {
     for (const name of Object.keys(p.views ?? {})) {
       const pin = pinOfView(`view:${name}`, disabled)
       if (pin?.key === `view:${name}`) return [pin]
@@ -896,8 +882,8 @@ export const openElsewhere = (to: string, disabled: string[]) =>
 
 /** The editor extensions of the plugins that are on, for one editor (`editor` in their definitions), in their order. A
  *  plugin whose extension fails to load is left out (the editor still works). */
-export async function editorExtensions(ctx: EditorCtx, disabled: string[], order: string[]): Promise<Extension[]> {
-  const list = ordered(order).filter((p) => p.editor && isEnabled(p.id, disabled))
+export async function editorExtensions(ctx: EditorCtx, disabled: string[]): Promise<Extension[]> {
+  const list = PLUGINS.filter((p) => p.editor && isEnabled(p.id, disabled))
   const got = await Promise.all(list.map((p) => Promise.resolve().then(() => p.editor!(ctx)).catch((e) => { console.error(`${p.id}: editor`, e); return [] })))
   return got
 }
@@ -943,14 +929,14 @@ export function timelineKinds(disabled: string[]) {
 export type Agent = AgentDef & { name: string; plugin: string }
 
 /** The coding agents of the plugins that are on, in the plugins' order. */
-export function agentsOn(disabled = getPrefs().disabled, order = getPrefs().order): Agent[] {
-  return active(disabled, order).flatMap((p) => Object.entries(p.agents ?? {}).map(([name, a]) => ({ ...a, name, plugin: p.id })))
+export function agentsOn(disabled = getPrefs().disabled): Agent[] {
+  return active(disabled).flatMap((p) => Object.entries(p.agents ?? {}).map(([name, a]) => ({ ...a, name, plugin: p.id })))
 }
 
 export function useAgents() {
   usePluginsVersion()
-  const { disabled, order } = usePrefs()
-  return agentsOn(disabled, order)
+  const { disabled } = usePrefs()
+  return agentsOn(disabled)
 }
 
 /** The agent a terminal runs, by its id ("codex-<id>", "claude_<account>-<id>", "resume-<name>-<session>", "@<machine>"

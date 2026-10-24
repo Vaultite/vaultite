@@ -20,17 +20,17 @@ type Doc = SearchDoc
 
 /** Everything the quick switcher finds, once per store and settings (it's opened again and again, and the sidebar's
  *  search asks too). */
-let built: { store: Store; disabled: string[]; order: string[]; docs: Doc[] } | null = null
-function buildIndex(store: Store, disabled: string[], order: string[]): Doc[] {
+let built: { store: Store; disabled: string[]; docs: Doc[] } | null = null
+function buildIndex(store: Store, disabled: string[]): Doc[] {
   const b = built
-  if (b && b.store === store && b.disabled === disabled && b.order === order) return b.docs
-  const docs = index(store, disabled, order)
-  built = { store, disabled, order, docs }
+  if (b && b.store === store && b.disabled === disabled) return b.docs
+  const docs = index(store, disabled)
+  built = { store, disabled, docs }
   return docs
 }
-function index(store: Store, disabled: string[], order: string[]): Doc[] {
+function index(store: Store, disabled: string[]): Doc[] {
   const docs: Doc[] = []
-  for (const p of active(disabled, order)) {
+  for (const p of active(disabled)) {
     try { docs.push(...(p.search?.(store) ?? [])) } catch { /* a plugin's index failing must not break search */ }
   }
   // Every other file in the vault, by name (plugins index their own files better: a person with their context).
@@ -61,8 +61,8 @@ function index(store: Store, disabled: string[], order: string[]): Doc[] {
 
 /** The index with what plugins find live (searchLive), followed while the component that asks is on screen. */
 export function useSearchIndex(store: Store): Doc[] {
-  const { disabled, order } = usePrefs()
-  const live = useMemo(() => active(disabled, order).filter((p) => p.searchLive), [disabled, order])
+  const { disabled } = usePrefs()
+  const live = useMemo(() => active(disabled).filter((p) => p.searchLive), [disabled])
   const [version, setVersion] = useState(0)
   useEffect(() => {
     const stops = live.map((p) => { try { return p.searchLive!.subscribe(() => setVersion((v) => v + 1)) } catch { return () => {} } })
@@ -70,9 +70,9 @@ export function useSearchIndex(store: Store): Doc[] {
   }, [live])
   return useMemo(() => {
     const found = live.flatMap((p) => { try { return p.searchLive!.docs() } catch { return [] } })
-    return [...buildIndex(store, disabled, order), ...found]
+    return [...buildIndex(store, disabled), ...found]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store, disabled, order, live, version])
+  }, [store, disabled, live, version])
 }
 
 /** Docs a plugin found for `query` as hits, in its order: the words marked where they are. */
@@ -83,8 +83,8 @@ function asHits(docs: Doc[], query: string): Hit[] {
 
 /** What plugins find by the query as it's typed (`searchQuery.find`), asked 150 ms after typing stops: by section. */
 export function useQueried(query: string): { section: string; hits: Hit[] }[] {
-  const { disabled, order } = usePrefs()
-  const finders = useMemo(() => active(disabled, order).filter((p) => p.searchQuery?.find), [disabled, order])
+  const { disabled } = usePrefs()
+  const finders = useMemo(() => active(disabled).filter((p) => p.searchQuery?.find), [disabled])
   const [found, setFound] = useState<{ section: string; hits: Hit[] }[]>([])
   useEffect(() => {
     const q = query.trim()
@@ -101,15 +101,15 @@ export function useQueried(query: string): { section: string; hits: Hit[] }[] {
 }
 
 /** Plugins' rows for the query itself (`searchQuery.typed`). */
-export function typedHits(query: string, disabled: string[], order: string[]): Hit[] {
+export function typedHits(query: string, disabled: string[]): Hit[] {
   const q = query.trim()
   if (!q) return []
-  return active(disabled, order).flatMap((p) => { try { return (p.searchQuery?.typed?.(q) ?? []).map((d) => ({ ...d, marks: [], score: 0 })) } catch { return [] } })
+  return active(disabled).flatMap((p) => { try { return (p.searchQuery?.typed?.(q) ?? []).map((d) => ({ ...d, marks: [], score: 0 })) } catch { return [] } })
 }
 
 /** What a new tab's switcher says while a plugin lists its typed rows first there; null: none does now. */
-export function launcherText(disabled: string[], order: string[]): string | null {
-  for (const p of active(disabled, order)) { const t = p.searchQuery?.typed && p.searchQuery.launcher?.(); if (t) return t }
+export function launcherText(disabled: string[]): string | null {
+  for (const p of active(disabled)) { const t = p.searchQuery?.typed && p.searchQuery.launcher?.(); if (t) return t }
   return null
 }
 

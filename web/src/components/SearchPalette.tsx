@@ -46,7 +46,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const { node, error } = useMemo(() => readQuery(q), [q])
   const plain = !node || isPlain(node)
   const opened = useRecentFiles()
-  const { fileIcons, disabled, order } = usePrefs()
+  const { fileIcons, disabled } = usePrefs()
   const [limit, setLimit] = useState(PAGE)
   useEffect(() => setLimit(PAGE), [q])
   const named = useMemo(() => (!q.trim() ? suggestions(docs, opened) : plain && !error ? search(docs, q, Infinity) : []), [docs, q, plain, error, opened])
@@ -66,9 +66,9 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     return () => { on = false; clearTimeout(t) }
   }, [q, node, plain, limit])
   const queried = useQueried(plain && !error ? q : "")
-  const typed = useMemo(() => (plain && !error ? typedHits(q, disabled, order) : []), [q, plain, error, disabled, order])
+  const typed = useMemo(() => (plain && !error ? typedHits(q, disabled) : []), [q, plain, error, disabled])
   // (a launcher whose plugin opens nothing here, the web app's Browser, is the switcher with a new tab's picks)
-  const lead = launcher ? launcherText(disabled, order) : null
+  const lead = launcher ? launcherText(disabled) : null
   // The search tab with everything, the same row while the query is (results arriving don't draw it again).
   const everything = useMemo<Hit>(() => {
     const query = q.trim()

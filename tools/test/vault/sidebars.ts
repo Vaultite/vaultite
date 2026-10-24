@@ -14,7 +14,7 @@ export default async ($: VaultTest) => {
     pj.sidebars.left[0] === "search:search" && !pj.sidebars.left.includes("backlinks:links") && pj.panels.find((x: Any) => x.key === "backlinks:links").side === null, cr.out)
   cr = await vau("panels", "move", "terminals", "top")
   check("vau panels move: sidebars.json is written whole", cr.code === 0 && left()[0] === "terminal:sessions" && Array.isArray(sb().right) && Array.isArray(sb().collapsed) && left().length === pj.sidebars.left.length, [cr, sb()])
-  check("vau panels move: plugins.json stays as it was", conf("plugins").custom === 1 && conf("plugins").disabled[0] === "random-note" && conf("plugins").order[0] === "people", conf("plugins"))
+  check("vau panels move: plugins.json stays as it was", conf("plugins").custom === 1 && conf("plugins").disabled[0] === "random-note", conf("plugins"))
   await vau("panels", "move", "file tree", "2")
   check("vau panels move: friendly names and positions", left()[1] === "files:files", left())
   await vau("panels", "move", "files", "down")

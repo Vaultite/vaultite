@@ -32,7 +32,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentSessions({ src, options, fm })`: What's open now (working or idle), then the latest sessions (`recent: 5`).
 - `AgentSessionSummary`
 - `AgentShare`
-- `agentsOn(disabled?, order?)`: The coding agents of the plugins that are on, in the plugins' order.
+- `agentsOn(disabled?)`: The coding agents of the plugins that are on, in the plugins' order.
 - `AgentSource`: Which agent, and where its plugin answers.
 - `AgentUsage`
 - `AgentUsageBlock({ src, options, fm })`: Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`).

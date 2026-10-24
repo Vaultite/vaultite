@@ -53,9 +53,9 @@ const intoHint = (side: Side) => {
 export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { head?: React.ReactNode
   /** The left sidebar or the right one: each draws its own panels, and takes panels dropped on it. */
   side?: Side }) {
-  const { disabled, order, sidebarScroll, panelDividers } = usePrefs()
+  const { disabled, sidebarScroll, panelDividers } = usePrefs()
   const setup = useSidebars()
-  const panels = (ctx.phone ? drawerPanels : panelsIn)(side, setup, disabled, order)
+  const panels = (ctx.phone ? drawerPanels : panelsIn)(side, setup, disabled)
   // Each panel scrolls in its own box, under a divider that sets its height, or the sidebar scrolls them all as one
   // (appearance.json `sidebarScroll`: Settings > Appearance). Phones' drawers scroll as one: a finger has no divider to drag.
   const own = sidebarScroll !== "sidebar" && !ctx.phone
@@ -267,15 +267,15 @@ export const panelIcon = ({ panel, plugin }: PanelOf) => (panel.flyout?.icon ?? 
 /** Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`). In a
  *  panel (`key`): its own `menu`, Open in a tab, a Panels submenu, Move to the other sidebar and Hide. */
 export function panelMenu(key?: string, side?: Side): MenuItem[] {
-  const { disabled, order } = getPrefs()
+  const { disabled } = getPrefs()
   const s = sidebars()
   const here: Side = side ?? (key ? sideOf(key, s) : null) ?? "left"
   const other: Side = here === "left" ? "right" : "left"
-  const all = sidebarPanels(disabled, order)
+  const all = sidebarPanels(disabled)
   const choice = (p: PanelOf, hint?: string): CheckItem => ({ key: p.key, label: p.panel.title, icon: panelIcon(p), hint })
   const list = checklist(`panels:${here}`, {
-    on: panelsIn(here, s, disabled, order).map((p) => choice(p)),
-    off: [all.filter((p) => !sideOf(p.key, s)).map((p) => choice(p)), panelsIn(other, s, disabled, order).map((p) => choice(p, `${other === "left" ? "Left" : "Right"} sidebar`))],
+    on: panelsIn(here, s, disabled).map((p) => choice(p)),
+    off: [all.filter((p) => !sideOf(p.key, s)).map((p) => choice(p)), panelsIn(other, s, disabled).map((p) => choice(p, `${other === "left" ? "Left" : "Right"} sidebar`))],
     set: (k, on, before) => (!on ? hidePanel(k) : before ? dockPanel(k, { side: here, before }) : dockAtEnd(k, here)),
   })
   list.push({ label: "Customize sidebars…", icon: SlidersHorizontal, sep: true, run: () => openDetail("sidebars") })
@@ -298,8 +298,8 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
 
 /** The sidebar header's menu: the sidebar's, with Header ▸ ticking which plugins' items it shows (few: no More). */
 export function headerMenu(): MenuItem[] {
-  const { disabled, order } = getPrefs()
-  const all = headerItems(disabled, order), shown = new Set(shownHeaderItems(disabled, order).map((x) => x.key))
+  const { disabled } = getPrefs()
+  const all = headerItems(disabled), shown = new Set(shownHeaderItems(disabled).map((x) => x.key))
   const menu = panelMenu()
   if (!all.length) return menu
   const items: MenuItem[] = all.map((x) => ({ label: x.plugin.name, icon: x.plugin.icon, checked: shown.has(x.key), keep: true,

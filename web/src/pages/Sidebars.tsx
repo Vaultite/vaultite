@@ -29,13 +29,13 @@ const named = (side: Side) => (side === "left" ? "Left sidebar" : "Right sidebar
 const carried = (item: DragItem) => (item.from === "row" && item.drawn && item.panel) || null
 
 export function SidebarsSheet() {
-  const { disabled, order, rails } = usePrefs()
+  const { disabled, rails } = usePrefs()
   const setup = useSidebars()
   const [query, setQuery] = useState("")
-  const all = sidebarPanels(disabled, order)
+  const all = sidebarPanels(disabled)
   const lists = {
-    left: panelsIn("left", setup, disabled, order),
-    right: panelsIn("right", setup, disabled, order),
+    left: panelsIn("left", setup, disabled),
+    right: panelsIn("right", setup, disabled),
     hidden: all.filter((p) => !sideOf(p.key, setup)).sort((a, b) => byTitle.compare(a.panel.title, b.panel.title)),
   }
   const shows = (p: PanelOf) => !query || !!fuzzy(query, [p.panel.title, ...(p.panel.names ?? [])].join(" "))

@@ -16,8 +16,8 @@ const CORE: Record<string, TextSizeKind> = { note: { label: "Note", sub: "Notes'
 export const STEPS = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 170, 200, 250, 300]
 
 /** The kinds there are now: the core's, then the plugins' that are on, by id. */
-export function textSizeKinds(disabled: string[], order: string[]): [string, TextSizeKind][] {
-  return [...Object.entries(CORE), ...active(disabled, order).flatMap((p) => Object.entries(p.textSizes ?? {}))]
+export function textSizeKinds(disabled: string[]): [string, TextSizeKind][] {
+  return [...Object.entries(CORE), ...active(disabled).flatMap((p) => Object.entries(p.textSizes ?? {}))]
 }
 
 const pref = (kind: string) => devicePref<number>(`textSize:${kind}`, 100)
@@ -51,9 +51,9 @@ const WORDS = "font zoom bigger smaller"
 export const quickTextSizeSub = () => `Or ${keyHint("Mod")} and scroll, over a note or terminal`
 
 /** Each kind's three commands, for the palette (no keys by default). */
-export function textSizeCommands(disabled: string[], order: string[]) {
+export function textSizeCommands(disabled: string[]) {
   return [
-    ...textSizeKinds(disabled, order).flatMap(([kind, k]) => {
+    ...textSizeKinds(disabled).flatMap(([kind, k]) => {
       const name = k.label.toLowerCase()
       return [
         { id: `text-size:${kind}:increase`, name: `Increase ${name} text size`, run: () => stepTextSize(kind, 1), icon: AArrowUp, words: WORDS },

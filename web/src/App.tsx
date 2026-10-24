@@ -218,9 +218,9 @@ export default function App() {
   const lingering = useLingeringSheet()
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
-  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, typingFade, disabled, enabled, order, sidebarHeader } = usePrefs()
+  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, typingFade, disabled, enabled, sidebarHeader } = usePrefs()
   // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
-  const home = store ? homeTab(store, disabled, order) : null
+  const home = store ? homeTab(store, disabled) : null
   const isFileTab = tab.startsWith("file/") || tab === "file"
   const isViewTab = tab.startsWith("view/")
   const isNewTab = tab === "new"
@@ -422,14 +422,14 @@ export default function App() {
   const pluginsVersion = usePluginsVersion()
   // Plugins' background work, drawn again when the store changes (it listens to the rest itself): a tab switched or a
   // sidebar shown redraws none of it. One that throws stops alone (its error goes to Errors).
-  const running = useMemo(() => store && backgrounds(disabled, order).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>),
+  const running = useMemo(() => store && backgrounds(disabled).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [store, disabled.join(), enabled.join(), order.join(), pluginsVersion])
+    [store, disabled.join(), enabled.join(), pluginsVersion])
   useCommands(() => pluginCommands(disabled), [disabled.join(), enabled.join(), pluginsVersion])
   // "Open <Name> settings": each plugin's settings sheet, while it's on and has some (core/pluginSettings.ts).
   useCommands(settingsCommands, [disabled.join(), enabled.join(), pluginsVersion])
   // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the app's zoom (core/textsize.ts).
-  useCommands(() => textSizeCommands(disabled, order), [disabled.join(), enabled.join(), order.join()])
+  useCommands(() => textSizeCommands(disabled), [disabled.join(), enabled.join()])
   // Every on/off setting, the app's and the plugins' (core/switches.ts).
   useCommands(() => [...allSwitches(disabled).map(switchCommand), ...choiceCommands(disabled)], [disabled.join(), enabled.join(), pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it.
@@ -437,10 +437,10 @@ export default function App() {
   // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).
   const hideLeft = desktop && !popout && !rails && !sidebar
   const side = popout || hideLeft ? "0px" : sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)
-  const header = shownHeaderItems(disabled, order, sidebarHeader)
+  const header = shownHeaderItems(disabled, sidebarHeader)
   // The right sidebar is there while
   // panels are in it; with none it takes no room, only its dimmed toggle (a click opens it empty to drop panels in).
-  const rightCount = panelsIn("right", useSidebars(), disabled, order).length
+  const rightCount = panelsIn("right", useSidebars(), disabled).length
   const [emptyRight, setEmptyRight] = useState(false)
   const hasRight = rightCount > 0
   useEffect(() => { if (hasRight) setEmptyRight(false) }, [hasRight])

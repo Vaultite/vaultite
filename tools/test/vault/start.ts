@@ -78,7 +78,7 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(path.join(older, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["codex", "clipper"], enabled: ["people"], order: ["people"] }))
     await open(older)
     const op = conf(older, "plugins")
-    check("migrated: the ones that became opt-in and were on are in enabled, the others' lists as they were", op.disabled.join() === "clipper" && op.order.join() === "people" &&
+    check("migrated: the ones that became opt-in and were on are in enabled, the others' lists as they were", op.disabled.join() === "clipper" && !("order" in op) &&
       op.enabled.join() === ["people", ...STILL.filter((id) => id !== "codex")].join(), op)
     fs.writeFileSync(path.join(older, ".vaultite/plugins.json"), JSON.stringify({ ...op, enabled: ["people"] }))
     await open(older)
@@ -115,6 +115,17 @@ export default async ($: VaultTest) => {
     check("migrated: a saved status bar list has the file's items after its own", conf(bar, "appearance")?.statusBar?.join() === `inbox:new,${FILE}` && conf(bar, "appearance")?.theme === "dark", conf(bar, "appearance"))
     check("migrated: a saved bundle's too, an unset one left unset", conf(bar, "bundles/mine/appearance")?.statusBar?.join() === FILE && conf(bar, "bundles/other/appearance")?.statusBar === null,
       [conf(bar, "bundles/mine/appearance"), conf(bar, "bundles/other/appearance")])
+    // plugins.json's saved order is gone: the vault's, a saved bundle's and the setup a restore puts back.
+    const ordered = path.join(tmp, "Ordered before")
+    const putOrder = (rel: string, o: unknown) => { fs.mkdirSync(path.dirname(path.join(ordered, rel)), { recursive: true }); fs.writeFileSync(path.join(ordered, rel), JSON.stringify(o)) }
+    putOrder(".vaultite/plugins.json", { disabled: ["clipper"], order: ["people", "terminal"], updatesOff: ["lighthouse"] })
+    putOrder(".vaultite/bundles/mine/plugins.json", { enabled: ["people"], order: ["people"] })
+    putOrder(".vaultite/bundles/previous.json", { bundle: "mine", name: "Mine", at: "2026-10-01", config: { plugins: { disabled: null, order: ["people"] } }, absent: [] })
+    await open(ordered)
+    const oc = conf(ordered, "plugins")
+    check("migrated: plugins.json's order is gone, its other keys kept", !("order" in oc) && oc.disabled.join() === "clipper" && oc.updatesOff.join() === "lighthouse", oc)
+    check("migrated: a saved bundle's and a restore's too", JSON.stringify(conf(ordered, "bundles/mine/plugins")) === '{"enabled":["people"]}' &&
+      JSON.stringify(conf(ordered, "bundles/previous")?.config) === '{"plugins":{"disabled":null}}', [conf(ordered, "bundles/mine/plugins"), conf(ordered, "bundles/previous")])
     // Kinds' stamps were UTC: now the vault's local time, a user's own time keys left as they were.
     const stamped = path.join(tmp, "Stamped before")
     fs.mkdirSync(path.join(stamped, ".vaultite"), { recursive: true })
