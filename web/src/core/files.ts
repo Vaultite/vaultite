@@ -27,8 +27,8 @@ export type VaultFile = {
   path: string; type: string | null; kind: string | null; title: string; aliases: string[]
   /** Modified and created (ms). */
   mtime: number; ctime: number; size: number
-  /** Every [[link]] in it: [target, the line it's on]. */
-  links: [string, string][]
+  /** Every [[link]] in it, its target as written (the lines they're on: GET /api/file/linked). */
+  links: string[]
   problems: number
   /** Its ```block-<name> fences: [name, options text]. */
   blocks: [string, string][]

@@ -61,7 +61,7 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
 }
 
 /** The first `n` characters, an ellipsis saying when there were more. */
-const chars = (s: string, n: number) => { const c = [...s]; return c.length > n ? `${c.slice(0, n).join("")}…` : s }
+const chars = (s: string, n: number) => { if (s.length <= n) return s; const c = [...s]; return c.length > n ? `${c.slice(0, n).join("")}…` : s }
 
 /** A line as search shows it: without its list mark, task box, quote or heading marks, up to 200 characters, from a
  *  little before the match (`at`, an index in the line) when that's further in, so it's in what's shown. */
@@ -87,7 +87,8 @@ function mdTarget(vault: Vault | null, rel: string, href: string) {
   return t.replace(/^(\.\.?\/)+/, "").replace(/\.md$/i, "")
 }
 
-/** [target, the line it's on] for every wikilink in a file (body and frontmatter values), and Markdown links to notes. */
+/** [target, the line it's on] for every wikilink in a file (body and frontmatter values), and Markdown links to notes;
+ *  the line as written (`context` makes it the one shown). */
 function linksOf(e: Entry, vault: Vault | null = null) {
   const out: [string, string][] = []
   let fence: string | null = null
@@ -99,12 +100,12 @@ function linksOf(e: Entry, vault: Vault | null = null) {
     }
     if (fence) continue // a link in code is just text
     const text = line.replace(CODE, "")
-    for (const m of text.matchAll(WIKI())) out.push([m[1].trim(), context(line)])
-    if (text.includes("](")) for (const m of text.matchAll(MDLINK())) out.push([mdTarget(vault, e.rel, m[1] ?? m[2]), context(line)])
+    for (const m of text.matchAll(WIKI())) out.push([m[1].trim(), line])
+    if (text.includes("](")) for (const m of text.matchAll(MDLINK())) out.push([mdTarget(vault, e.rel, m[1] ?? m[2]), line])
   }
   for (const [k, v] of Object.entries(e.fm)) {
     for (const s of Array.isArray(v) ? v : [v]) {
-      if (typeof s === "string") for (const m of s.matchAll(WIKI())) out.push([m[1].trim(), `${k}: ${context(s)}`])
+      if (typeof s === "string") for (const m of s.matchAll(WIKI())) out.push([m[1].trim(), `${k}: ${s}`])
     }
   }
   return out
@@ -122,7 +123,7 @@ function row(vault: Vault, rel: string, e: Entry): Item {
     ...look,
     path: rel, type: e.type, kind: e.kind ? e.kind.collection : null, title: typeof title === "string" ? title : String(title),
     aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String),
-    mtime: ms(e.stat.ns), ctime: e.stat.born, size: e.stat.size, links: linksOf(e, vault),
+    mtime: ms(e.stat.ns), ctime: e.stat.born, size: e.stat.size, links: linksOf(e, vault).map(([t]) => t),
     problems: e.problems.length,
     ...(e.archived ? { archived: true } : {}),
     // Frontmatter tags and inline #tags (the Tags panel, the tag sheet)
@@ -660,6 +661,22 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
   }
 }
 
+/** The files linking to `rel`, each with the line its first link there is on (the Links panel's linked mentions: the
+ *  tree has only links' targets). Only links whose target names it (its name, an alias) are resolved. */
+function linkedLines(vault: Vault, rel: string): Record<string, string> {
+  const files = tree(vault).files, aliases = (files.find((f) => f.path === rel)?.aliases ?? []) as string[]
+  const names = new Set([stemOf(rel), ...aliases].map((n) => n.toLowerCase()))
+  const named = (t: string) => { const k = t.split("#")[0].split("^")[0].trim().toLowerCase(); return names.has(k) || names.has(k.slice(k.lastIndexOf("/") + 1)) }
+  const out: Record<string, string> = {}
+  for (const f of files) {
+    if (f.path === rel || !(f.links as string[]).some(named)) continue
+    const e = vault.entries.get(f.path)
+    const hit = e && linksOf(e, vault).find(([t]) => named(t) && vault.resolveLink(t, f.path) === rel)
+    if (hit) out[f.path] = context(hit[1])
+  }
+  return out
+}
+
 /** The file routes, or undefined if the request isn't one of them. */
 export async function handle(vault: Vault, method: string, parts: string[], query: Record<string, string>, body: Item): Promise<unknown> {
   const route = parts.join("/")
@@ -673,6 +690,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     return query.total === "1" ? found : found.results
   }
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
+  if (route === "file/linked" && method === "GET") return { lines: linkedLines(vault, clean(query.path, false, vault, true)) }
   if (route === "file") {
     if (method === "GET") {
       const rel = clean(query.path, false, vault, true)

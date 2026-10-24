@@ -40,8 +40,10 @@ export default async ($: VaultTest) => {
   let tr: Any
   ;[, tr] = await api("GET", "files")
   const seeLine = t.split("\n").find((l) => l.startsWith("See"))
-  check("tree lists files, links and folders", tr.files.some((x: Any) => x.path === "Notes/Linker.md" && x.links.some((l: Any) => l[0] === "Renamed" && l[1] === seeLine))
+  check("tree lists files, links and folders", tr.files.some((x: Any) => x.path === "Notes/Linker.md" && x.links.includes("Renamed"))
     && tr.folders.includes("Notes"), tr.files.filter((x: Any) => x.path === "Notes/Linker.md"))
+  const [, ll] = await api("GET", "file/linked?path=Notes/Renamed.md")
+  check("file/linked: each file linking here with the line its link is on", ll.lines["Notes/Linker.md"] === seeLine, ll)
   write("Img/Shot one.png", "png")
   write("Notes/Pics.md", '---\ncover: "[[Shot one.png]]"\n---\n![[Shot one.png]] ![[Shot one.png|300]] [[Img/Shot one.png]] ![a](../Img/Shot%20one.png)\nnot `[[Shot one.png]]`\n```\n![[Shot one.png]]\n```\n')
   ;[, r] = await api("POST", "file/move", { from: "Img/Shot one.png", to: "Img/Words.jpeg" })

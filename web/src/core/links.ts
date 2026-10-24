@@ -241,14 +241,13 @@ export function shortestLink(s: Store, path: string, from?: string): string {
  *  another folder. */
 const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
 
-/** Files that link to something (a note, a person), each with the line the link sits on. */
+/** Files that link to something (a note, a person), newest first. */
 export function mentions(s: Store, is: (t: Target) => boolean, except?: string) {
   const resolve = resolver(s)
-  const out: { file: VaultFile; title: string; context: string }[] = []
+  const out: { file: VaultFile; title: string }[] = []
   for (const f of s.files?.files ?? []) {
     if (f.path === except) continue
-    const hit = f.links.find(([t]) => { const r = resolve(t, f.path); return !!r && is(r) })
-    if (hit) out.push({ file: f, title: stem(f.path), context: plainText(hit[1]).trim() })
+    if (f.links.some((t) => { const r = resolve(t, f.path); return !!r && is(r) })) out.push({ file: f, title: stem(f.path) })
   }
   return out.sort((a, b) => b.file.mtime - a.file.mtime)
 }

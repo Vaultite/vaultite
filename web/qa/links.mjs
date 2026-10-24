@@ -55,6 +55,7 @@ try {
   await page.waitForSelector("aside [data-links-panel]")
   check("the Links panel is in the sidebar", !!(await page.$("aside [data-panel='backlinks:links']")))
   check("linked mentions: Linker", await until(async () => (await count("linked")) === 1 && !!(await page.$(`${group("linked")} [data-link-item='Linker']`)), 8000))
+  check("a linked mention shows the line its link is on", await until(async () => (await page.$eval(`${group("linked")} [data-link-item='Linker']`, (e) => e.textContent)).includes("Links to Beacon here."), 8000))
   check("unlinked mentions: Mention (any case)", await until(async () => (await count("unlinked")) === 1, 8000), await count("unlinked").catch(() => null))
   check("outgoing: none", (await count("outgoing")) === 0)
   await shot(page, "1-links-panel")

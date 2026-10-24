@@ -15,9 +15,9 @@ await api("config/plugins", { method: "PATCH", body: JSON.stringify({ enabled: [
 const state = await api("state")
 const notes = state.files.files.filter((f) => f.path.startsWith("Notes/") && f.path.endsWith(".md"))
 const names = new Set(notes.map((f) => f.path.slice(6, -3)))
-const from = notes.find((f) => f.links.some(([t]) => names.has(t)))
+const from = notes.find((f) => f.links.some((t) => names.has(t)))
 if (!from) { console.error("needs a note in Notes/ linking to another"); process.exit(2) }
-const target = from.links.find(([t]) => names.has(t))[0]
+const target = from.links.find((t) => names.has(t))
 const targetPath = `Notes/${target}.md`
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })

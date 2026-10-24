@@ -10,7 +10,7 @@ import { siteOf } from "./weblinks"
 
 type Mention = { path: string; line: string; nth: number; col: number; len: number; text: string }
 type Unlinked = { total: number; files: number; mentions: Mention[] }
-type Out = { key: string; title: string; context: string; file?: string; detail?: string }
+type Out = { key: string; title: string; file?: string; detail?: string }
 
 const isMd = (p: string) => /\.md$/i.test(p)
 /** Unlinked mentions come this many more at a time, as the list is scrolled to its end. */
@@ -24,11 +24,11 @@ function useLinks(store: Store, path: string) {
     if (!f) return []
     const resolve = resolver(store)
     const seen = new Map<string, Out>()
-    for (const [t, context] of f.links) {
+    for (const t of f.links) {
       const r = resolve(t, path)
       const key = r ? r.file || r.detail || r.id : `?${t.split("#")[0].trim().toLowerCase()}`
       if (r?.file === path || seen.has(key)) continue
-      seen.set(key, { key, title: r ? (r.file ? stem(r.file) : r.title) : t.split("#")[0].trim(), context: snippet(context), file: r?.file, detail: r?.detail || undefined })
+      seen.set(key, { key, title: r ? (r.file ? stem(r.file) : r.title) : t.split("#")[0].trim(), file: r?.file, detail: r?.detail || undefined })
     }
     // Resolved first, then the ones that go nowhere yet.
     return [...seen.values()].sort((a, b) => Number(!a.file && !a.detail) - Number(!b.file && !b.detail))
@@ -42,7 +42,9 @@ function useLinks(store: Store, path: string) {
   const { data } = useLive<Unlinked>(path && isMd(path) ? `backlinks/unlinked?path=${encodeURIComponent(path)}&limit=${limit}` : null, v)
   const unlinked = path && isMd(path) ? data ?? null : { total: 0, files: 0, mentions: [] }
   const more = () => { if (data && data.mentions.length < data.total && data.mentions.length >= limit) setLimit(limit + PAGE) }
-  return { linked, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
+  // The line each linked mention is on (the store has only links' targets).
+  const lines = useLive<{ lines: Record<string, string> }>(path && linked.length ? `file/linked?path=${encodeURIComponent(path)}` : null, v).data?.lines
+  return { linked, lines, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
 }
 
 function Item({ icon: Icon, title, context, faint, onOpen, action, tip, path }: {
@@ -103,7 +105,7 @@ function Looking({ count }: { count: number }) {
 
 /** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
 export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
-  const { linked, outgoing, unlinked, more, refresh } = useLinks(store, path)
+  const { linked, lines, outgoing, unlinked, more, refresh } = useLinks(store, path)
   const [busy, setBusy] = useState("")
   const looking = useKeptCount(`links:unlinked:${path}`, unlinked ? unlinked.mentions.length : undefined, 0, 6)
   const open = (p: string, e?: { metaKey: boolean; ctrlKey: boolean }) => openFile(p, { newTab: !!(e?.metaKey || e?.ctrlKey), pane })
@@ -117,8 +119,8 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   return (
     <div className="flex flex-col" data-links-for={path}>
       <Foldable data-links-group="linked" keep="links.linked" title="Linked mentions" count={linked.length}>
-        {linked.length ? linked.map(({ file, title, context }) => (
-          <Item key={file.path} icon={FileText} title={title} context={context} onOpen={() => open(file.path)} path={file.path} />
+        {linked.length ? linked.map(({ file, title }) => (
+          <Item key={file.path} icon={FileText} title={title} context={lines?.[file.path] && snippet(lines[file.path])} onOpen={() => open(file.path)} path={file.path} />
         )) : empty("Nothing links here yet.")}
       </Foldable>
       <Foldable data-links-group="unlinked" keep="links.unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>

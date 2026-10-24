@@ -298,7 +298,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `markdownDrawn(el)`
 - `markdownHtml(text, { inline, from }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for…
 - `markNew(path)`
-- `mentions(s, is, except?)`: Files that link to something (a note, a person), each with the line the link sits on.
+- `mentions(s, is, except?)`: Files that link to something (a note, a person), newest first.
 - `menuAbove(e, items)`: For a button at the bottom (the status bar): the menu above it.
 - `menuBelow(e, items)`: For a … button: the menu under it.
 - `menuFor(items)`: For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's).
