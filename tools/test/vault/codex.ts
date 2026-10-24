@@ -62,8 +62,8 @@ export default async ($: VaultTest) => {
     const { service } = await import("../../../core/plugins.ts")
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-codex-")), work = path.join(dir, "beacon")
     fs.mkdirSync(work)
-    fs.symlinkSync(fs.existsSync("/bin/sleep") ? "/bin/sleep" : "/usr/bin/sleep", path.join(dir, "codex")) // (macOS kills a copy)
-    const proc = spawn(path.join(dir, "codex"), ["30"], { cwd: work, stdio: "ignore" })
+    // (named by argv0: macOS kills a copy of sleep, and uutils' sleep, Ubuntu's, won't run by another name)
+    const proc = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { argv0: path.join(dir, "codex"), cwd: work, stdio: "ignore" })
     const term = app.plugins.find((p) => p.id === "terminal")!, was = term.services["terminal:of"]
     term.services["terminal:of"] = async (pid: number) => (pid === proc.pid ? "codex-b3ac0n01" : null)
     try {

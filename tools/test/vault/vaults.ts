@@ -26,7 +26,7 @@ export default async ($: VaultTest) => {
   check("vaults: a drive, a cloud drive and a folder outside home can be", ["/Volumes/Drive/Notes", "/run/media/alice/Drive/Notes",
     "/mnt/data/Notes", path.join(home, "Library", "Mobile Documents", "com~apple~CloudDocs", "Notes")].every((p) => vaultsMod.refused(p, { vault: true }) === null))
   {
-    const outside = fs.mkdtempSync(process.platform === "darwin" ? "/private/tmp/vaults-" : path.join(os.tmpdir(), "vaults-"))
+    const outside = fs.mkdtempSync(process.platform === "darwin" ? "/private/tmp/vaults-" : "/tmp/vaults-") // (not $TMPDIR: /var/tmp is a system folder)
     vr = await vh("POST", "open", {}, { path: outside })
     check("vaults: a folder outside home opens", opened.at(-1) === outside, vr)
     vr = await vh("GET", "folders", { path: "/" })
