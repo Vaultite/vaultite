@@ -350,7 +350,12 @@ function useBarDrops(barRef: RefObject<HTMLElement | null>, itemsRef: RefObject<
     if (!item.status || !bar || !box || el?.closest("[data-status-tray], [data-status-more]")) return null
     const b = bar.getBoundingClientRect(), f = box.getBoundingClientRect()
     if (x < f.left - 24 || x > b.right || y < b.top - 24 || y > b.bottom) return null
+    // (measured without the gap one from the tray opens: the bar grows to the left for it, so its items would move under
+    // a still pointer and the slot be the next one)
+    const coming = box.querySelector<HTMLElement>(`:scope > [data-slide="${INCOMING}"]`)
+    if (coming) coming.style.display = "none"
     const at = slots(box), { order, before, same } = reorder(at.map((el) => el.dataset.statusKey!), [item.status], slotAt(box, at, x, y, "x"))
+    if (coming) coming.style.display = ""
     // (where it is already: nothing to do)
     return same ? null : { before, order }
   }, (item, g) => moveBarItem(item.status!, g.before, false))

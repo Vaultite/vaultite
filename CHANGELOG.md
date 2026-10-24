@@ -17,6 +17,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   now, not "Co".
 - **Plugins follow moves and answer their ops**: `onMove` hears a file or folder renamed, moved or trashed in the app,
   and `answers` answers what a plugin's ops ask the user's window (`ctx.ui({action: "<plugin id>:<name>"})`).
+- A status bar item dragged out of its tray onto the bar's first item lands first, no longer second.
 
 ## 0.8.0 (2026-10-24)
 

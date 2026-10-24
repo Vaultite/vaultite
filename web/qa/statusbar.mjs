@@ -105,11 +105,10 @@ try {
   const t = await box(`[data-status-tray] > [data-status-key="${moved[0]}"]`), b = await firstItem()
   // (the last drop's toast may sit over the tray, bottom right, until it goes: the item held, not the toast)
   await until(() => page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-status-tray]"), [t.x + t.width / 2, t.y + t.height / 2]), 10000)
-  // (over the bar, it opens a gap for the item and grows to the left: its first item is aimed at where it is then)
+  // (aimed at its first item as it was: the gap it opens grows the bar to the left, under a pointer that then stirs)
   await page.mouse.move(t.x + t.width / 2, t.y + t.height / 2); await page.mouse.down()
   await page.mouse.move(t.x + t.width / 2 + 8, t.y + t.height / 2, { steps: 3 }); await page.mouse.move(b.x + 2, b.y + b.height / 2, { steps: 12 }); await wait(300)
-  const b2 = await firstItem()
-  await page.mouse.move(b2.x + 2, b2.y + b2.height / 2, { steps: 4 }); await wait(300)
+  await page.mouse.move(b.x + 3, b.y + b.height / 2); await wait(300)
   await page.mouse.up(); await wait(400)
   check("out of the tray: back at the bar's start", (await keys())[0] === moved[0] && !!(await until(async () => !(await api("GET", "config/appearance")).statusBarMore?.includes(moved[0]))),
     { bar: await keys(), more: (await api("GET", "config/appearance")).statusBarMore })
