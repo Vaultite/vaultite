@@ -99,10 +99,10 @@ export function Panel({
   return (
     <section className={cn("glass rounded-[12px] p-4", className)}>
       {title && (
-        <div className="mb-3 flex items-center gap-1.5" style={{ color: tint ?? "var(--primary)" }}>
+        <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-2" style={{ color: tint ?? "var(--primary)" }}>
           {Icon && <Icon className="size-[18px]" strokeWidth={2.25} />}
           <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
-          {action && <div className="text-foreground">{action}</div>}
+          {action && <div className="ml-auto text-foreground">{action}</div>}
         </div>
       )}
       {children}
