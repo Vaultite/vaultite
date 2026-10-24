@@ -332,7 +332,8 @@ export function Settings({ store }: { store: Store }) {
   const typed = (v: string) => { setQuery(v); setPicked(null) }
   const items = menu(store, disabled)
   const setup = <SetupCard store={store} />
-  const list = (active: string | null) => <>{setup}<RailMenu label="Settings" items={items} active={active} pick={(id) => show(id)} data-settings-list="" /></>
+  const menuOf = (active: string | null) => <RailMenu label="Settings" items={items} active={active} pick={(id) => show(id)} data-settings-list="" />
+  const list = (active: string | null) => <>{setup}{menuOf(active)}</>
   return (
     <div data-settings>
       <RailLayout rail={rail} page={sec.id} title="Settings"
@@ -343,7 +344,9 @@ export function Settings({ store }: { store: Store }) {
           <div data-settings-section={sec.id}>
             <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
           </div>
-        ) : q ? <FoundList found={found} query={q} /> : list(null)}
+        ) : q ? <FoundList found={found} query={q} />
+          // (the page, a phone's or a narrow pane's: its rows a size up, as every page of the sidebar's lists)
+          : <>{setup}<div className="size-up-bleed"><div data-size-up>{menuOf(null)}</div></div></>}
       </RailLayout>
     </div>
   )

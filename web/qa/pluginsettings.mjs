@@ -4,7 +4,7 @@
 // arrows lighting one and Enter going there, and Setup's tabs; on Setup's Plugins tab a
 // gear (on plugins that are on and have settings) opens the sheet; generated forms write only the key changed; custom
 // panels (Pinned, File explorer), after the options; a data.json-only plugin (Logs); a vault plugin's declared
-// settings; every way to open a sheet; 390px. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
+// settings; every way to open a sheet; 390px, its rows a size up. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
 // (put back / removed): throwaway server only.
 //   node web/qa/pluginsettings.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -302,6 +302,8 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     await wait(500)
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
+    const navRow = await page.$eval("[data-settings-nav=general]", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), text: Math.round(parseFloat(getComputedStyle(e).fontSize) * (parseFloat(getComputedStyle(e.closest("[data-size-up]") ?? e).zoom) || 1)) } })
+    check("phone: Settings' rows a finger tall, 17px, as the phone's other lists", navRow.h >= 44 && navRow.text === 17, navRow)
     await page.locator("[data-settings-setup]").click()
     check("phone: Your setup goes to Setup's page, on Bundles", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))
     await until(() => page.locator("[data-setup-tab=plugins]").count(), 4000)
