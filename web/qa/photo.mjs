@@ -25,7 +25,8 @@ for (const p of await others()) if (/^Attachments\/(qa-photo|Pasted image \d)/.t
 await put(DESK, "Before.\n\nAfter.\n")
 await put(PHONE, "A note read on a phone.\n")
 
-const open = async (opts) => watch(await (await browser.newContext({ deviceScaleFactor: 1, ...opts })).newPage())
+// (pickers intercepted from the start: waitForEvent turns that on without waiting, so a quick act's picker could beat it)
+const open = async (opts) => { const p = await (await browser.newContext({ deviceScaleFactor: 1, ...opts })).newPage(); p.on("filechooser", () => {}); return watch(p) }
 /** The picker `act` opens, given `files`; what it asked for. */
 async function choose(page, act, files) {
   const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 15000 }), act()])
