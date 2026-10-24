@@ -73,11 +73,12 @@ export function load(text: string): unknown {
   return loadPlain(text) ?? loadKept(text)
 }
 
-/** What the YAML library made of documents (as JSON, by their text), and the ones read since this started: a server
- *  keeps them between starts (core/fmcache.ts), so a big vault's nested headers aren't parsed at every start. */
-export const readBefore = { json: new Map<string, string>(), used: new Set<string>(), added: 0 }
+/** While a server reads its vault at start (`on`), what the YAML library made of documents before (as JSON, by their
+ *  text) and the ones read: kept between starts (core/fmcache.ts), so a big vault's nested headers parse once. */
+export const readBefore = { on: false, json: new Map<string, string>(), used: new Set<string>(), added: 0 }
 
 function loadKept(text: string): unknown {
+  if (!readBefore.on) return loadYaml(text)
   const kept = readBefore.json.get(text)
   readBefore.used.add(text)
   if (kept !== undefined) return JSON.parse(kept)

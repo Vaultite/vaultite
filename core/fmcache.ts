@@ -8,19 +8,21 @@ import { readBefore } from "./yaml.ts"
 
 const fileFor = (vault: string) => path.join(LOCAL, "cache", `frontmatter-${crypto.createHash("sha1").update(path.resolve(vault)).digest("hex").slice(0, 12)}.json`)
 
-/** Load what was kept for this vault, then keep it up to date (written a minute after it grows). */
-export function keepReads(vault: string) {
+/** Load what was kept for this vault for the start's read of it; the function returned ends that, keeping what was read
+ *  (the vault's headers now) and letting go of the rest. */
+export function keepReads(vault: string): () => void {
   const file = fileFor(vault)
   try { for (const [text, json] of JSON.parse(fs.readFileSync(file, "utf8")) as [string, string][]) readBefore.json.set(text, json) } catch { /* none yet */ }
-  let saved = readBefore.added
-  setInterval(() => {
-    if (readBefore.added === saved) return
-    saved = readBefore.added
-    const out = [...readBefore.json].filter(([text]) => readBefore.used.has(text))
+  readBefore.on = true
+  return () => {
+    const { json, used, added } = readBefore
+    const out = added || used.size !== json.size ? [...json].filter(([text]) => used.has(text)) : null
+    Object.assign(readBefore, { on: false, json: new Map(), used: new Set(), added: 0 })
+    if (!out) return
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true })
       fs.writeFileSync(`${file}.tmp`, JSON.stringify(out))
       fs.renameSync(`${file}.tmp`, file)
     } catch (e) { console.error("keeping the frontmatter read:", e) }
-  }, 60_000).unref?.()
+  }
 }

@@ -937,7 +937,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the pages of the
   // plugins its pick turns on come when it picks its setup (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
-  if (start) keepReads(vaultPath)
+  const kept = start ? keepReads(vaultPath) : null
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
@@ -946,6 +946,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
     B.tidy(app.vault)
     await turn()
     await app.vault.sync()
+    kept?.()
     timing?.mark("vault read")
     if (fresh) await setUpNew(app.host()).catch((e) => console.error("setting up the new vault:", e))
     // (in the background: it waits on the network)
