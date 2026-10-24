@@ -6,6 +6,58 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.8.0 (2026-10-24)
+
+Vaultite for Windows, a Browser bundle with spaces, tab groups like Chrome's and tabs that archive themselves,
+the quick switcher as the browser's command bar, and a much lighter app: big vaults keep up with edits, typing and
+scrolling redraw a fraction of what they did.
+
+- **Vaultite for Windows**: an installer for x64 and Arm (no administrator needed: it installs for you, in the Start
+  menu), and Vaultite Nightly's beside it; each updates itself from the release feed. The window is a Windows one, its
+  controls over the page's top-right corner in the page's colours, its menus on Alt; .md files and vaultite:// links
+  open in it. Set up puts vau on your PATH for PowerShell, cmd and Git Bash; `vau wsl install` puts it in WSL's
+  distros, where it reaches the app on Windows; `vau service` runs the server at login as a scheduled task, with no
+  window; files open in their app and show in Explorer. `vau service status` says whether the service runs.
+- **Terminals on Windows**: PowerShell by default, or Windows PowerShell, Command Prompt, Git Bash or a WSL distro
+  (Terminal settings, Shell), each with `vau` on its path; shells outlive the server there too, and Claude Code and
+  Codex start from any of them, their state shown as on a Mac.
+- **A Browser bundle**: built in beside Standard and Zen, the app as a web browser first: your favourite pages as
+  tiles over vertical tabs, ⌘T an address bar that finds anything, spaces, tabs archived after 12 hours and the notes
+  about the page you're on. Life OS moved to Get bundles, beside Agents (a setup made with it stays as it is), and a
+  bundle from there leaves with its pages and snippets when you switch, as the built-in ones do.
+- **Workspaces are spaces**: each can have an icon and a colour, shown in the sidebar's switcher (the sidebars take a
+  little of the colour), and a Browser container its web pages open in; a two-finger swipe over a sidebar goes to the
+  next or previous one.
+- **Tab groups look and move like Chrome's**: solid chips in the group's colour, its tabs set in by its line in the
+  sidebar; folding shrinks the tabs into the chip, opening grows them back, and new or closed tabs in the Tabs panel
+  slide in and out. Its … or a right-click opens its editor: the name, typed live, and its colours, one click each.
+- **Tabs archive themselves**: with Tabs' Archive tabs (after 12 hours to 30 days), unpinned tabs you haven't looked at
+  close into Archived tabs, to reopen where they were or find in the quick switcher; never pinned ones, ones on screen,
+  terminals or unsaved edits.
+- **The quick switcher is the browser's command bar**: it finds your open web tabs (picking one goes to it), bookmarks and
+  history, and opens what you type as an address or searches the web for it. New tabs can open the switcher as a launcher
+  or a web page (Settings > Appearance > New tabs open, `vau newtab opens`).
+- **Translucent window**: in the Mac and Windows 11 apps, the desktop can show through the sidebars, the tab bar and the
+  status bar, blurred and in your colour scheme, while pages stay solid (Settings, Appearance; solid with Reduce
+  transparency).
+- **Big vaults keep up with edits**: in a 24,000-note vault the app loads a quarter of the data it did (the lines
+  links sit on come only for the Links panel, which keeps their room while they come); after an edit the server does a
+  sixth of the work to refresh it and a fifteenth for an open local graph (the graph updates only the edited files'
+  links), and an open graph view is sent only what changed. It starts sooner too: lists in properties as Obsidian
+  writes them, and nested ones read before, no longer go through the YAML library; renaming a note many others link to
+  takes a third of the time, a search half; the first click after a pause no longer waits while it looks the vault
+  over, nor, on Linux, does an agent's every read.
+- **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
+  header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
+  makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big
+  folder in the file tree restyles a sixth of what it did each step; switching tabs redraws an eighth less.
+- **An idle server stays idle late in the day**: the day's recap, made again every few minutes after a change (or
+  while Activity waits to be allowed to write it), reads only the work that's new since the last one, where it read
+  again every version of every file changed that day; a server's CPU while nothing happens no longer grows with how
+  busy the day has been.
+- **Snooze in the inbox**: a result or an agent's event can be put off (a phone's swipe, the clock button, a right-click:
+  in an hour, this evening, tomorrow, next week or a time you pick) and comes back on top when it's due, with a toast and
+  a phone notification; the Inbox page lists what's snoozed, to bring back early. `vau inbox snooze`.
 - **Dragging moves only what you drag**: where scrollbars take room (Linux, Windows, a Mac set to show them), Pinned's
   tiles no longer lose a column and jump when something dragged in makes their panel scroll, the tab strip no longer
   shows a scrollbar under its tabs, and a panel's scrollbar no longer comes and goes mid-drag; a sheet's scrollbar sits
@@ -26,47 +78,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   makes the bar leave out every other item, so it can go among them.
 - **The quick switcher lists every match**: scrolling down a long list of matches no longer stops partway, short of
   the rest and of the row that searches every file.
-- **Snooze in the inbox**: a result or an agent's event can be put off (a phone's swipe, the clock button, a right-click:
-  in an hour, this evening, tomorrow, next week or a time you pick) and comes back on top when it's due, with a toast and
-  a phone notification; the Inbox page lists what's snoozed, to bring back early. `vau inbox snooze`.
-- **A Browser bundle**: built in beside Standard and Zen, the app as a web browser first: your favourite pages as
-  tiles over vertical tabs, ⌘T an address bar that finds anything, spaces, tabs archived after 12 hours and the notes
-  about the page you're on. Life OS moved to Get bundles, beside Agents (a setup made with it stays as it is), and a
-  bundle from there leaves with its pages and snippets when you switch, as the built-in ones do.
-  about the page you're on. Life OS moved to Get bundles, beside Agents; a setup made with it stays as it is.
-- **Big vaults keep up with edits**: in a 24,000-note vault the app loads a quarter of the data it did (the lines
-  links sit on come only for the Links panel, which keeps their room while they come); after an edit the server does a
-  sixth of the work to refresh it and a fifteenth for an open local graph (the graph updates only the edited files'
-  links), and an open graph view is sent only what changed. It starts sooner too: lists in properties as Obsidian
-  writes them, and nested ones read before, no longer go through the YAML library; renaming a note many others link to
-  takes a third of the time, a search half; the first click after a pause no longer waits while it looks the vault
-  over, nor, on Linux, does an agent's every read.
-- **An idle server stays idle late in the day**: the day's recap, made again every few minutes after a change (or
-  while Activity waits to be allowed to write it), reads only the work that's new since the last one, where it read
-  again every version of every file changed that day; a server's CPU while nothing happens no longer grows with how
-  busy the day has been.
-- **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
-  header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
-  makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big
-  folder in the file tree restyles a sixth of what it did each step; switching tabs redraws an eighth less.
-- **Workspaces are spaces**: each can have an icon and a colour, shown in the sidebar's switcher (the sidebars take a
-  little of the colour), and a Browser container its web pages open in; a two-finger swipe over a sidebar goes to the
-  next or previous one.
-- **Tabs archive themselves**: with Tabs' Archive tabs (after 12 hours to 30 days), unpinned tabs you haven't looked at
-  close into Archived tabs, to reopen where they were or find in the quick switcher; never pinned ones, ones on screen,
-  terminals or unsaved edits.
-- **Tab groups look and move like Chrome's**: solid chips in the group's colour, its tabs set in by its line in the
-  sidebar; folding shrinks the tabs into the chip, opening grows them back, and new or closed tabs in the Tabs panel
-  slide in and out. Its … or a right-click opens its editor: the name, typed live, and its colours, one click each.
-- **Translucent window**: in the Mac and Windows 11 apps, the desktop can show through the sidebars, the tab bar and the
-  status bar, blurred and in your colour scheme, while pages stay solid (Settings, Appearance; solid with Reduce
-  transparency).
 - **Every dialog an agent waits on shows**: a Claude Code session waiting on any of its dialogs (a one-time question,
   a usage limit, not only a permission) is marked as needing you in Terminals and the inbox, no longer as working, and
   its choices show there to pick from, as its questions do.
-- **The quick switcher is the browser's command bar**: it finds your open web tabs (picking one goes to it), bookmarks and
-  history, and opens what you type as an address or searches the web for it. New tabs can open the switcher as a launcher
-  or a web page (Settings > Appearance > New tabs open, `vau newtab opens`).
 - **Links on web pages**: on a Browser tab the Links panel lists the notes about the page and those linking it, and
   other pages of its site your notes link; "Note on this page" (its … menu, or the panel) opens or makes its note.
 - **Close pane**: a pane's menu (right-click its bar, its strip or its title), the palette, ⌥⇧⌘W and an X by its handle
@@ -104,15 +118,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   tool through MCP), are approved or denied only in the app or on your phone, never by an agent or vau.
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's
   gone, a pane squeezed too thin comes back at an even share, and Open web page always opens a new tab.
-- **Terminals on Windows**: PowerShell by default, or Windows PowerShell, Command Prompt, Git Bash or a WSL distro
-  (Terminal settings, Shell), each with `vau` on its path; shells outlive the server there too, and Claude Code and
-  Codex start from any of them, their state shown as on a Mac.
-- **Vaultite for Windows**: an installer for x64 and Arm (no administrator needed: it installs for you, in the Start
-  menu), and Vaultite Nightly's beside it; each updates itself from the release feed. The window is a Windows one, its
-  controls over the page's top-right corner in the page's colours, its menus on Alt; .md files and vaultite:// links
-  open in it. Set up puts vau on your PATH for PowerShell, cmd and Git Bash; `vau wsl install` puts it in WSL's
-  distros, where it reaches the app on Windows; `vau service` runs the server at login as a scheduled task, with no
-  window; files open in their app and show in Explorer. `vau service status` says whether the service runs.
 - **No more rules ping-pong**: two machines on different versions sharing a vault no longer rewrite `.vaultite/AGENTS.md`
   back and forth; each writes it only when its own rules change.
 - **Agents' tabs stay**: short of memory, the browser no longer discards a tab an agent opened or one waiting on you,
@@ -123,6 +128,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the vault shows it in Finder instead of running it. A `vaultite://command` link (in a note or from another app) asks
   before running a command that does more than open something, and Vaultite Connect without owner tools can't turn
   plugins on or edit the agents' rules.
+- The desktop app is on Electron 44.9.3, which no longer trusts eMudhra's compromised intermediate certificates.
 - **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
   paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
