@@ -252,7 +252,7 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
   const upTo = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.rows.length, 0))
   const id = `query-cols:${useId()}`
   const table = useRef<HTMLTableElement>(null)
-  const drag = useDrag()
+  const lifted = useDrag((d) => d?.item)
   const hit = useDropHit<string>(id)
   useDropTarget<string>(id, (item, x, _y, el) => {
     if (item.from !== "column" || item.column?.table !== id || !el || !table.current?.contains(el)) return null
@@ -289,7 +289,7 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
                     onPointerDown={ctl ? (e) => startDrag(e, { from: "column", column: { table: id, key: c.key }, label: c.label }) : undefined}
                     onContextMenu={ctl ? menuFor(() => ctl.menu(c)) : undefined}
                     className={cn("relative py-1.5 pr-4 text-left font-normal last:pr-0",
-                      drag?.item.column?.table === id && drag.item.column.key === c.key && "opacity-50",
+                      lifted?.column?.table === id && lifted.column.key === c.key && "opacity-50",
                       hit === c.key && "shadow-[inset_2px_0_0_var(--primary)]", hit === "" && last && "shadow-[inset_-2px_0_0_var(--primary)]")}>
                     {ctl?.renaming === c.key ? (
                       <input autoFocus defaultValue={c.label} aria-label={`Name of ${c.label}`} data-query-rename={c.key}
@@ -498,7 +498,7 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
   const key = res.group!
   const id = `query-board:${useId()}`
   const box = useRef<HTMLDivElement>(null)
-  const drag = useDrag()
+  const lifted = useDrag((d) => d?.item)
   const hit = useDropHit<string>(id)
   const cols = useMemo(() => {
     const out: Col[] = groups.map((g) => ({ key: (g.name ?? "").toLowerCase(), name: g.name, value: g.value ?? g.name, rows: [] }))
@@ -555,7 +555,7 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
                     onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
                     onKeyDown={(e) => { if (e.key === "Enter") openFile(r.path) }}
                     className={cn("group relative min-w-0 cursor-pointer rounded-[8px] bg-card p-2.5 text-left shadow-sm ring-[0.5px] ring-border hover:bg-background",
-                      drag?.item.from === "row" && drag.item.path === r.path && "opacity-50")}>
+                      lifted?.from === "row" && lifted.path === r.path && "opacity-50")}>
                     <div className="truncate pr-6 text-[14px] font-medium">{r.title}</div>
                     {fields.some((f) => text(r.values[f.key])) && (
                       <div className="mt-1 space-y-0.5 text-[12px]">
@@ -604,7 +604,7 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
   const key = res.date!
   const id = `query-calendar:${useId()}`
   const box = useRef<HTMLDivElement>(null)
-  const drag = useDrag()
+  const lifted = useDrag((d) => d?.item)
   const hit = useDropHit<string>(id)
   const now = today()
   // The files by day, as edited here (a moved item shows on its new day at once).
@@ -639,7 +639,7 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
       onPointerDown={movable ? (e) => startDrag(e, { from: "row", path: r.path, label: r.title }) : undefined}
       onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })} data-tip={r.title} data-tip-trunc
       className={cn("block w-full min-w-0 cursor-pointer truncate rounded-[4px] px-1 text-left text-[12px] leading-[18px] hover:brightness-95",
-        drag?.item.from === "row" && drag.item.path === r.path && "opacity-50")}
+        lifted?.from === "row" && lifted.path === r.path && "opacity-50")}
       style={{ background: `color-mix(in srgb, ${TINT} 14%, transparent)` }}>
       {r.title}
     </button>

@@ -220,7 +220,7 @@ export function StatusBar() {
   const drawable = useMemo(() => bar.shown.filter((x) => x.ambient || open || held?.some(([k, w]) => k === x.key && w > 0)), [bar, open, held])
   const inBar = useMemo(() => drawable.filter((x) => !statusBarMore.includes(x.key)), [drawable, statusBarMore])
   const [tray, setTray] = useState(false)
-  const d = useDrag(), dragged = d?.item.status
+  const dragged = useDrag((d) => d?.item.status)
   // (the more button shows while one is tucked or dragged, else only when the fit leaves one out)
   const pinned = statusBarMore.some((k) => drawable.some((x) => x.key === k)) || !!dragged
   const over = useFit(rowRef, inBar.map((x) => x.key), pinned)

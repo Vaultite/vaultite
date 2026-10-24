@@ -339,7 +339,7 @@ function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: strin
 /** A set of logins in the Sites tab, a card in its colour: its heading and its sites; nothing while a filter matches none. */
 function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; openPage: Open; filter: string }) {
   const data = useSites(l.prof)
-  const lifted = useDrag()?.item.container === c?.id && !!c
+  const lifted = useDrag((d) => d?.item.container) === c?.id && !!c
   const q = filter.trim().toLowerCase()
   if (q && data.sites && !data.sites.some((s) => matches(s, q)) && !data.others.some((s) => matches(s, q)) && !(c?.sites ?? []).some((x) => x.includes(q))) return null
   const accounts = data.sites?.filter(isIn).length ?? 0

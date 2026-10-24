@@ -508,7 +508,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const open = multi ? panes.find((g) => g.id === opened && g.tabs.length > 1) ?? null : null
   const top = multi && !open
   useWorkspaceVersion()
-  const lifted = useDrag()?.item
+  const lifted = useDrag((d) => d?.item)
   const liftedId = lifted?.drawn && lifted.from === "tab" ? lifted.tab : undefined
   useFlip(box, !!liftedId)
 

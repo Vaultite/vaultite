@@ -8,7 +8,7 @@ import { folderOf, stem } from "@/core/files"
 import { fileAt } from "@/core/pages"
 import type { NewTabSection, SidebarPanel } from "@/core/define"
 import { available, commandList, keyHint, keysOf, runCommand, useCommandList, type Command } from "@/core/commands"
-import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
+import { startDrag, useDragItem, useDropHit, useDropTarget } from "@/core/drag"
 import { reorder, slotAt, useSlide } from "@/core/slide"
 import { commandIcon } from "@/core/pages"
 import { newTabSections, sidebarPanels } from "@/core/plugins"
@@ -67,7 +67,7 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
   const drawn = shown.map((s) => ({ s, el: body(s) })).filter((x) => x.el !== null)
   const list = useRef<HTMLDivElement>(null)
   useReorder(list, "sections")
-  const d = useDrag()
+  const item = useDragItem()
   // Right-click: change the page (on a section or a button, that one first).
   const onMenu = (e: MouseEvent) => {
     const t = e.target as HTMLElement
@@ -83,7 +83,7 @@ export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
         const heading = s.heading === false ? null : s.heading ?? s.title
         return (
           // Dragged by its heading (the page's, or the one a sidebar panel draws: data-panel-handle) to reorder.
-          <section key={s.key} data-newtab-section={s.key} data-slide={s.key} aria-label={s.title} className={cn(d?.item.newtab?.key === s.key && "opacity-50")}
+          <section key={s.key} data-newtab-section={s.key} data-slide={s.key} aria-label={s.title} className={cn(item?.newtab?.key === s.key && "opacity-50")}
             onPointerDown={(e) => {
               const t = e.target as HTMLElement
               // A button that is itself the handle (the search field: a panel that's one control) drags too, as in the
@@ -159,8 +159,8 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
   const cmds = available(shownActions(newTab).flatMap((id) => byId.get(id) ?? []))
   const box = useRef<HTMLDivElement>(null)
   useReorder(box, "actions", dock)
-  const d = useDrag()
-  const dragged = d?.item.newtab?.list === "actions" ? d.item.newtab.key : null
+  const item = useDragItem()
+  const dragged = item?.newtab?.list === "actions" ? item.newtab.key : null
   // (docked, the panel has no heading: its icons carry its menu, Take out of the dock among it)
   const menu = (id: string) => [...buttonMenu(id, dock), ...(dock && panel ? panelMenu(panel).map((it, i) => (i ? it : { ...it, sep: true })) : [])]
   if (dock) return (

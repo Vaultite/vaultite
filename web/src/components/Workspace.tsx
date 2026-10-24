@@ -20,7 +20,7 @@ import { Drawn, Guard } from "@/components/Guard"
 import { DragGhost, TabBar, tabMenuOf, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { menuFor } from "@/components/ContextMenu"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
-import { useDropHit, useDropTarget } from "@/core/drag"
+import { useDrag, useDropTarget } from "@/core/drag"
 import { Resizer } from "@/components/Resizer"
 import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
@@ -117,15 +117,20 @@ function keepTabs(k: Kept, ids: string[], shown: string | null): Kept {
   return same(slots, k.slots) && same(recent, k.recent) ? k : { slots, recent }
 }
 
+/** Where a dragged tab or file would land in this pane (an edge: that half, a new split; the middle: the pane), or null:
+ *  drawn again only when that changes. */
+const useZone = (group: string) => useDrag((d) => {
+  const h = d?.hit?.target === PANES ? (d.hit.data as Drop) : null
+  return h?.kind === "pane" && h.group === group ? h.zone : null
+})
+
 function Pane({ group, focused, ...p }: Props & { group: Group; focused: boolean }) {
-  const hit = useDropHit<Drop>(PANES)
+  const zone = useZone(group.id)
   const tab = shownTab(group) ?? group.tabs[0]
   // (worked out while drawing, from what was kept the last time: React's state from earlier renders)
   const [was, setKept] = useState<Kept>({ slots: [], recent: [] })
   const kept = keepTabs(was, group.tabs.map((t) => t.id), tab?.id ?? null)
   if (kept !== was) setKept(kept)
-  // While a tab (or a file) is dragged over this pane: where it would go (an edge: that half, a new split; the middle: the pane).
-  const zone = hit?.kind === "pane" && hit.group === group.id ? hit.zone : null
   return (
     <div data-pane-body={group.id} className="relative min-h-0 flex-1">
       {kept.slots.map((id) => {
@@ -156,8 +161,7 @@ const SPINE = 36
  *  one is the pane's (#main-scroll) and scrolls into view when it changes; a click on a tab or spine activates it. */
 function Stacked({ group, focused, info, ...p }: Props & { group: Group; focused: boolean; info: (t: Tab) => TabInfo }) {
   const row = useRef<HTMLDivElement>(null)
-  const hit = useDropHit<Drop>(PANES)
-  const zone = hit?.kind === "pane" && hit.group === group.id ? hit.zone : null
+  const zone = useZone(group.id)
   const n = group.tabs.length
   const at = group.tabs.findIndex((t) => t.id === group.active)
   useLayoutEffect(() => {

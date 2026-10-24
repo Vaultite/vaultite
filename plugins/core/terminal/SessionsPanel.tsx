@@ -25,14 +25,14 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   const a = agentIn(s, useAgents())
   const account = useTerminalAccount(s.id, a)
   const needs = needsYou(s, a)
-  const d = useDrag()
+  const dragged = useDrag((d) => d?.item.to)
   // What the row shows only as colours and rings, or not at all: its state, account, machine, workspace, meters.
   const tip = [labelOf(s, a) + (a ? stateTip(s) : ""),
     [account && `${account} account`, s.machineLabel && `on ${s.machineLabel}`, where && `in ${where}`, !s.clients && "detached"].filter(Boolean).join(", "),
     a && s.meter && capitalize(meterText(s))].filter(Boolean).join("\n")
   return (
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
-    <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
+    <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(dragged === to && "opacity-50")}>
     {/* Its icon and dot as its tab's; one that needs you bold, as an unread mail. */}
     <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={dotOf(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
       active={tab === to} tip={tip} more data-session={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}

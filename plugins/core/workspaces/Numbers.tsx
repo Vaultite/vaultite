@@ -59,14 +59,17 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
   const btn = useRef<HTMLButtonElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState({ left: 0, top: 0 })
-  const d = useDrag()
   const sprung = useRef(false)
   // A drag that can go to another workspace, over the button: open the list (and close it again when the drag ends).
+  const dragging = useDrag((d) => !!d)
+  const overButton = useDrag((d) => {
+    const r = d && sent(d.item) ? btn.current?.getBoundingClientRect() : null
+    return !!d && !!r && d.x >= r.left && d.x <= r.right && d.y >= r.top && d.y <= r.bottom
+  })
   useEffect(() => {
-    if (!d) { if (sprung.current) { sprung.current = false; setOpen(false) } return }
-    const r = btn.current?.getBoundingClientRect()
-    if (!open && r && sent(d.item) && d.x >= r.left && d.x <= r.right && d.y >= r.top && d.y <= r.bottom) { sprung.current = true; setOpen(true) }
-  }, [d, open])
+    if (!dragging) { if (sprung.current) { sprung.current = false; setOpen(false) } return }
+    if (!open && overButton) { sprung.current = true; setOpen(true) }
+  }, [dragging, overButton, open])
   useLayoutEffect(() => {
     if (!open || !btn.current) return
     const r = btn.current.getBoundingClientRect(), w = box.current?.offsetWidth ?? 208

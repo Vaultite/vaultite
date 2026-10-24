@@ -105,8 +105,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
   const tiles = settings.use().show === "tiles" && open && !!panel && !phone && !flyout
   const list = useRef<HTMLElement>(null)
   const box = useRef<HTMLDivElement>(null)
-  const d = useDrag()
-  const dragging = !!d && canPin(d.item)
+  const item = useDrag((d) => d?.item ?? null)
+  const dragging = !!item && canPin(item)
   // Each list its own target (the sidebar's, and one in a Pinned tab); only the sidebar's unpins what leaves it.
   const target = `${PINS}:${useId()}`
   const hit = useDropHit<PinDrop>(target)
@@ -201,7 +201,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
           ...(entry.kind === "file" ? fileMenu(id).filter((it) => it.label !== "Unpin").map((it, i) => (i ? it : { ...it, sep: true })) : []),
           { label: "Unpin", icon: PinOff, sep: true, run: () => pinNoted(id, false) },
         ]))}
-        className={cn(d?.item.from === "pin" && (d.item.path === id || (picked && d.item.paths)) && "opacity-40")}>
+        className={cn(item?.from === "pin" && (item.path === id || (picked && item.paths)) && "opacity-40")}>
         {tiles ? <SidebarTile data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} {...selectedAttr(picked)} href={href} icon={icon}
           tint={view?.tint ?? shown?.tint} iconClassName={view?.iconClassName} badge={view?.badge} label={folder ? id : entry.label} active={active} onClick={click} />
         : <SidebarRow data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} aria-expanded={folder && open ? unfold : undefined} {...selectedAttr(picked)}

@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Dragging moves only what you drag**: where scrollbars take room (Linux, Windows, a Mac set to show them), Pinned's
+  tiles no longer lose a column and jump when something dragged in makes their panel scroll, the tab strip no longer
+  shows a scrollbar under its tabs, and a panel's scrollbar no longer comes and goes mid-drag; a move redraws only what
+  it changes, where it redrew the page under it.
 - **Phone tabs move like Chrome's**: the tab list opens, and a card grows into its page, on the frame you lift your
   finger; the picture stays inside its card all the way, Done tapped while the list opens turns it back, and the other
   cards close up after one you close from where they were. A new tab's card shows its page instead of a plus.

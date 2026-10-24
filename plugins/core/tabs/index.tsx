@@ -32,7 +32,7 @@ function RailPiece({ rail, from }: { rail: Rail
 }
 
 function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean; rail?: Rail }) {
-  const d = useDrag()
+  const item = useDrag((d) => d?.item)
   const picked = useSelected(TABS, t.id)
   const box = useRef<HTMLDivElement>(null)
   useGrowIn(box, t)
@@ -40,7 +40,7 @@ function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: b
   return (
     // Dragged like a tab in its bar: along the list (in or out of a group), onto a pane (its edge splits), another bar,
     // or Pinned; selected with others, they all go.
-    <div ref={box} data-slide={t.id} data-in-set={t.set} onPointerDown={(e) => dragTab(e, t)} className={cn("relative", (d?.item.tab === t.id || (picked && d?.item.tabs) || (!!t.set && d?.item.tabset === t.set)) && "opacity-50")}
+    <div ref={box} data-slide={t.id} data-in-set={t.set} onPointerDown={(e) => dragTab(e, t)} className={cn("relative", (item?.tab === t.id || (picked && item?.tabs) || (!!t.set && item?.tabset === t.set)) && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} {...selectedAttr(picked)} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} mark={i.mark} label={i.label} open active={t.id === g.active} more
         className={rail ? "ml-3.5" : undefined}
@@ -61,9 +61,9 @@ function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: b
 /** A tab group's row: its chip, its line hanging from it. A click folds it, its … or a right-click opens its editor,
  *  dragging moves the whole group; `target`: a tab dragged onto it (folded) would join it. */
 function SetRow({ s, n, rail, target }: { s: TabSet; n: number; rail?: Rail; target: boolean }) {
-  const d = useDrag()
+  const item = useDrag((d) => d?.item)
   return (
-    <div data-slide={`set:${s.id}`} onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })} className={cn("relative", d?.item.tabset === s.id && "opacity-50")}
+    <div data-slide={`set:${s.id}`} onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })} className={cn("relative", item?.tabset === s.id && "opacity-50")}
       onContextMenu={menuFor(() => setMenu(s.id, "panel"))}>
       <SidebarRow data-set-row={s.id} aria-expanded={!s.collapsed} open tip={null} more onClick={() => foldSetMoving(s.id)} label={<SetLabel s={s} n={n} target={target} />}>
         {/* (its chevron shows on hover, as a panel heading's does, turning as it folds) */}
@@ -112,9 +112,9 @@ function TabRows({ store }: { store: Store }) {
 
 /** One pane's rows: dragged over, they make way for what's dragged, in the tab group it would join (its line by it). */
 function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number; panes: number; focused: boolean; info: (t: Tab) => TabInfo; hit: TabDrop | null }) {
-  const d = useDrag()
+  const item = useDrag((d) => d?.item)
   const box = useRef<HTMLDivElement>(null)
-  const preview = d ? tabPreview(g, d.item, hit) : null
+  const preview = item ? tabPreview(g, item, hit) : null
   useSlide(box, preview && tabPreviewOrder(g, preview), "y")
   const shown = preview?.tabs ?? g.tabs
   const drawn = setsAsDrawn(shown)

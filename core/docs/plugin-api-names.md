@@ -597,8 +597,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
 - `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not while a menu is open, nor when `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
-- `useDrag()`
-- `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it.
+- `useDrag`: The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
+- `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it: the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.
 - `useDropTarget(id, at, drop, opts?)`: Take drops while mounted.
 - `useEnabled()`
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.

@@ -51,9 +51,17 @@ let drag: Drag | null = null
 const subs = signal()
 const setDrag = (d: Drag | null) => { drag = d; subs.notify() }
 export const getDrag = () => drag
-export const useDrag = () => subs.use(() => drag)
+/** The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
+ *  Most need only the item: a move redrawing a pane's whole page (its hit) cost ~140 components a frame. */
+export function useDrag(): Drag | null
+export function useDrag<T>(pick: (d: Drag | null) => T): T
+export function useDrag<T>(pick?: (d: Drag | null) => T) { return subs.use(() => (pick ? pick(drag) : drag)) }
+/** What's dragged (the same object the whole drag), or null. */
+export const useDragItem = () => subs.use(() => drag?.item ?? null)
 /** Whether something is being dragged (redraws only when that changes, not on every move). */
 export const useDragging = () => subs.use(() => !!drag)
+/** Call `fn` on every move (and the drag's start and end), outside React: what follows the pointer itself. */
+export const onDrag = (fn: () => void) => subs.subscribe(fn)
 
 /** A finger holds something it picked up (dragged or not yet). */
 let fingerHolds = false
@@ -137,10 +145,19 @@ export function edgeScroller(axis: "x" | "y" = "y") {
  *  pointer is still (a card held over another groups them after a moment: TabSwitcher). */
 export function rehit() { if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y) }) }
 
-/** What a drop on this target would do right now, while something is dragged over it. */
+/** What a drop on this target would do right now, while something is dragged over it: the same object while the answer
+ *  is (targets answer anew on every move), so it's drawn again only when that changes. */
 export function useDropHit<H>(id: string): H | null {
-  const d = useDrag()
-  return d?.hit?.target === id ? (d.hit.data as H) : null
+  const last = useRef<{ raw: unknown; key: string; data: unknown }>({ raw: null, key: "null", data: null })
+  return subs.use(() => {
+    const raw = drag?.hit?.target === id ? drag.hit.data : null
+    const l = last.current
+    if (raw === l.raw) return l.data as H | null
+    // (answers are plain data: a place in a list, a folder)
+    const key = raw == null ? "null" : JSON.stringify(raw)
+    last.current = key === l.key ? { ...l, raw } : { raw, key, data: raw }
+    return last.current.data as H | null
+  })
 }
 
 function hitAt(item: DragItem, x: number, y: number): Hit | null {

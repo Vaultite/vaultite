@@ -6,7 +6,7 @@ import {
   FolderInput, FolderOpen, FolderPlus, RotateCcw, SquareArrowOutUpRight, SquarePen, Trash2, type LucideIcon,
 } from "lucide-react"
 import { getStore, reload, type Store } from "@/core/data"
-import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, startDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { isMac, isDesktop } from "@/core/platform"
 import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
@@ -436,9 +436,9 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const fresh = useRef<string | null>(null)
   // Dragging: what's dragged (its row dims), and the folder it would land in ("" = the top level; null = nowhere):
   // one of the tree's own (core/drag.ts), or files from the computer (HTML5, `fromComputer`).
-  const d = useDrag()
-  const dragging = d?.item.from === "tree" ? d.item.path! : null
-  const draggingMany = d?.item.from === "tree" && !!d.item.paths
+  const item = useDragItem()
+  const dragging = item?.from === "tree" ? item.path! : null
+  const draggingMany = item?.from === "tree" && !!item.paths
   const target = `${TREE}:${useId()}`
   const hit = useDropHit<string>(target)
   const [fromComputer, setFromComputer] = useState<string | null>(null)

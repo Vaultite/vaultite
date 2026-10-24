@@ -2,7 +2,7 @@
 // grid it reads as. Each card has its bar (drag, options, wide, stacked, source, remove); a card at the end adds one.
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { GripVertical, Plus, RectangleHorizontal, Rows2, Trash2 } from "lucide-react"
-import { BlockView, capitalize, chooseBlock, cn, edgeScroller, notify, startDrag, useDrag, useDropTarget, type GridCard, type GridEdit, type PageCtx } from "@vaultite"
+import { BlockView, capitalize, chooseBlock, cn, edgeScroller, notify, startDrag, useDrag, useDropHit, useDropTarget, type GridCard, type GridEdit, type PageCtx } from "@vaultite"
 
 /** A run's blocks in cells: one, and those stacked under it. */
 function cellsOf(cards: { stack: boolean }[]): number[][] {
@@ -42,8 +42,7 @@ export function EditGrid({ cards, edit, ctx }: { cards: GridCard[]; edit: GridEd
     }
     return { k, after, across }
   }, (_, hit) => { if (moving) moving.edit.move(moving.k, edit, Math.max(0, hit.k), hit.after) }, { end: () => edge?.stop() })
-  const d = useDrag()
-  const hit = d?.hit?.target === id ? d.hit.data as Hit : null
+  const hit = useDropHit<Hit>(id), lifting = useDrag((d) => !!d?.item.block)
   const writable = edit.writable
   // Cards whose source shows, by key (one moved into another cell keeps it).
   const [sources, setSources] = useState<ReadonlySet<string>>(new Set())
@@ -67,7 +66,7 @@ export function EditGrid({ cards, edit, ctx }: { cards: GridCard[]; edit: GridEd
           return (
             <div key={keys[lead]} data-cell={lead} className={cn("relative grid min-w-0 grid-cols-1 gap-4", cell.length > 1 && "content-start", cards[lead].wide && "@2xl:col-span-2")}>
               {cell.map((k) => <Card key={keys[k]} id={keys[k]} k={k} card={cards[k]} edit={edit} ctx={ctx} writable={writable} first={k === 0}
-                source={sources.has(keys[k])} showSource={showSource} dragged={!!d?.item.block && moving?.edit === edit && moving.k === k} />)}
+                source={sources.has(keys[k])} showSource={showSource} dragged={lifting && moving?.edit === edit && moving.k === k} />)}
               {line && <span aria-hidden className={cn("pointer-events-none absolute rounded-full bg-primary",
                 line.across ? cn("inset-y-0 w-[3px]", line.after ? "-right-[9.5px]" : "-left-[9.5px]") : cn("inset-x-0 h-[3px]", line.after ? "-bottom-[9.5px]" : "-top-[9.5px]"))} />}
             </div>

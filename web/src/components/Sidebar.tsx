@@ -4,7 +4,7 @@ import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef
 import { createPortal } from "react-dom"
 import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
-import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, onDrag, startDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
@@ -62,7 +62,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   const box = useRef<HTMLDivElement>(null)
   const fit = usePanelLayout(box, own && ctx.open, setup, panels)
   const [edge] = useState(edgeScroller)
-  const d = useDrag()
+  const item = useDragItem()
   const target = `${PANELS}:${side}`
   const hit = useDropHit<PanelDrop>(target)
   useDropTarget<PanelDrop>(target, (item, x, y) => {
@@ -130,7 +130,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
                 startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined }, { touch: true })
               }
             }}
-            className={cn("flex shrink-0 flex-col pb-1", d?.item.panel === key && "opacity-50")}>
+            className={cn("flex shrink-0 flex-col pb-1", item?.panel === key && "opacity-50")}>
             {/* Its own box (each panel scrolling in its own: the height usePanelLayout gives it), around what it draws
                 (measured: the most it's given). Scrolling as one, both are plain. */}
             <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "overflow-y-auto [scrollbar-width:thin]")}>
@@ -172,7 +172,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
  *  so the right sidebar needs no room before it has panels. Outlined while a panel is dragged; `empty` dims it. */
 export function SidebarToggle({ side, open, empty, onClick, className, style }: { side: Side; open: boolean; empty?: boolean; onClick: () => void; className?: string; style?: CSSProperties }) {
   const el = useRef<HTMLButtonElement>(null)
-  const d = useDrag()
+  const item = useDragItem()
   const target = `toggle:${side}`
   const hit = useDropHit<true>(target)
   useDropTarget<true>(target, (item, x, y) => {
@@ -187,7 +187,7 @@ export function SidebarToggle({ side, open, empty, onClick, className, style }: 
   // (as its command says it: Show / Hide, like View > Hide Sidebar)
   const name = side === "left" ? "left sidebar" : "right sidebar"
   const keys = useCommandKeys(side === "left" ? "sidebar:toggle" : "sidebar:toggle-right", true)
-  const dragging = !!d && !!draggedPanel(d.item)
+  const dragging = !!item && !!draggedPanel(item)
   return (
     <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick} style={style}
       aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
@@ -231,14 +231,16 @@ function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: S
   const side = useContext(SidebarSide)
   // Something dragged out of it onto the panes: the flyout steps aside for the rest of the drag so the panes take the
   // drop (let go of nowhere and it's back).
-  const d = useDrag()
   useEffect(() => {
-    const el = box.current
-    if (!el) return
-    if (!d) return el.removeAttribute("data-aside")
-    const r = el.getBoundingClientRect()
-    if (d.x < r.left || d.x > r.right || d.y < r.top || d.y > r.bottom) el.setAttribute("data-aside", "")
-  }, [d])
+    if (!open) return
+    return onDrag(() => {
+      const el = box.current, d = getDrag()
+      if (!el) return
+      if (!d) return el.removeAttribute("data-aside")
+      const r = el.getBoundingClientRect()
+      if (d.x < r.left || d.x > r.right || d.y < r.top || d.y > r.bottom) el.setAttribute("data-aside", "")
+    })
+  }, [open])
   return (
     <div ref={icon}>
       <SidebarRow icon={Icon} label={panel.title} open={false} active={open} tip={open ? null : undefined} data-flyout-icon={ctx.panel}

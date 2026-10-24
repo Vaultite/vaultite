@@ -47,7 +47,7 @@ function RecentPanel({ store, open, file }: SidebarCtx) {
   const shown = KINDS.find((k) => k.kind === kind) ?? KINDS[0]
   const { files, more } = useShown(store, shown.kind)
   const iconOf = useFileIcon(store)
-  const d = useDrag()
+  const item = useDrag((d) => d?.item)
   if (!open) return null
   return (
     <div className="flex shrink-0 flex-col" data-recent-panel={shown.kind}>
@@ -71,7 +71,7 @@ function RecentPanel({ store, open, file }: SidebarCtx) {
               <div key={p} onPointerDown={(e) => { openingSoon(p, true); startDrag(e, { from: "row", to: `file:${p}`, path: p, label: stem(p) }) }}
                 onPointerEnter={() => openingSoon(p)} onPointerLeave={() => openingSoon(null)}
                 onContextMenu={menuFor(() => rowFileMenu(p))}
-                className={cn(d?.item.from === "row" && d.item.path === p && "opacity-40")}>
+                className={cn(item?.from === "row" && item.path === p && "opacity-40")}>
                 <SidebarRow data-recent={p} href={`#file/${encodeURIComponent(p)}`} icon={icon} tint={tint} label={stem(p)} open={open} active={p === file} more
                   onClick={(e) => openFile(p, { newTab: e.metaKey || e.ctrlKey || e.button === 1 })} />
               </div>

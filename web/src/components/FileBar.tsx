@@ -6,7 +6,7 @@ import { menuFor, type MenuItem } from "@/components/ContextMenu"
 import { status_, statusSubs } from "@/components/fileState"
 import { Catch, Drawn } from "@/components/Guard"
 import type { FileBarItem, FileHead, SidebarCtx } from "@/core/define"
-import { getDrag, startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
+import { getDrag, startDrag, useDragItem, useDropHit, useDropTarget } from "@/core/drag"
 import { dockAtEnd, fileBarItems, isBarItem, moveBarItem, setBarItemDrawer, sideOf, useSidebars, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
@@ -25,7 +25,7 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
   const ctx = useMemo(() => ({ ...head, place }), [head, place])
   const box = useRef<HTMLDivElement>(null)
   const target = `file-bar:${useId()}`
-  const d = useDrag(), dragging = d?.item.from === "panel" && !!d.item.panel && isBarItem(d.item.panel)
+  const lifted = useDragItem(), dragging = lifted?.from === "panel" && !!lifted.panel && isBarItem(lifted.panel)
   const hit = useDropHit<Gap>(target)
   useDropTarget<Gap>(target, (item, x, y) => {
     const key = item.from === "panel" ? item.panel : undefined, el = box.current
@@ -53,7 +53,7 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
       // (a line's items are 44px targets, their room the gap between them)
       place === "bar" ? "shrink-0 gap-2" : "ml-auto min-w-0 flex-wrap justify-end md:gap-1")}>
       {items.map(({ key, plugin, item }, i) => (
-        <span key={key} data-file-bar-key={key} data-slide={key} onContextMenu={menu(key, i)} className={cn("flex shrink-0 items-center empty:hidden", d?.item.panel === key && "opacity-50")}
+        <span key={key} data-file-bar-key={key} data-slide={key} onContextMenu={menu(key, i)} className={cn("flex shrink-0 items-center empty:hidden", lifted?.panel === key && "opacity-50")}
           onPointerDown={(e) => startDrag(e, { from: "panel", panel: key, label: item.title ?? plugin.name })}>
           <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(ctx)} /></Catch>
         </span>

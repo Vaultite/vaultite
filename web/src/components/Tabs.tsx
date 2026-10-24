@@ -1,10 +1,10 @@
 // Tabs (desktop): a bar per group; drag a tab to reorder, onto another bar, or onto a pane (an edge
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
-import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
 import { askRename, canClosePane, closePane, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
 import { moveTabsTo, hasSiblings, moveToSplit, splitTab } from "@/core/splits"
@@ -123,14 +123,14 @@ export function editSet(id: string) {
 function SetChip({ s, n, target }: { s: TabSet; n: number
   /** A tab dragged onto it (folded) would join it. */
   target: boolean }) {
-  const d = useDrag()
+  const item = useDragItem()
   const c = colorVar(s.color)
   return (
     <div data-set-chip={s.id} data-slide={`set:${s.id}`} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
       onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })}
       onClick={() => foldSetMoving(s.id)}
-      data-tip={d ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
-      className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", d?.item.tabset === s.id && "opacity-50")}>
+      data-tip={item ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
+      className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", item?.tabset === s.id && "opacity-50")}>
       {/* (as tall as a tab, the chip inside: the line under it then lines up with the tabs') */}
       {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
       <SetLabel s={s} n={n} target={target} className="max-w-40" />
@@ -239,35 +239,51 @@ export function tabCardMenu(tab: Tab, count: number, groups: MenuItem[] = []): M
 
 // ---------- dragging tabs (and files from the sidebar: the same drops) ----------
 
-/** The dragged tab or file, following the pointer (drawn above the sidebar). */
+/** The dragged tab or file, following the pointer (drawn above the sidebar): drawn again when what it shows changes,
+ *  moved without React on every move. */
 export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
-  const d = useDrag()
+  const item = useDragItem()
+  const hint = useDrag((d) => d?.hit?.hint), hit = useDrag((d) => !!d?.hit), finger = useDrag((d) => !!d?.finger)
+  const overPanes = useDrag((d) => d?.hit?.target === PANES)
   const { fileIcons } = usePrefs()
-  if (!d || d.item.drawn) return null
-  const i: TabInfo = d.item.paths || d.item.tabs ? { label: d.item.label ?? "", icon: d.item.tabs ? Layers : Files }
-    : d.item.folder ? { label: d.item.path!.split("/").pop()!, icon: Folder }
-    : d.item.newtab ? { label: d.item.label ?? d.item.newtab.key, icon: d.item.newtab.list === "actions" ? MousePointerClick : LayoutList }
-    : d.item.status ? { label: d.item.label ?? d.item.status, icon: PanelBottom }
-    : d.item.block ? { label: d.item.label ?? d.item.block, icon: Blocks }
-    : d.item.column ? { label: d.item.label ?? d.item.column.key, icon: Columns3 }
-    : d.item.panel && !(d.item.to && d.hit?.target === PANES) ? { label: d.item.label ?? d.item.panel, icon: PanelTop }
-    : d.item.group ? { label: d.item.label ?? "Pane", icon: AppWindow }
-    : d.item.tabset ? { label: d.item.label ?? "", icon: dotIcon(colorVar(setById(d.item.tabset)?.s.color ?? "gray")) }
-    : d.item.from === "row" && !d.item.to ? { label: d.item.label ?? d.item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: FileText }
-    : info({ id: "", to: d.item.to ?? "new" })
-  // Near the window's right edge it goes left of the pointer; a finger's goes above it (a finger covers what's under).
+  const el = useRef<HTMLDivElement>(null)
   // Over an open sheet (a modal <dialog>) it's placed inside it.
-  const sheet = [...document.querySelectorAll<HTMLElement>("dialog[open]")].pop()
-  const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0, right: innerWidth }
-  const at = d.finger ? { left: Math.max(8, Math.min(d.x - 32, innerWidth - 268)) - o.left, top: d.y - 64 - o.top }
-    : { ...(d.x > innerWidth - 280 ? { right: o.right - d.x + 10 } : { left: d.x + 10 - o.left }), top: d.y + 10 - o.top }
+  const sheet = item ? [...document.querySelectorAll<HTMLElement>("dialog[open]")].pop() ?? null : null
+  useLayoutEffect(() => {
+    const g = el.current
+    if (!g) return
+    // Near the window's right edge it goes left of the pointer; a finger's goes above it (a finger covers what's under).
+    const follow = () => {
+      const d = getDrag()
+      if (!d) return
+      const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0, right: innerWidth }
+      const left = d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) - o.left : d.x > innerWidth - 280 ? null : d.x + 10 - o.left
+      g.style.left = left === null ? "" : `${left}px`
+      g.style.right = left === null ? `${o.right - d.x + 10}px` : ""
+      g.style.top = `${d.finger ? d.y - 64 - o.top : d.y + 10 - o.top}px`
+    }
+    follow()
+    return onDrag(follow)
+  }, [item, sheet, finger])
+  if (!item || item.drawn) return null
+  const i: TabInfo = item.paths || item.tabs ? { label: item.label ?? "", icon: item.tabs ? Layers : Files }
+    : item.folder ? { label: item.path!.split("/").pop()!, icon: Folder }
+    : item.newtab ? { label: item.label ?? item.newtab.key, icon: item.newtab.list === "actions" ? MousePointerClick : LayoutList }
+    : item.status ? { label: item.label ?? item.status, icon: PanelBottom }
+    : item.block ? { label: item.label ?? item.block, icon: Blocks }
+    : item.column ? { label: item.label ?? item.column.key, icon: Columns3 }
+    : item.panel && !(item.to && overPanes) ? { label: item.label ?? item.panel, icon: PanelTop }
+    : item.group ? { label: item.label ?? "Pane", icon: AppWindow }
+    : item.tabset ? { label: item.label ?? "", icon: dotIcon(colorVar(setById(item.tabset)?.s.color ?? "gray")) }
+    : item.from === "row" && !item.to ? { label: item.label ?? item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: FileText }
+    : info({ id: "", to: item.to ?? "new" })
   return createPortal(
-    <div aria-hidden data-drag-ghost style={at}
+    <div ref={el} aria-hidden data-drag-ghost
       className={cn("pointer-events-none fixed flex max-w-[260px] items-center gap-1.5 bg-card shadow-lg ring-[0.5px] ring-border",
-        d.finger ? "z-[70] h-10 rounded-[10px] px-3 text-[15px]" : "z-50 h-7 rounded-[6px] px-2 text-[13px]", !d.hit && "opacity-60")}>
-      {fileIcons && <i.icon className={cn(d.finger ? "size-[18px] shrink-0" : "size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} />}
+        finger ? "z-[70] h-10 rounded-[10px] px-3 text-[15px]" : "z-50 h-7 rounded-[6px] px-2 text-[13px]", !hit && "opacity-60")}>
+      {fileIcons && <i.icon className={cn(finger ? "size-[18px] shrink-0" : "size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} />}
       <span className="min-w-0 truncate font-medium">{i.label}</span>
-      {d.hit?.hint && <span className="shrink-0 text-muted-foreground">{d.hit.hint}</span>}
+      {hint && <span className="shrink-0 text-muted-foreground">{hint}</span>}
     </div>,
     sheet ?? document.body,
   )
@@ -287,11 +303,11 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
   line?: { color: string; last: boolean }
   /** Held at this width after a close (TabBar). */
   width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void }) {
-  const d = useDrag()
+  const item = useDragItem()
   const picked = useSelected(TABS, tab.id)
   const el = useRef<HTMLDivElement>(null)
   useGrowIn(el, tab)
-  const dragging = d?.item.tab === tab.id || (picked && !!d?.item.tabs) || (!!tab.set && d?.item.tabset === tab.set)
+  const dragging = item?.tab === tab.id || (picked && !!item?.tabs) || (!!tab.set && item?.tabset === tab.set)
   // (a light wash of its colour, lighter while its pane isn't the focused one: calm in either theme)
   const wash = active && tint && info.wash
     ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
@@ -305,7 +321,7 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
       style={{ ...wash, ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex 160ms ease-out" } : undefined) }} data-tab-wash={wash ? "" : undefined}>
       <button type="button" role="tab" aria-selected={active}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
-        data-tip={d ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
+        data-tip={item ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
         {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
         {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.mark && "@max-[80px]/tab:hidden", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
@@ -395,9 +411,9 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   }, [merged, group])
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const hit = useDropHit<Drop>(PANES)
-  const d = useDrag()
+  const item = useDragItem()
   // Dragged over it, the tabs make way for what's dragged, in the tab group it would join (its line under it).
-  const preview = d ? previewIn(group, d.item, hit) : null
+  const preview = item ? previewIn(group, item, hit) : null
   const drawn = setsAsDrawn(preview?.tabs ?? tabs)
   const lineOf = (id: string) => {
     const at = drawn.get(id), s = at?.set ? group.sets?.find((x) => x.id === at.set) : undefined
@@ -425,17 +441,17 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   }, [active, tabs.length])
   // Something dragged near either end of a row of tabs that scrolls: it scrolls that way (faster the closer), like
   // the file tree near its edges, so every place in it can take the drop.
-  const [dx, dy] = d ? [d.x, d.y] : [null, null]
   useEffect(() => {
     const r = row.current
-    if (dx === null || dy === null || !r || r.scrollWidth <= r.clientWidth) return
-    const b = r.getBoundingClientRect(), zone = 32
-    if (dy < b.top - 4 || dy > b.bottom + 4 || dx < b.left - 8 || dx > b.right + 8) return
-    const speed = dx < b.left + zone ? -Math.ceil((b.left + zone - dx) / 4) : dx > b.right - zone ? Math.ceil((dx - b.right + zone) / 4) : 0
-    if (!speed) return
-    let frame = requestAnimationFrame(function step() { r.scrollLeft += speed; frame = requestAnimationFrame(step) })
-    return () => cancelAnimationFrame(frame)
-  }, [dx, dy])
+    if (!item || !r) return
+    const edge = edgeScroller("x")
+    const off = onDrag(() => {
+      const d = getDrag(), b = r.getBoundingClientRect()
+      if (!d || r.scrollWidth <= r.clientWidth || d.y < b.top - 4 || d.y > b.bottom + 4 || d.x < b.left - 8 || d.x > b.right + 8) edge.stop()
+      else edge.near(r, d.x)
+    })
+    return () => { off(); edge.stop() }
+  }, [item])
   // Closed with the mouse, the tabs keep their width so the next one's X comes under the pointer, as browsers do; they
   // fill the bar again once it leaves (or a tab opens, or one closes another way).
   const [held, setHeld] = useState<{ width: number; count: number } | null>(null)
@@ -467,16 +483,16 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
     if (mouse) setHeld({ width, count: tabs.length - 1 })
   }
   const handle = (
-    <button type="button" data-pane-handle={group.id} aria-label="Move this pane" data-tip={d ? undefined : "Drag to move this pane"}
+    <button type="button" data-pane-handle={group.id} aria-label="Move this pane" data-tip={item ? undefined : "Drag to move this pane"}
       onPointerDown={(e) => startDrag(e, { from: "group", group: group.id, label })}
       className={cn("grid h-7 w-5 shrink-0 cursor-grab place-items-center rounded-[5px] text-muted-foreground transition-opacity hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100",
-        d?.item.group === group.id ? "opacity-100" : "opacity-0 group-hover/bar:opacity-100")}>
+        item?.group === group.id ? "opacity-100" : "opacity-0 group-hover/bar:opacity-100")}>
       <GripVertical className="size-4" strokeWidth={2} />
     </button>
   )
   // Without the tabs' own X: closes the pane, pinned tabs too (⌘⇧T brings it back). Not the only one.
   const closer = !alone && (
-    <button type="button" data-pane-close={group.id} aria-label="Close pane" data-tip={d ? undefined : `Close pane${closeKeys}`} onClick={() => closePane(group.id)}
+    <button type="button" data-pane-close={group.id} aria-label="Close pane" data-tip={item ? undefined : `Close pane${closeKeys}`} onClick={() => closePane(group.id)}
       className="grid h-7 w-5 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 transition-opacity group-hover/bar:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100">
       <X className="size-4" strokeWidth={2} />
     </button>
@@ -500,7 +516,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => barMenu(group))}
         className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
         <div data-pane-title onContextMenu={menuFor(() => tabMenu(shown, shown === tabs.at(-1), tabs.length, group, true))}
-          className={cn("flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]", d?.item.group === group.id && "opacity-50")}>
+          className={cn("flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]", item?.group === group.id && "opacity-50")}>
           {fileIcons && <Badged on={i.badge}><i.icon className={cn("size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} /></Badged>}
           <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>
           {tabs.length > 1 && <span className="shrink-0 text-tertiary">{tabs.length} tabs</span>}
@@ -517,7 +533,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
-        className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", d?.item.group === group.id && "opacity-50")}>
+        className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", item?.group === group.id && "opacity-50")}>
         {tabs.map((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined

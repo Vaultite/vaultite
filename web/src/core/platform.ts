@@ -29,3 +29,17 @@ const DESKTOP = "(min-width: 768px)"
 export const isDesktop = () => matchMedia(DESKTOP).matches
 /** isDesktop that follows the window: a phone's width and a computer's swap as it's resized. */
 export const useDesktop = () => useSyncExternalStore((f) => { const m = matchMedia(DESKTOP); m.addEventListener("change", f); return () => m.removeEventListener("change", f) }, isDesktop)
+
+/** A thin scrollbar's width here, as `--scrollbar-room`: 0 where scrollbars overlay the page (macOS' default, phones).
+ *  Measured again when the zoom changes, which changes it. */
+let measuredAt = 0
+function measureScrollbar() {
+  if (measuredAt === devicePixelRatio) return
+  measuredAt = devicePixelRatio
+  const probe = document.createElement("div")
+  probe.style.cssText = "position:fixed;top:-200px;width:100px;height:100px;overflow:scroll;scrollbar-width:thin;visibility:hidden"
+  document.documentElement.append(probe)
+  document.documentElement.style.setProperty("--scrollbar-room", `${probe.offsetWidth - probe.clientWidth}px`)
+  probe.remove()
+}
+if (typeof document !== "undefined" && typeof devicePixelRatio === "number") { measureScrollbar(); addEventListener("resize", measureScrollbar) }

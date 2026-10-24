@@ -348,11 +348,14 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 }
 @media (min-width: 768px) { .chip-row { flex-wrap: wrap; overflow: visible; } }
 
-/* Scrollbars: thin and translucent in the theme's colours, instead of the browser's default (white in dark mode). */
+/* Scrollbars: thin and translucent in the theme's colours, instead of the browser's default (white in dark mode). In
+   the base layer, so a scroller's own `[scrollbar-width:none]` wins (the tab strip's, the rail's). */
 :root { color-scheme: light; --scrollbar: rgb(60 60 67 / 0.28); --scrollbar-hover: rgb(60 60 67 / 0.45); }
 .dark { color-scheme: dark; --scrollbar: rgb(235 235 245 / 0.22); --scrollbar-hover: rgb(235 235 245 / 0.38); }
-@supports (scrollbar-color: auto) {
-  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+@layer base {
+  @supports (scrollbar-color: auto) {
+    * { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+  }
 }
 @supports not (scrollbar-color: auto) {
   ::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
@@ -381,6 +384,11 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
    scrolls, so the heading sits at the box's top from the start and stays there, sticky, while the panel scrolls under it
    (inside the box, its margin would scroll away first and the heading jump up by it). */
 [data-scroll=panels] > [data-panel]:has([data-panel-handle]:not([data-sidebar-search])) { padding-top: calc(var(--spacing) * 2); }
+/* A sidebar's scrollers keep their scrollbar's room whether one shows or not, so nothing reflows as it comes and goes (a
+   drag making a panel taller took a column off Pinned's tiles); the room comes out of the sidebar's padding first. */
+[data-panel-scroll][class*="overflow-y-auto"], [data-scroll=sidebar] {
+  scrollbar-gutter: stable; margin-right: calc(-1 * min(var(--scrollbar-room, 0px), calc(var(--spacing) * 2 - 0.5px)));
+}
 /* The sidebar itself scrolls only when its panels, all at their least, don't fit (panelLayout.ts marks it
    `data-overflow`); otherwise each panel scrolls in its own box and a stray pixel never brings a second scrollbar. */
 [data-scroll=panels]:not([data-overflow]) { overflow-y: hidden; }
