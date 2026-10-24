@@ -42,7 +42,9 @@ check("quick text size off: ⌘ + wheel leaves 100%", (await pref("note")) === 1
 await page.keyboard.press("ControlOrMeta+p")
 await page.keyboard.type("font size")
 const turnOn = page.locator("[role=option]", { hasText: "Pinch to resize text" })
-check("palette: \"font size\" finds Pinch to resize text, its switch off", await until(async () => (await turnOn.count()) > 0, 2000) && /Pinch to resize text[\s\S]*Off/.test(await turnOn.innerText()), await turnOn.innerText().catch(() => ""))
+// (its text as drawn, after a frame: a row just listed is skipped till one decides it shows, content-visibility: auto)
+const drawn = async (loc) => { await page.evaluate(() => new Promise((r) => requestAnimationFrame(r))); return loc.innerText() }
+check("palette: \"font size\" finds Pinch to resize text, its switch off", await until(async () => (await turnOn.count()) > 0 && /Pinch to resize text[\s\S]*Off/.test(await drawn(turnOn)), 2000), await drawn(turnOn).catch(() => ""))
 await turnOn.click()
 check("Pinch to resize text: on in the vault", await until(async () => (await api("GET", "config/appearance")).quickTextSize === true, 2000))
 await wait(300)
