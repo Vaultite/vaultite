@@ -10,13 +10,13 @@ import { afterSheets, openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace } from "@/core/scope"
-import type { Info as BundleInfo, Plan, PlanChange } from "../../../core/bundles.ts"
+import type { Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../core/bundles.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
 import { onLook } from "@/core/appearance"
 import { isDark } from "@/lib/utils"
 
-export type { BundleInfo, Plan, PlanChange }
+export type { BundleInfo, Plan, PlanChange, ShareItem }
 
 export type Previous = { bundle: string; name: string; at: string }
 /** `default`: the one a new vault starts from (Standard), and skipping the offer gives; `trial`: one being tried;
@@ -185,7 +185,6 @@ export async function bundleText(b: BundleInfo, o: { all?: boolean; include?: st
   return r.text()
 }
 
-export type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
 /** Its parts to share or leave out, and the pins to the user's own notes it never sends. */
 export const shareOf = (id: string) => get<{ items: ShareItem[]; dropped: string[] }>(`bundles/${encodeURIComponent(id)}/share`)
 
@@ -299,9 +298,6 @@ export function useListedPicture(e: Pick<Listed, "preview" | "previewDark">): st
   const dark = useSyncExternalStore(onLook, isDark)
   return (dark ? e.previewDark ?? e.preview : e.preview ?? e.previewDark) ?? null
 }
-
-/** A bundle's link (vaultite://bundle/<owner>/<name>, from its page on vaultite.com): its import preview. */
-export const openBundleLink = (repo: string) => openImport(repo)
 
 /** Whether App should open the bundles page by itself: a new vault being offered them (once per load). */
 let offered = false

@@ -43,7 +43,7 @@ import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
-import { offerBundles, openBundleLink, previousSetup, restoreSetup, startSave } from "@/core/bundles"
+import { offerBundles, openImport, previousSetup, restoreSetup, startSave } from "@/core/bundles"
 import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSetup, type AppPage } from "@/core/apppages"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
@@ -271,7 +271,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, desktop, known, !!store])
   useEffect(() => takeLinks({ command: runCommandLink, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true },
-    bundle: (repo) => { if (!getStore()) return false; void openBundleLink(repo); return true } }), [])
+    bundle: (repo) => { if (!getStore()) return false; void openImport(repo); return true } }), [])
   // First load with no address: show the tab that was open last time.
   useEffect(() => {
     if (!location.hash) replaceHash(hashOf(activeTab().to))
