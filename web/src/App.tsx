@@ -167,7 +167,8 @@ function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Ta
   if (file) return { body: <FileView store={store} path={file} pane={false} />, title: stem(file) }
   const title = d ? d.def.title(store, d.args) : ""
   if (d && title) return { body: <Guard what="This sheet" size="tab" reset={path}><Drawn draw={() => d.def.render(store, d.args)} /></Guard>, title, wide: d.def.wide }
-  return { body: <SheetHead icon={ListChecks} tint="var(--muted-foreground)" kicker="Not found" title="This entry isn't loaded" />, title: "" }
+  return { body: <SheetHead icon={ListChecks} tint="var(--muted-foreground)" kicker="Not found" title="Nothing to show here"
+    sub="What this link opens was moved or deleted, or the plugin that shows it is off." />, title: "" }
 }
 
 function useRoute() {

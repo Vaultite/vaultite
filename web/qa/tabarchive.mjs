@@ -70,6 +70,8 @@ try {
   await page.getByRole("menuitem", { name: "Remove", exact: true }).click()
   await until(async () => !(await rows()).length, 3000)
   check("removed, the list says it's empty", !(await rows()).length && await page.locator("[data-archived-tabs]", { hasText: "No archived tabs." }).count() === 1, await rows())
+  const emptySize = await page.locator("[data-archived-tabs] p", { hasText: "No archived tabs." }).evaluate((e) => getComputedStyle(e).fontSize)
+  check("… as a page's empty state (Empty: 15px), as the Inbox's", emptySize === "15px", emptySize)
   await page.locator("[data-sonner-toast]", { hasText: "Removed 1 archived tab" }).locator("[data-button]").click()
   await until(async () => (await rows()).length === 1, 3000)
   check("Undo puts it back", (await rows()).join() === "tb", await rows())

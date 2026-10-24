@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react"
 import { ArchiveRestore, Trash2 } from "lucide-react"
 import {
-  archivedTabs, archiveUnseen, Button, fmtAgo, getStore, menuFor, notify, openPluginSettings, plural, removals, removeArchived, reopenArchived,
+  archivedTabs, archiveUnseen, Button, Empty, fmtAgo, getStore, menuFor, notify, openPluginSettings, plural, removals, removeArchived, reopenArchived,
   restoreArchived, rowMenu, selectClick, selectedAttr, setArchiveAfter, SidebarRow, subscribeScoped, tabLabel, touchTabsSeen, useArchivedTabs,
   useSelectable, useSelected, useTabLabels, type ArchivedTab, type MenuItem, type SearchDoc, type Store, type TabInfo,
 } from "@vaultite"
@@ -84,7 +84,7 @@ export function ArchivedView({ store }: { store: Store }) {
         <Button look="quiet" size="small" onClick={() => openPluginSettings("tabs")}>Settings…</Button>
         {!!list?.length && <Button look="quiet" size="small" onClick={() => remove(list)} data-archived-clear>Remove all</Button>}
       </div>
-      {!list?.length ? <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">No archived tabs.</p> : (
+      {!list?.length ? <Empty>No archived tabs.</Empty> : (
         <div className="size-up-bleed"><div data-size-up data-keylist data-select-list={LIST} className="flex flex-col gap-px">
           {list.map((e) => <ArchivedRow key={e.id} e={e} i={info({ id: e.id, to: e.to })} leaving={leaving(e.id)} />)}
         </div></div>
