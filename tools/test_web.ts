@@ -1598,6 +1598,24 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 }
 
 {
+  // Every scheme's ten colours (tab groups, workspaces, labels pick from them) tell apart: CIE76 distance at least 10.
+  const { COLORS } = await import("../core/colors.ts")
+  const lab = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => { const c = parseInt(hex.slice(i, i + 2), 16) / 255; return c > 0.04045 ? ((c + 0.055) / 1.055) ** 2.4 : c / 12.92 })
+    const f = (v: number) => (v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116)
+    const x = f((r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047), y = f(r * 0.2126 + g * 0.7152 + b * 0.0722), z = f((r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883)
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)]
+  }
+  const files = [path.join(WEB, "index.css"), ...fs.readdirSync(path.join(WEB, "themes")).filter((f) => f.endsWith(".css")).map((f) => path.join(WEB, "themes", f))]
+  const alike = files.flatMap((f) => fs.readFileSync(f, "utf8").split(/--red:/).slice(1).flatMap((block, i) => {
+    const v = Object.fromEntries(COLORS.map((c) => [c, c === "red" ? /^\s*(#[0-9a-f]{6})/i.exec(block)?.[1] : new RegExp(`--${c}:\\s*(#[0-9a-f]{6})`, "i").exec(block)?.[1]]))
+    return COLORS.flatMap((a, j) => COLORS.slice(j + 1).filter((b) => v[a] && v[b] && Math.hypot(...lab(v[a]!).map((x, k) => x - lab(v[b]!)[k])) < 10)
+      .map((b) => `${path.basename(f)} #${i + 1}: ${a} ${v[a]} ~ ${b} ${v[b]}`))
+  }))
+  check("schemes: each one's ten colours tell apart", !alike.length, alike)
+}
+
+{
   const { plainError } = await import("../core/plainerror.ts")
   const said = (e: unknown) => plainError(e).reason
   const http = (status: number, message: string) => Object.assign(new Error(message), { status })

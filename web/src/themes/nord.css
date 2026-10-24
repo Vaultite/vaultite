@@ -24,7 +24,7 @@
     --sidebar: #d8dee9;
     --segment-on: #eceff4;
     --red: #bf616a; --orange: #d08770; --yellow: #c29a4a; --green: #8aa872; --teal: #8fbcbb;
-    --blue: #5e81ac; --indigo: #81a1c1; --purple: #b48ead; --pink: #b48ead; --gray: #7b88a1;
+    --blue: #5e81ac; --indigo: #81a1c1; --purple: #9d8ec9; --pink: #b48ead; --gray: #7b88a1;
     --h1: var(--blue); --h2: var(--teal); --h3: var(--green); --h4: var(--yellow); --h5: var(--orange); --h6: var(--purple);
     --scrollbar: rgb(76 86 106 / 0.35); --scrollbar-hover: rgb(76 86 106 / 0.55);
     --map-land: #d8dee9; --map-water: #bfccdd; --map-park: #d3dcd7;
@@ -54,7 +54,7 @@
     --sidebar: #292e39;
     --segment-on: #4c566a;
     --red: #bf616a; --orange: #d08770; --yellow: #ebcb8b; --green: #a3be8c; --teal: #8fbcbb;
-    --blue: #81a1c1; --indigo: #5e81ac; --purple: #b48ead; --pink: #b48ead; --gray: #616e88;
+    --blue: #81a1c1; --indigo: #5e81ac; --purple: #a79bd4; --pink: #b48ead; --gray: #616e88;
     --h1: var(--blue); --h2: var(--teal); --h3: var(--green); --h4: var(--yellow); --h5: var(--orange); --h6: var(--purple);
     --scrollbar: rgb(236 239 244 / 0.2); --scrollbar-hover: rgb(236 239 244 / 0.35);
     --map-land: #292e39; --map-water: #404c5c; --map-park: #414a4c;
