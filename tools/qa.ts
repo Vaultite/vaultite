@@ -22,7 +22,7 @@ const argv = process.argv.slice(2)
 if (argv.includes("--lint")) process.exit(lint())
 
 /** Selectors no source draws: [data-x] anywhere in a script, #id as a selector call's argument. One the script makes
- *  itself counts as drawn, and data-fence (plugin-compat's, a vault plugin of its own). */
+ *  itself counts as drawn, and data-fence (plugin-compat's, a vault plugin of its own), and one it asserts is gone. */
 function lint() {
   const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? (e.name === "node_modules" ? [] : walk(path.join(d, e.name))) : [path.join(d, e.name)])
   // (and the toasts' library, which draws its own)
@@ -31,9 +31,11 @@ function lint() {
   const camel = (s: string) => s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
   const drawn = (attr: string, own: string) => [src, own].some((t) => new RegExp(`data-${attr}(?![\\w-])`).test(t.replaceAll(`[data-${attr}`, ""))) ||
     new RegExp(`dataset\\.${camel(attr)}\\b`).test(src)
+  // (`!(await page.$(sel))`, `(await page.locator(sel).count()) === 0`: what a change retired may stay retired)
+  const gone = /(?<!!)!\(?await [\w.]+\.\$\(\s*(["'`])[^"'`]*\1\s*\)\)?|\(await [\w.]+\.(?:locator|\$\$)\(\s*(["'`])[^"'`]*\2\s*\)(?:\.count\(\))?\)(?:\.length)? === 0/g
   const bad: string[] = []
   for (const f of fs.readdirSync(QA).filter((f) => f.endsWith(".mjs"))) {
-    const text = fs.readFileSync(path.join(QA, f), "utf8")
+    const text = fs.readFileSync(path.join(QA, f), "utf8").replace(gone, "")
     for (const a of new Set([...text.matchAll(/\[data-([a-z0-9-]+)/g)].map((m) => m[1]))) if (!drawn(a, text) && a !== "fence") bad.push(`${f}: [data-${a}]`)
     const calls = text.matchAll(/(?:locator|\$|\$\$|\$eval|\$\$eval|waitForSelector|querySelector(?:All)?|isVisible|click|tap|hover|fill)\(\s*(["'`])([^"'`]+)\1/g)
     for (const [, , sel] of calls) for (const [, id] of sel.matchAll(/(?:^|[\s>,(])#([a-z][\w-]*)/g)) {

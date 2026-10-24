@@ -121,7 +121,7 @@ try {
   let me = await tab("ME").boundingBox()
   let release = await hold(tab("Start here"), me.x + me.width * 0.85, me.y + me.height / 2)
   check("dragged over a group's last tab, the tabs make way, the group's line under it", await slid("[data-tab-bar] [data-slide]") > 0 && await inGroup("Start here"))
-  check("  the tabs make way: the tab itself shows where it goes", !!(await page.$("[data-tab-bar] [data-drop-preview]")))
+  check("  and no drop line: the tab itself shows where it goes", !(await page.$("[data-drop-line]")) && !!(await page.$("[data-tab-bar] [data-drop-preview]")))
   await page.screenshot({ path: `${OUT}bar-dragging.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
   await release()
   check("dropped there, it joins the group's end", (await bar()).includes("<Lighthouse work> Lighthouse ME Start here Garden planner") && await inGroup("Start here"), await bar())
