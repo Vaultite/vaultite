@@ -6,6 +6,7 @@ import { type Store } from "@/core/data"
 import { get } from "@/core/http"
 import { startDrag } from "@/core/drag"
 import { folderOf, openFile, openView, stem } from "@/core/files"
+import { snippet } from "@/core/links"
 import { isDesktop } from "@/core/platform"
 import { useFocusedFile } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
@@ -309,7 +310,10 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                     <ul className="ml-[13px] border-l-[0.5px] border-border pl-2">
                       {shown.map((m, i) => {
                         const hit = m.ctx ? [] : marks(m.text)
-                        const ex = m.ctx ? { text: m.text, ranges: [] } : excerpt(m.text, hit, 180, 40)
+                        // (a note's line shows as it reads, marked again there; as written when the match was its syntax)
+                        const plain = kind === "markdown" ? snippet(m.text) : m.text, plainHit = m.ctx || plain === m.text ? hit : marks(plain)
+                        const [text, at] = m.ctx || plainHit.length || !hit.length ? [plain, plainHit] : [m.text, hit]
+                        const ex = m.ctx ? { text, ranges: [] } : excerpt(text, at, 180, 40)
                         const go = (e: MouseEvent) => (atLine(kind) ? editAt(r.path, m.line - 1, { newTab: e.metaKey || e.ctrlKey, pane, find: hit[0] && m.text.slice(...hit[0]) })
                           : open(r.path, e.metaKey || e.ctrlKey))
                         return (

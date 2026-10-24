@@ -2,7 +2,7 @@
 // marks what matched in the grey text too (a word found only in a note's body shows the part around it), files found by
 // their text come under "In files", pages aren't found by their folder's name, an operator query lists files only with
 // what it asks for in words, a bad query says why, and a running terminal is found by name. The search tab lists the
-// operators while empty (a click adds one), marks matched lines, and its options (match case, sort, collapse, more
+// operators while empty (a click adds one), marks matched lines (as they read, not as written), and its options (match case, sort, collapse, more
 // context, explain) are saved in .vaultite/plugins/search/data.json. Phones at 390px: no horizontal overflow.
 // WRITES a "Qa search" folder, a note in Notes/ and the search plugin's settings (put back), runs a shell.
 //   node web/qa/search.mjs <base url> <vault path> [out dir]
@@ -16,7 +16,7 @@ const shot = async (page, name) => { const f = `${OUT}${name}.png`; await page.s
 
 const DIR = "Qa search"
 const put = (rel, text) => { mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); writeFileSync(path.join(VAULT, rel), text) }
-put(`${DIR}/Budget plan.md`, "---\ntags: [qa-search]\nstatus: seed\n---\n# Rent\nPay the rent and buy food.\n- [ ] call the landlord about the heating\n\nSomething else entirely.\n")
+put(`${DIR}/Budget plan.md`, "---\ntags: [qa-search]\nstatus: seed\n---\n# Rent\nPay the rent and buy food.\n- [ ] call the **landlord** about [[Heating|the heating]]\n\nSomething else entirely.\n")
 put("Notes/Qa airship.md", "---\ntype: note\nkind: idea\nstatus: seed\nid: qa-airship\n---\nA long opening that goes on about weather, maps, routes, fuel, crews and the price of tickets before it finally names the zeppelin we want.\n")
 const SETTINGS = path.join(VAULT, ".vaultite/plugins/search/data.json")
 const before = existsSync(SETTINGS) ? readFileSync(SETTINGS, "utf8") : null
@@ -84,6 +84,12 @@ try {
   await until(() => page.$('[data-search-file="Qa search/Budget plan.md"]'), 8000)
   const lineMarks = await page.$$eval('[data-search-file="Qa search/Budget plan.md"] li mark', (ms) => ms.map((m) => m.textContent))
   check("the tab marks the words in each line", lineMarks.includes("rent") && lineMarks.includes("food"), lineMarks)
+  await page.fill('[aria-label="Search the vault"]', "landlord")
+  const asRead = await until(() => page.$$eval('[data-search-file="Qa search/Budget plan.md"] li button', (els) => els.map((e) => e.textContent.trim()).find((t) => t.includes("landlord"))), 8000)
+  check("… a line reads as text, marked there: no task box, stars or brackets", asRead === "call the landlord about the heating"
+    && await page.$eval('[data-search-file="Qa search/Budget plan.md"] li mark', (m) => m.textContent) === "landlord", asRead)
+  await page.fill('[aria-label="Search the vault"]', "rent food")
+  await wait(700)
   await shot(page, "tab-plain")
   // Options: more context, saved in the vault.
   await page.click('[aria-label="Search options"]')

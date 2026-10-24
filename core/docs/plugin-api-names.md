@@ -406,7 +406,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
 - `plainError(e)`: An error, a rejection's reason or a message, as it should reach a person.
-- `plainText(md)`: Markdown to plain text, for previews and search snippets: no marks, code fences, rules or table pipes.
+- `plainText(md)`: Markdown to plain text, for previews and search snippets: no marks, code fences, display math, callouts' types, rules or table pipes.
 - `PlayerProps`: What a `player` gets: the file, how it's shown ("page": its own tab, "embed": in a note, "fill": its parent's box), an embed's height, and what to tell the core: its length, or that it can't be…
 - `pluginById(id)`
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").

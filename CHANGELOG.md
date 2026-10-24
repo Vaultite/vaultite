@@ -37,6 +37,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Every colour tells apart in every scheme**: Gruvbox (the default) and seven other schemes drew two of the ten
   colours alike (red and pink, blue and indigo, purple and pink...), so two tab groups, workspaces or labels could look
   the same; each now has a colour of its own.
+- **Search reads as text**: the search tab's matching lines and the quick switcher's previews show a note as it reads,
+  without link brackets, task boxes, callout types or TeX.
 - **Two web pages side by side stay still**: the keyboard no longer bounces between them many times a second, the
   focused pane flickering in the tab list and the app busy, after it moved from one to the other quickly.
 - **Agents' lines are no longer drawn by default**: Provenance still keeps which lines agents wrote (for `vau blame`,
