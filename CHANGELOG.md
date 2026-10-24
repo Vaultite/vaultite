@@ -20,7 +20,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
   header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
   makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big
-  folder in the file tree restyles a sixth of what it did each step.
+  folder in the file tree restyles a sixth of what it did each step; switching tabs redraws an eighth less.
 - **Workspaces are spaces**: each can have an icon and a colour, shown in the sidebar's switcher (the sidebars take a
   little of the colour), and a Browser container its web pages open in; a two-finger swipe over a sidebar goes to the
   next or previous one.

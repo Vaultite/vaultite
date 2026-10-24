@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandLink, useCommands } from "@/core/commands"
@@ -417,6 +417,11 @@ export default function App() {
   // Plugins' own commands (Open terminal...), while they're on (an opt-in one's too: `enabled`), and again when the
   // vault's plugins arrive or change.
   const pluginsVersion = usePluginsVersion()
+  // Plugins' background work, drawn again when the store changes (it listens to the rest itself): a tab switched or a
+  // sidebar shown redraws none of it. One that throws stops alone (its error goes to Errors).
+  const running = useMemo(() => store && backgrounds(disabled, order).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [store, disabled.join(), enabled.join(), order.join(), pluginsVersion])
   useCommands(() => pluginCommands(disabled), [disabled.join(), enabled.join(), pluginsVersion])
   // "Open <Name> settings": each plugin's settings sheet, while it's on and has some (core/pluginSettings.ts).
   useCommands(settingsCommands, [disabled.join(), enabled.join(), pluginsVersion])
@@ -601,9 +606,8 @@ export default function App() {
       <BundleTrial store={store} />
       <Toaster desktop={desktop} />
 
-      {/* Plugins' background work (Workspaces keeping the tabs and the vault in step), drawn nowhere; one that throws
-          stops alone (its error goes to Errors), not the app on every load. */}
-      {store && backgrounds(disabled, order).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>)}
+      {/* Plugins' background work (Workspaces keeping the tabs and the vault in step), drawn nowhere. */}
+      {running}
       {store && <GrantAsker store={store} />}
 
       {/* Phones: the bar at the bottom (Back, search, a new tab, the tab list, the menu) and the sidebars as drawers. */}
