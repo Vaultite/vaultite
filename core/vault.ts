@@ -1138,14 +1138,19 @@ export class Vault {
   home(collection: string, where?: (item: Item) => boolean): string | null {
     const set = where ? null : this.folderSet(collection)
     if (set !== null) return set
+    const items = this.shared(collection), missing = [...this.missing.keys()].join("\0"), had = where ? undefined : this.homes.get(items)
+    if (had?.missing === missing) return had.home
     const k = this.kind(collection), paths: string[] = []
-    for (const item of this.shared(collection)) {
+    for (const item of items) {
       // (not a folder that's gone for now: sync keeps its files a moment, but nothing new goes there)
       const id = String(item.id)
       if ((!where || where(item)) && !this.missing.has(id.split("/", 1)[0])) paths.push(id)
     }
-    return homeFolder(paths, k.folder, k.recursive)
+    const home = homeFolder(paths, k.folder, k.recursive)
+    if (!where) this.homes.set(items, { missing, home })
+    return home
   }
+  private homes = new WeakMap<readonly Item[], { missing: string; home: string | null }>() // (home's, by a kind's items)
 
   /** Where pages go (the user's, and those plugins write): the folder set (folders.json `dashboards`), else the one
    *  most of their dashboards are in, else Dashboards/. */

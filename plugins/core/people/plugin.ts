@@ -201,9 +201,14 @@ const publicPerson = (p: Item) => Object.fromEntries(Object.entries(p).filter(([
 // elsewhere serializes none of them again (core/statepatch.ts).
 const shown = new WeakMap<Item, { pin: string; person: Item; inter: Item[] }>()
 
+let stated: { ps: readonly Item[]; pins: string; out: Item } | null = null
+
 plugin.state(() => {
+  const ps = plugin.vault.shared("people")
+  const pins = ps.map((p) => (typeof p.lat === "number" && typeof p.lon === "number" ? "" : String(truthy(p.location) ? places.known(str(p.location)) : null))).join("\0")
+  if (stated?.ps === ps && stated.pins === pins) return stated.out
   const people: Item[] = [], inter: Item[] = []
-  for (const p of plugin.vault.shared("people")) {
+  for (const p of ps) {
     const pin = typeof p.lat === "number" && typeof p.lon === "number" ? "" : String(truthy(p.location) ? places.known(str(p.location)) : null)
     let s = shown.get(p)
     if (s?.pin !== pin) {
@@ -213,7 +218,8 @@ plugin.state(() => {
     people.push(s.person)
     inter.push(...s.inter)
   }
-  return { people, interactions: sortBy(inter, (i) => i.date, true) }
+  stated = { ps, pins, out: { people: Object.freeze(people), interactions: Object.freeze(sortBy(inter, (i) => i.date, true)) } }
+  return stated.out
 })
 
 function personFor(body: Item) {

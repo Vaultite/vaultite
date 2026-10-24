@@ -97,30 +97,32 @@ function size(vault: Vault, rel: string, r: Read, l: Limits): Sized {
 /** At most this many tokens a byte (a CJK character is 3 bytes and about 1.2 tokens): what a file can't be near its
  *  limit by, told from its size alone. */
 const MAX_PER_BYTE = 1.2
-// A file's limit, once per read of it (an Entry is new each time) and per limits.
-const limitOf = new WeakMap<Entry, { key: string; limit: number }>()
+// Whether a file may be flagged (a load chain's root, or near its limit by its size), once per read of it (an Entry is
+// new each time) and per limits.
+const mayFlag = new WeakMap<Entry, { key: string; may: boolean }>()
 
 /** Every Markdown file sized (the index's, and agent files in hidden folders), biggest first. `flaggedOnly`: only the
  *  files that may be flagged are read, so a big vault isn't read again for the few near a limit (most have none). */
 export function sizes(vault: Vault, { flaggedOnly = false } = {}): Sized[] {
   const l = limits(), key = JSON.stringify(l), out: Sized[] = []
-  const live = new Set<string>()
   for (const e of vault.entries.values()) {
-    live.add(e.rel)
-    if (flaggedOnly && !isChainRoot(e.rel)) {
-      let had = limitOf.get(e)
-      if (had?.key !== key) limitOf.set(e, had = { key, limit: limitFor(e.rel, e.fm, l) })
-      if (!had.limit || e.stat.size * MAX_PER_BYTE < had.limit * NEAR) continue
+    if (flaggedOnly) {
+      let had = mayFlag.get(e)
+      if (had?.key !== key) {
+        const limit = limitFor(e.rel, e.fm, l)
+        mayFlag.set(e, had = { key, may: isChainRoot(e.rel) || (!!limit && e.stat.size * MAX_PER_BYTE >= limit * NEAR) })
+      }
+      if (!had.may) continue
     }
     const r = readAt(vault, e.rel, e.stat)
     if (r) out.push(size(vault, e.rel, r, l))
   }
-  for (const rel of hiddenAgentFiles(vault)) {
+  const hidden = new Set(hiddenAgentFiles(vault))
+  for (const rel of hidden) {
     const r = readAt(vault, rel)
-    live.add(rel)
     if (r) out.push(size(vault, rel, r, l))
   }
-  for (const k of reads.keys()) if (!live.has(k) && !fs.existsSync(vault.abs(k))) reads.delete(k)
+  for (const k of reads.keys()) if (!vault.entries.has(k) && !hidden.has(k) && !fs.existsSync(vault.abs(k))) reads.delete(k)
   return out.sort((a, b) => (b.total ?? b.tokens) - (a.total ?? a.tokens) || a.path.localeCompare(b.path))
 }
 

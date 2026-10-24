@@ -30,23 +30,43 @@ let cached: { vault: Vault; version: number; list: Summary[] } | null = null
 // Each file's keys and their types, once per read of it (an Entry is new each time its file is read).
 const typed = new WeakMap<Entry, [string, PropType][]>()
 
+// The counts so far and the files they're of: a change counts again only the files read since.
+let tally: { vault: Vault; of: Map<string, Entry>; counts: Map<string, Map<PropType, number>> } | null = null
+const keysOf = (e: Entry) => {
+  let keys = typed.get(e)
+  if (!keys) typed.set(e, keys = Object.entries(e.fm ?? {}).map(([key, v]) => [key, typeOf(v)]))
+  return keys
+}
+
 /** Every key, most used first (kept until the vault's files change). */
 export function summary(vault: Vault): Summary[] {
   if (cached && cached.vault === vault && cached.version === vault.version) return cached.list
-  const byKey = new Map<string, Summary>()
-  for (const [, e] of files(vault)) {
-    let keys = typed.get(e)
-    if (!keys) typed.set(e, keys = Object.entries(e.fm ?? {}).map(([key, v]) => [key, typeOf(v)]))
-    for (const [key, t] of keys) {
-      let s = byKey.get(key)
-      if (!s) byKey.set(key, s = { key, count: 0, type: "empty", types: {} })
-      s.count++
-      s.types[t] = (s.types[t] ?? 0) + 1
+  if (tally?.vault !== vault) tally = { vault, of: new Map(), counts: new Map() }
+  const { of, counts } = tally
+  const count = (e: Entry, by: number) => {
+    for (const [key, t] of keysOf(e)) {
+      let c = counts.get(key)
+      if (!c) counts.set(key, c = new Map())
+      const n = (c.get(t) ?? 0) + by
+      if (n) c.set(t, n); else c.delete(t)
+      if (!c.size) counts.delete(key)
     }
   }
-  for (const s of byKey.values()) {
-    const known = Object.entries(s.types).filter(([t]) => t !== "empty").sort((a, b) => b[1] - a[1])
-    s.type = (known[0]?.[0] ?? "empty") as PropType
+  const now = new Set<string>()
+  for (const [rel, e] of files(vault)) {
+    now.add(rel)
+    const was = of.get(rel)
+    if (was === e) continue
+    if (was) count(was, -1)
+    count(e, 1)
+    of.set(rel, e)
+  }
+  for (const [rel, e] of of) if (!now.has(rel)) { count(e, -1); of.delete(rel) }
+  const byKey = new Map<string, Summary>()
+  for (const [key, c] of counts) {
+    const types = Object.fromEntries(c) as Partial<Record<PropType, number>>
+    const known = [...c].filter(([t]) => t !== "empty").sort((a, b) => b[1] - a[1])
+    byKey.set(key, { key, count: [...c.values()].reduce((a, b) => a + b, 0), type: known[0]?.[0] ?? "empty", types })
   }
   const list = sortBy([...byKey.values()], (s) => [-s.count, s.key.toLowerCase()])
   cached = { vault, version: vault.version, list }
