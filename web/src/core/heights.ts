@@ -161,10 +161,11 @@ export function holdHeight(el: HTMLElement, key: string, anyWidth = false, shrin
   }
 }
 
-/** holdHeight for a React element: put the ref on it. `key` null: nothing held or kept. */
-export function useHeldHeight<T extends HTMLElement>(key: string | null, shrinks = false) {
+/** holdHeight for a React element: put the ref on it. `key` null: nothing held or kept. `anyWidth`: held before what's
+ *  around it is measured (a sidebar's panels, laid out in their own layout effect), at the latest height. */
+export function useHeldHeight<T extends HTMLElement>(key: string | null, shrinks = false, anyWidth = false) {
   const ref = useRef<T>(null)
-  useLayoutEffect(() => (key && ref.current ? holdHeight(ref.current, key, false, shrinks) : undefined), [key, shrinks])
+  useLayoutEffect(() => (key && ref.current ? holdHeight(ref.current, key, anyWidth, shrinks) : undefined), [key, shrinks, anyWidth])
   return ref
 }
 

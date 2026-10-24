@@ -22,8 +22,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   bundle from there leaves with its pages and snippets when you switch, as the built-in ones do.
   about the page you're on. Life OS moved to Get bundles, beside Agents; a setup made with it stays as it is.
 - **Big vaults keep up with edits**: in a 24,000-note vault the app loads a quarter of the data it did (the lines links
-  sit on come only for the Links panel), the server does a third of the work to refresh it after an edit, and a
-  fifteenth for an open local graph (the graph updates only the edited files' links), and an open graph view is sent
+  sit on come only for the Links panel, which keeps their room while they come), the server does a third of the work
+  to refresh it after an edit, and a fifteenth for an open local graph (the graph updates only the edited files'
+  links), and an open graph view is sent
   only what changed. It starts sooner too: lists in
   properties as Obsidian writes them, and nested ones read before, no longer go through the YAML library; renaming a
   note many others link to takes half the time, and a search, half; the first click after a pause no longer waits

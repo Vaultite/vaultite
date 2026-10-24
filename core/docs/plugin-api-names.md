@@ -604,7 +604,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useFocusedFile()`
 - `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab, or one of a group just opened.
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
-- `useHeldHeight(key, shrinks?)`: holdHeight for a React element: put the ref on it.
+- `useHeldHeight(key, shrinks?, anyWidth?)`: holdHeight for a React element: put the ref on it.
 - `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
 - `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).

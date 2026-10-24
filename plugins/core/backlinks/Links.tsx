@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FileQuestion, FileText, Globe, NotebookPen, SquareArrowOutUpRight } from "lucide-react"
 import {
   backlinks, Bar, cn, createNamed, Foldable, get, getStore, HeadingButton, isDesktop, newNoteFolder, openDetail, openFile, openInSplit, openView, post, resolver,
-  SidebarHeading, snippet, startDrag, stem, useFocusedFile, useKeptCount, useLive, useNearEnd, useVaultChange, viewInfo, type SidebarCtx, type Store,
+  SidebarHeading, snippet, startDrag, stem, useFocusedFile, useHeldHeight, useKeptCount, useLive, useNearEnd, useVaultChange, viewInfo, type SidebarCtx, type Store,
 } from "@vaultite"
 import { siteOf } from "./weblinks"
 
@@ -42,8 +42,9 @@ function useLinks(store: Store, path: string) {
   const { data } = useLive<Unlinked>(path && isMd(path) ? `backlinks/unlinked?path=${encodeURIComponent(path)}&limit=${limit}` : null, v)
   const unlinked = path && isMd(path) ? data ?? null : { total: 0, files: 0, mentions: [] }
   const more = () => { if (data && data.mentions.length < data.total && data.mentions.length >= limit) setLimit(limit + PAGE) }
-  // The line each linked mention is on (the store has only links' targets).
-  const lines = useLive<{ lines: Record<string, string> }>(path && linked.length ? `file/linked?path=${encodeURIComponent(path)}` : null, v).data?.lines
+  // The line each linked mention is on (the store has only links' targets): asked before the store has them, so a kept
+  // answer draws with them.
+  const lines = useLive<{ lines: Record<string, string> }>(path ? `file/linked?path=${encodeURIComponent(path)}` : null, v).data?.lines
   return { linked, lines, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
 }
 
@@ -103,6 +104,20 @@ function Looking({ count }: { count: number }) {
   )
 }
 
+/** The files linking to `path`. Their lines come after their names: till then each keeps a line's room, and the list
+ *  the height it had last time in that place (`at`), as a line can take two. */
+function Linked({ path, at, linked, lines, open }: { path: string; at: string; linked: { file: { path: string }; title: string }[]; lines?: Record<string, string>; open: (p: string) => void }) {
+  const held = useHeldHeight<HTMLDivElement>(`links:linked:${at}:${path}`, true, true)
+  return (
+    <div ref={held} className="flex flex-col gap-px">
+      {linked.map(({ file, title }) => (
+        <Item key={file.path} icon={FileText} title={title} onOpen={() => open(file.path)} path={file.path}
+          context={lines ? lines[file.path] && snippet(lines[file.path]) : <span aria-busy><Bar w="85%" /></span>} />
+      ))}
+    </div>
+  )
+}
+
 /** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
 export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
   const { linked, lines, outgoing, unlinked, more, refresh } = useLinks(store, path)
@@ -119,9 +134,7 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   return (
     <div className="flex flex-col" data-links-for={path}>
       <Foldable data-links-group="linked" keep="links.linked" title="Linked mentions" count={linked.length}>
-        {linked.length ? linked.map(({ file, title }) => (
-          <Item key={file.path} icon={FileText} title={title} context={lines?.[file.path] && snippet(lines[file.path])} onOpen={() => open(file.path)} path={file.path} />
-        )) : empty("Nothing links here yet.")}
+        {linked.length ? <Linked path={path} at={pane ? "tab" : "panel"} linked={linked} lines={lines} open={open} /> : empty("Nothing links here yet.")}
       </Foldable>
       <Foldable data-links-group="unlinked" keep="links.unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
         {!unlinked ? <Looking count={looking} /> : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
