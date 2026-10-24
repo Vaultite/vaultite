@@ -72,6 +72,12 @@ try {
   check("  Tab: the name, the colour it has (one stop for the row), its first row", tab1 === "purple" && tab2 === "New tab in group", [tab1, tab2])
   await page.locator("[role=menu] [data-menu-field] input").press("Enter"); await wait(200)
   check("  Enter closes it, the name kept", !(await page.$("[role=menu]")) && (await bar()).includes("<Lighthouse work> Lighthouse"), await bar())
+  // A long name: cut off in its chip (a browser's width), the tabs keeping their room; then back.
+  const rename = async (name) => { await page.click("[data-set-chip]", { button: "right" }); const f = await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await f.fill(name); await f.press("Enter"); await wait(300) }
+  await rename("Everything about the Lighthouse launch and the people on it")
+  const chipW = await page.$eval("[data-set-chip] [data-set-label]", (e) => Math.round(e.getBoundingClientRect().width))
+  check("  a long name is cut off in its chip", chipW <= 160, chipW)
+  await rename("Lighthouse work")
   await menu(tab("ME"), "Add to group", "Lighthouse work"); await wait(200)
   check("another tab joins it from its menu, at its end", (await bar()).includes("<Lighthouse work> Lighthouse ME"), await bar())
   await menu(tab("2026-10-20"), "Add tab to new group")

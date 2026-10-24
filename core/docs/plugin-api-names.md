@@ -487,7 +487,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setArchiveAfter(ms)`
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
-- `SetLabel({ s, n, target })`: A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its text white or dark by the colour's lightness; without a name, a small square of it.
+- `SetLabel({ s, n, target, className })`: A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its text white or dark by the colour's lightness; without a name, a small square of it.
 - `setMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
 - `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).

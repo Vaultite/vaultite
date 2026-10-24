@@ -132,7 +132,8 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
       data-tip={d ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
       className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", d?.item.tabset === s.id && "opacity-50")}>
       {/* (as tall as a tab, the chip inside: the line under it then lines up with the tabs') */}
-      <SetLabel s={s} n={n} target={target} />
+      {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
+      <SetLabel s={s} n={n} target={target} className="max-w-40" />
       {/* The line under the group's tabs starts here (each tab carries it on). */}
       {!s.collapsed && <span aria-hidden data-set-line={s.id} className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full transition-colors duration-200" style={{ background: c }} />}
     </div>
@@ -141,11 +142,11 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
 
 /** A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its
  *  text white or dark by the colour's lightness; without a name, a small square of it. Folded, its count shows. */
-export function SetLabel({ s, n, target }: { s: TabSet; n: number; target?: boolean }) {
+export function SetLabel({ s, n, target, className }: { s: TabSet; n: number; target?: boolean; className?: string }) {
   const c = colorVar(s.color)
   return (
     <span data-set-label {...(s.name ? {} : { role: "img", "aria-label": setName(s) })} className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center gap-1 text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-200",
-      s.name || s.collapsed ? "h-5 rounded-[6px] px-1.5" : "size-3.5 rounded-[4px]")}
+      s.name || s.collapsed ? "h-5 rounded-[6px] px-1.5" : "size-3.5 rounded-[4px]", className)}
       style={{ ["--tint" as string]: c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
       {s.name && <span className="min-w-0 truncate">{s.name}</span>}
       {s.collapsed && <span className="font-medium tabular-nums opacity-80">{n}</span>}
