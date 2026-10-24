@@ -45,18 +45,21 @@ plugin.route("GET", "backlinks/unlinked", (req) => {
   const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0))
   const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
   const mentions: object[] = []
-  let total = 0, files = 0
-  // (excluded files aren't searched for mentions, as in Obsidian)
-  const all = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel !== rel && !plugin.vault.excluded(e.rel)), (e) => -Number(e.stat.ns / 1000000n))
-  for (const e of all) {
+  let total = 0
+  // (excluded files aren't searched for mentions, as in Obsidian; only the files with some are put in order)
+  const hits: [Entry, Mention[]][] = []
+  for (const e of plugin.vault.entries.values()) {
+    if (e.rel === rel || plugin.vault.excluded(e.rel)) continue
     const ms = mentionsIn(e, names, lower)
-    if (ms.length) files++
+    if (ms.length) hits.push([e, ms])
+  }
+  for (const [e, ms] of sortBy(hits, ([e]) => -Number(e.stat.ns / 1000000n))) {
     for (const m of ms) {
       if (total >= offset && mentions.length < limit) mentions.push({ path: e.rel, ...m })
       total++
     }
   }
-  return { total, files, mentions }
+  return { total, files: hits.length, mentions }
 })
 
 /** Each note's web addresses (its sources, then its body's), by its stat: only changed notes are read again. */
@@ -77,9 +80,14 @@ plugin.route("GET", "backlinks/web", (req) => {
   const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
   const about: { path: string }[] = [], linked: { path: string; line: string }[] = [], elsewhere: { path: string; url: string; line: string }[] = []
   let more = 0
-  const all = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel.endsWith(".md") && !plugin.vault.excluded(e.rel)), (e) => -Number(e.stat.ns / 1000000n))
-  for (const e of all) {
+  // (only the notes with a web address are put in order, newest first)
+  const all: [Entry, ReturnType<typeof addressesOf>][] = []
+  for (const e of plugin.vault.entries.values()) {
+    if (!e.rel.endsWith(".md") || plugin.vault.excluded(e.rel)) continue
     const a = addressesOf(e)
+    if (a.about.length || a.links.length) all.push([e, a])
+  }
+  for (const [e, a] of sortBy(all, ([e]) => -Number(e.stat.ns / 1000000n))) {
     if (a.about.some((u) => pageKey(u) === key)) about.push({ path: e.rel })
     const here = a.links.find((l) => pageKey(l.url) === key)
     if (here) linked.push({ path: e.rel, line: here.line })
