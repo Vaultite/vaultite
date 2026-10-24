@@ -235,6 +235,8 @@ export type ViewDef = {
   /** A colour its tab takes lightly while it's the active one, when the appearance setting `tabTint` is on (a web
    *  page's container). */
   tabTint?: (arg: string) => string | undefined
+  /** A name for a new tab group of its tabs, when they all give the same one (a web page's site: "Github"); null: none. */
+  groupName?: (arg: string) => string | null
   /** The arg is the view's own state (a search's query), changed with `ctx.setArg`: the view isn't drawn afresh when it
    *  changes, and the tab keeps it (it's in the workspace's layout, so it survives a reload and shows on other devices). */
   argState?: boolean

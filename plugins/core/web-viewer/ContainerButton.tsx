@@ -4,9 +4,10 @@ import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
 import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
 import { accountIn, askSites } from "./accounts"
+import { siteOf } from "./address"
 import { passwordsForAgents } from "./agentlogins"
 import {
-  addContainer, argOf, colorOf, containerById, containers, moveContainer, profileIn, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
+  addContainer, argOf, colorOf, containerById, containers, moveContainer, profileIn, removeContainer, ruleFor, setSiteRule, updateContainer,
   type Container,
 } from "./containers"
 

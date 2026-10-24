@@ -14,7 +14,7 @@ import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
 import { retargetArchived } from "@/core/tabarchive"
-import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, openBehind, retarget, targetOf } from "@/core/workspace"
+import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, keepsTab, openBehind, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
@@ -145,16 +145,16 @@ function openAsked(path: string, split?: "right" | "down" | null, newTab = false
   if (background) return openBehind(to)
   if (!isDesktop()) return view ? afterSheets(() => go(to)) : openFile(to.slice(5))
   if (split) return openInSplit(to, split === "down" ? "bottom" : "right")
-  if (!view) besideTerminal()
+  if (!view) besideKept()
   go(to, newTab)
 }
 /** A file an agent opens from its terminal goes beside it, not over it: the focus moves to the first other pane that
- *  isn't showing a terminal, when there's one. */
-function besideTerminal() {
+ *  isn't showing a tab that keeps its own (ViewDef.keepsTab: a terminal), when there's one. */
+function besideKept() {
   const ws = getWorkspace(), gs = leaves(ws.root)
-  const isTerm = (g: Group) => !!shownTab(g)?.to.startsWith("view:terminal/")
+  const kept = (g: Group) => { const t = shownTab(g); return !!t && keepsTab(t.to) }
   const cur = gs.find((g) => g.id === ws.focus)
-  const other = cur && isTerm(cur) ? gs.find((g) => g.id !== cur.id && !isTerm(g)) : undefined
+  const other = cur && kept(cur) ? gs.find((g) => g.id !== cur.id && !kept(g)) : undefined
   if (other) focusGroup(other.id)
 }
 onUiAction((m) => {

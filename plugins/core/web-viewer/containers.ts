@@ -2,6 +2,7 @@
 // to with several accounts side by side. A tab in one is `view:web/@<id>/<address>`; a tab in none has its workspace's.
 import { COLORS, colorVar, currentWorkspace, isColor, type Color } from "@vaultite"
 import { settings, profile, type Settings } from "./state"
+import { siteOf } from "./address"
 
 export type Container = { id: string; name: string; color: Color
   /** Sites it opens ("youtube.com"): a page of one opened in no container opens in this one. */
@@ -45,15 +46,6 @@ export const argOf = (url: string, container: string | null) => (container ? `@$
 export const profileIn = (container: string | null) => (container ? `c-${container}` : profile())
 /** The container a page's logins are, from its profile ("c-work"); null for a workspace's. */
 export const containerOfProfile = (prof: string) => (prof.startsWith("c-") ? prof.slice(2) : null)
-
-/** "www.youtube.com" → "youtube.com": what a container's sites name. */
-export function siteOf(url: string) {
-  let host = ""
-  try { host = new URL(url).hostname.toLowerCase() } catch { return "" }
-  if (!host.includes(".") || /^[\d.]+$/.test(host)) return host
-  const parts = host.split(".")
-  return parts.slice(/\.(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(host) ? -3 : -2).join(".")
-}
 
 /** The container a page opened in none goes to: the one whose sites have its site, if any. */
 export function ruleFor(url: string): string | null {

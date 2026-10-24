@@ -1,4 +1,5 @@
-// What's typed in the Browser's address bar (or in "Open web page…") as an address. Shared with tools/test_web.ts.
+// What's typed in the Browser's address bar (or in "Open web page…") as an address, and a page's site. Shared with
+// tools/test_web.ts.
 
 /** The search used for words that aren't an address: `%s` is what was typed. */
 export const SEARCH = "https://duckduckgo.com/?q=%s"
@@ -27,4 +28,18 @@ export const searchUrl = (words: string, search = SEARCH) => (search.includes("%
 /** A page's site, for its tab before it has a title: "example.com". */
 export function hostOf(url: string) {
   try { return new URL(url).host.replace(/^www\./, "") || url } catch { return url }
+}
+
+/** "www.youtube.com" → "youtube.com": what a container's sites name. */
+export function siteOf(url: string) {
+  let host = ""
+  try { host = new URL(url).hostname.toLowerCase() } catch { return "" }
+  if (!host.includes(".") || /^[\d.]+$/.test(host)) return host
+  const parts = host.split(".")
+  return parts.slice(/\.(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/.test(host) ? -3 : -2).join(".")
+}
+/** A page's site as a name for a group of its tabs ("www.github.com" -> "Github"); null for this machine or an IP. */
+export function siteName(url: string) {
+  const site = siteOf(url)
+  return site.includes(".") && !/^[\d.]+$/.test(site) ? site.split(".")[0].replace(/^./, (c) => c.toUpperCase()) : null
 }

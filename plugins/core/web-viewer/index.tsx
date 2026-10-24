@@ -3,7 +3,7 @@
 import { lazy, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, KeyRound, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
 import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, isWindows, modKey, modifiedSteps, notify, notifyError, openInSet, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
-import { hostOf, searchUrl } from "./address"
+import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
 import { painted } from "./layers"
@@ -199,6 +199,8 @@ export default definePlugin({
       iconFor: (arg) => { const { container, url } = splitArg(arg), c = containerById(container); return siteIcon(url, c ? colorOf(c) : undefined) },
       // (with appearance `tabTint`: the active tab in its container's colour, lightly)
       tabTint: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
+      // (a new tab group of one site's pages is named after it)
+      groupName: (arg) => siteName(splitArg(arg).url),
       full: true,
       // (what a new tab can be, its address to type: in the desktop app, where pages show)
       asNewTab: { label: "Web page", here: () => !!webPages },

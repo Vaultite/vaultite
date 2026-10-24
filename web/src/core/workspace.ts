@@ -195,6 +195,7 @@ function sortOf(to: string) {
 /** Whether a view's tab is its own (ViewDef.keepsTab). Set by the app, which knows the views. */
 let keeps: (to: string) => boolean = () => false
 export const setTabKeeper = (fn: (to: string) => boolean) => { keeps = fn }
+export const keepsTab = (to: string) => keeps(to)
 /** The tab a new tab of `to` opens beside (ViewDef.opensBeside: a session dispatched from a note, by that note's), or
  *  null for the current one. Set by the app, which knows the views. */
 let besideOf: (to: string) => string | null = () => null

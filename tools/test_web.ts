@@ -916,7 +916,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tab groups: tabs made a group sit together where the first was, with the first unused colour", runs() === "a,b(Work),d(Work),c,e" && pane().sets[0].color === "blue", runs())
   ts.makeSet(["e"])
   check("tab groups: the next group takes the next colour; no name when the tabs share no folder or site", pane().sets[1].color === "orange" && pane().sets[1].name === "", pane().sets)
-  check("tab groups: a new group's name is the folder its files share, or their site", ts.suggestName([{ id: "x", to: "file:Projects/Lighthouse/a.md" }, { id: "y", to: "file:Projects/Lighthouse/b.md" }]) === "Lighthouse"
+  const { siteName } = await import("../plugins/core/web-viewer/address.ts")
+  ts.setGroupNamer((to: string) => (to.startsWith("view:web/") ? siteName(to.slice(9).replace(/^@[a-z0-9]+\//, "")) : null))
+  check("tab groups: a new group's name is the folder its files share, or what their views name it (a site)", ts.suggestName([{ id: "x", to: "file:Projects/Lighthouse/a.md" }, { id: "y", to: "file:Projects/Lighthouse/b.md" }]) === "Lighthouse"
     && ts.suggestName([{ id: "x", to: "view:web/https://www.github.com/a" }, { id: "y", to: "view:web/@work/https://github.com/b" }]) === "Github"
     && ts.suggestName([{ id: "x", to: "file:a.md" }, { id: "y", to: "view:terminal/q" }]) === "")
   ts.addToSet(["a"], s1)
@@ -1160,7 +1162,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------
 {
-  const { addressOf, hostOf } = await import("../plugins/core/web-viewer/address.ts")
+  const { addressOf, hostOf, siteName } = await import("../plugins/core/web-viewer/address.ts")
+  check("Browser: a group of a site's tabs is named after it, none for this machine", siteName("https://www.github.com/a") === "Github"
+    && siteName("https://news.bbc.co.uk/") === "Bbc" && siteName("http://localhost:3000/") === null && siteName("http://192.168.1.2/") === null)
   check("Browser: an address with its scheme as it is", addressOf(" https://example.com/a?b=1#c ") === "https://example.com/a?b=1#c")
   check("Browser: a host gets https", addressOf("example.com/posts") === "https://example.com/posts" && addressOf("sub.example.co.uk") === "https://sub.example.co.uk/")
   check("Browser: this machine and IP addresses get http", addressOf("localhost:3000/x") === "http://localhost:3000/x" && addressOf("127.0.0.1:8080") === "http://127.0.0.1:8080/")

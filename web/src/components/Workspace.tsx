@@ -9,6 +9,7 @@ import { useHeldHeight } from "@/core/heights"
 import { closeTab, focusGroup, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
 import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
 import { evenOut, resize } from "@/core/splits"
+import { setGroupNamer } from "@/core/tabsets"
 import { layout, shownTab, tabPath, type Divider as DividerAt, type Group, type Rect } from "../../../core/layout.ts"
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
@@ -35,6 +36,7 @@ setTabCloser((to, tab, last) => {
 })
 setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
+setGroupNamer((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.groupName?.(v.arg)) || null })
 setOpener((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.opensBeside?.(v.arg)) || null })
 setPageTest((path) => isPage(path))
 setArchivable((t) => {

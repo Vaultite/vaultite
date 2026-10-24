@@ -20,17 +20,15 @@ export function nextColor(): Color {
   return COLORS.find((c) => !used.includes(c)) ?? COLORS[used.length % COLORS.length]
 }
 
-/** The site a web tab shows ("view:web/@work/https://www.example.com/a" -> "example.com"). */
-function siteOf(to: string) {
-  if (!to.startsWith("view:web/")) return null
-  try { return new URL(to.slice(9).replace(/^@[a-z0-9]+\//, "")).hostname.replace(/^www\./, "") || null } catch { return null }
-}
-/** A name for a new group of these tabs: the folder or the site they all share, else none (the chip is its colour). */
+/** What a view's tab names a group of its tabs (ViewDef.groupName: a web page's site). Set by the app, which knows the views. */
+let viewGroupName: (to: string) => string | null = () => null
+export const setGroupNamer = (fn: (to: string) => string | null) => { viewGroupName = fn }
+/** A name for a new group of these tabs: the folder or the view's name they all share, else none (the chip is its colour). */
 export function suggestName(tabs: Tab[]): string {
   const folders = tabs.map((t) => (t.to.startsWith("file:") && !t.to.startsWith("file:/") ? t.to.slice(5).split("/").slice(0, -1).join("/") : null))
   if (folders.every((f) => f) && new Set(folders).size === 1) return folders[0]!.split("/").pop()!
-  const sites = tabs.map((t) => siteOf(t.to))
-  if (sites.every((s) => s) && new Set(sites).size === 1) return sites[0]!.split(".").slice(-2, -1)[0]?.replace(/^./, (c) => c.toUpperCase()) ?? ""
+  const named = tabs.map((t) => (t.to.startsWith("view:") ? viewGroupName(t.to) : null))
+  if (named.every((n) => n) && new Set(named).size === 1) return named[0]!
   return ""
 }
 
