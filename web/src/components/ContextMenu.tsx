@@ -411,7 +411,10 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
       const i = all.indexOf(cur)
-      all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length]?.focus()
+      // (↑ from the first row goes up to what's atop it: a tab group's colours, else its name)
+      const above = e.key === "ArrowUp" && i === 0 && ["[data-menu-colors] [aria-checked=true]", "[data-menu-colors] button", "[data-menu-field] input"]
+        .map((q) => ref.current?.querySelector<HTMLElement>(q)).find(Boolean)
+      ;(above || all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length])?.focus()
     } else if (e.key === "ArrowRight") {
       const i = Number(cur?.dataset.index)
       if (rows[i]?.items?.length) { e.preventDefault(); if (drill) into(i); else open(i, cur, true) }
@@ -536,6 +539,13 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
   return (
     <div role="radiogroup" aria-label={it.label} data-menu-colors
       onKeyDown={(e) => {
+        // ↓ and ↑ leave the row, as from any row: to the menu's first row, or back to its name's field.
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          const menu = e.currentTarget.closest("[role=menu]"), rows = [...menu?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? []]
+          e.preventDefault(); e.stopPropagation()
+          ;(e.key === "ArrowDown" ? rows[0] : menu?.querySelector<HTMLElement>("[data-menu-field] input") ?? rows.at(-1))?.focus()
+          return
+        }
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
         e.preventDefault(); e.stopPropagation()
         const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button")], i = all.indexOf(document.activeElement as HTMLElement)

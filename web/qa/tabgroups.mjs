@@ -1,5 +1,5 @@
 // Tab groups and vertical tabs. A tab's menu makes a group (its editor opening under its chip: its name, typed live, and
-// a row of colours, one click each), another tab joins it
+// a row of colours, one click each; the arrows through it as through a menu), another tab joins it
 // from its menu, a dragged tab joins and leaves it, its chip folds it (a count shows) and drags the whole group, a tab
 // shown in a folded group opens it; they come back after a reload and a closed tab reopens into its group. Then Show
 // tabs in the sidebar (the palette): the tab bar off, the Tabs panel first in the left sidebar with each group a row
@@ -61,6 +61,11 @@ try {
   await page.locator("[role=menu] [data-menu-colors] [data-color='purple']").click(); await wait(300)
   check("  a colour is one click, and the editor stays open with it ticked", (await bg()) !== was && await page.locator("[role=menu] [data-color='purple'][aria-checked=true]").count() === 1, [was, await bg()])
   await page.screenshot({ path: `${OUT}editor-light.png`, clip: { x: 0, y: 0, width: 1280, height: 360 } })
+  // The keyboard through it, as through any menu: ↓ from the colours to its rows, ↑ from the first row back to them.
+  const on = () => page.evaluate(() => document.activeElement?.getAttribute("data-color") ?? document.activeElement?.textContent?.trim())
+  await page.keyboard.press("ArrowDown"); const down = await on()
+  await page.keyboard.press("ArrowUp"); const up = await on()
+  check("  ↓ from its colours to its first row, ↑ back to the colour it has", down === "New tab in group" && up === "purple", [down, up])
   await page.locator("[role=menu] [data-menu-field] input").press("Enter"); await wait(200)
   check("  Enter closes it, the name kept", !(await page.$("[role=menu]")) && (await bar()).includes("<Lighthouse work> Lighthouse"), await bar())
   await menu(tab("ME"), "Add to group", "Lighthouse work"); await wait(200)
