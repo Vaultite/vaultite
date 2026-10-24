@@ -13,7 +13,8 @@ import { MOVED } from "../core/migrations.ts"
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
 const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
-/** Not tests (benchmarks, a library, the smoke test), needing more than one machine (machines, inboxmachines), or another build (the demo's). */
+/** Not tests (benchmarks, a library, the smoke test), needing more than one machine (machines, inboxmachines), or another
+ *  build (the demo's: CI's demo job runs it, and named here it's built first). */
 const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "inboxmachines", "termhost", "demo", "bundle-shots"])
 const TIMEOUT = 8 * 60_000
 
@@ -89,7 +90,30 @@ function stop(s: Server) {
   stopTerminals(s.port)
 }
 
+/** Node running `args` in the checkout, in the caller's QA slot: its exit code and output, killed after TIMEOUT. */
+async function exec(args: string[], env: Record<string, string>) {
+  const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...process.env, ...env, VAULTITE_QA_SLOT: "1" } })
+  let text = ""
+  child.stdout.on("data", (b) => { text += b })
+  child.stderr.on("data", (b) => { text += b })
+  const timer = setTimeout(() => { text += `\n(timed out after ${TIMEOUT / 60_000} min)`; child.kill() }, TIMEOUT)
+  const code = await new Promise<number | null>((r) => child.on("close", r))
+  clearTimeout(timer)
+  return { code, text }
+}
+
+/** The web demo (demo.mjs): no server of ours (it's in the browser), on a build made for the run, never a stale one,
+ *  with Vaultite's own plugins built in as vaultite.com builds it. */
+async function demo() {
+  const t = Date.now(), env = { VAULTITE_PLUGINS: OFFICIAL }
+  const built = await exec([path.join(ROOT, "node_modules/vite/bin/vite.js"), "build", "-c", "vite.demo.config.ts", "--logLevel", "warn"], env)
+  if (built.code !== 0) return { ok: false, ms: Date.now() - t, out: `npm run build:demo failed:\n${built.text}` }
+  const { code, text } = await exec([path.join(QA, "demo.mjs")], env)
+  return { ok: code === 0, ms: Date.now() - t, out: text }
+}
+
 async function run(name: string): Promise<{ ok: boolean, ms: number, out: string, skipped?: string }> {
+  if (name === "demo") return demo()
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `vaultite-qa-${name}-`))
   const vault = path.join(tmp, "vault"), out = path.join(tmp, "out"), claude = path.join(tmp, "claude")
   fs.mkdirSync(out)
@@ -136,15 +160,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
       else if (tok.startsWith("[")) break
       else return { ok: true, ms: 0, out: "", skipped: `needs ${tok}` }
     }
-    const child = spawn(process.execPath, [path.join(QA, `${name}.mjs`), ...args], {
-      cwd: ROOT, env: { ...process.env, ...env, VAULTITE_QA_SLOT: "1", QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1) },
-    })
-    let text = ""
-    child.stdout.on("data", (b) => { text += b })
-    child.stderr.on("data", (b) => { text += b })
-    const timer = setTimeout(() => { text += `\n(timed out after ${TIMEOUT / 60_000} min)`; child.kill() }, TIMEOUT)
-    const code = await new Promise<number | null>((r) => child.on("close", r))
-    clearTimeout(timer)
+    const { code, text } = await exec([path.join(QA, `${name}.mjs`), ...args], { ...env, QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1) })
     const skipped = code === 0 ? /^skipped: (.*)$/m.exec(text)?.[1] : undefined
     return { ok: code === 0, ms: Date.now() - t, out: text, skipped }
   } catch (e) {

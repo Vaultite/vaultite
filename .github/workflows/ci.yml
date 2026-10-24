@@ -1,5 +1,5 @@
 # Every push to main and every pull request: build, check and the tests, on Linux, macOS and Windows (windows.yml: Arm
-# and the Windows app itself). Nightly (and by hand):
+# and the Windows app itself), and the web demo. Nightly (and by hand):
 # every UI QA script too, so they don't rot (by hand, `-f scripts="a b"` runs only those).
 name: CI
 on:
@@ -54,6 +54,34 @@ jobs:
         run: npm test
       - if: ${{ !cancelled() }}
         run: npm run smoke
+  # The web demo (vaultite.com/demo), as the site builds it: with Vaultite's own plugins at their main, in Chrome and
+  # WebKit (Safari runs its workers its own way). It builds in a minute, beside the tests: a demo that can't start is
+  # caught on the push that broke it, not at a release.
+  demo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1 # (no desktop app here)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Vaultite/plugins
+          path: vaultite-plugins
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-webkit-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      - run: npx playwright-core install --with-deps chromium webkit
+      # (tools/qa.ts builds the demo, then runs web/qa/demo.mjs on it)
+      - run: npm run qa -- demo
+        env:
+          VAULTITE_PLUGINS: ${{ github.workspace }}/vaultite-plugins
   qa:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
