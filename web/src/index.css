@@ -475,6 +475,8 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 .vau-toaster[data-sonner-toaster][data-sonner-theme] {
   --normal-bg: var(--card); --normal-text: var(--foreground); --normal-border: var(--border);
   --border-radius: 8px; --width: 340px; font-family: var(--font-sans);
+  /* under what the user opened (a menu: 60, a drag: 70, a tooltip: 100), not sonner's top of everything */
+  z-index: 55;
 }
 [data-sonner-toaster] .vau-toast[data-styled=true] {
   gap: 10px; padding: 9px 8px 9px 12px; min-height: 40px; font-size: 13px; line-height: 18px;
