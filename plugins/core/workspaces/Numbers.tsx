@@ -2,8 +2,9 @@
 // that keeps the tabs and the vault in step.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { ChevronDown } from "lucide-react"
-import { cn, colorVar, commandKeys, getStore, menuFor, namedIcon, onTabLayoutChange, sidebarsChanged, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
+import { Check, ChevronDown } from "lucide-react"
+import { Mark as Look } from "./Mark"
+import { cn, colorVar, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
 import {
   cycle, emit, getRenaming, label, leaving, lit as litNow, lookOf, named, patch, saveTabs, saveTabsSoon, savePending, sendTo, setRenaming, slotMenu, slots,
   SLOTS, switchTo, sync, used, useVersion, type Sent,
@@ -11,14 +12,9 @@ import {
 
 // ---------- the header ----------
 
-/** Workspace n's mark: its icon in its tint, else its number in a box (in its tint, when it has one). `look`: the box's
- *  own classes for the number (the switcher's, a row's). */
-function Mark({ n, look, size = "size-[18px]" }: { n: number; look: string; size?: string }) {
-  const { icon, tint } = lookOf(n)
-  const Icon = icon ? namedIcon(icon) : null
-  const c = tint ? colorVar(tint) : undefined
-  if (Icon) return <span data-workspace-icon={icon} className={cn("grid shrink-0 place-items-center", size)}><Icon className="size-[15px]" strokeWidth={2} style={c ? { color: c } : undefined} /></span>
-  return <span className={cn("grid shrink-0 place-items-center rounded-[4px] text-[11px] leading-none tabular-nums", size, look)} style={c ? { color: c, borderColor: c } : undefined}>{n}</span>
+/** Workspace n's mark, as it looks now. */
+function Mark({ n, look, size }: { n: number; look: string; size?: string }) {
+  return <Look n={n} {...lookOf(n)} look={look} size={size} />
 }
 
 /** Workspace n's row while renamed: a field; Enter, a click elsewhere or the list closing keeps it, Escape doesn't. */
@@ -123,12 +119,13 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
                 onClick={() => { setOpen(false); switchTo(m) }}
                 onContextMenu={menuFor(() => slotMenu(m))}
                 className={cn("flex h-7 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] transition-colors",
-                  "outline-none focus-visible:bg-foreground/[0.07]",
-                  over === m ? "bg-primary/15 ring-1 ring-primary/50" : on ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.05]")}>
+                  // (as a menu's rows: the highlight follows the pointer and the keyboard, a check says which is on)
+                  "outline-none focus-visible:bg-foreground/[0.07]", over === m ? "bg-primary/15 ring-1 ring-primary/50" : "hover:bg-foreground/[0.07]")}>
                 <Mark n={m} look={cn("border", on ? "border-primary/60 bg-primary/10 font-semibold text-primary"
                   : has ? "border-border font-medium text-foreground" : "border-dashed border-border text-tertiary")} />
                 <span className={cn("min-w-0 flex-1 truncate", on ? "font-medium" : has ? "" : "text-tertiary")}>{has ? label(m) : "New workspace"}</span>
-                <span className="text-[11px] text-tertiary">⌃{m}</span>
+                {on && <Check aria-hidden className="size-3.5 shrink-0 text-primary" strokeWidth={2.5} />}
+                <span className="text-[11px] text-tertiary">{commandKeys(`workspace:${m}`)}</span>
               </button>
             )
           })}

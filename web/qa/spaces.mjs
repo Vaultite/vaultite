@@ -1,7 +1,8 @@
 // Workspaces as spaces (plugins/core/workspaces): a workspace's menu sets its icon (shown for its number, in its tint),
 // its colour (the sidebars take a little of it, light and dark, and lose it again) and its Browser container (the
 // Browser's own, listed); its settings show all three; a two-finger swipe over the sidebar goes to the next and back,
-// an up-and-down one doesn't; the phone's tab list shows the icon. WRITES plugins.json and the workspaces' files (put
+// an up-and-down one doesn't; the list lights only the focused row, a check on the current one; the phone's tab list
+// shows the icon, and its menu each workspace's mark. WRITES plugins.json and the workspaces' files (put
 // back): throwaway only.   node web/qa/spaces.mjs <base url> <vault path>
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import path from "node:path"
@@ -46,6 +47,12 @@ try {
   await until(() => workspaces(VAULT)[0]?.icon, 5000)
   check("Change icon: kept in its file", workspaces(VAULT)[0]?.icon === "book-open", workspaces(VAULT)[0])
   check("… and shown for its number", await until(() => page.$(`${SWITCHER} [data-workspace-icon=book-open]`), 3000))
+
+  // The list: like a menu, the highlight follows the keyboard and a check marks the one that's on.
+  await page.click(SWITCHER); await page.keyboard.press("ArrowDown"); await wait(200)
+  const listed = await page.$$eval("[data-workspace-list] [data-workspace]", (els) => els.map((e) => ({ on: e.getAttribute("aria-pressed") === "true", check: !!e.querySelector("svg.lucide-check"), bg: getComputedStyle(e).backgroundColor, focus: e === document.activeElement })))
+  check("the list: only the focused row is lit, a check on the current one", listed[0]?.on && listed[0].check && !listed[1].check && listed[1].focus && listed[0].bg !== listed[1].bg && /, 0\)$|transparent/.test(listed[0].bg), listed)
+  await page.keyboard.press("Escape"); await wait(200)
 
   // The colour: the sidebars take a little of it, light and dark, and lose it with No colour.
   await pick("Colour", "Teal")
@@ -103,6 +110,9 @@ try {
   await P.waitForSelector("[data-tabs-button]", { timeout: 30000 })
   await P.click("[data-tabs-button]")
   check("phone: the tab list's title shows the workspace's icon", await until(() => P.$("[data-tabs-workspace] [data-tabs-workspace-icon]"), 5000))
+  await P.click("[data-tabs-workspace]")
+  const marks = await until(() => P.$$eval("[role=menu] [role=menuitemradio]", (els) => els.map((e) => e.querySelector("[data-workspace-icon]")?.getAttribute("data-workspace-icon") ?? e.textContent.trim())), 3000)
+  check("… its menu shows each workspace's mark, as the computer's list does", marks?.[0] === "book-open" && marks?.[1] === "2Reading", marks)
   await pctx.close()
 } finally {
   writeFileSync(PLUGINS, pluginsBefore)

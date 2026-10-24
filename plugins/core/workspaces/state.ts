@@ -1,5 +1,5 @@
 // Workspaces' state: the slots (the store's, with this app's own changes on top), the current one, saving the tabs
-// into it and following the file (see index.tsx). No components here: they're in Numbers.tsx.
+// into it and following the file (see index.tsx). No components here: they're in Numbers.tsx and Mark.tsx.
 import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Settings2, Smile, Trash2 } from "lucide-react"
 import {
   cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
@@ -7,6 +7,7 @@ import {
   type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
+import { markIcon } from "./Mark"
 
 const MAX = 5
 export const SLOTS = Array.from({ length: MAX }, (_, i) => i + 1)
@@ -171,7 +172,7 @@ export const host: WorkspaceHost = {
   menu: () => {
     const n = current() || 1, free = SLOTS.find((m) => m !== n && !now(m))
     return [
-      ...SLOTS.filter((m) => m === n || now(m)).map((m) => ({ label: label(m), checked: m === n, run: () => switchTo(m) })),
+      ...SLOTS.filter((m) => m === n || now(m)).map((m) => ({ label: label(m), icon: markIcon(m, lookOf(m)), checked: m === n, run: () => switchTo(m) })),
       ...(free ? [{ label: "New workspace", icon: Plus, run: () => switchTo(free) }] : []),
       ...slotMenu(n, false).map((it, i) => (i ? it : { ...it, sep: true })),
     ]
