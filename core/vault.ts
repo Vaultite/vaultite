@@ -756,15 +756,21 @@ export class Vault {
 
   /** Whether the index is as the disk is, by the watcher's word. Not while files are still downloading or evicted, a
    *  folder is missing, or the last walk is older than VOUCH (in case the watcher missed something). */
-  vouched() {
+  private rewalk: ReturnType<typeof setTimeout> | null = null
+  vouched(within = VOUCH) {
     return this.watched && !this.stale && !this.linkedOut && !this.downloading.length && !this.evicted.length &&
-      !this.missing.size && Date.now() - this.walked < VOUCH
+      !this.missing.size && Date.now() - this.walked < within
   }
 
   /** Sync before a read; reads asking before the next turn share one walk. `trusting`: the watcher's word will do (the
-   *  app's reads: an agent that just wrote a file asks before the watcher could hear of it). */
+   *  app's reads, not an agent's, which may have just written), and past VOUCH a walk after the answer makes sure. */
   synced({ trusting = false } = {}): Promise<boolean> {
     if (trusting && !this.next && this.vouched()) return Promise.resolve(false)
+    if (trusting && !this.next && this.vouched(Infinity)) {
+      // (a moment later: the answer goes out first)
+      this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => console.error(e)) }, 100)
+      return Promise.resolve(false)
+    }
     return this.next ??= turn().then(() => this.lock(() => {
       this.next = null
       return this.sync()

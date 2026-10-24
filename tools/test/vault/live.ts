@@ -67,6 +67,13 @@ export default async ($: VaultTest) => {
     await vault.synced({ trusting: true })
     check("live: so the app's next read walks", walks === 1, walks)
     vault.removeConfig("live-check")
+    await vault.synced()
+    ;(vault as Any).walked = Date.now() - 60_000 // (the last walk long ago: past the watcher's word alone)
+    walks = 0
+    await vault.synced({ trusting: true })
+    const answered = walks
+    await wait(() => walks === 1)
+    check("live: past that, the app's read is answered at once and a walk follows it", answered === 0 && walks === 1, [answered, walks])
     vault.sync = sync
   }
   {
