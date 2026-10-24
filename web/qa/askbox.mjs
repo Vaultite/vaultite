@@ -1,6 +1,6 @@
 // The Ask box (plugins/core/terminal/AskBox.tsx, terminal:ask): the command opens it with its field focused; the field
-// grows with what's typed and Shift+Enter is a new line; Esc closes it; the row under it picks the agent (remembered);
-// Enter asks in a new terminal in the background (terminal.ask, here on haiku): the box closes, no tab opens, the
+// grows with what's typed and Shift+Enter is a new line; Esc or a click off closes it, keeping what's typed for the next
+// (caret at its end) until it's asked; the row under it picks the agent (remembered); Enter asks in a new terminal in the background (terminal.ask, here on haiku): the box closes, no tab opens, the
 // Terminals list has it, and a toast "Asked Claude: <first words>" has Open, which opens its tab. On a phone it fits the
 // screen with 44px targets. Run by hand on a server with Claude Code, its session answers (tools/qa.ts' stand-in only
 // starts): throwaway server only, the session ended after.
@@ -40,6 +40,18 @@ try {
   await page.screenshot({ path: `${OUT}desktop.png` })
   await page.keyboard.press("Escape")
   check("Esc closes it", await until(async () => (await box(page).count()) === 0, 2000))
+  await palette(page, "Ask an agent in the background", 400)
+  const kept = await box(page).locator("textarea").evaluate((t) => ({ value: t.value, caret: t.selectionStart, focused: document.activeElement === t }))
+  check("what was typed is kept, the caret at its end", kept.value === "one\nmore\nmore\nmore" && kept.caret === kept.value.length && kept.focused, kept)
+  await page.keyboard.type(" again")
+  await page.mouse.click(10, 790)
+  check("a click off closes it", await until(async () => (await box(page).count()) === 0, 2000))
+  await palette(page, "Ask an agent in the background", 400)
+  check("and keeps it too", (await box(page).locator("textarea").inputValue()) === "one\nmore\nmore\nmore again")
+  await page.keyboard.press("ControlOrMeta+a")
+  await page.keyboard.press("Backspace")
+  await page.keyboard.press("Escape")
+  await until(async () => (await box(page).count()) === 0, 2000)
 
   // The agent picker: a menu of the agents that are on, its pick remembered for the next box.
   await palette(page, "Ask an agent in the background", 400)
@@ -79,6 +91,9 @@ try {
     check(/stand-in/.test(screen ?? "") ? "the session runs claude (QA's stand-in)" : "the session runs Claude Code on haiku and answers", !!screen, last.slice(-1500))
   }
   await page.screenshot({ path: `${OUT}opened.png` })
+  await palette(page, "Ask an agent in the background", 400)
+  check("once asked, the next box starts empty", (await box(page).locator("textarea").inputValue()) === "")
+  await page.keyboard.press("Escape")
   await ctx.close()
 
   // A phone: the box fits the screen, its targets 44px, its text 17px.

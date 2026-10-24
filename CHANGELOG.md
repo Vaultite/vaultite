@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Ask box keeps what you typed**: clicking off it or Esc no longer loses the question; it's there the next time
+  it opens, until it's asked.
 - **One rule for what shows when tabs go**: closing selected tabs, and tabs moved or closed in another workspace
   (`vau workspace`), show the tab nearest the one on screen (after it, else before it), as closing one tab does. A vault
   plugin's backend can read a workspace's tabs and panes with `@vaultite/core/layout.ts`.

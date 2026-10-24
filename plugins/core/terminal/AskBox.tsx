@@ -17,12 +17,19 @@ const NONE: AskPlace = {}
 const agentOf = (list: Agent[], name?: string) => list.find((a) => a.name === name) ?? list.find((a) => a.name === "claude") ?? list[0] ?? null
 const speaker = (a: Agent | null) => a?.speaker ?? a?.label ?? "an agent"
 
+// The unsent question, kept on this device until it's asked: clicking off the box or Esc closes it, not loses it.
+const DRAFT = "vaultite.ask"
+const draftOf = () => { try { return localStorage.getItem(DRAFT) ?? "" } catch { return "" } }
+function keepDraft(text: string) {
+  try { if (text.trim()) localStorage.setItem(DRAFT, text); else localStorage.removeItem(DRAFT) } catch { /* private mode, full */ }
+}
+
 export function AskBox() {
   return shown.use() ? <Box close={() => shown.set(false)} /> : null
 }
 
 function Box({ close }: { close: () => void }) {
-  const [text, setText] = useState("")
+  const [text, setText] = useState(draftOf)
   const [sending, setSending] = useState(false)
   const [saved, save] = useScopedState<AskPlace>("terminal:ask", NONE, "workspace")
   const home = useDefaultPlace(), machines = useMachines(), agents = useAgents()
@@ -36,7 +43,12 @@ function Box({ close }: { close: () => void }) {
   const accounts = useAccounts(agent, machine)
   const account = accounts.length > 1 ? accounts.find((x) => x.id === profile) ?? accounts[0] : null
 
-  useLayoutEffect(() => field.current?.focus({ preventScroll: true }), [])
+  // At the end of a kept draft, so what's typed or dictated next follows it.
+  useLayoutEffect(() => {
+    const f = field.current
+    f?.focus({ preventScroll: true })
+    f?.setSelectionRange(f.value.length, f.value.length)
+  }, [])
   // The field grows with what's typed (or dictated), up to a third of the screen, then scrolls.
   useLayoutEffect(() => {
     const f = field.current
@@ -54,6 +66,7 @@ function Box({ close }: { close: () => void }) {
       const at = saved.machine === undefined ? await resolvePlace(agent.name, { profile: saved.profile }) : { machine, profile, instead: "" }
       const r = await op<{ id: string; title: string }>("terminal.ask", { prompt, agent: agent.name, ...(at.profile ? { account: at.profile } : {}),
         ...(at.machine ? { machine: at.machine } : {}) })
+      keepDraft("")
       close()
       const to = `terminal/${r.id}`
       notify(`Asked ${speaker(agent)}: ${r.title}${at.instead ? ` (${at.instead}: on this machine)` : ""}`, {
@@ -91,7 +104,7 @@ function Box({ close }: { close: () => void }) {
   return (
     <PaletteFrame label="Ask an agent" onClose={close}>
       <div data-ask-box className="flex flex-col">
-        <textarea ref={field} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} rows={1} disabled={sending}
+        <textarea ref={field} value={text} onChange={(e) => { setText(e.target.value); keepDraft(e.target.value) }} onKeyDown={onKey} rows={1} disabled={sending}
           placeholder={`Ask ${speaker(agent)}…`} aria-label={`Ask ${speaker(agent)}`} enterKeyHint="send"
           className="max-h-[33dvh] min-h-14 w-full resize-none overflow-y-auto bg-transparent px-5 py-4 text-[17px] leading-[24px] outline-none placeholder:text-muted-foreground" />
         <div className="flex items-center gap-1.5 border-t-[0.5px] border-border px-3 py-2">
