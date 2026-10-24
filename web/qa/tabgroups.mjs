@@ -1,4 +1,5 @@
-// Tab groups and vertical tabs. A tab's menu makes a group (its name typed in place on its chip), another tab joins it
+// Tab groups and vertical tabs. A tab's menu makes a group (its editor opening under its chip: its name, typed live, and
+// a row of colours, one click each), another tab joins it
 // from its menu, a dragged tab joins and leaves it, its chip folds it (a count shows) and drags the whole group, a tab
 // shown in a folded group opens it; they come back after a reload and a closed tab reopens into its group. Then Show
 // tabs in the sidebar (the palette): the tab bar off, the Tabs panel first in the left sidebar with each group a row
@@ -46,18 +47,31 @@ try {
   }
   await until(async () => (await page.$$("[data-tab-bar] [data-tab-id]")).length === 5, 5000)
 
-  // A new group from a tab's menu: its name typed on its chip.
+  // A new group from a tab's menu: its editor opens under its chip, the name field focused.
   await menu(tab("Lighthouse"), "Add tab to new group")
-  const field = await until(() => page.$("[data-set-chip] input"), 3000)
-  check("a new group asks its name in place, the folder its tab is in suggested", !!field && (await field.inputValue()) === "Projects", await field?.inputValue())
-  await page.keyboard.type("Lighthouse work"); await page.keyboard.press("Enter"); await wait(300)
-  check("its chip shows the name before its tab", (await bar()).includes("<Lighthouse work> Lighthouse"), await bar())
+  const field = await until(() => page.$("[role=menu] [data-menu-field] input"), 3000)
+  const focused = await page.evaluate(() => document.activeElement?.closest("[data-menu-field]") !== null)
+  check("a new group opens its editor, its name field focused, the folder its tab is in suggested", !!field && focused && (await field.inputValue()) === "Projects", await field?.inputValue())
+  const [chipBox, menuBox] = [await page.locator("[data-set-chip]").first().boundingBox(), await page.locator("[role=menu]").boundingBox()]
+  check("  under its chip", Math.abs(menuBox.x - chipBox.x) <= 2 && menuBox.y >= chipBox.y + chipBox.height, [chipBox, menuBox])
+  await page.keyboard.type("Lighthouse work"); await wait(150)
+  check("  the chip follows the name as it's typed", (await bar()).includes("<Lighthouse work>"), await bar())
+  const bg = () => page.$eval("[data-set-chip] [data-set-label]", (e) => getComputedStyle(e).backgroundColor)
+  const was = await bg()
+  await page.locator("[role=menu] [data-menu-colors] [data-color='purple']").click(); await wait(300)
+  check("  a colour is one click, and the editor stays open with it ticked", (await bg()) !== was && await page.locator("[role=menu] [data-color='purple'][aria-checked=true]").count() === 1, [was, await bg()])
+  await page.screenshot({ path: `${OUT}editor-light.png`, clip: { x: 0, y: 0, width: 1280, height: 360 } })
+  await page.locator("[role=menu] [data-menu-field] input").press("Enter"); await wait(200)
+  check("  Enter closes it, the name kept", !(await page.$("[role=menu]")) && (await bar()).includes("<Lighthouse work> Lighthouse"), await bar())
   await menu(tab("ME"), "Add to group", "Lighthouse work"); await wait(200)
   check("another tab joins it from its menu, at its end", (await bar()).includes("<Lighthouse work> Lighthouse ME"), await bar())
   await menu(tab("2026-10-20"), "Add tab to new group")
-  await until(() => page.$("[data-set-chip] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
-  const chips = await page.$$eval("[data-set-chip]", (els) => els.map((e) => ({ text: e.textContent.trim(), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
-  check("a group without a name is its colour's dot, in the next colour", chips.length === 2 && chips[1].text === "" && chips[0].bg !== chips[1].bg, chips)
+  await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
+  const chips = await page.$$eval("[data-set-chip]", (els) => els.map((e) => ({ text: e.textContent.trim(), name: e.querySelector("[data-set-label]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
+  check("a group without a name is a square of its colour, in the next colour", chips.length === 2 && chips[1].text === "" && chips[1].name === "Blue group" && chips[0].bg !== chips[1].bg, chips)
+  // The chip is solid, its text readable on it.
+  const ink = await page.$eval("[data-set-chip] [data-set-label]", (e) => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor])
+  check("a named chip is solid, its text white or dark by its colour", ink[0] !== ink[1] && !/rgba?\([^)]*,\s*0(\.\d+)?\)$/.test(ink[1]), ink)
   // The group's line is one line: under its chip at the same height as under its tabs.
   const lines = await page.$$eval("[data-set-chip] > span[aria-hidden], [data-tab-id] > span[aria-hidden]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)))
   check("the group's line under its chip is level with the one under its tabs", lines.length > 1 && new Set(lines).size === 1, lines)
@@ -102,8 +116,14 @@ try {
   check("dropped just past it, it leaves the group in place", (await bar()).includes("<Lighthouse work> Lighthouse ME Start here Garden planner") && !(await inGroup("Start here")), await bar())
   await drag(tab("Start here"), tab("Garden planner"), "end")
 
-  // The chip folds the group, a count showing; showing one of its tabs opens it.
-  await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(300)
+  // The chip folds the group, its tabs shrinking into it, a count showing; showing one of its tabs opens it.
+  const lw0 = await page.$eval("[data-set-chip]:has-text('Lighthouse work')", (e) => e.dataset.setChip)
+  const widths = () => page.$$eval(`[data-tab-bar] [data-tab-id][data-in-set="${lw0}"]`, (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
+  const full = await widths()
+  await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(70)
+  const mid = await widths()
+  check("folding, its tabs shrink into the chip", mid.length === full.length && mid.every((w, i) => w > 0 && w < full[i]), [full, mid])
+  await wait(300)
   check("a click on the chip folds the group to it, with its count", (await bar()).includes("<Lighthouse work2>") && !(await bar()).includes(" ME"), await bar())
   await page.screenshot({ path: `${OUT}bar-folded.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
   // A tab dropped on a folded group's chip goes into it, which stays folded.
@@ -112,6 +132,11 @@ try {
   const lit = await page.$eval("[data-set-chip] > span", (e) => !!e.style.boxShadow)
   await release()
   check("a tab dropped on a folded group's chip goes into it, which stays folded", lit && (await bar()).includes("<Lighthouse work3>") && !(await bar()).includes("Garden planner"), [lit, await bar()])
+  await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(60)
+  const growing = await widths()
+  await wait(300)
+  check("opening, they grow back out of it", growing.length > 1 && growing.some((w, i) => w < (full[i] ?? 0) - 4) && (await widths()).every((w) => w > 40), [growing, await widths()])
+  await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(400)
   await palette(page, "Go to tab #2", 400)
   const folded = await page.$$eval("[data-set-chip]", (els) => els.map((e) => e.getAttribute("aria-expanded")))
   check("showing a tab of a folded group opens it", folded[0] === "true" && (await bar()).includes("ME"), [folded, await bar()])
@@ -153,7 +178,19 @@ try {
     const next = head.nextElementSibling.querySelector(":scope > span[aria-hidden]").getBoundingClientRect()
     return { pill: Math.round(pill.bottom), rail: Math.round(rail.top), railEnd: Math.round(rail.bottom), next: Math.round(next.top), x: [Math.round(rail.left), Math.round(pill.left), Math.round(pill.right)] }
   })
-  check("the group's line starts where its pill ends and runs on into its tabs", Math.abs(joins.pill - joins.rail) <= 1 && joins.next <= joins.railEnd && joins.x[0] > joins.x[1] + 4 && joins.x[0] < joins.x[2], joins)
+  check("the group's line starts where its chip ends and runs on into its tabs", Math.abs(joins.pill - joins.rail) <= 1 && joins.next <= joins.railEnd && joins.x[0] >= joins.x[1] + 2 && joins.x[0] < joins.x[2], joins)
+  // Its tabs are set in from the line: their rows' highlight starts past it.
+  const inset = await page.$eval("[data-tabs-panel] [data-slide^='set:']", (head) => {
+    const rail = head.querySelector(":scope > span[aria-hidden]").getBoundingClientRect(), row = head.nextElementSibling.querySelector("[data-open-tab]").getBoundingClientRect()
+    return [Math.round(rail.right), Math.round(row.left)]
+  })
+  check("  its tabs' rows start past the line", inset[1] > inset[0], inset)
+  // Its … opens the same editor.
+  const headRow = page.locator("[data-tabs-panel] [data-set-row]").first()
+  await headRow.hover(); await headRow.locator("[data-row-more]").click(); await wait(250)
+  check("a group's … in the panel opens its editor", await page.locator("[role=menu] [data-menu-colors]").count() === 1 && await page.locator("[role=menu] [data-menu-field] input").count() === 1)
+  await page.screenshot({ path: `${OUT}vertical-editor.png`, clip: { x: 0, y: 0, width: 520, height: 420 } })
+  await page.keyboard.press("Escape"); await wait(200)
   const row = (label) => page.locator("[data-tabs-panel] [data-open-tab]", { hasText: label }).first()
   const sh = await row("Start here").boundingBox()
   release = await hold(row("Lighthouse"), sh.x + sh.width / 2, sh.y + sh.height * 0.8)

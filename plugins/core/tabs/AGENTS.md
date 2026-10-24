@@ -11,8 +11,10 @@ its tabs. Which are open isn't kept in a file: each server knows its own windows
 `vau tabs device-close <device> [tabs...]` closes tabs on one that's open now (all of them without tabs).
 
 **Tab groups**, as in a browser: a named, coloured run of a pane's tabs, side by side, that folds to its name. In the
-tab bar a group is a chip before its tabs, which are underlined in its colour; in the panel, the same pill, a line in
-its colour hanging from it down its tabs. They're kept with the tabs (this device's, or the workspace's file with Workspaces: a pane's `sets`, each tab's
+tab bar a group is a solid chip of its colour before its tabs, which are underlined in it; in the panel, the same chip
+on a row, its tabs set in beside a line in its colour hanging from it. A click folds it (its tabs shrink into the chip);
+its … in the panel or a right-click opens its editor, as a browser's: its name and a row of colours, each change shown
+at once, then New tab in group, Ungroup and Close group. A new group opens it. They're kept with the tabs (this device's, or the workspace's file with Workspaces: a pane's `sets`, each tab's
 `set`):
 ```
 {"id": "g0", "active": "t2", "sets": [{"id": "s1", "name": "Lighthouse", "color": "teal", "collapsed": false}],

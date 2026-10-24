@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Tab groups look and move like Chrome's**: solid chips in the group's colour, its tabs set in by its line in the
+  sidebar; folding shrinks the tabs into the chip, opening grows them back, and new or closed tabs in the Tabs panel
+  slide in and out. Its … or a right-click opens its editor: the name, typed live, and its colours, one click each.
 - **Translucent window**: in the Mac and Windows 11 apps, the desktop can show through the sidebars, the tab bar and the
   status bar, blurred and in your colour scheme, while pages stay solid (Settings, Appearance; solid with Reduce
   transparency).

@@ -106,6 +106,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
 - `clearSelection()`
 - `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
+- `closeTabMoving(id, el)`: Close a tab from a list of them (the Tabs panel): its row shrinks away, then it closes.
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudAccount`: A claude.ai organization whose sessions are read: its name (a personal one's: its login's email), and the logins (profiles) it's in.
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id (older builds don't say).
@@ -205,6 +206,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `foldSet(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
+- `foldSetMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds.
 - `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
@@ -477,9 +479,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
-- `setMenu(id, at)`: A tab group's menu (right-click its name: in the bar, the Tabs panel or the phone's tab list).
+- `SetLabel({ s, n, target })`: A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its text white or dark by the colour's lightness; without a name, a small square of it.
+- `setMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
 - `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
-- `SetNameField({ s, className })`: A tab group's name being typed in place (Enter or leaving it keeps it, Escape doesn't).
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
 - `setsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging), and whether it's that group's last: its line ends there.
 - `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
@@ -587,6 +589,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useEnabled()`
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.
 - `useFocusedFile()`
+- `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab, or one of a group just opened.
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key, shrinks?)`: holdHeight for a React element: put the ref on it.
 - `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
@@ -601,7 +604,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
-- `useRenaming()`
 - `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
 - `useScopedState(key, fallback, scope?)`: The same as a hook: [value, set], redrawn when it changes (here, another device on the workspace, a switch).
 - `useSelectable(list, def)`: Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row `data-select-key`; their order on screen is the order a ⇧-click takes.

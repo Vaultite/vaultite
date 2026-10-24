@@ -55,8 +55,9 @@ export { leaves as panesOf, type Group as TabGroup, type Tab } from "@/core/layo
 export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Tab groups (a pane's named, coloured runs of tabs): their menu, names and folding, and drops among a pane's tabs drawn
 // as a list (the Tabs panel), which join or leave them as the tab bar's do.
-export { setMenu, setName, SetNameField } from "@/components/Tabs"
-export { foldSet, openInSet, useRenaming } from "@/core/tabsets"
+export { setMenu, setName, SetLabel } from "@/components/Tabs"
+export { foldSet, openInSet } from "@/core/tabsets"
+export { closeTabMoving, foldSetMoving, useGrowIn } from "@/core/tabfold"
 export { type TabSet } from "@/core/layout"
 export { canDropAt as canDropTab, dropOn as dropTab, previewIn as tabPreview, previewOrder as tabPreviewOrder, setsAsDrawn, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
 export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"

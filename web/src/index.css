@@ -233,6 +233,9 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 /* Icons: strokes must be an opaque colour (overlapping paths of a translucent stroke stack up and look patchy). For a
    fainter icon, use a solid mix (.text-tertiary) or put opacity on the whole icon, which composites it once. */
 .text-tertiary { color: color-mix(in srgb, var(--muted-foreground) 55%, var(--card)); }
+/* Text on a solid named colour (`--tint`: a tab group's chip, a swatch's check): white, or near black on a light one,
+   by its lightness, so every scheme's colours stay readable. */
+.on-tint { color: #fff; color: oklch(from var(--tint) clamp(0.22, (0.72 - l) * 1000, 1) 0 0); }
 /* The detail sheet on phones: the whole screen (vh fallback for browsers without dvh). */
 @media (max-width: 767px) {
   .sheet-h { height: 100vh; height: 100dvh; max-height: none; }

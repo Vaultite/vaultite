@@ -20,7 +20,7 @@ import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
 import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
-import { askRenameSet, leaveSet, makeSet } from "@/core/tabsets"
+import { leaveSet, makeSet } from "@/core/tabsets"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
 import { allSwitches, switchCommand } from "@/core/switches"
@@ -53,7 +53,7 @@ import { SearchPalette } from "@/components/SearchPalette"
 import { openNewTab } from "@/core/launcher"
 import { Workspace } from "@/components/Workspace"
 import { Resizer } from "@/components/Resizer"
-import { DragGhost, setPageInfo, useTabInfo, type TabInfo } from "@/components/Tabs"
+import { DragGhost, editSet, setPageInfo, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { useLingeringSheet, zooms } from "@/core/motion"
 import { closeSwitcher } from "@/core/phoneTabs"
 import { PhoneTab, TabSwitcher } from "@/components/TabSwitcher"
@@ -349,7 +349,7 @@ export default function App() {
     // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).
     { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
       icon: PanelLeft, nameWhenOn: "Show tabs on top", on: () => tabsInSidebar() },
-    { id: "tab:group", name: "Add current tab to new group", when: isDesktop, run: () => { const id = makeSet([activeTab().id]); if (id) askRenameSet(id, getPrefs().tabBar ? "bar" : "panel") }, icon: GroupIcon },
+    { id: "tab:group", name: "Add current tab to new group", when: isDesktop, run: () => { const id = makeSet([activeTab().id]); if (id) editSet(id) }, icon: GroupIcon },
     { id: "tab:ungroup", name: "Remove current tab from group", when: () => isDesktop() && !!activeTab().set, run: () => leaveSet([activeTab().id]), icon: Ungroup },
     // A window of its own (a pop-out): no sidebars, its own tabs.
     { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activeTab().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },

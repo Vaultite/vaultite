@@ -5,7 +5,6 @@ import { beside, inSet, isBlank, leaves, mapGroups, newId, outsideSets, runOf, t
 import { closeTabIds, getWorkspace, groupOfTab, groups, set, show, showActive } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { answerUi } from "@/core/live"
-import { signal } from "@/core/signal"
 
 /** A tab group and the pane it's in. */
 export function setById(id: string): { g: Group; s: TabSet } | null {
@@ -211,16 +210,6 @@ export function moveSetTo(id: string, gid: string, where: Side | "center" | numb
   set({ root, focus: gid })
   showActive()
 }
-
-// ---------- naming in place ----------
-
-/** The tab group whose name is being typed, and where (the tab bar's chip or the Tabs panel's row): one place at a time. */
-type Renaming = { id: string; at: "bar" | "panel" } | null
-let renaming: Renaming = null
-const renamed = signal()
-export const askRenameSet = (id: string, at: "bar" | "panel") => { renaming = { id, at }; renamed.notify() }
-export const useRenaming = () => renamed.use(() => renaming)
-export const doneRenaming = () => { renaming = null; renamed.notify() }
 
 // ---------- what agents ask (vau tabs: plugins/core/tabs/plugin.ts) ----------
 

@@ -12,6 +12,7 @@ import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { signal } from "@/core/signal"
 import { isDesktop, isMac } from "@/core/platform"
+import { COLOR_NAMES, COLORS, colorVar, type Color } from "../../../core/colors.ts"
 
 export type MenuItem = {
   label: string; icon?: LucideIcon; run: () => void; danger?: boolean; disabled?: boolean
@@ -31,6 +32,12 @@ export type MenuItem = {
   /** Not a choice: muted text that wraps, saying what the menu is about (a block's description, where its live data
    *  comes from). `run` is unused. */
   caption?: boolean
+  /** Not a choice: a text field atop the menu, focused as it opens on a computer (a tab group's name). `set` hears each change;
+   *  Enter or Escape closes the menu, ↓ goes to its rows. `label` names it. */
+  field?: { value: string; placeholder?: string; set: (v: string) => void }
+  /** Not a choice: the shared palette (core/colors.ts) as a row of swatches, `value` ringed. Picking one keeps the menu
+   *  open (redrawn), as a browser's tab group editor does. `label` names it. */
+  colors?: { value: string; pick: (c: Color) => void }
 }
 /** Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check
  *  ("Line numbers"), one that switches something else by what it does now ("Hide left sidebar"). */
@@ -288,7 +295,7 @@ function found(items: MenuItem[], q: string): Found[] {
   const out: (Found & { score: number; where: string })[] = []
   // (a split row's submenu repeats its choice first: found once)
   const walk = (its: MenuItem[], at: number[], where: string, skip?: string) => its.forEach((it, i) => {
-    if (it.caption || it.label === skip) return
+    if (it.caption || it.field || it.colors || it.label === skip) return
     const m = fuzzy(q, it.label)
     if (m) out.push({ it, at: [...at, i], score: m.score, where })
     if (it.items) walk(it.items, [...at, i], it.label, it.split ? it.label : undefined)
@@ -332,7 +339,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const hits = query ? found(shown, query) : null
   const rows = hits ? hits.map((f) => f.it) : shown
   const lead = rows.some((it) => it.icon || it.items)
-  const bestAt = rows.findIndex((it) => !it.caption && !it.disabled)
+  const bestAt = rows.findIndex((it) => !it.caption && !it.field && !it.colors && !it.disabled)
   // Rows with an icon of their own and a check (a container, a panel): the check goes at the end, so no row keeps two
   // empty columns at its start.
   const trailing = rows.some((it) => it.checked !== undefined && it.icon)
@@ -360,7 +367,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   // Once it's placed (a hidden element can't take the focus).
   const placed = pos !== null
   useLayoutEffect(() => {
-    if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")?.focus({ preventScroll: true })
+    if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(`${drill ? "" : ":scope > [data-menu-field] input, "}:scope > button:not(:disabled)`)?.focus({ preventScroll: true })
   }, [placed, focus, trail])
   // A key typed on a row goes on in the field; the field gone (its text cleared), the keyboard is back on the first row.
   const toField = useRef(false)
@@ -441,7 +448,9 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
       {rows.map((it, i) => (
         <Fragment key={hits ? hits[i].at.join() : it.label}>
           {it.sep && <div role="separator" className="mx-2.5 my-1 h-px bg-border" />}
-          {it.caption ? (
+          {it.field ? <MenuField it={it} first={() => ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")} />
+          : it.colors ? <MenuColors it={it} redraw={again} />
+          : it.caption ? (
             <p className="flex max-w-80 gap-3 px-3 py-2 text-[15px] leading-5 text-muted-foreground md:max-w-72 md:gap-2.5 md:px-2.5 md:py-1.5 md:text-[12px] md:leading-4">
               {it.icon ? <it.icon className={cn(icon, "md:mt-px")} strokeWidth={2} /> : lead && <span className={icon} />}
               <span className="flex-1">{it.label}</span>
@@ -492,6 +501,57 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
           }} />,
         document.querySelector("dialog[data-menu-layer]") ?? document.body,
       )}
+    </div>
+  )
+}
+
+/** A menu's text field (MenuItem `field`): changes go out as typed. */
+function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | null | undefined }) {
+  const f = it.field!
+  const [v, setV] = useState(f.value)
+  return (
+    <div data-menu-field className="px-1 pt-1 pb-1.5 md:px-0.5 md:pt-0.5 md:pb-1">
+      <input value={v} placeholder={f.placeholder} aria-label={it.label} spellCheck={false} autoComplete="off"
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => { setV(e.target.value); f.set(e.target.value) }}
+        onKeyDown={(e) => {
+          // (its keys are its own: a letter isn't the menu's typing to filter, Tab goes on to the swatches)
+          e.stopPropagation()
+          if (e.nativeEvent.isComposing) return
+          if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); closeMenu() }
+          else if (e.key === "ArrowDown") { e.preventDefault(); first()?.focus() }
+        }}
+        className="h-10 w-full rounded-[8px] bg-foreground/[0.06] px-3 text-[17px] outline-none ring-primary/60 placeholder:text-muted-foreground focus:ring-2 md:h-7 md:rounded-[6px] md:px-2 md:text-[13px]" />
+    </div>
+  )
+}
+
+/** A menu's row of colours (MenuItem `colors`): ← and → move along it. */
+function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] }) {
+  const { value, pick } = it.colors!
+  const choose = (c: Color) => {
+    runOrSay(() => pick(c), it.label)
+    if (redraw && openState()) set({ ...openState()!, items: redraw() })
+  }
+  return (
+    <div role="radiogroup" aria-label={it.label} data-menu-colors
+      onKeyDown={(e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+        e.preventDefault(); e.stopPropagation()
+        const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button")], i = all.indexOf(document.activeElement as HTMLElement)
+        all[(i + (e.key === "ArrowRight" ? 1 : -1) + all.length) % all.length]?.focus()
+      }}
+      className="grid grid-cols-5 justify-items-center gap-1 px-1 pb-1 md:flex md:gap-0.5 md:px-1 md:pb-0.5">
+      {COLORS.map((c) => (
+        <button key={c} type="button" role="radio" aria-checked={c === value} aria-label={COLOR_NAMES[c]} data-tip={COLOR_NAMES[c]} data-color={c}
+          onClick={() => choose(c)}
+          className="group/swatch grid size-11 cursor-pointer place-items-center rounded-full outline-none md:size-6">
+          <span className="on-tint grid size-7 place-items-center rounded-full transition-transform duration-150 group-hover/swatch:scale-110 group-active/swatch:scale-95 group-focus-visible/swatch:outline-2 group-focus-visible/swatch:outline-offset-2 group-focus-visible/swatch:outline-primary/60 md:size-[18px]"
+            style={{ ["--tint" as string]: colorVar(c), background: colorVar(c), ...(c === value ? { boxShadow: `0 0 0 2px var(--popover), 0 0 0 3.5px ${colorVar(c)}` } : {}) }}>
+            {c === value && <Check className="size-4 md:size-3" strokeWidth={3} />}
+          </span>
+        </button>
+      ))}
     </div>
   )
 }

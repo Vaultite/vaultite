@@ -2,7 +2,7 @@
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pencil, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
@@ -12,14 +12,15 @@ import { hasMainWindow, moveToMain } from "@/core/windows"
 import { leaves, vaultPath, type Group, type Tab, type TabSet } from "@/core/layout"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
-import { addToSet, allSets, askRenameSet, closeSet, colorSet, doneRenaming, foldSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet, useRenaming } from "@/core/tabsets"
-import { colorItems, dotIcon } from "@/components/ColorDot"
+import { addToSet, allSets, closeSet, colorSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet } from "@/core/tabsets"
+import { foldSetMoving, useGrowIn } from "@/core/tabfold"
+import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
 import { INCOMING, useSlide } from "@/core/slide"
 import { usePaneHasTopBar } from "@/core/pane"
 import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
-import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
+import { commandItems, menuFor, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { useCommandKeys } from "@/core/commands"
 import { fileIcon } from "@/components/FileTree"
 import { copyText, copyToVaultItem, fileMenu, revealItem } from "@/components/FileActions"
@@ -72,11 +73,9 @@ export const TABS = "tabs"
 
 /** What a tab group is called: its name, or its colour's ("Blue group"). */
 export const setName = (s: TabSet) => s.name || `${COLOR_NAMES[s.color]} group`
-/** Where a new group's name is typed: its chip in the tab bar, else its row in the Tabs panel. */
-const nameHere = () => (getPrefs().tabBar ? "bar" : "panel")
 
-/** A tab menu's tab group rows, for one tab or several selected: into a new group (named in place), into another
- *  group, out of theirs. */
+/** A tab menu's tab group rows, for one tab or several selected: into a new group (its editor opening on it), into
+ *  another group, out of theirs. */
 export function setItems(ids: string[]): MenuItem[] {
   const tabs = leaves(getWorkspace().root).flatMap((g) => g.tabs).filter((t) => ids.includes(t.id))
   if (!tabs.length) return []
@@ -85,72 +84,72 @@ export function setItems(ids: string[]): MenuItem[] {
   return [
     { label: n === 1 ? "Add tab to new group" : `Add ${n} tabs to new group`, icon: GroupIcon, sep: true, run: () => {
       const id = makeSet(ids)
-      if (id) askRenameSet(id, nameHere())
+      if (id) editSet(id)
     } },
     ...(others.length ? [{ label: "Add to group", icon: Layers, run: () => {}, items: others.map((s) => ({ label: setName(s), icon: dotIcon(colorVar(s.color)), run: () => addToSet(ids, s.id) })) }] : []),
     ...(tabs.some((t) => t.set) ? [{ label: "Remove from group", icon: Ungroup, run: () => leaveSet(ids) }] : []),
   ]
 }
 
-/** A tab group's menu (right-click its name: in the bar, the Tabs panel or the phone's tab list). */
+/** A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then
+ *  what it does. Right-click its chip, its row in the Tabs panel or its … there, or hold its heading on a phone. */
 export function setMenu(id: string, at: "bar" | "panel" | "phone"): MenuItem[] {
   const s = setById(id)?.s
   if (!s) return []
   return [
-    ...(at === "phone" ? [] : [{ label: "Rename group", icon: Pencil, run: () => askRenameSet(id, at) }]),
-    { label: "Colour", icon: dotIcon(colorVar(s.color)), run: () => {}, items: colorItems(s.color, (c) => colorSet(id, c)) },
-    ...(at === "phone" ? [] : [{ label: "New tab in group", icon: Plus, run: () => newTabInSet(id) }]),
-    { label: "Ungroup", icon: Ungroup, sep: true, run: () => ungroupSet(id) },
-    { label: "Close group", icon: X, run: () => closeSet(id) },
+    { label: "Group name", field: { value: s.name, placeholder: "Name this group", set: (v) => renameSet(id, v) }, run: () => {} },
+    { label: "Group colour", colors: { value: s.color, pick: (c) => colorSet(id, c) }, run: () => {} },
+    ...(at === "phone" ? [] : [{ label: "New tab in group", icon: Plus, sep: true, run: () => newTabInSet(id) }]),
+    { label: "Ungroup", icon: Ungroup, sep: at === "phone", run: () => ungroupSet(id) },
+    { label: "Close group", icon: X, danger: true, run: () => closeSet(id) },
   ]
 }
 
-/** A tab group's name being typed in place (Enter or leaving it keeps it, Escape doesn't). */
-export function SetNameField({ s, className }: { s: TabSet; className?: string }) {
-  const [v, setV] = useState(s.name)
-  const done = useRef(false)
-  const commit = (keep: boolean) => { if (done.current) return; done.current = true; if (keep && v.trim() !== s.name) renameSet(s.id, v); doneRenaming() }
-  return (
-    <input autoFocus value={v} placeholder="Name" spellCheck={false} aria-label="Group name" data-no-drag
-      onFocus={(e) => e.currentTarget.select()} onChange={(e) => setV(e.target.value)} onBlur={() => commit(true)}
-      // (inside a row that's a link in the Tabs panel: a click here mustn't follow it)
-      onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); e.preventDefault() }}
-      onKeyDown={(e) => {
-        e.stopPropagation()
-        if (e.key === "Enter") { e.preventDefault(); commit(true) }
-        if (e.key === "Escape") { e.preventDefault(); commit(false) }
-      }}
-      style={{ width: `${Math.max(5, v.length + 1)}ch` }}
-      className={cn("min-w-0 max-w-[160px] rounded-[4px] bg-card px-1 text-foreground outline-none placeholder:text-tertiary", className)} />
-  )
+/** Open a tab group's editor under its chip (the tab bar) or its row (the Tabs panel), as a new group's opens: once
+ *  it's drawn, within a few frames. */
+export function editSet(id: string) {
+  let tries = 12
+  const look = () => {
+    const el = [...document.querySelectorAll<HTMLElement>(`[data-set-chip="${id}"], [data-set-row="${id}"]`)].find((e) => e.offsetParent !== null)
+    if (!el) { if (--tries > 0) requestAnimationFrame(look); return }
+    const r = el.getBoundingClientRect(), at = el.dataset.setChip ? "bar" : "panel"
+    openMenu({ x: r.left, y: r.bottom + 4 }, setMenu(id, at), false, () => setMenu(id, at))
+  }
+  requestAnimationFrame(look)
 }
 
 /** A tab group's chip in the tab bar, before its tabs: a click folds it (folded, its count shows), right-click has its
- *  menu, dragging it moves the whole group. */
+ *  editor, dragging it moves the whole group. */
 function SetChip({ s, n, target }: { s: TabSet; n: number
   /** A tab dragged onto it (folded) would join it. */
   target: boolean }) {
-  const renaming = useRenaming()
-  const editing = renaming?.id === s.id && renaming.at === "bar"
   const d = useDrag()
   const c = colorVar(s.color)
   return (
     <div data-set-chip={s.id} data-slide={`set:${s.id}`} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
-      onPointerDown={(e) => { if (!editing) startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) }) }}
-      onClick={() => { if (!editing) foldSet(s.id) }}
-      data-tip={d || editing ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
+      onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })}
+      onClick={() => foldSetMoving(s.id)}
+      data-tip={d ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
       className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", d?.item.tabset === s.id && "opacity-50")}>
-      {/* (as tall as a tab, the pill inside: the line under it then lines up with the tabs') */}
-      <span className={cn("flex h-6 items-center gap-1 rounded-[6px] text-[12px] font-semibold transition-colors", s.name || editing ? "px-1.5" : "w-6 justify-center")}
-        style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, background: `color-mix(in srgb, ${c} 16%, transparent)`, ...(target ? { boxShadow: `0 0 0 2px ${c}` } : {}) }}>
-        {editing ? <SetNameField s={s} className="h-5 text-[12px] font-medium" />
-          : s.name ? <span className="max-w-[140px] truncate">{s.name}</span>
-          : <span aria-label={setName(s)} className="size-2 rounded-full" style={{ background: c }} />}
-        {s.collapsed && !editing && <span className="font-medium tabular-nums opacity-75">{n}</span>}
-      </span>
+      {/* (as tall as a tab, the chip inside: the line under it then lines up with the tabs') */}
+      <SetLabel s={s} n={n} target={target} />
       {/* The line under the group's tabs starts here (each tab carries it on). */}
-      {!s.collapsed && <span aria-hidden className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full" style={{ background: c }} />}
+      {!s.collapsed && <span aria-hidden data-set-line={s.id} className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full transition-colors duration-200" style={{ background: c }} />}
     </div>
+  )
+}
+
+/** A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its
+ *  text white or dark by the colour's lightness; without a name, a small square of it. Folded, its count shows. */
+export function SetLabel({ s, n, target }: { s: TabSet; n: number; target?: boolean }) {
+  const c = colorVar(s.color)
+  return (
+    <span data-set-label {...(s.name ? {} : { role: "img", "aria-label": setName(s) })} className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center gap-1 text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-200",
+      s.name || s.collapsed ? "h-5 rounded-[6px] px-1.5" : "size-3.5 rounded-[4px]")}
+      style={{ ["--tint" as string]: c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
+      {s.name && <span className="min-w-0 truncate">{s.name}</span>}
+      {s.collapsed && <span className="font-medium tabular-nums opacity-80">{n}</span>}
+    </span>
   )
 }
 
@@ -289,13 +288,15 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
   width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void }) {
   const d = useDrag()
   const picked = useSelected(TABS, tab.id)
+  const el = useRef<HTMLDivElement>(null)
+  useGrowIn(el, tab)
   const dragging = d?.item.tab === tab.id || (picked && !!d?.item.tabs) || (!!tab.set && d?.item.tabset === tab.set)
   // (a light wash of its colour, lighter while its pane isn't the focused one: calm in either theme)
   const wash = active && tint && info.wash
     ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
     : undefined
   return (
-    <div data-tab-id={tab.id} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
+    <div ref={el} data-tab-id={tab.id} data-in-set={tab.set} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
@@ -323,7 +324,7 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
           <X className="size-3.5" strokeWidth={2} />
         </button>
       )}
-      {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px]", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
+      {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px] transition-colors duration-200", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
     </div>
   )
 }
