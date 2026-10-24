@@ -2,7 +2,8 @@
 // Chrome hides them, this run shows them): no scrollbar comes or goes during a drag (core/drag.ts, core/slide.ts), so
 // Pinned's tiles keep their columns when a file dragged in overflows their panel (plugins/core/pages), the tab strip's
 // own scrollbar stays hidden with more tabs than fit (components/Tabs.tsx), and a move that changes no drop redraws
-// nothing (useDrag's picks, useDropHit). WRITES pins and Pinned's Show as: throwaway server only.
+// nothing (useDrag's picks, useDropHit); a sheet's scrollbar takes its padding (components/DetailSheet.tsx). WRITES pins
+// and Pinned's Show as: throwaway server only.
 //   node web/qa/dragsteady.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
@@ -125,6 +126,17 @@ try {
   check("tabs and panes: no scrollbar came or went while dragging", !along.changes.length, along.changes)
   check("a move that changes no drop redraws (almost) nothing", still.moves >= 15 && still.rendered / still.moves < 2, still)
   check("the drag ended with Escape", !(await page.evaluate(() => document.documentElement.hasAttribute("data-dragging"))))
+
+  // A sheet that scrolls (Customize sidebars, whose lists grow under a drag) keeps its content as wide as without a
+  // scrollbar: lined up with its X, the scrollbar in its padding.
+  await page.evaluate(() => { location.hash = `${location.hash.replace(/^#/, "")}/sidebars` })
+  await page.waitForSelector("[data-customize-sidebars] [data-row]", { timeout: 10000 }); await wait(500)
+  const sheet = await page.evaluate(() => {
+    const c = document.querySelector("[data-customize-sidebars]"), x = document.querySelector("dialog[open] button[aria-label=Close] svg")
+    let sc = c; while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement
+    return { content: Math.round(c.getBoundingClientRect().right), x: Math.round(x.getBoundingClientRect().right), bar: sc.offsetWidth - sc.clientWidth }
+  })
+  check("a sheet's content lines up with its X, its scrollbar in the padding", sheet.bar > 0 && Math.abs(sheet.content - sheet.x) <= 1, sheet)
 } finally {
   await api("PATCH", "config/pages", { pinned: pinnedBefore })
   await api("PATCH", "config/plugin/pages", { show: showBefore })

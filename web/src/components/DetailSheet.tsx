@@ -211,9 +211,12 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
       </header>
       {/* flex-auto, not flex-1: the sheet has no height of its own (its content's, up to sheet-h), and iOS WebKit sizes
           a 0% basis in it as 0, which left only the header showing. Sized from its content, it shrinks to fit instead. */}
+      {/* Its scrollbar's room comes out of its right padding, kept whether one shows or not: a list growing under a drag
+          (Customize sidebars) doesn't reflow it where scrollbars take room. */}
       <div ref={scroller} onScroll={(e) => { pos.current.set(key, e.currentTarget.scrollTop); syncCompact() }}
         className={cn(
-          "relative min-h-0 flex-auto overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-7 md:px-6",
+          "relative min-h-0 flex-auto overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-7 [scrollbar-gutter:stable] md:px-6",
+          "pr-[max(0px,calc(--spacing(5)-var(--scrollbar-room,0px)))] md:pr-[max(0px,calc(--spacing(6)-var(--scrollbar-room,0px)))]",
           floating ? "pt-[calc(env(safe-area-inset-top)+22px)] md:pt-[17px]" : "pt-1",
         )}>
         {open && (

@@ -71,7 +71,7 @@ function RecentPanel({ store, open, file }: SidebarCtx) {
               <div key={p} onPointerDown={(e) => { openingSoon(p, true); startDrag(e, { from: "row", to: `file:${p}`, path: p, label: stem(p) }) }}
                 onPointerEnter={() => openingSoon(p)} onPointerLeave={() => openingSoon(null)}
                 onContextMenu={menuFor(() => rowFileMenu(p))}
-                className={cn(item?.from === "row" && item.path === p && "opacity-40")}>
+                className={cn(item?.from === "row" && item.path === p && "opacity-50")}>
                 <SidebarRow data-recent={p} href={`#file/${encodeURIComponent(p)}`} icon={icon} tint={tint} label={stem(p)} open={open} active={p === file} more
                   onClick={(e) => openFile(p, { newTab: e.metaKey || e.ctrlKey || e.button === 1 })} />
               </div>

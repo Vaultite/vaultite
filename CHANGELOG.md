@@ -8,8 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Dragging moves only what you drag**: where scrollbars take room (Linux, Windows, a Mac set to show them), Pinned's
   tiles no longer lose a column and jump when something dragged in makes their panel scroll, the tab strip no longer
-  shows a scrollbar under its tabs, and a panel's scrollbar no longer comes and goes mid-drag; a move redraws only what
-  it changes, where it redrew the page under it.
+  shows a scrollbar under its tabs, and a panel's scrollbar no longer comes and goes mid-drag; a sheet's scrollbar sits
+  in its margin, its content lined up with its close button. A move redraws only what it changes, where it redrew the
+  page under it.
 - **Escape cancels a drag everywhere, and lists scroll near their edges**: a canvas card mid-move goes back, a sidebar,
   split or column being resized returns to its size; Pinned, the Tabs panel, a new tab's sections, Sites and a table
   wider than its note scroll along while something is held near their edge, and a wheel or trackpad scrolling under a

@@ -149,7 +149,7 @@ function PanelRow({ p, where, list }: { p: PanelOf; where: Where; list: PanelOf[
     <div data-row={p.key} data-slide={p.key} onContextMenu={menuFor(menu)}
       onPointerDown={(e) => startDrag(e, { from: "row", panel: p.key, label: p.panel.title, drawn: true }, { touch: true })}
       className={cn("group/row flex h-11 shrink-0 cursor-grab items-center gap-3 rounded-[7px] pr-1 pl-2.5 text-[17px] select-none hover:bg-foreground/[0.05] md:h-8 md:gap-2 md:pl-2 md:text-[13px]",
-        item && carried(item) === p.key && "opacity-40")}>
+        item && carried(item) === p.key && "opacity-50")}>
       <Icon className="size-5 shrink-0 text-muted-foreground md:size-4" strokeWidth={1.75} />
       <span className="min-w-0 flex-1 truncate">{p.panel.title}</span>
       <button type="button" data-no-drag aria-label={`More for ${p.panel.title}`} data-tip="More" onClick={rightClickBelow}

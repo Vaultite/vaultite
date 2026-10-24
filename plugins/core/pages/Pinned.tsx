@@ -215,7 +215,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
           ...(pages.length > 1 ? moveItems(id) : []),
           { label: "Unpin", icon: PinOff, sep: !(pages.length > 1), run: () => pinNoted(id, false) },
         ]))}
-        className={cn(item?.from === "pin" && (item.path === id || (picked && item.paths)) && "opacity-40")}>
+        className={cn(item?.from === "pin" && (item.path === id || (picked && item.paths)) && "opacity-50")}>
         {tiles ? <SidebarTile data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} {...selectedAttr(picked)} href={href} icon={icon}
           tint={view?.tint ?? shown?.tint} iconClassName={view?.iconClassName} badge={view?.badge} label={folder ? id : entry.label} active={active} onClick={click} />
         : <SidebarRow data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} aria-expanded={folder && open ? unfold : undefined} {...selectedAttr(picked)}
