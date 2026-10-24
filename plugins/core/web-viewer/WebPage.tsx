@@ -13,7 +13,7 @@ import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
 import { manageContainers } from "./Sites"
-import { argOf, containerById, profileIn, ruleFor, splitArg } from "./containers"
+import { argOf, containerById, openingIn, profileIn, ruleFor, splitArg } from "./containers"
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
@@ -102,8 +102,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     // (once the window paints behind it again: hidden before, it leaves a see-through hole for a frame)
     const leave = (id: number) => void painted().then(() => { void web.release(id); if (tab && !stillWeb(tab)) void web.close(tab) })
     settingsRead().then(() => {
-      // A site that always opens in a container, opened in none: its tab goes there (drawn afresh, index.tsx).
-      const rule = container ? null : ruleFor(arg)
+      // Opened in none: a site that always opens in a container, or a workspace with one of its own, takes its tab
+      // there (drawn afresh, index.tsx).
+      const rule = container ? null : openingIn(arg)
       if (rule && containerById(rule)) { live.current.setTabArg(argOf(arg, rule)); return Promise.reject(null) }
       // (where its box is now: shown at once, not after this tab draws again; not under something of the app's)
       const el = box.current, r = el && !popupOpen() ? pageArea(el.getBoundingClientRect()) : null

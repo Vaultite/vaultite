@@ -1,5 +1,5 @@
-// What "unused" means for a workspace, for server and app alike: no name, pins or panels of its own and one blank tab
-// (its `state` doesn't count). Unused is an empty slot: never kept in a file. No Node, no app imports.
+// What "unused" means for a workspace, for server and app alike: no name, look, pins or panels of its own and one blank
+// tab (its `state` doesn't count). Unused is an empty slot: never kept in a file. No Node, no app imports.
 
 type Obj = Record<string, unknown>
 
@@ -12,12 +12,12 @@ export function blankLayout(layout: unknown): boolean {
   return tabs.length === 0 || (tabs.length === 1 && tabs[0]?.to === "new")
 }
 
-/** A workspace that's as good as an empty slot (null counts): no name, the tabs blank, and its sidebars the default
- *  (`defaultSidebars`: none of its own, or the same as .vaultite/sidebars.json's; each side compares them its way). */
+/** A workspace that's as good as an empty slot (null counts): no name, icon, tint or container, the tabs blank, and its
+ *  sidebars the default (`defaultSidebars`: none of its own, or sidebars.json's; each side compares them its way). */
 export function isBlank(d: unknown, defaultSidebars: (sidebars: unknown) => boolean): boolean {
   if (!d || typeof d !== "object" || Array.isArray(d)) return true
   const w = d as Obj
-  if (typeof w.name === "string" && w.name.trim()) return false
+  if (["name", "icon", "tint", "container"].some((k) => typeof w[k] === "string" && (w[k] as string).trim())) return false
   if (Array.isArray(w.pinned)) return false
   return blankLayout(w.layout) && defaultSidebars(w.sidebars)
 }

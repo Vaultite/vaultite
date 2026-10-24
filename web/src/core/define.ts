@@ -10,6 +10,7 @@ import type { Dot } from "@/components/kit"
 import type { MenuItem } from "@/components/ContextMenu"
 import type { Side, Sidebars } from "../../../core/sidebars.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
+import type { Color } from "../../../core/colors.ts"
 import type { TextSizeKind } from "@/core/textsize"
 import type { GridCard, GridEdit } from "@/editor/livePreview"
 import type { EditorSettings } from "@/core/editorPrefs"
@@ -425,7 +426,12 @@ export type SidebarSetup = { get: () => Sidebars | null; set: (next: Sidebars) =
 
 /** A workspace as other plugins see it: its number, its name (or "Workspace 2") and the places its tabs show (tab
  *  targets: "view:terminal/abc", "file:Notes/Idea.md"). */
-export type WorkspaceInfo = { n: number; label: string; places: string[] }
+export type WorkspaceInfo = { n: number; label: string; places: string[]
+  /** Its icon (a Lucide name or an emoji) and tint (a named colour), as its number shows; the container its web pages
+   *  open in (one of `containers`), when it has one. */
+  icon?: string; tint?: Color; container?: string }
+/** Named logins web pages open in (the Browser's containers), for what picks one elsewhere: a workspace's. */
+export type WebContainer = { id: string; name: string; color: Color }
 /** A plugin that keeps workspaces. The rest of the app reads them through web/src/core/scope.ts, never from the plugin;
  *  call `workspaceChanged()` when any answer changes. */
 export type WorkspaceHost = {
@@ -663,6 +669,8 @@ export type PluginDef = {
   editorMenu?: (ctx: { view: EditorView; path?: string }) => MenuItem[]
   /** Items it adds to a folder's menu in the file tree, for that folder's path; [] for none. */
   folderMenu?: (path: string) => FileMenuItem[]
+  /** The containers its web pages open in (see WebContainer). */
+  containers?: () => WebContainer[]
   /** Items it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none. */
   webPageActions?: (page: { url: string; title: string }) => WebPageAction[]
   /** Marks on files in the file tree, by path, from the store (keep it to the few files that need one). */

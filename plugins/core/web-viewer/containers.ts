@@ -1,6 +1,6 @@
 // Containers: named logins a tab picks (Personal, Work), each its own cookies and storage, so one site can be signed in
 // to with several accounts side by side. A tab in one is `view:web/@<id>/<address>`; a tab in none has its workspace's.
-import { COLORS, colorVar, isColor, type Color } from "@vaultite"
+import { COLORS, colorVar, currentWorkspace, isColor, type Color } from "@vaultite"
 import { settings, profile, type Settings } from "./state"
 
 export type Container = { id: string; name: string; color: Color
@@ -59,6 +59,11 @@ export function siteOf(url: string) {
 export function ruleFor(url: string): string | null {
   const site = siteOf(url)
   return (site && containers().find((c) => c.sites?.includes(site))?.id) || null
+}
+/** The container a new page opened in none goes to: its site's, else the current workspace's (a space's), if any. */
+export function openingIn(url: string): string | null {
+  const own = currentWorkspace()?.container
+  return ruleFor(url) ?? (own && containerById(own) ? own : null)
 }
 
 const save = (list: Container[]) => settings.set({ containers: list })

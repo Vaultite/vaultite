@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Workspaces are spaces**: each can have an icon and a colour, shown in the sidebar's switcher (the sidebars take a
+  little of the colour), and a Browser container its web pages open in; a two-finger swipe over a sidebar goes to the
+  next or previous one.
 - **Tabs archive themselves**: with Tabs' Archive tabs (after 12 hours to 30 days), unpinned tabs you haven't looked at
   close into Archived tabs, to reopen where they were or find in the quick switcher; never pinned ones, ones on screen,
   terminals or unsaved edits.

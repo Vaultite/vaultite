@@ -3,20 +3,30 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronDown } from "lucide-react"
-import { cn, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
+import { cn, colorVar, commandKeys, getStore, menuFor, namedIcon, onTabLayoutChange, sidebarsChanged, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
 import {
-  emit, getRenaming, label, leaving, lit as litNow, named, patch, saveTabs, saveTabsSoon, savePending, sendTo, setRenaming, slotMenu, slots, SLOTS,
-  switchTo, sync, useVersion, type Sent,
+  cycle, emit, getRenaming, label, leaving, lit as litNow, lookOf, named, patch, saveTabs, saveTabsSoon, savePending, sendTo, setRenaming, slotMenu, slots,
+  SLOTS, switchTo, sync, used, useVersion, type Sent,
 } from "./state"
 
 // ---------- the header ----------
+
+/** Workspace n's mark: its icon in its tint, else its number in a box (in its tint, when it has one). `look`: the box's
+ *  own classes for the number (the switcher's, a row's). */
+function Mark({ n, look, size = "size-[18px]" }: { n: number; look: string; size?: string }) {
+  const { icon, tint } = lookOf(n)
+  const Icon = icon ? namedIcon(icon) : null
+  const c = tint ? colorVar(tint) : undefined
+  if (Icon) return <span data-workspace-icon={icon} className={cn("grid shrink-0 place-items-center", size)}><Icon className="size-[15px]" strokeWidth={2} style={c ? { color: c } : undefined} /></span>
+  return <span className={cn("grid shrink-0 place-items-center rounded-[4px] text-[11px] leading-none tabular-nums", size, look)} style={c ? { color: c, borderColor: c } : undefined}>{n}</span>
+}
+
 /** Workspace n's row while renamed: a field; Enter, a click elsewhere or the list closing keeps it, Escape doesn't. */
 function Rename({ n, on, end }: { n: number; on: boolean; end: (enter: boolean) => void }) {
   const done = (name: string | null) => renamed(n, name)
   return (
     <div data-workspace={n} className={cn("flex h-7 items-center gap-2 rounded-[5px] px-1.5", on && "bg-foreground/[0.08]")}>
-      <span className={cn("grid size-[18px] shrink-0 place-items-center rounded-[4px] border text-[11px] leading-none tabular-nums",
-        on ? "border-primary/60 bg-primary/10 font-semibold text-primary" : "border-border font-medium text-foreground")}>{n}</span>
+      <Mark n={n} look={cn("border", on ? "border-primary/60 bg-primary/10 font-semibold text-primary" : "border-border font-medium text-foreground")} />
       <input autoFocus onFocus={(e) => e.currentTarget.select()} aria-label={`Name of workspace ${n}`}
         defaultValue={slots()?.[n - 1]?.name ?? ""} placeholder={`Workspace ${n}`}
         onKeyDown={(e) => {
@@ -97,7 +107,7 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
         className={cn("flex shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-[5px] text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground",
           rail ? "size-7" : "h-6 pr-0.5 pl-1", open && "bg-foreground/[0.08] text-foreground")}>
         {/* In the sidebar's own grey, like its other buttons (the toggle): it's a control, not a selection. */}
-        <span className="grid size-[18px] place-items-center rounded-[4px] border-[1.5px] border-current text-[11px] leading-none font-semibold tabular-nums">{n}</span>
+        <Mark n={n} look="border-[1.5px] border-current font-semibold" />
         {!rail && <ChevronDown className="size-3 text-tertiary" strokeWidth={2.25} />}
       </button>
       {open && createPortal(
@@ -115,9 +125,8 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
                 className={cn("flex h-7 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] transition-colors",
                   "outline-none focus-visible:bg-foreground/[0.07]",
                   over === m ? "bg-primary/15 ring-1 ring-primary/50" : on ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.05]")}>
-                <span className={cn("grid size-[18px] shrink-0 place-items-center rounded-[4px] border text-[11px] leading-none tabular-nums",
-                  on ? "border-primary/60 bg-primary/10 font-semibold text-primary"
-                    : has ? "border-border font-medium text-foreground" : "border-dashed border-border text-tertiary")}>{m}</span>
+                <Mark n={m} look={cn("border", on ? "border-primary/60 bg-primary/10 font-semibold text-primary"
+                  : has ? "border-border font-medium text-foreground" : "border-dashed border-border text-tertiary")} />
                 <span className={cn("min-w-0 flex-1 truncate", on ? "font-medium" : has ? "" : "text-tertiary")}>{has ? label(m) : "New workspace"}</span>
                 <span className="text-[11px] text-tertiary">⌃{m}</span>
               </button>
@@ -131,9 +140,18 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
 }
 
 /** Runs while the plugin is on, computers and phones alike: saves the current workspace's tabs as they change, and
- *  follows the file when it changes. */
+ *  follows the file when it changes; the window takes the workspace's tint, and a swipe over a sidebar switches. */
 export function Background({ store }: { store: Store }) {
   const w = (store as unknown as { workspaces?: unknown }).workspaces
+  useVersion()
+  const tint = lookOf(litNow()).tint
+  // (the sidebars mix a little of it into their background: index.css's --color-sidebar)
+  useEffect(() => {
+    const root = document.documentElement
+    if (tint) root.style.setProperty("--space-tint", colorVar(tint)); else root.style.removeProperty("--space-tint")
+    return () => { root.style.removeProperty("--space-tint") }
+  }, [tint])
+  useSwipes()
   useEffect(() => {
     const off = onTabLayoutChange(saveTabsSoon)
     // A reload or a closed window right after a change: saved on the way out (leaving).
@@ -142,6 +160,33 @@ export function Background({ store }: { store: Store }) {
   }, [])
   useEffect(() => { sync(); emit(); sidebarsChanged() }, [w])
   return null
+}
+
+/** A two-finger swipe sideways over a sidebar goes to the next or previous workspace in use, as Arc's and Zen's do: once
+ *  a swipe (its momentum included), and not over something that scrolls sideways itself. */
+function useSwipes() {
+  useEffect(() => {
+    let sum = 0, done = false, quiet = 0
+    const sideways = (from: Element, side: Element) => {
+      for (let e: Element | null = from; e && e !== side; e = e.parentElement) {
+        if (e.scrollWidth > e.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(e).overflowX)) return true
+      }
+      return false
+    }
+    const wheel = (e: WheelEvent) => {
+      const el = e.target instanceof Element ? e.target : null, side = el?.closest("aside[data-side]")
+      if (!el || !side || e.ctrlKey) return
+      clearTimeout(quiet)
+      quiet = window.setTimeout(() => { sum = 0; done = false }, 250)
+      if (done || Math.abs(e.deltaX) <= Math.abs(e.deltaY) || used().length < 2 || sideways(el, side)) return
+      sum += e.deltaX
+      if (Math.abs(sum) < 80) return
+      done = true
+      cycle(sum > 0 ? 1 : -1)
+    }
+    addEventListener("wheel", wheel, { passive: true })
+    return () => { removeEventListener("wheel", wheel); clearTimeout(quiet) }
+  }, [])
 }
 
 /** What a dragged item (core/drag.ts) sends to another workspace: a tab moves, a pane (by its handle) moves with all

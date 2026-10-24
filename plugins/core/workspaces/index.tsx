@@ -22,6 +22,9 @@ export default definePlugin({
   settingsPanel: () => <WorkspaceSettings />,
   settingsSearch: [
     { key: "name", label: "Workspace name", description: "shown in the sidebar's switcher" },
+    { key: "icon", label: "Workspace icon", description: "shown for its number" },
+    { key: "tint", label: "Workspace colour", description: "the sidebars take a little of it" },
+    { key: "container", label: "Workspace container", description: "where its web pages open" },
     { key: "pins", label: "Workspace's pinned pages" },
     { key: "panels", label: "Workspace's panels", description: "the sidebars of this workspace" },
   ],

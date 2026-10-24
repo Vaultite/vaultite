@@ -646,6 +646,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `viewsChanged()`: Tell the tabs that a view's `title` or `iconClass` answers something else now.
 - `viewShown(target, disabled?)`: Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show).
 - `viewSurfaces(disabled?)`: The main view of each plugin that's on, as a pin (its first view pinned as itself, without an arg: Inbox, Graph view), in the plugins' order: what Pinned's menu offers.
+- `WebContainer`: Named logins web pages open in (the Browser's containers), for what picks one elsewhere: a workspace's.
+- `webContainers()`: The containers web pages open in, from the plugins that are on (the Browser's).
 - `WebEvent`
 - `WebPageAction`: What a plugin adds to a web page's bar in the Browser, also in its tab's menu: `kind: "save"` (Save video) goes in the bar's Save menu, under Save page to vault; any other in its … menu (Open in…
 - `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).

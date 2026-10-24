@@ -18,6 +18,7 @@ import { haptic } from "@/core/haptics"
 import { Badged, PageHeader, usePortalHost } from "@/components/kit"
 import { setMenu, setName, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
 import { colorVar } from "../../../core/colors.ts"
+import { namedIcon } from "@/core/pages"
 import { rowMenu, selectClick, selectedAttr, selecting, startSelecting, useSelectable, useSelected } from "@/core/select"
 import { menuBelow, menuOnCard, type MenuItem } from "@/components/ContextMenu"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
@@ -397,6 +398,7 @@ function TabsHeader({ title, count, pages, at, menu, more, query, setQuery, item
   query: string | null; setQuery: (q: string | null) => void; items: ReactNode
 }) {
   const icon = "grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50"
+  const here = pages[at], Mark = here?.icon ? namedIcon(here.icon) : null
   if (query !== null) return (
     <div data-tabs-header className="relative z-20 -mt-2 mb-4 flex min-h-11 items-center gap-2 md:mr-11">
       <label className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-[10px] bg-foreground/[0.06] px-2.5">
@@ -419,13 +421,15 @@ function TabsHeader({ title, count, pages, at, menu, more, query, setQuery, item
       <button type="button" data-tabs-workspace disabled={!menu} aria-haspopup={menu ? "menu" : undefined} onClick={(e) => menu && menuBelow(e, menu())}
         className="flex min-h-11 min-w-0 cursor-pointer flex-col items-center justify-center px-1 disabled:cursor-default">
         <span className="flex max-w-full min-w-0 items-center gap-1.5">
+          {Mark && <Mark data-tabs-workspace-icon className="size-[18px] shrink-0" strokeWidth={2} style={here?.tint ? { color: colorVar(here.tint) } : undefined} />}
           <h2 data-tabs-title className="min-w-0 truncate text-[17px] leading-[22px] font-semibold">{title}</h2>
           <span data-tabs-count className="shrink-0 text-[17px] leading-[22px] text-muted-foreground tabular-nums" aria-label={count === 1 ? "1 tab" : `${count} tabs`}>{count}</span>
           {menu && <ChevronDown className="size-4 shrink-0 text-muted-foreground" strokeWidth={2.25} />}
         </span>
         {pages.length > 1 && (
           <span aria-hidden className="mt-1 flex gap-1.5">
-            {pages.map((p, i) => <span key={p.n} className={cn("size-1.5 rounded-full transition-colors", i === at ? "bg-foreground/70" : "bg-foreground/20")} />)}
+            {pages.map((p, i) => <span key={p.n} className={cn("size-1.5 rounded-full transition-colors", !p.tint && (i === at ? "bg-foreground/70" : "bg-foreground/20"))}
+              style={p.tint ? { background: colorVar(p.tint), opacity: i === at ? 1 : 0.35 } : undefined} />)}
           </span>
         )}
       </button>

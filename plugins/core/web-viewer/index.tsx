@@ -191,6 +191,7 @@ function Preview() {
 }
 
 export default definePlugin({
+  containers: () => containers().map(({ id, name, color }) => ({ id, name, color })),
   views: {
     web: {
       icon: Globe,

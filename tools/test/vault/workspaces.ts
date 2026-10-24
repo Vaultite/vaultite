@@ -145,6 +145,10 @@ export default async ($: VaultTest) => {
     check("workspaces unused: a blank tab written to an unused slot isn't kept", st === 200 && body === null && readWs().workspaces.length === 4, readWs())
     ;[st, body] = await api("PUT", "workspaces/2", { name: "Fresh" })
     check("workspaces unused: a slot made by a write has no sidebars of its own", st === 200 && body.name === "Fresh" && !("sidebars" in body), body)
+    ;[st, body] = await api("PUT", "workspaces/5", { icon: "book-open", tint: "teal", container: "work" })
+    const looked = st === 200 && body?.icon === "book-open" && body.tint === "teal" && body.container === "work"
+    ;[st, body] = await api("PUT", "workspaces/5", { icon: null, tint: null, container: null })
+    check("workspaces unused: an icon, tint or container makes a workspace; without them it's unused again", looked && st === 200 && body === null && readWs().workspaces.length === 4, readWs())
     fs.rmSync(path.join(VAULT, ".vaultite/sidebars.json"))
 
     // A whole pane moved (`group`): it leaves as its tabs would, and becomes a pane of its own on the right of the target's.

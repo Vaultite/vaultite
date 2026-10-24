@@ -14,7 +14,8 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   container. Containers are managed in Sites (Manage containers…): add one, and a container's options (rename, colour,
   Touch ID, agent access, delete: deleting clears its logins) on its heading's … or right-click. They're the plugin's `containers` setting:
   `[{ "id": "work", "name": "Work", "color": "orange", "sites": ["linear.app"] }]` (colours: blue, orange, green, red,
-  purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there). What's opened
+  purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there; else, with
+  Workspaces, the workspace's `container`, else the workspace's own logins). What's opened
   from a page in a container opens in it too. `"lock": true` makes a container need Touch ID: its pages don't open or
   show until unlocked in its tab, and lock again when the Mac locks, sleeps or is idle 15 minutes ("Lock containers").
 - Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps

@@ -9,7 +9,7 @@ import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
 import { editorOf } from "@/core/editors"
-import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TimelineKind, ViewDef, WebPageAction } from "@/core/define"
+import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, ReadingBlock, ReadingDrawn, SidebarCtx, SidebarPanel, TimelineKind, ViewDef, WebContainer, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -909,6 +909,14 @@ export function webPageActions(page: { url: string; title: string }): WebPageAct
   const { disabled } = getPrefs()
   return PLUGINS.filter((p) => p.webPageActions && isEnabled(p.id, disabled)).flatMap((p) => {
     try { return p.webPageActions!(page) } catch (e) { console.error(`${p.id}: webPageActions`, e); return [] }
+  })
+}
+
+/** The containers web pages open in, from the plugins that are on (the Browser's). */
+export function webContainers(): WebContainer[] {
+  const { disabled } = getPrefs()
+  return PLUGINS.filter((p) => p.containers && isEnabled(p.id, disabled)).flatMap((p) => {
+    try { return p.containers!() } catch (e) { console.error(`${p.id}: containers`, e); return [] }
   })
 }
 

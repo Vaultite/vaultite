@@ -1,16 +1,16 @@
 // Workspaces' state: the slots (the store's, with this app's own changes on top), the current one, saving the tabs
 // into it and following the file (see index.tsx). No components here: they're in Numbers.tsx.
-import { Copy, LayoutPanelLeft, Pencil, Plus, Settings2, Trash2 } from "lucide-react"
+import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Settings2, Smile, Trash2 } from "lucide-react"
 import {
-  cell, del, devicePref, mergeTabsSeen, tabsSeenSince, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
+  cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
-  type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
 
 const MAX = 5
 export const SLOTS = Array.from({ length: MAX }, (_, i) => i + 1)
-type Def = { name?: string; sidebars?: Sidebars; layout?: TabLayout; pinned?: string[]; state?: Record<string, unknown> }
+type Def = { name?: string; icon?: string; tint?: Color; container?: string; sidebars?: Sidebars; layout?: TabLayout; pinned?: string[]; state?: Record<string, unknown> }
 type Slots = (Def | null)[]
 
 const current_ = devicePref<number>("workspace", 0)
@@ -166,7 +166,7 @@ function placesOf(n: number): string[] {
 /** What the app asks Workspaces (WorkspaceHost in the plugin API; core/scope.ts). */
 export const host: WorkspaceHost = {
   current: () => current() || 1,
-  list: (): WorkspaceInfo[] => SLOTS.filter((n) => slots()?.[n - 1] || n === current()).map((n) => ({ n, label: label(n), places: placesOf(n) })),
+  list: (): WorkspaceInfo[] => SLOTS.filter((n) => slots()?.[n - 1] || n === current()).map((n) => ({ n, label: label(n), places: placesOf(n), ...lookOf(n) })),
   switchTo: (n) => switchTo(n),
   menu: () => {
     const n = current() || 1, free = SLOTS.find((m) => m !== n && !now(m))
@@ -420,6 +420,38 @@ let renaming = 0
 export const getRenaming = () => renaming
 export const setRenaming = (n: number) => { renaming = n; emit() }
 export const label = (n: number) => slots()?.[n - 1]?.name || `Workspace ${n}`
+/** Workspace n's icon, tint and container, those it has. */
+export function lookOf(n: number): Pick<WorkspaceInfo, "icon" | "tint" | "container"> {
+  const d = slots()?.[n - 1]
+  return { ...(typeof d?.icon === "string" && d.icon ? { icon: d.icon } : {}), ...(isColor(d?.tint) ? { tint: d.tint } : {}),
+    ...(typeof d?.container === "string" && d.container ? { container: d.container } : {}) }
+}
+/** Pick workspace n's icon. */
+export const askIcon = (n: number) => pickIcon({ title: `Icon for ${named(n)}`, current: lookOf(n).icon, onPick: (i) => { patch(n, { icon: i }) } })
+/** Workspace n's colours to pick from (the sidebars take a little of it). */
+export function tintItems(n: number): MenuItem[] {
+  const { tint } = lookOf(n)
+  return [{ label: "No colour", checked: !tint, run: () => { patch(n, { tint: null }) } }, ...colorItems(tint ?? "", (c) => { patch(n, { tint: c }) })]
+}
+/** The containers workspace n's web pages can open in (the Browser's; none without it), and the one it has. */
+export function containerItems(n: number): { items: MenuItem[]; name?: string } {
+  const { container } = lookOf(n), boxes = webContainers()
+  if (!boxes.length) return { items: [] }
+  return { name: boxes.find((b) => b.id === container)?.name, items: [
+    { label: "No container", icon: Box, checked: !boxes.some((b) => b.id === container), run: () => { patch(n, { container: null }) } },
+    ...boxes.map((b) => ({ label: b.name, icon: dotIcon(colorVar(b.color)), checked: b.id === container, run: () => { patch(n, { container: b.id }) } })),
+  ] }
+}
+/** Workspace n's look as menu rows: its icon, colour and container. */
+export function lookItems(n: number): MenuItem[] {
+  const { icon, tint } = lookOf(n), box = containerItems(n)
+  return [
+    { label: "Change icon", icon: Smile, run: () => askIcon(n) },
+    ...(icon ? [{ label: "Remove icon", icon: CircleSlash, run: () => { patch(n, { icon: null }) } }] : []),
+    { label: "Colour", icon: tint ? dotIcon(colorVar(tint)) : Palette, run: () => {}, items: tintItems(n) },
+    ...(box.items.length ? [{ label: "Container", icon: Box, hint: box.name, run: () => {}, items: box.items }] : []),
+  ]
+}
 /** A workspace in the middle of a sentence: its name, else "workspace 2". */
 export const named = (n: number) => slots()?.[n - 1]?.name || `workspace ${n}`
 
@@ -457,6 +489,7 @@ export function slotMenu(n: number, rename = true): MenuItem[] {
   return [
     // The name is edited on its row in the switcher's list (which opens for it).
     ...(rename ? [{ label: "Rename", icon: Pencil, run: () => setRenaming(n) }] : []),
+    ...lookItems(n),
     { label: !has ? "Duplicate" : free ? `Duplicate to workspace ${free}` : "Duplicate (all five are in use)", icon: Copy, disabled: !has || !free, run: () => {
       const { name: _name, ...rest } = now(n)!
       patch(free!, rest)

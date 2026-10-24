@@ -32,7 +32,8 @@
     --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
+    /* A workspace's tint (Workspaces' --space-tint), a little of it, as Arc colours its sidebar. */
+    --color-sidebar: color-mix(in oklab, var(--sidebar), var(--space-tint, var(--sidebar)) var(--space-mix));
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);
@@ -96,6 +97,7 @@
     --glass-edge: rgb(255 255 255 / 0.75);
     --glass-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
     --sidebar: #e9e9ee;
+    --space-mix: 9%;
     --segment-on: var(--card);
     /* Named colours (Apple system colours). Features use these, never raw hex, so a scheme can recolour everything. */
     --red: #ff3b30; --orange: #ff9500; --yellow: #ffcc00; --green: #34c759; --teal: #30b0c7;
@@ -158,6 +160,7 @@
     --glass-edge: rgb(255 255 255 / 0.14);
     --glass-shadow: none;
     --sidebar: #111113;
+    --space-mix: 12%;
     --segment-on: #636366;
     --red: #ff453a; --orange: #ff9f0a; --yellow: #ffd60a; --green: #30d158; --teal: #40c8e0;
     --blue: #0a84ff; --indigo: #5e5ce6; --purple: #bf5af2; --pink: #ff375f; --gray: #8e8e93;
