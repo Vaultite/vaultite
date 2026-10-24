@@ -2,7 +2,8 @@
 // `pickIcon` asks.
 import { useEffect, useMemo, useState } from "react"
 import { Check } from "lucide-react"
-import { anyIcon, isEmoji, loadIconTags } from "@/core/icons"
+import { isEmoji, loadIconTags } from "@/core/icons"
+import { ICONS, namedIcon } from "@/core/pages"
 import { isMac } from "@/core/platform"
 import { fuzzy } from "@/core/fuzzy"
 import { Bar } from "@/components/kit"
@@ -48,7 +49,9 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
     const names = Object.keys(tags)
     if (!query) {
       const cur = a.current && (tags[a.current] || isEmoji(a.current)) ? [a.current] : []
-      return [...cur, ...names.filter((n) => n !== a.current)].slice(0, LIMIT).map((id) => ({ id, marks: [] }))
+      // (the app's own icons first, the ones a page or a workspace most likely wants, each once; then A to Z)
+      const drawn = new Set(), common = Object.entries(ICONS).flatMap(([n, c]) => (tags[n] && !drawn.has(c) && drawn.add(c) ? [n] : []))
+      return [...new Set([...cur, ...common, ...names])].slice(0, LIMIT).map((id) => ({ id, marks: [] }))
     }
     const w = query.toLowerCase()
     // In its name first (the closest first), then what it's about, then names that only match loosely.
@@ -73,7 +76,7 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
       empty={tags ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No icon matches "{q.trim()}".</p> : <Skeleton />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(isMac ? [["Ctrl+Mod+Space", "for an emoji"] as [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(r) => {
-        const Icon = anyIcon(r.id)
+        const Icon = namedIcon(r.id) // (as it will be drawn once picked: an app's own icon over Lucide's of that name)
         return (
           <>
             <span className="grid size-6 shrink-0 place-items-center">{Icon && <Icon className="size-[18px]" />}</span>
