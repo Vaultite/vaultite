@@ -133,12 +133,23 @@ try {
 
   // The chip folds the group, its tabs shrinking into it, a count showing; showing one of its tabs opens it.
   const lw0 = await page.$eval("[data-set-chip]:has-text('Lighthouse work')", (e) => e.dataset.setChip)
-  const widths = () => page.$$eval(`[data-tab-bar] [data-tab-id][data-in-set="${lw0}"]`, (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
+  const inGroupSel = `[data-tab-bar] [data-tab-id][data-in-set="${lw0}"]`
+  const widths = () => page.$$eval(inGroupSel, (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
+  /** The group's tabs' widths at each frame drawn while `act` runs and for `ms` after: the motion as it's seen, however
+   *  late a busy machine draws its first frame. */
+  const frames = async (act, ms = 700) => {
+    await page.evaluate(([sel, ms]) => {
+      const f = window.__frames = [], end = performance.now() + ms
+      const tick = () => { f.push([...document.querySelectorAll(sel)].map((e) => Math.round(e.getBoundingClientRect().width))); if (performance.now() < end) requestAnimationFrame(tick) }
+      requestAnimationFrame(tick)
+    }, [inGroupSel, ms])
+    await act()
+    await wait(ms)
+    return page.evaluate(() => window.__frames)
+  }
   const full = await widths()
-  await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(70)
-  const mid = await widths()
-  check("folding, its tabs shrink into the chip", mid.length === full.length && mid.every((w, i) => w > 0 && w < full[i]), [full, mid])
-  await wait(300)
+  const folding = await frames(() => page.click("[data-set-chip]:has-text('Lighthouse work')"))
+  check("folding, its tabs shrink into the chip", folding.some((ws) => ws.length === full.length && ws.every((w, i) => w > 0 && w < full[i])), [full, folding.slice(0, 8)])
   check("a click on the chip folds the group to it, with its count", (await bar()).includes("<Lighthouse work2>") && !(await bar()).includes(" ME"), await bar())
   await page.screenshot({ path: `${OUT}bar-folded.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
   // A tab dropped on a folded group's chip goes into it, which stays folded.
@@ -147,10 +158,8 @@ try {
   const lit = await page.$eval("[data-set-chip] > span", (e) => !!e.style.boxShadow)
   await release()
   check("a tab dropped on a folded group's chip goes into it, which stays folded", lit && (await bar()).includes("<Lighthouse work3>") && !(await bar()).includes("Garden planner"), [lit, await bar()])
-  await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(60)
-  const growing = await widths()
-  await wait(300)
-  check("opening, they grow back out of it", growing.length > 1 && growing.some((w, i) => w < (full[i] ?? 0) - 4) && (await widths()).every((w) => w > 40), [growing, await widths()])
+  const growing = await frames(() => page.click("[data-set-chip]:has-text('Lighthouse work')"))
+  check("opening, they grow back out of it", growing.some((ws) => ws.length > 1 && ws.some((w, i) => w < (full[i] ?? 0) - 4)) && (await widths()).every((w) => w > 40), [growing.slice(0, 8), await widths()])
   await page.click("[data-set-chip]:has-text('Lighthouse work')"); await wait(400)
   await palette(page, "Go to tab #2", 400)
   const folded = await page.$$eval("[data-set-chip]", (els) => els.map((e) => e.getAttribute("aria-expanded")))
@@ -228,8 +237,9 @@ try {
   check("  dropped, it joins that group's end", after.includes("[Reading] Garden planner Start here Lighthouse") && after.includes("[Lighthouse work] ME"), after)
   check("no strip of titles above the panes (pane titles off)", !(await page.$("[data-pane-title]")))
   await page.mouse.move(900, 500); await page.screenshot({ path: `${OUT}vertical-light.png` })
-  await page.click("[data-set-row]:has-text('Lighthouse work')"); await wait(300)
-  check("a group's row folds it in the panel", !(await page.$$eval("[data-tabs-panel] [data-open-tab]", (els) => els.map((e) => e.textContent.trim()))).includes("ME"))
+  await page.click("[data-set-row]:has-text('Lighthouse work')")
+  const panelRows = () => page.$$eval("[data-tabs-panel] [data-open-tab]", (els) => els.map((e) => e.textContent.trim()))
+  check("a group's row folds it in the panel", !!(await until(async () => !(await panelRows()).includes("ME"), 3000)), await panelRows())
   theme("dark"); await until(() => page.evaluate(() => document.documentElement.classList.contains("dark")), 5000); await wait(300)
   await page.screenshot({ path: `${OUT}vertical-dark.png` })
   await page.locator("[data-tabs-panel]").click({ button: "right", position: { x: 60, y: 10 } }); await wait(200)
