@@ -554,6 +554,7 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
       className="grid grid-cols-5 justify-items-center gap-1 px-1 pb-1 md:flex md:gap-0.5 md:px-1 md:pb-0.5">
       {COLORS.map((c) => (
         <button key={c} type="button" role="radio" aria-checked={c === value} aria-label={COLOR_NAMES[c]} data-tip={COLOR_NAMES[c]} data-color={c}
+          tabIndex={c === (COLORS.includes(value as Color) ? value : COLORS[0]) ? 0 : -1 /* one stop for the row, its arrows within */}
           onClick={() => choose(c)}
           className="group/swatch grid size-11 cursor-pointer place-items-center rounded-full outline-none md:size-6">
           <span className="on-tint grid size-7 place-items-center rounded-full transition-transform duration-150 group-hover/swatch:scale-110 group-active/swatch:scale-95 group-focus-visible/swatch:outline-2 group-focus-visible/swatch:outline-offset-2 group-focus-visible/swatch:outline-primary/60 md:size-[18px]"
