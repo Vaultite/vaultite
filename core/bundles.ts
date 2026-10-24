@@ -11,6 +11,7 @@ import { asLocked, COMMIT, git, parseSource, readLock, tagsOf } from "./installs
 import { LOOK } from "./look.ts"
 import { MOVED } from "./migrations.ts"
 import { switched } from "./pluginmeta.ts"
+import { official } from "./updates.ts"
 import { digestOf } from "./vaultplugins.ts"
 import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
@@ -33,7 +34,7 @@ const ONBOARDING = `${VAULT_BUNDLES}/onboarding.json`
 /** The setup a vault opened for the first time starts from (core/start.ts), and one that skips the offer gets. */
 export const DEFAULT_BUNDLE = "standard"
 /** The app's bundles that were folded into others: a vault that applied one has the one it's in now (tidy). */
-const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os" }
+const FOLDED: Record<string, string> = { minimal: "standard" }
 /** Ids a bundle can't take: they're routes. */
 const RESERVED = new Set(["restore", "import", "onboarding", "previous", "keep", "applied", "trial", "browse"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
@@ -194,8 +195,8 @@ export type Info = {
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
   /** What the first page it pins draws, for its card: its blocks in order (null: it pins nothing; [] not known). */
   home: HomeBlock[] | null
-  /** Vault plugins it brings or installs: they run code. */
-  code: string[]
+  /** Vault plugins it brings or installs: they run code; `official`: only Vaultite's own, installed from its directory. */
+  code: string[]; official: boolean
   /** The repository it was imported from (bundle.json's `from`), or null. */
   from: string | null
   /** The note it brings that says how the setup works (bundle.json's `guide`): opened after applying. */
@@ -248,13 +249,15 @@ function info(b: Bundle, host: Host): Info {
     const p = json(b, "pages.json")
     pinned = p && Array.isArray(p.pinned) ? strs(p.pinned) : null
   } catch { /* problems says */ }
+  const installs = installsOf(b.files, host), brings = parts(b.files).code
   let panels: Info["panels"] = null
   try { const s = readSidebars(json(b, "sidebars.json")); if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed } } catch { /* problems says */ }
   return {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
     sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
-    on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files, host).map((x) => x.id)], from: str(m.from) || null,
+    on, pinned, panels, home: homeOf(b, host, pinned), code: [...brings, ...installs.map((x) => x.id)],
+    official: !brings.length && installs.every((x) => official(x.source)), from: str(m.from) || null,
     guide: typeof b.files[str(m.guide)] === "string" ? str(m.guide) : null, hotkeys: b.files["hotkeys.json"] !== undefined,
     preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, previewDark: Buffer.isBuffer(b.files[PREVIEW_DARK]) ? hash(b.files[PREVIEW_DARK]) : null,
     problems: b.error ? [b.error] : problems(b.files),
@@ -326,20 +329,23 @@ function switchedOn(conf: Item, id: string, optIn: boolean) {
   return optIn ? strs(conf.enabled).includes(id) : !strs(conf.disabled).includes(id)
 }
 
-/** Pages the app brings (plugins' dashboards, the app's bundles' files): unpinned when the bundle applied doesn't pin
- *  them. Every other pin is the user's own and stays (their dashboards too, even saved in a bundle of theirs). */
+/** Bundles that aren't the user's own: the app's, and those imported (bundle.json's `from`: the directory's Life OS). */
+const notOwn = (v: Vault) => list(v).filter((b) => b.source === "app" || (() => { try { return !!json(b, "bundle.json")?.from } catch { return false } })())
+
+/** Pages the app brings (plugins' dashboards, the files of bundles not the user's own): unpinned when the bundle applied
+ *  doesn't pin them. Every other pin is the user's own and stays (their dashboards too, even saved in a bundle of theirs). */
 function brought(host: Host) {
   const out = new Set([...pluginPages(host).keys()].map((p) => homed(host.vault, p)))
-  for (const b of list(host.vault)) if (b.source === "app") for (const f of parts(b.files).vaultFiles) out.add(homed(host.vault, f))
+  for (const b of notOwn(host.vault)) for (const f of parts(b.files).vaultFiles) out.add(homed(host.vault, f))
   for (const f of [...out]) out.add(host.vault.relocated(f)) // (and where the user moved them)
   return out
 }
 
-/** CSS snippets the app's bundles bring (Life OS's serif titles): turned off when the bundle applied doesn't use them,
- *  as their pins are, so one bundle's look doesn't stay on in another. The user's own stay. */
+/** CSS snippets those bundles bring (Zen's floating panes): turned off when the bundle applied doesn't use them, as
+ *  their pins are, so one bundle's look doesn't stay on in another. The user's own stay. */
 function broughtSnippets(host: Host) {
   const out = new Set<string>()
-  for (const b of list(host.vault)) if (b.source === "app") for (const f of Object.keys(b.files)) { const m = /^snippets\/(.+)\.css$/.exec(f); if (m) out.add(m[1]) }
+  for (const b of notOwn(host.vault)) for (const f of Object.keys(b.files)) { const m = /^snippets\/(.+)\.css$/.exec(f); if (m) out.add(m[1]) }
   return out
 }
 
@@ -915,12 +921,13 @@ async function current(host: Host, o: SaveOptions, meta: Item | null = null): Pr
   // (every key, the defaults said: applied after another bundle, nothing of that one's look stays)
   const look = v.config("appearance")
   put("appearance.json", { ...LOOK, ...look })
-  // The editor's keys the app's bundles set, defaults said (as plugin settings), and any other the user set.
-  const ed = v.config("editor"), fixed = new Set(list(v).filter((b) => b.source === "app").flatMap((b) => { try { return Object.keys(json(b, "editor.json") ?? {}) } catch { return [] } }))
-  const editor = Object.fromEntries(EDITOR_KEYS.filter((k) => fixed.has(k) || (k in ed && !same(ed[k], EDITOR[k]))).map((k) => [k, ed[k] ?? EDITOR[k]]))
+  // The editor's and the new tab's keys the app's bundles set, defaults said (as plugin settings), and any other the user set.
+  const fixed = (rel: string) => new Set(list(v).filter((b) => b.source === "app").flatMap((b) => { try { return Object.keys(json(b, rel) ?? {}) } catch { return [] } }))
+  const ed = v.config("editor"), edKeys = fixed("editor.json")
+  const editor = Object.fromEntries(EDITOR_KEYS.filter((k) => edKeys.has(k) || (k in ed && !same(ed[k], EDITOR[k]))).map((k) => [k, ed[k] ?? EDITOR[k]]))
   if (Object.keys(editor).length) put("editor.json", editor)
-  const tab = v.config("newtab")
-  if (Object.keys(tab).length) put("newtab.json", { ...tab, ...(typeof tab.page === "string" ? { page: asBundle(host, tab.page) } : {}) })
+  const tab = v.config("newtab"), nt = { ...Object.fromEntries([...fixed("newtab.json")].map((k) => [k, null])), ...tab }
+  if (Object.keys(nt).length) put("newtab.json", { ...nt, ...(typeof tab.page === "string" ? { page: asBundle(host, tab.page) } : {}) })
   // The dashboards it pins, the new tab's page, and the theme and snippets it uses.
   const add = (at: string) => {
     if (files[at] !== undefined || asBundle(host, at) !== at || !safePath(at)) return

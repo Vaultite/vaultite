@@ -1,0 +1,8 @@
+{
+  "name": "Browser",
+  "description": "A web browser with your notes beside it: your favourite pages over vertical tabs, a new tab that takes an address or finds anything, spaces with their own containers, old tabs archived on their own, and the notes about the page you're on.",
+  "icon": "globe",
+  "tint": "blue",
+  "sort": 3,
+  "guide": "Guides/How Browser works.md"
+}

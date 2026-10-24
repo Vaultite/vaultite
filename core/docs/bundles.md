@@ -5,8 +5,9 @@ Bundles tab (Setup is beside Settings at the sidebar's foot, its other tab Plugi
 saves their own setup as one, shares it as a file or a repository, and imports others' (Import, or pasting or dropping
 one on the page: its preview first).
 The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
-sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Life OS (`life-os`: days, people, health,
-books, and pages and databases over them).
+sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Browser (`browser`: favourites and vertical
+tabs, ⌘T as an address bar, spaces, tabs archived on their own, a page's notes beside it). In the directory (Get bundles):
+Life OS (days, people, health, books, and pages over them) and Agents (coding agents in terminals, their machines).
 - A bundle is a folder shaped like `.vaultite/`, plus the vault files it needs. The user's are in
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```
@@ -22,7 +23,8 @@ books, and pages and databases over them).
   appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable", ...}: the app's and saved ones say every key
   editor.json        the editor's settings, as .vaultite/editor.json ({"propertiesInDocument": "hidden"}): saved ones say those the app's set
   hotkeys.json       optional
-  newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page)
+  newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page;
+                     `opens`: what ⌘T opens): saved ones say those the app's set
   preview.png        its card's picture: a screenshot of the app it makes (the desktop app takes one when saving)
   preview-dark.png   the same in dark, shown while the app is dark (each picture stands in for the other)
   plugins/<id>/data.json   a plugin's settings: those that differ from its defaults (saved: also the ones the app's bundles set)
@@ -44,8 +46,8 @@ books, and pages and databases over them).
   setting that is the default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
   deleted). A plugin it turns on writes its pages, as turning it on does (those already on don't: Standard over a new
   vault adds none); a plugin's page it pins (`Dashboards/Today.md`) is written if the pages folder has none. Pins become the
-  bundle's pages, then the user's own as they were; dashboards the app brings (plugins' and its own bundles') that it
-  doesn't pin are unpinned, the files kept. Panels and pins become the vault's defaults
+  bundle's pages, then the user's own as they were; dashboards the app brings (plugins', its own bundles' and imported
+  ones') that it doesn't pin are unpinned, the files kept, and their snippets go off. Panels and pins become the vault's defaults
   (sidebars.json, pages.json) and the workspace the user is on follows them (its own panels go; its own pins get the
   same edits); other workspaces keep theirs, and tabs aren't touched.
 - What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous setup" (the

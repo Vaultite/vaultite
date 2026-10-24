@@ -223,6 +223,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
       <div ref={box} className={cn("relative", tiles ? "grid grid-cols-[repeat(auto-fill,minmax(--spacing(11),1fr))] gap-1.5" : "flex flex-col gap-px")}
         data-select-list={SELECT}>
         {pages.map(row)}
+        {/* (none yet, in the open sidebar: how to add one, as other panels say when empty) */}
+        {!pages.length && open && panel && !dragging && <p className="col-span-full h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">Pin a page to keep it here.</p>}
         {/* Where what comes from elsewhere would be pinned. */}
         {order?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} className="h-7" />}
       </div>

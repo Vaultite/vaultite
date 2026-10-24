@@ -33,7 +33,7 @@ const all = [["today", at("Today")], ["health", at("Health")], ["learning", at("
   // (the app's own pages: the life ones above are Vaultite plugins, in a vault that has them)
   ["agents", at("Agents")], ["errors", at("Errors")], ["queue", at("Queue")],
   ...same("plugins", `plugins/plugin/people`, "settings", "settings/plugin-settings/page-preview", "settings/plugin-settings/pages", "settings/plugin-settings/search",
-    "bundles", "bundles/bundle/life-os", "bundles/bundle-save")]
+    "bundles", "bundles/bundle/browser", "bundles/bundle-save")]
 const routes = all.filter(([r, hash]) => hash || console.log(`skip ${r} (no such page in this vault)`))
 const report = []
 for (const width of [390, 320]) {

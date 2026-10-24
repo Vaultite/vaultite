@@ -1,5 +1,5 @@
 // A bundle applied while the app is open draws what a reload of it draws: the shell (sidebars, tab bars, panes, the
-// status bar) keeps nothing of the bundle before (the status bar held Life OS's width in Zen), Standard, Zen, Life OS.
+// status bar) keeps nothing of the bundle before (the status bar once held another's width in Zen): Standard, Zen, Browser.
 // WRITES the vault's settings: throwaway servers only.
 //   node web/qa/bundle-live.mjs <base url>
 import { spawnSync } from "node:child_process"
@@ -36,7 +36,7 @@ const go = async () => {
   await wait(3500)
 }
 
-for (const [from, to] of [["standard", "zen"], ["zen", "standard"], ["standard", "life-os"], ["life-os", "zen"]]) {
+for (const [from, to] of [["standard", "zen"], ["zen", "standard"], ["standard", "browser"], ["browser", "zen"], ["zen", "browser"]]) {
   apply(from)
   await go()
   apply(to)

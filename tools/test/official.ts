@@ -39,23 +39,28 @@ export function officialRepos(dir: string): string {
   return pathToFileURL(dir).href
 }
 
+/** Stand-in `id` as tools/pin_bundles.ts pins a real one: the commit its tag names and its files' hash. */
+export function standIn(dir: string, id: string) {
+  const repo = path.join(dir, "Vaultite", "plugins"), files = fs.mkdtempSync(path.join(dir, "stage-"))
+  try {
+    stage(path.join(repo, id), path.join(files, id))
+    return { tag: `${id}/v1.0.0`, commit: execFileSync("git", ["rev-parse", `${id}/v1.0.0^{commit}`], { cwd: repo, encoding: "utf8" }).trim(), hash: digestOf(path.join(files, id)).content }
+  } finally {
+    fs.rmSync(files, { recursive: true, force: true })
+  }
+}
+
 /** The app's bundles copied under `dir` (VAULTITE_BUNDLES), the plugins they install pinned to the stand-ins
- *  officialRepos(dir) made, as tools/pin_bundles.ts pins them to the real ones: what applying them installs here. */
+ *  officialRepos(dir) made: what applying them installs here. */
 export function officialBundles(dir: string): string {
-  const out = path.join(dir, "bundles"), repo = path.join(dir, "Vaultite", "plugins")
+  const out = path.join(dir, "bundles")
   if (fs.existsSync(out)) return out
   fs.cpSync(path.join(import.meta.dirname, "..", "..", "bundles"), out, { recursive: true })
   for (const id of fs.readdirSync(out)) {
     const file = path.join(out, id, "plugins.json")
     if (!fs.existsSync(file)) continue
     const pj = JSON.parse(fs.readFileSync(file, "utf8"))
-    for (const [p, x] of Object.entries<Record<string, unknown>>(pj.install ?? {})) {
-      const files = fs.mkdtempSync(path.join(dir, "stage-"))
-      stage(path.join(repo, p), path.join(files, p))
-      pj.install[p] = { ...x, tag: `${p}/v1.0.0`, commit: execFileSync("git", ["rev-parse", `${p}/v1.0.0^{commit}`], { cwd: repo, encoding: "utf8" }).trim(),
-        hash: digestOf(path.join(files, p)).content }
-      fs.rmSync(files, { recursive: true, force: true })
-    }
+    for (const [p, x] of Object.entries<Record<string, unknown>>(pj.install ?? {})) pj.install[p] = { ...x, ...standIn(dir, p) }
     fs.writeFileSync(file, JSON.stringify(pj, null, 2) + "\n")
   }
   return out

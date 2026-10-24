@@ -142,14 +142,15 @@ try {
     // Set up Vaultite's way (electron/main.ts): a setup picked, its plugins write their pages (core/pages.ts).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
     const applied = []
-    // (Life OS installs Vaultite's own plugins, Today and Books among them: as the user's yes in the app)
-    for (const id of ["standard", "life-os"]) applied.push((await call("POST", `bundles/${id}/apply`, { allowCode: true })).status)
+    // (Days, as the directory's Life OS, installs Vaultite's own plugins, Today and Books among them: as the user's yes in the app)
+    fs.cpSync(path.join(ROOT, "tools/fixtures/bundles/days"), path.join(own, ".vaultite/bundles/days"), { recursive: true })
+    for (const id of ["standard", "days"]) applied.push((await call("POST", `bundles/${id}/apply`, { allowCode: true })).status)
     await fetch(`${ownBase}api/state`)
     await wait(500)
     const later = files(own)
     const changed = Object.keys(before).filter((f) => before[f] !== later[f]), added = Object.keys(later).filter((f) => !(f in before))
     check("own vault: a setup picked changes none of the user's files (their own Today too)", applied.every((c) => c === 200) && !changed.length, [applied, changed])
-    const guide = (await (await call("GET", "bundles/life-os")).json()).bundle?.guide
+    const guide = (await (await call("GET", "bundles/days")).json()).bundle?.guide
     check("own vault: ...and adds only its plugins' pages, in Dashboards/, and its guide", added.length > 0 && added.includes(guide) &&
       added.every((f) => f === guide || (f.startsWith("Dashboards/") && /^type: dashboard$/m.test(later[f]))), added)
     // ...its pages pinned and drawn, the user's files now.

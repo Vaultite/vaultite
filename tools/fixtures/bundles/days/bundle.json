@@ -1,0 +1,8 @@
+{
+  "name": "Days",
+  "description": "A made-up bundle for tests and QA, as if imported from the directory (its from): it installs Vaultite's own plugins (stand-ins), as Life OS does, pins their pages and brings a dashboard and a guide.",
+  "icon": "sun",
+  "tint": "orange",
+  "guide": "Guides/How Days works.md",
+  "from": "Vaultite/plugins/bundles/days"
+}

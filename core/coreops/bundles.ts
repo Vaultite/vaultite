@@ -5,7 +5,7 @@ import { starter } from "../start.ts"
 import { type Op, OpError, type Param } from "../ops.ts"
 import { type Any, enc, lines, windowWorkspace } from "./common.ts"
 
-const ID: Param = { type: "string", required: true, description: "the bundle's id (life-os, my-desk)" }
+const ID: Param = { type: "string", required: true, description: "the bundle's id (zen, my-desk)" }
 const WORKSPACE: Param = { type: "integer", minimum: 1, maximum: 5, description: "the workspace (1 to 5) whose panels and pins follow; the user's window's when left out" }
 const SKIP: Param = { type: "array", items: { type: "string" }, commas: false,
   description: "changes to leave out, by the ids bundle.show lists (setting:pages.show, pin:Dashboards/Today.md, panels)" }
@@ -14,8 +14,8 @@ const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
 pins, and preview.png and preview-dark.png, its card's picture in light and dark); a part it leaves out stays as it is when it's applied. The app's own are
-Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the user's are in
-.vaultite/bundles/<id>/. \`vau docs bundles\` has the format, so you can write one too.
+Standard (standard, the app's defaults), Zen (zen) and Browser (browser); Life OS and Agents are in the directory
+(browse); the user's are in .vaultite/bundles/<id>/. \`vau docs bundles\` has the format, so you can write one too.
 
   list      the bundles there are, and the setup that can be restored
   show      what applying one would change here, each change with its id: plugins on and off (plugin:<id>), plugins
@@ -46,8 +46,8 @@ Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the us
   delete    one of the user's bundles (to the trash)
 
   vau bundle list
-  vau bundle show life-os
-  vau bundle apply life-os
+  vau bundle show browser
+  vau bundle apply browser
   vau bundle apply zen --skip appearance:scheme pin:Dashboards/Today.md --trial
   vau bundle keep
   vau bundle restore

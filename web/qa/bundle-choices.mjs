@@ -7,8 +7,8 @@
 // VAULTITE_PLUGIN_INDEX=<fixture dir>/index.json VAULTITE_GITHUB=file://<fixture dir>/repos.
 //   node web/qa/bundle-choices.mjs <base url> <vault path> <fixture dir> [out dir]
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [B, VAULT, FX, OUT = "/tmp/bundle-choices-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -45,7 +45,9 @@ const c1 = commit("dracula")
 index(c1)
 await api("GET", "bundles/browse?refresh=1")
 // (from Standard, whatever ran before: Zen's every change is one to make)
-for (const id of ["desk", "zen-mine", "life-os-mine"]) await api("DELETE", `bundles/${id}`)
+for (const id of ["desk", "zen-mine", "days-mine"]) await api("DELETE", `bundles/${id}`)
+// (Days: a bundle installing Vaultite's own plugins, as the directory's Life OS)
+cpSync(`${ROOT}/tools/fixtures/bundles/days`, `${VAULT}/.vaultite/bundles/days`, { recursive: true })
 await api("POST", "bundles/standard/apply", {})
 rmSync(`${VAULT}/Guides/How Zen works.md`, { force: true })
 
@@ -153,7 +155,7 @@ const { ctx, page } = await open(1280, 820)
 // ---------- 3. Save as "<Name> (mine)"; an install's plugin goes with it ----------
 {
   await go(page)
-  await preview(page, "life-os")
+  await preview(page, "days")
   await line(page, "install:books").click()
   check("an install left out: its plugin can't be turned on", !(await checked(page, "install:books")) && !(await checked(page, "plugin:books")) &&
     (await line(page, "plugin:books").getAttribute("aria-disabled")) === "true")
@@ -162,10 +164,10 @@ const { ctx, page } = await open(1280, 820)
   await line(page, "install:books").scrollIntoViewIfNeeded()
   await shot(page, "sheet-install-off")
   await sheet(page).locator("[data-bundle-fork]").click()
-  await until(() => sheet(page).locator('[data-bundle-preview="life-os-mine"]').count(), 8000)
-  const pj = json(".vaultite/bundles/life-os-mine/plugins.json")
-  check("Save as Life OS (mine): saved without Books, and its sheet is open", json(".vaultite/bundles/life-os-mine/bundle.json")?.name === "Life OS (mine)" && !pj?.install?.books &&
-    !!pj?.install?.today && await toastWith(page, "Saved Life OS (mine)").count() === 1, pj)
+  await until(() => sheet(page).locator('[data-bundle-preview="days-mine"]').count(), 8000)
+  const pj = json(".vaultite/bundles/days-mine/plugins.json")
+  check("Save as Days (mine): saved without Books, and its sheet is open", json(".vaultite/bundles/days-mine/bundle.json")?.name === "Days (mine)" && !pj?.install?.books &&
+    !!pj?.install?.today && await toastWith(page, "Saved Days (mine)").count() === 1, pj)
   await page.keyboard.press("Escape")
   await dismissAll(page)
 }
@@ -275,7 +277,7 @@ await ctx.close()
   await dp.locator("[data-bundles-browse]").scrollIntoViewIfNeeded()
   await shot(dp, "dark-browse")
   await dp.locator("[data-bundles-yours]").click()
-  await preview(dp, "life-os")
+  await preview(dp, "days")
   await line(dp, "install:health").click()
   await shot(dp, "dark-sheet-ticks")
   await dp.keyboard.press("Escape")
@@ -307,5 +309,5 @@ await ctx.close()
     await pc.close()
   }
 }
-for (const id of ["desk", "zen-mine", "life-os-mine"]) await api("DELETE", `bundles/${id}`)
+for (const id of ["desk", "zen-mine", "days-mine", "days"]) await api("DELETE", `bundles/${id}`)
 await done()

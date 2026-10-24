@@ -1,5 +1,5 @@
 // The web demo (npm run build:demo): the app with its server in the browser. Serves web/dist-demo under /demo/ (or uses
-// <demo url>, a demo served elsewhere: not "base url", which tools/qa.ts fills with an app server's) and checks, in Chrome and WebKit, it starts, opens a note, Life OS's pages and search, keeps an edit across a reload,
+// <demo url>, a demo served elsewhere: not "base url", which tools/qa.ts fills with an app server's) and checks, in Chrome and WebKit, it starts, opens a note, Vaultite's own plugins' pages and search, keeps an edit across a reload,
 // refuses a plugin that needs a machine, opens on a bundle (?bundle=), that the sample's files were edited across the
 // weeks before (also once a reload brings them back from IndexedDB), and that Reset brings the sample back.
 // WRITES: only the browser profile it makes.
@@ -63,7 +63,7 @@ async function visit(name, browser) {
   await open("Notes/Lisbon trip.md")
   is("a note opens in the editor", (await page.locator(".cm-content").count()) > 0 && (await shown()).includes("Lisbon"), (await shown()).slice(0, 200))
 
-  // (Life OS's pages: Vaultite's own plugins, built in here)
+  // (the pages of Vaultite's own plugins the sample turns on, built in here)
   for (const name of ["Today", "Health", "Learning", "Projects"]) {
     const at = (await api("GET", "files")).json?.files?.find((f) => f.plugin === name.toLowerCase() && f.type === "dashboard")?.path
     await open(at)
@@ -100,12 +100,25 @@ async function visit(name, browser) {
   const drew = await page.waitForFunction((ts) => ts.every((t) => document.querySelector("[data-pane]")?.innerText.includes(t)), titles, { timeout: 15000 }).then(() => true, () => false)
   is("the Agents page draws them", drew, (await shown()).slice(0, 600))
 
-  // Vaultite's own plugins are built in (vite.demo.config.ts): Life OS's Books, which it installs in the app, is there.
+  // Browser: on the web the new tab is the quick switcher, its panels and guide there, nothing broken.
   await page.goto("about:blank")
-  await page.goto(`${base}?bundle=life-os`)
+  await page.goto(`${base}?bundle=browser`)
+  is("?bundle=browser starts", !(await drawn()))
+  const web = (await api("GET", "demo/bundle/browser")).json, nt = (await api("GET", "config/newtab")).json
+  is("...on Browser: its panels, the switcher for a new tab", (await api("GET", "bundles")).json?.previous?.bundle === "browser" && nt?.opens === "switcher" &&
+    await page.locator("aside[data-side=left] [data-panel]").count() > 0 && !web?.problems?.length, { web, nt })
+
+  // Vaultite's own plugins are built in (vite.demo.config.ts): Days (as the directory's Life OS) installs Books in the app; here it's there.
+  const DAYS = path.join(ROOT, "tools/fixtures/bundles/days")
+  const daysFiles = Object.fromEntries(fs.readdirSync(DAYS, { recursive: true }).filter((f) => fs.statSync(path.join(DAYS, f)).isFile())
+    .map((f) => [f, f.endsWith(".json") ? JSON.parse(fs.readFileSync(path.join(DAYS, f), "utf8")) : fs.readFileSync(path.join(DAYS, f), "utf8")]))
+  const imported = await api("POST", "bundles/import", { file: { vaultite: "bundle", format: 1, id: "days", files: daysFiles } })
+  await wait(1000) // (the demo keeps its files a moment later)
+  await page.goto("about:blank")
+  await page.goto(`${base}?bundle=days`)
   await drawn()
-  const books = ((await api("GET", "state")).json?.books ?? []).length, life = (await api("GET", "demo/bundle/life-os")).json
-  is("Vaultite's own plugins are built in: Life OS turns Books on, with the sample's books", books >= 3 && life?.on?.includes("Books") && !life?.notInDemo?.includes("Books") &&
+  const books = ((await api("GET", "state")).json?.books ?? []).length, life = (await api("GET", "demo/bundle/days")).json
+  is("Vaultite's own plugins are built in: Days turns Books on, with the sample's books", imported.status === 200 && books >= 3 && life?.on?.includes("Books") && !life?.notInDemo?.includes("Books") &&
     (await api("GET", "config/plugins")).json?.enabled?.includes("books"), { books, life })
   is("...and Today, Health, Learning and Projects", ["Today", "Health", "Learning", "Projects"].every((n) => life?.on?.includes(n) && !life?.notInDemo?.includes(n)), life)
   const shelf = (await api("GET", "files")).json?.files?.find((f) => f.path.endsWith("Books/Piranesi.md"))?.path

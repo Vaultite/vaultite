@@ -26,5 +26,5 @@ Who to catch up with comes from each person's file in `People/`.
 ## Next
 
 - [[How this vault works]]: where things go, and what a note can hold.
-- [[People]]: a page drawn from the files. Life OS (Setup ▸ Bundles) adds Today, Health and Learning.
+- [[People]]: a page drawn from the files. Life OS (Setup ▸ Bundles ▸ Get bundles) adds Today, Health and Learning.
 - ⌘O finds any file, ⌘P runs any command.

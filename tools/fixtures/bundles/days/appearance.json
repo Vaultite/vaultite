@@ -8,9 +8,7 @@
   "interfaceFont": "",
   "textFont": "",
   "monoFont": "",
-  "snippets": [
-    "Serif titles"
-  ],
+  "snippets": [],
   "fileIcons": true,
   "tabBar": true,
   "paneTitles": false, "tabTint": false,

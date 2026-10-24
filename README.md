@@ -46,8 +46,8 @@ A folder of Markdown files (your vault) that you and your AI write in, and Vault
    reach Vaultite through Vaultite Cloud's relay or a tunnel of your own: [SECURITY.md](SECURITY.md)). Claude Code and
    Codex in Vaultite's terminals already know the vault.
 
-Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". Bundles add more: Life OS for your
-days, people and health; Agents for your coding agents.
+Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". Bundles add more: Browser makes it a
+web browser first, and in Get bundles, Life OS for your days, people and health; Agents for your coding agents.
 
 Agents outside Vaultite: `claude mcp add vaultite -- vau mcp`. Skills that teach any agent the vault's rules and how to
 write a plugin: `npx skills add Vaultite/vaultite`, or in Claude Code `/plugin marketplace add Vaultite/vaultite` and

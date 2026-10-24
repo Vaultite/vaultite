@@ -25,8 +25,8 @@ export type BundleInfo = {
    *  known): what its card draws. */
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
   home: { block: string; view: string | null; wide: boolean }[] | null
-  /** Vault plugins it brings or installs (they run code). */
-  code: string[]
+  /** Vault plugins it brings or installs (they run code); `official`: only Vaultite's own, from its directory. */
+  code: string[]; official: boolean
   /** The repository it was imported from, or null. */
   from: string | null
   /** The note it brings that says how the setup works: opened after applying. */

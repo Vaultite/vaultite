@@ -6,8 +6,8 @@
 // WRITES the vault's settings and bundles: throwaway servers only.
 //   node web/qa/bundles.mjs <base url> <vault path> <fresh base url> <fresh vault path> [out dir]
 // (the fresh server serves a folder the app had never opened: no .vaultite/ before it started)
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [B, VAULT, FB, FVAULT, OUT = "/tmp/bundles-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -34,8 +34,8 @@ async function notNow(page) {
   }
 }
 const toastWith = (page, text) => page.locator("[data-sonner-toast]", { hasText: text }).first()
-/** A bundle installing Vaultite's own plugins (Life OS: Books; Agents: Cursor...): its ask (none once they're there),
- *  said yes to. */
+/** A bundle installing Vaultite's own plugins (Days, as the directory's Life OS: Books...): its ask (none once they're
+ *  there), said yes to. */
 async function installs(page, first = "Books") {
   const ask = page.locator("dialog[open][data-confirm]", { hasText: `Install ${first}` })
   await until(async () => (await ask.count()) || (await page.locator("[data-sonner-toast]", { hasText: "Applied" }).count()), 6000)
@@ -50,7 +50,7 @@ async function card(page, id) {
 const dismissAll = async (page) => { await page.mouse.move(5, 5); await page.waitForFunction(() => !document.querySelector("[data-sonner-toast]"), null, { timeout: 30_000 }).catch(() => {}); await wait(100) }
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 
-// ---------- 1. A new vault: Standard, then Life OS ----------
+// ---------- 1. A new vault: Standard, then Browser ----------
 {
   const { ctx, page } = await open(1280, 820)
   await go(page, FB)
@@ -61,24 +61,25 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await go(page, FB, "bundles")
   await until(() => page.locator("[data-bundle]").count(), 6000)
   const ids = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => e.dataset.bundle))
-  check("three built-in bundles, Standard first", ids.join() === "standard,zen,life-os", ids)
+  check("three built-in bundles, Standard first", ids.join() === "standard,zen,browser", ids)
   const inUse = await page.locator("[data-bundle]:has([data-bundle-in-use])").evaluateAll((els) => els.map((e) => e.dataset.bundle))
   check("a new vault: Standard's card says In use, the others don't", inUse.join() === "standard", inUse)
-  await page.locator('[data-bundle="life-os"]').click()
-  await until(() => page.locator('dialog[open] [data-bundle-preview="life-os"]').count(), 6000)
-  await shot(page, "preview-life-os-new-vault")
+  await page.locator('[data-bundle="browser"]').click()
+  await until(() => page.locator('dialog[open] [data-bundle-preview="browser"]').count(), 6000)
+  await shot(page, "preview-browser-new-vault")
   check("the preview names its guide", await page.locator("dialog[open] [data-bundle-guide]").count() === 1)
   await page.locator("dialog[open] [data-bundle-apply]").click()
-  await installs(page)
-  // (installing from GitHub can take a while)
-  await until(() => toastWith(page, "Applied Life OS").count(), 30_000)
-  check("applied: a toast with Undo", await toastWith(page, "Applied Life OS").isVisible() && (await toastWith(page, "Applied Life OS").locator("[data-button]").innerText()) === "Undo")
-  await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Guides/How Life OS works.md")), 6000)
-  check("applied: its guide is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Guides/How Life OS works.md") && existsSync(`${FVAULT}/Guides/How Life OS works.md`), await page.evaluate(() => location.hash))
+  await until(() => toastWith(page, "Applied Browser").count(), 10_000)
+  check("applied: a toast with Undo, nothing asked (it installs nothing)", await toastWith(page, "Applied Browser").isVisible() && (await toastWith(page, "Applied Browser").locator("[data-button]").innerText()) === "Undo" &&
+    !(await page.locator("dialog[open][data-confirm]").count()))
+  await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Guides/How Browser works.md")), 6000)
+  check("applied: its guide is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Guides/How Browser works.md") && existsSync(`${FVAULT}/Guides/How Browser works.md`), await page.evaluate(() => location.hash))
   const s = settings(FVAULT)
-  check("applied: Life OS's pins (its plugins' pages written in Dashboards/) and look", s.pages?.pinned?.[0] === "Dashboards/Today.md" && existsSync(`${FVAULT}/Dashboards/Today.md`) && s.appearance?.scheme === "flexoki" && s.plugins?.enabled?.includes("today"), s)
+  check("applied: Browser's panels, plugins, look and new tab", s.sidebars?.left?.join() === "pages:pages,tabs:tabs" && s.sidebars?.right?.join() === "backlinks:links" &&
+    ["glance", "web-viewer", "workspaces"].every((id) => s.plugins?.enabled?.includes(id)) && s.appearance?.tabBar === false && s.appearance?.tabTint === true &&
+    json(FVAULT, ".vaultite/newtab.json")?.opens === "switcher" && json(FVAULT, ".vaultite/plugins/tabs/data.json")?.archive_after === "12h", [s, json(FVAULT, ".vaultite/newtab.json")])
   await wait(1200)
-  await shot(page, "after-life-os-new-vault")
+  await shot(page, "after-browser-new-vault")
   // A vault still offered the bundles (an older app's): it opens on them, Standard picked, and skipping starts from it.
   writeFileSync(`${FVAULT}/.vaultite/bundles/onboarding.json`, "{}\n")
   await go(page, FB)
@@ -93,15 +94,16 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await until(() => !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`), 6000)
   check("Start with Standard ends the offer", !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`))
   const m = settings(FVAULT)
-  check("skipped: Standard's plugins (Claude Code on), and Restore still Life OS's", !(m.plugins?.enabled ?? []).includes("people") && !m.plugins?.disabled?.includes("claude-code")
-    && json(FVAULT, ".vaultite/bundles/previous.json")?.bundle === "life-os", [m.plugins, json(FVAULT, ".vaultite/bundles/previous.json")?.bundle])
+  check("skipped: Standard's plugins (Claude Code on), and Restore still Browser's", !(m.plugins?.enabled ?? []).includes("workspaces") && !m.plugins?.disabled?.includes("claude-code")
+    && json(FVAULT, ".vaultite/bundles/previous.json")?.bundle === "browser", [m.plugins, json(FVAULT, ".vaultite/bundles/previous.json")?.bundle])
   await until(async () => (await page.locator("main h1").first().innerText()) === "Setup", 6000)
   check("then the page is Setup, on its Bundles tab", (await page.locator("main h1").first().innerText()) === "Setup" &&
     (await page.locator("[data-setup-tab=bundles]").getAttribute("aria-checked")) === "true")
   await ctx.close()
 }
 
-// ---------- 2. Each built-in bundle on a copy of examples/vault ----------
+// ---------- 2. Each built-in bundle on a copy of examples/vault, and Days, one of the user's installing plugins ----------
+cpSync(`${ROOT}/tools/fixtures/bundles/days`, `${VAULT}/.vaultite/bundles/days`, { recursive: true })
 const { ctx, page } = await open(1280, 820)
 const original = settings(VAULT)
 await go(page, B, "bundles")
@@ -111,14 +113,17 @@ await shot(page, "picker")
 // What a built-in brings beyond settings is a mark on its title's row, its tooltip naming the plugins: cards one height.
 const cards = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)))
 check("built-in cards are one height", cards.length >= 3 && new Set(cards).size === 1, cards)
-const mark = page.locator('[data-bundle="life-os"] [data-bundle-installs]')
-check("Life OS: a mark saying which plugins it installs", await mark.count() === 1 && /^Installs .*Today/.test(await mark.getAttribute("data-tip")), await mark.getAttribute("data-tip").catch(() => null))
+const mark = page.locator('[data-bundle="days"] [data-bundle-installs]')
+check("Days: a mark saying which of Vaultite's plugins it installs, not that it runs code", await mark.count() === 1 && /^Installs .*Today/.test(await mark.getAttribute("data-tip")) &&
+  !(await page.locator('[data-bundle="days"] [data-bundle-runs-code]').count()), await mark.getAttribute("data-tip").catch(() => null))
 const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the vault's pages folder)
 const want = {
   "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),
-  "life-os": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.scheme === "flexoki",
+  "days": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.scheme === "flexoki",
   // (a value that's the app's default is written as no key: paneTitles is off by default)
   "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && !s.appearance.paneTitles && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
+  // (Zen's floating panes go with it; Days' Home, an imported bundle's page, is unpinned)
+  "browser": (s) => s.sidebars.left.join() === "pages:pages,tabs:tabs" && s.appearance.tabTint === true && !s.appearance.snippets?.length && !s.pages.pinned.includes(`${PAGES}Home.md`),
 }
 for (const id of Object.keys(want)) {
   await go(page, B, "bundles")
@@ -128,9 +133,9 @@ for (const id of Object.keys(want)) {
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   const text = await sheet.innerText()
   check(`${id}: the preview says what changes`, /Plugins|Sidebars|Pinned pages|Look/.test(text), text.slice(0, 200))
-  if (id === "zen" || id === "life-os") await shot(page, `preview-${id}`)
+  if (id !== "standard") await shot(page, `preview-${id}`)
   await page.locator("dialog[open] [data-bundle-apply]").click()
-  if (id === "life-os") await installs(page)
+  if (id === "days") await installs(page)
   await until(() => page.locator("[data-sonner-toast]", { hasText: "Applied" }).count(), 6000)
   await until(() => { const s = settings(VAULT); try { return want[id](s) } catch { return false } }, 6000)
   const s = settings(VAULT)
@@ -138,7 +143,7 @@ for (const id of Object.keys(want)) {
   try { ok = want[id](s) } catch { /* below */ }
   check(`${id}: applied as the preview said`, ok, s)
   check(`${id}: plugins.json's other keys are left alone`, JSON.stringify(Object.keys(s.plugins).filter((k) => !["disabled", "enabled"].includes(k))) === JSON.stringify(Object.keys(original.plugins ?? {}).filter((k) => !["disabled", "enabled"].includes(k))), s.plugins)
-  if (id === "life-os" || id === "zen") { await wait(1500); await shot(page, `after-${id}`) }
+  if (id !== "standard") { await wait(1500); await shot(page, `after-${id}`) }
   await dismissAll(page)
 }
 
@@ -156,15 +161,15 @@ for (const id of Object.keys(want)) {
   check("Undo puts every settings file back", JSON.stringify(settings(VAULT)) === before, [JSON.parse(before), settings(VAULT)])
   await dismissAll(page)
   await go(page, B, "bundles")
-  await card(page, "life-os")
+  await card(page, "days")
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-apply]").click()
   await installs(page)
-  await until(() => toastWith(page, "Applied Life OS").count(), 6000)
+  await until(() => toastWith(page, "Applied Days").count(), 6000)
   await dismissAll(page)
   await go(page, B, "bundles")
   await until(() => page.locator("[data-bundles-previous]").count(), 6000)
-  check("the page offers Restore previous setup", (await page.locator("[data-bundles-previous]").innerText()).includes("Life OS"))
+  check("the page offers Restore previous setup", (await page.locator("[data-bundles-previous]").innerText()).includes("Days"))
   await page.locator("[data-bundles-previous] button").click()
   await until(() => JSON.stringify(settings(VAULT)) === before, 6000)
   check("Restore previous setup puts it back", JSON.stringify(settings(VAULT)) === before, settings(VAULT))
@@ -174,6 +179,7 @@ for (const id of Object.keys(want)) {
 }
 
 // ---------- 4. Save, export, import ----------
+await fetch(`${B}api/bundles/days`, { method: "DELETE" }) // (none of the user's from here)
 {
   await go(page, B, "bundles")
   check("none of yours: one row's empty state with Save and Import, nothing atop the page", await page.locator("[data-bundles-none] [data-bundles-save]").count() === 1 &&

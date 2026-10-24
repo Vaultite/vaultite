@@ -255,7 +255,7 @@ function BundleCard({ b, picked, trying }: { b: BundleInfo; picked?: boolean; tr
               : b.modified ? <Badge data-bundle-modified data-tip={`Changed since you applied it: ${fewOf(b.differs?.map(changeName) ?? [])}`}>In use · modified</Badge>
               : b.inUse && <Badge data-bundle-in-use data-tip="Your setup is this one: applying it changes nothing">In use</Badge>}
             {/* What it brings beyond settings, as marks on the title's row: every card stays one height. */}
-            {!!b.code.length && (b.source === "app"
+            {!!b.code.length && (b.official
               ? <span className="shrink-0 text-muted-foreground" data-bundle-installs={b.code.join(" ")} data-tip={`Installs ${listOf(b.code)}`}><PackagePlus className="size-4" strokeWidth={2} /></span>
               : <span className="shrink-0 text-[var(--red)]" data-bundle-runs-code data-tip={`Runs code: ${listOf(b.code)}`}><ShieldAlert className="size-4" strokeWidth={2} /></span>)}
             {!!b.problems.length && <span className="shrink-0 text-[var(--red)]" data-bundle-unreadable data-tip={`Can't be read: ${b.problems.join("\n")}`}><CircleAlert className="size-4" strokeWidth={2} /></span>}
@@ -457,7 +457,7 @@ export function Bundles({ store }: { store: Store }) {
 
 /** What a listed bundle's card draws without its picture: the sketch of a bundle that says nothing but its look. */
 const sketchOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", name: e.name, description: e.description, icon: e.icon ?? "package", tint: e.tint ?? "",
-  author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, home: null, code: [], from: e.address, guide: null,
+  author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, home: null, code: [], official: true, from: e.address, guide: null,
   hotkeys: false, preview: null, previewDark: null, problems: [] })
 
 /** A bundle the directory lists, as a card: who made it and its stars under its name, and whether the user has it.
@@ -885,7 +885,7 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
             })()}
             {plan.appearance.map((c) => <Setting key={c.key} pick={pick} id={c.change} label={APPEARANCE[c.key] ?? c.key} from={c.from} to={c.to} />)}
             {plan.newtab.map((c) => <Setting key={`newtab.${c.key}`} pick={pick} id={c.change} label={NEWTAB[c.key] ?? `New tab: ${c.key}`} from={c.key === "page" && typeof c.from === "string" ? stem(c.from) : c.from}
-              to={c.key === "page" && typeof c.to === "string" ? stem(c.to) : c.to} />)}
+              to={c.key === "page" && typeof c.to === "string" ? stem(c.to) : c.to} labels={c.key === "opens" ? OPENS : undefined} />)}
           </Panel>
         )}
         {(plan.editor.length > 0 || plan.settings.length > 0 || plan.hotkeys.length > 0 || plan.skipped.length > 0) && (
@@ -929,8 +929,10 @@ const EDITOR_NAMES: Record<string, string> = {
   autoPairBrackets: "Auto-pair brackets", autoPairMarkdown: "Auto-pair Markdown", useTab: "Indent with tabs", tabSize: "Tab size",
 }
 const EDITOR_VALUES: Record<string, unknown> = EDITOR
+/** What a new tab opens, as Settings names it (opensChoices). */
+const OPENS: Record<string, string> = { switcher: "Quick switcher", "view:web": "Web page" }
 const PROPERTIES_LABELS = Object.fromEntries(PROPERTIES_SHOWN.map((x) => [x.value, x.label]))
-const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons" }
+const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons", opens: "New tabs open" }
 const APPEARANCE: Record<string, string> = {
   theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", paneTitles: "Pane titles", tabTint: "Tinted active tab", rails: "Sidebar rails", peekShade: "Dim the page behind a sidebar", typingFade: "Fade the file bar while typing", translucent: "Translucent window", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", fileBar: "File top bar", sidebarHeader: "Sidebar header", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
@@ -941,9 +943,10 @@ function Setting({ pick, id, label, from, to, labels }: { pick?: Picks; id: stri
   return (
     <ChangeLine pick={pick} id={id} className="min-h-8 text-[14px]">
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="ml-1 shrink-0 text-muted-foreground line-through decoration-foreground/25">{name(from)}</span>
+      {/* (a value as long as a list is cut off, its tip whole) */}
+      <span className="ml-1 max-w-[40%] shrink-0 truncate text-muted-foreground line-through decoration-foreground/25" data-tip={name(from).length > 24 ? name(from) : undefined}>{name(from)}</span>
       <ArrowRight className="size-3.5 shrink-0 text-tertiary" strokeWidth={2.25} />
-      <span className="shrink-0 font-medium">{name(to)}</span>
+      <span className="max-w-[40%] shrink-0 truncate font-medium" data-tip={name(to).length > 24 ? name(to) : undefined}>{name(to)}</span>
     </ChangeLine>
   )
 }

@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A Browser bundle**: built in beside Standard and Zen, the app as a web browser first: your favourite pages as
+  tiles over vertical tabs, ⌘T an address bar that finds anything, spaces, tabs archived after 12 hours and the notes
+  about the page you're on. Life OS moved to Get bundles, beside Agents (a setup made with it stays as it is), and a
+  bundle from there leaves with its pages and snippets when you switch, as the built-in ones do.
+  about the page you're on. Life OS moved to Get bundles, beside Agents; a setup made with it stays as it is.
 - **Lighter typing**: a keystroke in a note redraws a third of what it did (its title, properties and header items
   stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer makes the
   page lay itself out again for it; the quick switcher redraws less per letter.

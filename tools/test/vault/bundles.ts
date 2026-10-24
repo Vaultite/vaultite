@@ -3,11 +3,13 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { tidy } from "../../../core/bundles.ts"
-import { officialRepos } from "../official.ts"
+import { officialRepos, standIn } from "../official.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, exists, read, write, writeWs } = $
   let s: Any
+  // Days (tools/fixtures/bundles/days): a made-up bundle installing Vaultite's own plugins, as Life OS (the directory's) does.
+  fs.cpSync(path.join(import.meta.dirname, "..", "..", "fixtures", "bundles", "days"), path.join(VAULT, ".vaultite/bundles/days"), { recursive: true })
   // Bundles (core/bundles.ts): applying is small edits that leave unrelated keys alone, and restoring is a round trip.
   {
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
@@ -29,23 +31,23 @@ export default async ($: VaultTest) => {
     const deskBefore = await slot1()
 
     let [code, r] = await api("GET", "bundles")
-    check("bundles: the app's three, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,zen,life-os" &&
+    check("bundles: the app's three, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,zen,browser" &&
       r.bundles.every((b: Any) => !b.problems.length || b.source !== "app") && r.default === "standard", r.bundles.map((b: Any) => [b.id, b.problems]))
     const LIFE = "Dashboards/Today.md,Dashboards/Home.md,Dashboards/People.md,Dashboards/Health.md,Dashboards/Learning.md,Dashboards/Projects.md,People/Alice Park.md"
     // (the pages of the plugins it installs are known once they are)
     const PREVIEWED = "Dashboards/Home.md,Dashboards/People.md,People/Alice Park.md"
-    ;[code, r] = await api("GET", "bundles/life-os?workspace=1")
+    ;[code, r] = await api("GET", "bundles/days?workspace=1")
     const plan = r.plan
     check("bundles: the preview says what changes", code === 200 && plan.plugins.off.includes("machines") && plan.settings.some((s: Any) => s.plugin === "page-preview" && s.key === "trigger" && s.to === "hover") &&
       plan.pins.list.join() === PREVIEWED && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
       plan.files.add.includes("Dashboards/Home.md") && plan.editor.some((c: Any) => c.change === "editor:propertiesInDocument" && c.from === "source" && c.to === null) && !plan.empty, plan)
-    ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1 })
+    ;[code, r] = await api("POST", "bundles/days/apply", { workspace: 1 })
     check("bundles: one installing a plugin asks first (it runs code)", code === 409 && r.error.includes("Books"), [code, r])
-    // (Books and others moved out of the app: Life OS installs them from a made-up Vaultite/plugins here)
+    // (Books and others moved out of the app: Days installs them from a made-up Vaultite/plugins here)
     const github = process.env.VAULTITE_GITHUB
     process.env.VAULTITE_GITHUB = officialRepos(path.join($.tmp, "official"))
-    ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1, allowCode: true })
-    check("bundles: apply", code === 200 && r.applied === "Life OS", r)
+    ;[code, r] = await api("POST", "bundles/days/apply", { workspace: 1, allowCode: true })
+    check("bundles: apply", code === 200 && r.applied === "Days", r)
     check("bundles: a plugin it installs is installed from Vaultite's plugins, on and allowed here", exists(".vaultite/plugins/books/manifest.json") &&
       conf("plugins-lock")?.books?.source === "Vaultite/plugins/books" && !!app.vaultPlugins.trust.approved("books", app.vaultPlugins.found.get("books")?.digest.content ?? ""), conf("plugins-lock"))
     if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
@@ -61,24 +63,35 @@ export default async ($: VaultTest) => {
     let d = await slot1()
     check("bundles: the current workspace follows: its own panels go, its pins get the same edits, the rest stays", d.name === "Desk" && !d.sidebars && d.pinned?.join() === LIFE, d)
     ;[, s] = await api("GET", "state")
-    check("bundles: /api/state says what can be restored", s.bundles?.previous?.name === "Life OS" && s.bundles.onboarding === false, s.bundles)
-    ;[, r] = await api("GET", "bundles/life-os?workspace=1")
+    check("bundles: /api/state says what can be restored", s.bundles?.previous?.name === "Days" && s.bundles.onboarding === false, s.bundles)
+    ;[, r] = await api("GET", "bundles/days?workspace=1")
     check("bundles: applied again it changes nothing", r.plan.empty === true, r.plan)
     // A vault that applied one of the bundles folded into others since has the one it's in now.
-    const prevFile = read(".vaultite/bundles/previous.json")
-    write(".vaultite/bundles/previous.json", JSON.stringify({ ...JSON.parse(prevFile), bundle: "pages", name: "Pages and databases" }))
+    const prevFile = read(".vaultite/bundles/previous.json"), appliedFile = read(".vaultite/bundles/applied.json")
+    write(".vaultite/bundles/previous.json", JSON.stringify({ ...JSON.parse(prevFile), bundle: "minimal", name: "Minimal" }))
     write(".vaultite/bundles/standard/bundle.json", JSON.stringify({ name: "Standard" }))
     tidy(app.vault)
     const moved = JSON.parse(read(".vaultite/bundles/previous.json"))
-    check("bundles: tidied, a folded bundle applied is the one it's in, and one of the user's under the app's id moves", moved.bundle === "life-os" && moved.name === "Life OS" &&
+    check("bundles: tidied, a folded bundle applied is the one it's in, and one of the user's under the app's id moves", moved.bundle === "standard" && moved.name === "Standard" &&
       moved.config && !exists(".vaultite/bundles/standard") && exists(".vaultite/bundles/standard-2/bundle.json"), [moved.bundle, moved.name])
+    // One applied while it was the app's, in the directory since (Life OS): its setup and records stay, and imported from
+    // there it takes its id, so it's the one in use again.
+    for (const [f, text] of [["previous", prevFile], ["applied", appliedFile]]) write(`.vaultite/bundles/${f}.json`, JSON.stringify({ ...JSON.parse(text), bundle: "life-os", name: "Life OS" }))
+    tidy(app.vault)
+    check("bundles: tidied, one that left the app stays as it was", JSON.parse(read(".vaultite/bundles/previous.json")).bundle === "life-os" && JSON.parse(read(".vaultite/bundles/applied.json")).bundle === "life-os")
+    const days = JSON.parse((await api("GET", "bundles/days/export?all=1"))[1])
+    ;[code, r] = await api("POST", "bundles/import", { ...days, id: "life-os", files: { ...days.files, "bundle.json": { name: "Life OS", from: `Vaultite/plugins/bundles/life-os@${"a".repeat(40)}` } } })
+    const life = (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === "life-os")
+    check("bundles: imported from the directory, it's the one in use", code === 200 && r.bundle?.id === "life-os" && life?.source === "vault" && !!life.applied && life.modified === false, [code, r?.bundle?.id, life])
+    await api("DELETE", "bundles/life-os")
+    write(".vaultite/bundles/applied.json", appliedFile)
     write(".vaultite/bundles/previous.json", JSON.stringify({ ...JSON.parse(prevFile), bundle: "everything", name: "Everything" }))
     tidy(app.vault)
     check("bundles: tidied, one that's gone stays as it was (restore still works)", JSON.parse(read(".vaultite/bundles/previous.json")).bundle === "everything")
     write(".vaultite/bundles/previous.json", prevFile)
     fs.rmSync(path.join(VAULT, ".vaultite/bundles/standard-2"), { recursive: true })
     ;[code, r] = await api("POST", "bundles/restore")
-    check("bundles: restore", code === 200 && r.restored === "Life OS" && r.trashed.includes("Dashboards/Home.md"), r)
+    check("bundles: restore", code === 200 && r.restored === "Days" && r.trashed.includes("Dashboards/Home.md"), r)
     const after = Object.fromEntries(NAMES.map((n) => [n, conf(n)]))
     check("bundles: apply then restore is a round trip (every settings file as it was, absent ones absent)", JSON.stringify(after) === JSON.stringify(before),
       NAMES.filter((n) => JSON.stringify(after[n]) !== JSON.stringify(before[n])).map((n) => [n, before[n], after[n]]))
@@ -87,13 +100,17 @@ export default async ($: VaultTest) => {
     check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists("Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
     ;[code] = await api("POST", "bundles/restore")
     check("bundles: restore twice is a 404", code === 404, code)
-    // A snippet one of the app's bundles brings (Life OS's serif titles) goes off in another; the user's own stay.
+    // A snippet one of the app's bundles or an imported one brings (Zen's floating panes, Life OS's serif titles) goes
+    // off in another; the user's own stay.
     const lookThen = conf("appearance")
-    setConf("appearance", { ...lookThen, snippets: ["Serif titles", "Wide lines"] })
+    write(".vaultite/bundles/serif/bundle.json", JSON.stringify({ name: "Serif", from: "alice/serif" }))
+    write(".vaultite/bundles/serif/snippets/Serif titles.css", "h1 { font-family: serif; }\n")
+    setConf("appearance", { ...lookThen, snippets: ["Floating panes", "Serif titles", "Wide lines"] })
     const snipsTo = async (id: string) => (await api("GET", `bundles/${id}`))[1].plan.appearance.find((c: Any) => c.key === "snippets")
-    const toStandard = await snipsTo("standard"), toLife = await snipsTo("life-os")
+    const toStandard = await snipsTo("standard"), toZen = await snipsTo("zen")
     check("bundles: another bundle turns off a bundle's snippet, keeping the user's", JSON.stringify(toStandard?.to) === JSON.stringify(["Wide lines"]), toStandard)
-    check("bundles: a bundle's own snippet stays on with it", !toLife, toLife)
+    check("bundles: a bundle's own snippet stays on with it", JSON.stringify(toZen?.to) === JSON.stringify(["Floating panes", "Wide lines"]), toZen)
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/serif"), { recursive: true })
     // A restyle (only appearance.json) changes the keys it names, never another bundle's snippet.
     write(".vaultite/bundles/glassy/bundle.json", JSON.stringify({ name: "Glassy" }))
     write(".vaultite/bundles/glassy/appearance.json", JSON.stringify({ translucent: true }))
@@ -146,7 +163,7 @@ export default async ($: VaultTest) => {
     check("bundles: an import with a bad path is refused", code === 400, [code, r])
     ;[code] = await api("DELETE", "bundles/my-desk-2")
     check("bundles: delete one of yours (to the trash)", code === 200 && !exists(".vaultite/bundles/my-desk-2"))
-    ;[code] = await api("DELETE", "bundles/life-os")
+    ;[code] = await api("DELETE", "bundles/zen")
     check("bundles: the app's can't be deleted", code === 400, code)
 
     // Sharing leaves out what's the user's own: the picture, a page with their text, pins to their notes.
@@ -189,7 +206,7 @@ export default async ($: VaultTest) => {
     write(".vaultite/bundles/unguided/bundle.json", JSON.stringify({ name: "Unguided", guide: "Guides/Gone.md" }))
     ;[code, r] = await api("GET", "bundles")
     const guided = r.bundles.find((b: Any) => b.id === "guided"), unguided = r.bundles.find((b: Any) => b.id === "unguided")
-    check("bundles: its guide is listed", guided?.guide === "Guides/How Guided works.md" && !guided.problems.length && r.bundles.find((b: Any) => b.id === "life-os")?.guide, guided)
+    check("bundles: its guide is listed", guided?.guide === "Guides/How Guided works.md" && !guided.problems.length && r.bundles.find((b: Any) => b.id === "zen")?.guide, guided)
     check("bundles: a guide it doesn't hold is a problem", unguided?.guide === null && /guide/.test(unguided.problems.join()), unguided)
     ;[code, r] = await api("GET", "bundles/guided")
     check("bundles: the plan names its guide", r.plan.changes.some((c: Any) => c.id === "file:Guides/How Guided works.md" && /guide/.test(c.label)), r.plan.changes)
@@ -283,18 +300,18 @@ export default async ($: VaultTest) => {
   // use and what changed since (drift), trying one, and installs pinned to a commit.
   {
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
-    const NAMES = ["plugins", "pages", "appearance", "editor", "sidebars", "plugins/pages/data", "plugins/errors/data", "plugins/page-preview/data"]
+    const NAMES = ["plugins", "pages", "appearance", "editor", "sidebars", "newtab", "plugins/pages/data", "plugins/errors/data", "plugins/page-preview/data", "plugins/tabs/data", "plugins/web-viewer/data"]
     const kept = NAMES.map((n) => [n, exists(`.vaultite/${n}.json`) ? read(`.vaultite/${n}.json`) : null] as const)
     const { LOOK } = await import("../../../core/look.ts")
     const { EDITOR } = await import("../../../core/editor.ts")
-    const SETTINGS = [["errors", "notify"], ["pages", "show"], ["page-preview", "trigger"]]
+    const SETTINGS = [["errors", "notify"], ["pages", "show"], ["page-preview", "trigger"], ["tabs", "archive_after"], ["web-viewer", "openLinks"]]
     const defaultOf = (id: string, key: string) => (app.plugins.find((p) => p.id === id)?.manifest.settings as Any)?.[key]?.default
     const appIds = new Set(app.plugins.filter((p) => p.tier !== "vault").map((p) => p.id))
     /** The setup as the app reads it: the look, the editor and the settings the app's bundles set (defaults filled in), the app's
      *  plugins that are off, the panels, the pins. */
     const setup = () => JSON.stringify({ look: { ...LOOK, ...conf("appearance") }, editor: { ...EDITOR, ...conf("editor") }, settings: SETTINGS.map(([id, k]) => conf(`plugins/${id}/data`)?.[k] ?? defaultOf(id, k)),
       off: [...app.vault.switchedOff()].filter((id) => appIds.has(id)).sort(), panels: (({ left, right, collapsed }: Any) => ({ left, right, collapsed }))(conf("sidebars") ?? {}),
-      pins: conf("pages")?.pinned ?? [] })
+      pins: conf("pages")?.pinned ?? [], opens: conf("newtab")?.opens ?? null })
     const apply = (id: string, body: Any = {}) => api("POST", `bundles/${id}/apply`, { allowCode: true, ...body })
     const entry = async (id: string) => (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === id)
     const github = process.env.VAULTITE_GITHUB
@@ -359,12 +376,21 @@ export default async ($: VaultTest) => {
     check("bundles: saved, it states the whole look and the app's bundles' settings, defaults too", LOOK && Object.keys(LOOK).every((k) => k in savedLook) &&
       JSON.parse(read(`.vaultite/bundles/${whole}/editor.json`)).propertiesInDocument === "hidden" &&
       JSON.parse(read(`.vaultite/bundles/${whole}/plugins/errors/data.json`)).notify === true && (await api("GET", `bundles/${whole}`))[1].plan.empty, savedLook)
-    for (const other of ["life-os", "standard", "zen"]) {
+    for (const other of ["days", "standard", "zen", "browser"]) {
       ;[code] = await apply(other)
       const between = setup()
       ;[code, r] = await apply(whole)
-      check(`bundles: saved, applied after ${other}, it's the setup it was saved from`, code === 200 && between !== saved && setup() === saved, [saved, setup()])
+      const now = JSON.parse(setup()), was = JSON.parse(saved)
+      check(`bundles: saved, applied after ${other}, it's the setup it was saved from`, code === 200 && between !== saved && setup() === saved,
+        Object.keys(was).filter((k) => JSON.stringify(was[k]) !== JSON.stringify(now[k])).map((k) => [k, was[k], now[k]]))
     }
+
+    // Browser: a new tab is the quick switcher, unseen tabs archive themselves; Standard after it, the defaults (no keys).
+    await apply("browser")
+    check("bundles: Browser's new tab opens the switcher and its tabs archive after 12 hours", conf("newtab")?.opens === "switcher" && conf("plugins/tabs/data")?.archive_after === "12h" &&
+      conf("plugins/pages/data")?.show === "tiles" && conf("sidebars")?.left?.join() === "pages:pages,tabs:tabs", [conf("newtab"), conf("plugins/tabs/data"), conf("sidebars")])
+    await apply("standard")
+    check("bundles: Standard after it leaves no key of Browser's", !("opens" in (conf("newtab") ?? {})) && !("archive_after" in (conf("plugins/tabs/data") ?? {})), [conf("newtab"), conf("plugins/tabs/data")])
 
     // A copy without some changes (fork): applied anywhere, it does what the bundle without them does here.
     await apply("standard")
@@ -380,7 +406,7 @@ export default async ($: VaultTest) => {
     await api("POST", "bundles/restore")
     await apply(forked.id)
     check("bundles: the copy applied here is the bundle applied without those changes", setup() === partial, [partial, setup()])
-    await apply("life-os")
+    await apply("days")
     await apply(forked.id)
     check("bundles: and so it is after another (a value it skipped is this setup's, said)", setup() === partial, [partial, setup()])
 
@@ -401,9 +427,9 @@ export default async ($: VaultTest) => {
     await api("POST", "bundles/restore")
     check("bundles: restored after a kept trial, it's the setup from before", setup() === pre, [pre, setup()])
     await apply("zen", { trial: true })
-    await apply("life-os", { trial: true })
+    await apply("days", { trial: true })
     list = (await api("GET", "bundles"))[1]
-    check("bundles: trying another while trying one: the trial is the new one", list.trial?.id === "life-os", list.trial)
+    check("bundles: trying another while trying one: the trial is the new one", list.trial?.id === "days", list.trial)
     ;[code, r] = await api("POST", "bundles/restore")
     check("bundles: restored, it's the setup from before the first trial (and what it installed goes)", code === 200 && setup() === pre && !exists(".vaultite/bundles/trial.json") &&
       !exists(".vaultite/plugins/books"), [pre, setup(), r])
@@ -420,7 +446,7 @@ export default async ($: VaultTest) => {
     const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...a],
       { cwd: repo, encoding: "utf8" }).trim()
     const pinned = git("rev-parse", "books/v1.0.0^{commit}")
-    const booksPin = JSON.parse(fs.readFileSync(path.join(process.env.VAULTITE_BUNDLES!, "life-os", "plugins.json"), "utf8")).install.books
+    const booksPin = standIn(OFFICIAL, "books")
     const manifest = path.join(repo, "books", "manifest.json"), stood = fs.readFileSync(manifest, "utf8")
     fs.writeFileSync(manifest, stood.replace("A stand-in for tests.", "Moved since."))
     git("commit", "-qam", "books moved")
@@ -463,7 +489,7 @@ export default async ($: VaultTest) => {
 
     git("tag", "-f", "books/v1.0.0", pinned)
     if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
-    for (const id of [mineId, whole, forked.id, "reader", readerAgain, shared]) await api("DELETE", `bundles/${id}`)
+    for (const id of [mineId, whole, forked.id, "reader", readerAgain, shared, "days"]) await api("DELETE", `bundles/${id}`)
     await uninstallAll()
     for (const f of ["previous", "applied", "trial"]) fs.rmSync(path.join(VAULT, `.vaultite/bundles/${f}.json`), { force: true })
     for (const [n, text] of kept) { if (text === null) fs.rmSync(path.join(VAULT, `.vaultite/${n}.json`), { force: true }); else write(`.vaultite/${n}.json`, text) }

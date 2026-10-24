@@ -20,44 +20,32 @@
     "books": {
       "name": "Books",
       "source": "Vaultite/plugins/books",
-      "tag": "books/v1.0.1",
-      "commit": "26e1e53fdd15b23ab4b0f2b47f1f60d614aa1c0f",
-      "hash": "567e2708edd231b3"
+      "tag": "books/v1.0.0"
     },
     "health": {
       "name": "Health",
       "source": "Vaultite/plugins/health",
-      "tag": "health/v1.2.0",
-      "commit": "c39295b8f803b8c4b1e5865efc103dbd41655962",
-      "hash": "c971c288b24fb039"
+      "tag": "health/v1.0.0"
     },
     "learning": {
       "name": "Learning",
       "source": "Vaultite/plugins/learning",
-      "tag": "learning/v1.0.0",
-      "commit": "fa9a82bad699995dc5c55aa2489ccd9ac62f3e28",
-      "hash": "c31eed5250225736"
+      "tag": "learning/v1.0.0"
     },
     "lessons": {
       "name": "Lessons",
       "source": "Vaultite/plugins/lessons",
-      "tag": "lessons/v1.0.0",
-      "commit": "fa9a82bad699995dc5c55aa2489ccd9ac62f3e28",
-      "hash": "534db975a47b4580"
+      "tag": "lessons/v1.0.0"
     },
     "projects": {
       "name": "Projects",
       "source": "Vaultite/plugins/projects",
-      "tag": "projects/v1.0.0",
-      "commit": "fa9a82bad699995dc5c55aa2489ccd9ac62f3e28",
-      "hash": "eb729c28cc0f9176"
+      "tag": "projects/v1.0.0"
     },
     "today": {
       "name": "Today",
       "source": "Vaultite/plugins/today",
-      "tag": "today/v1.0.0",
-      "commit": "fa9a82bad699995dc5c55aa2489ccd9ac62f3e28",
-      "hash": "7dacbce878cd27ca"
+      "tag": "today/v1.0.0"
     }
   }
 }

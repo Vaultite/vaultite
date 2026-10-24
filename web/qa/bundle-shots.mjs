@@ -1,7 +1,7 @@
 // The app's bundles' card pictures (bundles/<id>/preview.png, preview-dark.png): each bundle applied on a sandbox vault
 // of its own, a throwaway server on it, the app on a page showing what it's for, shot in light and dark.
 // WRITES bundles/<id>/preview*.png in this checkout (its vaults and servers are its own; PORT=<n> picks the port).
-// Fetches the plugins Life OS installs from GitHub. Re-run when a bundle's look changes (bundles/CLAUDE.md).
+// Fetches the plugins a bundle installs from GitHub. Re-run when a bundle's look changes (bundles/CLAUDE.md).
 //   node web/qa/bundle-shots.mjs [<bundle id>...]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -13,10 +13,22 @@ import { testServer } from "../../tools/test/lib.ts"
 const { args: ids, browser, check, watch, done } = await qa(import.meta.url)
 const BUNDLES = path.join(ROOT, "bundles")
 /** The page each is shot on: a note showing what it's for, else its first pinned page, else NOTE. */
-const OPENS = { standard: "Notes/How this vault works.md", zen: "Notes/Reading notes - Thinking in Systems.md" }
+const OPENS = { standard: "Notes/How this vault works.md", zen: "Notes/Reading notes - Thinking in Systems.md", browser: "Notes/Reading notes - Thinking in Systems.md" }
 const NOTE = "Notes/How this vault works.md"
 /** What a bundle's picture shows it doing: Zen with its sidebar hidden, only the note on the window. */
 const HIDE_SIDEBAR = new Set(["zen"])
+/** Browser in use: favourites, a pinned tab and today's web tabs beside a note, and a second space. */
+const web = (u) => `view:web/${u}`
+const SETUP = {
+  browser: async (base) => {
+    const put = (n, body) => fetch(`${base}api/workspaces/${n}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    const tabs = [web("https://en.wikipedia.org/wiki/Lighthouse"), web("https://www.openstreetmap.org/"), web("https://developer.mozilla.org/"), "file:Notes/Reading notes - Thinking in Systems.md", web("https://archive.org/")]
+    await put(1, { name: "Personal", icon: "house", tint: "blue",
+      pinned: [web("https://en.wikipedia.org/"), web("https://www.openstreetmap.org/"), web("https://archive.org/"), "Notes/How this vault works.md"],
+      layout: { root: { id: "g0", tabs: tabs.map((to, i) => ({ id: `t${i}`, to, ...(i === 0 ? { pinned: true } : {}) })), active: "t3" }, focus: "g0" } })
+    await put(2, { name: "Work", icon: "briefcase", tint: "orange" })
+  },
+}
 /** A small window (its text still reads on a card a third of the page wide), as a 16:10 picture: the card's
  *  (web/src/pages/Bundles.tsx Thumb), sharp in the preview sheet. */
 const WINDOW = { width: 1088, height: 680 }, PICTURE = { width: 960, height: 600 }
@@ -68,6 +80,7 @@ async function shoot(id) {
     const r = await fetch(`${server.base}api/bundles/${id}/apply`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allowCode: true }) })
     const applied = await r.json()
     if (!check(`${id}: applied`, r.ok, applied)) return
+    await SETUP[id]?.(server.base)
     const at = OPENS[id] ?? applied.plan?.pins?.want?.[0] ?? NOTE
     const ctx = await browser.newContext({ viewport: WINDOW, deviceScaleFactor: 1, colorScheme: "light", reducedMotion: "reduce" })
     const page = watch(await ctx.newPage(), { label: id })
