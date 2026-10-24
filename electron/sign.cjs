@@ -86,9 +86,32 @@ function notarize(file) {
   try {
     if (zip) execFileSync("ditto", ["-c", "-k", "--keepParent", file, zip])
     console.log(`sign.cjs: notarizing ${path.basename(file)} (notarytool waits for Apple's answer)`)
-    execFileSync("xcrun", ["notarytool", "submit", zip ?? file, ...PROFILE, "--wait"], { stdio: "inherit" })
+    const { id } = JSON.parse(execFileSync("xcrun", ["notarytool", "submit", zip ?? file, ...PROFILE, "--output-format", "json"], { encoding: "utf8" }))
+    notarized(id, path.basename(file))
   } finally { if (zip) fs.rmSync(zip, { force: true }) }
   staple(file)
+}
+
+// Waiting asks Apple again every few seconds, and one request timing out (NSURLErrorDomain -1001) ended a nightly's
+// wait while the submission went on: so the submission is asked after again, and only Apple's verdict decides.
+function notarized(id, name, tries = 5) {
+  for (let i = 1; ; i++) {
+    let status = null
+    try {
+      execFileSync("xcrun", ["notarytool", "wait", id, ...PROFILE], { stdio: "inherit" })
+    } catch { /* (the verdict, or why it can't be had, is info's) */ }
+    try {
+      status = JSON.parse(execFileSync("xcrun", ["notarytool", "info", id, ...PROFILE, "--output-format", "json"], { encoding: "utf8" })).status
+    } catch (e) { if (i >= tries) throw e }
+    if (status === "Accepted") return
+    if (status && status !== "In Progress") {
+      try { execFileSync("xcrun", ["notarytool", "log", id, ...PROFILE], { stdio: "inherit" }) } catch { /* (the status says enough) */ }
+      throw new Error(`sign.cjs: Apple didn't notarize ${name}: ${status} (submission ${id})`)
+    }
+    if (i >= tries) throw new Error(`sign.cjs: Apple's answer for ${name} never came (submission ${id}, still ${status ?? "unknown"})`)
+    console.warn(`sign.cjs: notarizing ${name}: no answer yet, asking again (${i}/${tries - 1})`)
+    execFileSync("sleep", [String(15 * i)])
+  }
 }
 
 // Stapling asks Apple's CloudKit, whose connection drops now and then (error 68): it failed two nightlies in a row.
