@@ -12,7 +12,7 @@ import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
 import { activeTab, askRename, canClosePane, canReopenTab, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
-import { hasSiblings, moveToSplit, splitTab } from "@/core/splits"
+import { hasSiblings, moveTabBy, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "@/core/layout"
 import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedirect, takeScroll } from "@/core/nav"
@@ -363,6 +363,9 @@ export default function App() {
     // (⌘⇧T is the browser's too.)
     { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: () => isDesktop() && canReopenTab(), run: () => reopenTab(fileGone), icon: RotateCcw },
     { id: "tab:close-others", name: "Close all other tabs", keys: ["Mod+Alt+W"], when: isDesktop, run: () => closeTabs("others", activeTab().id), icon: CopyX },
+    // (⌃⇧PgUp and PgDn are the browser's: the desktop app has them.)
+    { id: "tab:move-left", name: "Move tab left", keys: desktopApp ? ["Ctrl+Shift+PageUp"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(-1), icon: ArrowLeft },
+    { id: "tab:move-right", name: "Move tab right", keys: desktopApp ? ["Ctrl+Shift+PageDown"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(1), icon: ArrowRight },
     // (⌃Tab is the browser's: the desktop app has it, the web none by default.)
     { id: "tab:next", name: "Go to next tab", keys: desktopApp ? ["Ctrl+Tab"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(1), icon: ChevronRight },
     { id: "tab:previous", name: "Go to previous tab", keys: desktopApp ? ["Ctrl+Shift+Tab"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(-1), icon: ChevronLeft },

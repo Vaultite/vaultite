@@ -103,6 +103,19 @@ const dragTo = async (from, to) => {
   await page.mouse.up()
   return lit
 }
+// Held over the gap between two columns, the nearer one lights (it doesn't flicker off between them); Escape: no move.
+{
+  const a = await bcard.locator(`[data-query-row="${F}/Tasks/Write docs.md"]`).boundingBox()
+  const l = await bcard.locator('[data-board-col="doing"]').boundingBox(), r = await bcard.locator('[data-board-col="done"]').boundingBox()
+  await page.mouse.move(a.x + 20, a.y + 10); await page.mouse.down()
+  await page.mouse.move(a.x + 40, a.y + 20, { steps: 3 })
+  await page.mouse.move((l.x + l.width + r.x) / 2 + 2, r.y + 40, { steps: 8 })
+  await page.waitForTimeout(100)
+  const gap = await bcard.locator('[data-board-col="done"]').evaluate((e) => e.className.includes("ring-primary"))
+  await page.keyboard.press("Escape"); await page.mouse.up(); await page.waitForTimeout(200)
+  check("board: held over the gap between two columns, the nearer one lights up", gap)
+  check("board: Escape, then letting go, opens nothing", (await page.evaluate(() => decodeURIComponent(location.hash))).endsWith("Board.md"), await page.evaluate(() => location.hash))
+}
 const lit = await dragTo(bcard.locator(`[data-query-row="${F}/Tasks/Write docs.md"]`), bcard.locator('[data-board-col="done"]'))
 check("board: the column under a dragged card lights up", lit)
 await page.waitForTimeout(100)

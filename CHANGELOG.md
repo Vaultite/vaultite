@@ -12,9 +12,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   it changes, where it redrew the page under it.
 - **Escape cancels a drag everywhere, and lists scroll near their edges**: a canvas card mid-move goes back, a sidebar,
   split or column being resized returns to its size; Pinned, the Tabs panel, a new tab's sections, Sites and a table
-  wider than its note scroll along while something is held near their edge. A dashboard card held between two cells
-  lands there, a status bar item dragged along no longer shifts the items past the line, and a file held at the top of
-  the Files panel no longer goes to Pinned above it.
+  wider than its note scroll along while something is held near their edge, and a wheel or trackpad scrolling under a
+  still pointer moves the drop with it. A dashboard card held between two cells lands there, as a board's card between
+  two columns lights the nearer; a status bar item dragged along no longer shifts the items past the line, and a file
+  held at the top of the Files panel no longer goes to Pinned above it. Letting go after Escape no longer opens what was
+  dragged. From the keyboard: Move tab left and right (⌃⇧PgUp and PgDn in the desktop app), and Pinned's menu moves a
+  page up or down.
 - **Phone tabs move like Chrome's**: the tab list opens, and a card grows into its page, on the frame you lift your
   finger; the picture stays inside its card all the way, Done tapped while the list opens turns it back, and the other
   cards close up after one you close from where they were. A new tab's card shows its page instead of a plus.

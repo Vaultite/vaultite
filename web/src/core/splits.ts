@@ -50,6 +50,16 @@ export function moveTabTo(id: string, gid: string, where: Side | "center" | numb
   showActive()
 }
 
+/** The tab on screen one place left (-1) or right (1) along its bar, as a drag there would (into a tab group it comes
+ *  to, out of one at its end): the keyboard's way. False at the bar's end. */
+export function moveTabBy(dir: 1 | -1) {
+  const t = activeTab(), g = groupOfTab(t.id)
+  const i = g ? g.tabs.findIndex((x) => x.id === t.id) : -1
+  if (!g || i + dir < 0 || i + dir >= g.tabs.length) return false
+  moveTabTo(t.id, g.id, dir > 0 ? i + 2 : i - 1)
+  return true
+}
+
 /** Would moving the whole pane `gid` there change anything? Anywhere on or in itself: no. */
 export function canMoveGroup(gid: string, target: string, _where: Side | "center" | number) {
   return gid !== target && groups().some((g) => g.id === gid) && groups().some((g) => g.id === target)

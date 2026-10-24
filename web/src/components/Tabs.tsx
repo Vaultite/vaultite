@@ -253,18 +253,17 @@ export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
     const g = el.current
     if (!g) return
     // Near the window's right edge it goes left of the pointer; a finger's goes above it (a finger covers what's under).
+    // (moved by a transform: no layout a move)
     const follow = () => {
       const d = getDrag()
       if (!d) return
-      const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0, right: innerWidth }
-      const left = d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) - o.left : d.x > innerWidth - 280 ? null : d.x + 10 - o.left
-      g.style.left = left === null ? "" : `${left}px`
-      g.style.right = left === null ? `${o.right - d.x + 10}px` : ""
-      g.style.top = `${d.finger ? d.y - 64 - o.top : d.y + 10 - o.top}px`
+      const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0 }
+      const x = d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) : d.x > innerWidth - 280 ? d.x - 10 - g.offsetWidth : d.x + 10
+      g.style.transform = `translate(${x - o.left}px, ${(d.finger ? d.y - 64 : d.y + 10) - o.top}px)`
     }
     follow()
     return onDrag(follow)
-  }, [item, sheet, finger])
+  }, [item, sheet, finger, hint])
   if (!item || item.drawn) return null
   const i: TabInfo = item.paths || item.tabs ? { label: item.label ?? "", icon: item.tabs ? Layers : Files }
     : item.folder ? { label: item.path!.split("/").pop()!, icon: Folder }
@@ -279,7 +278,7 @@ export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
     : info({ id: "", to: item.to ?? "new" })
   return createPortal(
     <div ref={el} aria-hidden data-drag-ghost
-      className={cn("pointer-events-none fixed flex max-w-[260px] items-center gap-1.5 bg-card shadow-lg ring-[0.5px] ring-border",
+      className={cn("pointer-events-none fixed top-0 left-0 flex max-w-[260px] items-center gap-1.5 bg-card shadow-lg ring-[0.5px] ring-border will-change-transform",
         finger ? "z-[70] h-10 rounded-[10px] px-3 text-[15px]" : "z-50 h-7 rounded-[6px] px-2 text-[13px]", !hit && "opacity-60")}>
       {fileIcons && <i.icon className={cn(finger ? "size-[18px] shrink-0" : "size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} />}
       <span className="min-w-0 truncate font-medium">{i.label}</span>

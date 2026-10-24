@@ -1,7 +1,7 @@
 // The pinned pages (sidebar, drawer, view:pages): drag to reorder, onto a pane to open, elsewhere in the sidebar to
 // unpin; drop a file to pin it. The list is the sidebar's (types.ts): the current workspace's with Workspaces on.
 import { useEffect, useId, useRef, useState } from "react"
-import { ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
   edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isDesktop, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings, showInTree,
@@ -166,6 +166,14 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
     if (added) list.current?.querySelector<HTMLElement>(`[data-pin="${CSS.escape(added)}"]`)?.scrollIntoView({ block: "nearest" })
   }, [shownKey, open])
   const unfolded = pinnedFoldersOpen.useAll()
+  /** Move up and down the list (left and right, as tiles). */
+  const moveItems = (id: string): MenuItem[] => {
+    const keys = pages.map((e) => e.key), i = keys.indexOf(id)
+    return [
+      { label: tiles ? "Move left" : "Move up", icon: tiles ? ArrowLeft : ArrowUp, sep: true, disabled: i <= 0, run: () => void pin(id, true, keys[i - 1]) },
+      { label: tiles ? "Move right" : "Move down", icon: tiles ? ArrowRight : ArrowDown, disabled: i < 0 || i >= keys.length - 1, run: () => void pin(id, true, keys[i + 2] ?? null) },
+    ]
+  }
   const current = file
   if (!open && !pages.length) return null
   const row = (entry: PinEntry) => {
@@ -203,7 +211,9 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
         onContextMenu={menuFor(rowMenu(SELECT, id, () => [
           ...(folder ? folderMenu(id, { skip: "pages" }) : [openItem(() => openEntry(entry, { newTab: true, pane }), () => openInSplit(to!, "right"))]),
           ...(entry.kind === "file" ? fileMenu(id).filter((it) => it.label !== "Unpin").map((it, i) => (i ? it : { ...it, sep: true })) : []),
-          { label: "Unpin", icon: PinOff, sep: true, run: () => pinNoted(id, false) },
+          // (what a drag does, from the keyboard too)
+          ...(pages.length > 1 ? moveItems(id) : []),
+          { label: "Unpin", icon: PinOff, sep: !(pages.length > 1), run: () => pinNoted(id, false) },
         ]))}
         className={cn(item?.from === "pin" && (item.path === id || (picked && item.paths)) && "opacity-40")}>
         {tiles ? <SidebarTile data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} {...selectedAttr(picked)} href={href} icon={icon}

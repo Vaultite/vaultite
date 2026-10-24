@@ -2,9 +2,10 @@
 // mid-move (plugins/core/canvas) and a sidebar mid-resize; a dashboard card held over the gap between cells still lands
 // (plugins/core/dashboards); a status bar item dragged along keeps the items past the line still
 // (components/StatusBar.tsx); a file held at the top of the Files panel isn't Pinned's; a pinned tile held near the bottom
-// of a panel too short for them scrolls it (plugins/core/pages). WRITES pins, Pinned's Show as: throwaway server only.
+// of a panel too short for them scrolls it, and its menu moves one (plugins/core/pages); a wheel mid-drag moves the drop
+// with what's under the pointer; Move tab left does what a drag would. WRITES pins, Pinned's Show as: throwaway server.
 //   node web/qa/dragedges.mjs <base url>
-import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url, { chrome: { ignoreDefaultArgs: ["--hide-scrollbars"] } })
 const api = apiAt(B)
 const glide = async (page, [x0, y0], [x1, y1], steps = 12) => { for (let i = 1; i <= steps; i++) { await page.mouse.move(x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps); await wait(16) } }
@@ -109,6 +110,48 @@ try {
   const sq1 = await pinBox()
   await letGo(page)
   check("Pinned: a tile held near the bottom of a short panel scrolls it", sq1.scroll > sq.scroll, { sq, sq1 })
+  // Pinned's menu moves a tile, as a drag would (from the keyboard too).
+  await page.locator("[data-pin-tiles] [data-pin]").first().click({ button: "right" }); await wait(200)
+  const moveRight = page.locator("[role=menu]").getByRole("menuitem", { name: "Move right", exact: true })
+  if (await moveRight.count()) { await moveRight.click(); await wait(600) } else await page.keyboard.press("Escape")
+  const order = await page.locator("[data-pin-tiles] [data-pin]").evaluateAll((ts) => ts.slice(0, 2).map((t) => t.dataset.pin))
+  check("Pinned: Move right in a tile's menu swaps it with the next", order.join() === "Notes/How this vault works.md,Start here.md", order)
+
+  // A wheel under a still pointer mid-drag: the drop goes where the pointer is now, not where it was. A Dashboards
+  // file held over Daily's files (Daily lit), then the tree scrolled down under it.
+  await page.goto(`${B}#new`)
+  await page.waitForSelector("[data-tree-path='Daily']", { timeout: 15000 }); await wait(600)
+  for (const f of ["Daily", "Dashboards"]) if (!(await page.locator(`[data-tree-path^='${f}/']`).count())) { await page.locator(`[data-tree-path='${f}']`).first().click(); await wait(400) }
+  const spots = await page.evaluate(() => {
+    const sc = document.querySelector("[data-panel='files:files'] [data-panel-scroll]"), box = sc.getBoundingClientRect()
+    const dash = document.querySelector("[data-tree-path='Dashboards']")
+    sc.scrollTop += dash.getBoundingClientRect().top - (box.top + box.height * 0.6)
+    const at = (r) => ({ x: r.left + 60, y: r.top + r.height / 2 })
+    const from = [...document.querySelectorAll("[data-tree-path^='Dashboards/']")].map((e) => e.getBoundingClientRect()).find((r) => r.top > dash.getBoundingClientRect().bottom - 1 && r.bottom < box.bottom - 30)
+    const to = [...document.querySelectorAll("[data-tree-path^='Daily/']")].map((e) => e.getBoundingClientRect()).find((r) => r.top > box.top + box.height * 0.3)
+    return from && to && { from: at(from), to: at(to) }
+  })
+  await wait(300)
+  await page.mouse.move(spots.from.x, spots.from.y); await page.mouse.down()
+  await glide(page, [spots.from.x, spots.from.y], [spots.to.x, spots.to.y])
+  await wait(200)
+  const lit = () => page.evaluate(() => document.querySelector("li.drop-target [data-tree-path]")?.dataset.treePath ?? null)
+  const before = await lit()
+  await page.mouse.wheel(0, 3000); await wait(400)
+  const after = await lit(), under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("[data-tree-path]")?.dataset.treePath ?? null, [spots.to.x, spots.to.y])
+  await letGo(page)
+  check("a wheel mid-drag: the folder under the still pointer takes the drop", before === "Daily" && !under?.startsWith("Daily/") && after !== "Daily", { before, under, after })
+
+  // A tab moved from the keyboard (the palette here; ⌃⇧PgUp and PgDn in the desktop app), as a drag along the bar would.
+  for (const p of ["ME.md", "Start here.md"]) {
+    await page.click("[data-tab-bar] button[aria-label='New tab']"); await wait(120)
+    await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await wait(400)
+  }
+  const tabOrder = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => els.map((e) => e.textContent.trim()))
+  const t0 = await tabOrder()
+  await palette(page, "Move tab left", 500)
+  const t1 = await tabOrder()
+  check("Move tab left: the tab on screen goes one place left", t0.length >= 2 && t1.at(-2) === t0.at(-1) && t1.at(-1) === t0.at(-2), { t0, t1 })
 } finally {
   await api("PATCH", "config/pages", { pinned: pinnedBefore })
   await api("PATCH", "config/plugin/pages", { show: showBefore })

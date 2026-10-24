@@ -522,16 +522,21 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
   const colOf = (path: string) => cols.find((c) => c.rows.some((r) => r.path === path))
   const movable = (r: Row) => !!propKey(key) && !Array.isArray(r.values[key])
   const move = (r: Row, c: Col) => save(r, key, c.value === null || c.value === "" ? undefined : c.value)
-  const [edge] = useState(() => edgeScroller("x"))
-  useDropTarget<string>(id, (item, x, _y, el) => {
-    if (item.from !== "row" || !item.path || !el || !box.current?.contains(el)) { edge.stop(); return null }
+  const [edge] = useState(() => edgeScroller("x")), [down] = useState(() => edgeScroller())
+  useDropTarget<string>(id, (item, x, y, el) => {
+    if (item.from !== "row" || !item.path || !el || !box.current?.contains(el)) { edge.stop(); down.stop(); return null }
+    // (sideways along a board wider than its pane, down a column longer than it)
     edge.near(box.current, x)
-    const to = el.closest<HTMLElement>("[data-board-col]")?.dataset.boardCol
+    if (box.current.parentElement) down.over(box.current.parentElement, x, y)
+    // Over the gap between two columns, the nearer one: the ring doesn't flicker off between them.
+    const near = (c: Element) => { const r = c.getBoundingClientRect(); return Math.max(r.left - x, 0, x - r.right) }
+    const col = el.closest<HTMLElement>("[data-board-col]") ?? [...box.current.querySelectorAll<HTMLElement>("[data-board-col]")].sort((a, b) => near(a) - near(b))[0]
+    const to = col?.dataset.boardCol
     return to !== undefined && colOf(item.path)?.key !== to ? to : null
   }, (item, to) => {
     const r = cols.flatMap((c) => c.rows).find((x) => x.path === item.path), c = cols.find((x) => x.key === to)
     if (r && c) move(r, c)
-  }, { end: edge.stop })
+  }, { end: () => { edge.stop(); down.stop() } })
   const fields = others(res).filter((c) => c.key !== key)
   // (every card, drawn as the board's end comes near the screen: each column's next ones at once)
   const longest = Math.max(0, ...cols.map((c) => c.rows.length))

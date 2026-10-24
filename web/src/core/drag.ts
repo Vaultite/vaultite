@@ -131,7 +131,8 @@ export function edgeScroller(axis: "x" | "y" = "y") {
       ? { top: document.querySelector("[data-phone-header]")?.getBoundingClientRect().bottom ?? 0, bottom: document.querySelector("[data-phone-bar]")?.getBoundingClientRect().top ?? innerHeight, left: 0, right: innerWidth }
       : box.getBoundingClientRect()
     const [lo, hi] = axis === "x" ? [b.left, b.right] : [b.top, b.bottom]
-    const zone = drag?.finger ? 48 : 24
+    // (a sixth of a short box at most: Pinned squeezed to two rows of tiles doesn't scroll under its second row)
+    const zone = Math.min(drag?.finger ? 48 : 24, (hi - lo) / 6)
     const d = at < lo + zone ? at - (lo + zone) : at > hi - zone ? at - (hi - zone) : 0
     speed = Math.max(-14, Math.min(14, Math.round(d / 2)))
     if (!speed || frame) return
@@ -140,10 +141,9 @@ export function edgeScroller(axis: "x" | "y" = "y") {
       if (!speed || !el || !alive()) { frame = 0; return }
       if (scrolled.get(el) !== t) {
         scrolled.set(el, t)
+        // (what a drop under the pointer does is asked again on the scroll: lift's listener)
         if (axis === "x") el.scrollLeft += speed
         else el.scrollTop += speed
-        // What's under the pointer moved: what a drop there would do too (the line follows, without a pointer move).
-        if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y) })
       }
       frame = requestAnimationFrame(step)
     }
@@ -207,7 +207,14 @@ function lift(item: DragItem, finger = false) {
   // One cursor for the whole drag (index.css), not a text cursor over an editor and a hand over a button.
   root.dataset.dragging = ""
   getSelection()?.removeAllRanges()
+  // Something scrolled under the still pointer (a wheel, a trackpad, an edge scrolling): what a drop there does is
+  // asked again, once a frame.
+  let frame = 0
+  const scrolled = () => { frame ||= requestAnimationFrame(() => { frame = 0; rehit() }) }
+  addEventListener("scroll", scrolled, true)
   return (hit: Hit | null | undefined) => {
+    removeEventListener("scroll", scrolled, true)
+    cancelAnimationFrame(frame)
     root.style.userSelect = select
     delete root.dataset.dragging
     // (Before the click below is swallowed: a page's tap is a click too, core/haptics.ts.)
@@ -258,7 +265,17 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
   }
   const up = (ev: PointerEvent) => { if (ev.pointerId === id) stop(true) }
   const cancel = (ev: PointerEvent) => { if (ev.pointerId === id) stop(false) }
-  const key = (ev: KeyboardEvent) => { if (ev.key === "Escape" && end) { ev.preventDefault(); ev.stopPropagation(); stop(false) } }
+  const key = (ev: KeyboardEvent) => {
+    if (ev.key !== "Escape" || !end) return
+    ev.preventDefault(); ev.stopPropagation()
+    stop(false)
+    // The button is still down: letting go of it clicks nothing (the element dragged, which has the pointer, would open).
+    try { el.releasePointerCapture(id) } catch { /* already gone */ }
+    const swallow = (c: MouseEvent) => { c.preventDefault(); c.stopPropagation() }
+    const done = () => { removeEventListener("pointerup", later, true); removeEventListener("pointerdown", done, true); removeEventListener("click", swallow, true) }
+    const later = () => setTimeout(done)
+    addEventListener("click", swallow, true); addEventListener("pointerup", later, true); addEventListener("pointerdown", done, true)
+  }
   addEventListener("pointermove", move, true); addEventListener("pointerup", up, true); addEventListener("pointercancel", cancel, true)
   addEventListener("keydown", key, true); addEventListener("dragstart", native, true)
   // The app sent away mid-drag (core/away.ts): it's dropped nowhere.
