@@ -180,8 +180,11 @@ function watchHolds() {
       haptic(fingerHolding() ? "medium" : "light")
       getSelection()?.removeAllRanges()
       const swallow = (c: Event) => { c.preventDefault(); c.stopPropagation() }
+      const unswallow = () => { removeEventListener("click", swallow, { capture: true }); removeEventListener("pointerdown", unswallow, { capture: true }) }
       addEventListener("click", swallow, { capture: true, once: true })
-      setTimeout(() => removeEventListener("click", swallow, { capture: true }), 800)
+      // Only this finger's lifting click: Chrome on Android sends none after a hold, and the next tap's must land.
+      addEventListener("pointerdown", unswallow, { capture: true, once: true })
+      setTimeout(unswallow, 800)
     }, HOLD_MS)
   }
   const move = (e: globalThis.PointerEvent) => { if (timer && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 10) stop() }

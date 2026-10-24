@@ -29,6 +29,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   leaving that workspace's own (Files still showing) over the bundle's.
 - The web demo keeps a change made just before its page reloads or closes (a plugin turned on, a setting), no longer
   losing it.
+- On a phone, a tap on a menu just opened by holding (More ▸ on a tab card) lands, no longer lost when the hold's
+  lift sent no click (Android).
 
 ## 0.8.0 (2026-10-24)
 
