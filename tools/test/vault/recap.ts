@@ -31,6 +31,14 @@ export default async ($: VaultTest) => {
     const lines = got.flatMap((e) => [e.text, ...e.items])
     check("recap: links go to where files are now (archived, renamed)", lines.includes("[[Inbox/.archive/Rep|Rep]]") && lines.filter((l) => l.startsWith("Moved [[Rc2/C|C]]")).length === 2, lines)
     check("recap: a path made again after its file moved links to the new file", lines.some((l) => l.includes("[[Rc2/D|D]]")) && !lines.some((l) => /Created.*Old D/.test(l)), lines)
+    // Kept between recaps, what was read isn't read again: an idle server's recap costs what changed, not the day.
+    let reads = 0
+    const memo = new Map(), src = { from: d0, to: d0 + 24 * HOUR, changed: ["Notes/A.md", "Notes/B.md"], captureFolders: [], events: [], memo,
+      versions: async (rel: string) => ({ gone: false, versions: [{ t: d0 - HOUR }, { t: rel === "Notes/A.md" ? t : t + HOUR }] }),
+      text: async (_rel: string, at: number) => { reads++; return at < d0 ? "Old\n" : "Old\nNew line\n" }, exists: () => true, kindOf: () => ({ life: false, log: false }) }
+    const once = JSON.stringify(await bq.buildRecap(src)), r1 = reads
+    const twice = JSON.stringify(await bq.buildRecap({ ...src, events: [] }))
+    check("recap: made again, its stretches come from the memo, not the files", r1 === 4 && reads === 4 && once === twice && once.includes("Edited [[Notes/B|B]]"), { r1, reads, once, twice })
   }
   // Its days are today and yesterday: one run spanning midnight would split them, so a run just before it waits.
   const toMidnight = new Date().setHours(24, 0, 0, 0) - Date.now()

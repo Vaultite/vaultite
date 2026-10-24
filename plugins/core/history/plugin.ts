@@ -249,13 +249,25 @@ const relOf = (p: unknown) => {
   return rel
 }
 
-function versions(s: State, rel: string) {
+/** A file's versions' times, newest first. */
+function times(s: State, rel: string) {
+  return namesIn(dirOf(s, rel)).filter((f) => f.endsWith(".snap")).map((f) => Number(f.slice(0, -5))).sort((a, b) => b - a)
+}
+// Folders' names, kept while their mtime is the same (a day's recap asks for each file it tells, every few minutes); not
+// one changed just now: a coarse clock can give the next change the same mtime.
+const listed = new Map<string, { at: string; names: string[] }>()
+function namesIn(dir: string): string[] {
+  let st: fs.BigIntStats
+  try { st = fs.statSync(dir, { bigint: true }) } catch { listed.delete(dir); return [] }
+  const at = `${st.ino}:${st.mtimeNs}`, hit = listed.get(dir)
+  if (hit?.at === at) return hit.names
   let names: string[] = []
-  try { names = fs.readdirSync(dirOf(s, rel)) } catch { /* none */ }
-  return names.filter((f) => f.endsWith(".snap")).map((f) => {
-    const t = Number(f.slice(0, -5))
-    return { t, size: fs.statSync(path.join(dirOf(s, rel), f)).size }
-  }).sort((a, b) => b.t - a.t)
+  try { names = fs.readdirSync(dir) } catch { /* gone meanwhile */ }
+  if (Date.now() - Number(st.mtimeNs / 1_000_000n) > 2000) listed.set(dir, { at, names }); else listed.delete(dir)
+  return names
+}
+function versions(s: State, rel: string) {
+  return times(s, rel).map((t) => ({ t, size: fs.statSync(path.join(dirOf(s, rel), `${t}.snap`)).size }))
 }
 
 /** Versions other plugins keep of a file (a git plugin's commits), shown beside these: each plugin that's on offering the service
@@ -286,7 +298,7 @@ plugin.provide("history:versions", async (rel: string) => {
   await following
   const s = state(plugin.vault)
   const head = s.heads.get(rel)
-  const v = versions(s, rel).reverse().map((x) => ({ t: x.t }))
+  const v = times(s, rel).reverse().map((t) => ({ t }))
   if (head && !v.some((x) => x.t === head.mtime)) v.push({ t: head.mtime })
   return { gone: !head && !!readMeta(dirOf(s, rel))?.gone, versions: v }
 })

@@ -11,7 +11,7 @@ import {
 } from "../../../core/plugins.ts"
 import { agentName, KNOWN_AGENTS } from "../../../core/agents.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
-import { buildRecap, type Sources } from "./build.ts"
+import { buildRecap, type Read, type Sources } from "./build.ts"
 import { profile, type Profiled } from "./profile.ts"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, renderRecap } from "./recap.ts"
 import { ACTION_KINDS, actionsOf, type Action, type Actor, type ActivityEvent, type ActivityList, type ActivitySummary, type ClientPerf, type Minute, type Perf, type RouteStat, type SlowRequest, type Timing } from "./model.ts"
@@ -970,9 +970,14 @@ function taskStatuses(): Record<string, "todo" | "doing" | "done" | "cancelled">
   return {}
 }
 
+// Stretches read for earlier recaps, while the task statuses they were read with stay the same.
+const memo = { statuses: "", stretches: new Map<string, Read | null>() }
 async function sourcesOf(date: string): Promise<Sources> {
   const [from, to] = bounds(date)
   const life = lifeTypes()
+  const statuses = taskStatuses(), key = JSON.stringify(statuses)
+  if (memo.statuses !== key) memo.stretches = new Map()
+  memo.statuses = key
   return {
     from, to,
     events: between(from - HOUR).filter((e) => e.t < to + HOUR),
@@ -982,7 +987,8 @@ async function sourcesOf(date: string): Promise<Sources> {
     exists: (rel) => fs.existsSync(plugin.vault.abs(rel)),
     kindOf: (type) => ({ life: !!type && life.has(type), log: type === "log" }),
     captureFolders: recapSettings().folders,
-    statuses: taskStatuses(),
+    statuses,
+    memo: memo.stretches,
     updates: pluginUpdates(),
     authored: (rel) => plugin.ask("provenance:authored", [], rel, from, to),
   }

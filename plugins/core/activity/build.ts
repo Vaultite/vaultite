@@ -32,6 +32,8 @@ export type Sources = {
   updates?: { t: number; name: string; from: string; to: string; how: "auto" | "manual" | "rollback"; notes: string[] }[]
   /** The lines agents wrote in a file this day that are still there, by who (Provenance's authorship). */
   authored?: (rel: string) => Promise<{ by: string; lines: number }[]>
+  /** Stretches already read, kept between recaps (for the same statuses): each recap reads only what's new. */
+  memo?: Map<string, Read | null>
 }
 
 /** A file's properties and body; one whose properties can't be read is all body. */
@@ -41,10 +43,21 @@ const CHANGES = new Set(["edit", "create", "delete", "move", "save", "change", "
 
 type Who = { agent: string; session?: string } | null
 
+/** The events naming a file, in order: indexed once a recap, which asks for each of its files. */
+const byPath = new WeakMap<ActivityEvent[], Map<string, ActivityEvent[]>>()
+function eventsOf(s: Sources, rel: string) {
+  let m = byPath.get(s.events)
+  if (!m) {
+    byPath.set(s.events, m = new Map())
+    for (const e of s.events) for (const p of new Set(e.paths ?? [])) { const l = m.get(p); if (l) l.push(e); else m.set(p, [e]) }
+  }
+  return m.get(rel) ?? []
+}
+
 /** Who made a stretch of changes to a file: an agent when only agents' events touched it then, else you (an edit
  *  from another device arrives as a change on disk). "skip": the app's own writes. */
 function whoOf(s: Sources, rel: string, t0: number, t1: number): Who | "skip" {
-  const evs = s.events.filter((e) => CHANGES.has(e.action) && (e.paths ?? []).includes(rel) &&
+  const evs = eventsOf(s, rel).filter((e) => CHANGES.has(e.action) &&
     (e.last ?? e.t) >= t0 - 10 * MINUTE && e.t <= t1 + 2 * MINUTE)
   if (!evs.length) return null
   if (evs.every((e) => e.actor.kind === "script" && e.actor.name === "Vaultite")) return "skip"
@@ -108,6 +121,9 @@ function captureOf(s: Sources, rel: string, fm: Item, evs: ActivityEvent[] | nul
 }
 
 type Task = TaskLine & { state: TaskState; sub: string[]; under: number[] }
+/** A stretch's texts, read: what doesn't depend on who made it. */
+export type Read = Omit<Stretch, "rel" | "t0" | "t1" | "who" | "from">
+const MEMO = 5000
 /** One stretch of work on one file, read. */
 type Stretch = { rel: string; t0: number; t1: number; who: Who; created: boolean; fm: Item; added: string[]; removed: string[]
   hunks: number; tasksIn: Task[]; tasksOut: Task[]; moves: { task: Task; kind: RecapKind }[]; audio: boolean
@@ -152,54 +168,69 @@ async function stretchesOf(s: Sources, rel: string): Promise<Stretch[]> {
   const out: Stretch[] = []
   for (const run of runs) {
     const t0 = run[0].t, t1 = run[run.length - 1].t
-    const before = prev ? await s.text(rel, prev.t) : null
-    const after = await s.text(rel, t1)
+    // (a version's text never changes, so a stretch is read once a day, not at every recap)
+    const key = `${rel}\0${prev?.t ?? ""}\0${t1}`
+    let read = s.memo?.get(key)
+    if (read === undefined) {
+      const before = prev ? await s.text(rel, prev.t) : null, after = await s.text(rel, t1)
+      read = readStretch(s, before, after)
+      // (not a text that went missing: it may be there next time)
+      if (s.memo && after !== null && (before !== null || !prev)) { s.memo.set(key, read); if (s.memo.size > MEMO) s.memo.delete(s.memo.keys().next().value!) }
+    } else { s.memo!.delete(key); s.memo!.set(key, read) }
     prev = run[run.length - 1]
-    if (after === null) continue
-    const [fm, body] = split(after)
+    if (!read) continue
     let who = whoOf(s, rel, t0, t1)
     if (who === "skip") continue
     // A file that says an agent made it (an inbox report's `agent:`) is that agent's, wherever it was written.
-    if (!who && before === null && typeof fm.agent === "string" && fm.agent) who = { agent: typeof fm.from === "string" && fm.from ? fm.from : fm.agent }
-    const [, was] = before === null ? [{}, ""] : split(before)
-    if (before !== null && was === body) continue // only its properties changed (a date the app keeps)
-    const a = before === null ? [] : was.split("\n"), b = body.split("\n")
-    const st: Stretch = { rel, t0, t1, who, created: before === null, fm, added: [], removed: [], hunks: 0, tasksIn: [], tasksOut: [], moves: [], audio: false, from: new Map() }
-    const readTask = (lines: string[], i: number): Task | null => {
-      const t = taskLine(lines[i])
-      if (!t) return null
-      const under = subLines(lines, i, t.indent)
-      return { ...t, state: taskState(t.symbol, s.statuses), under, sub: under.slice(0, 2).map((j) => lines[j].trim().replace(/^[-*+]\s+/, "")) }
-    }
-    const code = fenced(b)
-    const addedAt: number[] = []
-    // (a big file's lines by the diff that's fast at any size)
-    const ops = was.length + body.length > BIG ? diffLines(a, b) : opcodes(a, b)
-    for (const [tag, i1, i2, j1, j2] of ops) {
-      if (tag === "equal") continue
-      st.hunks++
-      for (let i = i1; i < i2; i++) { const t = readTask(a, i); if (t) st.tasksOut.push(t); else st.removed.push(a[i]) }
-      for (let j = j1; j < j2; j++) { const t = readTask(b, j); if (t) st.tasksIn.push(t); else if (!code.has(j)) addedAt.push(j) }
-    }
-    st.audio = st.added.some((l) => /!\[\[[^\]]+\.(m4a|webm|mp3|wav|ogg|aac)\]\]/i.test(l))
-    // A task in both is the same task, its state changed (or only its fields: nothing to tell).
-    for (const t of [...st.tasksIn]) {
-      const i = st.tasksOut.findIndex((o) => o.key === t.key)
-      if (i < 0) continue
-      const kind = transition(st.tasksOut[i].state, t.state)
-      if (kind) st.moves.push({ task: t, kind })
-      st.tasksOut.splice(i, 1)
-      st.tasksIn.splice(st.tasksIn.indexOf(t), 1)
-    }
-    // What's added is text, but for a task's own lines under it (its reason) once its state is told.
-    const told = new Set(st.moves.flatMap((m) => m.task.under))
-    for (const t of st.tasksIn) if (t.state === "done" || t.state === "cancelled") for (const j of t.under) told.add(j)
-    st.added = addedAt.filter((j) => !told.has(j)).map((j) => b[j])
-    // A recurring task done puts a new one to do next to it.
-    st.tasksIn = st.tasksIn.filter((t) => !(t.state === "todo" && st.moves.some((m) => m.kind === "done" && m.task.key === t.key)))
-    out.push(st)
+    const fm = read.fm
+    if (!who && read.created && typeof fm.agent === "string" && fm.agent) who = { agent: typeof fm.from === "string" && fm.from ? fm.from : fm.agent }
+    out.push({ ...read, rel, t0, t1, who, added: [...read.added], removed: [...read.removed], tasksIn: [...read.tasksIn], tasksOut: [...read.tasksOut], moves: [...read.moves], from: new Map() })
   }
   return out
+}
+
+/** What a stretch's texts say: its file's properties and the lines and tasks it changed; null when only its properties
+ *  did, or its text is gone. */
+function readStretch(s: Sources, before: string | null, after: string | null): Read | null {
+  if (after === null) return null
+  const [fm, body] = split(after)
+  const [, was] = before === null ? [{}, ""] : split(before)
+  if (before !== null && was === body) return null // only its properties changed (a date the app keeps)
+  const a = before === null ? [] : was.split("\n"), b = body.split("\n")
+  const st: Read = { created: before === null, fm, added: [], removed: [], hunks: 0, tasksIn: [], tasksOut: [], moves: [], audio: false }
+  const readTask = (lines: string[], i: number): Task | null => {
+    const t = taskLine(lines[i])
+    if (!t) return null
+    const under = subLines(lines, i, t.indent)
+    return { ...t, state: taskState(t.symbol, s.statuses), under, sub: under.slice(0, 2).map((j) => lines[j].trim().replace(/^[-*+]\s+/, "")) }
+  }
+  const code = fenced(b)
+  const addedAt: number[] = []
+  // (a big file's lines by the diff that's fast at any size)
+  const ops = was.length + body.length > BIG ? diffLines(a, b) : opcodes(a, b)
+  for (const [tag, i1, i2, j1, j2] of ops) {
+    if (tag === "equal") continue
+    st.hunks++
+    for (let i = i1; i < i2; i++) { const t = readTask(a, i); if (t) st.tasksOut.push(t); else st.removed.push(a[i]) }
+    for (let j = j1; j < j2; j++) { const t = readTask(b, j); if (t) st.tasksIn.push(t); else if (!code.has(j)) addedAt.push(j) }
+  }
+  st.audio = st.added.some((l) => /!\[\[[^\]]+\.(m4a|webm|mp3|wav|ogg|aac)\]\]/i.test(l))
+  // A task in both is the same task, its state changed (or only its fields: nothing to tell).
+  for (const t of [...st.tasksIn]) {
+    const i = st.tasksOut.findIndex((o) => o.key === t.key)
+    if (i < 0) continue
+    const kind = transition(st.tasksOut[i].state, t.state)
+    if (kind) st.moves.push({ task: t, kind })
+    st.tasksOut.splice(i, 1)
+    st.tasksIn.splice(st.tasksIn.indexOf(t), 1)
+  }
+  // What's added is text, but for a task's own lines under it (its reason) once its state is told.
+  const told = new Set(st.moves.flatMap((m) => m.task.under))
+  for (const t of st.tasksIn) if (t.state === "done" || t.state === "cancelled") for (const j of t.under) told.add(j)
+  st.added = addedAt.filter((j) => !told.has(j)).map((j) => b[j])
+  // A recurring task done puts a new one to do next to it.
+  st.tasksIn = st.tasksIn.filter((t) => !(t.state === "todo" && st.moves.some((m) => m.kind === "done" && m.task.key === t.key)))
+  return st
 }
 
 /** The day's entries, oldest first. */
@@ -258,7 +289,7 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     const left = added.some((l) => l.trim()) || st.removed.some((l) => l.trim()) || st.tasksOut.length > 0
     if (agent) { if (left || st.created || st.moves.length) add(st.t0, "agent", "", [], { agent }); continue }
     if (st.created) {
-      const evs = s.events.filter((e) => (e.paths ?? []).includes(st.rel) && Math.abs(e.t - st.t0) < 10 * MINUTE)
+      const evs = eventsOf(s, st.rel).filter((e) => Math.abs(e.t - st.t0) < 10 * MINUTE)
       const source = captureOf(s, st.rel, st.fm, evs) ?? (st.audio ? "Recording" : null)
       const quote = quoteOf(added, true)
       if (source) add(st.t0, "captured", `Captured ${link(st.rel)} · ${source}${by}`, quote, { source, rel: st.rel })

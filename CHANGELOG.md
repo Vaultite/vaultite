@@ -41,6 +41,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   writes them, and nested ones read before, no longer go through the YAML library; renaming a note many others link to
   takes a third of the time, a search half; the first click after a pause no longer waits while it looks the vault
   over, nor, on Linux, does an agent's every read.
+- **An idle server stays idle late in the day**: the day's recap, made again every few minutes after a change (or
+  while Activity waits to be allowed to write it), reads only the work that's new since the last one, where it read
+  again every version of every file changed that day; a server's CPU while nothing happens no longer grows with how
+  busy the day has been.
 - **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
   header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
   makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big
