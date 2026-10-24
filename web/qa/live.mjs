@@ -123,7 +123,8 @@ await shot("dashboard")
 
 // ---------- an artifact ----------
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Qa live/Page.html"); await wait(2500)
-const frame = page.frameLocator("#main-scroll iframe").first()
+// (the artifact runs in a frame of the wrapper the app frames: plugins/core/html/artifacts.ts)
+const frame = page.frameLocator("#main-scroll iframe").first().frameLocator("iframe")
 const rows = () => frame.locator("#n").innerText()
 check("artifact: drawn from its CSV", (await rows().catch(() => "")) === "Rows: 3", await rows().catch((e) => String(e)))
 write("Qa live/Table.csv", read("Qa live/Table.csv") + "d,4\n")
