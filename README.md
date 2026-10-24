@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue" alt="Platform: macOS and Linux">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platform: macOS, Windows and Linux">
   <img src="https://img.shields.io/github/v/release/Vaultite/vaultite?label=version" alt="Latest version">
   <img src="https://img.shields.io/badge/license-Apache%202.0-lightgrey" alt="License: Apache 2.0">
 </p>
@@ -38,7 +38,9 @@ A folder of Markdown files (your vault) that you and your AI write in, and Vault
 
 1. **Download** [Vaultite for Mac](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg)
    ([Intel](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg); macOS 13 or later) and drag
-   it to Applications. On Linux, the [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest)
+   it to Applications. On Windows, the [installer](https://github.com/Vaultite/vaultite/releases/latest) (x64 or ARM64;
+   not signed yet, so Windows asks: More info, Run anyway). On Linux, the
+   [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest)
    (`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+).
 2. **Make a vault**, or open a folder of Markdown you already have: Vaultite changes none of it. Or try the playground,
    a made-up vault, first.
