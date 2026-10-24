@@ -600,6 +600,17 @@ const st0 = {
 }
 check("state patch: nothing changed is null", through(st0, structuredClone(st0))[1] === null)
 {
+  // A long list (frozen items, as the tree's rows): one changed, one gone, one added, one moved far, exact all the same.
+  const old: Readonly<{ path: string; n: number }>[] = Array.from({ length: 6000 }, (_, i) => Object.freeze({ path: `f${i}.md`, n: i }))
+  const next = [...old]
+  next[100] = Object.freeze({ path: "f100.md", n: -1 })
+  next.splice(2000, 1)
+  next.splice(3000, 0, Object.freeze({ path: "new.md", n: 0 }))
+  next.push(next.splice(10, 1)[0])
+  const [got, patch] = through(old, next)
+  check("state patch: a long list's changes come out the same, small", deep(got, next) && !!patch && patch.length < 400, patch?.slice(0, 400))
+}
+{
   const next = structuredClone(st0)
   next.workspaces[0]!.layout.root.tabs.push({ id: "t2", to: "file:a.md" })
   const [got, patch] = through(st0, next)

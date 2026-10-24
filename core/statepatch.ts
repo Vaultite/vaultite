@@ -2,7 +2,7 @@
 // {keys, drop} or {items: runs of old items and new ones}; what it leaves alone keeps its object, so nothing redraws.
 
 /** A value as pieces of JSON: whole (its JSON), an object's keys, or an array's items (each one's JSON). */
-export type Piece = string | { keys: Map<string, Piece> } | { items: string[] }
+export type Piece = string | { keys: Map<string, Piece> } | { items: string[]; from?: readonly unknown[] }
 export type Patch = { set: unknown } | { keys: Record<string, Patch>; drop?: string[] } | { items: ([number, number] | [unknown])[] }
 
 const isPlain = (x: unknown): x is Record<string, unknown> => {
@@ -36,9 +36,11 @@ function indexOf(items: string[]) {
  *  the same is that one's string: kept once in memory, and compared at once. */
 export function snapshot(value: unknown, prev?: Piece): Piece {
   if (Array.isArray(value)) {
-    const was = prev !== undefined && typeof prev !== "string" && "items" in prev ? prev.items : null
+    const old = prev !== undefined && typeof prev !== "string" && "items" in prev ? prev : null, was = old?.items ?? null
     let at: Map<string, number> | null = null
-    return { items: value.map((x, n) => {
+    // (a frozen item where it was is that piece: nothing to look up)
+    return { from: value, items: value.map((x, n) => {
+      if (was && old!.from?.[n] === x && x !== null && typeof x === "object" && Object.isFrozen(x)) return was[n]
       const j = json(x)
       if (!was || was[n] === j) return j
       const i = (at ??= indexOf(was)).get(j)
@@ -73,15 +75,20 @@ export function patchOf(old: Piece, now: Piece): string | null {
     if (typeof old === "string" || !("items" in old)) return set()
     const was = old.items
     if (now.items.length === was.length && now.items.every((j, i) => j === was[i])) return null
-    const at = indexOf(was), out: string[] = []
-    let start = -1, n = 0, reused = 0
+    // Old items are looked for a little ahead of where the last run ended, then (in a list that isn't long) anywhere:
+    // a long one sends an item moved far as new rather than index it all.
+    let at: Map<string, number> | null = null
+    const out: string[] = []
+    let start = -1, n = 0, reused = 0, pos = 0
     const flush = () => { if (n) out.push(`[${start},${n}]`); n = 0 }
     for (const j of now.items) {
-      if (n && was[start + n] === j) { n++; reused++; continue }
+      if (n && was[start + n] === j) { n++; reused++; pos = start + n; continue }
       flush()
-      const i = at.get(j)
-      if (i === undefined) out.push(`[${j}]`)
-      else { start = i; n = 1; reused++ }
+      let i = -1
+      for (let k = pos, end = Math.min(was.length, pos + 64); k < end; k++) if (was[k] === j) { i = k; break }
+      if (i < 0 && was.length <= 5000) i = (at ??= indexOf(was)).get(j) ?? -1
+      if (i < 0) out.push(`[${j}]`)
+      else { start = i; n = 1; reused++; pos = i + 1 }
     }
     flush()
     return reused ? `{"items":[${out.join(",")}]}` : set()
