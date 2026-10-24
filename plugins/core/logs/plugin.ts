@@ -66,9 +66,17 @@ function areaName(slug: unknown) {
 /** Frontmatter keys that are the core's, never a log's data (core/fileprops.ts). */
 const CORE_KEYS = ["type", "archived"]
 
+// The areas' slugs, once per change of the settings or the plugins (a vault's sync parses every log).
+let slugsOf: { key: string; slugs: Set<string> } | null = null
+function areaSlugs() {
+  const key = `${plugin.vault.settingsVersion}:${LOADED.length}`
+  if (slugsOf?.key !== key) slugsOf = { key, slugs: new Set(areas().map((a) => a.slug)) }
+  return slugsOf.slugs
+}
+
 function parse(fm: Item, body: string, stem: string): [Item, string[]] {
   const problems: string[] = []
-  const slugs = new Set(areas().map((a) => a.slug))
+  const slugs = areaSlugs()
   const area = fm.area
   if (!truthy(area)) problems.push("missing `area:`")
   else if (!slugs.has(area)) problems.push(`area \`${str(area)}\` isn't in the areas setting (.vaultite/plugins/logs/data.json)`)

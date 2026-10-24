@@ -250,12 +250,13 @@ function tagsIn(body: string): string[] {
   const out = new Map<string, string>()
   lines.forEach((l, i) => {
     if (!prose[i] || !l.includes("#")) return
-    const clean = l
-      .replace(/(`+)(?:(?!\1).)+?\1/g, " ")
-      .replace(/%%.*?%%/g, " ")
-      .replace(/!?\[\[[^\]\n]*\]\]/g, " ")
-      .replace(/\]\([^)\n]*\)/g, "] ")
-      .replace(/<?[a-z][a-z0-9+.-]*:\/\/\S*/gi, " ")
+    // (each only on a line that has what it takes out: most have none of it)
+    let clean = l
+    if (clean.includes("`")) clean = clean.replace(/(`+)(?:(?!\1).)+?\1/g, " ")
+    if (clean.includes("%%")) clean = clean.replace(/%%.*?%%/g, " ")
+    if (clean.includes("[[")) clean = clean.replace(/!?\[\[[^\]\n]*\]\]/g, " ")
+    if (clean.includes("](")) clean = clean.replace(/\]\([^)\n]*\)/g, "] ")
+    if (clean.includes("://")) clean = clean.replace(/<?[a-z][a-z0-9+.-]*:\/\/\S*/gi, " ")
     for (const m of clean.matchAll(TAG)) {
       const t = tagName(m[1])
       if (t && !out.has(t.toLowerCase())) out.set(t.toLowerCase(), t)

@@ -132,10 +132,13 @@ const tricky = ["a: 1", "a: 23:15", "a: 07:15", "a: 1e3", "a: 1.5e3", "a: .5", "
   "a: !!str 1", "a: |", "a: >", "a: - x", "a: -x", "a: -", "a: ?x", "a: :x", "a: %x", "a: @x", "a: `x`", "a: x\tb", "on: 1",
   "yes: 1", "null: 1", "__proto__: 1", "<<: 1", "a b: 1", "a-b_c: 1", "_a: 1", "a:1", "a: 1\na: 2", "a: 1\n\n# c\nb: 2",
   "a: 1 # c", "a:\n  b: 1", "a:\n- 1", "  a: 1", "a: 1\n  b", "- a", "a: [x, [y]]", "a: [x # y]", "a: \"x\" y", "a: 'x' y",
-  "a: 'x", "a: [x", "a: ]x", "aliases: ['Real: title']"]
+  "a: 'x", "a: [x", "a: ]x", "aliases: ['Real: title']", "tags:\n  - a\n  - b", "tags:\n- a\n- 'b c'", "a:\n  -\n  - x", "a:\n  - [x]",
+  "a:\n  - x: 1", "a:\n  - x\n - y", "a:\n  -x", "a:\n  - 1\nb: 2", "aliases:\n  - \"Q: x\"", "a:\n  - x # c", "a:\n\n  - x",
+  "a:\n  - - x", "a:\n  - yes\n  - 2026-09-29\n  - ~", "a:\n  - x\n  b: 1", "a:\n  - x\n\tb"]
 const usual = ["type: person\nrelation: friend   \nevery_days: 30\nlocation: Austin, TX\ncoordinates: [30.27, -97.74]\ntags: [University, AI]",
   "type: note\nkind: idea\nstatus: seed\nid: idea-voice-journal\ncreated: '2026-09-28 18:00:00'\nupdated: 2026-09-28 18:00:00",
-  "type: log\narea: climbing\ndate: 2026-09-27\nduration_min: 120\ntitle: Bouldering gym\ntop_grade: V3\nplace: \"Bouldering gym\""]
+  "type: log\narea: climbing\ndate: 2026-09-27\nduration_min: 120\ntitle: Bouldering gym\ntop_grade: V3\nplace: \"Bouldering gym\"",
+  "tags:\n  - book\n  - to-read\naliases:\n  - Dune (novel)\ncreated: 2025-03-14\nrating: 4"]
 const texts = [...tricky, ...usual]
 for (const f of fs.readdirSync(path.join(ROOT, "examples", "vault"), { recursive: true }) as string[]) {
   if (!f.endsWith(".md")) continue

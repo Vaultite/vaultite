@@ -70,7 +70,22 @@ export class YAMLError extends Error {}
 /** A YAML document -> plain values (null for an empty one). Throws YAMLError when it doesn't parse. The usual
  *  frontmatter (loadPlain) is read without the YAML library, which would take most of the time a vault takes to open. */
 export function load(text: string): unknown {
-  return loadPlain(text) ?? loadYaml(text)
+  return loadPlain(text) ?? loadKept(text)
+}
+
+/** What the YAML library made of documents (as JSON, by their text), and the ones read since this started: a server
+ *  keeps them between starts (core/fmcache.ts), so a big vault's nested headers aren't parsed at every start. */
+export const readBefore = { json: new Map<string, string>(), used: new Set<string>(), added: 0 }
+
+function loadKept(text: string): unknown {
+  const kept = readBefore.json.get(text)
+  readBefore.used.add(text)
+  if (kept !== undefined) return JSON.parse(kept)
+  const value = loadYaml(text)
+  let finite = true
+  const json = JSON.stringify(value, (_k, v) => { if (typeof v === "number" && !Number.isFinite(v)) finite = false; return v })
+  if (finite && json !== undefined) { readBefore.json.set(text, json); readBefore.added++ }
+  return value
 }
 
 /** load() with the YAML library, whatever the document. */
@@ -96,36 +111,54 @@ function plain(s: string): unknown {
 const NOT_PLAIN = /^[,[\]{}#&*!|>'"%@`?:]|^-(?: |$)|: |:$| #|\t/
 const KEY = /^([A-Za-z_][\w-]*):(?: +(.*))?$/
 
-/** The usual frontmatter (plain, quoted or flow-list scalars) read by hand, fast, giving what the YAML library would
- *  (tools/test_web.ts checks); undefined for anything else, which the library then reads. */
+const NO = Symbol("not plain")
+
+/** A value written plain, quoted or (but in a list) as a flow list of plain ones; NO for anything else. */
+function readScalar(v: string, inList: boolean): unknown {
+  if (v[0] === "'") {
+    const inner = v.slice(1, -1)
+    return v.length < 2 || !v.endsWith("'") || inner.replaceAll("''", "").includes("'") ? NO : inner.replaceAll("''", "'")
+  }
+  if (v[0] === '"') {
+    const inner = v.slice(1, -1)
+    return v.length < 2 || !v.endsWith('"') || /["\\]/.test(inner) ? NO : inner
+  }
+  if (v[0] === "[") {
+    const inner = v.slice(1, -1).trim()
+    if (inList || !v.endsWith("]") || /[[\]{}'"#:&*!|>%@`\t]/.test(inner)) return NO
+    const items = inner ? inner.split(",").map((x) => x.trim()) : []
+    return items.some((x) => !x || NOT_PLAIN.test(x) || x[0] === "-" && !/^-[\d.]/.test(x)) ? NO : items.map(plain)
+  }
+  return NOT_PLAIN.test(v) || v === "<<" ? NO : plain(v)
+}
+
+/** The usual frontmatter (plain, quoted or flow-list scalars, and block lists of them, as Obsidian writes lists) read by
+ *  hand, fast, giving what the YAML library would (tools/test_web.ts checks); undefined for anything else. */
 export function loadPlain(text: string): Record<string, unknown> | undefined {
   const out: Record<string, unknown> = {}
-  let keys = 0
-  for (const line of text.split("\n")) {
-    if (!line.trim() || line[0] === "#") continue
-    const m = KEY.exec(line.trimEnd())
-    if (!m || m[1] === "__proto__" || plain(m[1]) !== m[1]) return undefined
-    const v = m[2] ?? ""
-    let value: unknown
-    if (v[0] === "'") {
-      const inner = v.slice(1, -1)
-      if (v.length < 2 || !v.endsWith("'") || inner.replaceAll("''", "").includes("'")) return undefined
-      value = inner.replaceAll("''", "'")
-    } else if (v[0] === '"') {
-      const inner = v.slice(1, -1)
-      if (v.length < 2 || !v.endsWith('"') || /["\\]/.test(inner)) return undefined
-      value = inner
-    } else if (v[0] === "[") {
-      const inner = v.slice(1, -1).trim()
-      if (!v.endsWith("]") || /[[\]{}'"#:&*!|>%@`\t]/.test(inner)) return undefined
-      const items = inner ? inner.split(",").map((x) => x.trim()) : []
-      if (items.some((x) => !x || NOT_PLAIN.test(x) || x[0] === "-" && !/^-[\d.]/.test(x))) return undefined
-      value = items.map(plain)
-    } else {
-      if (NOT_PLAIN.test(v) || v === "<<") return undefined
-      value = plain(v)
+  let keys = 0, list: { key: string; items: unknown[]; indent: number } | null = null
+  for (const raw of text.split("\n")) {
+    if (!raw.trim() || raw[0] === "#") continue
+    const line = raw.trimEnd()
+    if (list) {
+      const item = /^( *)-(?: +(.*))?$/.exec(line)
+      if (item) {
+        if (list.indent >= 0 && item[1].length !== list.indent) return undefined
+        list.indent = item[1].length
+        const value = readScalar(item[2] ?? "", true)
+        if (value === NO) return undefined
+        list.items.push(value)
+        out[list.key] = list.items
+        continue
+      }
+      list = null
     }
+    const m = KEY.exec(line)
+    if (!m || m[1] === "__proto__" || plain(m[1]) !== m[1]) return undefined
+    const value = readScalar(m[2] ?? "", false)
+    if (value === NO) return undefined
     out[m[1]] = value
+    if (!m[2]) list = { key: m[1], items: [], indent: -1 }
     keys++
   }
   return keys ? out : undefined

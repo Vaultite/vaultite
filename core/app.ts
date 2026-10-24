@@ -42,6 +42,7 @@ import { browse, PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault, type Writer } from "./vault.ts"
 import { strings } from "./values.ts"
+import { keepReads } from "./fmcache.ts"
 
 /** How many recent states the server keeps as pieces (a device that last loaded before them gets the whole state).
  *  Pieces that stayed the same are shared, so each one past the first costs little more than what changed. */
@@ -909,6 +910,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the pages of the
   // plugins its pick turns on come when it picks its setup (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
+  if (start) keepReads(vaultPath)
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
