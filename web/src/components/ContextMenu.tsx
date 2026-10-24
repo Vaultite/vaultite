@@ -411,7 +411,10 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
       const i = all.indexOf(cur)
-      all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length]?.focus()
+      // (↑ from the first row goes up to what's atop it: a tab group's colours, else its name)
+      const above = e.key === "ArrowUp" && i === 0 && ["[data-menu-colors] [aria-checked=true]", "[data-menu-colors] button", "[data-menu-field] input"]
+        .map((q) => ref.current?.querySelector<HTMLElement>(q)).find(Boolean)
+      ;(above || all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length])?.focus()
     } else if (e.key === "ArrowRight") {
       const i = Number(cur?.dataset.index)
       if (rows[i]?.items?.length) { e.preventDefault(); if (drill) into(i); else open(i, cur, true) }
@@ -536,6 +539,13 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
   return (
     <div role="radiogroup" aria-label={it.label} data-menu-colors
       onKeyDown={(e) => {
+        // ↓ and ↑ leave the row, as from any row: to the menu's first row, or back to its name's field.
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          const menu = e.currentTarget.closest("[role=menu]"), rows = [...menu?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? []]
+          e.preventDefault(); e.stopPropagation()
+          ;(e.key === "ArrowDown" ? rows[0] : menu?.querySelector<HTMLElement>("[data-menu-field] input") ?? rows.at(-1))?.focus()
+          return
+        }
         if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
         e.preventDefault(); e.stopPropagation()
         const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button")], i = all.indexOf(document.activeElement as HTMLElement)
@@ -544,6 +554,7 @@ function MenuColors({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] })
       className="grid grid-cols-5 justify-items-center gap-1 px-1 pb-1 md:flex md:gap-0.5 md:px-1 md:pb-0.5">
       {COLORS.map((c) => (
         <button key={c} type="button" role="radio" aria-checked={c === value} aria-label={COLOR_NAMES[c]} data-tip={COLOR_NAMES[c]} data-color={c}
+          tabIndex={c === (COLORS.includes(value as Color) ? value : COLORS[0]) ? 0 : -1 /* one stop for the row, its arrows within */}
           onClick={() => choose(c)}
           className="group/swatch grid size-11 cursor-pointer place-items-center rounded-full outline-none md:size-6">
           <span className="on-tint grid size-7 place-items-center rounded-full transition-transform duration-150 group-hover/swatch:scale-110 group-active/swatch:scale-95 group-focus-visible/swatch:outline-2 group-focus-visible/swatch:outline-offset-2 group-focus-visible/swatch:outline-primary/60 md:size-[18px]"

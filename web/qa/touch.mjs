@@ -127,9 +127,14 @@ out.drawerClosed = await page.evaluate(() => document.querySelector("[data-phone
 // 9. the bar's menu (New note, Commands, Plugins, Settings): opens above the bar, a page navigates and closes it, a
 // tap outside closes it
 const menuOpen = () => page.locator("#bar-menu").isVisible()
+// (a toast up first, where the menu opens: it must go under the menu)
+await fetch(new URL("api/ops/ui.notify", B.endsWith("/") ? B : `${B}/`), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "Qa touch: a toast under the menu" }) })
+await page.waitForSelector("[data-sonner-toast]", { timeout: 5000 }).catch(() => {})
 await page.locator("[data-bar=menu]").tap(); await page.waitForTimeout(300)
 out.menuOpen = await menuOpen()
 out.menuAbove = await page.evaluate(() => document.querySelector("#bar-menu").getBoundingClientRect().bottom <= document.querySelector("[data-phone-bar]").getBoundingClientRect().top)
+// (each row on top: a toast, the playground's notice, never covers the menu the user opened)
+out.menuCovered = await page.$$eval("#bar-menu [role=menuitem]", (els) => els.filter((e) => { const b = e.getBoundingClientRect(); return !e.contains(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)) }).map((e) => e.textContent.trim()))
 const menuPage = page.locator("#bar-menu a[role=menuitem]").last()
 const menuHref = await menuPage.getAttribute("href").catch(() => null)
 if (menuHref) { await menuPage.tap(); await page.waitForTimeout(600) }
@@ -188,6 +193,7 @@ check("scrolled: the header stays at the top, naming the page", out.scrolled.y >
 check("drawer: lists the pinned pages", out.drawerPages === v.state.pinned.length && out.drawerPages > 0, { drawn: out.drawerPages, pinned: v.state.pinned })
 check("drawer: a pinned page shows at its top, and the drawer closes", out.tabHash[0] === out.tabHash[1] && out.scrollAfterTab === 0 && out.drawerClosed, [out.tabHash, out.scrollAfterTab, out.drawerClosed])
 check("the bar's menu opens above the bar", out.menuOpen && out.menuAbove, [out.menuOpen, out.menuAbove])
+check("… every row of it on top, a toast under it", out.menuCovered?.length === 0, out.menuCovered)
 check("a page from the menu shows and the menu closes", !!out.menuHash[0] && out.menuHash[0] === out.menuHash[1] && out.menuClosedAfterNav, out.menuHash)
 check("a tap outside closes the menu, staying put", out.menuClosedAfterBackdrop && out.hashAfterBackdrop === out.menuHash[1], [out.menuClosedAfterBackdrop, out.hashAfterBackdrop])
 check("People: a person opens in a tab beside the page, with the timeline", out.profile[0].startsWith(filePath("People/")) && !out.profile[1] && out.profile[2] === person && out.profileTabs[1] === out.profileTabs[0] + 1 && out.profileHasTimeline > 0, [out.profile, out.profileTabs, out.profileHasTimeline])
