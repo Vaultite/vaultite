@@ -239,18 +239,25 @@ for (const dark of [false, true]) {
 }
 await browser.close()
 
-const host = new URL(B).host, ts = "home-mac.example.ts.net:8447"
+// Through Serve a login only counts on this machine's own tailnet name (core/owner.ts): Tailscale's, when it's here.
+let owner = "", name = ""
+for (const bin of ["tailscale", "/usr/local/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]) {
+  let st
+  try { st = JSON.parse(execFileSync(bin, ["status", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })) } catch { continue }
+  owner = st.User?.[String(st.Self?.UserID)]?.LoginName ?? ""; name = String(st.Self?.DNSName ?? "").replace(/\.$/, ""); break
+}
+const host = new URL(B).host, ts = `${name || "home-mac.example.ts.net"}:8447`, other = "home-mac.example.ts.net:8447"
 const before = (await apiAt(B)("GET", "config/plugin/terminal")).allowUsers ?? null // (this machine's, set by its owner)
 await apiAt(B)("PATCH", "config/plugin/terminal", { allowUsers: ["qa-friend@example.com"] })
 check("local handshake accepted", (await handshake({ Host: host, Origin: `http://${host}` })) === "attached")
 check("X-Forwarded-For refused", (await handshake({ Host: host, "X-Forwarded-For": "100.64.0.1" })) === "refused")
 check("an unknown tailnet login refused", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "someone@example.com" })) === "refused")
-check("a login in allowUsers accepted", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "qa-friend@example.com" })) === "attached")
+check("a login in allowUsers on a name not this machine's refused", (await handshake({ Host: other, Origin: `https://${other}`, "Tailscale-User-Login": "qa-friend@example.com" })) === "refused")
 check("a Tailscale header without a login refused", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Name": "Someone" })) === "refused")
-let owner = ""
-try { const st = JSON.parse(execFileSync("/usr/local/bin/tailscale", ["status", "--json"], { encoding: "utf8" })); owner = st.User?.[String(st.Self?.UserID)]?.LoginName ?? "" } catch { /* no Tailscale here */ }
-if (owner) check("this machine's owner accepted through Serve", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": owner })) === "attached")
-else console.log("skip this machine's owner (no Tailscale)")
+if (name) {
+  check("a login in allowUsers accepted", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "qa-friend@example.com" })) === "attached")
+  check("this machine's owner accepted through Serve", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": owner })) === "attached")
+} else console.log("skip a login in allowUsers and this machine's owner accepted (no Tailscale)")
 check("the owner from another site refused", (await handshake({ Host: ts, Origin: "https://evil.example", "Tailscale-User-Login": owner || "qa-friend@example.com" })) === "refused")
 check("another site refused", (await handshake({ Host: host, Origin: "http://evil.example" })) === "refused")
 check("a rebinding Host refused", (await handshake({ Host: "evil.example:80", Origin: "http://evil.example:80" })) === "refused")

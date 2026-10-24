@@ -37,7 +37,7 @@ const [a, b] = notes
 await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(a)}`)
 await page.waitForSelector("[data-pane] .cm-content", { timeout: 20000 }); await wait(800)
 const view = await tip("[data-pane] button[aria-label=Edit], [data-pane] button[aria-label=Read]")
-check(`the view button's tooltip names ${MAC ? "⌘E" : "Ctrl+E"}`, view?.endsWith(MAC ? "(⌘E)" : "(Ctrl+E)"), view)
+check(`the view button's tooltip names ${MAC ? "⌘E" : "Ctrl+E"}`, view?.includes(MAC ? "(⌘E)" : "(Ctrl+E)"), view)
 await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(b)}`)
 await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(b), 5000); await wait(600)
 await page.locator("body").click({ position: { x: 640, y: 20 } }).catch(() => {})

@@ -71,7 +71,7 @@ async function terminalsPart(backend: string) {
   for (const [agent, id] of Object.entries(ids)) {
     const [c, r] = await term.start(id)
     check(`${agent} (${tag}): a terminal starts it`, c === 200 && r.started && r.agent === agent, r)
-    const screen = await screenHas(id, new RegExp(`FAKE-${agent.toUpperCase()}`))
+    const screen = await screenHas(id, new RegExp(`FAKE-${agent.toUpperCase()}[^]*CWD `))
     check(`${agent} (${tag}): it runs in the vault's folder (spaces, accents)`, screen?.includes(`CWD ${VAULT}`), screen?.slice(-400))
     const listed = await waitFor(async () => { const s = await term.one(id); return s?.busy && s.agent === agent ? s : null })
     check(`${agent} (${tag}): Terminals lists it, running`, listed && listed.backend === backend, await term.one(id))

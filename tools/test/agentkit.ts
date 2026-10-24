@@ -66,8 +66,8 @@ export async function stopServer() {
 
 /** The keeper and tmux server this port's terminals run in (they outlive the server on purpose). */
 export function stopBackends() {
-  // (core/runtime.ts: $TMPDIR on a Mac; Linux's $XDG_RUNTIME_DIR/vaultite, else /tmp/vaultite-<uid> as in a bare env)
-  for (const dir of [os.tmpdir(), process.env.XDG_RUNTIME_DIR && path.join(process.env.XDG_RUNTIME_DIR, "vaultite"), `/tmp/vaultite-${process.getuid?.()}`]) {
+  // (core/runtime.ts: $TMPDIR on a Mac; Linux's $XDG_RUNTIME_DIR/vaultite, else $TMPDIR/vaultite-<uid> as in a bare env)
+  for (const dir of [os.tmpdir(), process.env.XDG_RUNTIME_DIR && path.join(process.env.XDG_RUNTIME_DIR, "vaultite"), path.join(os.tmpdir(), `vaultite-${process.getuid?.()}`), `/tmp/vaultite-${process.getuid?.()}`]) {
     if (!dir) continue
     try { process.kill(Number(fs.readFileSync(path.join(dir, `vaultite-ptyd1-vaultite-${PORT}.sock.pid`), "utf8").trim()), "SIGTERM") } catch { /* none */ }
   }
