@@ -1,6 +1,6 @@
 data/
 .DS_Store
-node_modules/
+node_modules
 web/dist/
 web/qa/shots/
 dist-app/
