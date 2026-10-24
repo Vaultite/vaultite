@@ -90,7 +90,7 @@ class App {
 
   async launch() {
     this.t0 = now()
-    this.child = spawn(path.join(ROOT, "node_modules", ".bin", "electron"), [ROOT, "--vault", VAULT, "--inspect=0"], {
+    this.child = spawn(path.join(ROOT, "node_modules", ".bin", "electron"), [ROOT, "--vault", VAULT, "--inspect=0", "--use-mock-keychain", "--password-store=basic"], {
       env: { ...process.env, VAULTITE_USER_DATA: path.join(this.dir, "userData"), VAULTITE_LOCAL: path.join(this.dir, "local") },
       stdio: ["ignore", "pipe", "pipe"], detached: true,
     })
