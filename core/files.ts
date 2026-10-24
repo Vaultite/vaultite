@@ -798,7 +798,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     const moves: [string, string][] = !fs.statSync(vault.abs(dst)).isDirectory() ? [[src, dst]]
       : [...vault.entries.keys(), ...vault.others.keys()].filter((p) => p.startsWith(`${dst}/`)).map((p) => [src + p.slice(dst.length), p])
     const updated = vault.relink(moves)
-    if (updated.length) await vault.sync()
+    if (updated.length) await vault.reread(updated)
     return { path: dst, updated }
   }
   if (route === "file/copy" && method === "POST") {

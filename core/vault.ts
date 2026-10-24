@@ -904,11 +904,18 @@ export class Vault {
       const out = old.md ? np.slice(0, -3) : np
       return t.startsWith("/") ? `/${out}` : old.relative ? relativePath(dirOf(rel), out) : out
     }
+    // A link can change only if it names a moved file (its name, written or encoded, or an alias), but in a moved file.
+    const names = [...new Set(moves.flatMap(([from, to]) => {
+      const a = this.entries.get(to)?.fm.aliases, own = [base(from), base(from).replace(/\.[^.]+$/, ""), ...(Array.isArray(a) ? a : a ? [a] : []).map(String)]
+      return own.flatMap((n) => [n, encodeURI(n), encodeURIComponent(n)]).map((n) => n.toLowerCase()).filter(Boolean)
+    }))]
+    const mentions = (text: string) => { const low = text.toLowerCase(); return names.some((n) => low.includes(n)) }
     const changed: string[] = []
     for (const [rel, e] of [...this.entries]) {
       const self = back.get(rel) ?? rel
       const fm = JSON.stringify(e.fm)
       if (!e.body.includes("[[") && !e.body.includes("](") && !fm.includes("[[") && !fm.includes("](")) continue
+      if (self === rel && !e.broken && !mentions(e.body) && !mentions(fm)) continue
       const map = mapper(self, rel)
       // The index's text first: only a file with a link that changes is read (a rename in a big vault read them all).
       // (`key: [[X]]` unquoted reads as a list in a list, not text: such a file is read)
