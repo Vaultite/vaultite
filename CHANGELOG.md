@@ -20,6 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - A status bar item dragged out of its tray onto the bar's first item lands first, no longer second.
 - A bundle that turns Workspaces on (Browser) sets the panels and pins of the workspace the window goes to, no longer
   leaving that workspace's own (Files still showing) over the bundle's.
+- The web demo keeps a change made just before its page reloads or closes (a plugin turned on, a setting), no longer
+  losing it.
 
 ## 0.8.0 (2026-10-24)
 

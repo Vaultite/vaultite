@@ -53,9 +53,9 @@ const dirty = new Set<string>()
 let saving: ReturnType<typeof setTimeout> | null = null
 let resetting = false
 
-function save() {
+function save(): Promise<unknown> {
   saving = null
-  if (resetting) return
+  if (resetting) return Promise.resolve()
   const paths = [...dirty]
   dirty.clear()
   const puts = new Map<string, Uint8Array | null>(), dels: string[] = []
@@ -68,7 +68,7 @@ function save() {
     for (const name of fs.readdirSync(abs) as string[]) add(`${abs}/${name}`)
   }
   for (const p of paths) add(p)
-  void tx(["files", "meta"], (t) => {
+  return tx(["files", "meta"], (t) => {
     const files = t.objectStore("files")
     // (a folder gone takes what was in it)
     for (const rel of dels) { files.delete(rel); files.delete(IDBKeyRange.bound(rel + "/", rel + "/\uffff")) }
@@ -100,14 +100,14 @@ async function restore() {
     await tx(["files"], (t) => t.objectStore("files").clear())
     meta = { day: today, sample, edited: false }
     dirty.add(VAULT)
-    save()
+    void save()
   }
   changes.add((abs) => {
     if (!abs.startsWith(VAULT + "/")) return
     // (edited: a file of the visitor's, not the app's settings nor the pages it installs as it opens)
     if (app && !abs.startsWith(`${VAULT}/.vaultite/`)) meta = { ...meta!, edited: true }
     dirty.add(abs)
-    saving ??= setTimeout(save, 300)
+    saving ??= setTimeout(() => void save(), 300)
   })
 }
 
@@ -236,7 +236,9 @@ function raw(query: Record<string, string>): Answer {
 // One request at a time: the server's contexts (node/async_hooks.ts) last until their request is answered.
 let queue = Promise.resolve()
 function answer(ask: Ask, port: MessagePort) {
-  queue = queue.then(() => handle(ask)).catch((e) => json({ error: String((e as Error)?.message ?? e) }, 500)).then((a) => {
+  queue = queue.then(() => handle(ask)).catch((e) => json({ error: String((e as Error)?.message ?? e) }, 500)).then(async (a) => {
+    // (what it changed is kept before it's answered: the page may go at once, and this worker with it)
+    if (saving) { clearTimeout(saving); await save().catch(() => {}) }
     const body = a.body instanceof Uint8Array ? a.body.slice().buffer : a.body
     port.postMessage({ ...a, body }, body instanceof ArrayBuffer ? [body] : [])
   })
