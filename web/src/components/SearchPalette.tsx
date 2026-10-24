@@ -1,5 +1,5 @@
-// The quick switcher (⌘O): fuzzy matches, then "In files" (the server's search). A query with
-// operators is the server's alone. ⇧Enter makes a note with the name typed. Each row with its kind's icon, muted as ⌘P's (with File icons on).
+// The quick switcher (⌘O): fuzzy matches, plugins' finds (searchQuery), "In files" (the server's search), rows for the text itself. A query with
+// operators is the server's alone. ⇧Enter makes a note with the name typed. A new tab's (`launcher`) opens picks in new tabs. Rows with their kind's icon, muted as ⌘P's (with File icons on).
 import { useEffect, useMemo, useState } from "react"
 import { Search, TextSearch } from "lucide-react"
 import { getStore, type Store } from "@/core/data"
@@ -9,7 +9,7 @@ import { currentFile } from "@/core/workspace"
 import { newNoteFolder } from "@/core/conventions"
 import { snippet } from "@/core/links"
 import { openDetail } from "@/core/nav"
-import { search, suggestions, useSearchIndex, type Hit } from "@/core/search"
+import { launcherText, search, suggestions, typedHits, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
 import { Marked, Palette } from "@/components/Palette"
@@ -38,13 +38,15 @@ function foundHit(r: Found, node: Node): Hit {
 /** Rows listed at first, and how many more each time the list is scrolled to its end. */
 const PAGE = 40
 
-export function SearchPalette({ store, onClose }: { store: Store; onClose: () => void }) {
+export function SearchPalette({ store, onClose, launcher = false }: { store: Store; onClose: () => void
+  /** A new tab's (newtab.json `opens`): what's picked opens in a new tab. */
+  launcher?: boolean }) {
   const docs = useSearchIndex(store)
   const [q, setQ] = useState("")
   const { node, error } = useMemo(() => readQuery(q), [q])
   const plain = !node || isPlain(node)
   const opened = useRecentFiles()
-  const { fileIcons } = usePrefs()
+  const { fileIcons, disabled, order } = usePrefs()
   const [limit, setLimit] = useState(PAGE)
   useEffect(() => setLimit(PAGE), [q])
   const named = useMemo(() => (!q.trim() ? suggestions(docs, opened) : plain && !error ? search(docs, q, Infinity) : []), [docs, q, plain, error, opened])
@@ -63,21 +65,29 @@ export function SearchPalette({ store, onClose }: { store: Store; onClose: () =>
     }, limit > PAGE ? 0 : 150)
     return () => { on = false; clearTimeout(t) }
   }, [q, node, plain, limit])
-  // Archived files after everything else (core/search.ts), words inside files included; then, while there's more to
-  // see than fits, the search tab with everything.
-  const hits = useMemo(() => {
+  const queried = useQueried(plain && !error ? q : "")
+  const typed = useMemo(() => (plain && !error ? typedHits(q, disabled, order) : []), [q, plain, error, disabled, order])
+  // (a launcher whose plugin opens nothing here, the web app's Browser, is the switcher with a new tab's picks)
+  const lead = launcher ? launcherText(disabled, order) : null
+  // Plugins' finds, words inside files, archived files after everything (core/search.ts); then the typed rows (first in a
+  // launcher) and the search tab with everything.
+  const { hits, sections } = useMemo(() => {
     const have = new Set(local.map((h) => h.file).filter(Boolean))
     const inFiles = text.hits.filter((h) => !have.has(h.file))
-    const all = [...local.filter((h) => !h.archived), ...inFiles.filter((h) => !h.archived), ...local.filter((h) => h.archived), ...inFiles.filter((h) => h.archived)]
+    const found = queried.flatMap((g) => g.hits)
+    const all = [...local.filter((h) => !h.archived), ...found, ...inFiles.filter((h) => !h.archived), ...local.filter((h) => h.archived), ...inFiles.filter((h) => h.archived)]
+    const sections = new Map<string, string>([...queried.flatMap((g) => g.hits.map((h) => [h.id, g.section] as const)), ...typed.map((h) => [h.id, lead ? "" : "More"] as const)])
     const query = q.trim()
-    if (!all.length || !query) return all
     const everything: Hit = { id: "search-tab", title: `Search for "${query}" in every file`, meta: "", kind: "Search", icon: Search, tint: "var(--muted-foreground)",
       text: "", recent: 0, marks: [], score: 0, run: () => openView(`search/${query}`, { newTab: true }) }
-    return [...all, everything]
-  }, [local, text, q])
+    const rows = !query ? all : lead ? [...typed, ...all, ...(all.length ? [everything] : [])] : [...all, ...typed, ...(all.length ? [everything] : [])]
+    const seen = new Set<string>()
+    return { hits: rows.filter((h) => !seen.has(h.id) && !!seen.add(h.id)), sections }
+  }, [local, text, q, queried, typed, lead])
   const more = named.length > local.length || text.files > text.hits.length
 
-  const go = (h: Hit, newTab = false) => {
+  const go = (h: Hit, mod = false) => {
+    const newTab = launcher || mod
     onClose()
     if (h.run) setTimeout(() => h.run!(newTab), 0)
     else if (h.to) setTimeout(() => openView(h.to!, { newTab: true }), 0)
@@ -89,18 +99,19 @@ export function SearchPalette({ store, onClose }: { store: Store; onClose: () =>
     if (!cleanName(q)) return
     onClose()
     const f = await createNamed(newNoteFolder(getStore(), currentFile()), q)
-    if (f) openNew(f.path, { newTab })
+    if (f) openNew(f.path, { newTab: launcher || newTab })
   }
 
   return (
-    <Palette label="Search" placeholder="Find or create a note…" query={q} setQuery={setQ} items={hits} onClose={onClose} look={fileIcons}
+    <Palette label="Search" placeholder={lead ?? "Find or create a note…"} query={q} setQuery={setQ} items={hits} onClose={onClose} look={fileIcons}
       onEnd={more ? () => setLimit((n) => n + PAGE) : undefined}
       onPick={(h, { mod, shift }) => (shift || !h ? create(mod) : go(h, mod))}
       heading={!q.trim() ? "Recent files and pages" : node && !plain ? explain(node) : undefined}
-      section={(h) => (h.id === "search-tab" ? "More" : plain && h.id.startsWith("text-") ? "In files" : undefined)}
+      section={(h) => (h.id === "search-tab" ? "More" : sections.has(h.id) ? sections.get(h.id) || undefined : plain && h.id.startsWith("text-") ? "In files" : undefined)}
       empty={error ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">{error}</p>
         : q.trim() && <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Nothing matches "{q.trim()}". Enter makes a note with that name.</p>}
-      hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to open"], ["Mod+Enter", "to open in new tab"], ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
+      hints={launcher ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to open in new tab"], ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]
+        : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to open"], ["Mod+Enter", "to open in new tab"], ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
       row={(h) => (<>
         {fileIcons && <h.icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="flex min-w-0 flex-1 items-baseline gap-2.5">

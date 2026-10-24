@@ -1,7 +1,8 @@
 // A blank tab's page (components/NewTab.tsx, .vaultite/newtab.json: core/newtab.ts): the default sections and buttons,
 // a newtab.json written by hand followed live (sections in its order, its buttons as their commands draw them), the
 // right-click menu (a button moved and removed, a section hidden, each section's items only on it, Reset with Undo), dragging a section by its title and
-// a button to reorder them, a sidebar panel shown as a section, a button running its command, and the phone's page
+// a button to reorder them, a sidebar panel shown as a section, a button running its command, `opens` (the switcher as
+// a launcher, Settings' choice), and the phone's page
 // (Pinned's tiles first). Recently changed and opened list the user's files, the pages plugins wrote too. WRITES
 // .vaultite/newtab.json, plugins.json and a note: throwaway only.
 //   node web/qa/newtab.mjs <base url> <vault path> [out dir]
@@ -147,6 +148,45 @@ try {
   check("a button runs its command (New note opens a note)", await until(async () => !(await buttons()).length), await buttons())
   await page.close()
 
+  // `opens`: the switcher. In the web app (no web tabs) it's the plain switcher whose pick opens in a new tab, without the
+  // web's rows; Escape leaves no tab. A view that can't show here (a web page) is a blank tab's page.
+  writeFileSync(file, JSON.stringify({ opens: "switcher" }, null, 2) + "\n")
+  const lp = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
+  await lp.goto(`${B.replace(/\/$/, "")}/#file/${encodeURIComponent("Notes/Changed lately.md")}`)
+  await lp.waitForSelector("[aria-label='New tab']", { timeout: 30000 })
+  const SEARCH = '[role="dialog"][aria-label="Search"]'
+  const tabs = () => lp.locator("[role=tab]").count(), t0 = await tabs()
+  await lp.click("[aria-label='New tab']")
+  check("opens switcher: + opens the switcher, no tab yet", !!(await until(() => lp.$(SEARCH), 8000)) && await tabs() === t0)
+  check("… on the web app it's the plain switcher (no web tabs here)", (await lp.getAttribute(`${SEARCH} input`, "placeholder")) === "Find or create a note…")
+  await lp.keyboard.press("Escape")
+  check("… Escape: nothing opened, no blank tab left", await until(async () => !(await lp.$(SEARCH)), 4000) && await tabs() === t0)
+  await lp.click("[aria-label='New tab']")
+  await until(() => lp.$(SEARCH), 8000)
+  await lp.keyboard.type("example.com")
+  const opts = () => lp.$$eval("#palette-results [role=option]", (els) => els.map((e) => e.textContent.trim()))
+  await wait(500)
+  check("… no web rows on the web app (no web tabs to open them in)", !(await opts()).some((t) => /^(Open example|Search the web)/.test(t)), await opts())
+  await lp.fill(`${SEARCH} input`, "Changed lately")
+  await until(async () => (await opts())[0]?.startsWith("Changed lately"))
+  await lp.keyboard.press("Enter")
+  check("… a pick opens in a new tab", await until(async () => !(await lp.$(SEARCH)) && await tabs() === t0 + 1), await tabs())
+  writeFileSync(file, JSON.stringify({ opens: "view:web" }, null, 2) + "\n")
+  await wait(1500)
+  await lp.click("[aria-label='New tab']")
+  check("opens view:web where web pages can't show: a blank tab's page", await until(() => lp.$("[data-pane] [data-newtab-action]")) && !(await lp.$("[data-web-elsewhere]")))
+  // Settings > Appearance: the choice, here without a web page.
+  await lp.goto("about:blank")
+  await lp.goto(`${B.replace(/\/$/, "")}/#settings`)
+  await lp.locator('[data-settings-nav="appearance"]').click()
+  const choice = await until(async () => { const t = await lp.$$eval("[data-settings-row='new-tabs'] [role=radio]", (els) => els.map((e) => e.textContent.trim())); return t.length && t })
+  check("Settings: New tabs open, Page or Quick switcher here", JSON.stringify(choice) === JSON.stringify(["Page", "Quick switcher"]), choice)
+  await lp.click("[data-settings-row='new-tabs'] [role=radio] >> text=Quick switcher")
+  check("… choosing writes `opens` only", await until(() => saved().opens === "switcher" && Object.keys(saved()).length === 1), saved())
+  await lp.click("[data-settings-row='new-tabs'] [role=radio] >> text=Page")
+  check("… Page is the default: the key goes", await until(() => !("opens" in saved())), saved())
+  await lp.close()
+
   // The phone: the same page, a size up, Pinned's tiles first (a phone-only section).
   rmSync(file, { force: true })
   const phone = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }))
@@ -160,6 +200,11 @@ try {
   await phone.click("[data-newtab-section='pages:tiles'] [data-panel-handle]", { button: "right" })
   const held = await until(async () => { const t = await phone.$$eval("[role=menu] [role^=menuitem]", (els) => els.map((e) => e.textContent.trim())); return t.length ? t : null })
   check("phone: held on the tiles, no Buttons in the menu", !!held?.includes("Sections") && !held.includes("Buttons"), held)
+  await phone.keyboard.press("Escape")
+  writeFileSync(file, JSON.stringify({ opens: "switcher" }, null, 2) + "\n")
+  await wait(1500)
+  await phone.click("[data-bar='new']")
+  check("phone: + with opens switcher opens the switcher", !!(await until(() => phone.$('[role="dialog"][aria-label="Search"]'), 8000)))
   await phone.close()
 } finally {
   if (before === null) rmSync(file, { force: true }); else writeFileSync(file, before)

@@ -99,6 +99,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `details`
 - `search`: What the quick switcher and the search tab find by name: its things, from the store.
 - `searchLive`: Things it finds that aren't in the store (running terminals): `docs` is asked whenever search looks, and `subscribe` says when they change while search is open.
+- `searchQuery`: What the quick switcher finds by the query itself, too many to index (the browsing history).
 - `links`
 - `webLink`: Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser. The first plugin that's on and takes it wins.
 - `schemeLink`: Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one. The first plugin that's on and takes it wins; none: the link does nothing.

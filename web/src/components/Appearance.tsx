@@ -5,6 +5,7 @@ import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
 import { DEFAULT_FONTS, onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
 import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
+import { opensChoices, setOpens } from "@/core/launcher"
 import { getPrefs, setPrefs, usePrefs, type Density, type Theme } from "@/core/prefs"
 import { DEFAULT_SCHEME, SCHEMES, schemeId } from "@/themes/schemes"
 import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
@@ -223,7 +224,9 @@ export function AppearancePanel() {
           <Segmented<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })} className="w-full shrink-0 sm:w-[220px]"
             options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
         </SettingRow>
-        {["file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"]), "typing-fade", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        {["file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"])].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        <NewTabsRow />
+        {["typing-fade", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
           onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
         <PullRows />
@@ -235,6 +238,19 @@ export function AppearancePanel() {
       </div>
       <Snippets />
     </Panel>
+  )
+}
+
+/** What ⌘T and the + buttons open (newtab.json's `opens`): a blank tab's page, the quick switcher, or a view (a web page). */
+function NewTabsRow() {
+  const { newTab } = usePrefs()
+  const choices = opensChoices()
+  const value = choices.some((c) => c.value === newTab.opens) ? newTab.opens ?? "" : ""
+  return (
+    <SettingRow stack label="New tabs open" data-settings-row="new-tabs">
+      <Segmented<string> label="New tabs open" value={value} onChange={(v) => void setOpens(v || null)} className="w-full shrink-0 sm:w-[320px]"
+        options={choices.map((c) => ({ value: c.value ?? "", label: c.label }))} />
+    </SettingRow>
   )
 }
 

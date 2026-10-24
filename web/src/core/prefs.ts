@@ -95,7 +95,7 @@ export type Prefs = {
 
 const KEY = "vaultite.prefs"
 const DEFAULTS: Prefs = {
-  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {

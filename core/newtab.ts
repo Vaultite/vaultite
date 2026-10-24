@@ -1,5 +1,5 @@
 // A new tab's page (`.vaultite/newtab.json`: `sections` top to bottom, `actions` the buttons, each a command id, `icons`
-// a button's icon other than its command's, `page` a file drawn instead), one shape for app and vau; each key written on its own. Pure functions, no Node: both sides use them.
+// a button's icon other than its command's, `page` a file drawn instead, `opens` what ⌘T opens), one shape for app and vau; each key written on its own. Pure functions, no Node: both sides use them.
 import { defaultOrder, keyList, type SlotInfo } from "./slots.ts"
 import { isObj as isMap } from "./values.ts"
 
@@ -12,6 +12,9 @@ export type NewTabSetup = {
   icons: Record<string, string> | null
   /** A file a blank tab draws instead of the sections (a dashboard: any blocks), by its vault path; null: unset. */
   page: string | null
+  /** What a new tab (⌘T, the + buttons) opens: "switcher", the quick switcher as a launcher (what's picked opens in a new
+   *  tab), or a view's tab (`view:web`: a web page, its address to type); null: unset (a blank tab's page). */
+  opens: string | null
 }
 
 /** A section as the setup needs it: its key, title, default place and whether it's only on phones or computers. */
@@ -42,8 +45,12 @@ export function readNewTab(raw: unknown): NewTabSetup {
   const o = isMap(raw) ? raw : {}
   const icons = isMap(o.icons) ? Object.fromEntries(Object.entries(o.icons).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k, v.trim()]] : []))) : null
   const page = typeof o.page === "string" && o.page.trim() ? o.page.trim() : null
-  return { sections: Array.isArray(o.sections) ? keyList(o.sections) : null, actions: Array.isArray(o.actions) ? keyList(o.actions) : null, icons, page }
+  return { sections: Array.isArray(o.sections) ? keyList(o.sections) : null, actions: Array.isArray(o.actions) ? keyList(o.actions) : null, icons, page,
+    opens: typeof o.opens === "string" && isOpens(o.opens.trim()) ? o.opens.trim() : null }
 }
+
+/** Whether `opens` can be this: the switcher, or a view's tab (`view:<name>`, an arg after a slash). */
+export const isOpens = (v: string) => v === "switcher" || /^view:[\w-]+(\/.*)?$/.test(v)
 
 /** `icons` with a button's icon set (an empty name: back to its command's), null once none is left. */
 export function withIcon(icons: Record<string, string> | null, id: string, name: string) {

@@ -2,7 +2,7 @@
 // are on disk.
 import type { App } from "../app.ts"
 import { commandList, type CommandDef, panelsOf, sectionsOf } from "../appsource.ts"
-import { CORE_SECTIONS, readNewTab, type SectionInfo, shownActions, shownSections, withIcon, withPanels } from "../newtab.ts"
+import { CORE_SECTIONS, isOpens, readNewTab, type SectionInfo, shownActions, shownSections, withIcon, withPanels } from "../newtab.ts"
 import { type Op, OpError, type Param } from "../ops.ts"
 import { anchorFor, placeKey } from "../slots.ts"
 import { type Any, lines } from "./common.ts"
@@ -41,6 +41,7 @@ function showList(r: { setup: ReturnType<typeof readNewTab>; sections: Section[]
   const shown = r.sections.filter((s) => s.place)
   const hidden = r.sections.filter((s) => !s.place)
   return [
+    ...(r.setup.opens ? [`Opens: ${r.setup.opens === "switcher" ? "the quick switcher (what's picked opens in a new tab)" : `a ${r.setup.opens} tab`} (vau newtab opens page for the page)`] : []),
     ...(r.setup.page ? [`Page: ${r.setup.page} (drawn instead of the sections; vau newtab page "" shows them again)`] : []),
     "Sections, top to bottom:", lines(shown.map((s) => `  ${s.place}. ${row(s)}`), "  (none: an empty page)"),
     `Hidden: ${hidden.map(row).join(", ") || "none"}`,
@@ -82,7 +83,9 @@ icon (a Lucide name, lucide.dev/icons, or an emoji; vau newtab button icon, or r
 default, by its place, and the buttons are New note, Open a file and the command palette (vau settings set newtab
 '{"sections": null}' goes back to that). Positions count from 1. "page": a file's path draws that file instead of the
 sections, a start page made of any blocks: a dashboard (vau docs dashboards) the user or an agent changes like any other;
-one that isn't there (moved, deleted) gives the sections back.
+one that isn't there (moved, deleted) gives the sections back. "opens": what ⌘T and the + buttons open instead of the
+page: "switcher" (the quick switcher as a launcher: what's picked opens in a new tab, Escape none) or a view's tab
+("view:web": a web page, its address to type; where it can't show, the page).
 
   vau newtab
   vau newtab show terminals top
@@ -96,12 +99,14 @@ one that isn't there (moved, deleted) gives the sections back.
   vau newtab button icon audio-recorder:voice-note mic
   vau newtab button icon audio-recorder:voice-note ""   (its command's icon again)
   vau newtab page Dashboards/Start.md
-  vau newtab page ""   (the sections again)`
+  vau newtab page ""   (the sections again)
+  vau newtab opens switcher
+  vau newtab opens view:web`
 
 export function newTabOps(app: App): Op[] {
   const cmds = () => commandList(pluginList(app).filter((p) => p.tier === "vault"))
-  /** Write one key (`sections`, `actions`, `icons` or `page`) and answer with the page after. */
-  const write = (key: "sections" | "actions" | "icons" | "page", list: string[] | Record<string, string> | string | null) => {
+  /** Write one key (`sections`, `actions`, `icons`, `page` or `opens`) and answer with the page after. */
+  const write = (key: "sections" | "actions" | "icons" | "page" | "opens", list: string[] | Record<string, string> | string | null) => {
     app.vault.patchConfig("newtab", { [key]: list })
     return sectionList(app)
   }
@@ -176,6 +181,20 @@ export function newTabOps(app: App): Op[] {
       const file = /\.md$/i.test(rel) ? rel : `${rel}.md`
       if (!app.vault.entries.has(file)) throw new OpError(`no note '${file}' in the vault: give a dashboard's path (vau ls, or make one: vau docs dashboards)`, 404)
       return write("page", file)
+    },
+    ...result,
+  },
+  {
+    id: "newtab.opens", cli: "newtab opens", kind: "write",
+    summary: "What a new tab (⌘T, the + buttons) opens: its page, the quick switcher as a launcher, or a view's tab (view:web, a web page).",
+    help: "What a new tab opens: page (the default), switcher or a view's tab (view:web). See vau newtab --help.",
+    params: { what: { type: "string", required: true, description: "page (a blank tab's page), switcher (the quick switcher) or view:<name> (view:web: a web page)" } },
+    args: ["what"],
+    run: (given) => {
+      const what = String(given.what ?? "").trim()
+      if (what !== "page" && !isOpens(what)) throw new OpError(`'${what}' isn't what a new tab can open: page, switcher or a view's tab (view:web)`)
+      // (the page is the default: its key goes)
+      return write("opens", what === "page" ? null : what)
     },
     ...result,
   },

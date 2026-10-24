@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { ChevronDown, ChevronRight, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSet, HeadingButton, isPopout, menuFor, newTab,
+  canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSet, HeadingButton, isPopout, menuFor, openNewTab,
   notifyError, openView, panesOf, pastEnd, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetNameField, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useRenaming, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
@@ -235,7 +235,7 @@ function TabsPanel({ store, open }: SidebarCtx) {
     // (a right-click anywhere but a tab, a group or a device has the panel's menu: `menu`)
     <div className="flex shrink-0 flex-col" data-tabs-panel>
       <SidebarHeading title="Tabs" open={open}>
-        <HeadingButton icon={Plus} label="New tab" onClick={() => newTab()} />
+        <HeadingButton icon={Plus} label="New tab" onClick={() => openNewTab()} />
       </SidebarHeading>
       <TabRows store={store} />
       <OtherDevices store={store} />

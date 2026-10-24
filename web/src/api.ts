@@ -49,6 +49,8 @@ export { startedFresh } from "@/core/workspace"
 // Its tabs one by one (the Tabs panel): the layout live, its panes, showing, closing and opening a tab, and what each
 // tab shows and its menu, as in its bar.
 export { closeTab, goHere, hashOf, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
+// What the + buttons open: a blank tab, or the quick switcher picking it (newtab.json's `opens`).
+export { openNewTab } from "@/core/launcher"
 export { leaves as panesOf, type Group as TabGroup, type Tab } from "@/core/layout"
 export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Tab groups (a pane's named, coloured runs of tabs): their menu, names and folding, and drops among a pane's tabs drawn

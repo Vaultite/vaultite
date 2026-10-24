@@ -1,5 +1,5 @@
 // Search across the vault, fuzzy like fzf (words in any order, word starts and runs score higher; titles win). Archived
-// files come last and never as suggestions; plugins add live things with `searchLive`.
+// files come last and never as suggestions; plugins add live things with `searchLive`, and what the query finds with `searchQuery`.
 import { useEffect, useMemo, useState } from "react"
 import { FileText } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -73,6 +73,44 @@ export function useSearchIndex(store: Store): Doc[] {
     return [...buildIndex(store, disabled, order), ...found]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, disabled, order, live, version])
+}
+
+/** Docs a plugin found for `query` as hits, in its order: the words marked where they are. */
+function asHits(docs: Doc[], query: string): Hit[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return docs.map((d) => ({ ...d, marks: fuzzy(query, d.title)?.marks ?? marksOf(wordRanges(d.title, words)), metaMarks: marksOf(wordRanges(d.meta, words)), score: 0 }))
+}
+
+/** What plugins find by the query as it's typed (`searchQuery.find`), asked 150 ms after typing stops: by section. */
+export function useQueried(query: string): { section: string; hits: Hit[] }[] {
+  const { disabled, order } = usePrefs()
+  const finders = useMemo(() => active(disabled, order).filter((p) => p.searchQuery?.find), [disabled, order])
+  const [found, setFound] = useState<{ section: string; hits: Hit[] }[]>([])
+  useEffect(() => {
+    const q = query.trim()
+    // (nothing found stays the same nothing: no render)
+    const set = (next: { section: string; hits: Hit[] }[]) => setFound((was) => (next.length || was.length ? next : was))
+    if (!q || !finders.length) { set([]); return }
+    let on = true
+    const t = setTimeout(() => void Promise.all(finders.map((p) => p.searchQuery!.find!(q).then(
+      (docs) => ({ section: p.searchQuery!.section ?? p.name, hits: asHits(docs, q) }), () => null)))
+      .then((all) => { if (on) set(all.filter((g) => !!g?.hits.length) as { section: string; hits: Hit[] }[]) }), 150)
+    return () => { on = false; clearTimeout(t) }
+  }, [query, finders])
+  return found
+}
+
+/** Plugins' rows for the query itself (`searchQuery.typed`). */
+export function typedHits(query: string, disabled: string[], order: string[]): Hit[] {
+  const q = query.trim()
+  if (!q) return []
+  return active(disabled, order).flatMap((p) => { try { return (p.searchQuery?.typed?.(q) ?? []).map((d) => ({ ...d, marks: [], score: 0 })) } catch { return [] } })
+}
+
+/** What a new tab's switcher says while a plugin lists its typed rows first there; null: none does now. */
+export function launcherText(disabled: string[], order: string[]): string | null {
+  for (const p of active(disabled, order)) { const t = p.searchQuery?.typed && p.searchQuery.launcher?.(); if (t) return t }
+  return null
 }
 
 /** A hit's grey text: `meta` with the words marked, or, when a word is in neither its title nor its meta, the part of

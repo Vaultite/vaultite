@@ -240,6 +240,9 @@ export type ViewDef = {
   render: (ctx: ViewCtx) => ReactNode
   /** Draw edge to edge, filling the pane below the tab bar (no path bar, no page margins): a terminal. */
   full?: boolean
+  /** It can be what a new tab opens (newtab.json `opens`: `view:<name>`), named so where that's chosen ("Web page");
+   *  `here` false where it can't show (a blank tab opens instead). */
+  asNewTab?: { label: string; here?: () => boolean }
   /** The tab a new tab of it opens beside, in that tab's pane and tab group, when one shows it (`file:Notes/Idea.md`: a
    *  session started on that note), as a browser opens a tab beside the one it came from; null: beside the current one. */
   opensBeside?: (arg: string) => string | null
@@ -565,6 +568,16 @@ export type PluginDef = {
   /** Things it finds that aren't in the store (running terminals): `docs` is asked whenever search looks, and
    *  `subscribe` says when they change while search is open. */
   searchLive?: { docs: () => SearchDoc[]; subscribe: (changed: () => void) => () => void }
+  /** What the quick switcher finds by the query itself, too many to index (the browsing history). */
+  searchQuery?: {
+    /** Things matching it, asked a moment after typing stops (the last answer wins), listed under `section`. */
+    find?: (q: string) => Promise<SearchDoc[]>; section?: string
+    /** Rows for the text itself, at once (open it as an address, search the web for it): after the matches. */
+    typed?: (q: string) => SearchDoc[]
+    /** What a new tab's switcher (newtab.json `opens`) says while it lists `typed` first ("Search or enter address…");
+     *  null: not here (no web tabs in this app). */
+    launcher?: () => string | null
+  }
   links?: (store: Store) => LinkTarget[]
   /** Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser.
    *  The first plugin that's on and takes it wins. */

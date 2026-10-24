@@ -20,6 +20,7 @@ import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewe
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
+import { switcherSearch } from "./switcher"
 
 const WebPage = lazy(() => import("./WebPage"))
 
@@ -198,6 +199,8 @@ export default definePlugin({
       // (with appearance `tabTint`: the active tab in its container's colour, lightly)
       tabTint: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
       full: true,
+      // (what a new tab can be, its address to type: in the desktop app, where pages show)
+      asNewTab: { label: "Web page", here: () => !!webPages },
       // The address is the page's own state: following a link changes the tab's arg, not the page.
       argState: true,
       // Pinned by its address, named by its title (kept up to date while it's open).
@@ -235,6 +238,8 @@ export default definePlugin({
     "web-history": { icon: History, title: () => "History", render: () => <HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /> },
   },
   files: { types: ["bookmarks"], icon: Bookmark },
+  // Its tabs, bookmarks, history and the web in the quick switcher, the browser's command bar (⌘T's, with newtab.json `opens`).
+  ...switcherSearch(openPage),
   sidebar: {
     "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
       menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} /> },

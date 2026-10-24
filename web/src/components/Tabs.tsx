@@ -6,11 +6,12 @@ import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Headi
 import type { Store } from "@/core/data"
 import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
-import { askRename, canClosePane, closePane, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, newTab, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
+import { askRename, canClosePane, closePane, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
 import { moveTabsTo, hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { leaves, vaultPath, type Group, type Tab, type TabSet } from "@/core/layout"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
+import { openNewTab } from "@/core/launcher"
 import { addToSet, allSets, askRenameSet, closeSet, colorSet, doneRenaming, foldSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet, useRenaming } from "@/core/tabsets"
 import { colorItems, dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
@@ -195,7 +196,7 @@ function barItems(group: Group): MenuItem[] {
 /** Right-click on a tab bar's empty space. */
 function barMenu(group: Group): MenuItem[] {
   return [
-    { label: "New tab", icon: Plus, run: () => newTab(group.id) },
+    { label: "New tab", icon: Plus, run: () => openNewTab(group.id) },
     ...commandItems("tab:reopen"),
     ...(hasMainWindow() ? [{ label: "Move all to main window", icon: AppWindow, run: () => moveToMain(group.tabs.map((t) => t.id)) }] : []),
     ...barItems(group),
@@ -523,7 +524,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
           return chip ? [chip, item] : item
         })}
         {/* Right after the last tab (not pinned to the bar's end). */}
-        <button type="button" onClick={() => newTab(group.id)} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
+        <button type="button" onClick={() => openNewTab(group.id)} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
           <Plus className="size-4" strokeWidth={2} />
         </button>

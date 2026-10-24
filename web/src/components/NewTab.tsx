@@ -1,7 +1,7 @@
 // A blank tab's page: newtab.json's sections, reordered by drag and changed from its menu (like `vau newtab`), all drawn at
 // the sidebar's sizes (SidebarRow) and the page a size up as one (`data-size-up`). A button is its command.
 import { useId, useRef, type MouseEvent, type ReactNode, type RefObject } from "react"
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, LayoutDashboard, MousePointerClick, Plus, RotateCcw, Smile, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, LayoutDashboard, MousePointerClick, Plus, RotateCcw, Smile, SquarePlus, Trash2 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { getStore } from "@/core/data"
 import { folderOf, stem } from "@/core/files"
@@ -12,6 +12,7 @@ import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
 import { reorder, slotAt, useSlide } from "@/core/slide"
 import { commandIcon } from "@/core/pages"
 import { newTabSections, sidebarPanels } from "@/core/plugins"
+import { opensChoices, setOpens } from "@/core/launcher"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { choose } from "@/components/Chooser"
@@ -279,6 +280,7 @@ function customizeMenu(phone: boolean, hit: { action?: string; section?: string 
   }
   out.push({ label: "Sections", icon: Layers, sep: !!out.length, run: () => {}, items: sections })
   out.push({ label: "Show a page instead…", icon: LayoutDashboard, run: () => chooseNewTabPage() })
+  out.push({ label: "New tabs open", icon: SquarePlus, run: () => {}, items: opensChoices().map((c) => ({ label: c.label, checked: c.value === newTab.opens, run: () => void setOpens(c.value) })) })
   if (newTab.sections || newTab.actions || newTab.icons) out.push({ label: "Reset new tab", icon: RotateCcw, sep: true, run: () => {
     const was = getPrefs().newTab
     void setNewTab({ sections: null, actions: null, icons: null, page: null })

@@ -659,10 +659,13 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("slots: positions to anchors", sl.anchorFor(list, "c", "top") === "a" && sl.anchorFor(list, "a", "bottom") === null && sl.anchorFor(list, "b", "up") === "a" &&
     sl.anchorFor(list, "b", "down") === null && sl.anchorFor(list, "a", "2") === "c" && sl.anchorFor(list, "a", "0") === "b" && sl.anchorFor(list, "x", "2") === "b" && sl.anchorFor(list, "a", "sideways") === undefined)
   check("slots: down from the top lands second", same(sl.placeKey(list, "a", sl.anchorFor(list, "a", "down") ?? null), ["b", "a", "c"]))
-  check("newtab: unset reads as nulls; lists read leniently", same(nt.readNewTab(undefined), { sections: null, actions: null, icons: null, page: null }) &&
+  check("newtab: unset reads as nulls; lists read leniently", same(nt.readNewTab(undefined), { sections: null, actions: null, icons: null, page: null, opens: null }) &&
     same(nt.readNewTab({ sections: ["core:actions", 3, "core:actions", ""], actions: "file:new", icons: { "file:new": " star ", "palette:open": 3, x: "" }, page: 3 }),
-      { sections: ["core:actions"], actions: null, icons: { "file:new": "star" }, page: null }) &&
+      { sections: ["core:actions"], actions: null, icons: { "file:new": "star" }, page: null, opens: null }) &&
     nt.readNewTab({ page: " Dashboards/Start.md " }).page === "Dashboards/Start.md")
+  check("newtab: `opens` is the switcher, a view's tab or unset (the page, its default, and anything else)", nt.readNewTab({ opens: "switcher" }).opens === "switcher" &&
+    nt.readNewTab({ opens: " view:web " }).opens === "view:web" && nt.readNewTab({ opens: "page" }).opens === null && nt.readNewTab({ opens: "file:Notes/A.md" }).opens === null &&
+    nt.readNewTab({ opens: "Switcher" }).opens === null)
   check("newtab: a button's icon set, changed and taken off (none left: unset)", same(nt.withIcon(null, "file:new", "star"), { "file:new": "star" }) &&
     same(nt.withIcon({ "file:new": "star", "palette:open": "x" }, "file:new", ""), { "palette:open": "x" }) && nt.withIcon({ "file:new": "star" }, "file:new", " ") === null)
   const all = [...nt.CORE_SECTIONS, { key: "terminal:sessions", sort: 5, hidden: true }, { key: "pages:tiles", sort: 0 }]

@@ -11,7 +11,7 @@ import { useTypingFade } from "@/core/typing"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canClosePane, canReopenTab, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { activeTab, askRename, canClosePane, canReopenTab, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "@/core/layout"
@@ -50,6 +50,7 @@ import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
 import { IconPicker, pickIcon } from "@/components/IconPicker"
 import { SearchPalette } from "@/components/SearchPalette"
+import { openNewTab } from "@/core/launcher"
 import { Workspace } from "@/components/Workspace"
 import { Resizer } from "@/components/Resizer"
 import { DragGhost, setPageInfo, useTabInfo, type TabInfo } from "@/components/Tabs"
@@ -293,7 +294,7 @@ export default function App() {
   const prevTitle = canBack && store ? sheet_(store, prev, disabled, tabInfo).title : ""
   const sheetDetail = store && sheet ? sheet_(store, sheet, disabled, tabInfo) : null
   // The quick switcher (⌘O) or the command palette (⌘P); their commands are below.
-  const [palette, setPalette] = useState<"search" | "commands" | null>(null)
+  const [palette, setPalette] = useState<"search" | "launcher" | "commands" | null>(null)
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
   const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
@@ -311,6 +312,8 @@ export default function App() {
   useCommands(() => [
     // (`label` and `icon`: as a blank tab's buttons, core/newtab.ts' default ones.)
     { id: "switcher:open", name: "Open quick switcher", keys: ["Mod+O"], run: () => setPalette((p) => (p === "search" ? null : "search")), fromLink: true, label: "Open a file", icon: FileText },
+    // (a new tab's, picking what it shows: what ⌘T opens with newtab.json's `opens`, core/launcher.ts)
+    { id: "switcher:new-tab", name: "Open new tab from quick switcher", run: () => setPalette((p) => (p === "launcher" ? null : "launcher")), icon: Plus },
     { id: "palette:open", name: "Open command palette", keys: ["Mod+P"], run: () => setPalette((p) => (p === "commands" ? null : "commands")), icon: CommandIcon },
     { id: "icon:search", name: "Search icons", run: () => pickIcon({ title: "Search icons", onPick: (n) => copyText(n).then(() => notify(`Copied ${n}: use it as an icon:`, { id: "copied" }), notifyError) }), icon: Smile },
     // ⌘N, ⌘T, ⌘W are the browser's: the desktop app has them (its menu), the web gets another key or none.
@@ -322,7 +325,7 @@ export default function App() {
     { id: "sidebar:toggle-right", name: "Show right sidebar", keys: ["Mod+Shift+\\"],
       run: () => { if (isDesktop()) document.querySelector<HTMLElement>("[data-sidebar-toggle=right]")?.click(); else openDrawer(drawerOut() === "right" ? null : "right") }, icon: PanelRight,
       nameWhenOn: "Hide right sidebar", on: () => (isDesktop() ? document.querySelector("[data-sidebar-toggle=right]")?.getAttribute("aria-expanded") === "true" : drawerOut() === "right") },
-    { id: "tab:new", name: "Open new tab", keys: desktopApp ? ["Mod+T"] : undefined, when: isDesktop, run: () => newTab(), icon: Plus },
+    { id: "tab:new", name: "Open new tab", keys: desktopApp ? ["Mod+T"] : undefined, when: isDesktop, run: () => openNewTab(), icon: Plus },
     { id: "split:right", name: "Split right", keys: ["Mod+Alt+\\"], when: isDesktop, run: () => splitTab("right"), icon: Columns2 },
     { id: "split:down", name: "Split down", when: isDesktop, run: () => splitTab("bottom"), icon: Rows2 },
     { id: "split:move-right", name: "Move current tab to new split right", when: () => isDesktop() && hasSiblings(activeTab().id), run: () => moveToSplit("right"), icon: SquareSplitHorizontal },
@@ -581,7 +584,7 @@ export default function App() {
         {sheetDetail && <Guard key={sheet} what="This sheet" size="tab" reset={sheet}>{sheetDetail.body}</Guard>}
       </DetailSheet>
 
-      {palette === "search" && store && <SearchPalette store={store} onClose={() => setPalette(null)} />}
+      {(palette === "search" || palette === "launcher") && store && <SearchPalette key={palette} store={store} launcher={palette === "launcher"} onClose={() => setPalette(null)} />}
       {palette === "commands" && <CommandPalette onClose={() => setPalette(null)} />}
       <FolderPicker />
       <Chooser />

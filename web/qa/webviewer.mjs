@@ -2,7 +2,7 @@
 // tab, a native view laid over its pane (splits, sidebar, dividers, zoom), live under the window's page while the
 // palette, a menu, a drag or a toast is over it (the window raised, see-through there, a toast's pointer passed on), kept on tab switches; links, back, new tabs (a middle-click on Back, a ⌘-click on Reload) and other schemes; no bridge into the app; app
 // shortcuts from the page; Save to vault, downloads, an image's menu; a tab's page is its own (a slow one switched away
-// from and back, two tabs of one address, ⌘⇧T); closing ends the page. SHOW=1 shows the window;
+// from and back, two tabs of one address, ⌘⇧T); the quick switcher as ⌘T's launcher; closing ends the page. SHOW=1 shows the window;
 // screenshots (screencapture, so the native view is in them) go to <out dir>.
 // WRITES: the throwaway vault only.
 //   node web/qa/webviewer.mjs <vault copy> <out dir>
@@ -498,6 +498,44 @@ await menuClick("Close tab")
 check("… closing one leaves the others'", await until(async () => (await threes()) === t0 + 1, 5000) && (await wait(500), (await threes()) === t0 + 1), await pages())
 await menuClick("Close tab")
 await until(async () => (await pages()).length === n0, 5000)
+
+// ---------- the quick switcher: the browser's command bar (newtab.json `opens`) ----------
+const SEARCH = '[role="dialog"][aria-label="Search"]'
+const options = () => win.$$eval("#palette-results [role=option]", (els) => els.map((e) => e.textContent.trim()))
+const headings = () => win.$$eval("#palette-results [role=presentation]", (els) => els.map((e) => e.textContent.trim()))
+const tabCount = () => win.locator("[role=tab]").count()
+const opensAs = async (what) => { await fetch(`${origin}/api/ops/newtab.opens`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ what }) }); await wait(2000) }
+await ui({ action: "open", path: "Notes/Reading list.md" })
+await until(async () => !(await shown()), 10000)
+await opensAs("switcher")
+const t1 = await tabCount()
+await menuClick("New tab")
+check("⌘T with opens switcher: the switcher as a launcher, no tab yet", !!(await until(() => win.$(SEARCH), 8000)) && await tabCount() === t1 &&
+  (await win.getAttribute(`${SEARCH} input`, "placeholder")) === "Search or enter address…")
+await win.keyboard.press("Escape")
+check("… Escape: nothing opened, no blank tab left", await until(async () => !(await win.$(SEARCH)), 4000) && await tabCount() === t1, await tabCount())
+await menuClick("New tab")
+await until(() => win.$(SEARCH), 8000)
+await win.keyboard.type("lighthouse")
+const rows = await until(async () => { const o = await options(); return o.some((t) => /Switch to tab/.test(t)) && o }, 8000)
+check("launcher: the web search first, the open tab offered", /^Search the web for "lighthouse"/.test(rows?.[0] ?? "") && !!rows, rows)
+// (a page visited before, by a link and typed, whose tab is elsewhere now)
+await win.fill(`${SEARCH} input`, "second part")
+const hist = await until(async () => (await headings()).includes("History") && await options(), 8000)
+check("launcher: history under its own section", !!hist && hist.some((t) => /Second part/.test(t)), { hist, h: await headings() })
+await win.fill(`${SEARCH} input`, `127.0.0.1:${PORT}/two`)
+await until(async () => /^Open /.test((await options())[0] ?? ""), 4000)
+check("launcher: an address is first, to open", /^Open 127\.0\.0\.1/.test((await options())[0] ?? ""), await options())
+await win.keyboard.press("Enter")
+check("… Enter opens it in a new tab", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/two`), 10000) && await tabCount() === t1 + 1, await pages())
+await menuClick("Close tab")
+await until(async () => await tabCount() === t1, 5000)
+await opensAs("view:web")
+await menuClick("New tab")
+check("opens view:web: ⌘T is a web tab, its address to type", await until(() => win.evaluate(() => document.activeElement?.matches("[data-web-address]") && !!document.querySelector("[data-web-start]")), 8000) &&
+  await tabCount() === t1 + 1)
+await menuClick("Close tab")
+await opensAs("page")
 
 // ---------- closing ----------
 const count = (await pages()).length
