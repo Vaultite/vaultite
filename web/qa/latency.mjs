@@ -238,7 +238,7 @@ async function loadOnce(s, reload) {
 /** The editor's view of the shown note, to put the cursor somewhere without a hundred arrow keys. */
 const cursorTo = (s, frac) => s.page.evaluate((f) => {
   const el = [...document.querySelectorAll(".cm-content")].find((e) => e.getClientRects().length && !e.closest("[data-kept]"))
-  const view = el?.cmView?.view ?? el?.cmView?.rootView?.view
+  const view = el?.cmTile?.root?.view
   if (!view) return false
   const pos = view.state.doc.line(Math.floor(view.state.doc.lines * f)).to
   view.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
@@ -297,7 +297,7 @@ async function run(n) {
   await s.page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, LONG)
   await until(() => s.page.evaluate(() => window.__lat.shows("Section 0")), 15000)
   await quiet(s)
-  await cursorTo(s, 0.5)
+  check("the cursor put in the middle of the long note", await cursorTo(s, 0.5))
   r.typing = await typing(s, "typing")
   await wait(1500) // (its autosave)
 
@@ -362,7 +362,7 @@ async function run(n) {
     // The command palette: opened, a query typed, closed.
     const pal = [], palType = []
     for (let k = 0; k < 3; k++) {
-      await cursorTo(s, 0.5)
+      check("the cursor put in the middle of the long note", await cursorTo(s, 0.5))
       pal.push(await step(s, "palette", () => s.page.keyboard.press("ControlOrMeta+p"), () => !!document.querySelector("[role=dialog] [role=option]")))
       palType.push(await step(s, "paletteType", () => s.page.keyboard.type("split", { delay: 60 }), () => [...document.querySelectorAll("[role=dialog] [role=option]")].some((o) => /split/i.test(o.textContent))))
       await s.page.keyboard.press("Escape")
