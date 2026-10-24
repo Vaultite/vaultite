@@ -8,7 +8,7 @@ import http from "node:http"
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { apiAt, openPalette, qa, terminalText, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, qa, tailnet, terminalText, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -239,13 +239,7 @@ for (const dark of [false, true]) {
 }
 await browser.close()
 
-// Through Serve a login only counts on this machine's own tailnet name (core/owner.ts): Tailscale's, when it's here.
-let owner = "", name = ""
-for (const bin of ["tailscale", "/usr/local/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]) {
-  let st
-  try { st = JSON.parse(execFileSync(bin, ["status", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })) } catch { continue }
-  owner = st.User?.[String(st.Self?.UserID)]?.LoginName ?? ""; name = String(st.Self?.DNSName ?? "").replace(/\.$/, ""); break
-}
+const { name, owner = "" } = tailnet()
 const host = new URL(B).host, ts = `${name || "home-mac.example.ts.net"}:8447`, other = "home-mac.example.ts.net:8447"
 const before = (await apiAt(B)("GET", "config/plugin/terminal")).allowUsers ?? null // (this machine's, set by its owner)
 await apiAt(B)("PATCH", "config/plugin/terminal", { allowUsers: ["qa-friend@example.com"] })

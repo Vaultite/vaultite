@@ -1,5 +1,6 @@
 // What every QA script shares: its arguments (read from its own usage line), Chrome, the checks and the exit code.
 //   const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import { createRequire } from "node:module"
 import net from "node:net"
@@ -139,6 +140,18 @@ export async function fingers(page) {
 }
 
 /** What the page's terminals show, as text. */
+/** This machine's tailnet name and owner's login, from Tailscale ({} without it): a login through Serve only counts
+ *  on the machine's own name (core/owner.ts). */
+export function tailnet() {
+  for (const bin of ["tailscale", "/usr/local/bin/tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]) {
+    let st
+    try { st = JSON.parse(execFileSync(bin, ["status", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })) } catch { continue }
+    const name = String(st.Self?.DNSName ?? "").replace(/\.$/, "")
+    return name ? { name, owner: st.User?.[String(st.Self?.UserID)]?.LoginName ?? "" } : {}
+  }
+  return {}
+}
+
 export const terminalText = (page) => page.evaluate(() => [...document.querySelectorAll("[data-terminal]")].map((e) => e.terminalText?.() ?? "").join("\n"))
 
 export const freePort = () => new Promise((resolve) => {

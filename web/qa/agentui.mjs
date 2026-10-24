@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import WebSocket from "ws"
-import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { apiAt, qa, tailnet, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/agentui-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("/api/vault", B))).json()).path
@@ -155,9 +155,10 @@ try {
 
 // Terminals: the shell's environment.
 const BIN = path.resolve(import.meta.dirname, "../../bin") // the server under test runs from this checkout
-// (As printed: escapes the shell's prompt draws, a cursor shape, may begin a line.)
-const env = (await shell(`env | grep -E '^VAULTITE' | sort; echo "$PATH" | tr : '\\n' | grep -qx '${BIN}' && echo HAS-BIN; command -v vau || echo no-vau-yet`))
-  .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+// (As printed: escapes the shell's prompt draws, a cursor shape, systemd's OSC 3008 on Ubuntu 26.04, may begin a line,
+// and a grep alias colours what matched.)
+const plain = (s) => s.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "")
+const env = plain(await shell(`env | grep -E '^VAULTITE' | sort; echo "$PATH" | tr : '\\n' | grep -qx '${BIN}' && echo HAS-BIN; command -v vau || echo no-vau-yet`))
 const has = (k, v) => new RegExp(`^${k}=${v}\\r?$`, "m").test(env)
 check("VAULTITE=1", has("VAULTITE", "1"), env)
 check("VAULTITE_URL is this server", has("VAULTITE_URL", `http://127\\.0\\.0\\.1:${new URL(B).port}`), env)
@@ -167,9 +168,11 @@ check("no VAULTITE_REMOTE locally", !env.includes("VAULTITE_REMOTE"), env)
 check("the app's bin/ on PATH", /^HAS-BIN\r?$/m.test(env), env)
 // Through Tailscale Serve (a login in allowUsers): VAULTITE_REMOTE=tailscale.
 await apiAt(B)("PATCH", "config/plugin/terminal", { allowUsers: ["qa-friend@example.com"] }) // (this machine's, set by its owner)
-const ts = "home-mac.example.ts.net:8447"
-const remote = await shell("env | grep VAULTITE_REMOTE", { Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "qa-friend@example.com" })
-check("VAULTITE_REMOTE=tailscale through Serve", /VAULTITE_REMOTE=tailscale/.test(remote), remote)
+const { name } = tailnet(), ts = `${name}:8447`
+if (name) {
+  const remote = plain(await shell("env | grep VAULTITE_REMOTE", { Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "qa-friend@example.com" }))
+  check("VAULTITE_REMOTE=tailscale through Serve", /VAULTITE_REMOTE=tailscale/.test(remote), remote)
+} else console.log("skip VAULTITE_REMOTE=tailscale through Serve (no Tailscale)")
 // Claude Code gets the context.
 const cid = `claude-qa${Date.now().toString(36)}`
 const ws = new WebSocket(new URL(`/api/terminal/${cid}`, B).href.replace(/^http/, "ws"), { headers: { Origin: new URL(B).origin } })
