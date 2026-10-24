@@ -12,7 +12,7 @@ import { openDetail } from "@/core/nav"
 import { launcherText, search, suggestions, typedHits, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
-import { Marked, Palette } from "@/components/Palette"
+import { Marked, Palette, useFinderQuery } from "@/components/Palette"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 
 type Found = { path: string; title: string; context: string; mtime: number; archived?: boolean }
@@ -42,7 +42,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   /** A new tab's (newtab.json `opens`): what's picked opens in a new tab. */
   launcher?: boolean }) {
   const docs = useSearchIndex(store)
-  const [q, setQ] = useState("")
+  const { query: q, setQuery: setQ, select, picked } = useFinderQuery()
   const { node, error } = useMemo(() => readQuery(q), [q])
   const plain = !node || isPlain(node)
   const opened = useRecentFiles()
@@ -92,6 +92,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
 
   const go = (h: Hit, mod = false) => {
     const newTab = launcher || mod
+    picked()
     onClose()
     if (h.run) setTimeout(() => h.run!(newTab), 0)
     else if (h.to) setTimeout(() => openView(h.to!, { newTab: true }), 0)
@@ -101,13 +102,14 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   // ⇧Enter: a note named what was typed, where every new note goes (newNoteFolder).
   const create = async (newTab: boolean) => {
     if (!cleanName(q)) return
+    picked()
     onClose()
     const f = await createNamed(newNoteFolder(getStore(), currentFile()), q)
     if (f) openNew(f.path, { newTab: launcher || newTab })
   }
 
   return (
-    <Palette label="Search" placeholder={lead ?? "Find or create a note…"} query={q} setQuery={setQ} items={hits} onClose={onClose} look={fileIcons}
+    <Palette label="Search" placeholder={lead ?? "Find or create a note…"} query={q} setQuery={setQ} select={select} items={hits} onClose={onClose} look={fileIcons}
       onEnd={more ? () => setLimit((n) => n + PAGE) : undefined}
       onPick={(h, { mod, shift }) => (shift || !h ? create(mod) : go(h, mod))}
       heading={!q.trim() ? "Recent files and pages" : node && !plain ? explain(node) : undefined}

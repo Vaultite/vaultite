@@ -13,6 +13,23 @@ export type Pick = { mod: boolean; shift: boolean }
 /** Rows drawn at first, and how many more each time the list is scrolled near its end. */
 const ROWS = 60
 
+/** What was typed in ⌘O, ⌘P or the new tab's finder: the other opened over it goes on with it; one opened in the two
+ *  minutes after leaving without a pick shows it selected, so typing starts afresh. */
+const KEEP_MS = 2 * 60_000
+/** (kept as it's typed: the finder opened instead renders before the one it replaces is gone) */
+let left: { text: string; at: number; open: boolean } | null = null
+export function useFinderQuery() {
+  const [first] = useState(() => {
+    if (left?.open) return { text: left.text, select: false }
+    return left && Date.now() - left.at < KEEP_MS ? { text: left.text, select: true } : { text: "", select: false }
+  })
+  const [query, setQuery] = useState(first.text)
+  const picked = useRef(false)
+  useEffect(() => { left = query.trim() ? { text: query, at: Date.now(), open: true } : null }, [query])
+  useEffect(() => () => { if (picked.current) left = null; else if (left) left = { ...left, at: Date.now(), open: false } }, [])
+  return { query, setQuery, select: first.select, picked: () => { picked.current = true } }
+}
+
 /** Matched characters (indexes into `text`, as JavaScript counts them) drawn in the accent colour. */
 export function Marked({ text, marks }: { text: string; marks: number[] }) {
   if (!marks.length) return <>{text}</>
@@ -65,9 +82,11 @@ const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
   )
 })
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look }: {
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string) => void
+  /** Open with the query selected (a kept one: useFinderQuery), else the caret after it. */
+  select?: boolean
   items: T[]
   row: (item: T, selected: boolean) => ReactNode
   /** Enter or a click on `item` (null: Enter with nothing listed). */
@@ -93,7 +112,11 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const list = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   // The page under it held still (PaletteFrame), then the field focused.
-  useLayoutEffect(() => input.current?.focus({ preventScroll: true }), [])
+  useLayoutEffect(() => {
+    const f = input.current
+    f?.focus({ preventScroll: true })
+    f?.setSelectionRange(select ? 0 : f.value.length, f.value.length)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // On a phone, dragging the results puts the keyboard away (core/pagelock.ts).
   useEffect(() => (list.current ? dismissKeyboardOnDrag(list.current) : undefined), [])
   // Typing selects the first row in that same render: an effect left a frame where Enter picked a row no longer listed.

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **⌘O and ⌘P keep what you typed**: pressing one for the other carries the text over; closed without picking, the
+  next one opened in the following two minutes shows it, selected, so typing starts afresh.
 - **The Ask box keeps what you typed**: clicking off it or Esc no longer loses the question; it's there the next time
   it opens, until it's asked.
 - **One rule for what shows when tabs go**: closing selected tabs, and tabs moved or closed in another workspace

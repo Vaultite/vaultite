@@ -8,7 +8,7 @@ import { isEnabled, names, pluginById, setSwitch, switchedOn, usePlugins, type P
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { fuzzy, hasWords } from "@/core/fuzzy"
-import { Keys, Marked, Palette } from "@/components/Palette"
+import { Keys, Marked, Palette, useFinderQuery } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
 /** `plugin`: a row that switches a plugin, which is now on or off. */
@@ -88,7 +88,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const all = useCommandList()
   const plugins = usePlugins()
   const { disabled } = usePrefs()
-  const [q, setQ] = useState("")
+  const { query: q, setQuery: setQ, select, picked } = useFinderQuery()
   // (only what kind of setting it is: the hints change with it, and keeping the row itself redrew every row each move)
   const [setting, setSetting] = useState<"switch" | "choice" | null>(null)
   const switched = useSwitches()
@@ -114,10 +114,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }, [all, q, plugins, disabled, names])
 
   return (
-    <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} items={rows} onClose={onClose}
+    <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} select={select} items={rows} onClose={onClose}
       // Switching a plugin isn't a command: it's left out of the recent ones.
       onPick={(c, how) => {
         if (!c) return
+        picked()
         onClose()
         setTimeout(() => (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)), 0)
       }}
