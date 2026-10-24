@@ -5,13 +5,15 @@
   server's own children. Names follow the port, so a QA server's shells stay out of the live list. Under a systemd
   unit the keeper and tmux need their own scope, or a restart kills them.
 - One shell has one size, the last device's; a view used again that doesn't match sends its own.
-- A terminal's state (the list's `state`, the service "inbox:state") comes from OSC 7501 (`osc7501.ts`) when its program
-  speaks it, else its agent's hooks, else a question its agent declares seen on its screen. Its agent's own word that it waits (the service "terminal:agent-waits": Claude Code's session file says `waiting`) blocks it whatever those say: Claude Code has dialogs no hook or report tells (2026-10-22, its one-time question on reads outside the working directories showed as working for an hour). A blocked report without a
-  kind (Codex's) waits for that question on screen for its kind and words: Approve and Deny need it. Codex never probes. OSC 7501 is answered and
-  read where the pty is held (the keeper, the server's own shells), in stream order: the probe's answer has to reach the
-  program before the primary DA answer right after it (Claude Code takes a DA answer first as "not spoken here"). tmux
-  answers DA itself and drops the OSC, so agents there stay on hooks; a keeper an older build started speaks it only once
-  it's restarted.
+- A terminal's state (the list's `state`, the service "inbox:state") comes from OSC 7501 (`osc7501.ts`) when its
+  program speaks it, else its agent's hooks, else a question its agent declares seen on its screen. Its agent's own
+  word that it waits ("terminal:agent-waits": Claude Code's session file) blocks it whatever those say: Claude Code
+  has dialogs no hook tells. A blocked report without a kind (Codex's, which never probes) waits for that question on
+  screen: Approve and Deny need its words.
+- OSC 7501 is answered where the pty is held (the keeper, the server's own shells), in stream order: the probe's
+  answer must reach the program before the primary DA answer after it (Claude Code takes a DA answer first as "not
+  spoken here"). tmux answers DA itself and drops the OSC, so agents there stay on hooks; a keeper an older build
+  started speaks it only once restarted.
 - Terminal ids: `<name>-<id>` starts agent `<name>`, `<name>_<account>-<id>` in an account, `resume-<name>-<session>`
   resumes, through the service `agent:<name>` of the plugin that brings it.
 - A tab opened from outside only attaches (a page starts only ids it minted), so `vau terminal open` starts the session
