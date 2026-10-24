@@ -2,7 +2,7 @@
 // from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentAsk, type AgentMeter, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
+import { type AgentAsk, type AgentCommand, programOf, type AgentMeter, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
   priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
@@ -10,6 +10,7 @@ import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
+const WIN = process.platform === "win32"
 const CODEX = process.env.CODEX_HOME || path.join(HOME, ".codex")
 plugin.folders(() => [CODEX])
 
@@ -194,9 +195,9 @@ async function summary(days: number) {
  *  when each started and its folder. */
 const codexProcesses = () => plugin.memo(2, async function codexProcesses() {
   const out = (await processes()).flatMap(({ pid, started, command }) => {
-    const m = /^(\S+)(.*)$/.exec(command)
-    if (!m || path.basename(m[1]) !== "codex" || /\b(app-server|exec-server|mcp-server|daemon|remote-control)\b/.test(m[2])) return []
-    return [{ pid, started, exec: /^\s+(exec|e)\b/.test(m[2]), cwd: "" }]
+    const [name, rest] = programOf(command)
+    if (name !== "codex" || /\b(app-server|exec-server|mcp-server|daemon|remote-control)\b/.test(rest)) return []
+    return [{ pid, started, exec: /^\s+(exec|e)\b/.test(rest), cwd: "", args: rest }]
   })
   const dirs = await cwds(out.map((p) => p.pid))
   for (const p of out) p.cwd = dirs.get(p.pid) ?? ""
@@ -210,7 +211,9 @@ async function live(fresh = false): Promise<Live[]> {
   const metas = [...scan.sessions().values()]
   const out: Live[] = []
   for (const [p, m] of sessionsOf(await codexProcesses(), (s: Meta) => s.id, (p, free) =>
-    sortBy(metas.filter((s) => s.cwd === p.cwd && s.last * 1000 >= p.started - 5000 && free(s)), (s) => -s.last)[0])) {
+    // (Windows can't tell a process's folder: a session begun since it started, or the one it resumes)
+    sortBy(metas.filter((s) => s.last * 1000 >= p.started - 5000 && free(s) && (s.cwd === p.cwd ||
+      (!p.cwd && WIN && (s.first * 1000 >= p.started - 5000 || p.args.includes(s.id))))), (s) => -s.last)[0])) {
     const terminal = await terminalOf(plugin, p.pid)
     if (!m && !terminal) continue
     out.push({ pid: p.pid, id: m?.id ?? "", title: (m && (scan.names.get(m.id) || m.title)) || "", name: m ? scan.names.get(m.id) ?? "" : "",
@@ -336,11 +339,12 @@ plugin.provide("agent-meters:codex", async (): Promise<AgentMeter[]> =>
 
 /** `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared
  *  background server, so no context (it reads the vault's AGENTS.md itself) and no hooks. */
-plugin.provide("agent:codex", async ({ resume, prompt }: AgentStart) => {
-  const t = resume ? await transcript(resume) : null
-  if (resume && !t) return notOnThisMachine("Codex", resume)
-  return { command: resume ? `codex resume ${shellQuote(resume)}${prompt ? ` ${shellQuote(prompt)}` : ""}` : prompt ? `codex -- ${shellQuote(prompt)}` : "codex",
-    cwd: t?.talk.head.cwd || null }
+plugin.provide("agent:codex", async ({ resume, prompt, wsl }: AgentStart): Promise<AgentCommand> => {
+  // (inside WSL its sessions are the distro's own)
+  const t = resume && !wsl ? await transcript(resume) : null
+  if (resume && !t && !wsl) return notOnThisMachine("Codex", resume)
+  const argv = ["codex", ...(resume ? ["resume", resume, ...(prompt ? [prompt] : [])] : prompt ? ["--", prompt] : [])]
+  return { command: argv.map((x, i) => (i && x !== "resume" && x !== "--" ? shellQuote(x) : x)).join(" "), argv, cwd: t?.talk.head.cwd || null }
 })
 
 /** Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC

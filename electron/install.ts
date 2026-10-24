@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 if (process.platform !== "linux") {
-  console.log("npm run app:install is Linux's. On a Mac, npm run app:build makes Vaultite Main.app in dist-app/.")
+  console.log(process.platform === "win32"
+    ? "npm run app:install is Linux's. On Windows, install a release (npm run release:win builds its installer in dist-app/), or run this checkout with npm run app."
+    : "npm run app:install is Linux's. On a Mac, npm run app:build makes Vaultite Main.app in dist-app/.")
   process.exit(1)
 }
 
@@ -41,7 +43,7 @@ for (const size of [256, 512]) {
   fs.copyFileSync(path.join(ROOT, "web", "public", `icon-${size}.png`), path.join(dir, `${EXE}.png`))
 }
 
-const mimes = (pkg.build.fileAssociations as { mimeType?: string }[]).map((f) => f.mimeType).filter(Boolean)
+const mimes = (pkg.build.linux.fileAssociations as { mimeType?: string }[]).map((f) => f.mimeType).filter(Boolean)
 const apps = path.join(DATA, "applications")
 fs.mkdirSync(apps, { recursive: true })
 fs.writeFileSync(path.join(apps, `${EXE}.desktop`), [

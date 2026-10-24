@@ -991,6 +991,15 @@ html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side
    the icons start as far below it as the line between the rail's groups is from its icons. */
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] [data-rail] { padding-top: 6px; }
 html[data-electron] .vault-manager-drag { -webkit-app-region: drag; }
+/* On Windows (data-platform=win32) the title bar is hidden too and its controls sit over the window's top-right corner,
+   --window-controls wide (electron/preload.cjs): the right sidebar's toggle moves left of them, and the top-right pane's
+   tab bar makes room for both (with a right rail: the controls are wider than it, as the Mac's lights are than the left). */
+html[data-electron][data-platform=win32]:not([data-fullscreen]) [data-sidebar-toggle=right] { right: calc(var(--window-controls, 138px) + 8px); }
+html[data-electron][data-platform=win32]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--spacing) * 10 + var(--window-controls, 138px)); }
+html[data-electron][data-platform=win32][data-no-rails]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--window-controls, 138px) + 8px); }
+html[data-electron][data-platform=win32][data-right-rail]:not([data-fullscreen]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--window-controls, 138px) - var(--spacing)); }
+html[data-electron][data-platform=win32]:not([data-fullscreen]):is(:not([data-right-sidebar]), [data-right-rail]) [data-right-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
+html[data-electron][data-platform=win32] [data-right-corner] > [role="tablist"] { transition: padding-right 200ms cubic-bezier(0, 0, 0.2, 1); }
 
 /* Phones: a drawer (components/PhoneDrawer.tsx) is swiped closed sideways from anywhere on it. touch-action stops at
    the nearest scroller, so every element in it says so, or the panels' scroller would hand a sideways swipe to the

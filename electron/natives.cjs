@@ -72,20 +72,45 @@ exports.default = async function natives(context) {
     console.log(`natives.cjs: ${pkg.name} -> ${name}@${entry.version}`)
   }
 
-  for (const rel of packages(root)) {
-    const dir = path.join(root, rel, "prebuilds")
-    if (!fs.existsSync(dir)) continue
-    for (const p of fs.readdirSync(dir)) {
-      const keep = p.startsWith("darwin-") && p.includes(arch)
-      if (!keep) fs.rmSync(path.join(dir, p), { recursive: true, force: true })
-      // (npm leaves node-pty's x64 spawn-helper not executable)
-      else for (const f of fs.readdirSync(path.join(dir, p))) if (!f.endsWith(".node")) fs.chmodSync(path.join(dir, p, f), 0o755)
-    }
-  }
+  prebuilds(root, "darwin", arch)
 
   const want = arch === "x64" ? "x86_64" : "arm64"
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(path.join(dir, e.name)) : e.isFile() && macho(path.join(dir, e.name)) ? [path.join(dir, e.name)] : [])
   const wrong = walk(app).filter((f) => !archs(f)?.includes(want))
   if (wrong.length) throw new Error(`natives.cjs: not built for ${arch}:\n${wrong.map((f) => path.relative(app, f)).join("\n")}`)
+}
+
+/** Only `platform`-`arch`'s prebuilds in the app's packages (node-pty's), without their debug symbols. */
+function prebuilds(root, platform, arch) {
+  for (const rel of packages(root)) {
+    const dir = path.join(root, rel, "prebuilds")
+    if (!fs.existsSync(dir)) continue
+    for (const p of fs.readdirSync(dir)) {
+      if (p !== `${platform}-${arch}`) { fs.rmSync(path.join(dir, p), { recursive: true, force: true }); continue }
+      for (const f of fs.readdirSync(path.join(dir, p))) {
+        if (f.endsWith(".pdb")) fs.rmSync(path.join(dir, p, f), { recursive: true, force: true })
+        // (npm leaves node-pty's x64 spawn-helper not executable)
+        else if (platform !== "win32" && !f.endsWith(".node")) fs.chmodSync(path.join(dir, p, f), 0o755)
+      }
+    }
+  }
+}
+
+/** A Windows app, built on its own architecture's Windows (nothing is swapped: a package for another fails the build):
+ *  its prebuilds, and its id in its package.json, which main.ts gives Windows as its AppUserModelID (the Start menu
+ *  shortcut's, so its notifications are the app's). */
+exports.windows = function windows(context) {
+  const arch = require("builder-util").Arch[context.arch]
+  const root = path.join(context.appOutDir, "resources", "app")
+  for (const rel of packages(root)) {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, rel, "package.json"), "utf8"))
+    if (pkg.cpu && !pkg.cpu.includes(arch)) throw new Error(`natives.cjs: ${pkg.name} is for ${pkg.cpu.join(", ")}, not ${arch}: build a Windows app on its own architecture`)
+  }
+  prebuilds(root, "win32", arch)
+  // 7-Zip packs arm64 .exe and .dll files with its ARM64 filter, which the installer's older extractor can't undo: it
+  // installed everything but them. BCJ (x86's) is one it knows, and only costs a little size.
+  if (arch === "arm64") process.env.ELECTRON_BUILDER_7Z_FILTER ||= "BCJ"
+  const file = path.join(root, "package.json")
+  fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), appId: context.packager.appInfo.id }, null, 2) + "\n")
 }

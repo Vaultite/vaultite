@@ -1,19 +1,22 @@
 // Where shells live so they can outlive the server: the keeper (ptyd.ts, default), tmux, the server's own child (only
 // when the keeper can't start), or another plugin's. The types here are the contract a plugin's backend implements.
+import crypto from "node:crypto"
 import fs from "node:fs"
 import { shellQuote } from "../../../core/agents.ts"
-import { type Access, accessOf, outliving, runtimeDir } from "../../../core/plugins.ts"
+import { type Access, accessOf, outliving, runtimeDir, toWsl } from "../../../core/plugins.ts"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
 import { REPLY, watcher, type Said } from "./osc7501.ts"
+import { distroOf, kindOf, progName, type ShellKind } from "./shells.ts"
 
-/** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts). */
+/** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts), as
+ *  its shell's kind reads it (plugin.ts: starter.ts's line in PowerShell and cmd). */
 export type AgentRun = { command: string; cwd?: string | null }
 
-/** A new shell: the login shell in `cwd`, running `run` first for an agent. `env`: the server's less what's about it;
+/** A new shell: `shell` (a path, or wsl:<distro>: shells.ts) in `cwd`, running `run` first for an agent. `env`: the server's less what's about it;
  *  `ctx`: Vaultite's variables (VAULTITE_URL..., PATH with the app's bin/ first); `scrollback`: lines kept. */
 export type Spec = { shell: string; run: AgentRun | null; cwd: string; env: Record<string, string>; ctx: Record<string, string>; cols: number; rows: number
   scrollback: number }
@@ -158,8 +161,26 @@ const SHELL_FILES: Record<string, string> = {
     "if [ -r /etc/profile ]; then . /etc/profile; fi",
     "for _vau_f in ~/.bash_profile ~/.bash_login ~/.profile; do if [ -r \"$_vau_f\" ]; then . \"$_vau_f\"; break; fi; done",
     "unset _vau_f",
-    "for _vau_d in \"$VAULTITE_AGENT_BIN\" \"$VAULTITE_BIN\"; do if [ -n \"$_vau_d\" ]; then PATH=\"$_vau_d:$PATH\"; fi; done",
+    // (Git Bash is given Windows paths, C:\x, which its PATH has as /c/x)
+    "for _vau_d in \"$VAULTITE_AGENT_BIN\" \"$VAULTITE_BIN\"; do case $_vau_d in [A-Za-z]:*) _vau_d=$(cygpath -u \"$_vau_d\" 2>/dev/null) ;; esac; if [ -n \"$_vau_d\" ]; then PATH=\"$_vau_d:$PATH\"; fi; done",
     "unset _vau_d",
+    "",
+  ].join("\n"),
+  // WSL's distros start this (wsl.exe -e sh wsl.sh [command]), as shellArgs starts a login shell: the user's own
+  // shell (WSL's -e runs none), through these same files, running an agent's command first.
+  "wsl.sh": [
+    "# Vaultite's terminals start a WSL distro's shell with this: the user's login shell, then Vaultite's vau first on PATH.",
+    "u=$(getent passwd \"$(id -un)\" 2>/dev/null | cut -d: -f7); [ -x \"$u\" ] || u=/bin/sh",
+    "d=$(cd \"$(dirname \"$0\")\" && pwd); export SHELL=\"$u\"",
+    "case ${u##*/} in",
+    "  bash) set -- \"$u\" --rcfile \"$d/bashrc\" -i ${1:+-c \"$1; exec '$u' --rcfile '$d/bashrc' -i\"} ;;",
+    "  zsh) [ -n \"$ZDOTDIR\" ] && export VAULTITE_USER_ZDOTDIR=\"$ZDOTDIR\"; export ZDOTDIR=\"$d\" VAULTITE_ZDOTDIR=\"$d\"",
+    "    set -- \"$u\" -l ${1:+-i -c \"$1; export ZDOTDIR='$d'; exec '$u' -l\"} ;;",
+    // (an agent's line is sh's: fish runs it through sh)
+    "  fish) export VAULTITE_RUN=\"$1\"; set -- \"$u\" -l -C 'for _vau_d in $VAULTITE_AGENT_BIN $VAULTITE_BIN; set -gx PATH $_vau_d $PATH; end; set -e _vau_d' ${1:+-c \"sh -c \\\"\\$VAULTITE_RUN\\\"; exec '$u' -l\"} ;;",
+    "  *) set -- \"$u\" -l ${1:+-i -c \"$1; exec '$u' -l\"} ;;",
+    "esac",
+    "exec \"$@\"",
     "",
   ].join("\n"),
 }
@@ -177,8 +198,8 @@ export function shellFiles() {
 /** A login shell's arguments: zsh's own (ZDOTDIR, in the shell's variables, does the rest), bash's files read by
  *  SHELL_DIR's rcfile, fish's PATH set after its config. */
 export function loginArgs(shell: string): string[] {
-  const name = path.basename(shell)
-  if (name === "bash") return ["--rcfile", path.join(SHELL_DIR, "bashrc"), "-i"]
+  const name = progName(shell)
+  if (name === "bash") return ["--rcfile", slashed(path.join(SHELL_DIR, "bashrc")), "-i"]
   if (name === "fish") return ["-l", "-C", "for _vau_d in $VAULTITE_AGENT_BIN $VAULTITE_BIN; set -gx PATH $_vau_d $PATH; end; set -e _vau_d"]
   return ["-l"]
 }
@@ -188,14 +209,68 @@ export function loginArgs(shell: string): string[] {
 export function shellArgs(shell: string, run: AgentRun | null) {
   const login = loginArgs(shell)
   if (!run) return login
-  const zdot = path.basename(shell) === "zsh" ? `if [ -n "$VAULTITE_ZDOTDIR" ]; then export ZDOTDIR="$VAULTITE_ZDOTDIR"; fi; ` : ""
+  const zdot = progName(shell) === "zsh" ? `if [ -n "$VAULTITE_ZDOTDIR" ]; then export ZDOTDIR="$VAULTITE_ZDOTDIR"; fi; ` : ""
   return [...login.filter((a) => a !== "-i"), "-i", "-c", `${run.command}; ${zdot}exec ${[shell, ...login].map(shellQuote).join(" ")}`]
 }
-/** The script a ready shell sources to become an agent's (typed into it as one short line). */
-export function runScript(file: string, id: string, run: AgentRun) {
+/** A Windows path as Git Bash's sh reads it best (C:/x). */
+const slashed = (p: string) => (process.platform === "win32" ? p.replace(/\\/g, "/") : p)
+/** A Windows path as WSL sees it (its long form: WSL can't follow 8.3 names like RUNNER~1). */
+export function wslPath(p: string) {
+  let long = p
+  try { long = fs.realpathSync.native(p) } catch { /* not there yet */ }
+  return toWsl(long) ?? toWsl(p) ?? p
+}
+/** PowerShell's quoting: in '...' only ' means anything (doubled). */
+export const psQuote = (s: string) => `'${s.replaceAll("'", "''")}'`
+
+/** The script a ready shell runs to become an agent's (typed into it as one short line), for its kind of shell (cmd
+ *  has no ready shells: it starts at once). */
+export function runScript(file: string, id: string, run: AgentRun, kind: ShellKind = "posix") {
+  if (kind === "pwsh") {
+    // (read and run, not dot-sourced: an execution policy may refuse a script file, never a command)
+    const ps1 = `${file}.ps1`
+    fs.writeFileSync(ps1, [`Remove-Item -LiteralPath ${psQuote(ps1)}`, "Clear-Host", `$env:VAULTITE_TERMINAL = ${psQuote(id)}`,
+      ...(run.cwd ? [`Set-Location -LiteralPath ${psQuote(run.cwd)}`] : []), run.command, ""].join("\r\n"), { mode: 0o600 })
+    return ` Invoke-Expression ([IO.File]::ReadAllText(${psQuote(ps1)}))`
+  }
+  const there = kind === "wsl" ? wslPath : slashed
+  fs.writeFileSync(file, "")
+  const at = there(file)
   // (the empty title: a prompt's, like Ubuntu's "user@host: dir", would name the agent's tab until it sets its own)
-  fs.writeFileSync(file, `rm -f ${shellQuote(file)}\nclear\nprintf '\\033]0;\\007'\nexport VAULTITE_TERMINAL=${shellQuote(id)}\n${run.cwd ? `cd ${shellQuote(run.cwd)} && ` : ""}${run.command}\n`, { mode: 0o600 })
-  return ` source ${shellQuote(file)}`
+  fs.writeFileSync(file, `rm -f ${shellQuote(at)}\nclear\nprintf '\\033]0;\\007'\nexport VAULTITE_TERMINAL=${shellQuote(id)}\n${run.cwd ? `cd ${shellQuote(there(run.cwd))} && ` : ""}${run.command}\n`, { mode: 0o600 })
+  return ` source ${shellQuote(at)}`
+}
+
+/** What starts a shell: its program, arguments (a string: Windows' whole command line, for cmd's own quoting), folder
+ *  and environment. PowerShell takes an agent's line encoded (no quoting to get wrong); WSL starts through wsl.sh. */
+export type Launch = { file: string; args: string[] | string; cwd: string; env: Record<string, string> }
+export function launch(spec: Spec): Launch {
+  const run = spec.run, cwd = run?.cwd || spec.cwd, env = { ...spec.env, ...spec.ctx }
+  switch (kindOf(spec.shell)) {
+    case "pwsh":
+      return { file: spec.shell, args: ["-NoLogo", ...(run ? ["-NoExit", "-EncodedCommand", Buffer.from(run.command, "utf16le").toString("base64")] : [])], cwd, env }
+    case "cmd":
+      // (/s: cmd takes what's between the outer quotes as it is)
+      return { file: spec.shell, args: run ? `/s /k "${run.command}"` : [], cwd, env }
+    case "wsl": {
+      const wsl = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "wsl.exe")
+      return { file: wsl, args: ["-d", distroOf(spec.shell), "--cd", wslPath(cwd), "-e", "sh", wslPath(path.join(SHELL_DIR, "wsl.sh")), ...(run ? [run.command] : [])],
+        cwd: os.homedir(), env }
+    }
+    default:
+      return { file: spec.shell, args: shellArgs(spec.shell, run), cwd, env }
+  }
+}
+
+const WIN = process.platform === "win32"
+/** This user, in a pipe's name (pipes are the machine's, not a user's: another's server would find this one's). */
+const userTag = () => `${os.userInfo().username}-${crypto.createHash("sha1").update(os.homedir()).digest("hex").slice(0, 8)}`.replace(/[^\w.-]/g, "_")
+/** What a shell started from `shell` lists as on Windows, where node-pty can't tell what runs: "pwsh", "cmd", "wsl". */
+export const shellName = (shell: string) => (kindOf(shell) === "wsl" ? "wsl" : progName(shell))
+
+/** Ends a shell: a hangup, as closing a terminal sends (Windows has no signals: its console closes). */
+export function hangup(p: IPty) {
+  try { if (WIN) p.kill(); else p.kill("SIGHUP") } catch { /* ended */ }
 }
 
 // ---------- node-pty, loaded on first use (if the native module can't load here, only the terminal breaks)
@@ -206,7 +281,7 @@ export async function loadPty() {
   // Checked before every shell, not once: an npm install while the server runs puts a new one there.
   const { createRequire } = await import("node:module")
   const dir = path.dirname(createRequire(import.meta.url).resolve("node-pty/package.json"))
-  for (const sub of [`prebuilds/${process.platform}-${process.arch}`, "build/Release"]) {
+  if (process.platform !== "win32") for (const sub of [`prebuilds/${process.platform}-${process.arch}`, "build/Release"]) {
     const helper = path.join(dir, sub, "spawn-helper")
     try { if (!(fs.statSync(helper).mode & 0o111)) fs.chmodSync(helper, 0o755) } catch { /* not there */ }
   }
@@ -227,7 +302,7 @@ export function ptyLink(p: IPty, extra: Partial<Pick<Link, "redraw" | "scroll" |
     onExit: (fn) => { p.onExit(async ({ exitCode, signal }) => fn(extra.exit ? await extra.exit(exitCode, signal ?? 0) : { code: exitCode, signal: signal ?? 0 })) },
     redraw: extra.redraw,
     scroll: extra.scroll,
-    close: () => { try { p.kill("SIGHUP") } catch { /* ended */ } },
+    close: () => hangup(p),
   }
   return link
 }
@@ -262,7 +337,7 @@ export async function mirrored(link: Link, scrollback = limits.scrollback()): Pr
 // ---------- pty: the server's own children (they end with it)
 
 export function plainBackend(): Backend {
-  type Shell = { p: IPty; created: number; activity: number; out: Tail; attached: number; paste: boolean; data: Set<(d: string) => void>
+  type Shell = { p: IPty; name: string; created: number; activity: number; out: Tail; attached: number; paste: boolean; data: Set<(d: string) => void>
     status: ReturnType<typeof watcher> }
   const shells = new Map<string, Shell>()
   const heard = new Set<(id: string, said: Said) => void>()
@@ -277,16 +352,16 @@ export function plainBackend(): Backend {
     has: async (id) => shells.has(id),
     list: async () => [...shells].map(([id, s]) => {
       let process = ""
-      try { process = path.basename(s.p.process) } catch { /* ended */ } // (Linux: /bin/bash)
+      // (Linux: /bin/bash; Windows' node-pty doesn't know: the shell started)
+      try { process = WIN ? s.name : path.basename(s.p.process) } catch { /* ended */ }
       return { id, pid: s.p.pid, process, created: s.created, activity: s.activity, attached: s.attached, said: s.status.records.said() }
     }),
     async create(id, spec) {
-      const lib = await loadPty()
-      const p = lib.spawn(spec.shell, shellArgs(spec.shell, spec.run), { name: "xterm-256color", cols: spec.cols, rows: spec.rows, cwd: spec.run?.cwd || spec.cwd,
-        env: { ...spec.env, ...spec.ctx } })
+      const lib = await loadPty(), l = launch(spec)
+      const p = lib.spawn(l.file, l.args, { name: "xterm-256color", cols: spec.cols, rows: spec.rows, cwd: l.cwd, env: l.env })
       // (the probe answered as it's read: before a page answers the primary DA that follows it)
       const status = watcher(() => { try { p.write(REPLY) } catch { /* ended */ } })
-      const s: Shell = { p, created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0, paste: false, data: new Set(), status }
+      const s: Shell = { p, name: shellName(spec.shell), created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0, paste: false, data: new Set(), status }
       p.onData((raw) => {
         s.activity = Date.now()
         const { out: d, changed } = status.feed(raw)
@@ -311,7 +386,7 @@ export function plainBackend(): Backend {
       link.onExit(close)
       return link
     },
-    kill: async (id) => { try { get(id).p.kill("SIGHUP") } catch { /* ended */ } },
+    kill: async (id) => { const s = shells.get(id); if (s) hangup(s.p) },
     screen: async (id, lines) => plain(get(id).out.text()).replace(/\s+$/, "").split("\n").slice(-lines).join("\n"),
     async send(id, text, enter, o) {
       const s = get(id)
@@ -398,8 +473,12 @@ const connectTo = (socket: string) => new Promise<Wire>((ok, fail) => {
 const PROTOCOL = 1
 
 /** The keeper at `name` (the tmux socket's naming: vaultite, or vaultite-<port> for a server on another port). */
-export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string; access(dir: string): Promise<Access | null> } {
-  const socket = path.join(runtimeDir(), `vaultite-ptyd${PROTOCOL}-${name}.sock`)
+export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string; files: string; access(dir: string): Promise<Access | null> } {
+  // Its .log and .pid beside `files`; the socket is that path, or on Windows a named pipe of this user's.
+  const files = path.join(runtimeDir(), `vaultite-ptyd${PROTOCOL}-${name}.sock`)
+  const socket = WIN ? `\\\\.\\pipe\\vaultite-ptyd${PROTOCOL}-${name}-${userTag()}` : files
+  // (what says one runs, without opening it: a pipe opened to look would take one of its instances)
+  const mark = WIN ? `${files}.pid` : socket
   let ctl: Promise<Wire> | null = null
   const heard = new Set<(id: string, said: Said) => void>()
 
@@ -407,9 +486,9 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
    *  nothing that ends the server ends it. The desktop app's server runs on Electron as Node (ELECTRON_RUN_AS_NODE). */
   function startKeeper(plain = false) {
     let out: number | "ignore" = "ignore"
-    try { out = fs.openSync(`${socket}.log`, "a") } catch { /* no log */ }
-    const [cmd, args] = plain ? [process.execPath, [o.daemon, socket]] : outliving(process.execPath, [o.daemon, socket], `ptyd-${name}`)
-    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env })
+    try { out = fs.openSync(`${files}.log`, "a") } catch { /* no log */ }
+    const [cmd, args] = plain ? [process.execPath, [o.daemon, socket, files]] : outliving(process.execPath, [o.daemon, socket, files], `ptyd-${name}`)
+    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
     // systemd-run that couldn't make the scope (no user bus) fails at once: start it as before.
     if (cmd !== process.execPath) child.once("exit", (code) => { if (code) startKeeper(true) })
     child.unref()
@@ -424,7 +503,7 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
       await new Promise((r) => setTimeout(r, 50))
       try { return await connectTo(socket) } catch { /* not yet */ }
     }
-    throw new Error(`the terminal's keeper didn't start (see ${socket}.log)`)
+    throw new Error(`the terminal's keeper didn't start (see ${files}.log)`)
   }
 
   function control(): Promise<Wire> {
@@ -445,13 +524,13 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
   /** Only when it's already running: listing shells shouldn't start it. */
   async function running(): Promise<Wire | null> {
     if (ctl) return ctl.catch(() => null)
-    try { await new Promise<void>((ok, fail) => fs.stat(socket, (e) => (e ? fail(e) : ok()))) } catch { return null }
+    try { await new Promise<void>((ok, fail) => fs.stat(mark, (e) => (e ? fail(e) : ok()))) } catch { return null }
     return control().catch(() => null)
   }
   const ask = async (op: string, params: Record<string, unknown> = {}) => (await control()).request(op, params)
 
   return {
-    name: "vaultite", label: "Vaultite", redraws: false, spares: true, socket,
+    name: "vaultite", label: "Vaultite", redraws: false, spares: true, socket, files,
     ready: async () => !!(await control().catch(() => null)),
     async has(id) { return (await this.list()).some((s) => s.id === id) },
     async list() {
@@ -460,14 +539,15 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
       try { return ((await w.request("list")).sessions as Listed[]) ?? [] } catch { return [] }
     },
     async create(id, spec, c) {
-      const params = { id, file: spec.shell, args: shellArgs(spec.shell, spec.run), cwd: spec.run?.cwd || spec.cwd,
-        env: { ...spec.env, ...spec.ctx }, cols: spec.cols, rows: spec.rows, scrollback: spec.scrollback, spare: !!c?.spare }
+      const l = launch(spec)
+      const params = { id, file: l.file, args: l.args, cwd: l.cwd, env: l.env, name: shellName(spec.shell), cols: spec.cols, rows: spec.rows,
+        scrollback: spec.scrollback, spare: !!c?.spare }
       try { await ask("create", params) } catch (e) {
         // A keeper whose files are gone (its checkout moved: ptyd.ts, stale) can't start shells, and makes way when it
         // holds none: once it's gone, the next one starts from this server's files.
         if (!/^RETIRING\b/.test((e as Error).message)) throw e
         o.log?.("terminal: the keeper's files were gone, so it retired: starting a new one")
-        for (let i = 0; i < 40 && fs.existsSync(socket); i++) await new Promise((r) => setTimeout(r, 50))
+        for (let i = 0; i < 40 && fs.existsSync(mark); i++) await new Promise((r) => setTimeout(r, 50))
         ctl = null
         await ask("create", params)
       }

@@ -1,7 +1,7 @@
 // HTML pages' server side: pages served sandboxed at /v/ and CDN files at /cdn/ (plugin.serve, so nothing runs while
 // it's off), plus `text:html` and `looks:html`. An artifact is framed by a wrapper (frame=1 asks for the page itself).
 import fs from "node:fs"
-import { contentType, HTTPError, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
+import { contentType, HTTPError, isOutside, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
 import type { Item, Vault } from "../../../core/vault.ts"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat, WRAP_CSP, wrapper } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
@@ -15,12 +15,12 @@ plugin.serve("v", (req) => {
   const headers = { "Content-Security-Policy": CSP, "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" }
   if (ARTIFACT.test(req.arg(0)) && req.query.frame !== "1") {
     // (what the page would refuse, the wrapper refuses too)
-    if (!req.arg(0).startsWith("/")) vaultPath(req.arg(0), true, vault)
+    if (!isOutside(req.arg(0))) vaultPath(req.arg(0), true, vault)
     else try { outsidePath(req.arg(0)) } catch { throw new HTTPError(404, "not found") }
     return new Text(wrapper(req.rawPath, req.query.theme === "dark"), "text/html; charset=utf-8", { ...headers, "Content-Security-Policy": WRAP_CSP })
   }
   // A page from outside the vault, one the desktop app allowed (only the .html itself: nothing next to it).
-  if (req.arg(0).startsWith("/")) {
+  if (isOutside(req.arg(0))) {
     const abs = outsidePath(req.arg(0))
     if (!ARTIFACT.test(abs)) throw new HTTPError(404, "not found")
     try {

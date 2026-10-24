@@ -206,8 +206,8 @@ export default async ($: VaultTest) => {
   }
 
   // The keeper lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper running for
-  // days took the machine's ptys, and new terminals and tmux failed).
-  {
+  // days took the machine's ptys, and new terminals and tmux failed). (Windows: windows-terminal.ts.)
+  if (process.platform !== "win32") {
     const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { execFileSync } = await import("node:child_process")
     const { waitFor } = await import("../lib.ts")
@@ -224,12 +224,12 @@ export default async ($: VaultTest) => {
     ]
     const seen: Record<string, unknown>[] = []
     // (ended even when a step throws: a keeper left behind holds its shells' ptys)
-    const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
+    const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.files}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
     const access: unknown[] = [await keeper.access(tmp)]
     try {
       for (const [id, end] of ways) {
         await keeper.create(id, spec, { spare: id === "leak-spare" })
-        const pid = Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8"))
+        const pid = Number(fs.readFileSync(`${keeper.files}.pid`, "utf8"))
         const open = ptys(pid)
         // Ended only once its prompt is up: a hangup sent while the shell still starts could be lost on a slow machine.
         const ready = await waitFor(async () => (await keeper.screen(id, 5)).trim() !== "", 10_000, 50)
@@ -302,6 +302,7 @@ export default async ($: VaultTest) => {
     check("osc7501: at most 256 records, the least recently updated going", many.status()?.state === "blocked" && (many as unknown as { map: Map<string, unknown> }).map.size === 256 &&
       !(many as unknown as { map: Map<string, unknown> }).map.has("w0"))
     // The keeper answers the probe in its place: the shell reads the answer, then the headless terminal's DA answer.
+    if (process.platform !== "win32") await (async () => {
     const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { waitFor } = await import("../lib.ts")
     const keeper = ptydBackend(`test7501-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/ptyd.ts") })
@@ -311,7 +312,7 @@ export default async ($: VaultTest) => {
     const script = `stty raw -echo; printf '\\033]7501;?\\033\\\\\\033[c'; dd bs=1 count=${REPLY.length + 7} of=${got} 2>/dev/null; ` +
       `printf '\\033]7501;state=blocked:kind=question:msg=${b64("Which port?")}\\033\\\\'; sleep 30`
     const spec = { shell: "/bin/sh", run: { command: script }, cwd: tmp, env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 80, rows: 24, scrollback: 100 }
-    const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
+    const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.files}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
     let answer = "", listed: unknown = null
     try {
       await keeper.create("probe1", { ...spec, run: { command: script } })
@@ -337,7 +338,10 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(mark, "")
     execFileSync("/bin/sh", ["-c", set("working")])
     check("osc7501: an agent's state hooks mark what it asks, and do nothing once it speaks OSC 7501", before === "waiting:permission" && fs.readFileSync(file, "utf8") === "waiting:permission", before)
+    })()
   }
+
+  if (process.platform === "win32") await (await import("./terminal-windows.ts")).default($)
 
   // Routes: * is one segment, a last ** the rest.
   {

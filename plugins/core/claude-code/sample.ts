@@ -1,6 +1,6 @@
 // The service "sample": one answer from `claude -p` in the default account, with no tools, MCP servers, settings or
 // session kept, in an empty folder (so nothing of the user's projects is read). An artifact's claude.sample runs on it.
-import { spawn } from "node:child_process"
+import { spawnBin, withPath } from "../../../core/agents.ts"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -23,11 +23,11 @@ function run(bin: string, a: SampleAsk, model: string, dir: string): Promise<Sam
   const args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--no-session-persistence",
     "--strict-mcp-config", "--tools", "", "--setting-sources", "", "--disable-slash-commands", "--system-prompt", a.system, "--model", model]
   if (a.effort && ["low", "medium", "high"].includes(a.effort)) args.push("--effort", a.effort)
-  const env: NodeJS.ProcessEnv = { ...process.env, PATH: [path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
+  const env = withPath(process.env, path.dirname(bin))
   if (dir === path.join(HOME, ".claude")) delete env.CLAUDE_CONFIG_DIR
   else env.CLAUDE_CONFIG_DIR = dir
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { cwd: SAMPLE_DIR, stdio: ["pipe", "pipe", "ignore"], env })
+    const child = spawnBin(bin, args, { cwd: SAMPLE_DIR, stdio: ["pipe", "pipe", "ignore"], env })
     let buf = "", text = "", over = false, result: Record<string, unknown> | null = null
     const finish = (f: () => void) => { if (over) return; over = true; a.signal?.removeEventListener("abort", stop); f() }
     const stop = () => { child.kill(); finish(() => reject(coded("cancelled", "the call was cancelled", text))) }

@@ -55,7 +55,7 @@ export type Session = { id: string; agent: string | null; process: string; busy?
 export type Meter = { context?: { tokens: number; window: number; as: "bar" | "percent" | "tokens" }; cache?: { until: number; ttl: number; as: "icon" | "bar" } }
 
 /** A shell running a program shows it ("vim"); a shell at its prompt, or an agent, just its kind. */
-export const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login"])
+export const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl"])
 const STARTING = 10_000
 /** The coding agent a session runs: opened as one (while it runs, not the shell it leaves after), or its program run in
  *  a plain terminal (`claude`, `codex`); null for anything else. From the agents of the plugins that are on. */

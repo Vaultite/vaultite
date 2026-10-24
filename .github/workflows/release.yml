@@ -1,5 +1,5 @@
-# The desktop app: a signed and notarized Mac build (dmg and zip, Apple silicon and Intel) and Linux's AppImage and .deb
-# (x64 and arm64, each built on its own architecture: node-pty is compiled there).
+# The desktop app: a signed and notarized Mac build (dmg and zip, Apple silicon and Intel), Linux's AppImage and .deb and
+# Windows' installer (x64 and arm64, each built on its own architecture: their native packages are installed there).
 # - A v* tag (matching package.json's version) is that GitHub release, its notes the summary atop CHANGELOG.md's section for it, and goes
 #   on the update feed (vaultite.com/updates: R2's vaultite-updates, which vaultite-cloud serves).
 # - Every night, if main changed, it's Vaultite Nightly (electron/nightly.cjs: an app of its own), the `nightly`
@@ -7,7 +7,9 @@
 #   updates from). By hand: Actions, Release, Run workflow (on main).
 # Secrets: MAC_CERT_P12 (the Developer ID Application certificate and key, base64) and MAC_CERT_PASSWORD; NOTARY_KEY (an
 # App Store Connect API key's .p8, base64), NOTARY_KEY_ID and NOTARY_ISSUER; for the feed, CLOUDFLARE_API_TOKEN (R2
-# edit) and CLOUDFLARE_ACCOUNT_ID; SITE_DEPLOY_TOKEN (a fine-grained token: tkslucas/vaultite-site, Contents read and
+# edit) and CLOUDFLARE_ACCOUNT_ID; to sign Windows' installers with Azure Trusted Signing (unsigned without),
+# AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, with the variables AZURE_SIGN_ENDPOINT,
+# AZURE_SIGN_ACCOUNT, AZURE_SIGN_PROFILE and AZURE_SIGN_PUBLISHER (the certificate's subject CN); SITE_DEPLOY_TOKEN (a fine-grained token: tkslucas/vaultite-site, Contents read and
 # write) for a release to redeploy vaultite.com, its demo built from it.
 name: Release
 on:
@@ -49,7 +51,7 @@ jobs:
           echo "build=true" >> "$GITHUB_OUTPUT"
 
   # Each architecture on a runner of its own: most of a build is waiting on Apple's notarization (an app's, then its
-  # dmg's), and the two don't wait on each other. Publish merges their update lists (tools/mac_feed.ts).
+  # dmg's), and the two don't wait on each other. Publish merges their update lists (tools/feed.ts).
   mac:
     needs: plan
     if: needs.plan.outputs.build == 'true'
@@ -140,8 +142,66 @@ jobs:
             dist-app/*.deb
             dist-app/*-linux*.yml
 
+  # Windows' installer (NSIS, per user), each architecture on its own runner; publish merges their update lists
+  # (tools/feed.ts), from which each app takes its architecture's.
+  windows:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    strategy:
+      matrix:
+        runner: [windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      # (npm's scripts are sh: Git Bash's)
+      - run: npm config set script-shell "$(cygpath -w "$(command -v bash)")"
+      - run: npm ci
+      - run: npx playwright-core install chromium
+      - if: env.STABLE != 'true'
+        run: npm pkg set version=${{ needs.plan.outputs.version }}
+      # Signed only when Azure Trusted Signing is set up (electron-builder's azureSignOptions; it signs the app's .exe
+      # files and the installer, and the app then checks its updates are signed by the same publisher).
+      - name: Signing, when Azure Trusted Signing is set up
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ]; then echo "::warning::Windows' installer isn't signed (no Azure Trusted Signing: see the top of release.yml)"; exit 0; fi
+          npm pkg set "build.win.azureSignOptions.endpoint=$ENDPOINT" "build.win.azureSignOptions.codeSigningAccountName=$ACCOUNT" \
+            "build.win.azureSignOptions.certificateProfileName=$PROFILE" "build.win.azureSignOptions.publisherName=$PUBLISHER"
+      - run: npm run ${{ env.STABLE == 'true' && 'release:win' || 'release:win:nightly' }}
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      # (its update list names only its installer: kept under its arch, for publish to merge with the other's)
+      - run: |
+          arch=$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')
+          for f in dist-app/latest.yml dist-app/nightly.yml; do [ -f "$f" ] && mv "$f" "${f%.yml}.$arch.yml"; done
+          ls dist-app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ runner.arch }}
+          if-no-files-found: error
+          path: |
+            dist-app/*-Setup-*.exe
+            dist-app/*-Setup-*.exe.blockmap
+            dist-app/latest.*.yml
+            dist-app/nightly.*.yml
+
   publish:
-    needs: [plan, mac, linux]
+    needs: [plan, mac, linux, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -152,7 +212,7 @@ jobs:
         with:
           path: out
           merge-multiple: true
-      - run: node tools/mac_feed.ts out
+      - run: node tools/feed.ts out
       - name: The GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,22 +222,23 @@ jobs:
             # The notes are the section's summary, above its first ### (the rest is in the changelog, linked)
             awk -v h="## $V" 'index($0, h) == 1 { on = 1; next } on && /^##/ { exit } on' CHANGELOG.md > notes.md
             printf '\nEvery change: [CHANGELOG.md](%s/blob/%s/CHANGELOG.md).\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> notes.md
-            gh release create "$GITHUB_REF_NAME" out/*.dmg out/*.AppImage out/*.deb --verify-tag --title "Vaultite $V" \
+            gh release create "$GITHUB_REF_NAME" out/*.dmg out/*.AppImage out/*.deb out/*-Setup-*.exe --verify-tag --title "Vaultite $V" \
               --notes-file notes.md
           else
             gh release delete nightly --cleanup-tag --yes || true
-            gh release create nightly out/*.dmg out/*.AppImage out/*.deb --prerelease --target "$GITHUB_SHA" \
+            gh release create nightly out/*.dmg out/*.AppImage out/*.deb out/*-Setup-*.exe --prerelease --target "$GITHUB_SHA" \
               --title "Nightly $V" --notes "Vaultite Nightly: main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. It installs beside Vaultite and updates itself to each next nightly."
           fi
       # The feed's files, the update lists last so they never name a file that isn't there yet (a nightly's are
-      # nightly-*.yml: electron-builder names them after the version's prerelease, as the app asks for).
+      # nightly*.yml: electron-builder names them after the version's prerelease, as the app asks for; Windows' are
+      # latest.yml and nightly.yml, with no platform in their names).
       - name: The update feed
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           if [ "$STABLE" = true ]; then dir=""; else dir="nightly/"; fi
-          for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/*.yml; do
+          for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/*-Setup-*.exe out/*-Setup-*.exe.blockmap out/*.yml; do
             npx -y wrangler@4 r2 object put "vaultite-updates/$dir$(basename "$f")" --file "$f" --remote
           done
       # vaultite.com's demo is the latest release: its repository's deploy.yml builds this one and deploys the site.

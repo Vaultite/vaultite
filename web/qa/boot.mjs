@@ -95,7 +95,7 @@ function files(dir) {
   const out = {}
   for (const f of fs.readdirSync(dir, { recursive: true }).sort()) {
     const p = path.join(dir, f)
-    if (!f.startsWith(".vaultite") && fs.statSync(p).isFile()) out[f] = fs.readFileSync(p, "latin1")
+    if (!f.startsWith(".vaultite") && fs.statSync(p).isFile()) out[f.split(path.sep).join("/")] = fs.readFileSync(p, "latin1")
   }
   return out
 }

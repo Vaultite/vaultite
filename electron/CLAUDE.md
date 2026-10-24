@@ -19,5 +19,9 @@
 - The Dock icon a page draws changes only the Dock, never the bundle.
 - Set up Vaultite writes nothing outside `.vaultite/` in a folder of the user's (`npm run smoke` checks); its tests
   write only under `VAULTITE_SETUP_HOME`. Vaultite Dev (`npm run app:dev`) opens the sandbox, never Set up.
+- Windows: a release build only (no update.sh; Vaultite Main is Mac and Linux). Its title bar is the page's, with
+  Windows' controls drawn over the top-right corner (preload.cjs tells their colours, index.css keeps clear of them);
+  files and vaultite:// links come in argv and `second-instance`, outside paths go to the page with forward slashes.
+  Its installer stops every process running its .exe, terminal keepers and `vau` included, before it updates.
 - Every window is an `AppWindow` (appwindow.ts): a BaseWindow whose page is a view, so it can go over the Browser's
   pages (web.ts `raise`); a BrowserWindow's own page is always under its views. Pop-outs are adopted into one.

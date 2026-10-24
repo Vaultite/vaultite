@@ -306,7 +306,10 @@ export type SettingDecl = OptionDecl & { label: string; labels?: Record<string, 
   /** A vault folder (a list: of them): the form picks from the vault's, or makes a new one. */
   folder?: boolean
   /** A list typed one item per line, for items that may hold commas (patterns). */
-  lines?: boolean }
+  lines?: boolean
+  /** A text whose choices only the server knows (this machine's shells): a route under /api/ answering
+   *  {choices: [{value, label}]}, which the form offers ("" is the default). */
+  choices?: string }
 export type SettingDecls = Record<string, SettingDecl>
 
 /** A manifest's `settings` as declarations ({} when it has none). */
@@ -324,10 +327,13 @@ export function settingDeclProblems(settings: unknown, where: string): string[] 
   for (const [k, d] of Object.entries(settings)) {
     const at = `${where}: setting '${k}'`
     if (!isMap(d)) { out.push(`${at} must be an object with a type, a label and a description`); continue }
-    const { local, folder, lines, ...opt } = d
+    const { local, folder, lines, choices, ...opt } = d
     if (local !== undefined && typeof local !== "boolean") out.push(`${at}: local must be true or false`)
     if (folder !== undefined && (folder !== true || !types(opt as OptionDecl).every((t) => t === "string" || t === "list"))) out.push(`${at}: folder is true, on a string or a list`)
     if (lines !== undefined && (lines !== true || !types(opt as OptionDecl).every((t) => t === "list"))) out.push(`${at}: lines is true, on a list`)
+    if (choices !== undefined && (typeof choices !== "string" || !/^[\w/-]+$/.test(choices) || !types(opt as OptionDecl).every((t) => t === "string"))) {
+      out.push(`${at}: choices is a route under /api/ ("terminals/shells"), on a string`)
+    }
     out.push(...optionProblems(opt, at))
     if (d.required !== undefined) out.push(`${at}: a setting is never required (left out, it's its default)`)
     if (!ONE_LINE(d.label)) out.push(`${at} needs a label (a few words, sentence case: what the settings form calls it)`)

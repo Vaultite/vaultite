@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { pluginsFilter, qa, until, wait } from "./lib/qa.mjs"
+import { fileURLToPath } from "node:url"
 
 const { args: [BASE, VAULT, INDEX, REPOS, OUT = "/tmp/pluginstore-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
@@ -166,7 +167,7 @@ try {
   await wait(400)
 
   // ---------- turned on by plugins.json alone (a sync, a shared vault): waits
-  cpSync(new URL("../../tools/fixtures/lighthouse/", import.meta.url).pathname, file(".vaultite/plugins/lighthouse"), { recursive: true })
+  cpSync(fileURLToPath(new URL("../../tools/fixtures/lighthouse/", import.meta.url)), file(".vaultite/plugins/lighthouse"), { recursive: true })
   putPlugins({ ...plugins(), enabled: [...(plugins().enabled ?? []), "lighthouse"] })
   const lw = page.locator('[data-plugin-waiting="lighthouse"]')
   check("synced on: its row waits for this machine's yes", await until(async () => (await lw.innerText()).includes("Waiting for you to allow it on this machine"), 10000), await lw.innerText().catch(() => ""))

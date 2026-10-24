@@ -2,7 +2,7 @@
 // key), then its `settingsPanel` (or first), or its settings file drawn. No menus inside: choices unfold.
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
-import { type Store, useStore } from "@/core/data"
+import { type Store, useLive, useStore } from "@/core/data"
 import { patch, put } from "@/core/http"
 import type { Plugin } from "@/core/define"
 import { folderList, openFile, readFile } from "@/core/files"
@@ -165,6 +165,7 @@ export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: 
     )
   }
   if (ts.length === 1 && ts[0] === "enum" && d.values?.length) return <Choice k={k} d={d} value={shown} set={set} />
+  if (d.choices && ts.length === 1 && ts[0] === "string") return <ServerChoice k={k} d={d} value={value} set={set} />
   if (ts.length === 1 && ts[0] === "number") return <NumberField k={k} d={d} value={value} set={set} />
   if (ts.length === 1 && ts[0] === "list" && d.values?.length) return <Chips k={k} d={d} value={shown} set={set} />
   if (d.folder && ts.length === 1 && ts[0] === "list") return <Folders k={k} d={d} value={value} set={set} />
@@ -176,6 +177,15 @@ export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   return <SettingRow label={d.label} sub={`${sub}. Edit it in the file below`} {...attrs} />
 }
 
+
+/** A text the server offers choices for (`choices`: its route): as an enum of them once they come, "" the default. */
+function ServerChoice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
+  const { data } = useLive<{ choices: { value: string; label: string }[] }>(d.choices!)
+  const list = data?.choices ?? []
+  if (!list.length) return <SettingRow label={d.label} sub={capitalize(d.description)} value={typeof value === "string" ? value : ""} data-setting={k} />
+  const enumOf: SettingDecl = { ...d, type: "enum", values: list.map((c) => c.value), labels: Object.fromEntries(list.map((c) => [c.value, c.label])) }
+  return <Choice k={k} d={enumOf} value={typeof value === "string" ? value : String(d.default ?? "")} set={set} />
+}
 
 /** One of a few short values: segmented; more, a row that unfolds into the choices (a menu can't open over a sheet). */
 function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {

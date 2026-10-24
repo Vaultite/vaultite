@@ -1,6 +1,6 @@
 // The coding agents API (@vaultite/core/agents.ts, built-in and vault plugins alike): what an agent plugin reads its tool
 // with (usage tallies, processes, transcripts, databases), its routes and blocks (codingAgent), and starting agents.
-import { execFile, spawn } from "node:child_process"
+import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -9,6 +9,9 @@ import type { DatabaseSync } from "node:sqlite"
 import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, ROOT, section, serverUrl } from "./plugins.ts"
 import { stableNode } from "./service.ts"
 import { parseTerminal } from "./terminalids.ts"
+import { spawnBin } from "./winbin.ts"
+/** Starting programs on Windows by name (core/winbin.ts). */
+export { spawnBin, winCommand, withPath } from "./winbin.ts"
 /** A terminal's id and the agent it runs (core/terminalids.ts, which the web app shares). */
 export { agentIn, agentName, KNOWN_AGENTS, newTerminalId, parseTerminal, resumeTerminalId, TERMINAL_AGENT, type TerminalAgent } from "./terminalids.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
@@ -226,10 +229,17 @@ export type Usage = Summary & { plan: { name: string; monthly: number | null } |
 /** Every process on this machine: its pid, start (epoch ms) and command line. */
 export const processes = async () => [...await processTable()].map(([pid, p]) => ({ pid, started: p.started, command: p.args }))
 
-/** Each process's working folder (Linux's /proc, else lsof). */
+/** A command line's program by its name (no folder, no Windows .exe: "codex"), and the rest of the line. A Windows one's
+ *  program may be quoted ("C:\\Program Files\\x.exe" --flag). */
+export function programOf(command: string): [string, string] {
+  const m = command.startsWith('"') ? /^"([^"]*)"(.*)$/.exec(command) : /^(\S+)(.*)$/.exec(command)
+  return m ? [m[1].replace(/^.*[\\/]/, "").replace(/\.exe$/i, ""), m[2]] : ["", ""]
+}
+
+/** Each process's working folder (Linux's /proc, else lsof; Windows can't tell another process's: none). */
 export async function cwds(pids: number[]): Promise<Map<number, string>> {
   const out = new Map<number, string>()
-  if (!pids.length) return out
+  if (!pids.length || process.platform === "win32") return out
   if (process.platform === "linux") {
     for (const pid of pids) try { out.set(pid, fs.readlinkSync(`/proc/${pid}/cwd`)) } catch { /* gone, or another user's */ }
     return out
@@ -287,9 +297,12 @@ export function sessionsOf<P extends { started: number }, S>(procs: P[], key: (s
 export function findBin(name: string) {
   let npm = ""
   try { npm = path.dirname(fs.realpathSync(process.execPath)) } catch { /* none */ }
+  const win = process.platform === "win32"
+  // (Windows: npm's global folder, and its programs by their extensions: claude.exe, codex.cmd)
   const dirs = [...(process.env.PATH ?? "").split(path.delimiter), npm, path.join(HOME, ".local", "bin"), path.join(HOME, ".npm-global", "bin"),
-    "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
-  return dirs.filter(Boolean).map((d) => path.join(d, name)).find((p) => {
+    ...(win ? [process.env.APPDATA ? path.join(process.env.APPDATA, "npm") : ""] : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"])]
+  const names = win && !path.extname(name) ? (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean).map((e) => name + e.toLowerCase()) : [name]
+  return dirs.filter(Boolean).flatMap((d) => names.map((n) => path.join(d, n))).find((p) => {
     try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile() } catch { return false }
   }) ?? null
 }
@@ -299,7 +312,7 @@ export function findBin(name: string) {
 export function jsonLines<T>(bin: string, args: string[], o: { env: NodeJS.ProcessEnv; cwd?: string; ms: number; first: Item
   hear: (m: Item, send: (m: Item) => void, done: (v: T | null) => void) => void; end?: () => T | null }): Promise<T | null> {
   return new Promise((resolve) => {
-    const child = spawn(bin, args, { cwd: o.cwd, stdio: ["pipe", "pipe", "ignore"], env: o.env })
+    const child = spawnBin(bin, args, { cwd: o.cwd, stdio: ["pipe", "pipe", "ignore"], env: o.env })
     let buf = "", over = false
     const done = (v: T | null) => {
       if (over) return
@@ -334,7 +347,7 @@ export type AgentState = "working" | "waiting" | "idle"
  *  its last request read of a `window`, cached for `ttl` seconds from `last` (ms). */
 export type AgentMeter = { terminal: string; session?: string; tokens?: number; window?: number; last?: number; ttl?: number }
 /** What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login
- *  shell, which then stays a plain shell. Ids: <name>-<id>, <name>_<profile>-<id>, resume-<name>-<session>. */
+ *  shell, which then stays a plain shell (AgentCommand). Ids: <name>-<id>, <name>_<profile>-<id>, resume-<name>-<session>. */
 export type AgentStart = {
   /** The session to resume, or null for a new one. */
   resume: string | null
@@ -345,6 +358,12 @@ export type AgentStart = {
   state: ((s: AgentState, kind?: "permission" | "question") => string) | null
   /** A shell command for the agent's hooks to report what it did (the hook's JSON on stdin), to Activity; null when off. */
   report?: string | null
+  /** Instead of `state` and `report` in PowerShell or cmd on Windows (no one shell runs hooks there): the URL a hook
+   *  POSTs to for each state, with a program doing the same (`argv`, where only a program runs), and Activity's URL. */
+  stateHook?: ((s: AgentState, kind?: "permission" | "question") => { url: string; argv: string[] }) | null
+  reportUrl?: string | null
+  /** It runs inside WSL (a Windows terminal whose shell is a WSL distro): this machine's paths aren't its own. */
+  wsl?: boolean
   /** Which of its accounts to start in (the id's `_<profile>`: Claude Code's config folders), or null for its default. */
   profile?: string | null
   /** The first prompt, sent as it starts (Dispatch's, a voice note, a reply to a resumed session's report); null for none. */
@@ -359,6 +378,9 @@ export type AgentStart = {
   model?: string | null
   effort?: string | null
 }
+/** What an "agent:<name>" service answers: its line for a POSIX shell, run in `cwd`; `argv` and `env` start it where that
+ *  can't run (PowerShell, cmd), else Git Bash runs `command` there. */
+export type AgentCommand = { command: string; cwd?: string | null; argv?: string[]; env?: Record<string, string> }
 /** A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12),
  *  and the keys that answer it, each written apart. Terminal tells the inbox of one shown before the agent's hooks run. */
 export type AgentAsk = { id: string; match: RegExp; says: string; approve: string[]; deny: string[]; lines?: number }
@@ -392,8 +414,10 @@ export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: A
 /** `s` as one word of a shell command. */
 export const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
 /** A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell. */
-export const notOnThisMachine = (agent: string, id: string) =>
-  ({ command: `printf '%s\\n' ${shellQuote(`There's no ${agent} session ${id} on this machine to resume.`)}`, cwd: null })
+export const notOnThisMachine = (agent: string, id: string): AgentCommand => {
+  const text = `There's no ${agent} session ${id} on this machine to resume.`
+  return { command: `printf '%s\\n' ${shellQuote(text)}`, argv: ["cmd.exe", "/d", "/c", "echo", text], cwd: null }
+}
 
 // ---------- conversations (a session's view tab)
 

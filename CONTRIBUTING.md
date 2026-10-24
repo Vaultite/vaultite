@@ -23,6 +23,9 @@ TypeScript directly) and, for the QA scripts, Playwright's Chromium (`npx playwr
   architecture: node-pty is compiled there), or `npm run app:install` to install this checkout for your user, updating
   itself from main. On Ubuntu 24.04+, `npm run app` needs an AppArmor profile for `node_modules/electron/dist/electron`
   allowing `userns` (Chromium's sandbox); `app:install` prints the one for its own copy.
+- Desktop app on Windows: `npm run release:win` for the installer (NSIS, per user) and latest.yml, built on Windows for
+  its architecture like Linux's; npm's scripts need a POSIX shell there (`npm config set script-shell` to Git Bash's
+  bash.exe). `node tools/test_installer.ts` installs one under a test name, runs it and uninstalls it.
 - Releases are built by GitHub Actions (`.github/workflows/release.yml`). A `v<version>` tag matching package.json's is
   that release: its notes are the summary atop its CHANGELOG.md section, its zips go on the update feed. Each night
   main changed, it's the `nightly` prerelease: Vaultite Nightly (`npm run release:nightly`, `electron/nightly.cjs`), an
@@ -30,7 +33,12 @@ TypeScript directly) and, for the QA scripts, Playwright's Chromium (`npx playwr
   pull request.
 - iPhone app: `npm run ios` (needs Xcode); put your team in `ios/App/Local.xcconfig` (`DEVELOPMENT_TEAM = <team id>`).
   On the phone, add the address your Mac serves Vaultite at on the tailnet (`tailscale serve --https=8447 <port>`).
-- `vau service install --vault <folder>` keeps the server running (launchd on macOS, systemd on Linux).
+- `vau service install --vault <folder>` keeps the server running (launchd on macOS, systemd on Linux, Task Scheduler
+  on Windows). A server in WSL (`npm start` there, or `vau service` with systemd on in `/etc/wsl.conf`) answers
+  Windows' browser and app at `http://localhost:8793`: WSL forwards localhost.
+- Windows: `bin/vau.cmd` runs vau from cmd and PowerShell (Git Bash runs `bin/vau`); `vau wsl install` puts it in WSL.
+  Windows' default execution policy blocks Node's `npm.ps1` in PowerShell: run `npm.cmd`, use cmd or Git Bash, or allow
+  local scripts once (`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`).
 
 | Variable | Default | What it is |
 | --- | --- | --- |

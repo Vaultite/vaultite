@@ -340,8 +340,8 @@ export const spelling = desktop?.learnWord ? {
 /** The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it. */
 export const dockIcon = () => desktop?.dock ?? null
 
-/** Something from outside the vault (an absolute path), opened in the desktop app. */
-export const isOutside = (path: string) => path.startsWith("/")
+/** Something from outside the vault (an absolute path: /x, Windows' C:/x), opened in the desktop app. */
+export const isOutside = (path: string) => /^(\/|[a-z]:[\\/]|\\\\)/i.test(path)
 
 export const hasFiles = (dt: DataTransfer | null) => !!dt && [...dt.types].includes("Files")
 

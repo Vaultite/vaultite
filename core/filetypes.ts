@@ -56,8 +56,8 @@ export const isTextKind = (k: FileKind) => k === "markdown" || k === "json" || k
 /** A file too big for JavaScript to hold as one buffer or string (around 512 MB): no limit of ours, the card instead. */
 export const tooBig = (e: unknown) => e instanceof RangeError || (e as { code?: string })?.code === "ERR_STRING_TOO_LONG"
 
-/** Files opening one would run (a script, an app, an installer): shown in Finder instead, never opened. */
-export const RUNS_CODE = /\.(app|command|tool|sh|bash|zsh|csh|ksh|fish|terminal|workflow|action|scpt|scptd|applescript|osascript|jar|pkg|mpkg|prefpane|saver|fileloc|inetloc|py|pyw|rb|pl|php|js|mjs|cjs|lua|exe|bat|cmd|com|scr|vbs|ps1|desktop)$/i
+/** Files opening one would run (a script, an app, an installer, a shortcut): shown in its folder instead, never opened. */
+export const RUNS_CODE = /\.(app|command|tool|sh|bash|zsh|csh|ksh|fish|terminal|workflow|action|scpt|scptd|applescript|osascript|jar|pkg|mpkg|prefpane|saver|fileloc|inetloc|py|pyw|rb|pl|php|js|mjs|cjs|lua|exe|bat|cmd|com|scr|vbs|vbe|ps1|psm1|msi|msix|appx|lnk|url|hta|wsf|wsh|jse|cpl|msc|reg|appref-ms|application|desktop|psd1|pif|scf|gadget|msixbundle|appxbundle|appinstaller|settingcontent-ms|library-ms|search-ms)$/i
 
 /** The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes). */
 export function contentType(path: string) {

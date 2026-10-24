@@ -141,14 +141,16 @@ export default async ($: VaultTest) => {
       check("daily-note.open: iCloud's copy merges in and is archived; one with its own text is left",
         !t.error && read("Daily/2026-09-22.md") === "---\ntype: day\ndone: [Gym, Stretch]\nmood: good\n---\n\nPlan the week.\n" &&
         !exists("Daily/2026-09-22 2.md") && exists("Daily/.archive/2026-09-22 2.md") && exists("Daily/2026-09-22 3.md"), [t, read("Daily/2026-09-22.md")])
-      // A copy that can't be tidied away now (here, the archive can't be written): the note opens all the same.
-      write("Daily/2026-09-22 2.md", "---\ntype: day\n---\n")
-      await vault.sync()
-      fs.chmodSync(path.join(VAULT, "Daily/.archive"), 0o555)
-      t = await run("daily-note.open", { date: "2026-09-22" })
-      fs.chmodSync(path.join(VAULT, "Daily/.archive"), 0o755)
-      check("daily-note.open: a copy that can't be merged doesn't stop the note opening", !t.error && t.result.path === "Daily/2026-09-22.md" && exists("Daily/2026-09-22 2.md"), t)
-      fs.rmSync(path.join(VAULT, "Daily/2026-09-22 2.md"))
+      // A copy that can't be tidied away now (here, the archive can't be written; Windows has no read-only folders): the note opens all the same.
+      if (process.platform !== "win32") {
+        write("Daily/2026-09-22 2.md", "---\ntype: day\n---\n")
+        await vault.sync()
+        fs.chmodSync(path.join(VAULT, "Daily/.archive"), 0o555)
+        t = await run("daily-note.open", { date: "2026-09-22" })
+        fs.chmodSync(path.join(VAULT, "Daily/.archive"), 0o755)
+        check("daily-note.open: a copy that can't be merged doesn't stop the note opening", !t.error && t.result.path === "Daily/2026-09-22.md" && exists("Daily/2026-09-22 2.md"), t)
+        fs.rmSync(path.join(VAULT, "Daily/2026-09-22 2.md"))
+      }
       // There on disk but not read yet (iCloud bringing it): no second one.
       fs.rmSync(path.join(VAULT, "Daily/2026-09-22.md"))
       await vault.sync()

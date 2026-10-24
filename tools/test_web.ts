@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { registerHooks } from "node:module"
 import os from "node:os"
 import path from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { check, section, summary } from "./test/lib.ts"
 const t0 = Date.now()
 
@@ -34,7 +34,7 @@ registerHooks({
     }
     // A relative import without its extension, the way Vite resolves it (core/markdown.ts -> ./richmd).
     if (spec.startsWith(".") && !/\.[a-z]+$/i.test(spec) && context.parentURL?.startsWith(pathToFileURL(WEB).href)) {
-      const base = path.resolve(path.dirname(new URL(context.parentURL).pathname), spec)
+      const base = path.resolve(path.dirname(fileURLToPath(context.parentURL)), spec)
       const file = [".ts", ".tsx"].map((x) => base + x).find((f) => fs.existsSync(f))
       if (file) return { url: pathToFileURL(file).href, shortCircuit: true }
     }
@@ -356,6 +356,15 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
   check("attachments: / the top, ./ beside the note, ./sub beside it, else that folder", fp.attachmentDir("/", "A/B/N.md") === "" &&
     fp.attachmentDir("./", "A/B/N.md") === "A/B" && fp.attachmentDir("./assets/", "A/N.md") === "A/assets" && fp.attachmentDir("./assets", "N.md") === "assets" &&
     fp.attachmentDir("Files/Pasted/", "A/N.md") === "Files/Pasted")
+}
+
+// ---------- File names from titles: ones every system (Windows too, where a vault may sync) can have ----------
+{
+  const { safeName } = await import(pathToFileURL(path.join(ROOT, "core", "vault.ts")).href)
+  const pairs = [["CON", "CON_"], ["nul.md", "nul.md_"], ["Notes...", "Notes"], ["a: b?", "a - b"], ["Trip. ", "Trip"], ["\u0007Bell", "Bell"],
+    ["COM1 plan", "COM1 plan"], ["", "Untitled"]]
+  const off = pairs.filter(([t, want]) => safeName(t) !== want)
+  check("names: no Windows device name, trailing dot or control character", !off.length, off.map(([t]) => [t, safeName(t)]))
 }
 
 // ---------- Markdown's extras: headings and blocks to go to, tags, comments, highlights, note embeds ----------

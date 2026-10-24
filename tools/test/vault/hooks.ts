@@ -42,7 +42,7 @@ export default async ($: VaultTest) => {
     ;[st, body] = await api("POST", "ops/wordcount.env", { n: "5" })
     const local = process.env.VAULTITE_LOCAL!
     check("hooks: its environment and stdin (checked params), in its folder", st === 200 && body.id === "wordcount" && body.dir === path.join(VAULT, WC) && body.cwd === fs.realpathSync(path.join(VAULT, WC)) &&
-      body.state.startsWith(path.join(local, "plugin-state")) && fs.existsSync(body.state) && fs.existsSync(body.bin) && body.bin.endsWith("bin/vau") && /^http:\/\/127\.0\.0\.1:\d+$/.test(body.url) &&
+      body.state.startsWith(path.join(local, "plugin-state")) && fs.existsSync(body.state) && fs.existsSync(body.bin) && body.bin.endsWith(path.join("bin", "vau")) && /^http:\/\/127\.0\.0\.1:\d+$/.test(body.url) &&
       body.vault === VAULT && body.op === "wordcount.env" && body.params === "{\"n\":5}" && body.stdin === "{\"n\":5}" &&
       body.path.split(path.delimiter).includes(path.dirname(process.execPath)), body)
     ;[st, body] = await api("POST", "ops/wordcount.changed?as=text", {})

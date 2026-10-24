@@ -1,6 +1,7 @@
-// Vaultite as a Mac app (Electron): each vault a window with its server (its own, or one here: host.ts); see CLAUDE.md.
+// Vaultite as a desktop app (Electron): each vault a window with its server (its own, or one here: host.ts); see CLAUDE.md.
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
-import { app, autoUpdater, type BaseWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
+import "../core/winspawn.ts" // (first: on Windows no program the main process starts opens a console window)
+import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -32,9 +33,19 @@ const LIGHTS = { x: 16, y: 14 }
 // Their height (points), to centre them on a row: each button's frame on macOS 15 (a 12pt circle in 14×16).
 const LIGHTS_HEIGHT = 16
 const LINUX = process.platform === "linux"
+const WIN = process.platform === "win32"
+/** The window's own title bar: the Mac's traffic lights over the page; Windows' controls drawn over its top-right corner
+ *  (titleBarOverlay, coloured as the page tells: window:controls); Linux keeps its system title bar. */
+const CONTROLS_HEIGHT = 40
+const chrome = (): BaseWindowConstructorOptions => WIN
+  ? { titleBarStyle: "hidden", titleBarOverlay: { color: background(), symbolColor: nativeTheme.shouldUseDarkColors ? "#ffffff" : "#000000", height: CONTROLS_HEIGHT } }
+  : { titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS }
 
 // A build named otherwise (electron-builder's extraMetadata.productName: a test release) keeps a userData of its own.
-app.setName(JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).productName ?? "Vaultite")
+const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+app.setName(PKG.productName ?? "Vaultite")
+// Windows: the id its Start menu shortcut carries (natives.cjs writes it into a packaged app), so notifications are its.
+if (WIN && typeof PKG.appId === "string") app.setAppUserModelId(PKG.appId)
 if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process.env.VAULTITE_USER_DATA))
 // Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes (extensions' workers) keep
 // Electron's sandboxed renderer, the one that runs service-worker preloads (app.enableSandbox() would drop --no-sandbox).
@@ -59,8 +70,9 @@ if (process.env.VAULTITE_QUIET) {
 // A copy a script drives (VAULTITE_QUIET, or Playwright's launch, always with a debugging port; the app's own is added
 // below) plays nothing aloud, AirPods included: a test's YouTube page would. VAULTITE_SOUND=1 for a test that needs it.
 if ((process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port")) && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")
-// A Mac takes a window's icon from the bundle; on Linux each window carries it (the taskbar, Alt+Tab), else Electron's.
-if (LINUX) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWindow.each((w) => w.setIcon(ICON)) }
+// A Mac takes a window's icon from the bundle, a packaged Windows app from its .exe; on Linux (and Windows from source)
+// each window carries it (the taskbar, Alt+Tab), else Electron's.
+if (LINUX || (WIN && !app.isPackaged)) { app.on("browser-window-created", (_e, w) => w.setIcon(ICON)); AppWindow.each((w) => w.setIcon(ICON)) }
 // VAULTITE_BEHIND=1 (npm run app:dev): the windows opened at launch wait to be shown until the user switches to the app,
 // rather than popping up over their work.
 let behind = !!process.env.VAULTITE_BEHIND
@@ -333,7 +345,7 @@ async function openVault(p: string, file?: string) {
   const apps = appsOn(p), glass = translucentAt(p), clear = apps || (MAC && glass)
   const win = new AppWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
-    title: nameOf(p), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
+    title: nameOf(p), ...chrome(),
     // (a click in a window that's behind acts too, as in a browser: a web page's field it lands on gets the keyboard,
     // not whatever had it in the app before)
     acceptFirstMouse: true,
@@ -460,8 +472,8 @@ function guard(win: AppWindow, origin: string) {
   // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
   const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences) => {
     const glass = translucentAt(w.vault.path), clear = MAC && glass
-    const child = new AppWindow({ width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset",
-      trafficLightPosition: LIGHTS, acceptFirstMouse: true, webPreferences,
+    const child = new AppWindow({ width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), ...chrome(),
+      acceptFirstMouse: true, webPreferences,
       ...(clear ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }) }, page)
     popouts.set(page, w)
     const closeIt = () => { if (!child.isDestroyed()) child.close() }
@@ -524,7 +536,7 @@ function showManager() {
   if (manager && !manager.isDestroyed()) return manager.focus()
   manager = new AppWindow({
     width: 760, height: 500, minWidth: 620, minHeight: 400, show: false, title: "Manage vaults",
-    titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS, backgroundColor: background(),
+    ...chrome(), backgroundColor: background(),
     fullscreenable: false, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
   })
   void manager.ready.then(() => manager?.show())
@@ -612,6 +624,7 @@ const where = (): Setup.Where => {
   return {
     home, exe: process.execPath, root: ROOT, userData: app.getPath("userData"),
     env: process.env.VAULTITE_USER_DATA ? { VAULTITE_USER_DATA: app.getPath("userData") } : {},
+    ...(process.env.VAULTITE_SETUP_HOME ? {} : { documents: app.getPath("documents") }),
   }
 }
 /** The user's PATH, asked of their shell once (it takes a moment). */
@@ -623,7 +636,7 @@ function showSetup() {
   setupWin = new AppWindow({
     // (useContentSize: a Linux window frame is outside it, so the page gets its 560×600 as on a Mac)
     width: 560, height: 600, useContentSize: true, resizable: false, maximizable: false, fullscreenable: false, show: false, title: "Set up Vaultite",
-    titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS, backgroundColor: background(),
+    ...chrome(), backgroundColor: background(),
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
   })
   void setupWin.ready.then(() => setupWin?.show())
@@ -699,6 +712,7 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
 })
 setupHandle("setup:vau", async (system: boolean) => {
   const r = Setup.installVau(where())
+  if (WIN) dirs = null // (Windows' PATH changed in the registry: read again)
   if (system) await Setup.linkSystem(r.path)
   return { did: system ? `Linked /usr/local/bin/vau to ${r.path}` : r.did, vau: Setup.vauStatus(where(), pathDirs()) }
 })
@@ -724,6 +738,10 @@ const focusedVault = () => {
   return [...wins.values()].find((w) => w.win === f) ?? [...wins.values()].sort((a, b) => (b.vault.last ?? 0) - (a.vault.last ?? 0))[0] ?? null
 }
 
+/** An outside file's path as the page and the server know it: Windows' with forward slashes (the page splits on "/";
+ *  Node takes either). */
+const slashed = (p: string) => (WIN ? p.replace(/\\/g, "/") : p)
+
 /** Open files (Finder, a drop, the picker): in their own vault's window if they're in one, else as outside files in
  *  `into` (the window asking, or the focused one; with none, the last vault used opens). Returns what `into` opens. */
 async function openFiles(paths: string[], into: Win | null): Promise<string[]> {
@@ -748,9 +766,10 @@ async function openFiles(paths: string[], into: Win | null): Promise<string[]> {
       w = await openVault(last.path).catch(() => null)
       if (!w) continue
     }
-    allowIn(w, p)
-    if (w === into) mine.push(p)
-    else { send(w, p); w.win.focus() }
+    const abs = slashed(p)
+    allowIn(w, abs)
+    if (w === into) mine.push(abs)
+    else { send(w, abs); w.win.focus() }
   }
   return mine
 }
@@ -1008,6 +1027,19 @@ ipcMain.handle("window:translucent", (e, on: unknown) => {
   const w = AppWindow.fromWebContents(e.sender)
   return w ? setTranslucent(w, on === true) : { on: false }
 })
+// Windows' controls over the window's top-right corner (preload.cjs): the page's colours there and its title row's
+// height (CSS px); answers their width in CSS px, which the page keeps clear.
+const CONTROLS_WIDTH = 138 // (three caption buttons of 46 DIP)
+ipcMain.handle("window:controls", (e, o: { color?: unknown; symbol?: unknown; height?: unknown }) => {
+  who(e)
+  const w = AppWindow.fromWebContents(e.sender)
+  if (!WIN || !w || !o || typeof o !== "object") return null
+  const z = e.sender.getZoomFactor()
+  const color = (x: unknown) => (typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x) ? x : undefined)
+  const height = typeof o.height === "number" && Number.isFinite(o.height) ? Math.round(Math.min(64, Math.max(28, o.height * z))) : CONTROLS_HEIGHT
+  w.setTitleBarOverlay({ color: color(o.color), symbolColor: color(o.symbol), height })
+  return { width: Math.ceil(CONTROLS_WIDTH / z) }
+})
 // `vau dev screenshot` (core/coreops/dev.ts, owner-only): the asking page as a PNG, halved while it's too big for the socket back.
 ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: number; height: number }) => {
   who(e)
@@ -1075,7 +1107,8 @@ const BUILD = (() => {
     return null
   }
 })()
-const updatable = () => app.isPackaged && !!BUILD
+// (Windows updates only from releases: a build from source has no update.sh there)
+const updatable = () => app.isPackaged && !!BUILD && (BUILD.release === true || !WIN)
 /** A release build updates from the release feed (electron-updater), not by building from git. */
 const RELEASE = app.isPackaged && BUILD?.release === true
 /** Vaultite Dev (see the head of this file); the branch it updates from. */
@@ -1245,7 +1278,8 @@ function restartToUpdate() {
     quitting = true // its windows close before the app quits: they're reopened after
     restarting(ready)
     // A beat for the toast to draw before the windows close, and the browser's logins on disk.
-    return void afterFlush(() => releases!.quitAndInstall())
+    // (Windows: the installer runs silently and opens the app again, rather than showing its window)
+    return void afterFlush(() => releases!.quitAndInstall(WIN, WIN))
   }
   if (!ready || ready !== built() || !replaceable()) return
   stopChecking()
@@ -1270,7 +1304,8 @@ async function releaseUpdater() {
   if (releases) return releases
   const updater = await import("electron-updater")
   const url = process.env.VAULTITE_UPDATE_URL
-  // Linux: the AppImage's updater, or the .deb's (it asks for the password to install, pkexec), as electron-updater picks.
+  // Linux: the AppImage's updater, or the .deb's (it asks for the password to install, pkexec), as electron-updater picks;
+  // Windows: the NSIS installer's, its architecture's file from the feed's list (tools/feed.ts).
   const u: AppUpdater = MAC ? new updater.MacUpdater(url ? { provider: "generic", url } : undefined) : updater.autoUpdater
   if (!MAC && url) u.setFeedURL({ provider: "generic", url })
   const log = (level: string) => (m: unknown) => {
@@ -1396,6 +1431,18 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 AppWindow.each((w) => w.on("focus", () => buildMenu()))
+// Windows draws no menu bar (the title bar is the page's, with its controls): Alt pressed and let go alone opens its menus
+// where it would be, as apps that hide theirs do; their keys work either way.
+if (WIN) AppWindow.each((w) => {
+  let alone = false
+  w.webContents.on("before-input-event", (_e, i) => {
+    if (i.key !== "Alt") alone = false
+    else if (i.type === "keyDown" && !i.isAutoRepeat) alone = true
+    else if (i.type === "keyUp" && alone) { alone = false; Menu.getApplicationMenu()?.popup({ window: w, x: 8, y: CONTROLS_HEIGHT }) }
+  })
+  // (Alt with a click: the editor's cursors, not the menu)
+  w.webContents.on("input-event", (_e, i) => { if (i.type === "mouseDown") alone = false })
+})
 
 /** An AppImage on a system that keeps it from Chromium's sandbox (Ubuntu 24.04+'s AppArmor) runs without it (its AppRun
  *  adds --no-sandbox): said once, with the two ways to have it, the .deb or a profile for AppImages' mounts. */
@@ -1429,14 +1476,14 @@ async function madeIfAsked(p: string) {
 /** The vaults to open at launch: the one asked for, else those open when the app last quit. */
 const reopening = () => { const a = asked(); return a ? [a] : known.filter((v) => v.open).map((v) => v.path) }
 
-/** Files and folders named on a command line: Linux's Open with (the desktop file's %U: file:// URLs) and `vaultite
- *  <file>`, the app's own and a second launch's. A Mac sends open-file instead. */
+/** Files and folders named on a command line: Linux's Open with (the desktop file's %U: file:// URLs), Windows' (a
+ *  path) and `vaultite <file>`, the app's own and a second launch's. A Mac sends open-file instead. */
 function argFiles(argv: string[], cwd: string) {
   const out: string[] = []
   for (let i = app.isPackaged ? 1 : 2; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--vault") { i++; continue }
-    if (a.startsWith("-")) continue
+    if (a.startsWith("-") || /^vaultite:/i.test(a)) continue
     let p = a
     if (p.startsWith("file://")) try { p = fileURLToPath(p) } catch { continue }
     p = path.resolve(cwd, p)
@@ -1444,6 +1491,9 @@ function argFiles(argv: string[], cwd: string) {
   }
   return out
 }
+
+/** vaultite:// links on a command line: how Windows and Linux hand the app one (a Mac sends open-url). */
+const argLinks = (argv: string[]) => argv.slice(1).filter((a) => /^vaultite:/i.test(a))
 
 // Finder's Open with (and files dropped on the Dock icon): can come before the app is ready.
 const early: string[] = MAC ? [] : argFiles(process.argv, process.cwd())
@@ -1456,7 +1506,7 @@ app.on("open-file", (e, p) => {
 
 // vaultite:// from another app or a link: the iPhone app's addresses (ios/App/Shared/Links.swift), `command/<id>`,
 // `open/<path>` and `bundle/<owner>/<name>` (a bundle's preview, never applied by the link), in the focused vault's window.
-const earlyLinks: string[] = []
+const earlyLinks: string[] = MAC ? [] : argLinks(process.argv)
 app.on("open-url", (e, url) => {
   e.preventDefault()
   if (started) void appLink(url).catch(() => {})
@@ -1511,11 +1561,13 @@ else {
     if (v && !attachable(p) && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) serverFor(v).catch(() => {})
   }
 }
-// Launched again (Linux: the app's icon, Open with, `vaultite <file>`): this one opens what it was given, else comes forward.
+// Launched again (Linux and Windows: the app's icon, Open with, a vaultite:// link, `vaultite <file>`): this one opens
+// what it was given, else comes forward.
 app.on("second-instance", (_e, argv, cwd) => {
   const i = argv.indexOf("--vault")
-  const files = MAC ? [] : argFiles(argv, cwd)
-  if (i > 0 && argv[i + 1]) {
+  const files = MAC ? [] : argFiles(argv, cwd), links = MAC ? [] : argLinks(argv)
+  if (links.length) for (const u of links) void appLink(u).catch(() => {})
+  else if (i > 0 && argv[i + 1]) {
     const p = path.resolve(cwd, argv[i + 1])
     void madeIfAsked(p).then(async (go) => { if (go) await openVault(p) }).catch((e) => failedBox("Couldn't open the vault", e))
   }
@@ -1587,6 +1639,8 @@ app.whenReady().then(async () => {
   if (fs.existsSync(DOCK_ICON()) || !app.isPackaged) applyDockIcon()
   app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() })
   if (DEV) app.dock?.setBadge("dev")
+  // (a Mac's Info.plist and Linux's desktop file name the scheme; the installer can't on Windows)
+  if (WIN && app.isPackaged && !app.isDefaultProtocolClient("vaultite")) app.setAsDefaultProtocolClient("vaultite")
   buildMenu()
   const a = asked()
   started = true

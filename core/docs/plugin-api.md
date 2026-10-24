@@ -155,8 +155,9 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 
 - `activity:typing` (activity): An agent types into `path` in the app for `ms` from now (0: it's done): the app's saves of it meanwhile are its.
 - `activity:report` (activity): The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart `report`): it sends the hook's JSON (on stdin) here, with the agent's name and its terminal. Never fails the hook.
+- `activity:report-url` (activity): The same as a URL its hook POSTs the JSON to, for an agent whose hooks can (Claude Code's http hooks on Windows).
 - `activity:changes` (activity)
-- `agent:claude` (claude-code): `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none).
+- `agent:claude` (claude-code)
 - `agent:codex` (codex): `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared background server, so no context (it reads the vault's AGENTS.md itself) and no hooks.
 - `agent-asking:claude` (claude-code): What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's.
 - `agent-asks:claude` (claude-code)

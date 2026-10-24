@@ -1,0 +1,4 @@
+# LF everywhere, Windows checkouts too: tests compare text and shell scripts break on CRLF
+* text=auto eol=lf
+# (but batch files: cmd misreads labels and long lines in LF ones)
+*.cmd text eol=crlf

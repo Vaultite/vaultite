@@ -219,9 +219,17 @@ export default async ($: VaultTest) => {
     const { toClipboard } = await import("../../../core/cli.ts")
     const fake = path.join(tmp, "fakebin")
     fs.mkdirSync(fake, { recursive: true })
-    fs.writeFileSync(path.join(fake, "pbcopy"), `#!/bin/sh\nexec /bin/cat > "${path.join(fake, "clip.txt")}"\n`, { mode: 0o755 })
-    const said = await toClipboard("copied text", "darwin", { PATH: fake })
-    check("vau --copy: the text through the system's tool", said === "" && fs.readFileSync(path.join(fake, "clip.txt"), "utf8") === "copied text", said)
+    if (process.platform === "win32") {
+      // (a stand-in tool would need a shell: Windows' own clip, read back)
+      const said = await toClipboard("copied text")
+      const { execFileSync } = await import("node:child_process")
+      const back = execFileSync("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard -Raw"], { encoding: "utf8" })
+      check("vau --copy: the text through the system's tool", said === "" && back.trim() === "copied text", { said, back })
+    } else {
+      fs.writeFileSync(path.join(fake, "pbcopy"), `#!/bin/sh\nexec /bin/cat > "${path.join(fake, "clip.txt")}"\n`, { mode: 0o755 })
+      const said = await toClipboard("copied text", "darwin", { PATH: fake })
+      check("vau --copy: the text through the system's tool", said === "" && fs.readFileSync(path.join(fake, "clip.txt"), "utf8") === "copied text", said)
+    }
     check("vau --copy: no tool says which it looked for", (await toClipboard("x", "linux", { PATH: fake })).includes("xclip"))
   }
   Object.assign($.vars, { w2, uiOf, sameJson })

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandLink, useCommands } from "@/core/commands"
-import { isDesktop, isMac, useDesktop } from "@/core/platform"
+import { isDesktop, isMac, isWindows, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
 import { desktop as desktopApp, otherVaults } from "@/core/desktop"
@@ -378,7 +378,7 @@ export default function App() {
     { id: "file:copy-link", name: "Copy link to current file", when: () => !!tabFile(), run: () => copyLink(tabFile()), icon: Link },
     // (The name stays a literal for core/appsource.ts; off a Mac it's the file manager's.)
     { id: "file:reveal-finder", name: "Reveal current file in Finder", when: () => !!tabFile() && canReveal(), run: () => revealInFinder(tabFile()), icon: FolderOpen,
-      ...(isMac ? {} : { name: "Show current file in folder" }) },
+      ...(isMac ? {} : { name: isWindows ? "Show current file in Explorer" : "Show current file in folder" }) },
     ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
     // Setup's tabs: Plugins, and Bundles (core/bundles.ts), setups of the app to start from, save and share.
     { id: "page:plugins", name: "Open Plugins", words: "setup extensions install", run: () => openSetup("plugins"), icon: Puzzle },
@@ -459,8 +459,9 @@ export default function App() {
     const root = document.documentElement.dataset
     if (showRight) root.rightSidebar = ""; else delete root.rightSidebar
     if (!popout && !sidebar && rails) root.leftRail = ""; else delete root.leftRail
+    if (showRight && !rightOpen && rails) root.rightRail = ""; else delete root.rightRail
     if (!rails) root.noRails = ""; else delete root.noRails
-  }, [showRight, popout, sidebar, rails])
+  }, [showRight, rightOpen, popout, sidebar, rails])
   // The shell takes its places without sliding to them while the vault's state comes in (main.tsx sets it).
   useEffect(() => {
     if (!store) return

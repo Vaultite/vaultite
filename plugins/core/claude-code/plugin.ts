@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type AgentAsk, type AgentMeter, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+import { type AgentAsk, type AgentCommand, type AgentMeter, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage, lastTurn, parseTerminal } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
@@ -476,16 +476,20 @@ plugin.provide("sample", (a: SampleAsk) => sample(a, DEFAULT_DIR))
 
 // ---------- Terminal runs it (the service "agent:claude")
 
-/** Claude Code's hooks (`--settings`, added to the user's own). `report` (Activity's) hears each edit and command; the
- *  rest mark the terminal working, waiting or idle, and do nothing once it speaks OSC 7501 (terminal: stateCommand). */
-function hooks(state: AgentStart["state"], report: string | null): object | null {
-  if (!state && !report) return null
-  const told = report ? [{ matcher: "^(Edit|Write|MultiEdit|NotebookEdit|Bash)$", hooks: [{ type: "command", command: report }] }] : []
-  if (!state) return { hooks: { PostToolUse: told } }
-  const set = (s: "working" | "waiting" | "idle", kind?: "permission" | "question") => [{ type: "command", command: state(s, kind) }]
+/** Claude Code's hooks (`--settings`): `report` (Activity's) hears edits and commands, the rest mark its state (nothing
+ *  once it speaks OSC 7501); on Windows' PowerShell and cmd they POST (http hooks; SessionStart takes a program). */
+function hooks({ state, report, stateHook, reportUrl }: Pick<AgentStart, "state" | "report" | "stateHook" | "reportUrl">): object | null {
+  const reported = report ? { type: "command", command: report } : reportUrl ? { type: "http", url: reportUrl, timeout: 5 } : null
+  const told = reported ? [{ matcher: "^(Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell)$", hooks: [reported] }] : []
+  if (!state && !stateHook) return reported ? { hooks: { PostToolUse: told } } : null
+  const set = (s: "working" | "waiting" | "idle", kind?: "permission" | "question", start = false) => {
+    if (state) return [{ type: "command", command: state(s, kind) }]
+    const h = stateHook!(s, kind)
+    return [start ? { type: "command", command: h.argv[0], args: h.argv.slice(1), timeout: 5 } : { type: "http", url: h.url, timeout: 5 }]
+  }
   const asks = "AskUserQuestion|ExitPlanMode"
   return { hooks: {
-    SessionStart: [{ hooks: set("idle") }],
+    SessionStart: [{ hooks: set("idle", undefined, true) }],
     UserPromptSubmit: [{ hooks: set("working") }],
     PreToolUse: [{ matcher: `^(?!(${asks})$).*`, hooks: set("working") }, { matcher: `^(${asks})$`, hooks: set("waiting", "question") }],
     PostToolUse: [{ hooks: set("working") }, ...told],
@@ -498,22 +502,26 @@ function hooks(state: AgentStart["state"], report: string | null): object | null
 
 /** `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile
  *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
-plugin.provide("agent:claude", async ({ resume, context, state, report, profile, prompt, dark, allow, model, effort }: AgentStart) => {
-  const found = resume ? sessionFile(resume, true) : null
-  if (resume && !found) return notOnThisMachine("Claude Code", resume)
-  const a = found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
-  const env = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? `CLAUDE_CONFIG_DIR=${shellQuote(a.dir)}` : ""
+const FLAGS = new Set(["--resume", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--"])
+plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> => {
+  const { resume, context, profile, prompt, dark, allow, model, effort, wsl } = start
+  // (inside WSL its sessions and accounts are the distro's own, not these)
+  const found = resume && !wsl ? sessionFile(resume, true) : null
+  if (resume && !found && !wsl) return notOnThisMachine("Claude Code", resume)
+  const a = wsl ? undefined : found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
+  const env: Record<string, string> = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? { CLAUDE_CONFIG_DIR: a.dir } : {}
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
   // Its ANSI themes draw in the terminal's 16 colours, which are the app's colour scheme.
   const theme = typeof dark === "boolean" ? { theme: dark ? "dark-ansi" : "light-ansi" } : null
-  const told = hooks(state, report ?? null)
+  const told = hooks(start)
   const settings = told || theme ? { ...told, ...theme } : null
+  // (Bash(...) and PowerShell(...): without Git Bash, Windows' Claude Code runs commands with its PowerShell tool)
+  const allowed = allow?.flatMap((x) => [`Bash(${x}:*)`, ...(process.platform === "win32" && !wsl ? [`PowerShell(${x}:*)`] : [])])
+  const args = [...(resume ? ["--resume", resume] : []), ...(context ? ["--append-system-prompt", context] : []), ...(settings ? ["--settings", JSON.stringify(settings)] : []),
+    ...(allowed?.length ? ["--allowedTools", ...allowed] : []), ...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : []), ...(prompt ? ["--", prompt] : [])]
   return {
-    command: [env, "claude", resume && `--resume ${shellQuote(resume)}`, context && `--append-system-prompt ${shellQuote(context)}`,
-      settings && `--settings ${shellQuote(JSON.stringify(settings))}`, allow?.length && `--allowedTools ${allow.map((a) => shellQuote(`Bash(${a}:*)`)).join(" ")}`,
-      model && `--model ${shellQuote(model)}`, effort && `--effort ${shellQuote(effort)}`,
-      prompt && `-- ${shellQuote(prompt)}`].filter(Boolean).join(" "),
-    cwd,
+    command: [...Object.entries(env).map(([k, v]) => `${k}=${shellQuote(v)}`), "claude", ...args.map((x) => (FLAGS.has(x) ? x : shellQuote(x)))].join(" "),
+    argv: ["claude", ...args], env, cwd,
   }
 })
 

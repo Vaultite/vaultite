@@ -54,9 +54,10 @@ export function parseSource(given: string, tag?: string | null): Source {
   // (git would read it as an option: -u<cmd> runs a command)
   if (s.startsWith("-") || at?.startsWith("-")) throw new OpError(`'${given}' isn't a plugin's source: it starts with a dash`)
   const cut = (re: RegExp) => { const m = re.exec(s); if (m) { s = s.slice(0, m.index); at ??= m[1] } }
-  const local = /^(\/|~\/|\.\.?\/|\.\.?$)/.test(s)
+  // (Windows' too: C:\x, \\server\x, .\x)
+  const local = /^(\/|~[\\/]|\.\.?[\\/]|\.\.?$|[a-z]:[\\/]|\\\\)/i.test(s)
   if (local) {
-    const expand = (p: string) => path.resolve(p.replace(/^~(?=\/)/, os.homedir()))
+    const expand = (p: string) => path.resolve(p.replace(/^~(?=[\\/])/, os.homedir()))
     if (!fs.existsSync(expand(s))) cut(/@([\w.+-]+)$/)
     const dir = expand(s)
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new OpError(`there's no folder ${dir}`, 404)
@@ -89,10 +90,11 @@ export function parseSource(given: string, tag?: string | null): Source {
     tag: at && dir && !at.includes("/") ? `${dir}/${at}` : at }
 }
 
-/** git with these arguments (never a shell; no prompts for a password): its output, or an OpError with its message. */
+/** git with these arguments (never a shell; no prompts for a password): its output, or an OpError with its message.
+ *  Files come out as they're stored: Windows' git turns LF into CRLF by default, and they'd no longer be the ones recorded. */
 export function git(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" } },
+    execFile("git", ["-c", "core.autocrlf=false", ...args], { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" } },
       (err, stdout, stderr) => (err ? reject(new OpError(`git ${args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c")}: ${(String(stderr).trim().split("\n").at(-1) || err.message).slice(0, 300)}`, 502)) : resolve(String(stdout))))
   })
 }

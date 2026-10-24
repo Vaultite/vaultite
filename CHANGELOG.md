@@ -87,6 +87,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   tool through MCP), are approved or denied only in the app or on your phone, never by an agent or vau.
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's
   gone, a pane squeezed too thin comes back at an even share, and Open web page always opens a new tab.
+- **Terminals on Windows**: PowerShell by default, or Windows PowerShell, Command Prompt, Git Bash or a WSL distro
+  (Terminal settings, Shell), each with `vau` on its path; shells outlive the server there too, and Claude Code and
+  Codex start from any of them, their state shown as on a Mac.
+- **Vaultite for Windows**: an installer for x64 and Arm (no administrator needed: it installs for you, in the Start
+  menu), and Vaultite Nightly's beside it; each updates itself from the release feed. The window is a Windows one, its
+  controls over the page's top-right corner in the page's colours, its menus on Alt; .md files and vaultite:// links
+  open in it. Set up puts vau on your PATH for PowerShell, cmd and Git Bash; `vau wsl install` puts it in WSL's
+  distros, where it reaches the app on Windows; `vau service` runs the server at login as a scheduled task, with no
+  window; files open in their app and show in Explorer. `vau service status` says whether the service runs.
 - **No more rules ping-pong**: two machines on different versions sharing a vault no longer rewrite `.vaultite/AGENTS.md`
   back and forth; each writes it only when its own rules change.
 - **Agents' tabs stay**: short of memory, the browser no longer discards a tab an agent opened or one waiting on you,

@@ -32,7 +32,9 @@ export default async ($: VaultTest) => {
     const { applyPatch } = await import("../../../core/statepatch.ts")
     const since = async (v: string) => { await vault.synced(); return JSON.parse(String(((await app.run("GET", ["state"], { since: v }, {})).body as { text: string }).text)) }
     const full = async () => JSON.parse(JSON.stringify(publicOf(await stateNow())))
-    const a0 = await since("0")
+    // (quiet first: on a slow machine the watcher may still bring an earlier area's changes)
+    let a0 = await since("0")
+    for (let i = 0; i < 40 && (await since(a0.v)).patch !== null; i++) { await new Promise((r) => setTimeout(r, 250)); a0 = await since("0") }
     check("state since 0: the whole state, with its version", typeof a0.v === "string" && same(a0.state, await full()), Object.keys(a0))
     const a1 = await since(a0.v)
     check("state since now: nothing changed", a1.v === a0.v && a1.patch === null, a1)

@@ -6,7 +6,8 @@
 import { chromium } from "playwright-core"
 import { readFileSync } from "node:fs"
 import path from "node:path"
-let [B, OUT = new URL("shots/", import.meta.url).pathname] = process.argv.slice(2)
+import { fileURLToPath } from "node:url"
+let [B, OUT = fileURLToPath(new URL("shots/", import.meta.url))] = process.argv.slice(2)
 if (!B) { console.error("usage: node web/qa/actions.mjs <base url> [out dir]"); process.exit(2) }
 if (!B.endsWith("/")) B += "/"
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))

@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
+import { standIn } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, vault, write } = $
@@ -109,14 +110,15 @@ export default async ($: VaultTest) => {
     // falls back.
     const bin = path.join(tmp, "fakebin")
     fs.mkdirSync(bin, { recursive: true })
-    fs.writeFileSync(path.join(bin, "claude"), `#!/bin/sh
-cat > /dev/null
-case "$*" in *claude-gone-1*) echo '{"type":"result","is_error":true,"result":"no such model","api_error_status":404}'; exit 0;; esac
-for w in "Hello" " there"; do echo "{\\"type\\":\\"stream_event\\",\\"event\\":{\\"type\\":\\"content_block_delta\\",\\"delta\\":{\\"type\\":\\"text_delta\\",\\"text\\":\\"$w\\"}}}"; done
-echo "{\\"type\\":\\"result\\",\\"is_error\\":false,\\"result\\":\\"Hello there\\",\\"stop_reason\\":\\"end_turn\\",\\"args\\":\\"$*\\"}"
-`, { mode: 0o755 })
+    standIn(bin, "claude", `process.stdin.resume(); process.stdin.on("end", () => {
+  const args = process.argv.slice(2).join(" "), say = (o) => console.log(JSON.stringify(o))
+  if (args.includes("claude-gone-1")) { say({ type: "result", is_error: true, result: "no such model", api_error_status: 404 }); return }
+  for (const w of ["Hello", " there"]) say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: w } } })
+  say({ type: "result", is_error: false, result: "Hello there", stop_reason: "end_turn", args })
+})
+`)
     const oldPath = process.env.PATH
-    process.env.PATH = `${bin}:${oldPath}`
+    process.env.PATH = `${bin}${path.delimiter}${oldPath}`
     try {
       const { sample } = await import("../../../plugins/core/claude-code/sample.ts")
       const deltas: string[] = []

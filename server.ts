@@ -1,5 +1,6 @@
 // Vaultite's server: the web app and a JSON API over the vault (core/app.ts). The desktop app runs one per vault as
 // its child (VAULTITE_DESKTOP=1, outside files over IPC: core/outside.ts); the web can switch vaults (core/vaults.ts).
+import "./core/winspawn.ts"
 import { errorContext, onServerError, startServerLog } from "./core/serverlog.ts"
 import { execFile, spawn } from "node:child_process"
 import crypto from "node:crypto"
@@ -46,7 +47,7 @@ const { RUNS_CODE, tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
-const { claim, servingKey } = await import("./core/serving.ts")
+const { answers, claim, reclaim, servingKey } = await import("./core/serving.ts")
 const { attach, detach, onHostMessage } = await import("./core/desktopapp.ts")
 starting.mark("imports")
 
@@ -60,7 +61,8 @@ const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 // `ready`. A vault that can't be opened still ends the server.
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
 await vaultThere(VAULT_AT)
-const servedBy = claim(VAULT_AT, PORT, DESKTOP)
+let servedBy = claim(VAULT_AT, PORT, DESKTOP)
+if (servedBy && process.platform === "win32" && !(await answers(servedBy.port))) servedBy = reclaim(VAULT_AT, PORT, DESKTOP)
 if (servedBy) {
   console.error(`vaultite: ${VAULT_AT} is served on this machine already (pid ${servedBy.pid}, port ${servedBy.port}): one server per vault`)
   process.exit(1)
@@ -325,12 +327,12 @@ async function foreign(req: http.IncomingMessage, origin = true) {
   return ""
 }
 
-/** POST /api/file/open {path, reveal}: open a file in this machine's default app, or show it in its folder (Finder, or
- *  Linux's file manager). Only for the app running on this machine, never from another device. */
+/** POST /api/file/open {path, reveal}: open a file in this machine's default app, or show it in its folder (Finder,
+ *  Explorer, Linux's file manager; Explorer from WSL). Only for the app running on this machine, never another device. */
 async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   if (!fromThisMachine(req)) return json(res, { error: "files only open in their app from this machine" }, 403)
-  if (process.platform !== "darwin" && process.platform !== "linux") return json(res, { error: "opening files in their app needs macOS or Linux" }, 501)
-  if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY)
+  if (process.platform !== "darwin" && process.platform !== "linux" && process.platform !== "win32") return json(res, { error: "opening files in their app needs macOS, Windows or Linux" }, 501)
+  if (process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY && !inWsl())
     return json(res, { error: "this server has no desktop to open files on (no DISPLAY or WAYLAND_DISPLAY)" }, 501)
   const body = await bodyOf(req) as { path?: unknown; reveal?: unknown } | undefined
   let abs: string
@@ -349,7 +351,23 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   try { const st = fs.statSync(abs); reveal ||= RUNS_CODE.test(abs) || (st.isFile() && (st.mode & 0o111) !== 0) } catch { /* opened as asked */ }
   // reveal: show it in Finder (open -R).
   if (process.platform === "darwin") return void execFile("/usr/bin/open", reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
+  if (process.platform === "win32") return void explorer(abs, reveal).then(() => done(null), done)
+  if (inWsl()) return void execFile("wslpath", ["-w", abs], { timeout: 10000 }, (e, win) => (e ? done(e) : explorer(win.trim(), reveal).then(() => done(null), done)))
   openOnLinux(abs, reveal).then(() => done(null), done)
+}
+
+/** A Linux server in WSL, which runs Windows' programs (its interop on). */
+const inWsl = () => process.platform === "linux" && ["WSLInterop", "WSLInterop-late"].some((f) => fs.existsSync(`/proc/sys/fs/binfmt_misc/${f}`))
+
+/** Windows: the file in its default app, or selected in Explorer. On Windows its command line is written as Explorer
+ *  reads it (a path can't hold "; from WSL, interop quotes it). Explorer answers 1 even when it worked: only not starting fails. */
+function explorer(win: string, reveal: boolean) {
+  const q = process.platform === "win32" ? `"${win}"` : win
+  return new Promise<void>((ok, fail) => {
+    const p = spawn("explorer.exe", [reveal ? `/select,${q}` : q], { windowsVerbatimArguments: true, stdio: "ignore", detached: true })
+    p.on("error", fail)
+    p.on("spawn", () => { p.unref(); ok() })
+  })
 }
 
 function liveFolder(p: string) {
@@ -595,7 +613,8 @@ server.listen(PORT, HOST, () => {
 if (process.env.VAULTITE_UPDATES && !DESKTOP && fs.existsSync(path.join(ROOT, ".git"))) {
   const { startUpdater } = await import("./core/selfupdate.ts")
   startUpdater({ root: ROOT, branch: process.env.VAULTITE_UPDATES, stateFile: path.join(LOCAL, "selfupdate.json"),
-    restart: () => process.kill(process.pid, "SIGTERM"),
+    // (as a stop does; Windows' SIGTERM would end it at once, its plugins never told)
+    restart: () => bye(143),
     // (any plugin asks the same desktop app; none reachable, or one too old to say, can't be cut short)
     busy: async () => {
       await ready

@@ -22,6 +22,8 @@ export function openElsewhere(url: string) {
 
 handle("browser:default", () => isDefault())
 handle("browser:make-default", async () => {
+  // (Windows keeps the choice to its Settings: registering the schemes here would change nothing it uses)
+  if (process.platform === "win32") return false
   if (!isDefault()) {
     const was = await app.getApplicationInfoForProtocol("https://").catch(() => null)
     const own = path.dirname(path.dirname(path.dirname(app.getPath("exe"))))

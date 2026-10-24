@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { monitorEventLoopDelay } from "node:perf_hooks"
 import {
-  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, recordSpan, section, spans, type Proc, type RequestEnd,
+  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, recordSpan, section, serverUrl, spans, type Proc, type RequestEnd,
   type RequestStart, type Span,
 } from "../../../core/plugins.ts"
 import { agentName, KNOWN_AGENTS } from "../../../core/agents.ts"
@@ -154,11 +154,13 @@ async function lookup(port: number): Promise<Caller | null> {
   const known = cached(byPort, port)
   if (known) return known[1]
   // Both at once, as the request starts: a quick caller (curl) is gone by the time it's answered.
-  // (Linux: iproute2's ss, there by default, where lsof often isn't; it names the processes of this user's sockets)
+  // (Linux: iproute2's ss, there by default, where lsof often isn't; Windows: netstat, its line from the caller's port)
   let [sockets, table] = await Promise.all([process.platform === "linux"
     ? run("ss", ["-Htnp", "state", "established", `( sport = :${port} )`])
+    : process.platform === "win32" ? run("netstat", ["-ano", "-p", "TCP"])
     : run(fs.existsSync("/usr/sbin/lsof") ? "/usr/sbin/lsof" : "lsof", ["-nP", "-a", `-iTCP:${port}`, "-sTCP:ESTABLISHED", "-Fp"]), processes()])
   const pids = (process.platform === "linux" ? [...sockets.matchAll(/pid=(\d+)/g)].map((m) => Number(m[1]))
+    : process.platform === "win32" ? [...sockets.matchAll(new RegExp(`^\\s*TCP\\s+\\S+:${port}\\s+\\S+:${process.env.PORT || 8793}\\s+ESTABLISHED\\s+(\\d+)`, "gm"))].map((m) => Number(m[1]))
     : sockets.split("\n").filter((l) => l.startsWith("p")).map((l) => Number(l.slice(1)))).filter((p) => p && p !== process.pid)
   let pid = pids[0]
   if (pid) {
@@ -266,7 +268,7 @@ function describe(method: string, route: string, query: Record<string, string>, 
   if (route === "file/move") { const f = str(b.from), t = str(b.to); return { action: "move", text: `Moved ${f} to ${t}`, paths: [f, t].filter(Boolean) } }
   if (route === "file/restore") return { action: "create", text: `Restored ${p} from the trash`, paths: p ? [p] : [] }
   if (route === "file/copy") return { action: "create", text: `Duplicated ${p}`, paths: p ? [p] : [] }
-  if (route === "file/open") return { action: "ui", text: `${b.reveal ? "Showed" : "Opened"} ${p} in ${b.reveal ? (process.platform === "darwin" ? "Finder" : "its folder") : "its app"}`, paths: p ? [p] : [] }
+  if (route === "file/open") return { action: "ui", text: `${b.reveal ? "Showed" : "Opened"} ${p} in ${b.reveal ? (process.platform === "darwin" ? "Finder" : process.platform === "win32" ? "Explorer" : "its folder") : "its app"}`, paths: p ? [p] : [] }
   if (route === "folder") return { action: "create", text: `Made the folder ${p}`, paths: p ? [p] : [] }
   if (route === "upload") return { action: "create", text: `Added ${p}`, paths: p ? [p] : [] }
   if (route === "upload/name") return null
@@ -342,10 +344,16 @@ const writes: Write[] = []
 /** How far a file's mtime may fall outside its write: a file's clock is coarser than Date.now(), and a write may land as
  *  its answer goes. */
 const BEFORE = 5, AFTER = 50
-/** The write a file with this mtime is from: the one going on then, else one just around it. (Exact first: the next
- *  request's margin starts before the last one ended, and would take its file.) */
-const writeAt = (mtime: number) => writes.findLast((x) => mtime >= x.start && mtime <= x.end)
-  ?? writes.findLast((x) => mtime >= x.start - BEFORE && mtime <= x.end + AFTER)
+/** The write a file with this mtime is from: the one going on then, else the nearest just around it, each side by its
+ *  margin (the next request's margin starts before the last one ended; Windows' file clock runs a ms or two ahead). */
+const writeAt = (mtime: number) => {
+  const exact = writes.findLast((x) => mtime >= x.start && mtime <= x.end)
+  if (exact) return exact
+  const off = (x: Write) => (mtime < x.start ? (x.start - mtime) / BEFORE : (mtime - x.end) / AFTER)
+  let best: Write | undefined
+  for (const x of writes) if (off(x) <= 1 && (!best || off(x) <= off(best))) best = x
+  return best
+}
 
 plugin.onRequest((s) => {
   const route = s.route
@@ -453,11 +461,17 @@ function claim(rel: string) {
 
 /** Where a path is, for an event: vault-relative when it's in the vault, else ~/... */
 function relOf(abs: string) {
-  const home = os.homedir()
-  for (const root of [plugin.vault.path, (() => { try { return fs.realpathSync(plugin.vault.path) } catch { return "" } })()]) {
-    if (root && abs.startsWith(root + "/")) return { rel: abs.slice(root.length + 1), inVault: true }
+  // (path.relative: Windows' separators and its case-blind names too)
+  const under = (root: string) => {
+    const r = root ? path.relative(root, abs) : ""
+    return r && r !== ".." && !r.startsWith(".." + path.sep) && !path.isAbsolute(r) ? r.split(path.sep).join("/") : null
   }
-  return { rel: abs.startsWith(home + "/") ? `~/${abs.slice(home.length + 1)}` : abs, inVault: false }
+  for (const root of [plugin.vault.path, (() => { try { return fs.realpathSync(plugin.vault.path) } catch { return "" } })()]) {
+    const rel = under(root)
+    if (rel) return { rel, inVault: true }
+  }
+  const home = under(os.homedir())
+  return { rel: home ? `~/${home}` : abs, inVault: false }
 }
 
 /** The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart
@@ -465,6 +479,8 @@ function relOf(abs: string) {
 plugin.provide("activity:report", (agent: string, terminal: string) => {
   return hookCommand("activity/hook", { agent, terminal })
 })
+/** The same as a URL its hook POSTs the JSON to, for an agent whose hooks can (Claude Code's http hooks on Windows). */
+plugin.provide("activity:report-url", (agent: string, terminal: string) => `${serverUrl()}/api/activity/hook?${new URLSearchParams({ agent, terminal })}`)
 
 plugin.route("POST", "activity/hook", async (req) => {
   // The hook's JSON is the body; the report command names the agent and its terminal in the query.
@@ -482,7 +498,7 @@ plugin.route("POST", "activity/hook", async (req) => {
     const { rel, inVault } = relOf(file)
     if (inVault) claim(rel)
     record({ t, actor, action: tool === "Write" ? "create" : "edit", text: `${tool === "Write" ? "Wrote" : "Edited"} ${rel}`, paths: inVault ? [rel] : [] })
-  } else if (tool === "Bash") {
+  } else if (tool === "Bash" || tool === "PowerShell") {
     const cmd = str(input.command).split("\n")[0].slice(0, 200)
     if (cmd) record({ t, actor, action: "run", text: `Ran ${cmd}`, paths: [] })
   }

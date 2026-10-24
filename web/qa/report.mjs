@@ -12,6 +12,7 @@ import os from "node:os"
 import path from "node:path"
 import { devices } from "playwright-core"
 import { apiAt, qa, until } from "./lib/qa.mjs"
+import { fileURLToPath } from "node:url"
 const { args: [B, OUT = "/tmp/report-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
@@ -19,7 +20,7 @@ const api = apiAt(B)
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 const enc = (p) => encodeURIComponent(p)
 const term = "q7r8s9t0"
-const vau = (...args) => execFileSync("node", [new URL("../../bin/vau", import.meta.url).pathname, ...args],
+const vau = (...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args],
   { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: term, CLAUDE_CODE_SESSION_ID: "" }, encoding: "utf8" })
 
 await api("POST", `terminals/${term}`)

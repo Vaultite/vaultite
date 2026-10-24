@@ -11,6 +11,7 @@ import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, R
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -524,8 +525,10 @@ async function trim() {
 }
 setInterval(() => void trim(), 60_000).unref()
 
-/** Whether the computer is short of memory: macOS's memory pressure (warn or critical), Linux's available memory. */
+/** Whether the computer is short of memory: macOS's memory pressure (warn or critical), Linux's and Windows' available
+ *  memory. */
 function shortOfMemory(): Promise<boolean> {
+  if (process.platform === "win32") return Promise.resolve(os.freemem() / os.totalmem() < 0.1)
   if (MAC) return new Promise((done) => execFile("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"], { timeout: 2000 }, (e, out) => done(!e && Number(out) >= 2)))
   try {
     const m = fs.readFileSync("/proc/meminfo", "utf8"), kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, "m").exec(m)?.[1] ?? 0)

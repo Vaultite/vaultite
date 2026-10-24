@@ -16,6 +16,20 @@ const sections: SectionRun[] = []
 let current: SectionRun | null = null
 let started = 0
 
+/** A stand-in program `name` in `dir` (put on PATH) running the Node module `js` (its source): an npm-style .cmd on
+ *  Windows (how agents' npm installs look there), a sh script elsewhere. Its path. */
+export function standIn(dir: string, name: string, js: string) {
+  fs.mkdirSync(dir, { recursive: true })
+  const mod = path.join(dir, `${name}.mjs`)
+  fs.writeFileSync(mod, js)
+  if (process.platform === "win32") {
+    fs.writeFileSync(path.join(dir, `${name}.cmd`), `@ECHO off\r\n"${process.execPath}"  "%~dp0\\${name}.mjs" %*\r\n`)
+    return path.join(dir, `${name}.cmd`)
+  }
+  fs.writeFileSync(path.join(dir, name), `#!/bin/sh\nexec '${process.execPath}' '${mod}' "$@"\n`, { mode: 0o755 })
+  return path.join(dir, name)
+}
+
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** A port nothing listens on now, on 127.0.0.1. */
 export const freePort = () => new Promise<number>((resolve) => {

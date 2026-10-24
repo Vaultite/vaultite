@@ -1,8 +1,9 @@
-// The terminal's own keeper of shells: a detached Node process holding each pty and a headless xterm.js of its screen,
-// so shells outlive the server and a returning page gets a picture of the screen (newline JSON over a Unix socket).
+// The terminal's own keeper of shells: a detached Node process holding each pty and a headless xterm.js of its screen, so
+// shells outlive the server and a page gets a picture (newline JSON over a Unix socket, a named pipe on Windows).
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
+import os from "node:os"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
@@ -12,7 +13,10 @@ import type { SerializeAddon as Serializer } from "@xterm/addon-serialize"
 import { REPLY, watcher } from "./osc7501.ts"
 
 const SOCK = process.argv[2]
-if (!SOCK) { console.error("usage: ptyd.ts <socket path>"); process.exit(2) }
+if (!SOCK) { console.error("usage: ptyd.ts <socket path> [<its files' path>]"); process.exit(2) }
+/** Where its .pid goes (`${FILES}.pid`): the socket's path, or beside a pipe's (which isn't a file). */
+const FILES = process.argv[3] || SOCK
+const WIN = process.platform === "win32"
 const V = 1
 const SCROLLBACK = 10000 // lines the headless terminal keeps when the server doesn't say (its setting `scrollback`)
 
@@ -22,7 +26,7 @@ const ptyDir = path.dirname(require.resolve("node-pty/package.json"))
 /** Its prebuilt spawn-helper can arrive without the exec bit (npm skips install scripts, `npm ci` again): posix_spawnp
  *  fails. Fixed at the start, and again when a shell doesn't start. */
 function fixHelper() {
-  for (const sub of [`prebuilds/${process.platform}-${process.arch}`, "build/Release"]) {
+  if (!WIN) for (const sub of [`prebuilds/${process.platform}-${process.arch}`, "build/Release"]) {
     const helper = path.join(ptyDir, sub, "spawn-helper")
     try { if (!(fs.statSync(helper).mode & 0o111)) fs.chmodSync(helper, 0o755) } catch { /* not there */ }
   }
@@ -39,7 +43,7 @@ const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
 
 type Conn = { sock: net.Socket; session: Shell | null; ready: boolean; send: (m: object) => void; status?: boolean }
 type Shell = {
-  id: string; pty: IPty; term: Headless; ser: Serializer; created: number; activity: number; spare: boolean
+  id: string; pty: IPty; name: string; term: Headless; ser: Serializer; created: number; activity: number; spare: boolean
   title: string; attached: Set<Conn>
   /** Output read while the headless terminal still parses the last piece: written (and passed on) as one. */
   queued: string; parsing: boolean
@@ -95,8 +99,8 @@ function create(m: Record<string, unknown>) {
   if (!id) throw new Error("no id")
   if (shells.has(id)) throw new Error(`there's already a shell '${id}'`)
   const cols = Number(m.cols) || 80, rows = Number(m.rows) || 24
-  const spawn = () => pty.spawn(String(m.file), (m.args as string[]) ?? [], {
-    name: "xterm-256color", cols, rows, cwd: String(m.cwd || process.env.HOME || "/"), env: (m.env as Record<string, string>) ?? {},
+  const spawn = () => pty.spawn(String(m.file), (m.args as string[] | string) ?? [], {
+    name: "xterm-256color", cols, rows, cwd: String(m.cwd || os.homedir()), env: (m.env as Record<string, string>) ?? {},
   })
   let p: IPty
   try { p = spawn() } catch (e) {
@@ -119,7 +123,7 @@ function create(m: Record<string, unknown>) {
     if (TRACE) log("7501", s.id, "probe answered")
     try { p.write(REPLY) } catch { /* ended */ }
   })
-  const s: Shell = { id, pty: p, term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set(), status,
+  const s: Shell = { id, pty: p, name: String(m.name || path.basename(String(m.file))), term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set(), status,
     queued: "", parsing: false }
   term.onTitleChange((t) => { s.title = t })
   // Its answers to the programs' questions, only while no page is there to answer.
@@ -160,8 +164,10 @@ function screen(s: Shell, lines: number) {
   return out.slice(-lines).join("\n")
 }
 
-/** The terminal's foreground process group (what runs in front in it): Linux's /proc, else ps; 0 when unknown. */
+/** The terminal's foreground process group (what runs in front in it): Linux's /proc, else ps; 0 when unknown (Windows,
+ *  where node-pty ends what runs in the console with it). */
 function foreground(pid: number) {
+  if (WIN) return 0
   try {
     if (process.platform !== "linux") return Math.max(0, Number(execFileSync("ps", ["-o", "tpgid=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim()) || 0)
     const st = fs.readFileSync(`/proc/${pid}/stat`, "utf8"), f = st.slice(st.lastIndexOf(")") + 2).split(" ")
@@ -180,8 +186,10 @@ function reap(pgid: number) {
   }, 5000).unref()
 }
 
-// (Linux names it by its path, /bin/bash, from /proc: a Mac by its name)
-function process_(s: Shell) { try { return path.basename(s.pty.process) } catch { return "" } }
+// (Linux names it by its path, /bin/bash, from /proc: a Mac by its name; Windows' node-pty can't tell: the shell started)
+function process_(s: Shell) { if (WIN) return s.name; try { return path.basename(s.pty.process) } catch { return "" } }
+/** Ends a shell as closing its terminal does: a hangup, or `signal`; Windows has no signals (its console closes). */
+function hangup(s: Shell, signal = "SIGHUP") { try { if (WIN) s.pty.kill(); else s.pty.kill(signal) } catch { /* ended */ } }
 
 function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | null | undefined {
   const shell = (id: unknown) => {
@@ -210,7 +218,7 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
     case "kill": {
       const s = shell(m.id)
       const fg = typeof m.signal === "string" ? 0 : foreground(s.pty.pid)
-      try { s.pty.kill(typeof m.signal === "string" ? m.signal : "SIGHUP") } catch { /* ended */ }
+      hangup(s, typeof m.signal === "string" ? m.signal : "SIGHUP")
       if (fg) reap(fg)
       return {}
     }
@@ -271,12 +279,12 @@ function idleCheck() {
   if (stale()) { retire(); return }
   if (conns.size) return
   if (Date.now() - lastConn < 60_000) return
-  for (const s of shells.values()) if (s.spare) try { s.pty.kill("SIGHUP") } catch { /* ended */ }
+  for (const s of shells.values()) if (s.spare) hangup(s)
   if ([...shells.values()].some((s) => !s.spare)) return
   if (shells.size) return // (spares on their way out: next time)
   log("nothing left: exiting")
   server.close()
-  for (const f of [SOCK, `${SOCK}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
+  removeFiles()
   process.exit(0)
 }
 
@@ -288,8 +296,8 @@ function retire() {
   if ([...shells.values()].some((s) => !s.spare)) return false
   retiring = true
   log(`retiring: this keeper's files are gone (${SELF})`)
-  for (const s of shells.values()) try { s.pty.kill("SIGHUP") } catch { /* ended */ }
-  for (const f of [SOCK, `${SOCK}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
+  for (const s of shells.values()) hangup(s)
+  removeFiles()
   server.close()
   // (after the answer that says so has gone out)
   setTimeout(() => { for (const c of conns) c.sock.destroy(); process.exit(0) }, 200)
@@ -333,16 +341,24 @@ const server = net.createServer((sock) => {
   sock.on("error", gone)
 })
 
+/** Its socket file (not a pipe: Windows removes that with it) and pid file. */
+function removeFiles() {
+  for (const f of [...(WIN ? [] : [SOCK]), `${FILES}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
+}
+
 /** Another one already answers at this path: leave it be. A stale socket file (one that ended badly) is removed. */
 function start() {
   const probe = net.connect(SOCK)
   probe.on("connect", () => { probe.destroy(); log("another one answers here: exiting"); process.exit(0) })
   probe.on("error", () => {
-    try { fs.rmSync(SOCK, { force: true }) } catch { /* none */ }
-    fs.mkdirSync(path.dirname(SOCK), { recursive: true })
+    if (!WIN) {
+      try { fs.rmSync(SOCK, { force: true }) } catch { /* none */ }
+      fs.mkdirSync(path.dirname(SOCK), { recursive: true })
+    }
     server.listen(SOCK, () => {
-      try { fs.chmodSync(SOCK, 0o600) } catch { /* the folder is the user's anyway */ }
-      try { fs.writeFileSync(`${SOCK}.pid`, `${process.pid}\n`) } catch { /* only for stopping it by hand */ }
+      if (!WIN) try { fs.chmodSync(SOCK, 0o600) } catch { /* the folder is the user's anyway */ }
+      // (on Windows it's also what says one runs: backend.ts looks for it rather than open the pipe)
+      try { fs.writeFileSync(`${FILES}.pid`, `${process.pid}\n`) } catch { /* only for stopping it by hand */ }
       log(`listening on ${SOCK} (v${V}, pid ${process.pid})`)
     })
   })
@@ -354,8 +370,8 @@ setInterval(idleCheck, 15_000)
 process.on("SIGHUP", () => {})
 process.on("SIGINT", () => {})
 process.on("SIGTERM", () => {
-  for (const s of shells.values()) try { s.pty.kill("SIGHUP") } catch { /* ended */ }
-  for (const f of [SOCK, `${SOCK}.pid`]) try { fs.rmSync(f, { force: true }) } catch { /* gone */ }
+  for (const s of shells.values()) hangup(s)
+  removeFiles()
   setTimeout(() => process.exit(0), 300)
 })
 process.on("uncaughtException", (e) => log("uncaught:", e))

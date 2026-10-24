@@ -65,10 +65,14 @@ export function slug(s: unknown) {
   return str(s).toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 }
 
-/** File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names. */
+/** Names Windows keeps for devices, with any extension (CON, nul.md, COM1). */
+export const DEVICE_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i
+
+/** File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names, and Windows (where a synced
+ *  vault may go) a name ending in a dot or one of its device names. */
 export function safeName(title: unknown) {
-  const name = str(title).replaceAll(":", " -").replace(/[*"\\/<>|?#^[\]]/g, " ")
-  return name.replace(/\s+/g, " ").trim() || "Untitled"
+  const name = str(title).replaceAll(":", " -").replace(/[*"\\/<>|?#^[\]\x00-\x1f]/g, " ").replace(/\s+/g, " ").replace(/[\s.]+$/, "").trim()
+  return !name ? "Untitled" : DEVICE_NAME.test(name) ? `${name}_` : name
 }
 
 /** Python-like truthiness: "", 0, null, false, [] and {} are all false. */
@@ -108,7 +112,7 @@ export function writeNew(p: string, data: string | Buffer): boolean {
     fs.writeFileSync(tmp, data, { flag: "wx" })
     // (iCloud's placeholder of it counts: another Mac's copy, not here yet; a second would be iCloud's "Name 2")
     if (fs.existsSync(p) || !gone(p, { code: "ENOENT" })) { fs.rmSync(tmp, { force: true }); return false }
-    fs.renameSync(tmp, p)
+    renameFile(tmp, p)
     told?.(null, data as string)
     return true
   } catch (e) {
@@ -127,6 +131,39 @@ export function writeText(p: string, text: string) {
   writeAtomic(p, crlf ? text.replace(/\r?\n/g, "\r\n") : text)
 }
 
+/** Windows won't replace or move a file another process, or this one's own reads under way, has open (a reader, the
+ *  search indexer, antivirus): EPERM, EACCES or EBUSY until it lets go. */
+const held = (e: unknown) => process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException)?.code ?? "")
+
+/** fs.renameSync, retried a moment on Windows while another process holds the file; one this process reads can't end
+ *  while it waits, so then, to a name that's free, it's copied and the original removed (its readers share deleting). */
+export function renameFile(from: string, to: string) {
+  for (let wait = 5; ; wait *= 2) {
+    try { return fs.renameSync(from, to) } catch (e) {
+      if (!held(e)) throw e
+      // (a folder there, or a read-only file, won't let go)
+      const st = fs.statSync(to, { throwIfNoEntry: false })
+      if (st && (st.isDirectory() || !(st.mode & 0o200))) throw e
+      if (wait <= 160) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait); continue }
+      if (st) throw e
+      fs.cpSync(from, to, { recursive: true, preserveTimestamps: true, errorOnExist: true, force: false })
+      fs.rmSync(from, { recursive: true, force: true })
+      return
+    }
+  }
+}
+
+/** The temporary copy `tmp` in place of `p`: renamed, or on Windows, while `p` is held open, written over it at once
+ *  (its readers share writing, not replacing; waiting would hold this process's own). */
+function replace(tmp: string, p: string, data: string | Buffer) {
+  try { fs.renameSync(tmp, p) } catch (e) {
+    const st = held(e) ? fs.statSync(p, { throwIfNoEntry: false }) : null
+    if (!st?.isFile() || !(st.mode & 0o200)) throw e
+    fs.writeFileSync(p, data)
+    fs.rmSync(tmp, { force: true })
+  }
+}
+
 /** A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only). */
 export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?: number } = {}) {
   guard(p)
@@ -137,7 +174,7 @@ export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?:
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
     fs.writeFileSync(tmp, text, mode === undefined ? "utf8" : { encoding: "utf8", mode })
-    fs.renameSync(tmp, p)
+    replace(tmp, p, text)
   } catch (e) {
     // (a write macOS refused, EPERM from a server whose app was replaced under it, leaves no copy behind in the vault)
     fs.rmSync(tmp, { force: true })
@@ -1603,7 +1640,7 @@ export class Vault {
       guard(this.abs(cur))
       guard(this.abs(rel))
       fs.mkdirSync(path.dirname(this.abs(rel)), { recursive: true })
-      fs.renameSync(this.abs(cur), this.abs(rel))
+      renameFile(this.abs(cur), this.abs(rel))
       this.drop(cur)
       this.moved(cur, rel)
     }
@@ -1632,7 +1669,7 @@ export class Vault {
     let to = stem + ext
     for (let n = 1; fs.existsSync(this.abs(to)); n++) to = `${stem} ${n}${ext}`
     fs.mkdirSync(path.dirname(this.abs(to)), { recursive: true })
-    fs.renameSync(this.abs(rel), this.abs(to))
+    renameFile(this.abs(rel), this.abs(to))
     return to
   }
 

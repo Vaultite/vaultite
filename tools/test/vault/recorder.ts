@@ -3,13 +3,14 @@ import os from "node:os"
 import path from "node:path"
 import type { IncomingMessage } from "node:http"
 import type { VaultTest } from "./harness.ts"
+import { standIn } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, exists, read, sleep, tmp, write } = $
   // ---------- Audio recorder: transcripts as jobs, written under the recording's embed ----------
   {
-    const fake = path.join(tmp, "fake-transcriber.sh") // (outside the vault: a program in it is never run)
-    fs.writeFileSync(fake, '#!/bin/sh\necho "Heard $(basename "$1")."\necho\necho "Second paragraph."\n', { mode: 0o755 })
+    // (outside the vault: a program in it is never run)
+    const fake = standIn(tmp, "fake-transcriber.sh", 'console.log(`Heard ${process.argv[2].replace(/^.*[\\\\/]/, "")}.\\n\\nSecond paragraph.`)')
     const settings = ".vaultite/plugins/audio-recorder/data.json"
     // Which program runs is this machine's (data/config.json), never the vault's.
     const config = path.join(process.env.VAULTITE_LOCAL!, "config.json")
@@ -19,11 +20,11 @@ export default async ($: VaultTest) => {
       fs.writeFileSync(config, JSON.stringify({ ...(configWas ? JSON.parse(configWas) : {}), "audio-recorder": { command } }))
     }
     write(settings, JSON.stringify({ command: "/bin/echo {file}", whisper: "/bin/echo" }))
-    local(`${fake} {file}`)
+    local(`"${fake}" {file}`)
     write("Attachments/memo.m4a", "not really audio")
     write("Notes/Memo.md", "---\ntype: note\n---\n\nBefore\n![[memo.m4a]]\nAfter\n")
     let [st, tr] = await api("GET", "audio-recorder/transcriber")
-    check("audio: a transcriber from this machine's config, not the vault's settings", st === 200 && tr.available && tr.name === "fake-transcriber.sh" && tr.auto === true, tr)
+    check("audio: a transcriber from this machine's config, not the vault's settings", st === 200 && tr.available && tr.name === path.basename(fake) && tr.auto === true, tr)
     const [s1, job] = await api("POST", "audio-recorder/transcribe", { path: "Attachments/memo.m4a" })
     check("audio: a transcript is a job, for the note that embeds the file", s1 === 202 && job.note === "Notes/Memo.md" && ["queued", "running"].includes(job.state), job)
     let j = job
@@ -53,14 +54,14 @@ export default async ($: VaultTest) => {
     const [s7] = await api("POST", "audio-recorder/voice", {}, sent(Buffer.alloc(0)))
     check("audio: a voice note needs its recording", s7 === 400, s7)
     if (v.note) fs.rmSync(path.join(VAULT, v.note))
-    fs.copyFileSync(fake, path.join(VAULT, "fake.sh")); fs.chmodSync(path.join(VAULT, "fake.sh"), 0o755)
-    local(`${path.join(VAULT, "fake.sh")} {file}`)
+    const inVault = path.join(VAULT, path.basename(fake))
+    fs.copyFileSync(fake, inVault); fs.chmodSync(inVault, 0o755)
+    local(`"${inVault}" {file}`)
     ;[, tr] = await api("GET", "audio-recorder/transcriber")
     check("audio: a program inside the vault is never run", !tr.available && /inside the vault/.test(tr.why), tr)
     // A transcriber that fails says why, not its progress bar (redrawn with \r, all one line).
-    const failing = path.join(tmp, "failing-transcriber.sh")
-    fs.writeFileSync(failing, '#!/bin/sh\nprintf " 10%%|#  | 1/10 [00:01<00:09]\\r 20%%|##  | 2/10 [00:02<00:08]\\rout of memory\\n" >&2\nexit 1\n', { mode: 0o755 })
-    local(`${failing} {file}`)
+    const failing = standIn(tmp, "failing-transcriber.sh", 'process.stderr.write(" 10%|#  | 1/10 [00:01<00:09]\\r 20%|##  | 2/10 [00:02<00:08]\\rout of memory\\n"); process.exitCode = 1')
+    local(`"${failing}" {file}`)
     {
       const [, fj] = await api("POST", "audio-recorder/voice?ext=m4a&from=Computer", {}, sent(Buffer.from("not really audio")))
       let f = fj
@@ -125,6 +126,6 @@ export default async ($: VaultTest) => {
       ;[, tr] = await api("GET", "audio-recorder/transcriber")
       check("audio: off a Mac, Apple's isn't tried, and it says what to install", tr.available || (/pipx install openai-whisper|ffmpeg/.test(tr.why) && !/Apple/.test(tr.why)), tr)
     }
-    for (const f of [settings, "Attachments/memo.m4a", "Attachments/loose.m4a", "Notes/Memo.md", "fake.sh"]) fs.rmSync(path.join(VAULT, f))
+    for (const f of [settings, "Attachments/memo.m4a", "Attachments/loose.m4a", "Notes/Memo.md", path.basename(fake)]) fs.rmSync(path.join(VAULT, f))
   }
 }

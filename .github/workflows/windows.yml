@@ -1,0 +1,76 @@
+# Windows past ci.yml's tests on windows-2025 (main's gate): the tests on Arm, and what only a real Windows shows: vau
+# from PowerShell, cmd, Git Bash and WSL, the service, the terminals, and the installer installed and launched. Each
+# script in .github/windows/ writes what it saw to windows-out/, kept with the run (the app's screenshots too).
+name: Windows
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - if: ${{ !cancelled() }}
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      - if: ${{ !cancelled() }}
+        run: npx playwright-core install chromium
+      - if: ${{ !cancelled() }}
+        run: npm run build
+      - if: ${{ !cancelled() }}
+        run: npm test
+      - if: ${{ !cancelled() }}
+        run: npm run smoke
+  surfaces:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      # (the app's packaging scripts set variables sh's way: Git Bash runs npm's scripts here)
+      - run: npm config set script-shell "$(cygpath -w "$(command -v bash)")"
+      - run: npm ci
+      # (WSL with a distro, for vau and the terminals there; skipped where the runner can't have one)
+      - uses: Vampire/setup-wsl@v7
+        continue-on-error: true
+        with:
+          distribution: Ubuntu-24.04
+      - run: npm run build
+      - if: ${{ !cancelled() }}
+        name: vau from every shell, Set up's PATH, opening files, the service, WSL
+        run: bash .github/windows/cli.sh
+      - if: ${{ !cancelled() && hashFiles('.github/windows/terminal.sh') != '' }}
+        name: The terminals and coding agents
+        run: bash .github/windows/terminal.sh
+      - if: ${{ !cancelled() && hashFiles('.github/windows/app.sh') != '' }}
+        name: The installer, installed, launched and uninstalled
+        run: bash .github/windows/app.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: windows-out/
+          if-no-files-found: ignore

@@ -75,9 +75,11 @@ async function request(url: string, method: string, body?: string, extra: Record
   })
 }
 
-/** The desktop app's folder for this user (its vaults.json; vau's prompt history). */
-export const userData = (env: Record<string, string | undefined> = process.env) => env.VAULTITE_USER_DATA || (process.platform === "darwin"
-  ? path.join(os.homedir(), "Library", "Application Support", "Vaultite") : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Vaultite"))
+/** The desktop app's folder for this user (its vaults.json; vau's prompt history): Electron's userData. */
+export const userData = (env: Record<string, string | undefined> = process.env, platform: string = process.platform) => env.VAULTITE_USER_DATA || (
+  platform === "darwin" ? path.join(os.homedir(), "Library", "Application Support", "Vaultite")
+  : platform === "win32" ? path.join(env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Vaultite")
+  : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Vaultite"))
 
 /** Where a server may be when VAULTITE_URL doesn't say, in order: the one serving the vault we're in (core/serving.ts,
  *  else the desktop app's vaults.json), the default port, then the app's other open vaults, most recent first. */
@@ -225,7 +227,9 @@ function readStdin(implicit = false): Promise<string> {
   piped ??= new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = []
     let socket = false
-    try { socket = fs.fstatSync(0).isSocket() } catch { /* closed: nothing comes */ }
+    // (Windows: any pipe, which fstat may not even describe, as a socket: a spawned process' stdin is one)
+    const win = process.platform === "win32"
+    try { const st = fs.fstatSync(0); socket = st.isSocket() || (win && !st.isFile() && !st.isCharacterDevice()) } catch { socket = win }
     const quiet = implicit && socket ? setTimeout(() => { process.stdin.destroy(); resolve("") }, UNASKED_MS) : null
     process.stdin.on("data", (c: Buffer) => { if (quiet) clearTimeout(quiet); chunks.push(c) })
     process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
@@ -252,21 +256,23 @@ serve it: VAULTITE_VAULT=<folder> npm start. Never your own vault: it's made up.
     const dir = a._[0]
     if (!dir) throw new CliError("which folder? vau sandbox <folder>")
     const { makeSandbox, localToday } = await import("./sandbox.ts")
-    const r = makeSandbox(path.resolve(dir.replace(/^~(?=\/|$)/, os.homedir())), flag(a, "today") ?? localToday())
+    const r = makeSandbox(local(dir), flag(a, "today") ?? localToday())
     return done({ path: path.resolve(dir), ...r }, `Made the sandbox in ${dir} (${r.files} files, as of ${r.today}).`)
   },
 }, {
   name: "service",
-  summary: "Keep this checkout's server running on this machine: a launchd agent on macOS, a systemd user unit on Linux.",
-  usage: "vau service install --vault <folder> [--port <n>] [--host <address>] [--updates <branch>] [--print] | vau service uninstall",
+  summary: "Keep this checkout's server running on this machine: a launchd agent on macOS, a systemd user unit on Linux, a scheduled task on Windows.",
+  usage: "vau service install --vault <folder> [--port <n>] [--host <address>] [--updates <branch>] [--print] | vau service status | vau service uninstall",
   bool: ["print"],
   help: `install writes the job and starts it: on macOS ~/Library/LaunchAgents/app.vaultite.server.plist (at login,
 logs in ~/Library/Logs/vaultite.log), on Linux ~/.config/systemd/user/vaultite.service (at boot: it turns on linger,
-so it runs with nobody logged in, as on a VPS; logs: journalctl --user -u vaultite). It runs this checkout's server.ts
-with the Node running vau, serving --vault (else VAULTITE_VAULT) on 127.0.0.1:8793 unless --port/--host say. Install
+so it runs with nobody logged in, as on a VPS; logs: journalctl --user -u vaultite), on Windows the task "Vaultite
+server" in Task Scheduler (at login, with no window; it runs %LOCALAPPDATA%\\Vaultite\\service.js, logs in
+%LOCALAPPDATA%\\Vaultite\\Logs\\vaultite.log). It runs this checkout's server.ts with the Node running vau, serving
+--vault (else VAULTITE_VAULT) on 127.0.0.1:8793 unless --port/--host say, and starts it again when it stops. Install
 again after moving the checkout or Node. --print shows the file without writing it. Reach it from your other devices
-with Tailscale Serve (\`tailscale serve --bg --https=8447 http://127.0.0.1:8793\`): SECURITY.md. uninstall stops it
-and removes the file.
+with Tailscale Serve (\`tailscale serve --bg --https=8447 http://127.0.0.1:8793\`): SECURITY.md. status says whether
+it's installed, running and answering. uninstall stops it and removes the files.
 
 --updates <branch> has the server follow that branch of origin: every 10 minutes, a newer commit CI passed on is
 merged (fast-forward only, the checkout clean), installed and built, and the server restarts when its own code changed;
@@ -276,11 +282,20 @@ vau version shows what runs and what the updates are doing.
   vau service install --vault ~/Vault
   vau service install --vault ~/Vault --updates main
   vau service install --vault ~/Vault --print
+  vau service status
   vau service uninstall`,
   run: async (a, c) => {
     const what = a._[0]
-    if (what !== "install" && what !== "uninstall") throw new CliError("install or uninstall? vau service install --vault <folder>")
+    if (what !== "install" && what !== "uninstall" && what !== "status") throw new CliError("install, status or uninstall? vau service install --vault <folder>")
     const S = await import("./service.ts")
+    if (what === "status") {
+      const st = S.serviceStatus()
+      const answering = st.installed && await request(`${st.url}/api/ui`, "GET").then((r) => r.status < 500, () => false)
+      const yes = (b: boolean) => (b ? "yes" : "no")
+      return done({ ...st, answering }, st.installed
+        ? [`Installed: ${st.file}`, `Vault: ${st.vault}`, `Running: ${yes(st.running)}`, `Answering at ${st.url}: ${yes(answering)}`, `Logs: ${st.log}`].join("\n")
+        : "Not installed (vau service install --vault <folder>).")
+    }
     const vault = flag(a, "vault") ?? c.env.VAULTITE_VAULT
     const port = flag(a, "port") !== undefined ? Number(flag(a, "port")) : undefined
     if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new CliError("--port is a port number")
@@ -298,12 +313,39 @@ vau version shows what runs and what the updates are doing.
     if (!fs.existsSync(o.vault)) throw new CliError(`no folder ${o.vault}`)
     if (a.flags.print) {
       const p = S.servicePlan(process.platform, o)
-      return done({ file: p.file, text: p.text }, `${p.file}:\n\n${p.text}`)
+      return done({ file: p.file, text: p.text }, [p, ...p.more ?? []].map((f) => `${f.file}:\n\n${f.text}`).join("\n"))
     }
     const r = S.installService(process.platform, o)
     const url = `http://${o.host ?? "127.0.0.1"}:${port ?? 8793}`
     return done({ file: r.file, log: r.log, url, failed: r.failed },
       [`Wrote ${r.file} and started it: ${url} serves ${o.vault}${updates ? `, following ${updates}` : ""}. Logs: ${r.log}`, ...r.failed.map((f) => `Couldn't: ${f}`)].join("\n"))
+  },
+}, {
+  name: "wsl",
+  summary: "Windows: put vau in WSL's distros, where it runs this vau through WSL's interop.",
+  usage: "vau wsl install [--distro <name>]",
+  after: "service",
+  help: `Run on Windows (PowerShell or cmd). Links ~/.local/bin/vau in each WSL distro (or --distro's) to a script in
+%LOCALAPPDATA%\\Vaultite\\wsl that runs Windows' vau through WSL's interop: it reaches the server on Windows'
+127.0.0.1 whatever WSL's networking, VAULTITE_* variables cross over, paths of WSL's files among its arguments are
+passed as Windows sees them, and paths it prints are WSL's (/mnt/c/...). Vaultite's own WSL terminals have it already.
+Never over another program's vau.
+
+  vau wsl install
+  vau wsl install --distro Ubuntu`,
+  run: async (a) => {
+    if (a._[0] !== "install") throw new CliError("vau wsl install [--distro <name>]")
+    if (process.platform !== "win32") throw new CliError(process.env.WSL_DISTRO_NAME ? "run it on Windows (PowerShell or cmd): it puts Windows' vau in this distro" : "WSL is Windows'")
+    const { distros } = await import("./wsl.ts")
+    const W = await import("./wslvau.ts")
+    const all = await distros(), want = flag(a, "distro")
+    if (want && !all.some((d) => d.toLowerCase() === want.toLowerCase())) throw new CliError(`no distro ${want} (WSL has: ${all.join(", ") || "none"})`)
+    const list = want ? all.filter((d) => d.toLowerCase() === want.toLowerCase()) : all
+    if (!list.length) throw new CliError("WSL has no distros here (wsl --install)")
+    const dir = W.writeWslVau()
+    const rs = []
+    for (const d of list) rs.push(await W.installInDistro(d, dir))
+    return done(rs, rs.map((r) => `${r.distro}: ${r.did}`).join("\n"))
   },
 }, {
   // (streams, so it's a command rather than an op: it's the op events.wait, asked again with each answer's cursor)
@@ -346,8 +388,8 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
   },
 }]
 
-/** A path on this computer as the shell gave it (~ is home). */
-const local = (p: string) => path.resolve(String(p).replace(/^~(?=\/|$)/, os.homedir()))
+/** A path on this computer as the shell gave it (~ is home: PowerShell and cmd leave it to vau). */
+const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
 /** What vau does around an op with this computer's files, which the server (maybe another machine's) can't reach:
  *  `params` turns paths into text, `extra` takes more positional words, `out` handles the answer instead of printing. */
@@ -488,6 +530,8 @@ Options: --json (machine-readable output), --count (how many a list answer holds
 is a prompt (Tab completes, with history).
 Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the
 app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal).
+Windows: vau runs in PowerShell, cmd and Git Bash (there cmd expands %VAR% in arguments: such text goes by --from or
+stdin). In WSL (\`vau wsl install\` from Windows) it's Windows' vau: paths it prints are WSL's.
 Settings and data both go through the server (settings key by key, the rest of each file kept); the app follows
 every change live. File formats: vau docs.`
 }
@@ -674,7 +718,7 @@ export async function toClipboard(text: string, platform: string = process.platf
   const { spawn } = await import("node:child_process")
   for (const [cmd, ...args] of tools) {
     const ok = await new Promise<boolean>((resolve) => {
-      const p = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], env: env as NodeJS.ProcessEnv })
+      const p = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"], env: env as NodeJS.ProcessEnv, windowsHide: true })
       p.on("error", () => resolve(false))
       p.on("close", (code) => resolve(code === 0))
       p.stdin.on("error", () => {})
@@ -703,6 +747,15 @@ export async function main(argv = process.argv.slice(2)) {
   process.stderr.on("error", (e: NodeJS.ErrnoException) => { if (!gone(e)) throw e })
   if (!argv.length && process.stdin.isTTY && process.stdout.isTTY) return (await import("./repl.ts")).repl()
   const r = await execute(argv)
+  // Windows' vau run from WSL (core/vaushims.ts' wslShim): the paths it prints as WSL reaches them.
+  if (process.env.VAULTITE_WSL && process.platform === "win32") {
+    const { wslText } = await import("./wsl.ts")
+    const json = !!parseArgs(argv).flags.json
+    const deep = (v: unknown): unknown => typeof v === "string" ? wslText(v, process.env.VAULTITE_WSL!) : Array.isArray(v) ? v.map(deep)
+      : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)])) : v
+    try { r.out = json ? JSON.stringify(deep(JSON.parse(r.out)), null, 2) : wslText(r.out, process.env.VAULTITE_WSL) } catch { r.out = wslText(r.out, process.env.VAULTITE_WSL) }
+    r.err = wslText(r.err, process.env.VAULTITE_WSL)
+  }
   await print(r, !!parseArgs(argv).flags.copy)
   return r.code
 }

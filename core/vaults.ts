@@ -42,10 +42,12 @@ function isDir(p: string) {
 }
 
 /** Folders of the system and of apps' own data: never browsed or served. Cloud drives live in ~/Library, and Linux
- *  mounts drives under /run/media. */
+ *  mounts drives under /run/media. Windows': its own, programs' and their data (AppData). */
+const WINDOWS = process.platform === "win32" ? [process.env.SystemRoot || "C:\\Windows", process.env.ProgramFiles, process.env["ProgramFiles(x86)"],
+  process.env.ProgramData, path.join(HOME, "AppData")].filter((d): d is string => !!d) : []
 const SYSTEM = ["/System", "/Library", "/Applications", "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc",
   "/dev", "/proc", "/sys", "/boot", "/root", "/run", "/srv", "/snap", "/opt", "/cores", "/private/etc", "/private/var", "/var",
-  path.join(HOME, "Library"), path.join(HOME, "snap")]
+  path.join(HOME, "Library"), path.join(HOME, "snap"), ...WINDOWS]
 const OPEN_IN_SYSTEM = ["/run/media", path.join(HOME, "Library", "Mobile Documents"), path.join(HOME, "Library", "CloudStorage")]
 
 const inside = (p: string, dir: string) => { const rel = path.relative(dir, p); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)) }

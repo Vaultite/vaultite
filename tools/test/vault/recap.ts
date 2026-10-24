@@ -71,7 +71,7 @@ export default async ($: VaultTest) => {
   await api("POST", "activity/hook?agent=claude&terminal=claude-rc", { tool_name: "Write", tool_input: { file_path: path.join(VAULT, "Rc/Agent.md") } })
   await actHeard("POST", "logs", [{ area: "workouts", date: localDay(), source: "claude", ext_id: "rc-1", title: "Recap run" }], "cli", "claude-code")
   const logFile = (fs.readdirSync(path.join(VAULT, "Logs"), { recursive: true }) as string[]).find((f) => f.endsWith(".md") && read(`Logs/${f}`).includes("ext_id: rc-1"))
-  app.changed([`Logs/${logFile}`]) // (the watcher's news, which ties it to the request that wrote it)
+  app.changed([`Logs/${logFile?.replaceAll("\\", "/")}`]) // (the watcher's news, which ties it to the request that wrote it)
   await actHeard("DELETE", "file?path=Rc/Gone.md", undefined, "app/desktop")
   await settled()
   await actHeard("DELETE", "file?path=Rc/Scratch.md", undefined, "app/desktop")

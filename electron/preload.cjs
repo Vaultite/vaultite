@@ -1,6 +1,6 @@
 // The desktop app's bridge into the page (sandboxed, so plain CommonJS): window.vaultite (typed in
 // web/src/core/desktop.ts) and data-electron and data-platform on <html>: index.css makes room for the traffic lights
-// on a Mac (other systems keep their own title bar), unless data-fullscreen is set (full screen has none).
+// on a Mac and Windows' controls on the right (Linux keeps its own title bar), unless data-fullscreen is set.
 // Everything goes through electron/main.ts, which checks that the page asking is one of its own windows.
 const { contextBridge, ipcRenderer, webUtils } = require("electron")
 
@@ -12,6 +12,46 @@ const mark = () => {
 mark()
 addEventListener("DOMContentLoaded", mark)
 ipcRenderer.on("vaultite:fullscreen", (_e, on) => document.documentElement.toggleAttribute("data-fullscreen", !!on))
+
+// Windows' controls (titleBarOverlay) take the colour of the page under them and the height of its title row, as the
+// theme, the sidebars and the zoom change; main.ts answers how wide they are, which index.css keeps clear (--window-controls).
+if (process.platform === "win32") {
+  const hex = (css) => {
+    const c = document.createElement("canvas").getContext("2d")
+    c.fillStyle = css
+    c.fillRect(0, 0, 1, 1)
+    const [r, g, b, a] = c.getImageData(0, 0, 1, 1).data
+    return a < 128 ? null : "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")
+  }
+  let said = "", timer = 0
+  const sync = () => {
+    timer = 0
+    const html = document.documentElement
+    if (!html || !document.body) return
+    let color = null
+    for (const el of document.elementsFromPoint(innerWidth - 2, 2)) if ((color = hex(getComputedStyle(el).backgroundColor))) break
+    color ??= hex(getComputedStyle(document.body).backgroundColor) ?? "#ffffff"
+    const symbol = hex(getComputedStyle(document.body).color) ?? "#000000"
+    // (a pixel short of the row: its bottom border runs on under them)
+    const row = (document.querySelector("[data-titlebar], [data-right-corner] > [role=tablist]")?.getBoundingClientRect().height || 40) - 1
+    const now = JSON.stringify([color, symbol, row, innerWidth])
+    if (now === said) return
+    said = now
+    ipcRenderer.invoke("window:controls", { color, symbol, height: row }).then((r) => {
+      if (r && Number.isFinite(r.width)) html.style.setProperty("--window-controls", `${r.width}px`)
+    }, () => {})
+  }
+  const soon = () => { if (!timer) timer = setTimeout(sync, 50) }
+  addEventListener("DOMContentLoaded", () => {
+    new MutationObserver(soon).observe(document.documentElement, { attributes: true })
+    new MutationObserver(soon).observe(document.body, { attributes: true, childList: true })
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", soon)
+    addEventListener("resize", soon)
+    addEventListener("focus", soon)
+    // (the app draws its shell a moment after the document loads)
+    for (const ms of [0, 300, 1000, 3000]) setTimeout(soon, ms)
+  })
+}
 
 const call = (name) => (...args) => ipcRenderer.invoke(name, ...args)
 
@@ -37,7 +77,8 @@ contextBridge.exposeInMainWorld("vaultite", {
     sandbox: call("setup:sandbox"),
     finish: call("setup:finish"),
   },
-  pathOf: (file) => webUtils.getPathForFile(file),
+  // (Windows' with forward slashes, as main.ts hands outside files to the page)
+  pathOf: (file) => { const p = webUtils.getPathForFile(file); return process.platform === "win32" ? p.replace(/\\/g, "/") : p },
   copyIn: call("files:copy-in"),
   openOutside: call("files:open"),
   pickOutside: call("files:pick"),

@@ -266,6 +266,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard).
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
+- `isWindows`: A Windows computer.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
 - `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
@@ -449,7 +450,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
 - `revealInTree(path, opts?)`: Open every folder above a file.
-- `revealLabel`: Showing a file where it is: Finder on a Mac, the file manager elsewhere.
+- `revealLabel`: Showing a file where it is: Finder on a Mac, Explorer on Windows, the file manager elsewhere.
 - `revealPanel(key)`: Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel unfolded.
 - `rightClickBelow(e)`: For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows.
 - `Ring({ value, goal, color, size })`: Progress ring for "x of goal this week".
@@ -688,12 +689,14 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `daysBetween(a, b)`: Days from a to b (YYYY-MM-DD).
 - `diffLines(a, b)`: How to turn a into b, as textedit's opcodes (equal runs and changed runs), for any number of lines.
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
+- `distros()`: WSL's distros on this machine, the default first (none off Windows, or without WSL).
 - `enabled(vault, plugins)`: Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
 - `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or a stamp: stampMs): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
 - `fromInternet(req)`
+- `fromWsl(p, distro)`: A WSL path (absolute) as Windows sees it: /mnt/c/x is C:\x, the rest is \\wsl.localhost\<distro>\...
 - `frontmatterLinks(fm)`: The [[links]] in a file's frontmatter, with the key each is under (`project: "[[Lighthouse]]"`, a list's items, and `project: [[Lighthouse]]` unquoted too): [key, target].
 - `frontmatterTargets(fm)`: The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`).
 - `GUEST_HEADER`: Set by a machine passing a request on (Machines) for someone who isn't its owner: it only takes rights away.
@@ -703,6 +706,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HTTPError`
 - `inDesktop()`: Whether this server has a desktop app on this machine to ask (its browser).
 - `isColor(c)`
+- `isOutside(p)`: An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x.
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
@@ -776,6 +780,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Text`: A route's answer sent as it is (text/markdown, or another type; bytes too: a font), not as JSON.
 - `TextBlock`
 - `today()`: Today on this machine, YYYY-MM-DD.
+- `toWsl(p, distro?)`: A Windows path as WSL sees it: C:\x is /mnt/c/x, \\wsl.localhost\<distro>\x (or \\wsl$\...) is /x in that distro; null for one it can't reach (another distro's, a network share).
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typeNotes(types, fm)`: What's wrong with a file's properties for the vault's types: one quiet note per key ("`due` is a date...").
 - `typeOf(types, key)`: The type of `key`: declared (exactly, else in any case), else implied, else null (the value's own).
@@ -785,11 +790,13 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `VAULT_PATH`
 - `vaultHere(vaultPath)`: A vault on this machine: its real path and key (that path's hash), under which what's kept here for it goes (<LOCAL>/<what>/<key>).
 - `vaultPath(p, mustExist?, vault?, explicit?, trash?)`: A safe vault-relative path, or a 400.
+- `vauShims(s, platform?)`: The shims by file name: `vau` always, `vau.cmd` on Windows.
 - `weekStart(date)`: The Monday of a YYYY-MM-DD's week.
 - `whoOf(client, agent)`: Who asked, from the request's X-Vaultite-Client and -Agent (or an MCP client's own name, given as the agent).
 - `wikiTargets(text)`: The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline).
 - `withPinFile(entry, file)`: The entry with its file moved to `file` (a search as it is).
 - `WriteRefused`: A write the gate refused: a 403 for the API.
+- `writeWslVau(o?)`: Writes vau for WSL (when it changed) running this checkout's bin/vau with `exe` as Node (this process's by default: the app's executable or node.exe); returns its folder.
 - `xmlDecode(s)`: XML or HTML text with its entities decoded (&amp;, &#233;, &#x2014;).
 - `zipText(zip, name)`: An entry's text (UTF-8), or null when there's no such entry.
 
@@ -803,6 +810,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ConfigError`: A settings file that can't be read safely for a read-modify-write: `busy` (mid-sync, try again: 503), else broken (409).
 - `ConflictError`: A write the vault refuses because the file isn't in a state it can safely change (the API answers 409).
 - `CreateHook`: onCreate's hooks (Vault.onCreate): the keys to add to a new file.
+- `DEVICE_NAME`: Names Windows keeps for devices, with any extension (CON, nul.md, COM1).
 - `dirOf(rel)`: The folder a path is in ("" at the top).
 - `effectiveType(kindType, fm)`: A file's type: its kind's (`kindType`, when a kind owns the file), else its frontmatter `type` when that's text, else a plugin's mark on it.
 - `Entry`
@@ -842,10 +850,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readBytes(p)`: A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says.
 - `readSoon(p, wait?, { join }?)`: A file's bytes off the main thread (a placeholder iCloud left: once down), so iCloud never holds the server; null after `wait` ms, or at once while an earlier read of it is held (no second thread…
 - `readText(p)`: A text file, line endings as \n.
+- `renameFile(from, to)`: fs.renameSync, retried a moment on Windows while another process holds the file; one this process reads can't end while it waits, so then, to a name that's free, it's copied and the original…
 - `renameProperty(text, from, to)`: A file's text with its frontmatter key `from` renamed `to`, nothing else changed (core/textedit.ts renameKey); null when it has no such key, already has `to`, or its header can't be changed line…
 - `renameTagText(text, from, to)`: A file's text with tag `from`, and those nested under it, renamed `to`: in its frontmatter `tags` (a list or text, as it was written; a tag twice once) and its #tags.
 - `requestWriter`: Set by the API around each request that came over HTTP (core/app.ts), read by the hooks that run on its writes.
-- `safeName(title)`: File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names.
+- `safeName(title)`: File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names, and Windows (where a synced vault may go) a name ending in a dot or one of its device names.
 - `sameFile(a, b)`
 - `SaveHook`: onSave's hooks (Vault.onSave): the keys to set in a file the app saves over its older text (`was`).
 - `setPropertyText(text, key, value)`: A file's text with one frontmatter key set to `value` (undefined: removed), only that key's lines rewritten; null when the header can't be patched line by line (it's left alone then).
@@ -872,11 +881,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 ### `@vaultite/core/agents.ts` (plugin.ts: a coding agent's plugin)
 - `Account`: One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents.
 - `AgentAsk`: A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12), and the keys that answer it, each written apart.
+- `AgentCommand`: What an "agent:<name>" service answers: its line for a POSIX shell, run in `cwd`; `argv` and `env` start it where that can't run (PowerShell, cmd), else Git Bash runs `command` there.
 - `AgentHow`: How a session is started, besides its id and first prompt.
 - `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
 - `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
-- `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell.
+- `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell (AgentCommand).
 - `AgentState`: A terminal's agent as the Terminals panel shows it.
 - `ago(s)`: An ISO time as "2 h 10 min ago", "3 days ago".
 - `argvOf(args, valued, maybe?)`: A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the next word for those in `valued`, and for those in `maybe` when it isn't an option;…
@@ -886,7 +896,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `codingAgent(plugin, a)`: A coding agent's routes and blocks; it answers which accounts an `account` option names.
 - `CodingAgent`: A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of.
 - `Counted`: A request as a tally counts it: when (epoch ms), its cost (null: no price for its model), tokens, cache reads, prompt tokens (cached or not), the model's name and the minutes it worked, when…
-- `cwds(pids)`: Each process's working folder (Linux's /proc, else lsof).
+- `cwds(pids)`: Each process's working folder (Linux's /proc, else lsof; Windows can't tell another process's: none).
 - `dayOf(ts)`: Epoch seconds -> the local day.
 - `Entry`
 - `epochSeconds(s)`: ISO time ("2026-09-29T17:51:25.878Z") -> epoch seconds, or null.
@@ -911,6 +921,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseTerminal(id)`: The agent terminal `id` runs, in which account, the session it resumes and the machine it's on; null: a shell.
 - `priceList(table, sep?)`: A price table's entry for a model: the longest key it starts with (after `sep`, so "gpt-5" isn't "gpt-5.1"'s).
 - `processes()`: Every process on this machine: its pid, start (epoch ms) and command line.
+- `programOf(command)`: A command line's program by its name (no folder, no Windows .exe: "codex"), and the rest of the line.
 - `projectName(root)`: A project root's name: its folder's, "Home" for the home folder.
 - `projectOf(cwd, rootsOf?)`: A folder's project name, through `rootsOf` (an agent's own worktrees).
 - `projectRoots(cwds, own?)`: Folder -> its project's root.
@@ -923,6 +934,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `scanDays()`: How many days back the scans read now.
 - `sessionsOf(procs, key, pick)`: Each process, newest first, with the session it writes: `pick`ed among those a newer one didn't take (`free`); a process whose pick was taken is left out.
 - `shellQuote(s)`: `s` as one word of a shell command.
+- `spawnBin(bin, args, o)`: spawn() talking over stdin and stdout, but on Windows a program found as its shells would (a .cmd included).
 - `SqliteFile`: A database file opened read only, again when it was replaced; a query answers no rows rather than fail (no file, an older schema, busy).
 - `startAgent(ctx, id, prompt?, how?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
 - `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
@@ -936,3 +948,5 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Turn`: How long a turn worked, as a JSONL agent's transcripts say.
 - `Usage`: What an agent's GET route answers: its tally, plan, limits and live sessions.
 - `vauMcpServer()`: `vau mcp` as an agent's MCP server: by the Node running this server (an agent may pass its servers no PATH), told this server's address (another port isn't vau's default).
+- `winCommand(argv, env)`: How to run `argv` on Windows (spawn can't run a .cmd itself): [program, its arguments, verbatim (cmd's own quoting)], or null when there's no such program.
+- `withPath(env, ...dirs)`: `env` with `dirs` first on its PATH (Windows' Path, whatever its case: one key, not two).

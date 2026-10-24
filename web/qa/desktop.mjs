@@ -11,6 +11,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { ROOT, SELECT_WORD, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { pathToFileURL } from "node:url"
 
 const { args: [VAULT, BIN], check, errs, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-desktop-"))
@@ -303,7 +304,7 @@ check("a vault image's right-click has its file's items", await until(async () =
   && (await win.getByRole("menuitem", { name: "Delete", exact: true }).count()) > 0, 10000))
 await win.keyboard.press("Escape")
 const xlsxOut = path.join(TMP, "Outside budget.xlsx")
-fs.writeFileSync(xlsxOut, (await import(path.join(ROOT, "tools/fixtures/formats/make.ts"))).xlsx())
+fs.writeFileSync(xlsxOut, (await import(pathToFileURL(path.join(ROOT, "tools/fixtures/formats/make.ts")).href)).xlsx())
 await menuClick("New tab") // (a PDF's viewer takes drops itself)
 await wait(500)
 await drop([xlsxOut], main.x + main.width / 2, main.y + 200)

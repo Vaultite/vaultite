@@ -6,10 +6,12 @@ import fs from "node:fs"
 import path from "node:path"
 import * as store from "./extstore.ts"
 
-/** Where the policy is read, both at once: the Mac's, for every Vaultite app (made with sudo, so changing it takes
- *  sudo too), and this app's own in its userData. `{ "extensions": ["<an unpacked extension's folder>", "<a Web Store id>"] }` */
+/** Where the policy is read, both at once: the machine's, for every Vaultite app (made as an administrator, so changing
+ *  it takes one too), and this app's own in its userData. `{ "extensions": ["<an unpacked extension's folder>", "<a Web Store id>"] }` */
 export const policyFiles = () => [
-  process.platform === "darwin" ? "/Library/Application Support/Vaultite/managed-extensions.json" : "/etc/vaultite/managed-extensions.json",
+  process.platform === "darwin" ? "/Library/Application Support/Vaultite/managed-extensions.json"
+    : process.platform === "win32" ? path.join(process.env.ProgramData ?? "C:\\ProgramData", "Vaultite", "managed-extensions.json")
+    : "/etc/vaultite/managed-extensions.json",
   path.join(app.getPath("userData"), "managed-extensions.json"),
 ]
 

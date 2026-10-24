@@ -7,7 +7,7 @@ import { HTTPError, OpError, Plugin, type Request, Text } from "../../../core/pl
 
 export const plugin = new Plugin(import.meta.url)
 
-const CARDS = path.join(path.dirname(new URL(import.meta.url).pathname), "cards")
+const CARDS = path.join(import.meta.dirname, "cards")
 const file = (name: string) => fs.readFileSync(path.join(CARDS, name), "utf8")
 /** A card's page: its body with the shared bridge and styles put in, self-contained. */
 const page = (name: string) => () => file(`${name}.html`).replace("/*card.css*/", file("card.css")).replace("/*bridge.js*/", file("bridge.js"))

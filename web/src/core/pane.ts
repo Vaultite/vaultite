@@ -61,12 +61,17 @@ export function usePaneTopBar(ref: RefObject<HTMLElement | null>) {
 }
 
 /** What's fixed over the panes' top corners: a sidebar's toggle beside its rail or with none open (with rails: without,
- *  they ride the sidebars that slide in over the page), and a Mac window's traffic lights where no sidebar holds them. */
+ *  they ride the sidebars), a Mac window's traffic lights where no sidebar holds them, and Windows' window controls. */
 function overCorners(): DOMRect[] {
   const d = document.documentElement.dataset
   const out: DOMRect[] = []
   if (!("noRails" in d)) for (const t of document.querySelectorAll("[data-sidebar-toggle]")) out.push(t.getBoundingClientRect())
   // (index.css: the lights take the window's first 88px; electron/main.ts: they're 16px tall, 14 down at most)
   if ("electron" in d && d.platform === "darwin" && !("fullscreen" in d) && ("leftRail" in d || "popout" in d)) out.push(new DOMRect(0, 0, 88 - CLEAR, 30))
+  // (Windows' controls: the window's top-right corner, as wide as electron/preload.cjs says, a title row high)
+  if ("electron" in d && d.platform === "win32" && !("fullscreen" in d)) {
+    const w = parseFloat(document.documentElement.style.getPropertyValue("--window-controls")) || 138
+    out.push(new DOMRect(innerWidth - w + CLEAR, 0, w - CLEAR, 30))
+  }
   return out
 }

@@ -2,6 +2,7 @@
 // a second refuses to start on, and where the desktop app finds it to attach its browser (electron/host.ts).
 import crypto from "node:crypto"
 import fs from "node:fs"
+import net from "node:net"
 import path from "node:path"
 import { runtimeDir } from "./runtime.ts"
 
@@ -40,6 +41,20 @@ export function claim(vault: string, port: number, app: boolean): Serving | null
     }
   }
   return servingOf(vault)
+}
+
+/** Whether a server answers on `port` here: a claim whose process ended at once (Windows ends one so, and soon gives its
+ *  pid to another) answers nothing. */
+export const answers = (port: number) => new Promise<boolean>((done) => {
+  const s = net.connect(port, "127.0.0.1", () => { s.destroy(); done(true) })
+  s.setTimeout(1000, () => { s.destroy(); done(false) })
+  s.once("error", () => done(false))
+})
+
+/** Take `vault`'s claim from one that doesn't answer (`answers`), then claim it. */
+export function reclaim(vault: string, port: number, app: boolean) {
+  try { fs.unlinkSync(fileFor(vault)) } catch { /* gone */ }
+  return claim(vault, port, app)
 }
 
 /** The key an attaching desktop app must show (this server's claim's), or "" when it has none. */

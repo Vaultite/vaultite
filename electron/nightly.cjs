@@ -1,4 +1,4 @@
-// electron-builder's config for Vaultite Nightly (npm run release:nightly, release:linux:nightly): package.json's build
+// electron-builder's config for Vaultite Nightly (npm run release:nightly, release:linux:nightly, release:win:nightly): package.json's build
 // as an app of its own (id, name, icon, data, Linux package), so it installs beside Vaultite and never shares its data.
 const build = require("../package.json").build
 
@@ -18,4 +18,7 @@ module.exports = {
   },
   appImage: { ...build.appImage, artifactName: "Vaultite-Nightly-${version}-${arch}.AppImage" },
   deb: { ...build.deb, artifactName: "vaultite-nightly_${version}_${arch}.deb" },
+  // (its own ProgID for .md, so uninstalling one app never takes the other's association)
+  win: { ...build.win, icon: "electron/win/icon-nightly.ico", fileAssociations: build.win.fileAssociations.map((f) => ({ ...f, name: "VaultiteNightly.Markdown" })) },
+  nsis: { ...build.nsis, artifactName: "Vaultite-Nightly-Setup-${version}-${arch}.${ext}" },
 }

@@ -11,10 +11,10 @@
     "vau": "bin/vau"
   },
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "dev": "vite",
     "start": "node server.ts",
-    "build": "tsc -b & vite build; v=$?; wait $! && exit $v",
+    "build": "node tools/build.ts",
     "build:demo": "vite build -c vite.demo.config.ts",
     "test": "node tools/test_web.ts && node tools/test_vault.ts && node tools/test_sandbox.ts && node tools/test_setup.ts && node tools/test_selfupdate.ts && node tools/test_stall.ts && node tools/test_desktophost.ts && node tools/test_machines.ts",
     "check": "node tools/check_plugins.ts",
@@ -33,6 +33,8 @@
     "release:linux": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --linux --publish never",
     "release:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && node tools/build_helpers.ts && VAULTITE_RELEASE=1 electron-builder --mac --publish never -c electron/nightly.cjs",
     "release:linux:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --linux --publish never -c electron/nightly.cjs",
+    "release:win": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --win --publish never",
+    "release:win:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --win --publish never -c electron/nightly.cjs",
     "ios": "VAULTITE_CLEAN_BUILD=1 vite build && cap sync ios && cap open ios"
   },
   "dependencies": {
@@ -138,7 +140,7 @@
       "output": "dist-app"
     },
     "asar": false,
-    "electronLanguages": ["en"],
+    "electronLanguages": ["en", "en-US"],
     "npmRebuild": false,
     "afterPack": "electron/sign.cjs",
     "artifactBuildCompleted": "electron/dmg.cjs",
@@ -188,6 +190,12 @@
         }
       ],
       "hardenedRuntime": false,
+      "fileAssociations": [
+        { "ext": ["md", "markdown"], "name": "Markdown", "role": "Editor", "rank": "Default" },
+        { "ext": "csv", "name": "CSV table", "role": "Editor", "rank": "Alternate" },
+        { "ext": ["html", "htm"], "name": "HTML page", "role": "Editor", "rank": "Alternate" },
+        { "ext": "txt", "name": "Plain text", "role": "Editor", "rank": "Alternate" }
+      ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Vaultite records audio into your notes when you ask it to, and web pages you allow use the microphone.",
         "NSCameraUsageDescription": "Web pages in Vaultite use the camera when you allow them.",
@@ -234,7 +242,13 @@
           "StartupWMClass": "vaultite"
         }
       },
-      "syncDesktopName": true
+      "syncDesktopName": true,
+      "fileAssociations": [
+        { "ext": ["md", "markdown"], "name": "Markdown", "mimeType": "text/markdown" },
+        { "ext": "csv", "name": "CSV table", "mimeType": "text/csv" },
+        { "ext": ["html", "htm"], "name": "HTML page", "mimeType": "text/html" },
+        { "ext": "txt", "name": "Plain text", "mimeType": "text/plain" }
+      ]
     },
     "appImage": {
       "artifactName": "Vaultite-${version}-${arch}.AppImage"
@@ -242,6 +256,20 @@
     "deb": {
       "artifactName": "vaultite_${version}_${arch}.deb",
       "packageCategory": "editors"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "electron/win/icon.ico",
+      "fileAssociations": [
+        { "ext": ["md", "markdown"], "name": "Vaultite.Markdown", "description": "Markdown" }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Vaultite-Setup-${version}-${arch}.${ext}",
+      "deleteAppDataOnUninstall": false,
+      "include": "electron/win/installer.nsh"
     },
     "protocols": [
       {
@@ -254,44 +282,13 @@
         "role": "Viewer"
       }
     ],
-    "fileAssociations": [
-      {
-        "ext": [
-          "md",
-          "markdown"
-        ],
-        "name": "Markdown",
-        "role": "Editor",
-        "rank": "Default",
-        "mimeType": "text/markdown"
-      },
-      {
-        "ext": "csv",
-        "name": "CSV table",
-        "role": "Editor",
-        "rank": "Alternate",
-        "mimeType": "text/csv"
-      },
-      {
-        "ext": [
-          "html",
-          "htm"
-        ],
-        "name": "HTML page",
-        "role": "Editor",
-        "rank": "Alternate",
-        "mimeType": "text/html"
-      },
-      {
-        "ext": "txt",
-        "name": "Plain text",
-        "role": "Editor",
-        "rank": "Alternate",
-        "mimeType": "text/plain"
-      }
-    ],
     "toolsets": {
       "appimage": "1.0.3"
     }
+  },
+  "allowScripts": {
+    "electron-winstaller": true,
+    "fsevents": true,
+    "node-pty": true
   }
 }

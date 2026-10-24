@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const OUT = path.join(ROOT, "electron", "menu-icons")
@@ -23,7 +23,7 @@ for (const name of names) {
   if (!fs.existsSync(file)) throw new Error(`no lucide icon '${name}'`)
   const alias = /export \{ default \} from '\.\/([a-z0-9-]+\.mjs)'/.exec(fs.readFileSync(file, "utf8")) // an old name
   if (alias) file = path.join(LUCIDE, alias[1])
-  const { __iconData } = await import(file) as { __iconData: { node: Node[] } }
+  const { __iconData } = await import(pathToFileURL(file).href) as { __iconData: { node: Node[] } }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" ` +
     `stroke-linecap="round" stroke-linejoin="round">${__iconData.node.map(([tag, a]) => `<${tag} ${attrs(a)}/>`).join("")}</svg>`
   const tmp = path.join(OUT, `${name}.svg`)

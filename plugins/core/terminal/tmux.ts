@@ -8,7 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { loadPty, ptyLink, shellArgs, type Backend, type Link } from "./backend.ts"
 
-export const TMUX = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].find((p) => fs.existsSync(p)) ?? ""
+export const TMUX = process.platform === "win32" ? "" : ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].find((p) => fs.existsSync(p)) ?? ""
 const PREFIX = "vau-" // tmux session names: vau-<id>
 
 /** `name`: vaultite, or vaultite-<port>. */

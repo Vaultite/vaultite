@@ -253,6 +253,10 @@ const natives = new Map<string, Native>()
 function nativeStart(c: Ctx, app: string) {
   const host = nativeHost(app, c.ext.id)
   if (!host) throw new Error(`Specified native messaging host not found: ${app}`)
+  // (a Windows host may be a batch file, which only cmd runs)
+  if (process.platform === "win32" && /\.(bat|cmd)$/i.test(host.path)) {
+    return spawn("cmd.exe", ["/d", "/s", "/c", `"${host.path}" chrome-extension://${c.ext.id}/`], { stdio: ["pipe", "pipe", "ignore"], windowsVerbatimArguments: true })
+  }
   return spawn(host.path, [`chrome-extension://${c.ext.id}/`], { stdio: ["pipe", "pipe", "ignore"] })
 }
 /** A native app's replies: 4-byte lengths (this machine's order), then JSON. */

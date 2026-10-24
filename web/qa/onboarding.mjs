@@ -31,7 +31,7 @@ for (const [f, t] of Object.entries(mine)) put(path.join(OBSIDIAN, f), t)
 put(path.join(HOME, "Library/Application Support/obsidian/obsidian.json"), JSON.stringify({ vaults: { a1: { path: OBSIDIAN, ts: 2, open: true } } }))
 const CLAUDE_JSON = put(path.join(HOME, ".claude.json"), JSON.stringify({ numStartups: 4, mcpServers: { other: { type: "stdio", command: "other", args: [], env: {} } } }, null, 2))
 const claudeBefore = fs.readFileSync(CLAUDE_JSON, "utf8")
-const tree = (dir) => Object.fromEntries((fs.readdirSync(dir, { recursive: true })).sort().filter((f) => !f.startsWith(".vaultite") && fs.statSync(path.join(dir, f)).isFile()).map((f) => [f, fs.readFileSync(path.join(dir, f), "latin1")]))
+const tree = (dir) => Object.fromEntries((fs.readdirSync(dir, { recursive: true })).sort().filter((f) => !f.startsWith(".vaultite") && fs.statSync(path.join(dir, f)).isFile()).map((f) => [f.split(path.sep).join("/"), fs.readFileSync(path.join(dir, f), "latin1")]))
 const obsidianBefore = tree(OBSIDIAN)
 
 // ---------- another machine: a server of its own on a sandbox ----------

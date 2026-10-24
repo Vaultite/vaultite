@@ -5,17 +5,19 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
-  asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, type AgentRun, type Backend,
-  type Link, type Listed as Shell,
+  asPaste, launch, limits, loadPty, mirrored, plain, plainBackend, psQuote, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, wslPath,
+  type AgentRun, type Backend, type Link, type Listed as Shell,
 } from "./backend.ts"
+import { defaultShell, gitBash, kindOf, progName, shellsHere, type ShellKind } from "./shells.ts"
 import { shown, type Kind, type Said, type SessionState } from "./osc7501.ts"
 import { runOps } from "./run.ts"
+import type { Job } from "./starter.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
 
@@ -30,7 +32,8 @@ const scrollback = () => clamp(plugin.settings().scrollback, 100, 1_000_000, 10_
 limits.scrollback = scrollback
 // A shell ends only when its tab closes (idle, its last one), or it's ended on purpose: never for having been left alone.
 /** A shell at its prompt: nothing else runs in it (the app's `busy` is the other side of this). */
-const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", ""])
+const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", "pwsh", "powershell", "cmd", "wsl", ""])
+const WIN = process.platform === "win32"
 const VERSION = /^\d+(\.\d+)+$/
 /** A shell's process by its name: on Linux node-pty says the path it was started by ("/bin/bash"). */
 const byName = (x: Shell): Shell => (x.process?.includes("/") ? { ...x, process: path.basename(x.process) } : x)
@@ -38,6 +41,7 @@ const byName = (x: Shell): Shell => (x.process?.includes("/") ? { ...x, process:
  *  shell's name is checked against the foreground group: not the shell itself, something runs. */
 let readsTable = false // the last list read the process table (inFront): this one asks for it with the backends
 async function inFront(x: Shell): Promise<string | null> {
+  if (WIN) return frontOnWindows(x)
   // A program whose binary is named for its version (Claude Code's native install runs
   // ~/.local/share/claude/versions/2.1.290) reads by the name it was started as ("claude").
   if (!SHELLS.has(x.process) && !VERSION.test(x.process)) return x.process
@@ -51,6 +55,22 @@ async function inFront(x: Shell): Promise<string | null> {
   const script = SHELLS.has(name) ? rest.find((a) => !a.startsWith("-")) : undefined
   return (script && !rest.includes("-c") ? path.basename(script) : name) || x.process || "shell"
 }
+/** Windows has no foreground groups: the newest program the shell started (an agent the starter runs, by its own name).
+ *  A WSL distro's programs can't be seen from here: an agent's terminal reads as running its agent. */
+async function frontOnWindows(x: Shell): Promise<string | null> {
+  if (x.process === "wsl") return agentOf(x.id)?.name ?? null
+  if (!x.pid) return null
+  readsTable = true
+  const all = [...await processTable()]
+  const kids = (pid: number) => all.filter(([, p]) => p.ppid === pid && !/^(conhost|openconsole)$/.test(progName(argv0(p.args)))).sort((a, b) => b[1].started - a[1].started)
+  const kid = kids(x.pid)[0]
+  if (!kid) return null
+  if (!/[\\/]starter\.ts\b/.test(kid[1].args)) return progName(argv0(kid[1].args)) || "program"
+  const agent = kids(kid[0])[0]
+  return agent ? progName(argv0(agent[1].args)) : agentOf(x.id)?.name ?? "agent"
+}
+/** A Windows command line's program ("C:\\x\\claude.exe" --resume ...). */
+const argv0 = (line: string) => (line.startsWith('"') ? line.slice(1, line.indexOf('"', 1) >>> 0) : line.split(" ")[0])
 const EXITED = 4000 // close code: the shell ended (the client doesn't reconnect)
 const GONE = 4004 // close code: ?attach=1 and the agent's session is gone (the client offers a new one)
 const REFUSED = 4003 // close code: this request may not have a shell (the client shows why)
@@ -84,7 +104,10 @@ function flush(s: Session) {
 }
 const sessions = new Map<string, Session>()
 
-const shell = () => process.env.SHELL || os.userInfo().shell || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash")
+/** The shell new terminals start (shells.ts): the setting's, else the login shell (PowerShell on Windows). */
+const shell = () => defaultShell(String(plugin.settings().shell ?? ""))
+/** Its program's name inside a ready shell's key: a ready shell of another kind can't run an agent's line. */
+const sameShell = (sh: string) => (kindOf(sh) === "cmd" ? null : sh)
 
 // --- the backends (backend.ts). Names follow the port: a server on another port than the default 8793, like a
 // throwaway one for QA, gets `vaultite-<port>`, so its shells never show in the real one's list.
@@ -107,7 +130,7 @@ function pluginBackend(): Backend | null {
   try { return typeof fn === "function" ? (fn() as Backend | null) ?? null : null } catch { return null }
 }
 /** What a plugin's backend may use (it implements Backend, backend.ts, through plugin.peer("terminal").exports): */
-plugin.exports.backendKit = { loadPty, ptyLink, mirrored, runScript, shellArgs, plain }
+plugin.exports.backendKit = { launch, loadPty, ptyLink, mirrored, runScript, shellArgs, plain }
 /** Every backend, in the order a session's id is looked for. */
 const backends = (): Backend[] => [keeper, ...(tmuxShells ? [tmuxShells] : []), fallback, ...[pluginBackend()].filter((b): b is Backend => !!b)]
 
@@ -196,29 +219,38 @@ function env(): Record<string, string> {
     // Vaultite or VS Code, as plain Node, which exits at once)
     if (v === undefined || k.startsWith("npm_") || k.startsWith("VAULTITE_") || agentSession(k)
       || ["PORT", "HOST", "INIT_CWD", "TMUX", "TMUX_PANE", "ELECTRON_RUN_AS_NODE"].includes(k)) continue
-    out[k] = v
+    // (Windows' variables have any case, and a shell given Path and PATH would take either: one, Path)
+    out[WIN && k.toUpperCase() === "PATH" ? PATH : k] = v
   }
   return { ...out, TERM: "xterm-256color", COLORTERM: "truecolor", TERM_PROGRAM: "Vaultite", LANG: out.LANG || (process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8") } // (a server may not have en_US generated)
 }
 
+/** The environment's PATH, as Windows spells it. */
+const PATH = WIN ? "Path" : "PATH"
+
 /** The app's folder (the repo, or the packaged app's resources): its bin/ holds the `vau` CLI. */
 const APP_ROOT = path.resolve(plugin.dir, "..", "..", "..")
 
-/** The folder whose vau a terminal finds first: the app's bin/ when Node runs the server; the desktop app has no `node`,
- *  so there it's a vau in LOCAL/bin that runs bin/vau with the app as Node (as Set up Vaultite's does). */
+/** The folder whose vau a terminal finds first: the app's bin/ when Node runs the server; the desktop app (no `node`) and
+ *  Windows (can't run bin/vau) get LOCAL/bin's shims running it with the server's runtime as Node (vaushims.ts). */
 function vauBin(): string {
-  if (!process.versions.electron) return path.join(APP_ROOT, "bin")
-  const dir = path.join(LOCAL_DIR, "bin"), file = path.join(dir, "vau")
-  const text = `#!/bin/sh\n# vau for Vaultite's terminals (plugins/core/terminal), remade as needed.\nELECTRON_RUN_AS_NODE=1 exec ${shellQuote(process.execPath)} ${shellQuote(path.join(APP_ROOT, "bin", "vau"))} "$@"\n`
-  try {
-    if (fs.readFileSync(file, "utf8") !== text) throw new Error("old")
-  } catch {
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(file, text, { mode: 0o755 })
+  if (!process.versions.electron && !WIN) return path.join(APP_ROOT, "bin")
+  return shims(path.join(LOCAL_DIR, "bin"), vauShims({ exe: process.execPath, script: path.join(APP_ROOT, "bin", "vau"),
+    mark: "vau for Vaultite's terminals (plugins/core/terminal), remade as needed." }))
+}
+/** Files written into `dir` where they're missing or differ: its path. */
+function shims(dir: string, files: Record<string, string>) {
+  for (const [name, text] of Object.entries(files)) {
+    const file = path.join(dir, name)
+    try {
+      if (fs.readFileSync(file, "utf8") !== text) throw new Error("old")
+    } catch {
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(file, text, { mode: 0o755 })
+    }
   }
   return dir
 }
-
 /** Where a terminal is opened from: through Tailscale Serve, and which app (the iPhone app and an attached desktop app set
  *  a cookie: core/phoneapp.ts, electron/host.ts). */
 type From = { remote: boolean; client: "desktop" | "iphone" | "web" }
@@ -232,9 +264,10 @@ function fromReq(req: IncomingMessage): From {
  *  agents, so QA never starts a real one. */
 const AGENT_BIN = process.env.VAULTITE_AGENT_BIN ?? ""
 
-/** What a shell is told about where it runs (see the docstring): Vaultite's variables, and PATH with the app's bin/. */
-function context(id: string | null, from: From): Record<string, string> {
-  const bin = vauBin()
+/** What a shell is told about where it runs (see the docstring): Vaultite's variables, and PATH with the app's bin/.
+ *  A WSL distro's get them through WSLENV, paths made its own (/p), with its own vau. */
+function context(id: string | null, from: From, sh = shell()): Record<string, string> {
+  const bin = vauBin(), kind = kindOf(sh)
   shellFiles()
   const out: Record<string, string> = {
     VAULTITE: "1",
@@ -244,14 +277,20 @@ function context(id: string | null, from: From): Record<string, string> {
     ...(id ? { VAULTITE_TERMINAL: id } : {}),
     VAULTITE_BIN: bin,
     ...(AGENT_BIN ? { VAULTITE_AGENT_BIN: AGENT_BIN } : {}),
-    PATH: [bin, AGENT_BIN, env().PATH].filter(Boolean).join(":"),
+    [PATH]: [bin, AGENT_BIN, env()[PATH]].filter(Boolean).join(path.delimiter),
   }
   // zsh reads its startup files from SHELL_DIR, which reads the user's (backend.ts) and puts VAULTITE_BIN first.
-  if (path.basename(shell()) === "zsh") {
+  if (kind === "posix" && progName(sh) === "zsh") {
     Object.assign(out, { ZDOTDIR: SHELL_DIR, VAULTITE_ZDOTDIR: SHELL_DIR })
     if (process.env.ZDOTDIR) out.VAULTITE_USER_ZDOTDIR = process.env.ZDOTDIR
   }
   if (from.remote) out.VAULTITE_REMOTE = "tailscale"
+  if (kind === "wsl") {
+    out.VAULTITE_BIN = writeWslVau()
+    const paths = new Set(["VAULTITE_BIN", "VAULTITE_VAULT", "VAULTITE_AGENT_BIN"])
+    const names = [...new Set([...Object.keys(out).filter((k) => k.startsWith("VAULTITE")), "VAULTITE_TERMINAL", "TERM", "COLORTERM", "TERM_PROGRAM"])]
+    out.WSLENV = [process.env.WSLENV, ...names.map((k) => (paths.has(k) ? `${k}/p` : k))].filter(Boolean).join(":")
+  }
   return out
 }
 
@@ -481,7 +520,7 @@ const MISSING = "missing"
 /** The agent's command, then its state file marked MISSING when the shell found no such program. */
 export function markMissing(command: string, file: string, sh = shell()) {
   const mark = `printf %s ${MISSING} > ${shellQuote(file)} 2>/dev/null`
-  return path.basename(sh) === "fish" ? `${command}; if test $status -eq 127; ${mark}; end` : `${command}; if [ $? -eq 127 ]; then ${mark}; fi`
+  return progName(sh) === "fish" ? `${command}; if test $status -eq 127; ${mark}; end` : `${command}; if [ $? -eq 127 ]; then ${mark}; fi`
 }
 
 /** Agent terminal `id`'s program isn't installed: the user is told (its terminal shows the shell's error), and the
@@ -499,24 +538,53 @@ export function stateCommand(file: string, osc?: string | null) {
   return osc ? (s: AgentState, kind?: string | null) => `[ -e ${shellQuote(osc)} ] || { ${mark(s, kind)}; }` : mark
 }
 
-/** The shell command an agent's terminal runs, and where (null: a plain shell). */
-async function agentRun(id: string, prompt: string | null = null, dark: boolean | null = null, how: AgentHow = {}): Promise<AgentRun | null> {
+/** The URL an agent's hook POSTs to for terminal `id`'s state (the route below), where its hooks can't run a shell line. */
+const stateUrl = (id: string, s: AgentState, kind?: string | null) =>
+  `${serverUrl()}/api/terminals/${encodeURIComponent(id)}/state?s=${s}${kind && s === "waiting" ? `&kind=${kind}` : ""}`
+/** Windows' curl (in System32 since Windows 10), POSTing to `url`: a hook as a program, where no shell line runs. */
+const curlPost = (url: string) => [path.join(process.env.SystemRoot || "C:\\Windows", "System32", "curl.exe"), "-s", "-m", "2", "-o", "NUL", "-X", "POST", url]
+
+/** The line an agent's terminal runs in shell `sh`, and where (null: a plain shell): its command (in WSL, WSL's paths);
+ *  in PowerShell and cmd its `argv` through starter.ts (else Git Bash), its hooks POSTing to the server. */
+async function agentRun(id: string, prompt: string | null, dark: boolean | null, how: AgentHow, sh: string): Promise<AgentRun | null> {
   const a = agentOf(id)
   if (!a) return null
   try { fs.mkdirSync(STATES, { recursive: true }); forgetState(id) } catch { /* unmarked */ }
+  const kind = kindOf(sh), native = kind === "pwsh" || kind === "cmd"
+  // (paths in a POSIX line as its shell reads them: WSL's own, Git Bash's C:/x)
+  const there = kind === "wsl" ? wslPath : WIN ? (p: string) => p.replace(/\\/g, "/") : (p: string) => p
   // (hooks only for an agent that doesn't speak OSC 7501: until it does, they mark its state)
-  const set = stateCommand(stateFile(id), oscMark(id))
+  const set = native ? null : stateCommand(there(stateFile(id)), there(oscMark(id)))
   try {
-    const report = plugin.service("activity:report")
-    const run = await plugin.service(`agent:${a.name}`)!({ resume: a.resume, context: agentContext(), state: set,
-      report: report ? report(a.name, id) : null, profile: a.profile, prompt, dark, ...how } satisfies AgentStart)
+    const report = plugin.service("activity:report"), reportUrl = plugin.service("activity:report-url")
+    const url = reportUrl ? String(reportUrl(a.name, id)) : null
+    const run: AgentCommand | null = await plugin.service(`agent:${a.name}`)!({ resume: a.resume, context: agentContext(), state: set,
+      report: native ? null : kind === "wsl" ? (url ? `${curlPost(url).map((x, i) => (i ? shellQuote(x) : "curl.exe")).join(" ")} -H 'Content-Type: application/json' --data-binary @- >/dev/null 2>&1 || true` : null)
+        : report ? report(a.name, id) : null,
+      ...(native ? { stateHook: (s: AgentState, k?: string | null) => ({ url: stateUrl(id, s, k), argv: curlPost(stateUrl(id, s, k)) }), reportUrl: url } : {}),
+      ...(kind === "wsl" ? { wsl: true } : {}),
+      profile: a.profile, prompt, dark, ...how } satisfies AgentStart)
     if (!run || typeof run.command !== "string" || !run.command) return null
     let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : null
     try { if (cwd && !fs.statSync(cwd).isDirectory()) cwd = null } catch { cwd = null }
-    return { command: markMissing(run.command, stateFile(id)), cwd }
+    if (!native) return { command: markMissing(run.command, there(stateFile(id)), kind === "wsl" ? "sh" : sh), cwd }
+    const bash = Array.isArray(run.argv) && run.argv.length ? null : gitBash()
+    const argv = bash ? [bash, "-l", "-c", markMissing(run.command, stateFile(id).replace(/\\/g, "/"), bash)] : run.argv
+    if (!argv?.length) return { command: run.command, cwd }
+    return { command: starterLine(id, { argv, env: run.env ?? {}, cwd, state: stateFile(id) }, kind), cwd }
   } catch {
     return null
   }
+}
+
+/** The line PowerShell or cmd runs to start `job` (starter.ts), by the server's own runtime as Node. */
+function starterLine(id: string, job: Job, kind: ShellKind) {
+  fs.mkdirSync(TMP, { recursive: true })
+  const file = path.join(TMP, `run-${id}.json`)
+  fs.writeFileSync(file, JSON.stringify(job), { mode: 0o600 })
+  const words = [process.execPath, path.join(plugin.dir, "starter.ts"), file], electron = !!process.versions.electron
+  if (kind === "pwsh") return [electron && "$env:ELECTRON_RUN_AS_NODE = '1'", `& ${words.map(psQuote).join(" ")}`, electron && "Remove-Item Env:ELECTRON_RUN_AS_NODE"].filter(Boolean).join("; ")
+  return [electron && 'set "ELECTRON_RUN_AS_NODE=1"', words.map((w) => `"${w}"`).join(" "), electron && 'set "ELECTRON_RUN_AS_NODE="'].filter(Boolean).join(" & ")
 }
 
 /** Light or dark as appearance.json sets it, for a terminal started with no window to ask (an agent's); null when it
@@ -550,21 +618,24 @@ const dropped = dropSpares()
 
 function makeSpare(from: From) {
   void (async () => {
-    const b = await backendForNew()
-    const key = `${b.name}:${from.remote}:${from.client}`
-    if (!b.spares || spares.has(key)) return
+    const b = await backendForNew(), sh = shell()
+    const key = spareKey(b, from, sh)
+    if (!b.spares || !sameShell(sh) || spares.has(key)) return
     const name = `${SPARE}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     // (its id comes when it's taken)
-    const ready = dropped.then(() => b.create(name, { shell: shell(), run: null, cwd: vaultDir(), env: env(), ctx: context(null, from), cols: 120, rows: 40, scrollback: scrollback() },
+    const ready = dropped.then(() => b.create(name, { shell: sh, run: null, cwd: vaultDir(), env: env(), ctx: context(null, from, sh), cols: 120, rows: 40, scrollback: scrollback() },
       { spare: true })).then(() => true, () => false)
     spares.set(key, { b, name, ready })
   })()
 }
 const refill = (from: From) => setTimeout(() => makeSpare(from), 1500).unref?.()
+/** Which ready shell a terminal can take: its backend's, for its kind of page, of the shell it starts, on the PATH it'd
+ *  get now (one made before the server's PATH changed would miss what's on it). */
+const spareKey = (b: Backend, from: From, sh: string) => `${b.name}:${from.remote}:${from.client}:${sh}:${process.env[PATH] ?? ""}`
 
 /** The ready shell of backend `b`, renamed to session `id` (the agent's command started in it): false when there's none. */
-async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | null) {
-  const key = `${b.name}:${from.remote}:${from.client}`
+async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | null, sh: string) {
+  const key = spareKey(b, from, sh)
   const spare = spares.get(key)
   if (!spare || !b.rename) return false
   spares.delete(key)
@@ -573,7 +644,7 @@ async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | nul
   if (run) {
     fs.mkdirSync(TMP, { recursive: true })
     // (with its Enter: a shell at its prompt reads it as typed, so no pause before it)
-    await b.send(id, `${runScript(path.join(TMP, `run-${id}.sh`), id, run)}\r`, false)
+    await b.send(id, `${runScript(path.join(TMP, `run-${id}.sh`), id, run, kindOf(sh))}\r`, false)
     // Once the agent runs, the line typed (and the prompt before it) leave the history too (the script's `clear` does
     // that in the keeper; tmux keeps its own): scrolling up from it shows nothing it didn't print.
     if (b.clearHistory) void (async () => {
@@ -595,12 +666,12 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   if (!b) {
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
-    const run = await agentRun(id, prompt, dark, how)
+    const sh = shell(), run = await agentRun(id, prompt, dark, how, sh)
     if (agent) timing.mark("agent")
-    const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows, scrollback: scrollback() }
+    const spec = { shell: sh, run, cwd: vaultDir(), env: env(), ctx: context(id, from, sh), cols, rows, scrollback: scrollback() }
     if (run) cwd = run.cwd || spec.cwd
     timing.tags.how = "spare"
-    if (!(b.spares && (await takeSpare(b, id, from, run)))) {
+    if (!(b.spares && (await takeSpare(b, id, from, run, sh)))) {
       timing.tags.how = "new"
       try { await b.create(id, spec) } catch (e) {
         // (out of ptys, the server couldn't start one either: the keeper's message says why)
@@ -735,7 +806,8 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     else if (msg.t === "upload") {
       let file: string | null = null
       try { file = upload(s.id, uploads, msg) } catch (e) { console.error("terminal upload:", e); return }
-      if (file && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: file }))
+      // (a WSL distro's shell is given the path as it sees it)
+      if (file) void inWsl(s).then((wsl) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: wsl ? wslPath(file!) : file })) })
     }
   })
   ws.on("close", () => {
@@ -744,6 +816,11 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     s.pending.delete(ws)
     listChanged()
   })
+}
+
+/** Whether session `s` is a WSL distro's shell. */
+async function inWsl(s: Session) {
+  return WIN && (await s.backend.list().catch(() => [] as Shell[])).find((x) => x.id === s.id)?.process === "wsl"
 }
 
 // --- another machine's shells (Machines): an id ending in @<machine> is let in here first, then joined to the same
@@ -929,7 +1006,8 @@ async function readList(): Promise<Listed[]> {
       // Its program ended (the shell is at its prompt again): what it was working on or blocked on is over.
       const said = osc.get(x.id)?.status?.state
       if (front === null && (said === "working" || said === "blocked")) void b.status?.drop(x.id)
-      const now = stateNow(x.id), shows = !SHELLS.has(x.process)
+      // (Windows' backends name only the shell: what runs in front says)
+      const now = stateNow(x.id), shows = WIN ? front !== null : !SHELLS.has(x.process)
       const state = stateOf(x.id) === MISSING ? null : now?.state ?? (x.state === "working" || x.state === "idle" ? x.state : x.state === "waiting" ? "blocked" : null)
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
@@ -1072,6 +1150,33 @@ async function mustRun(id: string): Promise<Backend> {
   if (!b) throw new HTTPError(404, `there's no terminal session '${id}' (vau terminal lists them)`)
   return b
 }
+
+// An agent's hooks marking its state where they can't run a shell line (Windows: AgentStart's stateHook), as
+// stateCommand does: nothing once it speaks OSC 7501.
+plugin.route("POST", "terminals/*/state", async (req) => {
+  await owner(req)
+  const id = localId(req), st = req.query.s, kind = req.query.kind
+  if (st !== "working" && st !== "waiting" && st !== "idle") throw new HTTPError(400, "s: working, waiting or idle")
+  if (fs.existsSync(oscMark(id))) return {}
+  fs.mkdirSync(STATES, { recursive: true })
+  fs.writeFileSync(stateFile(id), st === "waiting" && (kind === "permission" || kind === "question") ? `${st}:${kind}` : st)
+  return {}
+}, { lock: false, sync: false })
+
+/** Where new shells can run here, as the setting `backend` offers them: tmux only where it's installed (never Windows). */
+plugin.route("GET", "terminals/backends", async (req) => {
+  await owner(req)
+  return { choices: [{ value: "vaultite", label: "Vaultite" }, ...(tmuxShells ? [{ value: "tmux", label: "tmux" }] : [])] }
+})
+
+/** The shells a terminal can start here, as the setting `shell` offers them: "" its default (the login shell, on
+ *  Windows PowerShell), then each by the name its users know (Windows Terminal's). */
+plugin.route("GET", "terminals/shells", async (req) => {
+  await owner(req)
+  const all = await shellsHere(), dflt = defaultShell()
+  const name = all.find((x) => x.shell === dflt)?.label ?? progName(dflt)
+  return { choices: [{ value: "", label: `Default (${name})` }, ...all.map((x) => ({ value: x.shell, label: x.label }))] }
+})
 
 // What a coding agent started here is told, exactly (Show what agents are told; vau terminal instructions).
 plugin.route("GET", "terminals/instructions", () => ({ text: agentContext() }))

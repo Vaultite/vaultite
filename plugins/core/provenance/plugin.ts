@@ -151,7 +151,8 @@ async function scan(abs: string, local: boolean): Promise<boolean | null> {
   let fh: fs.promises.FileHandle | undefined
   try {
     const st = await fs.promises.stat(abs)
-    if (local && st.blocks === 0 && st.size > 0) return null
+    // (iCloud's placeholder; NTFS gives a small file no blocks of its own too)
+    if (local && process.platform === "darwin" && st.blocks === 0 && st.size > 0) return null
     fh = await fs.promises.open(abs, "r")
     if (st.size <= HEAD + TAIL) return saysAi((await fh.read(Buffer.alloc(st.size), 0, st.size, 0)).buffer)
     const head = (await fh.read(Buffer.alloc(HEAD), 0, HEAD, 0)).buffer

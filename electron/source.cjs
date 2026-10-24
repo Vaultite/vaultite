@@ -12,4 +12,5 @@ module.exports = {
     ...build.linux, executableName: "vaultite-main",
     desktop: { ...build.linux.desktop, entry: { ...build.linux.desktop.entry, StartupWMClass: "vaultite-main" } },
   },
+  win: { ...build.win, fileAssociations: build.win.fileAssociations.map((f) => ({ ...f, name: "VaultiteMain.Markdown" })) },
 }

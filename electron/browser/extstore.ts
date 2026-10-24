@@ -2,6 +2,7 @@
 // Chrome Web Store, a folder or .crx file, or another browser of this Mac (one the store dropped, as MV2's).
 import { app, net } from "electron"
 import { idOfKey, openCrx, unzip } from "./crx.ts"
+import { execFileSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -281,6 +282,9 @@ const BROWSERS: [string, string][] = process.env.VAULTITE_TEST_BROWSERS
   : process.platform === "darwin"
   ? [["Brave", "BraveSoftware/Brave-Browser"], ["Chrome", "Google/Chrome"], ["Edge", "Microsoft Edge"], ["Arc", "Arc/User Data"], ["Vivaldi", "Vivaldi"], ["Chromium", "Chromium"]]
     .map(([n, d]) => [n, path.join(HOME, "Library/Application Support", d)])
+  : process.platform === "win32"
+  ? [["Brave", "BraveSoftware/Brave-Browser"], ["Chrome", "Google/Chrome"], ["Edge", "Microsoft/Edge"], ["Vivaldi", "Vivaldi"], ["Chromium", "Chromium"]]
+    .map(([n, d]) => [n, path.join(process.env.LOCALAPPDATA ?? path.join(HOME, "AppData/Local"), d, "User Data")])
   : [["Brave", "BraveSoftware/Brave-Browser"], ["Chrome", "google-chrome"], ["Edge", "microsoft-edge"], ["Vivaldi", "vivaldi"], ["Chromium", "chromium"]]
     .map(([n, d]) => [n, path.join(HOME, ".config", d)])
 
@@ -335,9 +339,34 @@ export function sources(id: string): Source[] {
 /** chrome.storage's areas as Chromium keeps them in a profile, local then sync. */
 export const AREAS = ["Local Extension Settings", "Sync Extension Settings"] as const
 
+/** Windows names a native messaging app's manifest in the registry (each browser's key, the user's then the machine's). */
+function windowsManifests(name: string) {
+  const out: string[] = []
+  for (const root of ["HKCU", "HKLM"]) {
+    for (const b of ["Google\\Chrome", "BraveSoftware\\Brave-Browser", "Microsoft\\Edge", "Vivaldi", "Chromium"]) {
+      try {
+        const said = execFileSync("reg", ["query", `${root}\\Software\\${b}\\NativeMessagingHosts\\${name}`, "/ve"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 })
+        const m = /REG_SZ\s+(.+)$/m.exec(said)
+        if (m) out.push(m[1].trim())
+      } catch { /* not this browser's */ }
+    }
+  }
+  return out
+}
+
 /** A native messaging app's manifest for `name`, as Chrome and its kin keep them on this Mac, if it lets `ext` in. */
 export function nativeHost(name: string, ext: string): { path: string } | null {
   if (!/^[a-z0-9_]+(\.[a-z0-9_]+)*$/i.test(name)) return null
+  if (process.platform === "win32") {
+    for (const file of windowsManifests(name)) {
+      try {
+        const j = JSON.parse(fs.readFileSync(file, "utf8")) as { path?: string; allowed_origins?: string[] }
+        // (Windows lets the app's path be relative to its manifest)
+        if (typeof j.path === "string" && j.allowed_origins?.includes(`chrome-extension://${ext}/`)) return { path: path.resolve(path.dirname(file), j.path) }
+      } catch { /* not readable */ }
+    }
+    return null
+  }
   const dirs = process.platform === "darwin"
     ? [...BROWSERS.map(([, b]) => path.join(b, "NativeMessagingHosts")), "/Library/Google/Chrome/NativeMessagingHosts", "/Library/Application Support/Chromium/NativeMessagingHosts"]
     : [...BROWSERS.map(([, b]) => path.join(b, "NativeMessagingHosts")), "/etc/opt/chrome/native-messaging-hosts", "/etc/chromium/native-messaging-hosts"]

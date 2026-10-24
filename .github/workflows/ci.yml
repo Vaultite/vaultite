@@ -1,4 +1,5 @@
-# Every push to main and every pull request: build, check and the tests, on Linux and macOS. Nightly (and by hand):
+# Every push to main and every pull request: build, check and the tests, on Linux, macOS and Windows (windows.yml: Arm
+# and the Windows app itself). Nightly (and by hand):
 # every UI QA script too, so they don't rot (by hand, `-f scripts="a b"` runs only those).
 name: CI
 on:
@@ -20,9 +21,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, macos-15]
+        runner: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,17 +36,24 @@ jobs:
       - run: npm ci
       # First: the rules most pushes break, in seconds
       - run: npm run check
-      # Playwright's Chromium, cached by its version, so its CDN being down fails nothing
-      - uses: actions/cache@v4
+      # Playwright's Chromium, cached by its version, so its CDN being down fails nothing (each step after check runs
+      # whatever check said, so one push shows every failure)
+      - if: ${{ !cancelled() }}
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/ms-playwright
             ~/Library/Caches/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
-      - run: npx playwright-core install --with-deps chromium
-      - run: npm run build
-      - run: npm test
-      - run: npm run smoke
+            ~/AppData/Local/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      - if: ${{ !cancelled() }}
+        run: npx playwright-core install --with-deps chromium
+      - if: ${{ !cancelled() }}
+        run: npm run build
+      - if: ${{ !cancelled() }}
+        run: npm test
+      - if: ${{ !cancelled() }}
+        run: npm run smoke
   qa:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -57,7 +68,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       - run: npx playwright-core install --with-deps chromium
       - run: sudo apt-get install -y tmux xvfb ffmpeg
       - run: npm run build

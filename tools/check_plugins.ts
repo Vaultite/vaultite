@@ -3,7 +3,7 @@
 import { isUtf8 } from "node:buffer"
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
@@ -174,7 +174,7 @@ for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, [...
 
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
-  ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f)), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
+  ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f.split(path.sep).join("/"))), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
   ...walk(APP_BUNDLES).filter((f) => f.endsWith(".md")), ...walk(path.join(ROOT, "skills")).filter((f) => f.endsWith(".md"))]
 for (const f of docs) {
   const text = fs.readFileSync(f, "utf8"), rel = path.relative(ROOT, f)
@@ -306,7 +306,7 @@ if (agentsSize > AGENTS_MAX) problems.push(`core/AGENTS.md (the vault's rules) i
   const names = new Map<string, string | null>(COMMANDS.map((c) => [c.name, null]))
   for (const [id, [tier, d]] of found) {
     if (tier === "vault" || !fs.existsSync(path.join(d, "cli.ts"))) continue
-    const { cli } = await import(path.join(d, "cli.ts"))
+    const { cli } = await import(pathToFileURL(path.join(d, "cli.ts")).href)
     for (const c of cli?.commands ?? []) names.set(c.name, id)
   }
   const ids = new Map<string, string>(), clis = new Map<string, string>(), tools = new Map<string, string>()

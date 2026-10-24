@@ -2,7 +2,7 @@
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, KeyRound, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSet, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, isWindows, modKey, modifiedSteps, notify, notifyError, openInSet, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
@@ -257,7 +257,8 @@ export default definePlugin({
     { id: "web:live", name: "Show browser tabs", when: () => !webPages, icon: MonitorPlay, run: () => openView("web-live", { newTab: !isViewOpen("view:web-live") }) },
     { id: "web:agent-runs", name: "Show agents in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
       run: () => openView("agent-runs", { newTab: !isViewOpen("view:agent-runs") }) },
-    { id: "web:default-browser", name: "Make Vaultite the default browser", desktop: true, when: () => !!webPages?.engine, icon: Globe,
+    // (Windows sets the default browser only in its Settings, among browsers it knows)
+    { id: "web:default-browser", name: "Make Vaultite the default browser", desktop: true, when: () => !!webPages?.engine && !isWindows, icon: Globe,
       run: () => void Promise.resolve(webPages?.engine?.("browser:make-default")).then((yes) => notify(yes ? "Vaultite is the default browser: links from other apps open here" : "Confirm it in the box macOS shows"), (e) => notifyError(e, "Couldn't make it the default browser")) },
     { id: "web:lock", name: "Lock containers", desktop: true, when: () => !!webPages?.engine && containers().some((c) => c.lock), run: () => void webPages?.engine?.("lock:lock"), icon: Lock },
     { id: "web:open-container", name: "New tab in container…", desktop: true, when: () => !!webPages, run: askContainer, icon: Box },

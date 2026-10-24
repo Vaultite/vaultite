@@ -214,15 +214,18 @@ export default async ($: VaultTest) => {
     check("bundles: its guide can be left out", code === 200 && !exists("Guides/How Guided works.md"), code)
     await api("POST", "bundles/restore")
     await api("DELETE", "bundles/pics")
-    write(".vaultite/bundles/locked/bundle.json", JSON.stringify({ name: "Locked" }))
-    fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o000)
-    ;[code, r] = await api("GET", "bundles")
-    const locked = r.bundles.find((b: Any) => b.id === "locked")
-    check("bundles: one that can't be read is listed with why", /can't be read/.test(locked?.problems?.[0] ?? ""), locked)
-    ;[code] = await api("POST", "bundles/locked/apply", {})
-    check("bundles: and isn't applied", code === 400, code)
-    fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o644)
-    fs.rmSync(path.join(VAULT, ".vaultite/bundles/locked"), { recursive: true })
+    // (Windows has no unreadable mode: chmod there only sets read-only)
+    if (process.platform !== "win32") {
+      write(".vaultite/bundles/locked/bundle.json", JSON.stringify({ name: "Locked" }))
+      fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o000)
+      ;[code, r] = await api("GET", "bundles")
+      const locked = r.bundles.find((b: Any) => b.id === "locked")
+      check("bundles: one that can't be read is listed with why", /can't be read/.test(locked?.problems?.[0] ?? ""), locked)
+      ;[code] = await api("POST", "bundles/locked/apply", {})
+      check("bundles: and isn't applied", code === 400, code)
+      fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o644)
+      fs.rmSync(path.join(VAULT, ".vaultite/bundles/locked"), { recursive: true })
+    }
 
     // A bundle of only the look and the new tab (its page a dashboard it brings), with a picture, as the app's Save the
     // look made them: applied over any setup, plugins, panels and pins as they are.

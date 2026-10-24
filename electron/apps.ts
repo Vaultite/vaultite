@@ -267,6 +267,7 @@ export const appHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
 
 /** Whether the vault has App windows installed and on (in plugins.json's `enabled`), read as its window opens. */
 export function appsOn(vault: string) {
+  if (process.platform !== "darwin") return false // (a synced vault's App windows: a Mac's only)
   try {
     const c = JSON.parse(fs.readFileSync(path.join(vault, ".vaultite", "plugins.json"), "utf8"))
     return Array.isArray(c.enabled) && c.enabled.includes("app-windows") && !(Array.isArray(c.disabled) && c.disabled.includes("app-windows")) &&

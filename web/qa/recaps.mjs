@@ -82,7 +82,7 @@ await shot(page, "file")
 
 // The Activity page's Days tab: the grid of days and the timeline; a week; only tasks.
 const days = await until(() => page.evaluate(() => window.__vaultite?.store?.files?.files?.find?.((f) => /(^|\/)Days\.md$/.test(f.path))?.path), 3000) ??
-  fs.readdirSync(VAULT, { recursive: true }).find((f) => /(^|\/)Days\.md$/.test(f))
+  fs.readdirSync(VAULT, { recursive: true }).find((f) => /(^|[\\/])Days\.md$/.test(f))
 await page.goto(`${B}#file/${encodeURIComponent(days)}`)
 check("the Days tab: a grid of days, today's coloured", await until(async () => (await page.locator(`[data-recap-grid] [data-day="${today}"]`).count()) === 1, 10000) &&
   await page.locator(`[data-recap-grid] [data-day="${today}"]`).evaluate((e) => getComputedStyle(e).backgroundColor !== "rgba(0, 0, 0, 0)"), days)

@@ -1,5 +1,5 @@
 // electron-builder's afterPack (package.json "build"): the app's native modules for its architecture (natives.cjs), then
-// signs it with codesign, one file at a time.
+// signs it with codesign, one file at a time. Windows: only natives.cjs (signing is electron-builder's: release.yml).
 // electron-builder's own signing (@electron/osx-sign) opens every file in the bundle at once to find the binaries, and
 // with node_modules in it (some 26,000 files) that's more than macOS lets a process have open (EMFILE).
 //
@@ -116,6 +116,7 @@ async function fuses(context) {
 
 exports.default = async function sign(context) {
   await fuses(context)
+  if (context.electronPlatformName === "win32") return require("./natives.cjs").windows(context)
   if (context.electronPlatformName !== "darwin") return
   await require("./natives.cjs").default(context)
   const appex = require("./quicklook.cjs").default(context)

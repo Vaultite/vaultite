@@ -4,6 +4,7 @@ node_modules
 web/dist/
 web/qa/shots/
 dist-app/
+dist-test/
 plugins/core/audio-recorder/bin/
 electron/build.json
 electron/cli.json
