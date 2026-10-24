@@ -1,5 +1,5 @@
-// Long desktop session on a made-up vault (notes, tabs, panes, terminals, an agent writing; idle shown, hidden, a graph): each process's memory and CPU, heaps, DOM, timers; growth an hour, heap survivors between cycles.
-// node tools/perf/soak.ts [--minutes 30] [--scale 10] [--idle 3 (min a phase)] [--snapshots] [--profile] [--out dir] [--root <checkout>]   heavy: check `uptime`
+// Long desktop session on a made-up vault (notes, tabs, panes, terminals, an agent writing; idle still, shown, hidden, a graph): each process's memory and CPU, heaps, DOM, timers; growth an hour, heap survivors between cycles.
+// node tools/perf/soak.ts [--minutes 30 (0: idle only)] [--scale 10] [--idle 3 (min a phase)] [--phases still,shown,hidden,graph] [--translucent] [--snapshots] [--profile] [--out dir] [--root <checkout>]   heavy: check `uptime`
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -12,7 +12,9 @@ const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const ROOT = path.resolve(arg("root", path.join(import.meta.dirname, "..", "..")))
 const MINUTES = Number(arg("minutes", "30")), SCALE = Number(arg("scale", "10")), IDLE = Number(arg("idle", "3"))
-const SNAPSHOTS = args.includes("--snapshots"), PROFILE = args.includes("--profile")
+const SNAPSHOTS = args.includes("--snapshots"), PROFILE = args.includes("--profile"), TRANSLUCENT = args.includes("--translucent")
+const PHASES = arg("phases", "still,shown,hidden,graph").split(",") as Phase[]
+type Phase = "still" | "shown" | "hidden" | "graph"
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-soak-"))
 const OUT = path.resolve(arg("out", path.join(tmp, "out")))
 fs.mkdirSync(OUT, { recursive: true })
@@ -290,12 +292,13 @@ function perMinute(phase: string, f: (s: Sample) => number | undefined) {
 const MB = (n: number) => `${(n / 1048576).toFixed(1)}MB`
 function report() {
   const last = samples[samples.length - 1]
-  const lines = [`soak: ${MINUTES} min loop, scale ${SCALE}, idle ${IDLE} min shown, hidden (an agent writing) and a still graph, ${ROOT}`, "", "process        memory now  growth/h (loop)  cpu ms/min: loop  idle shown  idle hidden  graph shown"]
+  const lines = [`soak: ${MINUTES} min loop, scale ${SCALE}, idle ${IDLE} min still, shown and hidden (an agent writing), a still graph${TRANSLUCENT ? ", translucent" : ""}, ${ROOT}`, "",
+    "process        memory now  growth/h (loop)  cpu ms/min: loop  idle still  idle shown  idle hidden  graph shown"]
   for (const r of roleKeys()) {
     const rss = (s: Sample) => s.procs[r]?.rss, cpu = (s: Sample) => s.procs[r]?.cpu
-    lines.push(`${r.padEnd(16)} ${MB(last.procs[r]?.rss ?? 0).padStart(8)} ${MB(perHour("loop", rss)).padStart(12)}   ${perMinute("loop", cpu).toFixed(0).padStart(12)}  ${perMinute("shown", cpu).toFixed(0).padStart(10)}  ${perMinute("hidden", cpu).toFixed(0).padStart(11)}  ${perMinute("graph", cpu).toFixed(0).padStart(11)}`)
+    lines.push(`${r.padEnd(16)} ${MB(last.procs[r]?.rss ?? 0).padStart(8)} ${MB(perHour("loop", rss)).padStart(12)}   ${perMinute("loop", cpu).toFixed(0).padStart(12)}  ${perMinute("still", cpu).toFixed(0).padStart(10)}  ${perMinute("shown", cpu).toFixed(0).padStart(10)}  ${perMinute("hidden", cpu).toFixed(0).padStart(11)}  ${perMinute("graph", cpu).toFixed(0).padStart(11)}`)
   }
-  lines.push("", "page and server        now     growth/h (loop)  a minute: idle shown  idle hidden  graph shown")
+  lines.push("", "page and server        now     growth/h (loop)  a minute: idle still  idle shown  idle hidden  graph shown")
   const rows: [string, (s: Sample) => number, boolean, boolean][] = [
     ["page JS heap", (s) => s.page.heap, true, false], ["server JS heap", (s) => s.server.heap, true, false], ["main JS heap", (s) => s.main.heap, true, false],
     ["DOM nodes", (s) => s.page.nodes, false, false], ["documents", (s) => s.page.documents, false, false], ["JS listeners", (s) => s.page.listeners, false, false],
@@ -306,7 +309,8 @@ function report() {
   ]
   for (const [name, f, bytes, rate] of rows) {
     const now = f(last), g = perHour("loop", f)
-    lines.push(`${name.padEnd(20)} ${(bytes ? MB(now) : String(Math.round(now))).padStart(9)} ${(rate ? "" : bytes ? MB(g) : g.toFixed(1)).padStart(14)}   ${(bytes ? "" : perMinute("shown", f).toFixed(1)).padStart(14)}  ${(bytes ? "" : perMinute("hidden", f).toFixed(1)).padStart(11)}  ${(bytes ? "" : perMinute("graph", f).toFixed(1)).padStart(11)}`)
+    const at = (ph: string, w: number) => (bytes ? "" : perMinute(ph, f).toFixed(1)).padStart(w)
+    lines.push(`${name.padEnd(20)} ${(bytes ? MB(now) : String(Math.round(now))).padStart(9)} ${(rate ? "" : bytes ? MB(g) : g.toFixed(1)).padStart(14)}   ${at("still", 14)}  ${at("shown", 10)}  ${at("hidden", 11)}  ${at("graph", 11)}`)
   }
   return lines.join("\n")
 }
@@ -315,6 +319,10 @@ function report() {
 const userData = path.join(tmp, "userData")
 step(`vault at ${VAULT} (scale ${SCALE}), out ${OUT}`)
 makeVault(VAULT, SCALE)
+if (TRANSLUCENT) {
+  const f = path.join(VAULT, ".vaultite", "appearance.json")
+  fs.writeFileSync(f, JSON.stringify({ ...(fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : {}), translucent: true }))
+}
 // (Ctrl-C still cleans up: the finally below)
 process.once("SIGINT", () => { aborted = true })
 let aborted = false
@@ -359,13 +367,13 @@ try {
   }
   await sample("loop")
   stopAgent()
-  // Idle, shown: the agent keeps writing (live updates arriving), the user does nothing.
-  stopAgent = agent()
+  // Idle: still (shown, nothing changing), shown with the agent writing (live updates arriving), hidden, a graph.
   await page.keyboard.press("Escape")
   await wait(5000)
   await page.evaluate(() => (window as unknown as { __soak: (r: string) => unknown }).__soak("count"))
-  for (const phase of ["shown", "hidden", "graph"] as const) {
+  for (const phase of PHASES) {
     if (aborted) break
+    if (phase === "shown" || phase === "hidden") { stopAgent(); stopAgent = agent() }
     const vis = await showWindow(phase !== "hidden")
     // (the graph: a tab of it shown, the agent stopped, so it settles and nothing moves; each write moves it again)
     if (phase === "graph") { stopAgent(); await page.keyboard.press(`${mod}+t`); await wait(300); await go("#view/graph"); await wait(30000) }
