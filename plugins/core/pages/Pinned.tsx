@@ -1,9 +1,9 @@
 // The pinned pages (sidebar, drawer, view:pages): drag to reorder, onto a pane to open, elsewhere in the sidebar to
 // unpin; drop a file to pin it. The list is the sidebar's (types.ts): the current workspace's with Workspaces on.
-import { useEffect, useId, useRef } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
-  checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isDesktop, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
+  edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isDesktop, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings, showInTree,
   INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
   useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
@@ -110,9 +110,12 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
   // Each list its own target (the sidebar's, and one in a Pinned tab); only the sidebar's unpins what leaves it.
   const target = `${PINS}:${useId()}`
   const hit = useDropHit<PinDrop>(target)
+  const [edge] = useState(() => edgeScroller())
   useDropTarget<PinDrop>(target, (item, x, y, el) => {
     const nav = list.current, inner = box.current
     if (!el || !nav || !inner || !canPin(item)) return null
+    // (held near the top or bottom of a panel too short for its pages, it scrolls)
+    edge.over(nav, x, y)
     const rows = [...inner.children].filter((r): r is HTMLElement => r instanceof HTMLElement && !!r.dataset.slide && r.dataset.slide !== INCOMING)
     const keys = rows.map((r) => r.dataset.slide!), moving = pinsOf(item)
     const last = rows[rows.length - 1]
@@ -137,6 +140,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
     // Words only for what changes more than the order: pinning a file, unpinning a page.
     hint: (h) => ("out" in h ? "Unpin" : h.known ? undefined : desk ? `Pin in ${desk.label}` : "Pin"),
     weak: (h) => "out" in h,
+    end: edge.stop,
   })
   // Dragged over, the pages make way for what's dragged (one leaving to be unpinned: the rest close up).
   const order = dragging && hit ? hit.order : null

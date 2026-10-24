@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react"
 import { Bot, ChevronDown, ChevronRight, ChevronsUpDown, Ellipsis, EyeOff, Fingerprint, Globe, LogOut, Pin, Plus, Settings2 } from "lucide-react"
 import {
-  Button, confirmDialog, currentWorkspace, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, reorder, scopedState, Section,
+  edgeScroller, Button, confirmDialog, currentWorkspace, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, reorder, scopedState, Section,
   SettingRow, SidebarHeading, SidebarRow, slotAt, startDrag, useDrag, useDropHit, useDropTarget, useScopedState, useSlide, useWorkspaceVersion, webPages, workspaceList,
   type MenuItem, type SidebarCtx, type WebSite,
 } from "@vaultite"
@@ -359,15 +359,17 @@ const DROP = "web-viewer:containers"
 /** The Sites tab's containers take one dragged by its heading: it goes where the others make way. The order a drag
  *  would leave (null: none). */
 function useContainerDrop(box: React.RefObject<HTMLDivElement | null>) {
+  const [edge] = useState(() => edgeScroller())
   useDropTarget<Reorder>(DROP, (item, x, y) => {
     const el = box.current
     if (!item.container || !el) return null
+    edge.over(el, x, y)
     const b = el.getBoundingClientRect()
     if (x < b.left || x > b.right || y < b.top - 40 || y > b.bottom + 40) return null
     const cards = [...el.querySelectorAll<HTMLElement>(":scope > [data-slide]")]
     const { order, before, same } = reorder(cards.map((e) => e.dataset.slide!), [item.container], slotAt(el, cards, x, y, "y"))
     return same ? null : { before, order }
-  }, (item, h) => void moveContainer(item.container!, h.before))
+  }, (item, h) => void moveContainer(item.container!, h.before), { end: edge.stop })
   return useDropHit<Reorder>(DROP)?.order ?? null
 }
 

@@ -254,13 +254,18 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
   const table = useRef<HTMLTableElement>(null)
   const lifted = useDrag((d) => d?.item)
   const hit = useDropHit<string>(id)
-  useDropTarget<string>(id, (item, x, _y, el) => {
-    if (item.from !== "column" || item.column?.table !== id || !el || !table.current?.contains(el)) return null
+  const [sideways] = useState(() => edgeScroller("x"))
+  useDropTarget<string>(id, (item, x, y, el) => {
+    if (item.from !== "column" || item.column?.table !== id) return null
+    // (a table wider than its pane scrolls along while a column is held near its edge)
+    const wide = table.current?.closest<HTMLElement>("[data-query-scroll]")
+    if (wide) sideways.over(wide, x, y)
+    if (!el || !table.current?.contains(el)) return null
     const ths = [...table.current.querySelectorAll<HTMLElement>("thead th[data-query-col]")]
     const before = ths.find((th) => { const r = th.getBoundingClientRect(); return x < r.left + r.width / 2 })?.dataset.queryCol ?? ""
     const keys = res.columns.map((c) => c.key), from = keys.indexOf(item.column.key), to = before ? keys.indexOf(before) : keys.length
     return to === from || to === from + 1 ? null : before
-  }, (item, before) => ctl?.move(item.column!.key, before || null))
+  }, (item, before) => ctl?.move(item.column!.key, before || null), { end: sideways.stop })
   // A width being dragged, drawn at once and written when let go.
   const [live, setLive] = useState<{ key: string; px: number } | null>(null)
   const from = useRef({ x: 0, w: 0 })
@@ -313,7 +318,7 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
                         <Resizer label={`Resize ${c.label}`} className="absolute inset-0" onReset={() => ctl.resize(c.key, null)} resetTip="fit its contents"
                           onStart={(x) => { from.current = { x, w: (table.current?.querySelector<HTMLElement>(`th[data-query-col="${CSS.escape(c.key)}"]`)?.getBoundingClientRect().width ?? 120) } }}
                           onDrag={(x) => setLive({ key: c.key, px: Math.max(MIN_WIDTH, Math.round(from.current.w + x - from.current.x)) })}
-                          onEnd={() => setLive((l) => { if (l) ctl.resize(l.key, l.px); return null })} />
+                          onEnd={() => setLive((l) => { if (l) ctl.resize(l.key, l.px); return null })} onCancel={() => setLive(null)} />
                       </span>
                     )}
                   </th>

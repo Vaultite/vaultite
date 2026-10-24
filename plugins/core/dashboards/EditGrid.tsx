@@ -21,6 +21,16 @@ let edge: ReturnType<typeof edgeScroller> | null = null
  *  run's last cell, held over its Add card. */
 type Hit = { k: number; after: boolean; across: boolean; add?: boolean }
 
+/** The cell of `grid` nearest (x, y). */
+function nearest(grid: HTMLElement, x: number, y: number) {
+  let best: HTMLElement | null = null, least = Infinity
+  for (const c of grid.querySelectorAll<HTMLElement>("[data-cell]")) {
+    const r = c.getBoundingClientRect(), d = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom))
+    if (d < least) { least = d; best = c }
+  }
+  return best
+}
+
 export function EditGrid({ cards, edit, ctx }: { cards: GridCard[]; edit: GridEdit; ctx: PageCtx }) {
   const cells = useMemo(() => cellsOf(cards), [cards])
   const root = useRef<HTMLDivElement>(null)
@@ -28,9 +38,9 @@ export function EditGrid({ cards, edit, ctx }: { cards: GridCard[]; edit: GridEd
   // A card held over another cell goes before or after it: beside it in two columns, above or below in one.
   useDropTarget<Hit>(id, (item, x, y, el) => {
     if (item.from !== "block" || !moving || !root.current || moving.editor !== root.current.closest(".cm-editor")) return null
-    const box = root.current.closest<HTMLElement>("[data-pane], [data-kept], [data-stacked]") ?? document.scrollingElement as HTMLElement
-    ;(edge ??= edgeScroller()).near(box, y)
-    const at = el?.closest<HTMLElement>("[data-cell], [data-add-block]")
+    ;(edge ??= edgeScroller()).over(root.current, x, y)
+    // Over the gap between cells (where the line is drawn), the nearest cell.
+    const at = el?.closest<HTMLElement>("[data-cell], [data-add-block]") ?? (el && root.current.contains(el) ? nearest(root.current, x, y) : null)
     if (!at || !root.current.contains(at)) return null
     if (at.dataset.addBlock !== undefined) return { k: cards.length - 1, after: true, across: false, add: true }
     const r = at.getBoundingClientRect(), across = r.width < root.current.getBoundingClientRect().width * 0.75

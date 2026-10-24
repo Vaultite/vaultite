@@ -1,6 +1,6 @@
 // A blank tab's page: newtab.json's sections, reordered by drag and changed from its menu (like `vau newtab`), all drawn at
 // the sidebar's sizes (SidebarRow) and the page a size up as one (`data-size-up`). A button is its command.
-import { useId, useRef, type MouseEvent, type ReactNode, type RefObject } from "react"
+import { useId, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, LayoutDashboard, MousePointerClick, Plus, RotateCcw, Smile, SquarePlus, Trash2 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { getStore } from "@/core/data"
@@ -8,7 +8,7 @@ import { folderOf, stem } from "@/core/files"
 import { fileAt } from "@/core/pages"
 import type { NewTabSection, SidebarPanel } from "@/core/define"
 import { available, commandList, keyHint, keysOf, runCommand, useCommandList, type Command } from "@/core/commands"
-import { startDrag, useDragItem, useDropHit, useDropTarget } from "@/core/drag"
+import { edgeScroller, startDrag, useDragItem, useDropHit, useDropTarget } from "@/core/drag"
 import { reorder, slotAt, useSlide } from "@/core/slide"
 import { commandIcon } from "@/core/pages"
 import { newTabSections, sidebarPanels } from "@/core/plugins"
@@ -127,9 +127,12 @@ type Reorder = { before: string | null; order: string[] }
  *  it: a drop puts it there (newtab.json's `sections` or `actions`). `across`: a row of icons that wraps (a phone's dock). */
 function useReorder(box: RefObject<HTMLDivElement | null>, list: "sections" | "actions", across = false) {
   const target = `newtab:${useId()}`
+  const [edge] = useState(() => edgeScroller())
   useDropTarget<Reorder>(target, (item, x, y) => {
     const n = item.newtab, root = box.current
     if (n?.list !== list || !root) return null
+    // (held near the page's top or bottom, it scrolls: a long new tab)
+    edge.over(root, x, y)
     const r = root.getBoundingClientRect()
     if (!r.width || x < r.left - 48 || x > r.right + 48 || y < r.top - 24 || y > r.bottom + 24) return null
     const rows = [...root.children].filter((el): el is HTMLElement => el instanceof HTMLElement && !!el.dataset.slide)
@@ -142,7 +145,7 @@ function useReorder(box: RefObject<HTMLDivElement | null>, list: "sections" | "a
     const now = list === "sections" ? sectionsNow() : shownActions(getPrefs().newTab)
     // A key that isn't in the list (a section shown but not saved) is placed by the one after it too.
     void setNewTab({ [list]: placeKey(now, key, h.before && now.includes(h.before) ? h.before : null) })
-  })
+  }, { end: edge.stop })
   useSlide(box, useDropHit<Reorder>(target)?.order ?? null, across ? "wrap" : "y")
 }
 

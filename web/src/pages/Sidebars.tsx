@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react"
 import { createPortal } from "react-dom"
 import { ArrowDown, ArrowUp, Ellipsis, EyeOff, PanelLeft, PanelRight, SlidersHorizontal } from "lucide-react"
-import { startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { scrollerOf } from "@/core/near"
 import { fuzzy } from "@/core/fuzzy"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { defaultPanels, dockPanel, hidePanel, panelsIn, restoreSidebars, sideOf, sidebarPanels, useSidebars, type PanelOf, type Side } from "@/core/plugins"
@@ -47,6 +48,14 @@ export function SidebarsSheet() {
   }, [undo, stock])
   const restore = () => setUndo({ run: restoreSidebars(), landed: false })
   const root = useRef<HTMLDivElement>(null)
+  // A panel held near the sheet's top or bottom scrolls it, so every list can be reached (a phone's sheet is long).
+  const [edge] = useState(() => edgeScroller())
+  useDropTarget("customize:edge", (item, _x, y) => {
+    const box = root.current && carried(item) ? scrollerOf(root.current) ?? document.scrollingElement as HTMLElement : null
+    if (box) edge.near(box, y)
+    else edge.stop()
+    return null
+  }, () => {}, { end: edge.stop })
   return (
     <div ref={root} data-customize-sidebars>
       <SheetHead icon={SlidersHorizontal} tint="var(--primary)" title="Sidebars"

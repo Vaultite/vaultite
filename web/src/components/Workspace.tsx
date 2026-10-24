@@ -328,6 +328,9 @@ function Divider({ at: d, box }: { at: DividerAt; box: React.RefObject<HTMLDivEl
   const style = row
     ? { left: `calc(${pct(r.x + d.at * r.w)} - 3px)`, top: pct(r.y), height: pct(r.h), width: 7 }
     : { top: `calc(${pct(r.y + d.at * r.h)} - 3px)`, left: pct(r.x), width: pct(r.w), height: 7 }
-  return <Resizer label="Resize the split" horizontal={!row} onDrag={move} onReset={() => evenOut(d.split.id)} resetTip="even it out"
+  // (Escape puts it back where it was when the drag began)
+  const was = useRef(d.at)
+  return <Resizer label="Resize the split" horizontal={!row} onStart={() => { was.current = d.at }} onDrag={move}
+    onCancel={() => resize(d.split.id, d.i, was.current, 0)} onReset={() => evenOut(d.split.id)} resetTip="even it out"
     style={style} className="absolute" />
 }

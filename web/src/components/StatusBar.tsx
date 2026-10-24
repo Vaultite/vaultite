@@ -272,16 +272,22 @@ export function StatusBar() {
   const fileSlots = useMemo(() => new Map(inBar.filter((x) => !x.ambient).map((x) => [x.key, open ? slot(x, fileDraw(x), "bar", holdOf(x.key))
     : <span key={x.key} aria-hidden data-status-coming data-fit={fitRank(x)} className="shrink-0" style={{ width: holdOf(x.key) }} />])), [inBar, held, dragged, open, late, counts, fileHead, fileText])
   // In one row, a line where the ambient items meet the file's (shown only between two that show something: index.css).
-  const els: ReactNode[] = []
+  const els: ReactNode[] = [], seps: string[] = []
   let kind = ""
   for (const x of withComing(inBar, held, bar.all.map((a) => a.key))) {
     const k = "coming" in x || x.ambient ? "ambient" : "file"
-    if (kind && k !== kind) els.push(<span key={`sep-${els.length}`} aria-hidden data-status-sep data-slide={`sep:${els.length}`} className="shrink-0 pl-1"><span className="block h-3.5 w-px bg-border" /></span>)
+    if (kind && k !== kind) {
+      seps.push(`sep:${els.length}`)
+      els.push(<span key={`sep-${els.length}`} aria-hidden data-status-sep data-slide={`sep:${els.length}`} className="shrink-0 pl-1"><span className="block h-3.5 w-px bg-border" /></span>)
+    }
     kind = k
     els.push("coming" in x ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} /> : (k === "ambient" ? ambientSlots : fileSlots).get(x.key))
   }
-  // Dragged over, the bar's items and the tray's make way for the one dragged.
-  useSlide(itemsRef, barHit?.order ?? null, "x")
+  // Dragged over, the bar's items and the tray's make way for the one dragged; its lines go where the kinds meet then
+  // (left out, one would give up its room and the items past it would shift).
+  const ambient = (key: string) => !!bar.all.find((x) => x.key === (key === INCOMING ? dragged : key))?.ambient
+  const barOrder = barHit?.order && barHit.order.flatMap((key, i, all) => (i && ambient(key) !== ambient(all[i - 1]) ? [seps.shift() ?? "", key] : [key])).filter(Boolean)
+  useSlide(itemsRef, barOrder ?? null, "x")
   useSlide(trayRef, trayHit?.order ?? null, "wrap")
   const gap = (g: Gap | null) => g?.order?.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-5 shrink-0" />
   // (always there, the fit showing it: drawn again only when it changes, not on each keystroke)

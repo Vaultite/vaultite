@@ -8,7 +8,7 @@ import type { SyntaxNode } from "@lezer/common"
 import { ArrowDown, ArrowDownAZ, ArrowDownZA, ArrowLeft, ArrowRight, ArrowUp, BetweenHorizontalEnd, BetweenHorizontalStart,
   BetweenVerticalEnd, BetweenVerticalStart, Code, Columns3, Eraser, Rows3, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react"
 import { menuShowing, openMenu, type MenuItem } from "@/components/ContextMenu"
-import { addDropTarget, startDrag } from "@/core/drag"
+import { addDropTarget, edgeScroller, startDrag } from "@/core/drag"
 import { isMac } from "@/core/platform"
 import { markdownDrawn } from "@/core/richmd"
 
@@ -543,12 +543,16 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     })
   }
 
-  /** Where a row or column held at x, y would go: the gap before row or column `gap` (the line drawn there). */
+  /** Where a row or column held at x, y would go: the gap before row or column `gap` (the line drawn there). Held near
+   *  the edge of a table wider than the note, or of the pane, it scrolls that way. */
+  const sideways = edgeScroller("x"), down = edgeScroller()
   const untarget = addDropTarget(id, {
     at: (item, x, y) => {
       const t = drawn.querySelector("table")
       if (item.table !== id || !dragging || !grid || !table || !t) return null
       const { row, from } = dragging
+      if (row) down.over(t, x, y)
+      else sideways.over(t, x, y)
       if (!dragging.shown) { dragging.shown = true; const [a, h] = row ? wholeRow(from) : wholeCol(from); select(a, h) }
       const tb = t.getBoundingClientRect(), box = el.getBoundingClientRect()
       if (x < tb.left - 48 || x > tb.right + 48 || y < tb.top - 48 || y > tb.bottom + 48) { line.hidden = true; return null }
@@ -558,7 +562,9 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       const to = (row ? gap + 1 : gap) > from ? (row ? gap : gap - 1) : row ? gap + 1 : gap
       line.hidden = to === from
       if (to === from) return null
-      const edge = gap < edges.length ? (row ? edges[gap].top : edges[gap].left) : (row ? edges[gap - 1].bottom : edges[gap - 1].right)
+      // (kept within the table's sight: a column scrolled out of it has its edge off to the side)
+      const at = gap < edges.length ? (row ? edges[gap].top : edges[gap].left) : (row ? edges[gap - 1].bottom : edges[gap - 1].right)
+      const edge = row ? at : Math.min(Math.max(at, tb.left), tb.right)
       line.className = `cm-table-drop ${row ? "is-row" : "is-col"}`
       Object.assign(line.style, row
         ? { left: `${tb.left - box.left}px`, top: `${edge - box.top}px`, width: `${tb.width}px`, height: "" }
@@ -569,7 +575,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       const { row, from, to } = data as { row: boolean; from: number; to: number }
       change((t) => (row ? moveRow(t, from, to) : moveColumn(t, from, to)), "input.table", { pick: row ? wholeRow(to) : wholeCol(to) })
     },
-    end: () => { dragging = null; line.hidden = true },
+    end: () => { dragging = null; line.hidden = true; sideways.stop(); down.stop() },
   })
 
   // Its size changed (the pane, a font): the grips and + follow.

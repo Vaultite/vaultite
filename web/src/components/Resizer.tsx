@@ -1,9 +1,9 @@
 // The one drag-to-resize primitive (sidebar edge, split dividers). While dragging, <body data-resizing> stops size
-// animations and keeps the cursor over iframes too. From the keyboard: the arrows drag it a step, Enter resets it.
-import type { CSSProperties, KeyboardEvent } from "react"
+// animations and keeps the cursor over iframes; Escape puts it back. Keys: the arrows drag it a step, Enter resets it.
+import { useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { cn } from "@/lib/utils"
 
-export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onReset, resetTip = "reset", className, style }: {
+export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, onReset, resetTip = "reset", className, style }: {
   label: string
   /** A horizontal line (between panes above and below): dragged up and down. */
   horizontal?: boolean
@@ -12,11 +12,33 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onReset, re
   onDrag: (clientX: number, clientY: number) => void
   /** The drag ended (to save the size it left). */
   onEnd?: () => void
+  /** Escape: put back the size it had (else it's dragged back to where it started, then ends). */
+  onCancel?: () => void
   onReset?: () => void
   resetTip?: string
   className?: string; style?: CSSProperties
 }) {
-  const end = () => { if (!("resizing" in document.body.dataset)) return; delete document.body.dataset.resizing; onEnd?.() }
+  const unEscape = useRef<(() => void) | null>(null)
+  const end = () => { unEscape.current?.(); unEscape.current = null; if (!("resizing" in document.body.dataset)) return; delete document.body.dataset.resizing; onEnd?.() }
+  const down = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const el = e.currentTarget, id = e.pointerId, x = e.clientX, y = e.clientY
+    el.setPointerCapture(id)
+    document.body.dataset.resizing = horizontal ? "row" : "col"
+    onStart?.(x, y)
+    // Escape puts it back where it was and ends the drag, as it does any other.
+    const escape = (k: globalThis.KeyboardEvent) => {
+      if (k.key !== "Escape") return
+      k.preventDefault(); k.stopPropagation()
+      if (onCancel) onCancel()
+      else onDrag(x, y)
+      try { el.releasePointerCapture(id) } catch { /* already gone */ }
+      end()
+    }
+    addEventListener("keydown", escape, true)
+    unEscape.current = () => removeEventListener("keydown", escape, true)
+  }
   // A key is a whole drag, from the line's middle to a step along.
   const key = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" && onReset) { e.preventDefault(); onReset(); return }
@@ -30,7 +52,7 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onReset, re
   return (
     <div role="separator" tabIndex={0} aria-orientation={horizontal ? "horizontal" : "vertical"} aria-label={label} onKeyDown={key}
       data-tip={onReset ? `Drag to resize, double-click to ${resetTip}` : "Drag to resize"}
-      onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); document.body.dataset.resizing = horizontal ? "row" : "col"; onStart?.(e.clientX, e.clientY) }}
+      onPointerDown={down}
       onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) onDrag(e.clientX, e.clientY) }}
       onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}
       onDoubleClick={onReset} style={style}

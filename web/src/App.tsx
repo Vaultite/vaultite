@@ -101,7 +101,7 @@ const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p,
 const SIDEBAR = { min: 200, max: 480, default: 240 }
 const railPx = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing")) || 0.25) * 16 * RAIL
 const sidebarPx = (w: number) => Math.round(Math.min(SIDEBAR.max, Math.max(SIDEBAR.min, w || SIDEBAR.default)))
-let dragFrom = SIDEBAR.default
+let dragFrom = SIDEBAR.default, dragOpen = true
 /** A sidebar's edge dragged to x (the right one's from the right): narrower than halfway between the rail and its
  *  narrowest, it's the rail, and it keeps the width it had when the drag began, so it reopens as it was. */
 function dragSidebar(right: boolean, x: number) {
@@ -523,7 +523,8 @@ export default function App() {
       </aside>
       {/* Its edge (the splits' Resizer): dragged past half its narrowest it folds to the rail, keeping its width, and
           out again it opens, in one drag. */}
-      {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={(x) => dragSidebar(false, x)} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
+      {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth); dragOpen = getPrefs().sidebar }} onDrag={(x) => dragSidebar(false, x)}
+        onCancel={() => setPrefs({ sidebar: dragOpen, sidebarWidth: dragFrom })} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
         className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
       </>}
 
@@ -543,7 +544,8 @@ export default function App() {
         </aside>
       )}
       {showRight && rightOpen && (
-        <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth) }} onDrag={(x) => dragSidebar(true, x)}
+        <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth); dragOpen = getPrefs().rightSidebar }} onDrag={(x) => dragSidebar(true, x)}
+          onCancel={() => setPrefs({ rightSidebar: dragOpen, rightSidebarWidth: dragFrom })}
           onReset={() => setPrefs({ rightSidebar: true, rightSidebarWidth: 280 })}
           className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} - 4px)` }} />
       )}

@@ -746,6 +746,19 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (typing(e.target)) return
     const mod = e.metaKey || e.ctrlKey
     if (e.key === " " && !mod) { e.preventDefault(); if (!spacePan) setSpacePan(true); return }
+    // Escape mid-drag lets go of it nowhere: what it moved or resized goes back (a copy it made goes), the rest just ends.
+    const d = dragRef.current
+    if (e.key === "Escape" && d && d.kind !== "pan") {
+      e.preventDefault()
+      if ((d.kind === "move" || d.kind === "resize") && docRef.current !== d.base) {
+        docRef.current = d.base
+        setDoc(d.base)
+        setSel((was) => new Set([...was].filter((id) => d.base.nodes.some((n) => n.id === id))))
+      }
+      setD(null)
+      setGuides([])
+      return
+    }
     if (e.key === "Escape") { setSel(new Set()); setSelEdge(null); return }
     if (!editable) return
     const k = e.key.toLowerCase()

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react"
 import { noteActivity } from "@/core/activity"
 import { onAway } from "@/core/away"
 import { haptic } from "@/core/haptics"
+import { scrollerOf } from "@/core/near"
 import { signal } from "@/core/signal"
 
 export type DragItem = {
@@ -105,20 +106,26 @@ export function useDropTarget<H>(id: string, at: (item: DragItem, x: number, y: 
 }
 
 /** Whether a drag at (x, y) over `el` is just past a list's `last` row, where a drop puts it at the end: under it, down
- *  to its panel's bottom or a row's height (a panel often ends right under it), and not on another list's row. */
+ *  to its panel's bottom or a row's height (a panel often ends right under it), and not on another list's row or panel. */
 export function pastEnd(list: Element, last: Element, x: number, y: number, el: Element | null) {
   const box = list.getBoundingClientRect(), row = last.getBoundingClientRect()
-  const panel = list.closest("[data-panel]")?.getBoundingClientRect()
-  const bottom = Math.max(row.bottom + row.height, panel?.bottom ?? 0)
-  return x >= box.left && x <= box.right && y >= row.bottom && y < bottom && (!el || list.contains(el) || !el.closest("[data-keyrow]"))
+  const panel = list.closest("[data-panel]"), below = el?.closest("[data-panel]")
+  const bottom = Math.max(row.bottom + row.height, panel?.getBoundingClientRect().bottom ?? 0)
+  return x >= box.left && x <= box.right && y >= row.bottom && y < bottom
+    && (!el || list.contains(el) || (!el.closest("[data-keyrow]") && (!below || below === panel)))
 }
 
+/** The frame each box last scrolled in: two lists in one box (Pinned and the Tabs panel, in a sidebar scrolling as
+ *  one) scroll it once a frame, not twice as fast. */
+const scrolled = new WeakMap<Element, number>()
+
 /** Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the
- *  pointer leaves or the drag ends. One per box. `alive`: whether to go on (default: while something is dragged). */
+ *  pointer leaves or the drag ends. `alive`: whether to go on (default: while something is dragged). */
 export function edgeScroller(axis: "x" | "y" = "y") {
-  let speed = 0, frame = 0
+  let speed = 0, frame = 0, scrolling: HTMLElement | null = null
   const stop = () => { speed = 0 }
   const near = (box: HTMLElement, at: number, alive: () => boolean = () => !!drag) => {
+    scrolling = box
     // The window (a phone's page): between its header and its bar. A finger covers more, so its zone is wider.
     const b = box === document.scrollingElement
       ? { top: document.querySelector("[data-phone-header]")?.getBoundingClientRect().bottom ?? 0, bottom: document.querySelector("[data-phone-bar]")?.getBoundingClientRect().top ?? innerHeight, left: 0, right: innerWidth }
@@ -128,17 +135,36 @@ export function edgeScroller(axis: "x" | "y" = "y") {
     const d = at < lo + zone ? at - (lo + zone) : at > hi - zone ? at - (hi - zone) : 0
     speed = Math.max(-14, Math.min(14, Math.round(d / 2)))
     if (!speed || frame) return
-    const step = () => {
-      if (!speed || !alive()) { frame = 0; return }
-      if (axis === "x") box.scrollLeft += speed
-      else box.scrollTop += speed
-      // What's under the pointer moved: what a drop there would do too (the line follows, without a pointer move).
-      if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y) })
+    const step = (t: number) => {
+      const el = scrolling
+      if (!speed || !el || !alive()) { frame = 0; return }
+      if (scrolled.get(el) !== t) {
+        scrolled.set(el, t)
+        if (axis === "x") el.scrollLeft += speed
+        else el.scrollTop += speed
+        // What's under the pointer moved: what a drop there would do too (the line follows, without a pointer move).
+        if (drag) setDrag({ ...drag, hit: hitAt(drag.item, drag.x, drag.y) })
+      }
       frame = requestAnimationFrame(step)
     }
     frame = requestAnimationFrame(step)
   }
-  return { near, stop }
+  /** `near` while (x, y) is over what scrolls `list` (along x, `list` itself), else `stop`: for a list's target, which
+   *  hears every move wherever the pointer is. */
+  const over = (list: Element, x: number, y: number) => {
+    const page = document.scrollingElement as HTMLElement
+    const box = axis === "x" ? list as HTMLElement : scrollerOf(list, true) ?? (page.scrollHeight > page.clientHeight ? page : null)
+    // (nothing scrolls it: a list that fits, the desktop's window)
+    if (!box || (axis === "x" && box.scrollWidth <= box.clientWidth)) return stop()
+    if (box === page) return near(box, y)
+    const b = box.getBoundingClientRect()
+    const [at, lo, hi, across, from, to] = axis === "x" ? [x, b.left, b.right, y, b.top, b.bottom] : [y, b.top, b.bottom, x, b.left, b.right]
+    // (past a row's end it goes on, as it can't past a column's: there the next panel or bar takes over)
+    const past = axis === "x" ? 48 : 0
+    if (across < from || across > to || at < lo - past || at > hi + past) stop()
+    else near(box, at)
+  }
+  return { near, over, stop }
 }
 
 /** Ask the targets again what a drop where the pointer rests would do: for an answer that changes with time while the

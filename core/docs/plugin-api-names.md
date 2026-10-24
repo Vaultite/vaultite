@@ -442,7 +442,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `reorder(keys, moving, index)`: What a drop at slot `index` of `keys` (slotAt) leaves: their `order`, with `moving` there (those not among them come in as one INCOMING), the key it goes `before` (null: the end), and whether…
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
-- `Resizer({ label, horizontal, onStart, onDrag, onEnd, onReset, resetTip, className, style })`
+- `Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, onReset, resetTip, className, style })`
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
 - `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then aliases and plugins' names), or null.
 - `resolveView(target, disabled?)`: The target to open for this one (its view's `resolve`): a conversation already running, its terminal.

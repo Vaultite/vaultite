@@ -528,13 +528,14 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   }
   const unrest = () => { if (resting.current) { clearTimeout(resting.current.timer); resting.current = null } }
   useDropTarget<ListHit>("tab-list", (item: DragItem, x, y, el) => {
-    if (item.from !== "tab" || !item.tab || !el || !box.current) return null
+    if (item.from !== "tab" || !item.tab || !el || !box.current) { scroller.current.stop(); return null }
     // Which way the finger is going (since the last move): towards a card's middle, it may mean to group with it.
     const prev = lastAt.current, vx = prev ? x - prev.x : 0, vy = prev ? y - prev.y : 0
     if (item.drawn) lastAt.current = { x, y }
     const keep = (h: ListHit | null) => { placed.current = h && (h.kind === "before" || h.kind === "after") ? { kind: h.kind, tab: h.tab } : null; return h }
     const sheet = box.current.closest("dialog")
-    if (!sheet?.contains(el)) return keep(null)
+    // (off the sheet, the list stops scrolling)
+    if (!sheet?.contains(el)) { scroller.current.stop(); return keep(null) }
     const sc = box.current.closest<HTMLElement>(".overflow-y-auto")
     if (sc) scroller.current.near(sc, y)
     const own = groupOfTab(item.tab)

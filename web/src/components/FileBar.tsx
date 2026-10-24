@@ -26,6 +26,7 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
   const box = useRef<HTMLDivElement>(null)
   const target = `file-bar:${useId()}`
   const lifted = useDragItem(), dragging = lifted?.from === "panel" && !!lifted.panel && isBarItem(lifted.panel)
+  const coming = dragging && !items.some((x) => x.key === lifted.panel)
   const hit = useDropHit<Gap>(target)
   useDropTarget<Gap>(target, (item, x, y) => {
     const key = item.from === "panel" ? item.panel : undefined, el = box.current
@@ -58,8 +59,9 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
           <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(ctx)} /></Catch>
         </span>
       ))}
-      {/* Where one from a sidebar would go. */}
-      {hit?.order.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-6 w-6 shrink-0" />}
+      {/* Where one from a sidebar would go: its room kept from the drag's start, so the path beside it doesn't narrow
+          and widen again as it comes and goes. */}
+      {coming && <span aria-hidden data-slide={hit?.order.includes(INCOMING) ? INCOMING : undefined} className="h-6 w-6 shrink-0" />}
     </div>
   )
 }

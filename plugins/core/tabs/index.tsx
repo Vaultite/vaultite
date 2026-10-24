@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
-  canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
+  edgeScroller, canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
   notifyError, openView, panesOf, pastEnd, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
@@ -91,9 +91,12 @@ function TabRows({ store }: { store: Store }) {
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const list = useRef<HTMLDivElement>(null)
   const target = `${LIST}:${useId()}`
+  const [edge] = useState(() => edgeScroller())
   useDropTarget<TabDrop>(target, (item: DragItem, x, y, el) => {
     const root = list.current
     if (!root) return null
+    // (held near the top or bottom of what scrolls the list, it scrolls: more tabs than the panel shows)
+    if (item.tab || item.tabset || item.to || item.group) edge.over(root, x, y)
     const box = el?.closest<HTMLElement>("[data-tabs-pane]") ?? endOf(root, x, y, el)
     const g = box && root.contains(box) && panesOf(ws.root).find((p) => p.id === box.dataset.tabsPane)
     if (!box || !g || !(item.tab || item.tabset || item.to || item.group)) return null
@@ -101,7 +104,7 @@ function TabRows({ store }: { store: Store }) {
     const at = tabSlot(g, slots, y, "y")
     const d: TabDrop = { kind: "bar", group: g.id, index: at.index, set: item.tabset ? null : at.set }
     return canDropTab(item, d) ? d : null
-  }, (item, d) => dropTab(item, d))
+  }, (item, d) => dropTab(item, d), { end: edge.stop })
   const hit = useDropHit<TabDrop>(target)
   return (
     <div ref={list} className="flex flex-col gap-px" data-keylist data-open-tabs data-select-list={TABS}>
