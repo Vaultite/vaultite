@@ -7,7 +7,15 @@ import { ignoreOf, walk } from './core/rules.ts'
 
 // npm run build:demo: the web app with its server in the browser, on the sandbox vault (web/demo/CLAUDE.md), as static
 // files in web/dist-demo for any host, under any path.
-const ROOT = import.meta.dirname
+// (real paths: Vite sees each module at its real one, so a checkout or temp folder reached through a link, as a Mac's
+// /var is /private/var's, still matches)
+const real = (p: string) => fs.realpathSync.native(p)
+const ROOT = real(import.meta.dirname)
+/** `file`'s path under `dir` with / (it's a module URL's), or null when it isn't under it. */
+const under = (dir: string, file: string) => {
+  const rel = path.relative(dir, file)
+  return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : null
+}
 const node = (file: string) => path.join(ROOT, 'web/demo/node', file)
 const STUBBED = ['node:child_process', 'node:http', 'node:https', 'node:http2', 'node:net', 'node:dns', 'node:readline', 'node:module',
   'node:stream', 'node:stream/promises', 'node:perf_hooks', 'node:inspector/promises', 'node:zlib', 'node:sqlite', 'ws', 'node-pty', '@xterm/headless',
@@ -22,13 +30,13 @@ const ALIASES: Alias[] = [
 
 // Vaultite's own plugins (Vaultite/plugins, checked out at VAULTITE_PLUGINS, else beside the app) are built in here as
 // if they were the app's, off until turned on: a visitor can't install anything, and bundles name them to install.
-const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, '..', 'vaultite-plugins'))
-if (!fs.existsSync(OFFICIAL)) throw new Error(`the demo builds in Vaultite's own plugins: check out Vaultite/plugins at ${OFFICIAL}, or set VAULTITE_PLUGINS`)
+const PLUGINS_AT = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(import.meta.dirname, '..', 'vaultite-plugins'))
+if (!fs.existsSync(PLUGINS_AT)) throw new Error(`the demo builds in Vaultite's own plugins: check out Vaultite/plugins at ${PLUGINS_AT}, or set VAULTITE_PLUGINS`)
+const OFFICIAL = real(PLUGINS_AT)
 type Official = { id: string; dir: string; manifest: Record<string, unknown>; machine: boolean }
 const official: Official[] = fs.readdirSync(OFFICIAL).sort().flatMap((id) => {
-  const dir = path.join(OFFICIAL, id)
-  let m: Record<string, unknown>
-  try { m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) } catch { return [] }
+  let dir: string, m: Record<string, unknown>
+  try { dir = real(path.join(OFFICIAL, id)); m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) } catch { return [] }
   if (m.id !== id || m.repo !== 'Vaultite/plugins' || fs.existsSync(path.join(ROOT, 'plugins/core', id))) return []
   // (what runs programs, reads the machine's files or needs the desktop app needs one: off here, as the app's are: web/demo/machine.ts)
   const d = (m.disclosures ?? {}) as { shell?: boolean }
@@ -49,8 +57,8 @@ function officialFiles() {
 }
 /** An official plugin's file as the app's would be: plugins/core/<id>/<rest> (its module URL in the worker). */
 const asApp = (file: string) => {
-  const o = official.find((x) => file.startsWith(x.dir + path.sep))
-  return o ? path.join('plugins/core', o.id, path.relative(o.dir, file)) : null
+  for (const o of official) { const rel = under(o.dir, file); if (rel) return `plugins/core/${o.id}/${rel}` }
+  return null
 }
 const MODULES = [path.join(ROOT, 'plugins/core'), OFFICIAL]
 
@@ -77,6 +85,34 @@ function officialPlugins(): Plugin {
   }
 }
 
+/** A module's file at its real path, or null for a virtual one. */
+const realFile = (id: string) => {
+  const file = id.replace(/\?.*$/, '')
+  if (!path.isAbsolute(file)) return null
+  try { return real(file) } catch { return file }
+}
+
+/** A server module in the worker still asking import.meta where it is gets the worker's URL, and the demo crashes as it
+ *  starts: the build fails instead, naming them (only the page's own code and packages may ask). */
+function noModuleUrls(): Plugin {
+  const left = new Set<string>()
+  return {
+    name: 'vaultite-demo-no-module-urls',
+    transform: {
+      order: 'post',
+      handler(code, id) {
+        // (code: a file imported as text, ?raw, may well mention it)
+        const file = /\.[cm]?[jt]sx?$/.test(id) ? realFile(id) : null
+        if (!file || file.split(path.sep).join('/').includes('/node_modules/') || under(path.join(ROOT, 'web'), file)) return
+        if (/\bimport\.meta\.(url|dirname|filename|resolve)\b/.test(code)) left.add(under(ROOT, file) ?? file)
+      },
+    },
+    buildEnd() {
+      if (left.size) this.error(`the demo's server modules must see themselves at /app (demoServer), but these still ask import.meta: ${[...left].sort().join(', ')}`)
+    },
+  }
+}
+
 /** The server's modules in the worker: each sees itself at /app as in the repo (its import.meta.url, dirname and filename), and core/plugins.ts
  *  takes the built-in plugins' backends from the bundle, but those that need a machine: virtual:demo-plugin-files names
  *  them (for web/demo/mount.ts) and keeps them once worker.ts imports virtual:demo-plugins, after the core (one chunk:
@@ -98,9 +134,9 @@ function demoServer(): Plugin {
         `\nimport { loaded } from "virtual:demo-plugin-files"\nObject.assign(loaded, {${files.map((f, i) => `${JSON.stringify(f)}: p${i}`).join(', ')}})`
     },
     transform(code, id) {
-      const file = id.replace(/\?.*$/, '')
-      const rel = asApp(file) ?? path.relative(ROOT, file)
-      if (!/^(core|plugins)\/.*\.ts$/.test(rel)) return
+      const file = realFile(id)
+      const rel = file && (asApp(file) ?? under(ROOT, file))
+      if (!rel || !/^(core|plugins)\/.*\.ts$/.test(rel)) return
       const app = `/app/${rel}`
       let out = `const __vauModuleUrl = ${JSON.stringify(`file://${app}`)};\n` + code.replaceAll('import.meta.url', '__vauModuleUrl')
         .replaceAll('import.meta.dirname', JSON.stringify(path.posix.dirname(app))).replaceAll('import.meta.filename', JSON.stringify(app))
@@ -113,7 +149,7 @@ function demoServer(): Plugin {
 /** The app starts once the demo has (web/demo/boot.ts: main.tsx's first import, which waits for its server). */
 const demoEntry = (): Plugin => ({
   name: 'vaultite-demo-entry',
-  transform: (code, id) => (id === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
+  transform: (code, id) => (realFile(id) === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
   // ?theme=light (or dark) pins the look for the site's embed, and the page can switch it (vaultite-demo:theme). Before
   // any of the app's code: its chunks read the system's look as they load.
   transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <script>${PIN_THEME}</script>`),
@@ -147,7 +183,7 @@ export default defineConfig({
     ...(base.plugins ?? []).filter((p) => !(p && 'name' in p && own.has(p.name))), demoEntry()],
   define: { ...base.define, __DEMO_OFFICIAL__: JSON.stringify(official.map((o) => ({ id: o.id, machine: o.machine }))) },
   resolve: { alias: [...ALIASES, ...Object.entries(base.resolve?.alias ?? {}).map(([find, replacement]) => ({ find, replacement }))] },
-  worker: { format: 'es', plugins: () => [pluginModules(MODULES), demoServer()] },
+  worker: { format: 'es', plugins: () => [pluginModules(MODULES), demoServer(), noModuleUrls()] },
   build: {
     ...base.build, outDir: 'dist-demo', emptyOutDir: true, chunkSizeWarningLimit: 4000, minify: process.env.DEMO_MINIFY !== '0',
     rollupOptions: {
