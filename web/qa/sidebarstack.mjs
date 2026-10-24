@@ -49,7 +49,9 @@ const gapY = () => page.$eval(`${L} [data-sidebar-body] > [data-slide=incoming]`
 const ghost = () => page.$eval("[data-drag-ghost]", (e) => e.textContent).catch(() => "")
 /** Drag from an element to (x, y); `during` looks while over the target (before the drop); `cancel`: Escape, no drop. */
 async function dragTo(from, x, y, during, cancel) {
-  const b = await box(from)
+  // (from where it settles: a tab just opened slides in)
+  let b = await box(from)
+  for (let i = 0; i < 20; i++) { await wait(100); const n = await box(from); if (n.x === b.x && n.y === b.y && n.width === b.width) break; b = n }
   await page.mouse.move(b.x + Math.min(20, b.width / 2), b.y + b.height / 2); await page.mouse.down()
   await page.mouse.move(b.x + 40, b.y + b.height / 2 + 6, { steps: 5 }); await page.mouse.move(x, y, { steps: 12 }); await wait(250)
   const seen = during ? await during() : null
