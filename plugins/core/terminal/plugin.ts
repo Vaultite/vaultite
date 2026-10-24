@@ -279,10 +279,10 @@ function stateOf(id: string) {
 }
 
 // --- a terminal's state, for the list and the Inbox ("inbox:state"): OSC 7501 when its program speaks it (osc7501.ts),
-// else its agent's hooks (the state file), else a question its agent declares seen on its screen (watchAsks).
+// else its agent's hooks (the state file), else its screen (watchAsks); blocked while its agent says it waits (waits).
 
 /** A change of a terminal's state, as the service "inbox:state" hears it. `msg` is the program's text: untrusted. */
-export type StateChange = { terminal: string; agent: string; state: SessionState; kind?: Kind; msg?: string; from: "osc7501" | "hooks" | "screen"; at: number }
+export type StateChange = { terminal: string; agent: string; state: SessionState; kind?: Kind; msg?: string; from: "osc7501" | "hooks" | "screen" | "agent"; at: number }
 type Now = Omit<StateChange, "terminal" | "at">
 
 /** What each terminal's program said in OSC 7501, by terminal. */
@@ -292,8 +292,21 @@ const asking = new Map<string, AgentAsk>()
 /** An OSC 7501 program's own name, as the agent whose service runs it. */
 const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
 
+/** What agent terminals' agents say of themselves outside the terminal (Claude Code's session file): it waits on the
+ *  user, for a permission or a question. The service "terminal:agent-waits". */
+const waits = new Map<string, Kind>()
+
 /** Terminal `id`'s state now, or null when nothing says. */
 function stateNow(id: string): Now | null {
+  const now = ownState(id), kind = waits.get(id)
+  // (a dialog neither its hooks nor its OSC 7501 reports tell, as Claude Code's one-time notices: it still works there)
+  if (!kind || now?.state === "blocked") return now
+  const ask = asking.get(id)
+  return { agent: now?.agent || agentOf(id)?.name || "", state: "blocked", kind, ...(ask ? { msg: ask.says } : {}), from: "agent" }
+}
+
+/** What the terminal's own sources say (stateNow's, before its agent's word). */
+function ownState(id: string): Now | null {
   const agent = agentOf(id)?.name ?? ""
   const o = osc.get(id), st = o?.status
   if (st) {
@@ -378,7 +391,7 @@ async function askShown(id: string, agent: string) {
 /** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */
 function forgetState(id: string) {
   for (const f of [stateFile(id), oscMark(id), noteFile(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
-  osc.delete(id); asking.delete(id); notes.delete(id)
+  osc.delete(id); asking.delete(id); notes.delete(id); waits.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
 }
@@ -439,6 +452,18 @@ async function askIn(id: string, agent = "") {
 plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || stateNow(id)?.state === "blocked")
 /** Terminal `id`'s state now (StateChange without its time), or null when nothing says. */
 plugin.provide("terminal:state", (id: string) => (TERMINAL_ID.test(id) ? stateNow(id) : null))
+/** Agent terminal `id`'s agent says it waits on the user (`kind`: a permission or a question), or no longer (null). */
+plugin.provide("terminal:agent-waits", (id: string, kind: Kind | null) => {
+  if (!TERMINAL_ID.test(id) || (kind !== null && kind !== "permission" && kind !== "question") || (waits.get(id) ?? null) === kind) return
+  if (kind) waits.set(id, kind)
+  else waits.delete(id)
+  stateChanged(id)
+})
+/** Terminal `id`'s last `lines` lines as text, or "" when it isn't running here. */
+plugin.provide("terminal:screen", async (id: string, lines = 40) => {
+  const b = TERMINAL_ID.test(id) ? await backendOf(id) : null
+  return b ? b.screen(id, Math.min(Math.max(1, Math.trunc(lines) || 40), 200)).catch(() => "") : ""
+})
 
 // The backends that read OSC 7501 tell each shell's records as they change; the hooks' state files are watched.
 for (const b of [keeper, fallback]) b.status?.follow(oscSaid)

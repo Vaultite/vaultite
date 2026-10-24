@@ -687,7 +687,7 @@ plugin.route("POST", "inbox/push", async (req) => {
 
 /** A change of an app terminal's state, as Terminal tells it (the service "inbox:state"; Terminal's StateChange). */
 export type StateChange = { terminal: string; agent: string; state: "idle" | "working" | "blocked" | "done" | "error"
-  kind?: string; msg?: string; from: "osc7501" | "hooks" | "screen"; at: number }
+  kind?: string; msg?: string; from: "osc7501" | "hooks" | "screen" | "agent"; at: number }
 /** A change as the inbox hears it: an agent's own hook says its session, folder and last message; one outside the
  *  app's terminals has only its session. */
 export type Heard = Omit<StateChange, "terminal" | "at"> & { terminal?: string; session?: string; cwd?: string; text?: string; prompt?: string

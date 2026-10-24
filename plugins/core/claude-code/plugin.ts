@@ -10,6 +10,7 @@ import { type AgentAsk, type AgentMeter, type Asking, type Choice, type Question
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
+import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const int = (v: unknown) => Math.trunc(Number(v) || 0)
@@ -518,10 +519,11 @@ plugin.provide("agent:claude", async ({ resume, context, state, report, profile,
 
 /** Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question
  *  can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now. */
-plugin.provide("agent-asks:claude", (): AgentAsk[] => [
+const ASKS: AgentAsk[] = [
   { id: "trust", match: /Yes, I trust this folder/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\x1b[B", "\r"], deny: ["\x1b"] },
   { id: "permission", match: /Do you want to.*(?:\n(?![❯>]).*)*\n *[❯>] 1\. Yes(?:\n(?![❯>]).*)*$/, lines: 40, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
-])
+]
+plugin.provide("agent-asks:claude", (): AgentAsk[] => ASKS)
 
 /** A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes
  *  it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes. */
@@ -539,12 +541,18 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   return t ? { session: sid, ...lastTurn(t.talk.entries) } : null
 })
 
-/** What a session waits on the user for, its open AskUserQuestion or ExitPlanMode (the service "agent-asking:claude":
- *  the Inbox shows it whole). The session in `terminal` when `session` isn't given; never a private account's. */
+/** What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog
+ *  its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's. */
 plugin.provide("agent-asking:claude", async (terminal: string, session = ""): Promise<Asking | null> => {
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null, t = found && tail(found.file)
-  return t ? askingIn(t.text) : null
+  const said = t ? askingIn(t.text) : null
+  if (said || !terminal) return said
+  const screen = await plugin.ask<string>("terminal:screen", "", terminal, 40).catch(() => "")
+  const lines = screen.replace(/\s+$/, "").split("\n")
+  if (ASKS.some((a) => a.match.test(lines.slice(-(a.lines ?? 12)).join("\n")))) return null
+  const q = dialogOn(screen)
+  return q ? { kind: "question", questions: [q] } : null
 })
 
 /** The keys answering its questions with `choices` ("agent-pick:claude"): a digit picks (in a multi-select toggles, Tab
@@ -592,6 +600,51 @@ plugin.provide("agent-model:claude-code", (session: string) => {
   if (models.size > 50) models.delete(models.keys().next().value!)
   return model
 })
+
+// ---------- what each session says it waits on: its session file's status (Claude Code's own word, whatever shows it),
+// so a dialog no hook or OSC 7501 report tells (a one-time notice, a usage limit) still blocks its terminal
+
+/** Terminal -> what its session waits on, as last told to Terminal ("terminal:agent-waits"). */
+let waitsTold = new Map<string, "permission" | "question">()
+let waitsTimer: ReturnType<typeof setTimeout> | null = null
+const tellWaitsSoon = () => { waitsTimer ??= setTimeout(() => { waitsTimer = null; void tellWaits().catch((e) => console.error("claude-code: waits:", e)) }, 100) }
+
+export async function tellWaits() {
+  const tell = plugin.service("terminal:agent-waits")
+  if (!tell) return
+  const now = new Map<string, "permission" | "question">()
+  for (const { s, pid, tmux } of running(accounts())) {
+    if (s.status !== "waiting") continue
+    const key = `${pid}@${s.procStart}`
+    const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+    if (!t) continue
+    terminals.set(key, t)
+    now.set(t, s.waitingFor === "permission prompt" ? "permission" : "question")
+  }
+  for (const [t, kind] of now) if (waitsTold.get(t) !== kind) tell(t, kind)
+  for (const t of waitsTold.keys()) if (!now.has(t)) tell(t, null)
+  waitsTold = now
+}
+
+// Each account's sessions folder watched (one made later found by a look every half minute, which also catches an
+// event the watch missed).
+const watched = new Map<string, fs.FSWatcher>()
+function watchSessions() {
+  for (const a of accounts()) {
+    const d = path.join(a.dir, "sessions")
+    if (watched.has(d) || !fs.existsSync(d)) continue
+    try {
+      const w = fs.watch(d, tellWaitsSoon)
+      w.on("error", () => { w.close(); watched.delete(d) })
+      watched.set(d, w)
+    } catch { /* looked at again soon */ }
+  }
+  tellWaitsSoon()
+}
+const sessionsLook = setInterval(watchSessions, 30_000)
+sessionsLook.unref?.()
+setTimeout(watchSessions, 0).unref?.()
+plugin.onUnload(() => { clearInterval(sessionsLook); if (waitsTimer) clearTimeout(waitsTimer); for (const w of watched.values()) w.close() })
 
 /** A file's last 256 KB and its stat, or null when it can't be read. */
 function tail(file: string) {

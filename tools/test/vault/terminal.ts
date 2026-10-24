@@ -156,6 +156,17 @@ export default async ($: VaultTest) => {
     check("terminal: Approve doesn't press Enter while another choice than Yes is chosen", moved === null, moved)
     const gone = await term.askOn(showing([...tall.slice(5, 8), "", "⏺ Done.", "", "─".repeat(38), "❯ ", "─".repeat(38), "  ? for shortcuts"].join("\n")), "t", asks)
     check("terminal: a dialog above the user's prompt was answered", gone === null, gone)
+    // Its agent saying it waits (Claude Code's session file) blocks its terminal whatever else says, until it no longer does.
+    {
+      const id = "claude-waits1"
+      const state = term.plugin.services["terminal:state"] as (id: string) => Any, waits = term.plugin.services["terminal:agent-waits"] as (id: string, k: string | null) => void
+      const before = state(id)
+      waits(id, "question")
+      const blocked = state(id)
+      waits(id, null)
+      check("terminal: its agent's word that it waits blocks it, and no longer once it doesn't", before === null && blocked?.state === "blocked" &&
+        blocked.kind === "question" && blocked.from === "agent" && blocked.agent === "claude" && state(id) === null, [before, blocked, state(id)])
+    }
     // What a page gets back from a backend without pictures: the last `scrollback` lines, whole chunks, and a line
     // redrawn without end (a progress bar) held to its share.
     const { Tail } = await import("../../../plugins/core/terminal/backend.ts")

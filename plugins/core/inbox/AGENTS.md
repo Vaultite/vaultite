@@ -29,7 +29,7 @@ What it says, as Markdown.
   exchange).
 
 **Sessions**: each coding agent's session is one event, its row, kept on the machine it runs on (not in the vault).
-It's in the inbox only while it needs the user: it asks (a permission, a question, to sign in, a plan to approve), or
+It's in the inbox only while it needs the user: it asks (a permission, a question, any dialog it shows, to sign in, a plan to approve), or
 its turn ended with something for them (a question, an answer to read, a failure: judged from its last message, by a
 small model when its words don't settle it), or its report (`vau inbox report`). Then it's unread (bold), with its last
 answer as Markdown, it toasts and goes to the phone and watch, and it's read once opened or replied to (`vau inbox

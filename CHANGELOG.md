@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Every dialog an agent waits on shows**: a Claude Code session waiting on any of its dialogs (a one-time question,
+  a usage limit, not only a permission) is marked as needing you in Terminals and the inbox, no longer as working, and
+  its choices show there to pick from, as its questions do.
 - **The quick switcher is the browser's command bar**: it finds your open web tabs (picking one goes to it), bookmarks and
   history, and opens what you type as an address or searches the web for it. New tabs can open the switcher as a launcher
   or a web page (Settings > Appearance > New tabs open, `vau newtab opens`).

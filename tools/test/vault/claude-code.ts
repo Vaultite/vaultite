@@ -60,6 +60,49 @@ export default async ($: VaultTest) => {
         keys(one, [[2]]).join("|") === "2" && keys(one, ["my own"]).join("|") === "4|my own|\r" &&
         keys([...one, { question: "M", multi: true, options: [{ label: "x" }, { label: "y" }] }], [[3], [1, 2]]).join("|") === "3|1|2|\t|1")
     }
+    // Its other dialogs, read off its screen: a question and its options, wrapped lines joined; not a prompt or output.
+    {
+      const { dialogOn } = await import("../../../plugins/core/claude-code/dialog.ts")
+      const reads = ["⏺ Read(/tmp/olx/dash/build.py)", "", "─".repeat(40), " Read outside the working directories", "",
+        " Allow this read outside the working directories?", " ❯ 1. Yes, and keep allowing any reads outside the", "      working directories",
+        "   2. No, and block reads outside the working directories from now on", "   3. No, and ask again next time", "", " Esc to cancel"].join("\n")
+      const q = dialogOn(reads)
+      check("dialog: a choice on screen is its question and options, a wrapped label whole", q?.question === "Allow this read outside the working directories?" &&
+        q.options.map((o) => o.label).join("|") === "Yes, and keep allowing any reads outside the working directories|No, and block reads outside the working directories from now on|No, and ask again next time", q)
+      const limit = dialogOn(["You've hit your limit · resets 5pm", "", "│ ❯ 1. Stop and wait for limit to reset │", "│   2. Switch account                  │"].join("\n"))
+      check("dialog: without a line asking, the nearest line of text is its question; box sides left out", limit?.question === "You've hit your limit · resets 5pm" &&
+        limit.options[1].label === "Switch account", limit)
+      const typed = ["⏺ Steps:", "  1. Build it", "  2. Ship it", "", "─".repeat(40), "❯ ", "─".repeat(40), "  ? for shortcuts"].join("\n")
+      const answered = reads.split("\n").slice(0, 11).join("\n") + "\n\n⏺ Done.\n\n❯ thanks"
+      check("dialog: a numbered list in its output, under the user's prompt or with none chosen, isn't one",
+        dialogOn(typed) === null && dialogOn(answered) === null && dialogOn("Steps:\n  1. Build it\n  2. Ship it") === null)
+      const term = (await import("../../../plugins/core/terminal/plugin.ts")).plugin
+      const cc = (await import("../../../plugins/core/claude-code/plugin.ts")).plugin
+      const was = term.services["terminal:screen"]
+      term.services["terminal:screen"] = async () => reads
+      const asking = cc.services["agent-asking:claude"] as (t: string, s?: string) => Promise<Any>
+      const got = await asking("claude-dlg1", "no-such-session")
+      term.services["terminal:screen"] = async () => " Bash command\n   rm -rf build\n Do you want to proceed?\n ❯ 1. Yes\n   2. No"
+      const perm = await asking("claude-dlg1", "no-such-session")
+      term.services["terminal:screen"] = was
+      check("asking: a dialog its terminal shows is a question to pick from; its permission isn't (Approve and Deny answer it)",
+        got?.kind === "question" && got.questions[0].options.length === 3 && perm === null, [got, perm])
+      // What a running session's file says it waits on goes to its terminal, and that it no longer does.
+      const { tellWaits } = await import("../../../plugins/core/claude-code/plugin.ts")
+      const dir = path.join(CLAUDE_DIR, "sessions"), file = path.join(dir, `${process.pid}.json`), told: [string, string | null][] = []
+      const was2 = { of: term.services["terminal:of"], waits: term.services["terminal:agent-waits"] }
+      term.services["terminal:of"] = async (pid: number) => (pid === process.pid ? "claude-w1" : null)
+      term.services["terminal:agent-waits"] = (t: string, k: string | null) => { told.push([t, k]) }
+      fs.mkdirSync(dir, { recursive: true })
+      const session = (status: string, waitingFor?: string) => fs.writeFileSync(file, JSON.stringify({ pid: process.pid, sessionId: "w1", cwd: "/Users/sam/lighthouse", status, ...(waitingFor ? { waitingFor } : {}) }))
+      session("waiting", "input needed"); await tellWaits()
+      session("waiting", "permission prompt"); await tellWaits()
+      session("waiting", "permission prompt"); await tellWaits()
+      session("busy"); await tellWaits()
+      fs.rmSync(file); Object.assign(term.services, { "terminal:of": was2.of, "terminal:agent-waits": was2.waits })
+      check("waits: a session waiting on a dialog or a permission tells its terminal once each, and when it works again",
+        JSON.stringify(told) === JSON.stringify([["claude-w1", "question"], ["claude-w1", "permission"], ["claude-w1", null]]), told)
+    }
     // A running session: lines appended are read on from where it stopped; a long output is cut.
     fs.appendFileSync(tfile, JSON.stringify({ type: "assistant", sessionId: sid, cwd: "/Users/sam/lighthouse", timestamp: "2026-09-28T09:02:00.000Z",
       message: { model: "claude-opus-5-5", id: "msg_9", role: "assistant", content: [{ type: "tool_use", id: "toolu_9", name: "Grep", input: { pattern: "retry", path: "src" } }] } }) + "\n" +

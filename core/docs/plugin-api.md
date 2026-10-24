@@ -157,8 +157,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `activity:changes` (activity)
 - `agent:claude` (claude-code): `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none).
 - `agent:codex` (codex): `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared background server, so no context (it reads the vault's AGENTS.md itself) and no hooks.
-- `agent-asking:claude` (claude-code): What a session waits on the user for, its open AskUserQuestion or ExitPlanMode (the service "agent-asking:claude": the Inbox shows it whole). The session in `terminal` when `session` isn't given; never a private account's.
-- `agent-asks:claude` (claude-code): Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now.
+- `agent-asking:claude` (claude-code): What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's.
+- `agent-asks:claude` (claude-code)
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
 - `agent-meters:claude` (claude-code)
 - `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
@@ -213,6 +213,6 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
-- `terminal:<…>` (meters, access, waits, state, locate, runs, of, of-pids, info): agent-meters; terminal
+- `terminal:<…>` (meters, access, waits, state, agent-waits, screen, locate, runs, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
 - `widgets:refresh` (inbox): Another plugin's data the widgets show changed (a routine ticked).
