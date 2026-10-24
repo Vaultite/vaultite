@@ -193,7 +193,8 @@ export function shellArgs(shell: string, run: AgentRun | null) {
 }
 /** The script a ready shell sources to become an agent's (typed into it as one short line). */
 export function runScript(file: string, id: string, run: AgentRun) {
-  fs.writeFileSync(file, `rm -f ${shellQuote(file)}\nclear\nexport VAULTITE_TERMINAL=${shellQuote(id)}\n${run.cwd ? `cd ${shellQuote(run.cwd)} && ` : ""}${run.command}\n`, { mode: 0o600 })
+  // (the empty title: a prompt's, like Ubuntu's "user@host: dir", would name the agent's tab until it sets its own)
+  fs.writeFileSync(file, `rm -f ${shellQuote(file)}\nclear\nprintf '\\033]0;\\007'\nexport VAULTITE_TERMINAL=${shellQuote(id)}\n${run.cwd ? `cd ${shellQuote(run.cwd)} && ` : ""}${run.command}\n`, { mode: 0o600 })
   return ` source ${shellQuote(file)}`
 }
 

@@ -98,6 +98,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - A companion's comments and suggestions show as cards in the note's margin by default; the Conversations panel with a
   dot by each line is the setting Comments: In the sidebar.
 - An app a LaunchAgent keeps running stays under it after updating itself, so a crash still restarts it.
+- Linux: an agent's terminal tab is named after the agent (Codex, not your prompt's "user@host: folder") until it
+  names itself.
 - Passkeys work in the browser: a site asking for one shows a QR code that your phone scans, and the phone's passkey (an
   iPhone's iCloud Keychain, an Android's) signs you in or is saved there. Bluetooth needs to be on, on both.
 - **Your devices, live**: the Tabs panel marks which of your other devices are open now, and on those a tab can be
