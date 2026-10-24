@@ -77,7 +77,7 @@ function officialPlugins(): Plugin {
   }
 }
 
-/** The server's modules in the worker: each sees itself at /app as in the repo (its import.meta.url), and core/plugins.ts
+/** The server's modules in the worker: each sees itself at /app as in the repo (its import.meta.url, dirname and filename), and core/plugins.ts
  *  takes the built-in plugins' backends from the bundle, but those that need a machine: virtual:demo-plugin-files names
  *  them (for web/demo/mount.ts) and keeps them once worker.ts imports virtual:demo-plugins, after the core (one chunk:
  *  WebKit runs a worker's script again when a chunk imports it). The official plugins' too, and their files. */
@@ -101,7 +101,9 @@ function demoServer(): Plugin {
       const file = id.replace(/\?.*$/, '')
       const rel = asApp(file) ?? path.relative(ROOT, file)
       if (!/^(core|plugins)\/.*\.ts$/.test(rel)) return
-      let out = `const __vauModuleUrl = ${JSON.stringify(`file:///app/${rel}`)};\n` + code.replaceAll('import.meta.url', '__vauModuleUrl')
+      const app = `/app/${rel}`
+      let out = `const __vauModuleUrl = ${JSON.stringify(`file://${app}`)};\n` + code.replaceAll('import.meta.url', '__vauModuleUrl')
+        .replaceAll('import.meta.dirname', JSON.stringify(path.posix.dirname(app))).replaceAll('import.meta.filename', JSON.stringify(app))
       if (rel === 'core/plugins.ts') out = 'import { loaded as __demoPlugins } from "virtual:demo-plugin-files";\n' + out.replace('import(pathToFileURL(file).href)', 'Promise.resolve(__demoPlugins[file])')
       return out
     },
