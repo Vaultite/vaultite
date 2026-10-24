@@ -1,5 +1,6 @@
 // The phone's tab list, a card lifted and moved (components/TabSwitcher.tsx): the others make room as it passes, and
-// never flicker back and forth (a card gliding away under the finger mustn't count as under it), in every direction.
+// never flicker back and forth (a card gliding away under the finger mustn't count as under it), in every direction;
+// rested on another it makes a tab group (core/tabsets.ts), dropped on a group's card it joins, on + in it it leaves.
 // Writes only this browser's tabs (localStorage), so any server; nothing in the vault.
 //   node web/qa/tablift.mjs <base url>
 import { mkdirSync } from "node:fs"
@@ -74,5 +75,27 @@ check("seven cards", await until(async () => (await ids()).length === 7), await 
 await toEnd("dropped beside the last card: it goes last", await o(4), "beside")
 await toEnd("dropped below the grid: it goes last", await o(4), "below")
 check("still seven cards", (await ids()).length === 7, await ids())
+// Tab groups: held over a card's middle, the two group (one card for both); a card dropped on a group's card joins it;
+// in the group opened, one dropped on + leaves it.
+async function hold(from, to, rest = 500) {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] }); await wait(600)
+  for (let i = 1; i <= 30; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: from.x + ((to.x - from.x) * i) / 30, y: from.y + ((to.y - from.y) * i) / 30 }] }); await wait(16) }
+  for (let t = 0; t < rest; t += 50) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: to.x + ((t / 50) % 2), y: to.y }] }); await wait(50) }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await wait(700)
+}
+const groupCards = () => P.$$eval("dialog[open] [data-group-card] button[aria-label$=' tabs']", (els) => els.map((e) => e.getAttribute("aria-label")))
+const centre = async (sel) => { const r = await P.locator(sel).first().boundingBox(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 } }
+await P.evaluate(() => { document.querySelector("dialog[open] [data-tab-row]").closest(".overflow-y-auto").scrollTop = 0 }); await wait(200)
+await hold(await box(await o(1)), await box(await o(0)))
+check("held on another card's middle: the two make a group, one card", (await ids()).length === 5 && (await groupCards()).length === 1 && / 2 tabs$/.test((await groupCards())[0]), [await ids(), await groupCards()])
+await P.evaluate(() => { document.querySelector("dialog[open] [data-tab-row]").closest(".overflow-y-auto").scrollTop = 0 }); await wait(200)
+await hold(await box(await o(0)), await centre("dialog[open] [data-group-card]"), 200)
+check("dropped on a group's card: it joins the group", (await ids()).length === 4 && / 3 tabs$/.test((await groupCards())[0] ?? ""), [await ids(), await groupCards()])
+await P.locator("dialog[open] [data-group-card] button[aria-label$=' tabs']").first().click(); await wait(600)
+check("a group's card opens its tabs", (await ids()).length === 3, await ids())
+await hold(await box(await o(0)), await centre("[data-tabs-new]"), 200)
+check("in the group, dropped on +: it leaves the group", (await ids()).length === 2, await ids())
+await P.locator("dialog[open] [data-group-head] button").click(); await wait(600)
+check("back to all tabs: the one that left is a card again", (await ids()).length === 5 && / 2 tabs$/.test((await groupCards())[0] ?? ""), [await ids(), await groupCards()])
 // (exits 0 even when a check fails: kept as it was)
 console.log(fails.length ? `${fails.length} failed` : "all passed"); await browser.close()

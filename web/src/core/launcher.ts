@@ -5,6 +5,7 @@ import { openView } from "@/core/files"
 import { active, viewFor } from "@/core/plugins"
 import { getPrefs, setPrefs } from "@/core/prefs"
 import { focusGroup, newTab } from "@/core/workspace"
+import { newTabInSet, setById } from "@/core/tabsets"
 
 /** Whether a new tab opens the quick switcher instead of a tab. */
 export const opensSwitcher = () => getPrefs().newTab.opens === "switcher"
@@ -28,10 +29,12 @@ function viewHere(opens: string | null) {
   return v?.on && v.def.asNewTab?.here?.() !== false ? opens : null
 }
 
-/** A new tab in the focused pane (or `gid`'s: its tab bar's +): a blank one, or what newtab.json's `opens` says. */
-export function openNewTab(gid?: string) {
+/** A new tab in the focused pane (or `gid`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a
+ *  blank one, or what newtab.json's `opens` says. */
+export function openNewTab(gid?: string, set?: string) {
   const { opens } = getPrefs().newTab, view = viewHere(opens)
-  if (opens !== "switcher" && !view) return newTab(gid)
+  if (set) gid = setById(set)?.g.id
+  if (opens !== "switcher" && !view) return set && gid ? newTabInSet(set) : newTab(gid)
   if (gid) focusGroup(gid)
   if (view) openView(view, { another: true })
   else if (!runCommandById("switcher:new-tab")) newTab(gid)

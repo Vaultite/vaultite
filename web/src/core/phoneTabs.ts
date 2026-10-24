@@ -29,13 +29,13 @@ export function pickTab(id: string) {
   zoomIn(id, () => afterSheets(() => selectTab(id)))
 }
 
-/** A new tab (the bar's +, the tab list's: in group `gid` when one is open), grown out of the button pressed. */
-export async function newPhoneTab(button: Element | null, gid?: string) {
+/** A new tab (the bar's +, the tab list's: in tab group `set` when one is open), grown out of the button pressed. */
+export async function newPhoneTab(button: Element | null, set?: string) {
   // (the switcher picks what it shows: nothing to grow till then)
-  if (opensSwitcher()) return afterSheets(() => openNewTab(gid))
+  if (opensSwitcher()) return afterSheets(() => openNewTab(undefined, set))
   await shootTab()
   const t = activeTab()
-  zoomNew(button, () => afterSheets(() => openNewTab(gid)), shotOf(t.id, t.to))
+  zoomNew(button, () => afterSheets(() => openNewTab(undefined, set)), shotOf(t.id, t.to))
 }
 
 /** The line under a tab's name in the switcher: where the file is, or what kind of tab it is. */

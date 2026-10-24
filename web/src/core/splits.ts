@@ -1,6 +1,6 @@
 // Splits: moving tabs and panes between groups and into new splits, opening at a place, focus and
 // dividers. The tree itself is core/layout.ts.
-import { beside, evened, inSet, leaves, mapGroups, mapTabs, moveOn, neighbourOf, newId, nextActive, pastBlank, resized, setAt, shownTab, tidy, type Group, type Layout, type Side, type Tab } from "@/core/layout"
+import { beside, evened, inSet, mapGroups, mapTabs, moveOn, neighbourOf, newId, nextActive, pastBlank, resized, setAt, shownTab, tidy, type Group, type Layout, type Side, type Tab } from "@/core/layout"
 import { focusPane } from "@/core/focus"
 import { activeTab, focusGroup, getWorkspace, groupOfTab, groups, set, show, showActive, withGroup } from "@/core/workspace"
 
@@ -170,68 +170,26 @@ export function takeTabs(tabs: Tab[], active: string, gid = getWorkspace().focus
   showActive()
 }
 
-// ---------- a phone's tab groups (the tab list: a pane with several tabs is a group) ----------
+// ---------- a phone's tab list (components/TabSwitcher.tsx: every pane's tabs in one list) ----------
 
-/** Set the tree after moving tabs between panes, the tab on screen kept: its pane is focused and shows it. */
-function regroup(root: Layout) {
-  const shown = activeTab().id
-  const g = leaves(root).find((x) => x.tabs.some((t) => t.id === shown))
-  set({ root: g ? mapGroups(root, (x) => (x.id === g.id ? { ...x, active: shown } : x)) : root, focus: g?.id ?? getWorkspace().focus })
-}
-
-/** Would dropping tab `id` on tab `onto` make a group? Not when the two are a pane of their own already. */
-export function canGroup(id: string, onto: string) {
-  const a = groupOfTab(id), b = groupOfTab(onto)
-  return !!a && !!b && id !== onto && !(a.id === b.id && b.tabs.length <= 2)
-}
-
-/** Tab `id` dropped on tab `onto`: it joins `onto`'s pane if that's alone in it, else the two make a pane beside it. */
-export function groupTabs(id: string, onto: string) {
-  if (!canGroup(id, onto)) return
-  const b = groupOfTab(onto)!
-  if (b.tabs.length === 1) return joinGroup(id, b.id)
-  const p = pull(id)!, tb = b.tabs.find((t) => t.id === onto)!
-  const root = mapGroups(p.root, (x) => {
-    if (x.id !== b.id) return x
-    const rest = x.tabs.filter((t) => t.id !== onto)
-    return { ...x, tabs: rest, active: nextActive(x, onto, rest) }
-  })
-  regroup(beside(root, b.id, { id: `g${newId()}`, tabs: [tb, p.tab], active: onto }, "right"))
-}
-
-/** Tab `id` added to the end of pane `gid`. */
-export function joinGroup(id: string, gid: string) {
-  if (groupOfTab(id)?.id === gid || !groups().some((g) => g.id === gid)) return
-  const p = pull(id)!
-  regroup(mapGroups(p.root, (x) => (x.id === gid ? { ...x, tabs: [...x.tabs, p.tab] } : x)))
-}
-
-/** Tab `id` out of its pane, into one of its own beside it. */
-export function leaveGroup(id: string) {
+/** After tabs moved between panes, the tab on screen `id` still is: its pane focused, showing it. */
+export function keepShown(id: string) {
   const g = groupOfTab(id)
-  if (!g || g.tabs.length < 2) return
+  if (g && (g.id !== getWorkspace().focus || g.active !== id)) set(withGroup(g.id, (x) => ({ ...x, active: id }), { focus: g.id }))
+}
+
+/** Tab `id` moved to just before or after tab `ref` (into its pane if another), in tab group `tabset` (null: none);
+ *  the tab on screen stays. */
+export function placeTab(id: string, where: "before" | "after", ref: string, tabset: string | null) {
+  const shown = activeTab().id, into = groupOfTab(ref)
+  if (!into || id === ref || !groupOfTab(id)) return
   const p = pull(id)!
-  regroup(beside(p.root, g.id, { id: `g${newId()}`, tabs: [p.tab], active: id }, "right"))
-}
-
-/** Pane `gid`'s tabs join the pane before it (the next one for the first): the split closes. */
-export function ungroup(gid: string) {
-  const all = groups(), i = all.findIndex((g) => g.id === gid)
-  const into = all[i > 0 ? i - 1 : 1]
-  if (i < 0 || !into) return
-  const tabs = all[i].tabs
-  regroup(mapGroups(getWorkspace().root, (x) => (x.id === gid ? { ...x, tabs: [] } : x.id === into.id ? { ...x, tabs: [...x.tabs, ...tabs] } : x)))
-}
-
-/** Tab `id` moved in its own pane to before tab `before` (the end for null), joining the tab group it lands in
- *  (setAt); the tab on screen stays. */
-export function placeTab(id: string, before: string | null) {
-  const g = groupOfTab(id)
-  if (!g || id === before) return
-  const t = g.tabs.find((x) => x.id === id)!, rest = g.tabs.filter((x) => x.id !== id)
-  const at = before ? rest.findIndex((x) => x.id === before) : rest.length
-  if (at < 0) return
-  set(withGroup(g.id, (x) => ({ ...x, tabs: [...rest.slice(0, at), inSet(t, setAt(rest, at, t.set)), ...rest.slice(at)] })))
+  set({ ...getWorkspace(), root: mapGroups(p.root, (x) => {
+    if (x.id !== into.id) return x
+    const at = x.tabs.findIndex((t) => t.id === ref) + (where === "after" ? 1 : 0)
+    return { ...x, tabs: [...x.tabs.slice(0, at), inSet(p.tab, tabset ?? undefined), ...x.tabs.slice(at)] }
+  }) })
+  keepShown(shown)
 }
 
 /** Move a tab (the active one by default) into a new split beside its group. */

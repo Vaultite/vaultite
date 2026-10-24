@@ -305,10 +305,10 @@ try {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await wait(700)
   check("phone: swiped back to 1", (await P.locator("[data-tabs-title]").innerText()) === "Workspace 1", await P.locator("[data-tabs-title]").innerText())
   check("phone: back on 1: its tabs again, list still open", (await P.locator("[data-tab-row]").count()) === left, await P.locator("[data-tab-row]").count())
-  // Split on the desktop: on the phone the pane of several tabs is a group (named Left), the new one a lone card.
+  // Split on the desktop: a phone has no splits, so both panes' tabs show in one list (no group: groups are tab groups).
   await D.evaluate(() => document.querySelector("[data-tab-bar] [data-tab-id]")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 300, clientY: 20 })))
   await D.locator("[role=menuitem]", { hasText: /^Split right$/ }).click()
-  check("tab list: a desktop split is a group card (Left) and a lone card", !!(await until(async () => (left < 2 || (await P.locator("[data-group-card] button[aria-label^='Left,']").count())) && (await P.locator("[data-tab-row]").count()) === (left < 2 ? 2 : 1), 6000)), await P.$$eval("[data-group-card], [data-tab-row]", (s) => s.map((x) => x.innerText.split("\n")[0])))
+  check("tab list: a desktop split's panes are one list of cards, no group", !!(await until(async () => !(await P.locator("[data-group-card]").count()) && (await P.locator("[data-tab-row]").count()) === left + 1, 6000)), await P.$$eval("[data-group-card], [data-tab-row]", (s) => s.map((x) => x.innerText.split("\n")[0])))
   await P.screenshot({ path: `${OUT}phone-list-split.png` })
   await P.keyboard.press("Escape"); await P.goBack().catch(() => {}); await wait(300)
   await P.goto(`${B}${hash("Three")}`); await P.waitForSelector("[data-phone-bar]"); await wait(500)

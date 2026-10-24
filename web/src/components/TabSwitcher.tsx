@@ -1,13 +1,14 @@
-// Phones: the tabs as cards, like Chrome's tab grid (a pane of several tabs is a group). Swipe or X closes, hold for
-// its menu, hold and move to reorder or group, while the others make room. Swiped elsewhere, the next workspace's.
+// Phones: the tabs as cards, like Chrome's tab grid (every pane's in one list, a tab group a card). Swipe or X closes,
+// hold for its menu, hold and move to reorder or group, while the others make room. Swiped elsewhere, the next workspace's.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react"
 import { createPortal, flushSync } from "react-dom"
-import { CheckSquare, ChevronDown, ChevronLeft, Ellipsis, Group as GroupIcon, Plus, Search, Ungroup, X } from "lucide-react"
+import { CheckSquare, ChevronDown, ChevronLeft, Ellipsis, Plus, Search, X } from "lucide-react"
 import { onAway } from "@/core/away"
 import type { Store } from "@/core/data"
-import { activeTab, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, tabCount, useWorkspace } from "@/core/workspace"
-import { canGroup, groupTabs, joinGroup, leaveGroup, placeTab, ungroup } from "@/core/splits"
-import { isSplit, layout, leaves, tabPath, type Group, type Tab, type Workspace } from "@/core/layout"
+import { activeTab, closeTab, closeTabIds, getWorkspace, groupOfTab, tabCount, useWorkspace } from "@/core/workspace"
+import { keepShown, placeTab } from "@/core/splits"
+import { addToSet, closeSet, groupWith, leaveSet } from "@/core/tabsets"
+import { leaves, tabPath, type Tab, type TabSet } from "@/core/layout"
 import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
 import type { WorkspaceInfo } from "@/core/define"
@@ -16,7 +17,7 @@ import { shownHeaderItems, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { haptic } from "@/core/haptics"
 import { Badged, PageHeader, usePortalHost } from "@/components/kit"
-import { setMenu, setName, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
+import { setItems, setMenu, setName, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
 import { colorVar } from "../../../core/colors.ts"
 import { namedIcon } from "@/core/pages"
 import { rowMenu, selectClick, selectedAttr, selecting, startSelecting, useSelectable, useSelected } from "@/core/select"
@@ -39,7 +40,8 @@ const CLOSE_UP = spring(0.3, 1)
 const GROUP_MS = 300
 const MOVE_MS = 40
 const isOpen = (id: string) => leaves(getWorkspace().root).some((g) => g.tabs.some((t) => t.id === id))
-/** What a card dropped in the list does: placed before or after a tab, grouped with one, into a group, out of its own. */
+/** What a card dropped in the list does: placed before or after a tab, grouped with one, into a tab group (`group`: its
+ *  id), out of its own. */
 type ListHit = { kind: "before" | "after" | "into"; tab: string } | { kind: "join"; group: string } | { kind: "out" }
 /** Where a lifted card would go among its pane's tabs. */
 type Placed = { kind: "before" | "after"; tab: string }
@@ -248,21 +250,17 @@ function CardButtons({ label, closeLabel = label, current, tap, onOpen, onClose 
   </>
 }
 
-/** A group (a pane of several tabs): its name and count over its first tabs' pictures. Tap it for its tabs. */
-function GroupCard({ store, group, name, info, current, lit, onOpen }: { store: Store; group: Group; name: string; info: (t: Tab) => TabInfo; current: boolean; lit: boolean; onOpen: () => void }) {
-  const n = group.tabs.length
-  const shown = n > 4 ? group.tabs.slice(0, 3) : group.tabs
-  const menu = (): MenuItem[] => [
-    { label: "Ungroup", icon: Ungroup, run: () => ungroup(group.id) },
-    { label: "Close group", icon: X, danger: true, sep: true, run: () => closeTabs("all", group.tabs[0].id) },
-  ]
+/** A tab group: its colour, name and count over its first tabs' pictures. Tap it for its tabs, hold it for its menu. */
+function GroupCard({ store, set: g, tabs, info, current, lit, onOpen }: { store: Store; set: TabSet; tabs: Tab[]; info: (t: Tab) => TabInfo; current: boolean; lit: boolean; onOpen: () => void }) {
+  const n = tabs.length, name = setName(g)
+  const shown = n > 4 ? tabs.slice(0, 3) : tabs
   return (
-    <div data-group-card={group.id} onContextMenu={menuOnCard(menu)} className="relative select-none [-webkit-touch-callout:none]">
+    <div data-group-card={g.id} onContextMenu={menuOnCard(() => setMenu(g.id, "phone"))} className="relative select-none [-webkit-touch-callout:none]">
       <div className={cn(CARD, "transition-[scale] duration-150", lit && "scale-[0.94]")}>
         <Ground className={lit ? "ring-[3px] ring-[var(--primary)]" : current ? "ring-2 ring-[var(--primary)]" : "ring-[0.5px] ring-border"} />
         <span aria-hidden className="flex h-11 w-full shrink-0 items-center gap-2 pr-10 pl-3">
-          <GroupIcon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
-          <span className="min-w-0 truncate text-[15px] leading-[20px] font-semibold">{name}</span>
+          <span className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(g.color) }} />
+          <span className={cn("min-w-0 truncate text-[15px] leading-[20px] font-semibold", !g.name && "text-muted-foreground")}>{name}</span>
           <span className="shrink-0 text-[15px] text-muted-foreground tabular-nums">{n}</span>
         </span>
         <span className="mx-1.5 mb-1.5 grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-1.5">
@@ -274,7 +272,7 @@ function GroupCard({ store, group, name, info, current, lit, onOpen }: { store: 
           ))}
           {n > 4 && <span className="grid place-items-center rounded-[8px] bg-background text-[15px] font-semibold text-muted-foreground">+{n - 3}</span>}
         </span>
-        <CardButtons label={`${name}, ${n} tabs`} closeLabel={name} onOpen={onOpen} onClose={() => closeTabs("all", group.tabs[0].id)} />
+        <CardButtons label={`${name}, ${n === 1 ? "1 tab" : `${n} tabs`}`} closeLabel={name} onOpen={onOpen} onClose={() => closeSet(g.id)} />
       </div>
     </div>
   )
@@ -481,15 +479,8 @@ function TabsHeader({ title, count, pages, at, menu, more, query, setQuery, item
   )
 }
 
-/** The panes' names in the list: Left and Right (Top and Bottom) for one split in two, else Pane 1, 2... */
-function paneNames(ws: Workspace): string[] {
-  const { panes } = layout(ws.root)
-  if (panes.length === 2 && isSplit(ws.root)) return ws.root.dir === "row" ? ["Left", "Right"] : ["Top", "Bottom"]
-  return panes.map((_, i) => `Pane ${i + 1}`)
-}
-
-/** The tab list (the sheet's "tabs" detail): its top line, then the cards: one pane's tabs, or with several panes a card
- *  per pane (a group when it has several tabs), the tabs of the group opened, or those a search finds. */
+/** The tab list (the sheet's "tabs" detail): its top line, then the cards: every pane's tabs in order, a tab group as one
+ *  card; the tabs of the group opened; or those a search finds. */
 export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => TabInfo }) {
   // Left (the page growing out of it), it stays as it was: nothing moves in it as it fades.
   const left = useLingeringSheet() !== null
@@ -499,14 +490,14 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const { ws, cur } = left ? kept : { ws: live, cur: liveCur }
   const { disabled, order, sidebarHeader } = usePrefs()
   const panes = leaves(ws.root)
-  const labels = paneNames(ws)
   const header = shownHeaderItems(disabled, order, sidebarHeader)
   const box = useRef<HTMLDivElement>(null)
   const [opened, setOpened] = useState<string | null>(null)
   const [query, setQuery] = useState<string | null>(null)
-  const multi = panes.length > 1
-  const open = multi ? panes.find((g) => g.id === opened && g.tabs.length > 1) ?? null : null
-  const top = multi && !open
+  const all = panes.flatMap((g) => g.tabs)
+  const sets = new Map(panes.flatMap((g) => g.sets ?? []).map((s) => [s.id, s]))
+  const openSet = opened ? sets.get(opened) : undefined
+  const open = openSet && all.some((t) => t.set === openSet.id) ? { s: openSet, tabs: all.filter((t) => t.set === openSet.id) } : null
   useWorkspaceVersion()
   const lifted = useDrag((d) => d?.item)
   const liftedId = lifted?.drawn && lifted.from === "tab" ? lifted.tab : undefined
@@ -538,17 +529,16 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     if (!sheet?.contains(el)) { scroller.current.stop(); return keep(null) }
     const sc = box.current.closest<HTMLElement>(".overflow-y-auto")
     if (sc) scroller.current.near(sc, y)
-    const own = groupOfTab(item.tab)
-    if (el.closest("[data-tabs-new]")) return keep(multi && own && own.tabs.length > 1 ? { kind: "out" } : null)
+    const own = all.find((t) => t.id === item.tab)?.set
+    if (el.closest("[data-tabs-new]")) return keep(open && own === open.s.id ? { kind: "out" } : null)
     const gc = el.closest<HTMLElement>("[data-group-card]")
-    if (gc) return keep(own?.id !== gc.dataset.groupCard ? { kind: "join", group: gc.dataset.groupCard! } : null)
+    if (gc) return keep(own !== gc.dataset.groupCard ? { kind: "join", group: gc.dataset.groupCard! } : null)
     // The card whose place in the grid is under the finger, not the one drawn there: a card gliding out of the lifted
     // one's way is still under the finger for a moment, and taking it would move the lifted card back (and so on).
     const inside = (c: HTMLElement) => { const r = c.getBoundingClientRect(); return x >= r.left && x < r.right && y >= r.top && y < r.bottom }
     const row = [...box.current.querySelectorAll<HTMLElement>("[data-tab-row]")].find(inside) ?? null
     const id = row?.dataset.tabRow
-    if (top) return keep(row && id && id !== item.tab && canGroup(item.tab, id) ? { kind: "into", tab: id } : null)
-    const tabs = own?.tabs ?? []
+    const tabs = open ? open.tabs : all
     // The empty space after the last card (beside it, or below the grid): the end of the list.
     const end = [...box.current.querySelectorAll<HTMLElement>("[data-tab-row]")].at(-1)?.getBoundingClientRect()
     if (!row && end && !el.closest("[data-sheet-bar], [data-tabs-header], [data-group-head]") && y >= end.top && (x >= end.right || y >= end.bottom)) {
@@ -568,7 +558,8 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     const same = arranged(tabs, item.tab, h).every((t, k) => t === tabs[k])
     // Let go before the cards have moved, it still takes that card's place.
     const soft = same ? placed.current : h
-    const groups = !multi && canGroup(item.tab, id)
+    // (in the list of all tabs a card is a lone tab: dropped on one, the two group)
+    const groups = !open
     // Moving away from a card's centre takes its place at once; heading for it may
     // mean to group, so wait. Resting over its middle groups the two; on an edge, takes its place after a frame or two.
     const moving = Math.hypot(vx, vy) > 1.5
@@ -583,14 +574,12 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
     // Where it is already: no drop.
     return keep(same ? null : h)
   }, (item, h) => {
-    const id = item.tab!
-    if (h.kind === "into") groupTabs(id, h.tab)
-    else if (h.kind === "join") joinGroup(id, h.group)
-    else if (h.kind === "out") leaveGroup(id)
-    else {
-      const rest = (groupOfTab(id)?.tabs ?? []).filter((t) => t.id !== id), k = rest.findIndex((t) => t.id === h.tab)
-      placeTab(id, h.kind === "before" ? h.tab : rest[k + 1]?.id ?? null)
-    }
+    const id = item.tab!, shown = activeTab().id
+    if (h.kind === "into") groupWith(id, h.tab)
+    else if (h.kind === "join") addToSet([id], h.group)
+    else if (h.kind === "out") leaveSet([id])
+    else placeTab(id, h.kind, h.tab, open?.s.id ?? null)
+    keepShown(shown)
   }, {
     hint: (h) => (h.kind === "into" ? "Group" : h.kind === "join" ? "Add to group" : h.kind === "out" ? "Remove from group" : undefined),
     end: () => {
@@ -610,39 +599,22 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const tickKey = !hit ? "" : hit.kind === "before" || hit.kind === "after" ? shownPlace : hitKey
   useEffect(() => { if (tickKey) haptic("selection") }, [tickKey])
 
-  /** A pane's name in menus: its name, or a lone tab's label. */
-  const nameOf = (g: Group, i: number) => (g.tabs.length > 1 ? labels[i] : info(g.tabs[0]).label)
-  const menuOf = (t: Tab) => () => {
-    const own = groupOfTab(t.id)
-    const extra: MenuItem[] = []
-    if (multi) {
-      const others = panes.map((g, i) => ({ g, i })).filter(({ g }) => g.id !== own?.id)
-      extra.push({ label: "Add to group", icon: GroupIcon, sep: true, run: () => {}, items: others.map(({ g, i }) => ({ label: nameOf(g, i), run: () => joinGroup(t.id, g.id) })) })
-      if (own && own.tabs.length > 1) extra.push({ label: "Remove from group", icon: Ungroup, run: () => leaveGroup(t.id) })
-    }
-    return tabCardMenu(t, own?.tabs.length ?? 1, extra)
-  }
+  const menuOf = (t: Tab) => () => tabCardMenu(t, groupOfTab(t.id)?.tabs.length ?? 1, setItems([t.id]))
   const card = (t: Tab) => (
     <TabCard key={t.id} store={store} tab={t} info={info(t)} current={t.id === cur.id} into={hit?.kind === "into" && hit.tab === t.id}
       lifted={t.id === liftedId} onPick={() => pickTab(t.id)} menu={menuOf(t)} />
   )
   const grid = "grid grid-cols-2 gap-3 @min-[520px]:grid-cols-3"
-  /** A pane's cards, each tab group's under its name (held: its menu), the tabs after one on a row of their own. */
-  const sections = (g: Group, tabs: Tab[]) => tabs.flatMap((t, i) => {
-    const s = t.set !== tabs[i - 1]?.set ? g.sets?.find((x) => x.id === t.set) : undefined
-    const after = !t.set && tabs[i - 1]?.set ? [<div key={`end:${tabs[i - 1].set}`} aria-hidden className="col-span-full -mb-3" />] : []
-    const head = s ? [
-      <div key={`set:${s.id}`} data-set-head={s.id} onContextMenu={menuOnCard(() => setMenu(s.id, "phone"))}
-        className={cn("col-span-full -mb-1 flex h-8 min-w-0 items-center gap-2 text-[15px] font-semibold", i > 0 && "mt-2")}>
-        <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(s.color) }} />
-        <span className={cn("min-w-0 truncate", s.name ? "text-foreground" : "text-muted-foreground")}>{setName(s)}</span>
-        <span className="shrink-0 font-normal text-tertiary">{tabs.filter((x) => x.set === s.id).length}</span>
-      </div>,
-    ] : []
-    return [...after, ...head, card(t)]
+  /** The cards of all tabs: each tab group's as one, where its first tab is. */
+  const cards = (tabs: Tab[]) => tabs.flatMap((t, i) => {
+    const s = t.set ? sets.get(t.set) : undefined
+    if (!s) return [card(t)]
+    if (tabs.findIndex((x) => x.set === s.id) !== i) return []
+    const mine = tabs.filter((x) => x.set === s.id)
+    return [<GroupCard key={`set:${s.id}`} store={store} set={s} tabs={mine} info={info} current={mine.some((x) => x.id === cur.id)}
+      lit={hit?.kind === "join" && hit.group === s.id} onOpen={() => setOpened(s.id)} />]
   })
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids, true), noun: ["tab", "tabs"] })
-  const openIndex = open ? panes.indexOf(open) : -1
   // While a card is lifted, its pane's tabs are shown as they'd be with it where it would go.
   const inOrder = (tabs: Tab[]) => (liftedId && tabs.some((t) => t.id === liftedId) ? arranged(tabs, liftedId, placed.current) : tabs)
   const ctx = { store, open: true, phone: true, file: tabPath(cur.to) ?? "", tab: cur.to }
@@ -654,7 +626,6 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const pages = host?.list() ?? []
   const at = host ? pages.findIndex((w) => w.n === host.current()) : -1
   const q = query?.trim().toLowerCase() ?? ""
-  const all = panes.flatMap((g) => g.tabs)
   const found = q ? all.filter((t) => hasWords(q, `${info(t).label}\n${t.to}`)) : null
   const more = (): MenuItem[] => [
     { label: "Select tabs", icon: CheckSquare, run: () => startSelecting(TABS) },
@@ -682,23 +653,21 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
                 className="-ml-2 flex h-11 cursor-pointer items-center pr-2 text-[17px] text-primary active:opacity-50">
                 <ChevronLeft className="size-[24px]" strokeWidth={2} />All tabs
               </button>
-              <span className="ml-auto truncate text-[15px] font-semibold text-muted-foreground">{labels[openIndex]}</span>
+              <span className="ml-auto flex min-w-0 items-center gap-2 text-[15px] font-semibold text-muted-foreground">
+                <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(open.s.color) }} />
+                <span className="truncate">{setName(open.s)}</span>
+              </span>
             </div>
           )}
         </>}>
         <div ref={box} data-tabs-grid className="relative @container">
           <div className={grid} data-select-list={TABS}>
-            {found ? found.map(card)
-              : open ? sections(open, inOrder(open.tabs))
-              : !multi ? sections(panes[0], inOrder(panes[0].tabs))
-              : panes.map((g, i) => (g.tabs.length === 1 ? card(g.tabs[0])
-                : <GroupCard key={g.id} store={store} group={g} name={labels[i]} info={info} current={g.tabs.some((t) => t.id === cur.id)}
-                    lit={hit?.kind === "join" && hit.group === g.id} onOpen={() => setOpened(g.id)} />))}
+            {found ? found.map(card) : open ? inOrder(open.tabs).map(card) : cards(inOrder(all))}
           </div>
           {found && !found.length && <p className="py-10 text-center text-[17px] text-muted-foreground">No tabs match</p>}
         </div>
       </Pager>
-      <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.id} lit={hit?.kind === "out"} />
+      <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.s.id} lit={hit?.kind === "out"} />
       <Lifted store={store} info={info} current={cur.id} />
     </>
   )

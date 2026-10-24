@@ -92,7 +92,7 @@ export function setItems(ids: string[]): MenuItem[] {
 }
 
 /** A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then
- *  what it does. Right-click its chip, its row in the Tabs panel or its … there, or hold its heading on a phone. */
+ *  what it does. Right-click its chip, its row in the Tabs panel or its … there, or hold its card on a phone. */
 export function setMenu(id: string, at: "bar" | "panel" | "phone"): MenuItem[] {
   const s = setById(id)?.s
   if (!s) return []

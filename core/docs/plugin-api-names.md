@@ -359,7 +359,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
-- `openNewTab(gid?)`: A new tab in the focused pane (or `gid`'s: its tab bar's +): a blank one, or what newtab.json's `opens` says.
+- `openNewTab(gid?, set?)`: A new tab in the focused pane (or `gid`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a blank one, or what newtab.json's `opens` says.
 - `openPermissions`: Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older build).
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.

@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Tab groups on phones are the computer's**: the tab list shows each tab group as a card (tap it for its tabs);
+  holding a tab over another groups the two, over a group's card adds it, over + in an open group takes it out. A
+  computer's split shows on a phone as one list of tabs, no longer as groups.
+
 ## 0.8.0 (2026-10-24)
 
 Vaultite for Windows, a Browser bundle with spaces, tab groups like Chrome's and tabs that archive themselves,

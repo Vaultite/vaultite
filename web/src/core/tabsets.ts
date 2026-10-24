@@ -73,6 +73,20 @@ export function makeSet(ids: string[], opts: { name?: string; color?: Color; col
   return id
 }
 
+/** Tab `id` dropped on tab `onto` (a phone's tab list): the two make a new tab group where `onto` is, or `id` joins
+ *  `onto`'s. Returns the group's id. */
+export function groupWith(id: string, onto: string): string | null {
+  const all = groups().flatMap((g) => g.tabs)
+  const a = all.find((t) => t.id === id), b = all.find((t) => t.id === onto)
+  if (!a || !b || id === onto) return null
+  if (b.set && setById(b.set)) { addToSet([id], b.set); return b.set }
+  const home = groupOfTab(onto)!, sid = `s${newId()}`
+  const def: TabSet = { id: sid, name: suggestName([b, a]), color: nextColor() }
+  const at = (g: Group) => g.tabs.slice(0, g.tabs.findIndex((t) => t.id === onto)).filter((t) => t.id !== id).length
+  set({ ...getWorkspace(), root: gather([b, a], home.id, at, sid, def) })
+  return sid
+}
+
 /** Add tabs to the end of a tab group (from anywhere: they move to its pane); `shown`: the one of them its pane shows. */
 export function addToSet(ids: string[], setId: string, shown?: string) {
   const where = setById(setId)

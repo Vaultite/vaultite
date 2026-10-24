@@ -4,7 +4,7 @@
 // shown in a folded group opens it; they come back after a reload and a closed tab reopens into its group. Then Show
 // tabs in the sidebar (the palette): the tab bar off, the Tabs panel first in the left sidebar with each group a row
 // over its tabs, and Show tabs on top puts it back. Agents: vau tabs (tabs.list, tabs.group). A phone's tab list shows
-// the groups as sections. Screenshots light and dark. Writes the vault's appearance and sidebars (put back): throwaway
+// each group as a card. Screenshots light and dark. Writes the vault's appearance and sidebars (put back): throwaway
 // server only.
 //   node web/qa/tabgroups.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -242,7 +242,7 @@ try {
   const saved = await page.evaluate(() => localStorage.getItem("vaultite.tabs"))
   await ctx.close()
 
-  // A phone: the tab list, each group a section.
+  // A phone: the tab list, each group a card.
   for (const t of ["light", "dark"]) {
     theme(t)
     const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
@@ -253,8 +253,8 @@ try {
     await pp.waitForSelector("[data-phone-bar]")
     await wait(600)
     await pp.evaluate(() => { location.hash = `${location.hash}/tabs` })
-    const heads = await until(() => pp.$$eval("[data-set-head]", (els) => els.map((e) => e.textContent.trim())), 5000)
-    if (t === "light") check("a phone's tab list shows each group as a section", heads?.length === 3 && heads.some((h) => h.startsWith("Lighthouse work")), heads)
+    const heads = await until(async () => { const h = await pp.$$eval("[data-group-card] button:not([aria-label^='Close '])", (els) => els.map((e) => e.getAttribute("aria-label"))); return h.length ? h : null }, 5000)
+    if (t === "light") check("a phone's tab list shows each group as a card", heads?.length === 3 && heads.some((h) => h.startsWith("Lighthouse work,")), heads)
     await wait(500); await pp.screenshot({ path: `${OUT}phone-${t}.png` })
     await phone.close()
   }

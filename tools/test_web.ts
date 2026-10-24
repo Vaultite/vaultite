@@ -862,22 +862,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   one([A, F], "f"); ws.closeFileTabs("Inbox")
   check("tabs: a folder's going closes its files' tabs", tabs() === "file:a.md *", tabs())
 
-  // A phone's tab groups (splits.ts): panes, the tab on screen kept.
   const C = { id: "c", to: "file:c.md" }, D = { id: "d", to: "file:d.md" }
-  one([A, B, C], "c"); sp.groupTabs("a", "b")
-  check("groups: a tab dropped on another among others: the two make a pane, the tab on screen stays", tabs() === "file:c.md * | file:b.md,file:a.md" && ws.activeTab().id === "c", tabs())
-  one([A, B], "b"); sp.groupTabs("a", "b")
-  check("groups: two tabs alone in a pane are a group already", tabs() === "file:a.md,file:b.md *", tabs())
-  two([A, B], [C], "gR"); sp.groupTabs("c", "a")
-  check("groups: the tab on screen moved: its new pane is focused and shows it", tabs() === "file:b.md | file:a.md,file:c.md *" && ws.activeTab().id === "c", tabs())
-  two([A, B], [C], "gR"); sp.joinGroup("c", "gL")
-  check("groups: a lone tab joins a group, its pane goes", tabs() === "file:a.md,file:b.md,file:c.md *" && ws.activeTab().id === "c", tabs())
-  two([A, B, D], [C], "gR"); sp.leaveGroup("b")
-  check("groups: a tab leaves its group for a pane of its own", tabs() === "file:a.md,file:d.md | file:b.md | file:c.md *", tabs())
-  two([A, B], [C, D], "gL"); sp.ungroup("gR")
-  check("groups: ungrouping a pane puts its tabs in the one before it", tabs() === "file:a.md,file:b.md,file:c.md,file:d.md *" && ws.activeTab().id === "b", tabs())
-  one([A, B, C], "c"); sp.placeTab("c", "a")
-  check("groups: a tab placed before another, the tab on screen kept", tabs() === "file:c.md,file:a.md,file:b.md *" && ws.activeTab().id === "c", tabs())
 
   // A view hears each tab of its that goes (a web page is its tab's), and `last` once its place shows nowhere (a terminal).
   const heard: string[] = []
@@ -903,6 +888,20 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     const st = x.sets?.find((y: Any) => y.id === t.set)
     return t.id + (st ? `(${st.name || st.color}${st.collapsed ? "-" : ""})` : "")
   }).join(",")).join(" | ")
+  // A phone's tab list (TabSwitcher.tsx): every pane's tabs in one list, a drop keeping the tab on screen.
+  one([A, B, C], "c"); ts.groupWith("a", "c")
+  check("phone groups: a tab dropped on another: the two make a tab group where it was", runs() === "b,c(blue),a(blue)" && ws.activeTab().id === "c", runs())
+  one([A, B, C], "a"); ts.makeSet(["a", "b"]); ts.groupWith("c", "b")
+  check("phone groups: dropped on a grouped tab, it joins that group", runs() === "a(blue),b(blue),c(blue)", runs())
+  two([A, B], [C], "gR"); ts.groupWith("c", "a"); sp.keepShown("c")
+  check("phone groups: the tab on screen grouped into another pane: that pane is focused and shows it", tabs() === "file:a.md,file:c.md,file:b.md *" && ws.activeTab().id === "c", tabs())
+  two([A, B], [C], "gR"); sp.placeTab("c", "before", "a", null)
+  check("phone groups: a tab placed before another pane's goes there, still on screen", tabs() === "file:c.md,file:a.md,file:b.md *" && ws.activeTab().id === "c", tabs())
+  one([A, B, C, D], "d"); const s0 = ts.makeSet(["a", "b", "c"]); sp.placeTab("a", "after", "c", s0)
+  check("phone groups: a tab moved within its open group stays in it", runs() === "b(blue),c(blue),a(blue),d", runs())
+  sp.placeTab("d", "before", "b", null)
+  check("phone groups: a lone tab placed before a group stays out of it, the tab on screen kept", runs() === "d,b(blue),c(blue),a(blue)" && ws.activeTab().id === "d", runs())
+
   one([A, B, C, D, E], "a")
   let s1 = ts.makeSet(["b", "d"], { name: "Work" })
   check("tab groups: tabs made a group sit together where the first was, with the first unused colour", runs() === "a,b(Work),d(Work),c,e" && pane().sets[0].color === "blue", runs())
