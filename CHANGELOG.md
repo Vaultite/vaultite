@@ -22,7 +22,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   sit on come only for the Links panel), the server does a third of the work to refresh it after an edit, and a
   fifteenth for an open local graph (the graph updates only the edited files' links). It starts sooner too: lists in
   properties as Obsidian writes them, and nested ones read before, no longer go through the YAML library; renaming a
-  note many others link to takes half the time.
+  note many others link to takes half the time, and a search, half.
 - **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
   header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
   makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big

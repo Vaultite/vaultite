@@ -118,18 +118,18 @@ try {
       samples.push({ ...sample(), phase, windows: wins.size })
       nextSample = Date.now() + 30_000
       const s = samples.at(-1)!
-      if (samples.length % 20 === 1) log(`rss ${s.rss} MB, fds ${s.fds} (sockets ${s.sockets}, watches ${s.watches}), ${refreshes} refreshes, slowest ${Math.round(slowest)} ms`)
+      if (samples.length % 20 === 1) log(`rss ${s.rss} MB, fds ${s.fds} (sockets ${s.sockets} for ${wins.size} windows, watches ${s.watches}), ${refreshes} refreshes, slowest ${Math.round(slowest)} ms`)
     }
     if (phase === "busy") {
       await act()
       // Windows come and go: a reload, a phone waking (the server must let go of each socket).
-      if (Math.random() < 0.05) { const w = [...wins][0]; if (w) close(w) }
-      if (wins.size < 3 || Math.random() < 0.04) open()
+      if (wins.size > 2 && Math.random() < 0.05) close([...wins][0])
+      if (wins.size < 3 || (wins.size < 6 && Math.random() < 0.05)) open()
       await wait(1000 + Math.random() * 3000)
     } else await wait(1000)
   }
   for (const w of [...wins]) close(w)
-  await wait(3000)
+  await wait(10_000) // (past the server's keep-alive: its idle connections closed)
   samples.push({ ...sample(), phase: "end", windows: 0 })
 } finally {
   await new Promise<void>((r) => { if (child.exitCode !== null) return r(); child.once("exit", () => r()); child.kill() })

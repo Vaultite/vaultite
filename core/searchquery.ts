@@ -6,7 +6,8 @@ export class SearchError extends Error {}
 type Field = "any" | "file" | "path" | "content"
 type Unit = "line" | "block" | "section" | "task" | "task-todo" | "task-done"
 /** How a term matches a piece of text: every place it does, as [from, to) ranges. */
-type Matcher = { label: string; ranges: (s: string) => [number, number][] }
+/** `ranges` where it matches (to mark), `test` whether it does (a file's match: the first one will do). */
+type Matcher = { label: string; ranges: (s: string) => [number, number][]; test?: (s: string) => boolean }
 
 export type Node =
   | { t: "and" | "or"; kids: Node[] }
@@ -98,6 +99,7 @@ function textMatcher(s: string, matchCase: boolean): Matcher {
   const want = matchCase ? s : s.toLowerCase()
   return {
     label: `"${s}"${matchCase ? " (match case)" : ""}`,
+    test: (text) => !!want && (matchCase ? text : text.toLowerCase()).includes(want),
     ranges: (text) => {
       if (!want) return []
       const hay = matchCase ? text : text.toLowerCase()
@@ -291,7 +293,7 @@ export function matches(n: Node, d: SearchDoc): boolean {
     case "or": return n.kids.some((k) => matches(k, d))
     case "not": return !matches(n.kid, d)
     case "term": {
-      const hit = (s: string) => n.m.ranges(s).length > 0
+      const hit = (s: string) => (n.m.test ? n.m.test(s) : n.m.ranges(s).length > 0)
       if (n.field === "file") return hit(d.file)
       if (n.field === "path") return hit(d.path)
       if (n.field === "content") return hit(d.text)

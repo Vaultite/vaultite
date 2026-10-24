@@ -61,7 +61,12 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
 }
 
 /** The first `n` characters, an ellipsis saying when there were more. */
-const chars = (s: string, n: number) => { if (s.length <= n) return s; const c = [...s]; return c.length > n ? `${c.slice(0, n).join("")}…` : s }
+const chars = (s: string, n: number) => {
+  if (s.length <= n) return s
+  let at = 0
+  for (let k = 0; k < n && at < s.length; k++) at += s.codePointAt(at)! > 0xffff ? 2 : 1
+  return at < s.length ? `${s.slice(0, at)}…` : s
+}
 
 /** A line as search shows it: without its list mark, task box, quote or heading marks, up to 200 characters, from a
  *  little before the match (`at`, an index in the line) when that's further in, so it's in what's shown. */
@@ -591,15 +596,18 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
       item.context = context(hits.length ? lines[hits[0]] : "", marks)
       item.matches = matched.sort((a, b) => a.line - b.line)
       item.count = hits.length
-    } else {
-      // (line by line, not split: a big file's first match is near its top more often than not)
-      for (let i = 0; i <= body.length;) {
-        const j = body.indexOf("\n", i), end = j < 0 ? body.length : j, line = body.slice(i, end)
-        if (marks(line).length) { item.context = context(line, marks); break }
-        i = end + 1
-      }
-    }
+    } else unshown.set(item, body) // (its line found once it's among the results shown)
     return item
+  }
+  const unshown = new Map<Item, string>()
+  // (line by line, not split: a big file's first match is near its top more often than not)
+  const firstLine = (body: string) => {
+    for (let i = 0; i <= body.length;) {
+      const j = body.indexOf("\n", i), end = j < 0 ? body.length : j, line = body.slice(i, end)
+      if (marks(line).length) return context(line, marks)
+      i = end + 1
+    }
+    return ""
   }
   const out: Item[] = []
   const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.path ? rel !== opts.path : excluded(rel))
@@ -629,6 +637,7 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
   const sorted = sortBy(out, key, reverse)
   const from = opts.offset ?? 0
   const results = [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(from, from + limit)
+  for (const r of results) { const body = unshown.get(r); if (body !== undefined) r.context = firstLine(body) }
   return { results, files: out.length, lines: out.reduce((n, r) => n + (r.count ?? 0), 0) }
 }
 
