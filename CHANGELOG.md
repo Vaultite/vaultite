@@ -12,8 +12,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Tab groups on phones are the computer's**: the tab list shows each tab group as a card (tap it for its tabs);
   holding a tab over another groups the two, over a group's card adds it, over + in an open group takes it out. A
   computer's split shows on a phone as one list of tabs, no longer as groups.
-- A plugin's views name a new tab group of their tabs (`groupName` in the plugin API), as the Browser names one of a
-  site's pages: a site under a country's domain (bbc.co.uk) is named after itself now, not "Co".
+- **Tab groups named by what they show**: a plugin's views name a new group of their tabs (`groupName` in the plugin
+  API), as the Browser names one of a site's pages; a site under a country's domain (bbc.co.uk) is named after itself
+  now, not "Co".
+- **Plugins follow moves and answer their ops**: `onMove` hears a file or folder renamed, moved or trashed in the app,
+  and `answers` answers what a plugin's ops ask the user's window (`ctx.ui({action: "<plugin id>:<name>"})`).
 
 ## 0.8.0 (2026-10-24)
 

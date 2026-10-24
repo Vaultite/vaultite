@@ -76,6 +76,10 @@ type Asker = (m: Record<string, unknown>, ended: AbortSignal) => unknown
 const askers = new Map<string, Asker>()
 const asking = new Map<string, AbortController>()
 export const answerUi = (action: string, fn: Asker) => { askers.set(action, fn) }
+/** A plugin's answer to an ask ("<plugin id>:<name>", its `answers`). Set by the app, which knows the plugins. */
+let pluginAsker: (action: string) => Asker | null = () => null
+export const setPluginAsker = (fn: (action: string) => Asker | null) => { pluginAsker = fn }
+const askerOf = (action: string) => askers.get(action) ?? pluginAsker(action)
 
 /** Tell the server this window is the one in use (so `ui` messages come here). */
 let said = 0
@@ -140,7 +144,7 @@ function connect() {
       for (const fn of [...moveSubs]) { try { fn(m.from, m.to ?? null) } catch (e) { console.error(e) } }
     } else if (m.type === "ui" && m.action === "ask-end") {
       if (m.rid) asking.get(m.rid)?.abort()
-    } else if (m.type === "ui" && m.action && askers.has(m.action)) {
+    } else if (m.type === "ui" && m.action && askerOf(m.action)) {
       const ended = new AbortController()
       if (m.rid) asking.set(m.rid, ended)
       const reply = (a: object) => {
@@ -149,7 +153,7 @@ function connect() {
         try { text = JSON.stringify({ type: "ui-done", rid: m.rid, ...a }) } catch (e) { text = JSON.stringify({ type: "ui-done", rid: m.rid, ran: false, error: `the answer isn't JSON (${(e as Error).message})` }) }
         if (s.readyState === WebSocket.OPEN) s.send(text)
       }
-      Promise.resolve().then(() => askers.get(m.action!)!(m as Record<string, unknown>, ended.signal))
+      Promise.resolve().then(() => askerOf(m.action!)!(m as Record<string, unknown>, ended.signal))
         .then((result) => reply({ ran: true, result }), (e) => reply({ ran: false, error: e instanceof Error ? e.message : String(e) }))
     } else if (m.type === "ui" && m.action) {
       let ran = true

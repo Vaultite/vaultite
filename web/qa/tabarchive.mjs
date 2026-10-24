@@ -1,7 +1,7 @@
-// Tabs archiving themselves (plugins/core/tabs/archived.tsx, core/tabarchive.ts): with Archive tabs on, unpinned tabs
+// Tabs archiving themselves (plugins/core/tabs/archived.tsx, archive.ts): with Archive tabs on, unpinned tabs
 // unseen longer than it says close into Archived tabs (a toast with Undo), never the one on screen, a pinned one or a
 // terminal; the Archived tabs tab reopens one where it was and removes one (Undo); the quick switcher finds an archived
-// web page; vau tabs archived lists them. With Workspaces, the stamps are in the workspace's file, and switching tabs
+// web page; vau tabs archived lists them (Tabs' `answers`), and an archived file renamed follows (its `onMove`). With Workspaces, the stamps are in the workspace's file, and switching tabs
 // doesn't write them (they ride along). WRITES the Tabs settings, plugins.json and the workspaces' files (put back): throwaway only.
 //   node web/qa/tabarchive.mjs <base url> <vault path>
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs"
@@ -50,6 +50,12 @@ try {
   const listed = await api("POST", "ops/tabs.archived", {})
   const got = JSON.stringify(listed)
   check("vau tabs archived lists them", got.includes(`file:${b}`) && got.includes("view:web/https://example.com/"), listed)
+  const renamed = b.replace(/\.md$/, " renamed.md")
+  await api("POST", "file/move", { from: b, to: renamed })
+  const followed = await until(async () => JSON.stringify(await api("POST", "ops/tabs.archived", {})).includes(`file:${renamed}`), 5000)
+  await api("POST", "file/move", { from: renamed, to: b })
+  const back = await until(async () => JSON.stringify(await api("POST", "ops/tabs.archived", {})).includes(`file:${b}`), 5000)
+  check("an archived file renamed: its archived tab follows, and back (plugins' onMove)", !!followed && !!back)
 
   // The quick switcher finds the archived page; picking it reopens it.
   await page.keyboard.press("ControlOrMeta+o")

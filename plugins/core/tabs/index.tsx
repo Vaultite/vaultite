@@ -8,7 +8,7 @@ import {
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
-import { ArchivedView, archivedSearch, Archiver } from "./archived"
+import { archivedAnswer, ArchivedView, archivedSearch, Archiver, followMove } from "./archived"
 import { settings } from "./settings"
 import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPanel, KIND_ICON, LiveDot, openHere, tabItems, useDevices, useLeaving } from "./devices"
 
@@ -242,6 +242,8 @@ function TabsPanel({ store, open }: SidebarCtx) {
 export default definePlugin({
   background: ({ store }) => (isPopout() ? null : <><Report store={store} /><Archiver store={store} /></>),
   searchLive: archivedSearch,
+  onMove: followMove,
+  answers: { archived: archivedAnswer },
   sidebar: {
     tabs: {
       title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,

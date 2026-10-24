@@ -13,12 +13,11 @@ import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
-import { retargetArchived } from "@/core/tabarchive"
 import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, keepsTab, openBehind, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
-import { resolveView } from "@/core/plugins"
+import { filesMoved, resolveView } from "@/core/plugins"
 
 
 export type VaultFile = {
@@ -300,18 +299,20 @@ export async function createFolder(parent: string, name = "New folder") {
 export const shownName = (path: string) => (isDoc(path) ? stem(path) : path.split("/").pop()!)
 
 // Moves, wherever they were made (this app, another device, an AI through the API: the live socket's `moved`): open
-// tabs follow them, and what an editor still has to save goes to where its file is now (whereNow).
+// tabs and what plugins keep (`onMove`) follow them; what an editor still has to save goes where its file is now (whereNow).
 const moves: { n: number; from: string; to: string }[] = []
 let moveCount = 0
 function followMove(from: string, to: string | null) {
   if (from === to) return
-  if (to === null) { dropTabs(from); closeDetailOf(from); return } // trashed
-  moves.push({ n: ++moveCount, from, to })
-  if (moves.length > 100) moves.shift()
-  movePlaces(from, to) // (before the tabs follow: they look for their place under the new path)
-  retarget(from, to)
-  retargetArchived(from, to)
-  retargetDetail(from, to) // a phone's file sheet follows too, whatever moved it (the tree, Undo, a rename, an AI)
+  if (to === null) { dropTabs(from); closeDetailOf(from) } // trashed
+  else {
+    moves.push({ n: ++moveCount, from, to })
+    if (moves.length > 100) moves.shift()
+    movePlaces(from, to) // (before the tabs follow: they look for their place under the new path)
+    retarget(from, to)
+    retargetDetail(from, to) // a phone's file sheet follows too, whatever moved it (the tree, Undo, a rename, an AI)
+  }
+  filesMoved(from, to)
 }
 onVaultMove(followMove)
 /** Now, as far as moves go: pass it to whereNow later. */

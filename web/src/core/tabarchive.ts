@@ -1,8 +1,7 @@
 // Archived tabs: unpinned tabs unseen a while, closed into a list kept with the tabs (the workspace's, or this device's
-// without Workspaces), to reopen or find again. Not history: the tabs the user had. When they go is Tabs' setting.
+// without Workspaces), to reopen or find again. Not history: the tabs the user had. The rest is Tabs' (archived.tsx).
 import { useSyncExternalStore } from "react"
 import { newId, type Tab } from "../../../core/layout.ts"
-import { answerUi } from "@/core/live"
 import { scopedState, subscribeScoped } from "@/core/scope"
 import { archivesAfter, closeToArchive, findOpen, groups, restoreTab, selectTab, unseenTabs } from "@/core/workspace"
 
@@ -62,12 +61,9 @@ export function restoreArchived(entries: ArchivedTab[]) {
   save([...entries, ...archivedTabs()].sort((a, b) => b.archived - a.archived))
 }
 
-/** A file was renamed or moved (or a folder with it): its archived tabs follow. */
+/** A file was renamed or moved (or a folder with it): its archived tabs follow (Tabs' `onMove`). */
 export function retargetArchived(from: string, to: string) {
   const map = (t: string) => (t === `file:${from}` ? `file:${to}` : t.startsWith(`file:${from}/`) ? `file:${to}${t.slice(from.length + 5)}` : t)
   const cur = archivedTabs()
   if (cur.some((e) => map(e.to) !== e.to)) save(cur.map((e) => ({ ...e, to: map(e.to) })))
 }
-
-// (vau tabs archived: Tabs' op asks the window the user is in)
-answerUi("archived-tabs", () => ({ archived: archivedTabs().map(({ id, to, title, archived }) => ({ id, to, title, archived: new Date(archived).toISOString() })) }))

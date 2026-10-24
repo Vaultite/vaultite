@@ -10,9 +10,10 @@ import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 
 const QUIET = 100, MAX = 500, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
-/** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask), only through ops, never
- *  POST /api/ui: the dev ones are the owner's. Seconds an ask may wait: a person gets longer than a window. */
-const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30], ["archived-tabs", 30]])
+/** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask, plugins' "<id>:<name>"),
+ *  only through ops, never POST /api/ui: the dev ones are the owner's. Seconds an ask may wait (a person's are longer). */
+const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
+const isAsk = (action: string) => ASKS.has(action) || /^[a-z0-9-]+:[a-z0-9-]+$/.test(action)
 type Answer = { ran?: boolean; result?: unknown; error?: unknown }
 
 /** Changes nobody needs to hear about. */
@@ -277,7 +278,7 @@ export class Live {
   /** What operations drive the window with (App.ui, core/ops.ts): POST's answer for a message (null: GET, the windows
    *  open), or an OpError with its status. */
   drive = async (message: Record<string, unknown> | null): Promise<unknown> => {
-    if (message && ASKS.has(String(message.action))) return this.ask(message)
+    if (message && isAsk(String(message.action))) return this.ask(message)
     if (message?.action === "ask-cancel") { this.keyed.get(String(message.key))?.(); return { ok: true } }
     // A command says whether the window could run it (one that needs an open note may not); an older app never says.
     const to = this.last()

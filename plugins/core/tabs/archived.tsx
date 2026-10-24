@@ -1,10 +1,10 @@
-// Archived tabs (core/tabarchive.ts): when they go (the archive_after setting, swept here), their tab (view:archived-tabs)
-// and what the quick switcher finds of them.
+// Archived tabs (core/tabarchive.ts): when they go (the archive_after setting, swept here), their tab (view:archived-tabs),
+// what the quick switcher finds of them, vau tabs archived's answer and following moves.
 import { useEffect, useMemo, useRef } from "react"
 import { ArchiveRestore, Trash2 } from "lucide-react"
 import {
   archivedTabs, archiveUnseen, Button, Empty, fmtAgo, getStore, menuFor, notify, openPluginSettings, plural, removals, removeArchived, reopenArchived,
-  restoreArchived, rowMenu, selectClick, selectedAttr, setArchiveAfter, SidebarRow, subscribeScoped, tabLabel, touchTabsSeen, useArchivedTabs,
+  restoreArchived, retargetArchived, rowMenu, selectClick, selectedAttr, setArchiveAfter, SidebarRow, subscribeScoped, tabLabel, touchTabsSeen, useArchivedTabs,
   useSelectable, useSelected, useTabLabels, type ArchivedTab, type MenuItem, type SearchDoc, type Store, type TabInfo,
 } from "@vaultite"
 import { settings } from "./settings"
@@ -50,6 +50,10 @@ export const archivedSearch = {
       meta: `Archived ${fmtAgo(e.archived)}`, text: e.to.replace(/^view:/, ""), recent: e.archived, archived: true, run: () => reopenArchived(e.id) }
   }),
 }
+
+/** What Tabs answers its op `vau tabs archived` (the ask "tabs:archived") and does when a file moves. */
+export const archivedAnswer = () => ({ archived: archivedTabs().map(({ id, to, title, archived }) => ({ id, to, title, archived: new Date(archived).toISOString() })) })
+export const followMove = (from: string, to: string | null) => { if (to !== null) retargetArchived(from, to) }
 
 const LIST = "tabs:archived"
 const removing = removals()

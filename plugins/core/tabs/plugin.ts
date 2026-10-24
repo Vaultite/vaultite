@@ -272,7 +272,7 @@ type ReportTab = { id: string; to: string; active?: boolean; pinned?: boolean; g
 type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
 type Report = { panes: { pane: number; id: string; focused: boolean; tabs: ReportTab[]; groups: ReportGroup[] }[] }
 
-/** Ask the window the user was in last (core/live.ts' asks; web/src/core/tabsets.ts answers). */
+/** Ask the window the user was in last (core/live.ts' asks; web/src/core/tabsets.ts answers, the archive Tabs' `answers`). */
 async function ask(ctx: OpCtx, msg: Record<string, unknown>) {
   try { return await ctx.ui({ action: "tabs", ...msg }) } catch (e) {
     if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
@@ -338,7 +338,7 @@ setting archive_after (never, 12h, 24h, 7d, 30d); the user reopens them from the
 
   vau tabs archived`,
   kind: "read",
-  run: (_p, ctx) => ask(ctx, { action: "archived-tabs" }),
+  run: (_p, ctx) => ask(ctx, { action: "tabs:archived" }),
   text: (r: ArchivedReport) => r.archived.length ? r.archived.map((e) => `${e.id}  ${e.archived}  ${e.to}${e.title ? ` (${e.title})` : ""}`).join("\n") : "No archived tabs.",
 })
 

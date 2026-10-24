@@ -705,6 +705,12 @@ export type PluginDef = {
   /** Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player:
    *  the first plugin that's on wins. */
   player?: ComponentType<PlayerProps>
+  /** A file or folder was renamed or moved (to `to`) or trashed (null), here or elsewhere (another device, an AI): what
+   *  it keeps by path in the app follows. Its server side has plugin.onMove. It may hear one move twice. */
+  onMove?: (from: string, to: string | null) => void
+  /** What its ops ask the user's window (`ctx.ui({action: "<plugin id>:<name>"})`), by name: the result goes back as
+   *  the op's, a thrown error's message as its error. `ended` aborts when the op stops waiting. */
+  answers?: Record<string, (message: Record<string, unknown>, ended: AbortSignal) => unknown>
   /** Runs while it's on, drawn nowhere, in every open window and device: listen and draw there (Workspaces keeps tabs in
    *  step), never write on a timer. What must happen once is the server's: plugin.every. Return null. */
   background?: (ctx: { store: Store }) => ReactNode

@@ -148,6 +148,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).
 - `newFiles`: Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile).
 - `player`: Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player: the first plugin that's on wins.
+- `onMove`: A file or folder was renamed or moved (to `to`) or trashed (null), here or elsewhere (another device, an AI): what it keeps by path in the app follows. Its server side has plugin.onMove. It may hear one move twice.
+- `answers`: What its ops ask the user's window (`ctx.ui({action: "<plugin id>:<name>"})`), by name: the result goes back as the op's, a thrown error's message as its error. `ended` aborts when the op stops waiting.
 - `background`: Runs while it's on, drawn nowhere, in every open window and device: listen and draw there (Workspaces keeps tabs in step), never write on a timer. What must happen once is the server's: plugin.every. Return null.
 
 ### Services the app's plugins offer

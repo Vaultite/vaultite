@@ -48,7 +48,7 @@ export { type Workspace as TabLayout } from "../../core/layout.ts"
 export { startedFresh } from "@/core/workspace"
 // When each tab was last on screen, which archives unpinned ones unseen a while (Tabs' setting): Workspaces carries it.
 export { mergeSeen as mergeTabsSeen, seenSince as tabsSeenSince, setArchiveAfter, touchSeen as touchTabsSeen } from "@/core/workspace"
-export { archivedTabs, archiveUnseen, removeArchived, reopenArchived, restoreArchived, useArchivedTabs, type ArchivedTab } from "@/core/tabarchive"
+export { archivedTabs, archiveUnseen, removeArchived, reopenArchived, restoreArchived, retargetArchived, useArchivedTabs, type ArchivedTab } from "@/core/tabarchive"
 // Its tabs one by one (the Tabs panel): the layout live, its panes, showing, closing and opening a tab, and what each
 // tab shows and its menu, as in its bar.
 export { closeTab, goHere, hashOf, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"

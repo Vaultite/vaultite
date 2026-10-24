@@ -19,6 +19,7 @@ import { canonical, keyCaps, keysOf, setMissingCommand } from "@/core/commands"
 import { setFenceLookup, setFormatLookup, type Drawn } from "@/core/formats"
 import { reload } from "@/core/data"
 import { op } from "@/core/http"
+import { setPluginAsker } from "@/core/live"
 import { notify, notifyError } from "@/core/notify"
 import { openDetail } from "@/core/nav"
 import { askGrant } from "@/core/grants"
@@ -875,6 +876,20 @@ export function resolveView(target: string, disabled = getPrefs().disabled): str
   const arg = v?.on ? v.def.resolve?.(v.arg) : null
   return arg ? `view:${target.replace(/^view:/, "").split("/")[0]}/${arg}` : target
 }
+
+/** A file or folder moved or was trashed (`to` null): the plugins that are on hear it (`onMove`). */
+export function filesMoved(from: string, to: string | null) {
+  const { disabled } = getPrefs()
+  for (const p of PLUGINS) {
+    if (!p.onMove || !isEnabled(p.id, disabled)) continue
+    try { p.onMove(from, to) } catch (e) { console.error(`${p.id}: onMove`, e) }
+  }
+}
+// What plugins that are on answer their ops' asks of this window (`answers`: the action "<plugin id>:<name>").
+setPluginAsker((action) => {
+  const i = action.indexOf(":"), p = i > 0 ? pluginById(action.slice(0, i)) : undefined
+  return (p && isEnabled(p.id, getPrefs().disabled) && p.answers?.[action.slice(i + 1)]) || null
+})
 
 /** Whether a place is open in tabs a plugin that's on keeps off screen (`openElsewhere`: the other workspaces). */
 export const openElsewhere = (to: string, disabled: string[]) =>

@@ -449,6 +449,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `restoreArchived(entries)`: Put archived tabs back in the list (Undo of a removal).
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
+- `retargetArchived(from, to)`: A file was renamed or moved (or a folder with it): its archived tabs follow (Tabs' `onMove`).
 - `revealInTree(path, opts?)`: Open every folder above a file.
 - `revealLabel`: Showing a file where it is: Finder on a Mac, Explorer on Windows, the file manager elsewhere.
 - `revealPanel(key)`: Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel unfolded.
