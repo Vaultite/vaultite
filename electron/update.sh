@@ -47,7 +47,7 @@ build)
     VAULTITE_UPDATING=1 npm run "$script"
     rm -rf "$next" && mkdir -p "$next"
     if [ "$(uname)" = Darwin ]; then mv dist-app/mac*/*.app "$next/"
-    else mv dist-app/linux*-unpacked "$next/$(node -p 'require(process.argv[1]).productName' dist-app/linux*-unpacked/resources/app/package.json)"; fi
+    else mv dist-app/linux*-unpacked "$next/$(node -p 'require(process.argv[1]).productName' "$PWD"/dist-app/linux*-unpacked/resources/app/package.json)"; fi
     echo "$new" > "$next/commit"
   fi
   echo "$new"
