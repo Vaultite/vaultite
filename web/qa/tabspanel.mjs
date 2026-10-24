@@ -1,10 +1,10 @@
-// The Tabs panel and the tab bar turned off (appearance `tabBar`). With the panel in the left sidebar: it lists the open
-// tabs, the shown one marked; a click on a row shows its tab; its X closes it; its New tab row (and a double-click under
-// the list) opens a tab at the list's end, with ⌘T still beside the shown one, as a blank tab or the switcher (a phone's
-// drawer has the row too); then with tabBar false (written to
-// appearance.json, followed live) each pane's bar shows only the tab on screen and how many it has, and the panel still
-// switches; a split lists each pane under its number; with paneTitles false too, a note's own bar is its pane's title
-// row. Writes sidebars.json, appearance.json, hotkeys.json, newtab.json and a few notes (put back): throwaway server only.
+// The Tabs panel and the tab bar turned off (appearance `tabBar`). With the panel in the left sidebar: it lists the
+// open tabs, the shown one marked; a click on a row shows its tab; its X closes it; its New tab row (and a double-click
+// under the list, and the tab bar's +) opens a tab at the list's end, with ⌘T still beside the shown one, as a blank
+// tab or the switcher (a phone's drawer has the row too); then with tabBar false (written to appearance.json, followed
+// live) each pane's bar shows only the tab on screen and how many it has, and the panel still switches; a split lists
+// each pane under its number; with paneTitles false too, a note's own bar is its pane's title row. Writes
+// sidebars.json, appearance.json, hotkeys.json, newtab.json and a few notes (put back): throwaway server only.
 //   node web/qa/tabspanel.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -16,7 +16,7 @@ const keep = (f) => { const p = path.join(VAULT, ".vaultite", f); return { p, wa
 const sidebars = keep("sidebars.json"), look = keep("appearance.json"), hotkeys = keep("hotkeys.json"), newtab = keep("newtab.json")
 // (the web app gives ⌘T no keys, the browser's: these show its row's keycaps)
 writeFileSync(hotkeys.p, JSON.stringify({ ...JSON.parse(hotkeys.was ?? "{}"), "tab:new": ["Mod+Shift+Y"] }) + "\n")
-const spare = [1, 2, 3, 4].map((i) => `Notes/New tab row ${i}.md`)
+const spare = [1, 2, 3, 4, 5].map((i) => `Notes/New tab row ${i}.md`)
 for (const p of spare) writeFileSync(path.join(VAULT, p), `# New tab row ${p.slice(-4, -3)}\n`)
 const lookNow = () => JSON.parse(look.was ?? "{}")
 writeFileSync(sidebars.p, JSON.stringify({ left: ["tabs:tabs", "pages:pages", "files:files"], right: [], collapsed: [] }) + "\n")
@@ -49,7 +49,8 @@ try {
 
   const n = r.length
   await page.hover(`[data-open-tab="${r[1].id}"]`)
-  await page.click(`[data-open-tab="${r[1].id}"] button[aria-label^=Close]`); await wait(300)
+  await page.click(`[data-open-tab="${r[1].id}"] button[aria-label^=Close]`)
+  await until(async () => (await rows()).length === n - 1 && (await barTabs()).length === n - 1, 3000)
   check("its X closes the tab", (await rows()).length === n - 1 && (await barTabs()).length === n - 1, [await rows(), await barTabs()])
   await page.screenshot({ path: `${OUT}panel.png` })
 
@@ -89,6 +90,14 @@ try {
   after = await until(async () => { const x = await ids(); return x.length === before.length + 1 ? x : null }, 3000)
   check("⌘T still opens one beside the tab on screen", after?.[0] === before[0] && after[1] !== before[1] && (await rows())[1]?.on, [before, after])
   await fill(spare[1])
+
+  // The tab bar's + opens it at the end, where the + is, as in a browser.
+  before = await ids()
+  await page.click(`[data-open-tab="${before[0]}"]`); await wait(300)
+  await page.click("[data-tab-bar] button[aria-label='New tab']")
+  after = await until(async () => { const x = await ids(); return x.length === before.length + 1 ? x : null }, 3000)
+  check("the tab bar's + opens one at the end", after?.slice(0, -1).join() === before.join() && (await rows()).at(-1)?.on, [before, after])
+  await fill(spare[4])
 
   // A double-click under the list (Tabs the sidebar's last panel: the room under it) opens one at the end too.
   writeFileSync(sidebars.p, JSON.stringify({ left: ["pages:pages", "tabs:tabs"], right: [], collapsed: [] }) + "\n")

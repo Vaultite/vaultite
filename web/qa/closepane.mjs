@@ -56,7 +56,8 @@ try {
   // The lower pane's strip (not at the window's top: drawn), its X on hover.
   const strip = page.locator(`[data-group]:not([data-top]) [data-bare]`)
   const x = page.locator(`[data-group]:not([data-top]) [data-pane-close]`)
-  await strip.hover(); await wait(250)
+  await strip.hover()
+  await until(async () => (await x.evaluate((e) => getComputedStyle(e).opacity)) === "1", 2000)
   check("the strip shows an X on hover, beside the handle", (await x.evaluate((e) => getComputedStyle(e).opacity)) === "1"
     && await x.evaluate((e) => !!e.nextElementSibling?.matches("[data-pane-handle]")))
   await x.click()

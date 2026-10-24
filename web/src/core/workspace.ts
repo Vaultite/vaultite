@@ -223,8 +223,8 @@ function switchTo(gid: string, t: Tab, from?: string) {
 
 /** Where the tabs made now go in their pane: beside the active tab, or at its end (`newTabsAt`). */
 let placing: "end" | undefined
-/** Runs `fn` with the tabs it makes in a pane put at its end, in no tab group, instead of beside the active tab: the
- *  Tabs panel's New tab row, whose place the new tab takes. */
+/** Runs `fn` with the tabs it makes in a pane put at its end, in no tab group, instead of beside the active tab: a tab
+ *  bar's + and the Tabs panel's New tab row, whose place the new tab takes. */
 export function newTabsAt<T>(at: "end" | undefined, fn: () => T): T {
   const was = placing
   placing = at
@@ -624,7 +624,7 @@ let toRename: string | null = null
 export function askRename(path: string) { toRename = path; dispatchEvent(new Event("vaultite:rename")) }
 export const takeRename = (path: string) => { if (toRename !== path) return false; toRename = null; return true }
 
-/** A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one (or at the end: `newTabsAt`): a
+/** A new tab, in the focused group (or `gid`'s), next to the active one (or at the end: `newTabsAt`, its tab bar's +): a
  *  blank tab, one per pane (the blank tab it has already moves there instead; the active one itself: nothing moves). */
 export function newTab(gid = state.focus) {
   // (asked for before the vault arrived, on a first visit's blank tab: it stays one, not filled with the home page)

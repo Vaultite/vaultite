@@ -211,7 +211,7 @@ function barItems(group: Group): MenuItem[] {
 /** Right-click on a tab bar's empty space. */
 function barMenu(group: Group): MenuItem[] {
   return [
-    { label: "New tab", icon: Plus, run: () => openNewTab({ pane: group.id }) },
+    { label: "New tab", icon: Plus, run: () => openNewTab({ pane: group.id, at: "end" }) },
     ...commandItems("tab:reopen"),
     ...(hasMainWindow() ? [{ label: "Move all to main window", icon: AppWindow, run: () => moveToMain(group.tabs.map((t) => t.id)) }] : []),
     ...barItems(group),
@@ -558,8 +558,8 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
             line={lineOf(t.id)} />
           return chip ? [chip, item] : item
         })}
-        {/* Right after the last tab (not pinned to the bar's end). */}
-        <button type="button" onClick={() => openNewTab({ pane: group.id })} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
+        {/* Right after the last tab (not pinned to the bar's end); its tab opens there, as in a browser. */}
+        <button type="button" onClick={() => openNewTab({ pane: group.id, at: "end" })} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
           <Plus className="size-4" strokeWidth={2} />
         </button>

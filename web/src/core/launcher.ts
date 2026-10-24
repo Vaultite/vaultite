@@ -34,8 +34,8 @@ let launchAt: "end" | undefined
 export const launcherAt = () => launchAt
 export const launcherClosed = () => { launchAt = undefined }
 
-/** A new tab in the focused pane (or `pane`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a
- *  blank one, or what newtab.json's `opens` says. Beside the active tab, or `at` the pane's end (the Tabs panel's row). */
+/** A new tab in the focused pane (or `pane`'s; or at the end of tab group `set`, a phone's open one): a blank one, or
+ *  newtab.json's `opens`. Beside the active tab (⌘T), or `at` the pane's end (a tab bar's +, the Tabs panel's row). */
 export function openNewTab({ pane, set, at }: { pane?: string; set?: string; at?: "end" } = {}) {
   const { opens } = getPrefs().newTab, view = viewHere(opens)
   if (set) pane = setById(set)?.g.id

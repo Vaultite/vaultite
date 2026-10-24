@@ -1,12 +1,12 @@
 ## Tabs
 The Tabs panel lists the open tabs pane by pane, so the tab bar can be off: vertical tabs. One switch moves the tabs
-between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel):
-in the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the
+between the two (the palette's Show tabs in the sidebar / Show tabs on top, or right-click the tab bar or the panel): in
+the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the left sidebar (sidebars.json, or the
 workspace's `sidebars`); on top, `tabBar` is true and the panel is hidden. The tabs end in a New tab row: a new tab at
-the end of the focused pane, in its place (double-clicking under the list too; ⌘T opens one beside the active tab).
-Under them, what the user's other devices have open (`other_devices`: those open now or used this week), from
-`.vaultite/plugins/tabs/device-<id>.json`, one per app or browser (`label`: the user's name for it). A browser driven by
-automation isn't a device.
+the end of the focused pane, in its place (double-clicking under the list too, and a tab bar's +; ⌘T opens one beside
+the active tab). Under them, what the user's other devices have open (`other_devices`: those open now or used this
+week), from `.vaultite/plugins/tabs/device-<id>.json`, one per app or browser (`label`: the user's name for it). A
+browser driven by automation isn't a device.
 
 **Devices** (`vau tabs devices`; the Devices view, also in Machines): each one, open now or when it was last used, with
 its tabs. Which are open isn't kept in a file: each server knows its own windows, and asks the other machines for theirs.

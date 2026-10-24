@@ -110,10 +110,11 @@ export async function palette(page, name, settle = 800) {
   await page.keyboard.press("Enter"); await wait(settle)
 }
 
-/** Runs a command from the palette if it's listed (else closes the palette): whether it was. */
+/** Runs a command from the palette if it's listed (else closes the palette): whether it was. It waits for the field, not
+ *  rows: a query left unpicked comes back selected (Palette.tsx), and may list none until typing replaces it. */
 export async function command(page, name, settle = 300) {
-  await openPalette(page); await page.waitForSelector("[role=option]"); await page.keyboard.type(name); await wait(150)
-  const hit = await page.locator("[role=option]", { hasText: name }).count()
+  await openPalette(page); await page.waitForSelector("[role=dialog] input:focus"); await page.keyboard.type(name)
+  const hit = await until(() => page.locator("[role=option]", { hasText: name }).count(), 1500)
   await page.keyboard.press(hit ? "Enter" : "Escape"); await wait(settle)
   return hit > 0
 }
