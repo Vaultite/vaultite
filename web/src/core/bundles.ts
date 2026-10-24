@@ -9,7 +9,7 @@ import { captureWindow } from "@/core/desktop"
 import { afterSheets, openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
-import { currentWorkspace } from "@/core/scope"
+import { currentWorkspace, landingWorkspace } from "@/core/scope"
 import type { Info as BundleInfo, Plan, PlanChange, ShareItem } from "../../../core/bundles.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
@@ -24,6 +24,14 @@ export type Previous = { bundle: string; name: string; at: string }
 type Listing = { bundles: BundleInfo[]; default: string; previous: Previous | null; onboarding: boolean
   trial: { id: string; name: string; at: string } | null; applied: { id: string; name: string; at: string; skip: string[] } | null }
 
+/** The workspace a plan or an apply is for: the current one, else the one the window goes to if the bundle turns
+ *  Workspaces on (`landing`: its own panels and pins would show instead of the bundle's). */
+function where(): { workspace?: number; landing?: number } {
+  const n = currentWorkspace()?.n, landing = landingWorkspace()
+  return n ? { workspace: n } : landing ? { landing } : {}
+}
+const whereQuery = () => { const q = new URLSearchParams(Object.entries(where()).map(([k, x]) => [k, String(x)])).toString(); return q ? `?${q}` : "" }
+
 let listing: Listing | null = null
 let loading: Promise<void> | null = null
 const subs = signal()
@@ -31,7 +39,7 @@ const emit = () => subs.notify()
 
 /** Fetch the list again (after a save, an import, a delete, an apply; the page shown: what's in use may have changed). */
 export function refreshBundles() {
-  loading = get<Listing>(`bundles${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`).then((l) => { listing = l; emit() }, (e) => { notifyError(e, "Couldn't list the bundles") }).finally(() => { loading = null })
+  loading = get<Listing>(`bundles${whereQuery()}`).then((l) => { listing = l; emit() }, (e) => { notifyError(e, "Couldn't list the bundles") }).finally(() => { loading = null })
   return loading
 }
 
@@ -65,7 +73,7 @@ export const skipOf = (p: Plan, off: ReadonlySet<string>) => [...new Set([...off
 
 
 export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
-  return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
+  return get(`bundles/${encodeURIComponent(id)}${whereQuery()}`)
 }
 
 export type ApplyOptions = {
@@ -86,7 +94,7 @@ export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false
   const installs = allowCode ? without(plan, new Set(skip)).code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
   notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
   try {
-    const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded, skip, trial })
+    const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: null, ...where(), allowCode, offAdded, skip, trial })
     await reload()
     void refreshBundles()
     // A guide it just added comes first: the pages it pins are linked from there.

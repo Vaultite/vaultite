@@ -439,6 +439,8 @@ export type WebContainer = { id: string; name: string; color: Color }
 export type WorkspaceHost = {
   /** The current workspace, 1 to 5: there always is one. */
   current: () => number
+  /** The workspace this device picked (0: none yet), the plugin off too: where the window goes when it's turned on. */
+  picked: () => number
   /** The workspaces in use, and the current one, in order. */
   list: () => WorkspaceInfo[]
   /** Go to workspace n (an unused one starts blank). */

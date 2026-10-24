@@ -373,6 +373,8 @@ type Change = { change: string; key: string; from: unknown; to: unknown }
 export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "editor" | "hotkey" | "newtab"
   label: string; from?: unknown; to?: unknown }
 export type Plan = {
+  /** The workspace it changes the panels and pins of (null: the vault's only). */
+  workspace: number | null
   /** Plugins it turns on and off (ids), ids it names that this app doesn't have, and `added`: plugins the user added
    *  (the vault's, on) that it doesn't name, left as they are unless planned with offAdded. */
   plugins: { on: string[]; off: string[]; missing: string[]; added: string[] }
@@ -413,13 +415,24 @@ async function slotOf(host: Host, n: number | null): Promise<Item | null> {
   } catch { return null }
 }
 
+/** The first workspace in use (null: none, or Workspaces isn't here). */
+async function firstWorkspace(host: Host): Promise<number | null> {
+  if (!host.plugins().some((p) => p.id === "workspaces")) return null
+  try {
+    const w = ((await host.call("GET", "workspaces")) as Item).workspaces
+    const i = Array.isArray(w) ? w.findIndex(isObj) : -1
+    return i >= 0 ? i + 1 : null
+  } catch { return null }
+}
+
 const title = (p: string) => path.basename(p).replace(/\.(md|base)$/, "")
 
-/** `skip`: change ids to leave out. `offAdded`: the plugins the user added that it doesn't name go off too. */
-type PlanOptions = { skip?: ReadonlySet<string>; offAdded?: boolean }
+/** `skip`: change ids to leave out. `offAdded`: the plugins the user added that it doesn't name go off too. `landing`:
+ *  without workspaces (n null), the one the window goes to if it turns Workspaces on (null: the device picked none). */
+type PlanOptions = { skip?: ReadonlySet<string>; offAdded?: boolean; landing?: number | null }
 
 /** What applying bundle b would change in this vault (and in workspace n, the one the user is on). */
-export async function plan(b: Bundle, host: Host, n: number | null, { skip = new Set(), offAdded = false }: PlanOptions = {}): Promise<Plan> {
+export async function plan(b: Bundle, host: Host, n: number | null, { skip = new Set(), offAdded = false, landing = null }: PlanOptions = {}): Promise<Plan> {
   const v = host.vault, kinds = known(host)
   const { code, settings, vaultFiles, hidden } = parts(b.files)
   const changes: PlanChange[] = [], omitted: string[] = []
@@ -451,6 +464,9 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
     const now = k ? switchedOn(conf, id, k.optIn) : false
     if (want !== now && take({ id: `plugin:${id}`, part: "plugin", label: `${want ? "Turn on" : "Turn off"} ${nameOf(id)}` })) (want ? on : off).push(id)
   }
+  // Turning Workspaces on, the window goes to a workspace whose own panels and pins would show instead of its: that one
+  // is the one it changes (the device's pick, else the first in use, as the app picks: plugins/core/workspaces/state.ts).
+  if (!n && on.includes("workspaces")) n = landing ?? await firstWorkspace(host)
   const missing = [...new Set([...strs(pj?.disabled), ...strs(pj?.enabled)])].filter((id) => !kinds.has(id) && !code.includes(id) && !installs.some((x) => x.id === id))
   // settings
   const set: Plan["settings"] = [], skipped: Plan["skipped"] = []
@@ -558,7 +574,7 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
     if (changes.some((c) => c.id === `pin:${to}`)) add.push(to)
     else addFile(to)
   }
-  return { plugins: { on, off, missing, added }, code: codeInfo, settings: set, skipped, panels, pins, appearance, editor, hotkeys, newtab, files: { add, kept },
+  return { workspace: n, plugins: { on, off, missing, added }, code: codeInfo, settings: set, skipped, panels, pins, appearance, editor, hotkeys, newtab, files: { add, kept },
     changes, omitted, empty: !changes.length }
 }
 
@@ -697,11 +713,12 @@ function merged(old: Previous, now: Previous): Previous {
 
 /** `remember: false`: nothing to restore (a new vault's first). `offAdded`: plugins the user added go off too. `skip`:
  *  change ids left out. `trial`: it's tried (Keep or Restore end it; applied during one, restore goes to before that). */
-export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false, skip = [] as string[], trial = false } = {}) {
+export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false, skip = [] as string[], trial = false, landing = null as number | null } = {}) {
   const v = host.vault
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const left = new Set(skip)
-  const p = await plan(b, host, n, { skip: left, offAdded })
+  const p = await plan(b, host, n, { skip: left, offAdded, landing })
+  n = p.workspace
   const name = info(b, host).name
   if (runsCode(p) && !allowCode) {
     throw new HTTPError(409, `${name} brings vault plugins (${p.code.map((c) => c.name).join(", ")}): they run code on this machine. Apply it with allowCode to confirm.`)
@@ -1379,9 +1396,9 @@ export async function handle(host: Host, method: string, parts: string[], query:
   const v = host.vault
   const [id, action] = parts
   if (parts.length === 0 && method === "GET") {
-    const n = workspaceOf(query.workspace), applied = readApplied(v)
+    const n = workspaceOf(query.workspace), landing = workspaceOf(query.landing), applied = readApplied(v)
     const all = await Promise.all(list(v).map(async (b): Promise<Info> => {
-      const p = b.error ? null : await plan(b, host, n).catch(() => null)
+      const p = b.error ? null : await plan(b, host, n, { landing }).catch(() => null)
       const out = { ...info(b, host), inUse: !!p?.empty }
       if (!p || applied?.bundle !== b.id) return out
       const differs = p.changes.map((c) => c.id).filter((x) => !applied.skip.includes(x))
@@ -1402,7 +1419,7 @@ export async function handle(host: Host, method: string, parts: string[], query:
   }
   if (parts.length === 1 && method === "GET") {
     const b = find(v, id)
-    const p = await plan(b, host, workspaceOf(query.workspace))
+    const p = await plan(b, host, workspaceOf(query.workspace), { landing: workspaceOf(query.landing) })
     return { bundle: info(b, host), files: Object.keys(b.files), plan: p, pages: pageLooks(b, host, [...p.pins?.list ?? [], ...p.pins?.unpin ?? []]) }
   }
   if (parts.length === 1 && method === "DELETE") {
@@ -1411,7 +1428,7 @@ export async function handle(host: Host, method: string, parts: string[], query:
     return { deleted: id, trashed: v.toTrash(`${VAULT_BUNDLES}/${id}`) }
   }
   if (parts.length === 2 && action === "apply" && method === "POST") {
-    return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true, { offAdded: body.offAdded === true, skip: strs(body.skip), trial: body.trial === true })
+    return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true, { offAdded: body.offAdded === true, skip: strs(body.skip), trial: body.trial === true, landing: workspaceOf(body.landing) })
   }
   if (parts.length === 2 && action === "fork" && method === "POST") return fork(host, id, strs(body.skip), workspaceOf(body.workspace))
   if (parts.length === 2 && PICTURES.includes(action) && method === "GET") {

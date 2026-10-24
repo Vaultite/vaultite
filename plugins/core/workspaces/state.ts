@@ -167,6 +167,7 @@ function placesOf(n: number): string[] {
 /** What the app asks Workspaces (WorkspaceHost in the plugin API; core/scope.ts). */
 export const host: WorkspaceHost = {
   current: () => current() || 1,
+  picked: () => picked(),
   list: (): WorkspaceInfo[] => SLOTS.filter((n) => slots()?.[n - 1] || n === current()).map((n) => ({ n, label: label(n), places: placesOf(n), ...lookOf(n) })),
   switchTo: (n) => switchTo(n),
   menu: () => {

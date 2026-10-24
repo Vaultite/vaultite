@@ -39,6 +39,8 @@ export function currentWorkspace(): WorkspaceInfo | null {
   const n = h.current()
   return h.list().find((w) => w.n === n) ?? { n, label: `Workspace ${n}`, places: [] }
 }
+/** Without workspaces, the one this window would go to if a plugin keeping them were turned on (null: none picked). */
+export const landingWorkspace = (): number | null => (workspaceHost() ? null : PLUGINS.find((p) => p.workspace)?.workspace?.picked() || null)
 /** The workspaces in use, and the current one ([] without workspaces). */
 export const workspaceList = (): WorkspaceInfo[] => workspaceHost()?.list() ?? []
 

@@ -100,6 +100,24 @@ export default async ($: VaultTest) => {
     check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists("Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
     ;[code] = await api("POST", "bundles/restore")
     check("bundles: restore twice is a 404", code === 404, code)
+    // One turning Workspaces on (Browser) changes the workspace the window goes to then: its own panels would show instead.
+    {
+      const plugins = conf("plugins")
+      setConf("plugins", { ...plugins, enabled: ((plugins.enabled ?? []) as string[]).filter((id) => id !== "workspaces") })
+      write(".vaultite/bundles/spaces/bundle.json", JSON.stringify({ name: "Spaces" }))
+      write(".vaultite/bundles/spaces/plugins.json", JSON.stringify({ enabled: ["workspaces"] }))
+      write(".vaultite/bundles/spaces/sidebars.json", JSON.stringify({ left: ["tabs:tabs"], right: [], collapsed: [] }))
+      const planned = (await api("GET", "bundles/spaces"))[1].plan
+      check("bundles: turning Workspaces on, the first in use is the one it changes (no device's pick)", planned.workspace === 1 && planned.panels.workspace === 1, planned.panels)
+      ;[code] = await api("POST", "bundles/spaces/apply", { landing: 1 })
+      d = await slot1()
+      check("bundles: the workspace the window goes to drops its own panels", code === 200 && !d.sidebars && conf("sidebars")?.left?.join() === "tabs:tabs", [code, d.sidebars])
+      ;[code] = await api("POST", "bundles/restore")
+      d = await slot1()
+      check("bundles: restored, Workspaces off and its panels back", code === 200 && JSON.stringify(d.sidebars) === JSON.stringify(deskBefore.sidebars) && !((conf("plugins").enabled ?? []) as string[]).includes("workspaces"), [d.sidebars, conf("plugins")])
+      fs.rmSync(path.join(VAULT, ".vaultite/bundles/spaces"), { recursive: true })
+      setConf("plugins", plugins)
+    }
     // A snippet one of the app's bundles or an imported one brings (Zen's floating panes, Life OS's serif titles) goes
     // off in another; the user's own stay.
     const lookThen = conf("appearance")
