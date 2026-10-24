@@ -82,6 +82,9 @@ export const getWorkspace = () => state
 export const useWorkspace = () => changed.use(() => state)
 /** Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged). */
 export const onWorkspaceChange = changed.subscribe
+let replacing = false
+/** The change being told is a whole layout put in place (replaceWorkspace): nothing the user did here. */
+export const replacingWorkspace = () => replacing
 /** Put a whole other layout in place (Workspaces switching). Nothing is "closed" (a terminal's tab reattaches when it
  *  comes back). `merge`: the same workspace changed on another device, so what's on screen here stays where it can. */
 export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) {
@@ -107,7 +110,8 @@ export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) 
     gs = leaves(root)
     if (gs.some((g) => g.id === state.focus)) focus = state.focus
   }
-  set(root ? { root, focus } : { root: { id: "g0", tabs: [], active: "" }, focus: "g0" })
+  replacing = true
+  try { set(root ? { root, focus } : { root: { id: "g0", tabs: [], active: "" }, focus: "g0" }) } finally { replacing = false }
   showActiveUnder()
 }
 

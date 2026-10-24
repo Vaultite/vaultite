@@ -1,7 +1,7 @@
 // Tabs move as a browser's: a group folds by its tabs shrinking into its chip and opens by them growing out; new tabs
 // grow in, the panel's closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, type RefObject } from "react"
-import { closeTab, groups, onWorkspaceChange } from "@/core/workspace"
+import { closeTab, groups, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
 import { foldSet, setById } from "@/core/tabsets"
 
 const MS = 200
@@ -60,7 +60,8 @@ export function foldSetMoving(id: string) {
 
 // ---------- tabs coming and going ----------
 
-/** Tabs that came into the workspace just now, and when: opened one or two at a time, not a whole workspace's. */
+/** Tabs that came into the workspace just now, and when: opened one or two at a time, not a whole layout put in place
+ *  (another workspace, another device's change). */
 const born = new Map<string, number>()
 let known = new Set<string>()
 const ids = () => new Set(groups().flatMap((g) => g.tabs.map((t) => t.id)))
@@ -69,6 +70,7 @@ if (typeof window !== "undefined") {
   onWorkspaceChange(() => {
     const now = ids(), fresh = [...now].filter((id) => !known.has(id))
     known = now
+    if (replacingWorkspace()) return
     if (fresh.length && fresh.length <= 2) { const t = performance.now(); for (const id of fresh) born.set(id, t) }
   })
 }

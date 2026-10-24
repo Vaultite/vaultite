@@ -1,7 +1,7 @@
 // Workspaces as spaces (plugins/core/workspaces): a workspace's menu sets its icon (shown for its number, in its tint),
 // its colour (the sidebars take a little of it, light and dark, and lose it again) and its Browser container (the
 // Browser's own, listed); its settings show all three; a two-finger swipe over the sidebar goes to the next and back,
-// an up-and-down one doesn't; the list lights only the focused row, a check on the current one; the phone's tab list
+// an up-and-down one doesn't, and the tabs there show at once; the list lights only the focused row, a check on the current one; the phone's tab list
 // shows the icon, and its menu each workspace's mark. WRITES plugins.json and the workspaces' files (put
 // back): throwaway only.   node web/qa/spaces.mjs <base url> <vault path>
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
@@ -93,6 +93,10 @@ try {
   await page.mouse.move(120, 420)
   await page.mouse.wheel(100, 4)
   check("a swipe sideways over the sidebar goes to the next workspace", await until(async () => (await lit()) === "2", 3000), await lit())
+  // (a whole workspace put in place just shows: only tabs the user opens grow in)
+  const tabW = () => page.$$eval("section[aria-label=Pane] [role=tab]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().width)))
+  const first = await tabW(); await wait(400)
+  check("… its tabs show at once, none growing in", JSON.stringify(first) === JSON.stringify(await tabW()), [first, await tabW()])
   check("… where the sidebars lose the colour (it has none)", far(await bg(), plain) <= 1, [await bg(), plain])
   await wait(500)
   await page.mouse.wheel(-100, 4)
