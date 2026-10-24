@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The status bar keeps its items while you drag one back**: an item dragged out of its tray over the bar no longer
+  makes the bar leave out every other item, so it can go among them.
 - **The quick switcher lists every match**: scrolling down a long list of matches no longer stops partway, short of
   the rest and of the row that searches every file.
 - **Snooze in the inbox**: a result or an agent's event can be put off (a phone's swipe, the clock button, a right-click:

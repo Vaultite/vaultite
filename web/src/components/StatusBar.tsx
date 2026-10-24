@@ -54,7 +54,12 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
     const coming = b.querySelector<HTMLElement>(`[data-slide="${INCOMING}"]`)
     if (coming) coming.style.display = "none"
     const out = (els: Iterable<Element>, gone = true) => { for (const el of els) el.toggleAttribute("data-fit-out", gone) }
-    const fits = () => b.scrollWidth <= b.clientWidth + 0.5
+    // (by its parts' laid-out widths: items making way for a drag are moved, and moved ones overflow it)
+    const gap = parseFloat(getComputedStyle(b).columnGap) || 0
+    const fits = () => {
+      const parts = [...b.children].filter((el) => (el as HTMLElement).offsetWidth) as HTMLElement[]
+      return parts.reduce((w, el) => w + el.offsetWidth, 0) + gap * Math.max(0, parts.length - 1) <= b.clientWidth + 0.5
+    }
     out(b.querySelectorAll("[data-fit-out]"), false)
     const more = b.querySelector<HTMLElement>("[data-status-more]")
     if (more && !("pinned" in more.dataset)) out([more])
