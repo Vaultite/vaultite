@@ -1,7 +1,7 @@
 // Workspaces as spaces (plugins/core/workspaces): a workspace's menu sets its icon (shown for its number, in its tint),
 // its colour (the sidebars take a little of it, light and dark, and lose it again) and its Browser container (the
 // Browser's own, listed); its settings show all three; a two-finger swipe over the sidebar goes to the next and back,
-// an up-and-down one doesn't, and the tabs there show at once; the list lights only the focused row, a check on the current one; the phone's tab list
+// an up-and-down one doesn't, and the tabs there show at once; the list lights only the focused row, a check on the current one, a long name whole on hover; the phone's tab list
 // shows the icon, and its menu each workspace's mark. WRITES plugins.json and the workspaces' files (put
 // back): throwaway only.   node web/qa/spaces.mjs <base url> <vault path>
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
@@ -17,6 +17,8 @@ writeFileSync(PLUGINS, JSON.stringify({ ...JSON.parse(pluginsBefore), enabled: [
 mkdirSync(wsDir(VAULT), { recursive: true })
 writeFileSync(path.join(wsDir(VAULT), "1.json"), JSON.stringify({ name: "Writing" }) + "\n")
 writeFileSync(path.join(wsDir(VAULT), "2.json"), JSON.stringify({ name: "Reading" }) + "\n")
+const LONG = "Research for the quarterly planning offsite in Lisbon"
+writeFileSync(path.join(wsDir(VAULT), "3.json"), JSON.stringify({ name: LONG }) + "\n")
 
 const SWITCHER = "aside [data-workspace-switcher]"
 /** A CSS colour as the screen draws it (sRGB 0-255), in the page. */
@@ -52,6 +54,8 @@ try {
   await page.click(SWITCHER); await page.keyboard.press("ArrowDown"); await wait(200)
   const listed = await page.$$eval("[data-workspace-list] [data-workspace]", (els) => els.map((e) => ({ on: e.getAttribute("aria-pressed") === "true", check: !!e.querySelector("svg.lucide-check"), bg: getComputedStyle(e).backgroundColor, focus: e === document.activeElement })))
   check("the list: only the focused row is lit, a check on the current one", listed[0]?.on && listed[0].check && !listed[1].check && listed[1].focus && listed[0].bg !== listed[1].bg && /, 0\)$|transparent/.test(listed[0].bg), listed)
+  await page.hover("[data-workspace-list] [data-workspace='3']"); await wait(900)
+  check("… a name cut off shows whole on hover", await page.evaluate(() => document.querySelector(".tooltip")?.textContent) === LONG)
   await page.keyboard.press("Escape"); await wait(200)
 
   // The colour: the sidebars take a little of it, light and dark, and lose it with No colour.

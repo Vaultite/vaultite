@@ -116,6 +116,7 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
             if (renaming === m) return <Rename key={m} n={m} on={on} end={(enter) => ended(m, enter)} />
             return (
               <button key={m} type="button" data-workspace={m} data-used={has || undefined} data-drop={over === m || undefined} aria-pressed={on}
+                data-tip={has ? label(m) : undefined} data-tip-trunc data-tip-side="right"
                 onClick={() => { setOpen(false); switchTo(m) }}
                 onContextMenu={menuFor(() => slotMenu(m))}
                 className={cn("flex h-7 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] transition-colors",
