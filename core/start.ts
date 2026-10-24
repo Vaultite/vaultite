@@ -87,7 +87,7 @@ export async function setUpNew(host: B.Host) {
 /** The starter content, chosen in setup: a pinned Start here, How this vault works, the agent's page, and a line in
  *  AGENTS.md and CLAUDE.md pointing agents at the vault's rules (Agent files). Returns what it wrote. */
 export async function starter(host: B.Host) {
-  const wrote: string[] = [...host.writePages?.({ pin: false, only: STARTER_PAGES }) ?? []]
+  const wrote = [...host.writePages({ pin: false, only: STARTER_PAGES })]
   await host.call("POST", "ops/plugin.grant", { id: "agent-files" })
   await host.call("PATCH", "config/plugin/agent-files", { rootFiles: true })
   wrote.push("AGENTS.md", "CLAUDE.md")

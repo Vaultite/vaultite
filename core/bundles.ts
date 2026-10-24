@@ -66,13 +66,13 @@ export type Host = {
    *  with `pages: false` (a restore: they were on before). */
   syncPlugins: (opts?: { pages?: boolean }) => Promise<unknown>
   /** Write the pages of the plugins that are on that the pages folder has no file for (core/pages.ts). */
-  writePages?: (opts?: { pin?: boolean; only?: string[] }) => string[]
+  writePages: (opts?: { pin?: boolean; only?: string[] }) => string[]
   /** Allow vault plugins to run on this machine as their files are now (core/trust.ts), when this machine's owner asked. */
-  allow?: (ids: string[]) => Promise<void>
+  allow: (ids: string[]) => Promise<void>
   /** Install a vault plugin from its source (plugin.install, off): at `commit` when pinned, refused unless its files
    *  hash to `hash`; and uninstall one (plugin.uninstall). */
-  install?: (source: string, tag: string | null, pin: { commit: string | null; hash: string | null }) => Promise<void>
-  uninstall?: (id: string) => Promise<void>
+  install: (source: string, tag: string | null, pin: { commit: string | null; hash: string | null }) => Promise<void>
+  uninstall: (id: string) => Promise<void>
 }
 
 const isPng = (f: string | Buffer | undefined) => Buffer.isBuffer(f) && f.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
@@ -148,6 +148,8 @@ function json(b: Bundle | Files, rel: string): Item | null {
   try { const o = JSON.parse(textOf(t)); if (isObj(o)) return o } catch { /* below */ }
   throw new HTTPError(400, `the bundle's ${rel} isn't a JSON object`)
 }
+/** json(), null when the file isn't an object (problems says). */
+const jsonOr = (b: Bundle | Files, rel: string) => { try { return json(b, rel) } catch { return null } }
 
 /** A vault plugin a bundle installs from where it comes from (plugins.json `install`), rather than bringing its files;
  *  one it turns on that moved out of the app (core/migrations.ts MOVED) too. Not one the app (`host`) has itself. */
@@ -238,10 +240,9 @@ function homeOf(b: Bundle, host: Host, pinned: string[] | null): HomeBlock[] | n
 }
 
 function info(b: Bundle, host: Host): Info {
-  const m = (() => { try { return json(b, "bundle.json") ?? {} } catch { return {} } })()
+  const m = jsonOr(b, "bundle.json") ?? {}
   const str = (v: unknown, d = "") => (typeof v === "string" && v.trim() ? v.trim() : d)
-  let look: Item = {}
-  try { look = json(b, "appearance.json") ?? {} } catch { /* problems says */ }
+  const look = jsonOr(b, "appearance.json") ?? {}
   let on: string[] | null = null, pinned: string[] | null = null
   try {
     const t = pluginTargets(b, host)
@@ -251,7 +252,8 @@ function info(b: Bundle, host: Host): Info {
   } catch { /* problems says */ }
   const installs = installsOf(b.files, host), brings = parts(b.files).code
   let panels: Info["panels"] = null
-  try { const s = readSidebars(json(b, "sidebars.json")); if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed } } catch { /* problems says */ }
+  const s = readSidebars(jsonOr(b, "sidebars.json"))
+  if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed }
   return {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
     sort: typeof m.sort === "number" ? m.sort : 1000,
@@ -272,7 +274,7 @@ export function problems(files: Files): string[] {
     if (!safePath(f)) out.push(`${f}: not a path a bundle may hold`)
     if (f.endsWith(".json")) { try { const o = JSON.parse(textOf(files[f])); if (!isObj(o)) out.push(`${f} isn't a JSON object`) } catch { out.push(`${f} isn't valid JSON`) } }
   }
-  const ok = (rel: string) => { try { return json(files, rel) } catch { return null } }
+  const ok = (rel: string) => jsonOr(files, rel)
   const m = ok("bundle.json")
   if (m && (typeof m.name !== "string" || !m.name.trim())) out.push("bundle.json needs a name")
   if (m?.guide !== undefined && (typeof m.guide !== "string" || !m.guide.endsWith(".md") || typeof files[m.guide] !== "string")) out.push("bundle.json: guide must name a note it holds")
@@ -330,7 +332,7 @@ function switchedOn(conf: Item, id: string, optIn: boolean) {
 }
 
 /** Bundles that aren't the user's own: the app's, and those imported (bundle.json's `from`: the directory's Life OS). */
-const notOwn = (v: Vault) => list(v).filter((b) => b.source === "app" || (() => { try { return !!json(b, "bundle.json")?.from } catch { return false } })())
+const notOwn = (v: Vault) => list(v).filter((b) => b.source === "app" || !!jsonOr(b, "bundle.json")?.from)
 
 /** Pages the app brings (plugins' dashboards, the files of bundles not the user's own): unpinned when the bundle applied
  *  doesn't pin them. Every other pin is the user's own and stays (their dashboards too, even saved in a bundle of theirs). */
@@ -432,7 +434,7 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
   const installs = installsOf(b.files, host)
   const here = (id: string) => fs.existsSync(v.abs(`.vaultite/plugins/${id}/manifest.json`))
   const allCode: Plan["code"] = [...code.map((id) => {
-    const m = (() => { try { return json(b, `plugins/${id}/manifest.json`) ?? {} } catch { return {} } })()
+    const m = jsonOr(b, `plugins/${id}/manifest.json`) ?? {}
     return { id, name: typeof m.name === "string" ? m.name : id, kept: here(id) }
   }), ...installs.filter((x) => !code.includes(x.id)).map((x) => ({ id: x.id, name: kinds.get(x.id)?.name ?? x.name, kept: here(x.id), source: x.source, tag: x.tag, commit: x.commit, hash: x.hash }))]
   const codeInfo = allCode.filter((c) => c.kept || take({ id: `install:${c.id}`, part: "install", label: c.source ? `Install ${c.name} from ${c.source}${c.tag ? ` (${c.tag})` : ""}` : `Add the vault plugin ${c.name}` }))
@@ -480,7 +482,7 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
   const add: string[] = [], kept: string[] = []
   // (its pages go in the vault's pages folder, as the plugins' do)
   const at = placeOf(b, v), there = (f: string) => fs.existsSync(v.abs(at(f)))
-  const guide = (() => { try { return json(b, "bundle.json")?.guide } catch { return null } })()
+  const guide = jsonOr(b, "bundle.json")?.guide
   const addFile = (to: string) => take({ id: `file:${to}`, part: "file", label: to === guide ? `Add its guide, ${path.basename(to, ".md")}` : `Add ${to}` }) && !!add.push(to)
   for (const f of vaultFiles) { if (there(f)) kept.push(at(f)); else addFile(at(f)) }
   for (const h of hidden) {
@@ -710,10 +712,9 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   // 0. Plugins it installs from their source, first, each at the commit it names: one that can't be fetched, or isn't
   // what the bundle recorded, stops the apply before anything changed.
   const fetch = p.code.filter((c) => c.source && !c.kept)
-  if (fetch.length && !host.install) throw new HTTPError(501, "this server can't install plugins")
   for (const c of fetch) {
-    try { await host.install!(c.source!, c.tag ?? null, { commit: c.commit ?? null, hash: c.hash ?? null }) } catch (e) {
-      for (const id of prev.installed ?? []) await host.uninstall?.(id).catch(() => {})
+    try { await host.install(c.source!, c.tag ?? null, { commit: c.commit ?? null, hash: c.hash ?? null }) } catch (e) {
+      for (const id of prev.installed ?? []) await host.uninstall(id).catch(() => {})
       throw new HTTPError(e instanceof OpError ? e.status : 502, `${name} isn't applied: couldn't install ${c.name} from ${c.source}: ${(e as Error).message}. Nothing was installed or changed.`)
     }
     (prev.installed ??= []).push(c.id)
@@ -749,14 +750,14 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   // The vault plugins it brought, asked for with allowCode, are allowed on this machine (not ones it found there: those keep
   // waiting until allowed on their own).
   const brought = p.code.filter((c) => !c.kept && p.plugins.on.includes(c.id)).map((c) => c.id)
-  if (allowCode && brought.length) await host.allow?.(brought)
+  if (allowCode && brought.length) await host.allow(brought)
   // (a list left empty goes, as on a new vault)
   const lists = (o: Item) => Object.fromEntries(Object.entries(o).filter(([, l]) => Array.isArray(l) && l.length))
   await patch("plugins", patchOf(lists({ disabled: conf.disabled, enabled: conf.enabled }), lists({ disabled, enabled })))
   await host.syncPlugins()
   // The plugins it turns on write their pages, as turning one on does (pinned here, the pins below make the list the
   // bundle's); the ones already on wrote theirs then, or chose not to: Standard over a new vault adds none.
-  if (p.plugins.on.length) host.writePages?.({ only: p.plugins.on })
+  if (p.plugins.on.length) host.writePages({ only: p.plugins.on })
   // 3. Settings, appearance, the editor, hotkeys: the keys that change.
   const byPlugin = new Map<string, Item>()
   for (const s of p.settings) byPlugin.set(s.plugin, { ...byPlugin.get(s.plugin), [s.key]: s.to })
@@ -863,7 +864,7 @@ async function restore(host: Host) {
   for (const id of prev.installed ?? []) {
     const dir = v.abs(`.vaultite/plugins/${id}`)
     if (!lock[id] || strs(conf.enabled).includes(id) || !fs.existsSync(dir) || !asLocked(dir, lock[id])) continue
-    await host.uninstall?.(id)
+    await host.uninstall(id)
     trashed.push(`.vaultite/plugins/${id}`)
   }
   writeRecord(v, PREVIOUS, null)
@@ -922,7 +923,7 @@ async function current(host: Host, o: SaveOptions, meta: Item | null = null): Pr
   const look = v.config("appearance")
   put("appearance.json", { ...LOOK, ...look })
   // The editor's and the new tab's keys the app's bundles set, defaults said (as plugin settings), and any other the user set.
-  const fixed = (rel: string) => new Set(list(v).filter((b) => b.source === "app").flatMap((b) => { try { return Object.keys(json(b, rel) ?? {}) } catch { return [] } }))
+  const fixed = (rel: string) => new Set(list(v).filter((b) => b.source === "app").flatMap((b) => Object.keys(jsonOr(b, rel) ?? {})))
   const ed = v.config("editor"), edKeys = fixed("editor.json")
   const editor = Object.fromEntries(EDITOR_KEYS.filter((k) => edKeys.has(k) || (k in ed && !same(ed[k], EDITOR[k]))).map((k) => [k, ed[k] ?? EDITOR[k]]))
   if (Object.keys(editor).length) put("editor.json", editor)
@@ -1041,7 +1042,7 @@ function builtInSettings(v: Vault) {
   for (const b of list(v)) {
     if (b.source !== "app") continue
     for (const [id, rel] of parts(b.files).settings) {
-      try { for (const k of Object.keys(json(b, rel) ?? {})) (out.get(id) ?? out.set(id, new Set()).get(id)!).add(k) } catch { /* check_plugins says */ }
+      for (const k of Object.keys(jsonOr(b, rel) ?? {})) (out.get(id) ?? out.set(id, new Set()).get(id)!).add(k)
     }
   }
   return out
@@ -1049,7 +1050,7 @@ function builtInSettings(v: Vault) {
 
 /** "<Name> (mine)", or "(mine 2)"... when a bundle has that name. */
 function mineName(v: Vault, name: string) {
-  const names = new Set(list(v).map((b) => { try { return String(json(b, "bundle.json")?.name ?? "") } catch { return "" } }))
+  const names = new Set(list(v).map((b) => String(jsonOr(b, "bundle.json")?.name ?? "")))
   let out = `${name} (mine)`, i = 2
   while (names.has(out)) out = `${name} (mine ${i++})`
   return out
@@ -1154,7 +1155,7 @@ async function fork(host: Host, id: string, skip: string[], n: number | null) {
 
 /** One part of a bundle to share or leave out: `on` what's sent unless the user says; `own` a page with text of the
  *  user's own (outside its blocks and headings). */
-type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
+export type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
 
 const ownText = (t: string) => t.replace(/^---\n[\s\S]*?\n---\n?/, "").replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "")
   .split("\n").some((l) => !!l.trim() && !/^#{1,6}\s/.test(l.trim()))
@@ -1172,20 +1173,17 @@ function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[]
     items.push({ path: f, kind: page ? "page" : "file", label: f.replace(/\.(md|base)$/, ""), on: !own, ...(page ? { own } : {}) })
   }
   for (const [id, rel] of settings) {
-    let keys: string[] = []
-    try { keys = Object.keys(json(b, rel) ?? {}) } catch { /* problems says */ }
+    const keys = Object.keys(jsonOr(b, rel) ?? {})
     const p = host.plugins().find((x) => x.id === id)
     items.push({ path: rel, kind: "settings", label: String(p?.manifest.name ?? id), on: true, keys })
   }
   if (b.files["editor.json"] !== undefined) {
-    let keys: string[] = []
-    try { keys = Object.keys(json(b, "editor.json") ?? {}) } catch { /* problems says */ }
+    const keys = Object.keys(jsonOr(b, "editor.json") ?? {})
     items.push({ path: "editor.json", kind: "settings", label: "Editor", on: true, keys })
   }
   if (b.files["hotkeys.json"] !== undefined) items.push({ path: "hotkeys.json", kind: "hotkeys", label: "Hotkeys", on: true })
   for (const id of code) {
-    let name = id
-    try { const m = json(b, `plugins/${id}/manifest.json`); if (typeof m?.name === "string") name = m.name } catch { /* its id */ }
+    const m = jsonOr(b, `plugins/${id}/manifest.json`), name = typeof m?.name === "string" ? m.name : id
     items.push({ path: `plugins/${id}/`, kind: "code", label: name, on: true })
   }
   return { items, dropped: dropped(b, host) }
@@ -1195,9 +1193,7 @@ function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[]
 function dropped(b: Bundle, host: Host) {
   const tpl = pluginPages(host)
   const known = (p: string) => b.files[p] !== undefined || tpl.has(p)
-  let pins: string[] = [], page: unknown = null
-  try { pins = strs(json(b, "pages.json")?.pinned) } catch { /* problems says */ }
-  try { page = json(b, "newtab.json")?.page } catch { /* problems says */ }
+  const pins = strs(jsonOr(b, "pages.json")?.pinned), page = jsonOr(b, "newtab.json")?.page
   return [...pins, ...(typeof page === "string" ? [page] : [])].filter((p, i, all) => !known(p) && all.indexOf(p) === i)
 }
 
@@ -1211,9 +1207,9 @@ function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; l
   const left = (f: string) => out.some((x) => (x.endsWith("/") ? f.startsWith(x) : f === x || (x === PREVIEW && f === PREVIEW_DARK)))
   const files: Files = Object.fromEntries(Object.entries(b.files).filter(([f]) => !left(f)))
   const drop = new Set([...gone, ...out])
-  const pg = (() => { try { return json(files, "pages.json") } catch { return null } })()
+  const pg = jsonOr(files, "pages.json")
   if (pg && Array.isArray(pg.pinned)) files["pages.json"] = JSON.stringify({ ...pg, pinned: strs(pg.pinned).filter((x) => !drop.has(x)) }, null, 2) + "\n"
-  const nt = (() => { try { return json(files, "newtab.json") } catch { return null } })()
+  const nt = jsonOr(files, "newtab.json")
   if (nt && typeof nt.page === "string" && drop.has(nt.page)) { const { page: _, ...rest } = nt; files["newtab.json"] = JSON.stringify(rest, null, 2) + "\n" }
   return { ...b, files }
 }
@@ -1303,8 +1299,7 @@ async function incomingFiles(body: unknown) {
 /** The id an imported bundle takes: the user's one from the same place (`from`, at any commit: getting it again
  *  replaces it), else a free one. */
 function idFor(v: Vault, files: Files, want: string | null) {
-  let from: unknown = null
-  try { from = json(files, "bundle.json")?.from } catch { /* problems says */ }
+  const from = jsonOr(files, "bundle.json")?.from
   const was = typeof from === "string" && from ? imports(v).find((b) => unpinned(b.from) === unpinned(from as string)) : null
   return { id: was?.id ?? freeId(v, want ?? String(JSON.parse(textOf(files["bundle.json"])).name), false), replaces: was?.id ?? null }
 }
@@ -1315,7 +1310,8 @@ const unpinned = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
 /** The user's bundles imported from a repository, and from where (bundle.json's `from`). */
 export function imports(v: Vault): { id: string; from: string }[] {
   return list(v).filter((b) => b.source === "vault").flatMap((b) => {
-    try { const from = json(b, "bundle.json")?.from; return typeof from === "string" && from ? [{ id: b.id, from }] : [] } catch { return [] }
+    const from = jsonOr(b, "bundle.json")?.from
+    return typeof from === "string" && from ? [{ id: b.id, from }] : []
   })
 }
 
