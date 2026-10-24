@@ -112,6 +112,7 @@ export async function vaultHarness(from?: string) {
     CLAUDE_DIR, CODEX_DIR,
     /** What an area leaves for the ones after it (tools/test/vault/index.ts says which need which). */
     vars: {} as Record<string, Any>,
-    close: () => fs.rmSync(tmp, { recursive: true, force: true }),
+    // Windows may still hold a file a watcher or child just let go: retry, and a leftover temp folder isn't a failure.
+    close: () => { try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch {} },
   }
 }
