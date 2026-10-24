@@ -316,7 +316,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `namedIcon(name?)`: An icon by its name (`dumbbell`): one of ICONS, one a plugin adds, any other of Lucide's, or an emoji; null for none.
 - `NewFile`: A kind of file it makes, in the New submenu: `make` writes one in `folder` ("" the top) and answers its path, which opens with its name ready to type.
 - `newNoteFolder(s, from?)`: The folder every new note goes in ("" = the top), unless the vault says otherwise.
-- `newTab(gid?)`: A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one: a blank tab, one per pane (the blank tab it has already moves next to the active one instead; none, or the…
+- `newTab(gid?)`: A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one (or at the end: `newTabsAt`): a blank tab, one per pane (the blank tab it has already moves there instead; the…
 - `NewTabCtx`
 - `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.
 - `NoteBody({ store, path, body, fm, className })`: `path`'s body (no frontmatter), drawn read-only.
@@ -359,7 +359,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
-- `openNewTab(gid?, set?)`: A new tab in the focused pane (or `gid`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a blank one, or what newtab.json's `opens` says.
+- `openNewTab({ pane, set, at }?)`: A new tab in the focused pane (or `pane`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a blank one, or what newtab.json's `opens` says.
 - `openPermissions`: Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older build).
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
@@ -457,6 +457,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Ring({ value, goal, color, size })`: Progress ring for "x of goal this week".
 - `Row({ title, meta, right, lead, className, onOpen, href, wrap, … })`: A list row: title (two lines at most) and meta line; `onOpen` makes it a disclosure row, `href` a new-tab link.
 - `rowFileMenu(path)`: A file listed in a row (a recent file, a query's result): Open in new tab (to the right too, on desktop), then its menu.
+- `RowKeys({ id, className })`: A command's keycaps at a sidebar row's end, shown on hover or keyboard focus (`className` says the row's group): the search field's ⌘O, the Tabs panel's ⌘T.
 - `rowMenu(list, key, own)`: A row's menu: the list's menu for the selection when the row is in one, else its own.
 - `runCommandById(id)`: Run a registered command by its id ("switcher:open"), if it's there and available now (`when`: editor:undo only while the keyboard isn't in a text field); whether it ran.
 - `runCommandNamed(text)`: Run a command that's available now by its id ("switcher:open") or its name as the palette lists it ("Open quick switcher", any case): false if there's none (Vim's :cmd).

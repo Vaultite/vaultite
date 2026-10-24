@@ -332,6 +332,9 @@ export type SidebarPanel = {
   dockable?: true
   /** It lists the open tabs (Tabs): Show tabs in the sidebar puts it at the top of the left sidebar, the tab bar off. */
   tabList?: true
+  /** A double-click on its empty room: in its box under what it draws, or under it as the sidebar's last panel (Tabs: a
+   *  new tab, as under a browser's vertical tabs). */
+  emptyDoubleClick?: () => void
   /** Other names people call it by ("file tree", "explorer"), for `vau panels`; core/appsource.ts reads them from the
    *  source, so keep them a plain list of strings. */
   names?: string[]

@@ -5,7 +5,8 @@ import { Search, TextSearch } from "lucide-react"
 import { getStore, type Store } from "@/core/data"
 import { get } from "@/core/http"
 import { cleanName, createNamed, folderOf, openFile, openNew, openView, stem } from "@/core/files"
-import { currentFile } from "@/core/workspace"
+import { currentFile, newTabsAt } from "@/core/workspace"
+import { launcherAt, launcherClosed } from "@/core/launcher"
 import { newNoteFolder } from "@/core/conventions"
 import { snippet } from "@/core/links"
 import { openDetail } from "@/core/nav"
@@ -43,6 +44,9 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   launcher?: boolean }) {
   const docs = useSearchIndex(store)
   const { query: q, setQuery: setQ, select, picked } = useFinderQuery()
+  // (opened by the Tabs panel's New tab row: its picks go at the pane's end, where the row is)
+  const [at] = useState(() => (launcher ? launcherAt() : undefined))
+  useEffect(() => (launcher ? launcherClosed : undefined), [launcher])
   const { node, error } = useMemo(() => readQuery(q), [q])
   const plain = !node || isPlain(node)
   const opened = useRecentFiles()
@@ -94,10 +98,12 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     const newTab = launcher || mod
     picked()
     onClose()
-    if (h.run) setTimeout(() => h.run!(newTab), 0)
-    else if (h.to) setTimeout(() => openView(h.to!, { newTab: true }), 0)
-    else if (h.file) setTimeout(() => openFile(h.file!, { newTab }), 0)
-    else if (h.detail) setTimeout(() => openDetail(h.detail!), 0)
+    setTimeout(() => newTabsAt(at, () => {
+      if (h.run) h.run(newTab)
+      else if (h.to) openView(h.to, { newTab: true })
+      else if (h.file) openFile(h.file, { newTab })
+      else if (h.detail) openDetail(h.detail)
+    }), 0)
   }
   // ⇧Enter: a note named what was typed, where every new note goes (newNoteFolder).
   const create = async (newTab: boolean) => {
@@ -105,7 +111,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     picked()
     onClose()
     const f = await createNamed(newNoteFolder(getStore(), currentFile()), q)
-    if (f) openNew(f.path, { newTab: launcher || newTab })
+    if (f) newTabsAt(at, () => openNew(f.path, { newTab: launcher || newTab }))
   }
 
   return (

@@ -108,7 +108,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     // One rhythm for every panel, whatever it draws: 1 unit under each (folded or not) and its heading's 2 above, so 3
     // units between any two panels; and the last one ends 2 units above the vault's bar.
     <SidebarSide.Provider value={side}>
-    <div ref={box} data-sidebar-body={side} data-scroll={own ? "panels" : "sidebar"}
+    <div ref={box} data-sidebar-body={side} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
       className={cn("relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
@@ -166,6 +166,14 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     </div>
     </SidebarSide.Provider>
   )
+}
+
+/** The open panel whose empty room `at` is (its key): its box's under what it draws, or the sidebar's under the last. */
+function emptyRoomOf(at: EventTarget, body: HTMLElement | null) {
+  if (!(at instanceof HTMLElement) || !body) return undefined
+  const el = at === body ? [...body.querySelectorAll<HTMLElement>(":scope > [data-panel]")].at(-1)
+    : at.matches("[data-panel], [data-panel-scroll]") ? at.closest<HTMLElement>("[data-panel]") : null
+  return el && !el.dataset.collapsed ? el.dataset.panel : undefined
 }
 
 /** A sidebar's toggle: click opens or folds it; a panel dropped on it goes to that sidebar,
@@ -394,7 +402,7 @@ export function SidebarTile({ icon: Icon, iconClassName, tint, badge, label, act
  *  `pl-1.5`, so its icon lines up with theirs. */
 export function SidebarSearch({ open }: SidebarCtx) {
   const side = useContext(SidebarSide)
-  const keys = useCommandKeys("switcher:open", true), first = firstKeys("switcher:open")
+  const keys = useCommandKeys("switcher:open", true)
   return (
     // The panel is this one control, so it's its own handle: drag it to move the panel, click it to search.
     <button type="button" data-sidebar-search data-panel-handle={open ? "" : undefined} data-heading="Search" onClick={() => runCommandById("switcher:open")} data-tip={open ? undefined : `Search${keys}`} data-tip-side={side === "right" ? "left" : "right"} aria-label="Search"
@@ -405,13 +413,23 @@ export function SidebarSearch({ open }: SidebarCtx) {
       <Search className="size-4 shrink-0" strokeWidth={2.25} />
       {/* In the rail only the icon: the label and keycaps would make the rail wider than itself (a scrollbar). */}
       {open && <span className="flex-1 text-left">Search</span>}
-      {/* Shortcut keycaps, only on hover or keyboard focus. */}
-      {open && first && <span aria-hidden className="flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
-        {keyCaps(first).map((k, i) => (
-          <kbd key={i} className="grid h-5 min-w-5 place-items-center rounded-[4px] border-[0.5px] border-border bg-foreground/[0.06] px-1 font-keys text-[11px] leading-none text-muted-foreground">{k}</kbd>
-        ))}
-      </span>}
+      {open && <RowKeys id="switcher:open" className="group-hover:opacity-100 group-focus-visible:opacity-100" />}
     </button>
+  )
+}
+
+/** A command's keycaps at a sidebar row's end, shown on hover or keyboard focus (`className` says the row's group):
+ *  the search field's ⌘O, the Tabs panel's ⌘T. Nothing while the command has no keys here. */
+export function RowKeys({ id, className }: { id: string; className?: string }) {
+  useCommandKeys(id)
+  const first = firstKeys(id)
+  if (!first) return null
+  return (
+    <span aria-hidden className={cn("flex shrink-0 gap-1 opacity-0 transition-opacity duration-150", className)}>
+      {keyCaps(first).map((k, i) => (
+        <kbd key={i} className="grid h-5 min-w-5 place-items-center rounded-[4px] border-[0.5px] border-border bg-foreground/[0.06] px-1 font-keys text-[11px] leading-none text-muted-foreground">{k}</kbd>
+      ))}
+    </span>
   )
 }
 

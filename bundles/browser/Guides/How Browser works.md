@@ -6,7 +6,7 @@ kind: note
 Browser makes the app a web browser first, with your notes one move away.
 
 ## Where things are
-- **⌘T** (or the + on Tabs) opens a bar: type an address, words to search the web, or the name of a note, a tab or a bookmark. Esc and nothing is opened.
+- **⌘T** (or New tab, the last row of Tabs) opens a bar: type an address, words to search the web, or the name of a note, a tab or a bookmark. Esc and nothing is opened.
 - **Your favourites** are the tiles at the top of the left sidebar: pages you keep, web pages or notes. Right-click a tab, Pin, to add its page.
 - **Tabs** are under them, top to bottom. Pinned tabs (right-click a tab, Pin tab) stay at the top. The others are today's: one you haven't looked at for 12 hours is archived, so the list stays short. Find it again in ⌘T, or in Archived tabs.
 - **Spaces** are the numbers at the top of the sidebar: one for each part of your life, with its own tabs and favourites. Switch with ⌃1 to ⌃5 or a two-finger swipe over the sidebar; right-click one to give it an icon, a colour and a container.

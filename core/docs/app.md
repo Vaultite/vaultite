@@ -44,7 +44,7 @@ the buttons New note, Open a file, the command palette). `page`: a file's path (
 sections, a start page of any blocks, changed like any dashboard (`vau newtab page Dashboards/Start.md`; `""` the
 sections again; one that's gone gives them back). `vau newtab` (show, hide, move, page; `button add`, `remove`,
 `move`, `icon`); right-click a blank tab (or a button: Change icon) to change it there. The same on every device and workspace.
-`opens`: what ⌘T and the + buttons open instead, `"switcher"` (the quick switcher as a launcher: the pick opens in a new tab) or a view's tab (`"view:web"`: a web page); `vau newtab opens`.
+`opens`: what ⌘T, the + buttons and the Tabs panel's New tab row open instead, `"switcher"` (the quick switcher as a launcher: the pick opens in a new tab) or a view's tab (`"view:web"`: a web page); `vau newtab opens`.
 
 **Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). A plugin turned on
 writes its pages into the pages folder once, as the user's files (`vau docs dashboards`).

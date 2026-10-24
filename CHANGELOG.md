@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **New tab ends the Tabs panel**, as in a browser's vertical tabs: a row after the last tab (its + gone from the
+  heading) opens a new tab at the end of the list, in its place, and so does a double-click under the list; ⌘T still
+  opens one beside the tab you're on.
 - **⌘O and ⌘P keep what you typed**: pressing one for the other carries the text over; closed without picking, the
   next one opened in the following two minutes shows it, selected, so typing starts afresh.
 - **The Ask box keeps what you typed**: clicking off it or Esc no longer loses the question; it's there the next time

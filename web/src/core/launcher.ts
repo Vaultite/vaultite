@@ -4,7 +4,7 @@ import { runCommandById } from "@/core/commands"
 import { openView } from "@/core/files"
 import { active, viewFor } from "@/core/plugins"
 import { getPrefs, setPrefs } from "@/core/prefs"
-import { focusGroup, newTab } from "@/core/workspace"
+import { focusGroup, newTab, newTabsAt } from "@/core/workspace"
 import { newTabInSet, setById } from "@/core/tabsets"
 
 /** Whether a new tab opens the quick switcher instead of a tab. */
@@ -29,13 +29,19 @@ function viewHere(opens: string | null) {
   return v?.on && v.def.asNewTab?.here?.() !== false ? opens : null
 }
 
-/** A new tab in the focused pane (or `gid`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a
- *  blank one, or what newtab.json's `opens` says. */
-export function openNewTab(gid?: string, set?: string) {
+/** Where the quick switcher, opened as a new tab, puts what's picked (`newTabsAt`): set as it opens, gone as it closes. */
+let launchAt: "end" | undefined
+export const launcherAt = () => launchAt
+export const launcherClosed = () => { launchAt = undefined }
+
+/** A new tab in the focused pane (or `pane`'s: its tab bar's +; or at the end of tab group `set`, a phone's open one): a
+ *  blank one, or what newtab.json's `opens` says. Beside the active tab, or `at` the pane's end (the Tabs panel's row). */
+export function openNewTab({ pane, set, at }: { pane?: string; set?: string; at?: "end" } = {}) {
   const { opens } = getPrefs().newTab, view = viewHere(opens)
-  if (set) gid = setById(set)?.g.id
-  if (opens !== "switcher" && !view) return set && gid ? newTabInSet(set) : newTab(gid)
-  if (gid) focusGroup(gid)
-  if (view) openView(view, { another: true })
-  else if (!runCommandById("switcher:new-tab")) newTab(gid)
+  if (set) pane = setById(set)?.g.id
+  if (opens !== "switcher" && !view) return set && pane ? newTabInSet(set) : newTabsAt(at, () => newTab(pane))
+  if (pane) focusGroup(pane)
+  if (view) return newTabsAt(at, () => openView(view, { another: true }))
+  launchAt = at
+  if (!runCommandById("switcher:new-tab")) { launchAt = undefined; newTabsAt(at, () => newTab(pane)) }
 }

@@ -221,6 +221,16 @@ function switchTo(gid: string, t: Tab, from?: string) {
   set(isBlank(cur) && cur.id !== t.id ? { ...ws, root: dropBlank(ws.root, cur.id, isDesktop()) } : ws)
 }
 
+/** Where the tabs made now go in their pane: beside the active tab, or at its end (`newTabsAt`). */
+let placing: "end" | undefined
+/** Runs `fn` with the tabs it makes in a pane put at its end, in no tab group, instead of beside the active tab: the
+ *  Tabs panel's New tab row, whose place the new tab takes. */
+export function newTabsAt<T>(at: "end" | undefined, fn: () => T): T {
+  const was = placing
+  placing = at
+  try { return fn() } finally { placing = was }
+}
+
 /** Go somewhere: an open tab that has it, else the current tab when it shows the same sort of thing (or nothing), else a
  *  new tab beside it, so a person opened from People opens beside it and Back returns there. Blank tabs are never kept. */
 export function go(to: string, newTab = false, push = true) {
@@ -232,7 +242,7 @@ export function go(to: string, newTab = false, push = true) {
   // entry would lose that place, and Back would skip it).
   if (open && (!newTab || isBlank(cur))) { switchTo(open.g.id, open.t, open.t.id === cur.id ? undefined : from); return show(to, push && !isDesktop() && open.t.id !== cur.id && !isBlank(cur)) }
   // Opened by another tab (its opener): beside that one, in its pane and its tab group, as a browser opens a link.
-  const by = isBlank(cur) ? null : besideOf(to)
+  const by = isBlank(cur) || placing ? null : besideOf(to)
   const at = by && by !== cur.to ? findOpen(by) : null
   if (at) {
     set(withGroup(at.g.id, (g) => withTabAfter(g, at.t.id, to), { focus: at.g.id }))
@@ -263,10 +273,10 @@ export function openBehind(to: string) {
 }
 
 /** A group with a new tab showing `to` right after tab `after`, active (`from`: the tab it was opened from, Tab.from),
- *  in `after`'s tab group, as a browser's link opened from a grouped tab is. */
+ *  in `after`'s tab group, as a browser's link opened from a grouped tab is (or at its end: `newTabsAt`). */
 function withTabAfter(g: Group, after: string, to: string, from?: string): Group {
-  const id = newId(), at = g.tabs.findIndex((t) => t.id === after) + 1
-  const set = g.tabs[at - 1]?.set
+  const id = newId(), at = placing === "end" ? g.tabs.length : g.tabs.findIndex((t) => t.id === after) + 1
+  const set = placing === "end" ? undefined : g.tabs[at - 1]?.set
   const tab: Tab = { id, to, ...(from ? { from } : {}), ...(set ? { set } : {}) }
   return { ...g, tabs: [...g.tabs.slice(0, at), tab, ...g.tabs.slice(at)], active: id }
 }
@@ -610,8 +620,8 @@ let toRename: string | null = null
 export function askRename(path: string) { toRename = path; dispatchEvent(new Event("vaultite:rename")) }
 export const takeRename = (path: string) => { if (toRename !== path) return false; toRename = null; return true }
 
-/** A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one: a blank tab, one per pane
- *  (the blank tab it has already moves next to the active one instead; none, or the active one itself: nothing moves). */
+/** A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one (or at the end: `newTabsAt`): a
+ *  blank tab, one per pane (the blank tab it has already moves there instead; the active one itself: nothing moves). */
 export function newTab(gid = state.focus) {
   // (asked for before the vault arrived, on a first visit's blank tab: it stays one, not filled with the home page)
   unsaved = false
@@ -619,7 +629,7 @@ export function newTab(gid = state.focus) {
     if (isBlank(shownTab(g))) return g
     const had = g.tabs.find(isBlank), blank = had ? inSet(had, undefined) : { id: newId(), to: "new" }
     const tabs = g.tabs.filter((t) => t.id !== blank.id)
-    const at = tabs.findIndex((t) => t.id === g.active) + 1
+    const at = placing === "end" ? tabs.length : tabs.findIndex((t) => t.id === g.active) + 1
     return { ...g, tabs: [...tabs.slice(0, at), blank, ...tabs.slice(at)], active: blank.id }
   }, { focus: gid }))
   show("new", true)

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
   edgeScroller, canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
-  notifyError, openView, panesOf, pastEnd, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
+  notifyError, openView, panesOf, pastEnd, put, rowMenu, RowKeys, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
@@ -75,11 +75,11 @@ function SetRow({ s, n, rail, target }: { s: TabSet; n: number; rail?: Rail; tar
 }
 
 const LIST = "tabs:list"
-/** The last pane's box when (x, y) is just under its tabs, which a drop puts at its end. */
+/** The last pane's box when (x, y) is just under its tabs or on the New tab row, which a drop puts at its end. */
 function endOf(root: HTMLElement, x: number, y: number, el: Element | null) {
   const last = root.querySelector<HTMLElement>("[data-tabs-pane]:last-child")
   const row = last && [...last.querySelectorAll("[data-open-tab], [data-set-row]")].at(-1)
-  return row && pastEnd(root, row, x, y, el) ? last : null
+  return row && (el?.closest("[data-new-tab-row]") || pastEnd(root, row, x, y, el)) ? last : null
 }
 
 /** Every pane's tabs, in the panes' order, each tab group a row with its tabs under it; with more than one pane, each
@@ -225,15 +225,24 @@ function OtherDevices({ store }: { store: Store }) {
   )
 }
 
+/** The tabs' last row, as a browser's vertical tabs end: a new tab in the focused pane, at its end, so it takes this
+ *  row's place (⌘T opens one beside the active tab). */
+function NewTabRow() {
+  return (
+    <SidebarRow data-new-tab-row icon={Plus} label="New tab" open className="mt-px text-muted-foreground" onClick={() => openNewTab({ at: "end" })}>
+      <RowKeys id="tab:new" className="group-hover/row:opacity-100 group-focus-visible/row:opacity-100" />
+    </SidebarRow>
+  )
+}
+
 function TabsPanel({ store, open }: SidebarCtx) {
   if (!open) return null
   return (
     // (a right-click anywhere but a tab, a group or a device has the panel's menu: `menu`)
     <div className="flex shrink-0 flex-col" data-tabs-panel>
-      <SidebarHeading title="Tabs" open={open}>
-        <HeadingButton icon={Plus} label="New tab" onClick={() => openNewTab()} />
-      </SidebarHeading>
+      <SidebarHeading title="Tabs" open={open} />
       <TabRows store={store} />
+      <NewTabRow />
       <OtherDevices store={store} />
     </div>
   )
@@ -247,7 +256,7 @@ export default definePlugin({
   sidebar: {
     tabs: {
       title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,
-      view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />,
+      view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />, emptyDoubleClick: () => openNewTab({ at: "end" }),
       // (Show tabs on top, the way back to the tab bar, and other devices' tabs on or off)
       menu: () => [...commandItems("tab:sidebar"), othersItem(settings.get().other_devices !== false),
         { label: "Show all devices", icon: MonitorSmartphone, run: () => openView("devices", { newTab: true }) },
