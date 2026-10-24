@@ -6,6 +6,49 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { CODEX_DIR, api, app, check, fixtureNow } = $
+  // A Codex in a terminal: its session is the newest in its folder since it started, read as its turn ends (reads are 5 s
+  // apart). It goes first: the usage sessions below can be dated ahead of the clock, and Windows (no folders) takes them.
+  {
+    const { processTable, service } = await import("../../../core/plugins.ts")
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-codex-")), work = path.join(dir, "beacon")
+    fs.mkdirSync(work)
+    // A process named codex that waits: named by argv0 (macOS kills a copy of sleep, and uutils' sleep, Ubuntu's, won't
+    // run by another name); on Windows a copy of ping (a process's name there is its file's).
+    const win = process.platform === "win32"
+    if (win) fs.copyFileSync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "PING.EXE"), path.join(dir, "codex.exe"))
+    const proc = win ? spawn(path.join(dir, "codex.exe"), ["-n", "300", "127.0.0.1"], { cwd: work, stdio: "ignore" })
+      : spawn(process.execPath, ["-e", "setTimeout(() => {}, 300000)"], { argv0: path.join(dir, "codex"), cwd: work, stdio: "ignore" })
+    const term = app.plugins.find((p) => p.id === "terminal")!, was = term.services["terminal:of"]
+    term.services["terminal:of"] = async (pid: number) => (pid === proc.pid ? "codex-b3ac0n01" : null)
+    try {
+      // (listed once the process table has it, then past Codex's 2 s memo of its processes; Windows' table is slow)
+      const t0 = Date.now()
+      let seen = false
+      for (let i = 0; i < 30 && !(seen = (await processTable()).has(proc.pid!)); i++) await new Promise((r) => setTimeout(r, 1000))
+      const waited = { seen, ms: Date.now() - t0, procs: (await processTable()).size }
+      await new Promise((r) => setTimeout(r, 2100))
+      const turn = service(app.plugins, "agent-turn:codex")!, meters = service(app.plugins, "agent-meters:codex")!
+      const before = await turn("codex-b3ac0n01")
+      const id = "3f3f3f3f-6666-4777-8888-999900001111", t = (ms: number) => new Date(Date.now() + ms).toISOString()
+      const item = (type: string, text: string, ms: number) => ({ timestamp: t(ms), type: "event_msg", payload: { type: "item_completed", item: { type, content: [{ type: "text", text }] } } })
+      const day = path.join(CODEX_DIR, "sessions", "today")
+      fs.mkdirSync(day, { recursive: true })
+      fs.writeFileSync(path.join(day, `rollout-2026-09-29T10-00-00-${id}.jsonl`), [
+        { timestamp: t(0), ordinal: 0, type: "session_meta", payload: { id, cwd: fs.realpathSync(work), cli_version: "0.163.0", source: "vscode" } },
+        item("UserMessage", "What is 2+2?", 10), item("AgentMessage", "2 + 2 = 4.", 20),
+        { timestamp: t(30), type: "event_msg", payload: { type: "task_complete", last_agent_message: "2 + 2 = 4." } },
+      ].map((d) => JSON.stringify(d)).join("\n") + "\n")
+      const after = await turn("codex-b3ac0n01"), listed = await meters()
+      check("codex: a terminal's session read as its first turn ends, its answer and title (agent-turn:codex), and listed by terminal",
+        before === null && after?.session === id && after.text === "2 + 2 = 4." && after.prompt === "What is 2+2?" && after.final && after.title === "What is 2+2?" &&
+        JSON.stringify(listed) === JSON.stringify([{ terminal: "codex-b3ac0n01", session: id }]), [before, after, listed, waited])
+    } finally {
+      term.services["terminal:of"] = was
+      proc.kill()
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10 })
+    }
+  }
+
   // Codex: a session's conversation in both rollout shapes (plugins/core/codex/rollout.ts), and its tokens counted once.
   {
     const [a, b] = ["0b1c2d3e-2222-4333-8444-555566667777", "0c1d2e3f-3333-4444-8555-666677778888"]
@@ -54,48 +97,6 @@ export default async ($: VaultTest) => {
     const [, cr] = await api("GET", "render?path=Dashboards/Codex.md")
     check("the Codex page as text", typeof cr === "string" && cr.includes("## Codex by project") && cr.includes("lighthouse") &&
       cr.includes("## Codex plan limits"), String(cr).slice(0, 400))
-  }
-
-  // A Codex in one of the app's terminals: its session is the newest in its folder since it started, read as its turn
-  // ends even when the session is newer than the last read (a first turn ends in seconds; reads are 5 s apart).
-  {
-    const { processTable, service } = await import("../../../core/plugins.ts")
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-codex-")), work = path.join(dir, "beacon")
-    fs.mkdirSync(work)
-    // A process named codex that waits: named by argv0 (macOS kills a copy of sleep, and uutils' sleep, Ubuntu's, won't
-    // run by another name); on Windows a copy of ping (a process's name there is its file's).
-    const win = process.platform === "win32"
-    if (win) fs.copyFileSync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "PING.EXE"), path.join(dir, "codex.exe"))
-    const proc = win ? spawn(path.join(dir, "codex.exe"), ["-n", "300", "127.0.0.1"], { cwd: work, stdio: "ignore" })
-      : spawn(process.execPath, ["-e", "setTimeout(() => {}, 300000)"], { argv0: path.join(dir, "codex"), cwd: work, stdio: "ignore" })
-    const term = app.plugins.find((p) => p.id === "terminal")!, was = term.services["terminal:of"]
-    term.services["terminal:of"] = async (pid: number) => (pid === proc.pid ? "codex-b3ac0n01" : null)
-    try {
-      // (listed once the process table has it, then past Codex's 2 s memo of its processes; Windows' table is slow)
-      const t0 = Date.now()
-      let seen = false
-      for (let i = 0; i < 30 && !(seen = (await processTable()).has(proc.pid!)); i++) await new Promise((r) => setTimeout(r, 1000))
-      const waited = { seen, ms: Date.now() - t0, procs: (await processTable()).size }
-      await new Promise((r) => setTimeout(r, 2100))
-      const turn = service(app.plugins, "agent-turn:codex")!, meters = service(app.plugins, "agent-meters:codex")!
-      const before = await turn("codex-b3ac0n01")
-      const id = "3f3f3f3f-6666-4777-8888-999900001111", t = (ms: number) => new Date(Date.now() + ms).toISOString()
-      const item = (type: string, text: string, ms: number) => ({ timestamp: t(ms), type: "event_msg", payload: { type: "item_completed", item: { type, content: [{ type: "text", text }] } } })
-      const day = path.join(CODEX_DIR, "sessions", "today")
-      fs.writeFileSync(path.join(day, `rollout-2026-09-29T10-00-00-${id}.jsonl`), [
-        { timestamp: t(0), ordinal: 0, type: "session_meta", payload: { id, cwd: fs.realpathSync(work), cli_version: "0.163.0", source: "vscode" } },
-        item("UserMessage", "What is 2+2?", 10), item("AgentMessage", "2 + 2 = 4.", 20),
-        { timestamp: t(30), type: "event_msg", payload: { type: "task_complete", last_agent_message: "2 + 2 = 4." } },
-      ].map((d) => JSON.stringify(d)).join("\n") + "\n")
-      const after = await turn("codex-b3ac0n01"), listed = await meters()
-      check("codex: a terminal's session read as its first turn ends, its answer and title (agent-turn:codex), and listed by terminal",
-        before === null && after?.session === id && after.text === "2 + 2 = 4." && after.prompt === "What is 2+2?" && after.final && after.title === "What is 2+2?" &&
-        JSON.stringify(listed) === JSON.stringify([{ terminal: "codex-b3ac0n01", session: id }]), [before, after, listed, waited])
-    } finally {
-      term.services["terminal:of"] = was
-      proc.kill()
-      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10 })
-    }
   }
 
   {
