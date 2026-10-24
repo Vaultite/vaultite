@@ -1,7 +1,7 @@
 // Archived tabs: unpinned tabs unseen a while, closed into a list kept with the tabs (the workspace's, or this device's
 // without Workspaces), to reopen or find again. Not history: the tabs the user had. When they go is Tabs' setting.
 import { useSyncExternalStore } from "react"
-import { newId, type Tab } from "@/core/layout"
+import { newId, type Tab } from "../../../core/layout.ts"
 import { answerUi } from "@/core/live"
 import { scopedState, subscribeScoped } from "@/core/scope"
 import { archivesAfter, closeToArchive, findOpen, groups, restoreTab, selectTab, unseenTabs } from "@/core/workspace"

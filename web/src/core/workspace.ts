@@ -2,7 +2,7 @@
 // with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
 import { backDetail, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
-import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, nextActive, okGroup, putBack, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace } from "@/core/layout"
+import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
 import { signal } from "@/core/signal"
 
 const notify = () => dispatchEvent(new HashChangeEvent("hashchange"))
@@ -65,15 +65,8 @@ const changed = signal()
 /** The next workspace, tidied (an emptied group closes; with none left, a blank tab; tab groups as they must be:
  *  fixSets). A focused group that closed hands the focus to its neighbour. */
 export function set(next: Workspace) {
-  const was = leaves(state.root).map((g) => g.id)
   const root = stamped(tidy(fixAllSets(next.root)) ?? blankGroup(), state.root)
-  const gs = leaves(root)
-  let focus = next.focus
-  if (!gs.some((g) => g.id === focus)) {
-    const i = Math.max(0, was.indexOf(focus))
-    focus = (gs.find((g) => g.id === was[i + 1]) ?? [...gs].reverse().find((g) => was.indexOf(g.id) < i) ?? gs[0]).id
-  }
-  state = { root, focus }
+  state = { root, focus: focusAfter(state.root, root, next.focus) }
   try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
   noteFile()
   changed.notify()
@@ -366,8 +359,8 @@ export function takeOut(ids: string[]) {
     const t = g?.tabs.find((x) => x.id === id)
     if (!g || !t) continue
     if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, false)
-    const rest = g.tabs.filter((x) => x.id !== id)
-    leave(g.id, rest, nextActive(g, id, rest))
+    const left = withoutTabs(g, new Set([id]))
+    leave(g.id, left.tabs, left.active)
   }
 }
 
@@ -509,8 +502,8 @@ export function closeTab(id: string, force = false) {
   if (!g) return
   if (!force) return guarded(g.tabs.filter((t) => t.id === id), () => closeTab(id, true))
   closed(g.tabs.filter((t) => t.id === id))
-  const rest = g.tabs.filter((t) => t.id !== id)
-  leave(g.id, rest, nextActive(g, id, rest))
+  const left = withoutTabs(g, new Set([id]))
+  leave(g.id, left.tabs, left.active)
 }
 
 /** Whether a pane can be closed: not the only one (closing its tabs leaves a blank one: Close all). */
@@ -552,8 +545,8 @@ export function closeTabIds(ids: string[], { keep = false, force = false }: { ke
 function without(going: Tab[]) {
   const gone = new Set(going.map((t) => t.id))
   for (const g of groups().filter((x) => x.tabs.some((t) => gone.has(t.id)))) {
-    const rest = g.tabs.filter((t) => !gone.has(t.id))
-    leave(g.id, rest, rest.some((t) => t.id === g.active) ? g.active : rest[0]?.id ?? g.active)
+    const left = withoutTabs(g, gone)
+    leave(g.id, left.tabs, left.active)
   }
 }
 

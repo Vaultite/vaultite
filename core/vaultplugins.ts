@@ -113,7 +113,7 @@ registerHooks({
       return next(spec, { ...context, parentURL: APP }) // an npm package: the app's
     }
     return refuse("a vault plugin's backend imports its own folder, @vaultite/core/plugins.ts (vault.ts, client.ts, " +
-      "timeline.ts, agents.ts), modules of plugins it requires (@plugins/<id>/<module>), Node's modules and the app's npm packages")
+      "timeline.ts, agents.ts, layout.ts), modules of plugins it requires (@plugins/<id>/<module>), Node's modules and the app's npm packages")
   },
 })
 

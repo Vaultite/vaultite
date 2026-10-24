@@ -4,6 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
 import { ConfigError, type Item } from "../../../core/vault.ts"
+import { clean, isSplit, leaves, mapGroups, newId, tidy, withoutTabsIn, type Group, type Tab, type TabSet, type Workspace } from "../../../core/layout.ts"
 import { blankLayout, isBlank } from "./blank.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -89,14 +90,13 @@ const localPlace = (to: string, self = selfNow) =>
 /** A tab's place as it's saved: a terminal of this machine's with "@<this machine>". */
 const savedPlace = (to: string, self = selfNow) =>
   self && to.startsWith(TERM) && to.length > TERM.length && !to.includes("@") ? `${to}@${self}` : to
-/** A layout with each tab's place changed by f (anything else as it is). */
-function placesMapped(l: unknown, f: (to: string) => string): unknown {
-  if (!l || typeof l !== "object" || !isNode((l as Layout).root)) return l
-  const root = mapGroups((l as Layout).root, (g) => ({ ...g, tabs: g.tabs.map((t) => (t && typeof t.to === "string" ? { ...t, to: f(t.to) } : t)) }))
-  return { ...(l as Layout), root }
-}
+/** A layout with each tab's place changed by f. */
+const placesMapped = (l: Workspace, f: (to: string) => string): Workspace => ({ ...l, root: mapGroups(l.root, (g) => ({ ...g, tabs: g.tabs.map((t) => ({ ...t, to: f(t.to) })) })) })
 /** The slots as this machine's app has them (`localPlace`). */
-const shownSlot = (d: Item | null, self = selfNow): Item | null => withPins(d && self && layoutOf(d) ? { ...d, layout: placesMapped(d.layout, (to) => localPlace(to, self)) } : d)
+const shownSlot = (d: Item | null, self = selfNow): Item | null => {
+  const l = self ? layoutOf(d) : null
+  return withPins(l ? { ...d, layout: placesMapped(l, (to) => localPlace(to, self)) } : d)
+}
 /** Its pins where their files are now (one moved outside the app: Vault.relocated). */
 const withPins = (d: Item | null) => { const own = ownPins(d); return own ? { ...d, pinned: relocatedPins(own) } : d }
 const relocatedPins = (list: string[]) => [...new Set(list.map((p) => relocatedPin(plugin.vault, p)))]
@@ -233,69 +233,34 @@ plugin.route("DELETE", "workspaces/*", (req) => {
 })
 
 // ---------- moving tabs and panes to another workspace, or opening files there ----------
-// The app's layout shape, only what's needed here and checked loosely, since the file is written by hand too.
-type Tab = { id: string; to: string; set?: string }
-/** `sets`: its tab groups ({id, name, color, collapsed}), its tabs' `set` naming theirs. */
-type Group = { id: string; tabs: Tab[]; active: string; sets?: Item[] }
-type Split = { id: string; dir: string; kids: Node[]; sizes: number[] }
-type Node = Group | Split
-type Layout = { root: Node; focus?: string }
-const isSplit = (n: Node): n is Split => Array.isArray((n as Split).kids)
-const isNode = (n: unknown): n is Node => !!n && typeof n === "object" && (Array.isArray((n as Split).kids) || Array.isArray((n as Group).tabs))
-const leaves = (n: Node): Group[] => (isSplit(n) ? n.kids.filter(isNode).flatMap(leaves) : [n])
-const layoutOf = (d: Item | null): Layout | null => (d && isNode((d.layout as Layout | undefined)?.root) ? d.layout as Layout : null)
-let seq = 0
-const newId = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`
-
-/** The tree without empty groups, splits of one, or a split inside another going the same way (as the app tidies it). */
-function tidy(n: Node): Node | null {
-  if (!isSplit(n)) return n.tabs.length ? n : null
-  const kids: Node[] = [], sizes: number[] = []
-  n.kids.forEach((k, i) => {
-    const t = isNode(k) ? tidy(k) : null
-    const s = n.sizes?.[i] > 0 ? n.sizes[i] : 1 / n.kids.length
-    if (!t) return
-    if (isSplit(t) && t.dir === n.dir) t.kids.forEach((x, j) => { kids.push(x); sizes.push(s * t.sizes[j]) })
-    else { kids.push(t); sizes.push(s) }
-  })
-  if (kids.length < 2) return kids[0] ?? null
-  const sum = sizes.reduce((a, b) => a + b, 0)
-  return { ...n, kids, sizes: sizes.map((s) => s / sum) }
+/** A slot's layout (core/layout.ts), checked as the app checks it, since the file is written by hand too. */
+function layoutOf(d: Item | null): Workspace | null {
+  const l = d?.layout as Partial<Workspace> | undefined
+  const root = l && typeof l === "object" ? tidy(clean(l.root)) : null
+  if (!root) return null
+  return { root, focus: leaves(root).some((g) => g.id === l!.focus) ? l!.focus! : leaves(root)[0].id }
 }
-const mapGroups = (n: Node, f: (g: Group) => Group): Node => (isSplit(n) ? { ...n, kids: n.kids.map((k) => (isNode(k) ? mapGroups(k, f) : k)) } : f(n))
 
 /** The layout without the tabs `ids`, as closing them would leave it (without closing anything: a terminal's shell
- *  runs on). A group left with none closes (a whole pane moved); a workspace left with none gets one blank tab. */
-function without(l: Layout, ids: Set<string>): Layout {
-  const was = leaves(l.root).map((g) => g.id)
-  const root = tidy(mapGroups(l.root, (g) => {
-    if (!g.tabs.some((t) => ids.has(t.id))) return g
-    const tabs = g.tabs.filter((t) => !ids.has(t.id))
-    const i = g.tabs.findIndex((t) => t.id === g.active)
-    return { ...g, tabs, active: !ids.has(g.active) ? g.active : tabs[Math.min(Math.max(i, 0), tabs.length - 1)]?.id ?? "" }
-  }))
-  if (!root) { const t = newId("t"), g = was[0] ?? "g0"; return { root: { id: g, tabs: [{ id: t, to: "new" }], active: t }, focus: g } }
-  // A focused group that closed hands the focus to its neighbour (after it, else before it).
-  const gs = leaves(root)
-  let focus = l.focus
-  if (!gs.some((g) => g.id === focus)) {
-    const i = Math.max(0, was.indexOf(focus ?? ""))
-    focus = (gs.find((g) => g.id === was[i + 1]) ?? [...gs].reverse().find((g) => was.indexOf(g.id) < i) ?? gs[0]).id
-  }
-  return { ...l, root, focus }
+ *  runs on). A workspace left with none gets one blank tab. */
+function without(l: Workspace, ids: Set<string>): Workspace {
+  const left = withoutTabsIn(l, ids)
+  if (left) return left
+  const t = newId(), g = leaves(l.root)[0]?.id ?? "g0"
+  return { root: { id: g, tabs: [{ id: t, to: "new" }], active: t }, focus: g }
 }
 
 /** Tabs coming into a layout, with new ids where theirs are taken there (ids are made per device). */
-function freshIds(l: Layout | null, tabs: Tab[]): Tab[] {
+function freshIds(l: Workspace | null, tabs: Tab[]): Tab[] {
   const taken = new Set(l ? leaves(l.root).flatMap((g) => g.tabs.map((t) => t.id)) : [])
-  return tabs.map((t) => { const out = taken.has(t.id) ? { ...t, id: newId("t") } : t; taken.add(out.id); return out })
+  return tabs.map((t) => { const out = taken.has(t.id) ? { ...t, id: newId() } : t; taken.add(out.id); return out })
 }
 /** Tabs that are nothing yet (none, or a lone blank tab): what comes in takes their place. */
-const unused = (l: Layout | null) => blankLayout(l)
+const unused = (l: Workspace | null) => blankLayout(l)
 
 /** The layout with `tabs` added at the end of the group focused last (not shown: each device keeps the tab it shows).
  *  A workspace with no tabs yet, or only one blank one, gets them in its place. */
-function withTabs(l: Layout | null, tabs: Tab[]): { layout: Layout; tabs: Tab[] } {
+function withTabs(l: Workspace | null, tabs: Tab[]): { layout: Workspace; tabs: Tab[] } {
   if (unused(l)) {
     const g = l ? leaves(l.root)[0]?.id ?? "g0" : "g0"
     return { layout: { root: { id: g, tabs, active: tabs[0].id }, focus: g }, tabs }
@@ -309,13 +274,13 @@ function withTabs(l: Layout | null, tabs: Tab[]): { layout: Layout; tabs: Tab[] 
 
 /** The layout with a whole pane (a group and its tabs) added as a new pane on the right, taking its share of the width;
  *  the focus stays where it was. A workspace with nothing yet is that pane. */
-function withPane(l: Layout | null, g: Group): { layout: Layout; tabs: Tab[]; group: string } {
+function withPane(l: Workspace | null, g: Group): { layout: Workspace; tabs: Tab[]; group: string } {
   if (unused(l)) return { layout: { root: g, focus: g.id }, tabs: g.tabs, group: g.id }
   const tabs = freshIds(l, g.tabs)
   const active = tabs[Math.max(0, g.tabs.findIndex((t) => t.id === g.active))].id
-  const id = leaves(l!.root).some((x) => x.id === g.id) ? newId("g") : g.id
+  const id = leaves(l!.root).some((x) => x.id === g.id) ? `g${newId()}` : g.id
   const k = isSplit(l!.root) && l!.root.dir === "row" ? l!.root.kids.length : 1
-  const root = tidy({ id: newId("s"), dir: "row", kids: [l!.root, { id, tabs, active, ...(g.sets ? { sets: g.sets } : {}) }], sizes: [k / (k + 1), 1 / (k + 1)] })!
+  const root = tidy({ id: `s${newId()}`, dir: "row", kids: [l!.root, { id, tabs, active, ...(g.sets ? { sets: g.sets } : {}) }], sizes: [k / (k + 1), 1 / (k + 1)] })!
   return { layout: { ...l!, root }, tabs, group: id }
 }
 
@@ -346,7 +311,7 @@ plugin.route("POST", "workspaces/move", (req) => {
       if (t.startsWith("file:") && !fs.existsSync(path.join(plugin.vault.path, t.slice(5)))) throw new HTTPError(404, `there's no ${t.slice(5)} in the vault`)
     }
     if (!want.length) return { to: to + 1, tabs: [], workspaces: shown() }
-    const put = withTabs(l, want.map((t) => ({ id: newId("t"), to: savedPlace(t) })))
+    const put = withTabs(l, want.map((t) => ({ id: newId(), to: savedPlace(t) })))
     list[to] = { ...dest, layout: put.layout }
     save(list)
     return { to: to + 1, tabs: put.tabs.map((t) => ({ ...t, to: localPlace(t.to) })), tab: { ...put.tabs[0], to: localPlace(put.tabs[0].to) }, workspaces: shown() }
@@ -446,18 +411,18 @@ plugin.provide("context", ({ workspace: n }: { workspace: number | null }) => {
   return { data: { workspace: { n, label } }, text: `Workspace: ${n} (${label}), the one the user's window is on (vau workspace lists them)` }
 })
 
-type PaneTabs = { pane: number; group: string; focused: boolean; tabs: { id: string; to: string; path?: string; group?: string }[]; groups: Item[] }
+type PaneTabs = { pane: number; group: string; focused: boolean; tabs: { id: string; to: string; path?: string; group?: string }[]; groups: TabSet[] }
 
 /** A workspace's tabs, pane by pane (left to right, top to bottom). */
 function workspaceTabs(w: Item, n: number) {
   const panes: PaneTabs[] = []
   const l = layoutOf(w)
   for (const g of l ? leaves(l.root) : []) {
-    const sets = (Array.isArray(g.sets) ? g.sets : []).filter((x) => x && typeof x.id === "string")
-    panes.push({ pane: panes.length + 1, group: String(g.id), focused: g.id === l!.focus,
-      tabs: g.tabs.filter((t) => t && typeof t.to === "string").map((t) => ({ id: String(t.id), to: t.to, ...(t.to.startsWith("file:") ? { path: t.to.slice(5) } : {}),
+    const sets = g.sets ?? []
+    panes.push({ pane: panes.length + 1, group: g.id, focused: g.id === l!.focus,
+      tabs: g.tabs.map((t) => ({ id: t.id, to: t.to, ...(t.to.startsWith("file:") ? { path: t.to.slice(5) } : {}),
         ...(t.set && sets.some((x) => x.id === t.set) ? { group: t.set } : {}) })),
-      groups: sets.map((x) => ({ id: x.id, name: String(x.name ?? ""), color: String(x.color ?? "gray"), ...(x.collapsed === true ? { collapsed: true } : {}) })) })
+      groups: sets.map((x) => ({ ...x })) })
   }
   return { workspace: n, name: nameOf(w, n), panes }
 }

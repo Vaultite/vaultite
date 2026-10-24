@@ -15,9 +15,9 @@ const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
 /** A file that runs in Node: a backend's, or a test (test.ts, *.test.ts: never bundled into the app). */
 export const nodeSide = (file: string) => BACKEND.has(path.basename(file)) || /(^|\.)test\.ts$/.test(path.basename(file))
 /** The core's modules a plugin's backend may import: the plugin API (built-in plugins by path, vault plugins as VAULT_CORE). */
-const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts"])
+const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts", "layout.ts"])
 /** What a vault plugin's backend imports the core as: "@vaultite/core/plugins.ts" (".ts" optional). */
-export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline|agents)(?:\.ts)?$/
+export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline|agents|layout)(?:\.ts)?$/
 
 /** The file of module `name` a plugin's manifest `exports` (its folder's name.ts, .tsx or name/index), or null. */
 export function exportFile(dir: string, name: string, manifest?: Record<string, unknown>): string | null {
@@ -271,7 +271,7 @@ function importProblems(file: string, src: string, where: string, rules: ImportR
     }
     if (backend) {
       if (!rules.vault || isBuiltin(spec) || VAULT_CORE.test(spec)) continue
-      if (spec.startsWith("@vaultite")) say(spec, "a vault plugin's backend imports the core as @vaultite/core/plugins.ts, vault.ts, client.ts, timeline.ts or agents.ts")
+      if (spec.startsWith("@vaultite")) say(spec, "a vault plugin's backend imports the core as @vaultite/core/plugins.ts, vault.ts, client.ts, timeline.ts, agents.ts or layout.ts")
       else if (!fs.existsSync(path.join(rules.root, "node_modules", packageOf(spec)))) say(spec, "the app has no such package")
       continue
     }

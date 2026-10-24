@@ -2,7 +2,7 @@
 // with postMessage so it works the same in the Mac app and a browser. core/workspace.ts' popOut is the way out.
 import { setOutsideDrop } from "@/core/drag"
 import { placeAt } from "@/core/drop"
-import type { Tab } from "@/core/layout"
+import type { Tab } from "../../../core/layout.ts"
 import { takeTabs } from "@/core/splits"
 import { groupOfTab, groups, isPopout, takeOut } from "@/core/workspace"
 

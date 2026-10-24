@@ -809,7 +809,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   g.HashChangeEvent = class { type: string; constructor(type: string) { this.type = type } }
   const ws: Any = await web("core/workspace.ts")
   const sp: Any = await web("core/splits.ts")
-  const lay: Any = await web("core/layout.ts")
+  const lay: Any = await web("../../core/layout.ts")
   const tid = await import("../core/terminalids.ts")
   check("terminal ids: an agent, its account, a resumed session and a machine read back; a shell is none",
     JSON.stringify(tid.parseTerminal("claude_personal-k3j2h1g0@studio")) === JSON.stringify({ agent: "claude", profile: "personal", resume: null, machine: "studio" })
@@ -817,6 +817,15 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && /^claude_work-[a-z0-9]{8}$/.test(tid.newTerminalId(tid.agentIn("claude", "work"))) && tid.agentIn("claude", "No way") === "claude")
   check("tabs: a target's file, and only a vault one's vault path", lay.tabPath("file:a.md") === "a.md" && lay.tabPath("file:/x/b.pdf") === "/x/b.pdf"
     && lay.tabPath("view:terminal/1") === null && lay.vaultPath("file:a.md") === "a.md" && lay.vaultPath("file:/x/b.pdf") === null && lay.vaultPath("new") === null)
+  const P = (id: string, ids: string[], active: string) => ({ id, tabs: ids.map((t) => ({ id: t, to: `file:${t}.md` })), active })
+  check("closing: the tab shown, gone, hands over to the nearest after it, else before it; others going leave it shown",
+    lay.withoutTabs(P("g", ["a", "b", "c"], "b"), new Set(["b"])).active === "c" && lay.withoutTabs(P("g", ["a", "b", "c"], "c"), new Set(["c"])).active === "b"
+    && lay.withoutTabs(P("g", ["a", "b", "c", "d"], "b"), new Set(["b", "c"])).active === "d" && lay.withoutTabs(P("g", ["a", "b", "c"], "a"), new Set(["c"])).active === "a")
+  const three = { root: { id: "s", dir: "row", sizes: [0.25, 0.5, 0.25], kids: [P("gA", ["a"], "a"), P("gB", ["b"], "b"), P("gC", ["c"], "c")] }, focus: "gB" }
+  const left = lay.withoutTabsIn(three, new Set(["b"]))
+  check("closing: a pane left with no tabs closes, the focus going to the pane after it, else before it",
+    left?.focus === "gC" && left.root.kids.map((k: Any) => k.id).join() === "gA,gC" && lay.withoutTabsIn({ ...three, focus: "gC" }, new Set(["c"]))?.focus === "gB"
+    && lay.withoutTabsIn(three, new Set(["a", "b", "c"])) === null, left)
   type T = { id: string; to: string }
   const one = (tabs: T[], active: string) => ws.replaceWorkspace({ root: { id: "g0", tabs, active }, focus: "g0" })
   const two = (left: T[], right: T[], focus: "gL" | "gR") => ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.5, 0.5],

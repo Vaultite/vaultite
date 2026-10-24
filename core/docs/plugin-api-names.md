@@ -663,6 +663,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `weekStart(s)`
 - `WIKI`
 - `withoutBlocks(text)`: A text without its views (each with the blank lines after it), and blank lines at its ends when it had any.
+- `withoutTabsIn(w, ids)`: Workspace `w` without the tabs `ids`: panes left with none close.
 - `workspaceChanged()`: Tell the app the current workspace, or something kept in it, changed (the plugin keeping workspaces calls it).
 - `WorkspaceHost`: A plugin that keeps workspaces.
 - `WorkspaceInfo`: A workspace as other plugins see it: its number, its name (or "Workspace 2") and the places its tabs show (tab targets: "view:terminal/abc", "file:Notes/Idea.md").

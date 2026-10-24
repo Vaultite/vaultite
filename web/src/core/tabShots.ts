@@ -1,7 +1,7 @@
 // The iPhone app's real picture of each tab for its card, taken by the shell as the tab is left (only the shown tab
 // is drawn), kept in the Cache API. Without the shell's `snapshot`, cards are drawn stand-ins.
 import { activeTab, getWorkspace } from "@/core/workspace"
-import { leaves } from "@/core/layout"
+import { leaves } from "../../../core/layout.ts"
 import { phoneApp } from "@/core/phoneapp"
 import { signal } from "@/core/signal"
 

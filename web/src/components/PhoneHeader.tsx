@@ -1,7 +1,7 @@
 // Phones: the top bar: the drawer button, the title (once the page's own has scrolled away), the page's own buttons
 // (#phone-actions), the right sidebar's, and the tab's … menu.
 import { Ellipsis, PanelLeft, PanelRight } from "lucide-react"
-import type { Tab } from "@/core/layout"
+import type { Tab } from "../../../core/layout.ts"
 import { menuBelow } from "@/components/ContextMenu"
 import { openDrawer, useHasDrawer } from "@/components/PhoneDrawer"
 import { phoneTabMenu } from "@/components/Tabs"

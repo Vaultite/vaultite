@@ -1,6 +1,6 @@
-// The tabs' layout as data: tabs in groups, groups in a tree of splits, and the pure changes to it (no state, no
-// address, no DOM). core/workspace.ts keeps the one on screen and changes it with these.
-import { isColor, type Color } from "../../../core/colors.ts"
+// The tabs' layout as data: tabs in groups, groups in a tree of splits, and its pure changes, for app and server alike
+// (no state, no DOM). web/src/core/workspace.ts keeps the one on screen; Workspaces' backend changes saved ones.
+import { isColor, type Color } from "./colors.ts"
 
 export type Tab = { id: string; to: string
   /** Where it was before, oldest first; and where Back came from, the next first. */
@@ -116,9 +116,28 @@ export const HISTORY = 50
 export const moveOn = (t: Tab, to: string): Tab =>
   t.to === to ? t : { ...t, to, back: t.to === "new" ? t.back : [...(t.back ?? []), t.to].slice(-HISTORY), fwd: [] }
 
-/** Which tab becomes active when `id` leaves a group: the one after it, else the one before. */
-export const nextActive = (g: Group, id: string, rest: Tab[]) =>
-  g.active !== id ? g.active : rest[Math.min(g.tabs.findIndex((t) => t.id === id), rest.length - 1)]?.id ?? ""
+// Tabs leaving (closed, or moved elsewhere): the one rule for what shows next, in a pane and in the workspace.
+/** Group `g` without the tabs `ids`: the tab shown, if it goes, moves on to the nearest one after it, else before it. */
+export function withoutTabs(g: Group, ids: Set<string>): Group {
+  if (!g.tabs.some((t) => ids.has(t.id))) return g
+  const tabs = g.tabs.filter((t) => !ids.has(t.id))
+  if (!ids.has(g.active)) return { ...g, tabs }
+  const i = g.tabs.findIndex((t) => t.id === g.active)
+  const next = g.tabs.slice(i).find((t) => !ids.has(t.id)) ?? g.tabs.slice(0, i).findLast((t) => !ids.has(t.id))
+  return { ...g, tabs, active: next?.id ?? "" }
+}
+/** The pane focused after `was` became `root`: `focus` while it's there, else (it closed) the one after it, else before. */
+export function focusAfter(was: Layout, root: Layout, focus: string): string {
+  const gs = leaves(root), ids = leaves(was).map((g) => g.id)
+  if (gs.some((g) => g.id === focus)) return focus
+  const i = Math.max(0, ids.indexOf(focus))
+  return (gs.find((g) => g.id === ids[i + 1]) ?? gs.findLast((g) => ids.indexOf(g.id) < i) ?? gs[0]).id
+}
+/** Workspace `w` without the tabs `ids`: panes left with none close. Null when no tab is left. */
+export function withoutTabsIn(w: Workspace, ids: Set<string>): Workspace | null {
+  const root = tidy(mapGroups(w.root, (g) => withoutTabs(g, ids)))
+  return root && { root, focus: focusAfter(w.root, root, w.focus) }
+}
 
 // A blank tab ("new") is only a place to open something, never worth keeping: what's opened from it goes in it, and
 // when what's opened from it shows in another tab instead, it closes. Only switching tabs by hand leaves one be.
@@ -134,8 +153,7 @@ export function pastBlank(g: Group, next: Group): Group {
 export function dropBlank(n: Layout, id: string, keepPane: boolean): Layout {
   return mapGroups(n, (g) => {
     if (!isBlank(g.tabs.find((x) => x.id === id)) || (keepPane && g.tabs.length < 2)) return g
-    const rest = g.tabs.filter((x) => x.id !== id)
-    return { ...g, tabs: rest, active: nextActive(g, id, rest) }
+    return withoutTabs(g, new Set([id]))
   })
 }
 

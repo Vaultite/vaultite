@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **One rule for what shows when tabs go**: closing selected tabs, and tabs moved or closed in another workspace
+  (`vau workspace`), show the tab nearest the one on screen (after it, else before it), as closing one tab does. A vault
+  plugin's backend can read a workspace's tabs and panes with `@vaultite/core/layout.ts`.
 - **Tab groups on phones are the computer's**: the tab list shows each tab group as a card (tap it for its tabs);
   holding a tab over another groups the two, over a group's card adds it, over + in an open group takes it out. A
   computer's split shows on a phone as one list of tabs, no longer as groups.

@@ -1,6 +1,6 @@
 // What a tab shows (Workspace's TabContent), drawn outside the panes.
 import type { Store } from "@/core/data"
-import { tabPath } from "@/core/layout"
+import { tabPath } from "../../../core/layout.ts"
 import { names, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import type { ReactNode } from "react"

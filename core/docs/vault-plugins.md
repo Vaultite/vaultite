@@ -60,7 +60,7 @@ what's written often in parts: settings, never its version; another's: `plugin.p
 `plugin.vault.config("plugins")`; never read them from disk), `plugin.provide("<name>", fn)` (a service others ask for
 by name), `plugin.memo(ttl, fn)` / `plugin.writeCache()` for live data, `plugin.onUnload(fn)` to stop timers. It may
 import only `@vaultite/core/plugins.ts`, `vault.ts`, `client.ts`, `timeline.ts`, `agents.ts` (a coding agent's: its
-usage, sessions and terminals; `vau docs plugin-api-names`), its own folder, the modules plugins it requires export,
+usage, sessions and terminals; `vau docs plugin-api-names`), `layout.ts` (a workspace's tabs and panes, as saved), its own folder, the modules plugins it requires export,
 Node's modules and npm packages the app has (so may its other modules, the ones `index.tsx` doesn't import); a required
 plugin's running backend through `plugin.peer("<id>").exports`. The vault's files: `plugin.vault.entries`
 (each Markdown file's path, `fm`, `tags`...), and any file's text by `fs` at `plugin.vault.abs(path)` (write only through ops

@@ -1,6 +1,6 @@
 // Splits: moving tabs and panes between groups and into new splits, opening at a place, focus and
 // dividers. The tree itself is core/layout.ts.
-import { beside, evened, inSet, mapGroups, mapTabs, moveOn, neighbourOf, newId, nextActive, pastBlank, resized, setAt, shownTab, tidy, type Group, type Layout, type Side, type Tab } from "@/core/layout"
+import { beside, evened, inSet, mapGroups, mapTabs, moveOn, neighbourOf, newId, pastBlank, resized, setAt, shownTab, tidy, type Group, type Layout, type Side, type Tab, withoutTabs } from "../../../core/layout.ts"
 import { focusPane } from "@/core/focus"
 import { activeTab, focusGroup, getWorkspace, groupOfTab, groups, set, show, showActive, withGroup } from "@/core/workspace"
 
@@ -9,8 +9,7 @@ function pull(id: string): { root: Layout; tab: Tab } | null {
   const g = groupOfTab(id)
   if (!g) return null
   const tab = g.tabs.find((t) => t.id === id)!
-  const rest = g.tabs.filter((t) => t.id !== id)
-  return { tab, root: mapGroups(getWorkspace().root, (x) => (x.id === g.id ? { ...x, tabs: rest, active: nextActive(x, id, rest) } : x)) }
+  return { tab, root: mapGroups(getWorkspace().root, (x) => (x.id === g.id ? withoutTabs(x, new Set([id])) : x)) }
 }
 
 /** Would moving tab `id` there change anything? Into its own bar at its own place (in the same tab group), its own

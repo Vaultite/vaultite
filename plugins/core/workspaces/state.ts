@@ -4,7 +4,7 @@ import { Box, CircleSlash, Copy, LayoutPanelLeft, Palette, Pencil, Plus, Setting
 import {
   cell, colorItems, colorVar, del, devicePref, dotIcon, isColor, mergeTabsSeen, pickIcon, tabsSeenSince, webContainers, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
-  type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  withoutTabsIn, type Color, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
 import { markIcon } from "./Mark"
@@ -300,17 +300,11 @@ export function sync() {
 export type Sent = { tab: string } | { group: string } | { open: string[] }
 let moving = false
 
-/** The layout without a tab, or a pane's tabs (its pane goes): what shows while their move is on its way. */
-function without(l: TabLayout, what: { tab: string } | { group: string }): TabLayout {
-  const drop = (n: TabLayout["root"]): TabLayout["root"] => {
-    if ("kids" in n) return { ...n, kids: n.kids.map(drop) }
-    if ("group" in what) return n.id === what.group ? { ...n, tabs: [] } : n
-    const i = n.tabs.findIndex((t) => t.id === what.tab)
-    if (i < 0) return n
-    const tabs = n.tabs.filter((t) => t.id !== what.tab)
-    return { ...n, tabs, active: n.active === what.tab ? tabs[Math.min(i, tabs.length - 1)]?.id ?? "" : n.active }
-  }
-  return { ...l, root: drop(l.root) }
+/** The layout without a tab, or a pane's tabs (its pane goes): what shows while their move is on its way; null when
+ *  nothing would be left. */
+function without(l: TabLayout, what: { tab: string } | { group: string }): TabLayout | null {
+  const ids = "tab" in what ? [what.tab] : panesOf(l.root).find((g) => g.id === what.group)?.tabs.map((t) => t.id) ?? []
+  return withoutTabsIn(l, new Set(ids))
 }
 
 /** Send a tab, pane or files to workspace n (dropped on its number), through the server so every device on either
@@ -323,7 +317,7 @@ export async function sendTo(n: number, what: Sent) {
   moving = true
   const before = getTabLayout()
   const gone = "open" in what ? null : without(before, what)
-  if (gone && panesOf(gone.root).some((g) => g.tabs.length)) apply(gone, true)
+  if (gone) apply(gone, true)
   await writing
   try {
     const r = await post<{ tabs: { id: string }[]; group?: string; workspaces: unknown[] }>("workspaces/move", { ...("open" in what ? {} : { from }), to: n, ...what })

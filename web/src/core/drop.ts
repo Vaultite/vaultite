@@ -1,7 +1,7 @@
 // Dropping on the workspace (core/drag.ts: a tab, a whole pane, or a file or page from the sidebar): what's under the
 // pointer and what a drop there does.
 import type { DragItem } from "@/core/drag"
-import { outsideSets, runOf, type Group, type Side } from "@/core/layout"
+import { outsideSets, runOf, type Group, type Side } from "../../../core/layout.ts"
 import { canMove, canMoveGroup, canOpenAt, moveGroupTo, moveTabsTo, moveTabTo, openAllAt, openAt } from "@/core/splits"
 import { canMoveSet, moveSetTo } from "@/core/tabsets"
 import { groups } from "@/core/workspace"

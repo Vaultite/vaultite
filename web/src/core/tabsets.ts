@@ -1,7 +1,7 @@
 // Tab groups (TabSet, core/layout.ts), as browsers have them: making one of some tabs, adding tabs and taking them out,
 // naming, colouring, folding, moving and closing one, and what agents ask of them (`vau tabs`). Each change is one `set`.
 import { COLORS, isColor, type Color } from "../../../core/colors.ts"
-import { beside, inSet, isBlank, leaves, mapGroups, newId, outsideSets, runOf, type Group, type Layout, type Side, type Tab, type TabSet } from "@/core/layout"
+import { beside, inSet, isBlank, leaves, mapGroups, newId, outsideSets, runOf, type Group, type Layout, type Side, type Tab, type TabSet, withoutTabs } from "../../../core/layout.ts"
 import { closeTabIds, getWorkspace, groupOfTab, groups, set, show, showActive } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { answerUi } from "@/core/live"
@@ -34,15 +34,6 @@ export function suggestName(tabs: Tab[]): string {
   return ""
 }
 
-/** `g` without the tabs in `ids` (the tab shown moves on to the nearest one left). */
-function without(g: Group, ids: Set<string>): Group {
-  if (!g.tabs.some((t) => ids.has(t.id))) return g
-  const tabs = g.tabs.filter((t) => !ids.has(t.id))
-  if (!ids.has(g.active)) return { ...g, tabs }
-  const i = g.tabs.findIndex((t) => t.id === g.active)
-  const next = g.tabs.slice(i).find((t) => !ids.has(t.id)) ?? [...g.tabs.slice(0, i)].reverse().find((t) => !ids.has(t.id))
-  return { ...g, tabs, active: next?.id ?? "" }
-}
 /** The tabs `ids` in their order on screen. */
 const inOrder = (ids: string[]) => groups().flatMap((g) => g.tabs).filter((t) => ids.includes(t.id))
 
@@ -51,7 +42,7 @@ const inOrder = (ids: string[]) => groups().flatMap((g) => g.tabs).filter((t) =>
 function gather(tabs: Tab[], gid: string, at: (g: Group) => number, setId: string, def?: TabSet, shown?: string): Layout {
   const chosen = new Set(tabs.map((t) => t.id))
   return mapGroups(getWorkspace().root, (g) => {
-    if (g.id !== gid) return without(g, chosen)
+    if (g.id !== gid) return withoutTabs(g, chosen)
     const rest = g.tabs.filter((t) => !chosen.has(t.id)), i = at(g)
     const active = shown && chosen.has(shown) ? shown : chosen.has(g.active) || rest.some((t) => t.id === g.active) ? g.active : rest[0]?.id ?? tabs[0].id
     return { ...g, tabs: [...rest.slice(0, i), ...tabs.map((t) => inSet(t, setId)), ...rest.slice(i)], active, ...(def ? { sets: [...(g.sets ?? []), def] } : {}) }
@@ -206,7 +197,7 @@ export function moveSetTo(id: string, gid: string, where: Side | "center" | numb
   const { g: from, s } = setById(id)!
   const tabs = from.tabs.filter((t) => t.set === id), ids = new Set(tabs.map((t) => t.id))
   const shown = tabs.some((t) => t.id === from.active) ? from.active : null
-  let root = mapGroups(getWorkspace().root, (g) => (g.id === from.id ? { ...without(g, ids), sets: g.sets!.filter((x) => x.id !== id) } : g))
+  let root = mapGroups(getWorkspace().root, (g) => (g.id === from.id ? { ...withoutTabs(g, ids), sets: g.sets!.filter((x) => x.id !== id) } : g))
   if (typeof where === "number" || where === "center") {
     const before = typeof where === "number" ? from.tabs.slice(0, where).filter((t) => from.id === gid && ids.has(t.id)).length : 0
     root = mapGroups(root, (g) => {

@@ -2,7 +2,7 @@
 // aria-expanded, Enter clicks. All commands, so hotkeys.json rebinds them and Vim's j/k/h/l call the same functions.
 import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, CornerDownLeft, FolderClosed, FolderOpen, LogOut, Menu, PanelLeft, PanelRight, SquareArrowOutUpRight, SquareMousePointer, StepBack, StepForward } from "lucide-react"
 import { registerCommands, typingIn } from "@/core/commands"
-import { leaves } from "@/core/layout"
+import { leaves } from "../../../core/layout.ts"
 import { byTab, focusPane } from "@/core/focus"
 import { isMac, isDesktop } from "@/core/platform"
 import { getPrefs, setPrefs } from "@/core/prefs"
