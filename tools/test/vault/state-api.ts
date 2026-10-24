@@ -12,7 +12,9 @@ export default async ($: VaultTest) => {
   check("publicOf drops private keys and records left empty", same(pub, { a: 1, list: [{ k: 1 }, plain], plain }), pub)
   check("publicOf leaves what it doesn't change as it is", pub.plain === plain && pub.list[1] === plain && publicOf(plain) === plain && mixed._p === 2)
 
-  // /api/state is worked out again only when something changed: a file, or a setting written by hand.
+  // /api/state is worked out again only when something changed: a file, or a setting written by hand. (Compared across
+  // calls, so first an earlier area's deleted folders let go of: the vault drops their files seconds later.)
+  await $.settled()
   const stateNow = async () => { await vault.synced(); return (await app.run("GET", ["state"], {}, {})).body as Any }
   const st1 = await stateNow()
   check("state: the same answer while nothing changed", (await stateNow()) === st1 && Object.isFrozen(st1))

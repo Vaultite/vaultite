@@ -78,7 +78,9 @@ export default async ($: VaultTest) => {
   const ctxOut = JSON.parse(cr.out)
   check("vau context: vault, pinned pages, panels, plugins, appearance, windows", cr.code === 0 && ctxOut.vault === VAULT && ctxOut.windows === 2 &&
     ctxOut.pinned.includes("Dashboards/Errors.md") && ctxOut.panels[0].key === "search:search" && ctxOut.panels[0].side === "left" && ctxOut.appearance.theme === "dark", ctxOut)
-  // vau's own switches: --count and --paths read an answer's list (itself, or its first); a non-list is an error.
+  // vau's own switches: --count and --paths read an answer's list (itself, or its first); a non-list is an error. (The
+  // whole file list, compared across calls: an earlier area's deleted folders let go of first.)
+  await $.settled()
   cr = await vau("files", "--json")
   const allFiles = JSON.parse(cr.out).files.map((f: Any) => f.path)
   cr = await vau("files", "--count")
