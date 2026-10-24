@@ -10,60 +10,14 @@ import { afterSheets, openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace } from "@/core/scope"
-import type { Sidebars } from "../../../core/sidebars.ts"
+import type { Info as BundleInfo, Plan, PlanChange } from "../../../core/bundles.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
 import { onLook } from "@/core/appearance"
 import { isDark } from "@/lib/utils"
 
-export type BundleInfo = {
-  id: string; source: "app" | "vault"; name: string; description: string; icon: string; tint: string; author: string; sort: number
-  theme: string | null; scheme: string | null; density: string | null
-  /** The app plugins on with it (null: it leaves them as they are), the pages it pins (null: the same). */
-  on: string[] | null; pinned: string[] | null
-  /** Its sidebars' panels (null: as they are), and the blocks of the first page it pins (null: it pins none; [] not
-   *  known): what its card draws. */
-  panels: { left: string[]; right: string[]; collapsed: string[] } | null
-  home: { block: string; view: string | null; wide: boolean }[] | null
-  /** Vault plugins it brings or installs (they run code); `official`: only Vaultite's own, from its directory. */
-  code: string[]; official: boolean
-  /** The repository it was imported from, or null. */
-  from: string | null
-  /** The note it brings that says how the setup works: opened after applying. */
-  guide: string | null
-  hotkeys: boolean
-  /** Its preview.png's and preview-dark.png's versions (the card's picture, light and dark), or null: none. */
-  preview: string | null; previewDark: string | null
-  problems: string[]
-  /** The setup is this bundle's: applying it would change nothing. */
-  inUse?: boolean
-  /** The bundle applied last only: when and without what, and whether the setup changed since (`differs`: change ids). */
-  applied?: { at: string; skip: string[] }; modified?: boolean; differs?: string[]
-}
-/** A value a plan changes; `change`: its id (PlanChange). */
-type Change = { change: string; key: string; from: unknown; to: unknown }
-/** One change applying makes, by an id stable for the same bundle and setup (core/bundles.ts PlanChange). */
-export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "editor" | "hotkey" | "newtab"
-  label: string; from?: unknown; to?: unknown }
-export type Plan = {
-  /** `added`: plugins the user added that it leaves as they are (unless applied with offAdded). */
-  plugins: { on: string[]; off: string[]; missing: string[]; added: string[] }
-  /** `source`: where one it installs comes from (else it brings its files). */
-  code: { id: string; name: string; kept: boolean; source?: string; tag?: string | null; commit?: string | null; hash?: string | null; change?: string }[]
-  settings: (Change & { plugin: string })[]
-  skipped: { plugin: string; key: string; why: string }[]
-  panels: { setup: Sidebars | null; changed: boolean; workspace: number | null }
-  pins: { want: string[]; list: string[]; pin: string[]; unpin: string[]; missing: string[]; workspace: string[] | null } | null
-  appearance: Change[]
-  /** The editor's settings (editor.json). */
-  editor: Change[]
-  hotkeys: Change[]
-  newtab: Change[]
-  files: { add: string[]; kept: string[] }
-  /** Every change, by id; `omitted`: those skipped. */
-  changes: PlanChange[]; omitted: string[]
-  empty: boolean
-}
+export type { BundleInfo, Plan, PlanChange }
+
 export type Previous = { bundle: string; name: string; at: string }
 /** `default`: the one a new vault starts from (Standard), and skipping the offer gives; `trial`: one being tried;
  *  `applied`: the one applied last. */
