@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import { frontmatterLinks, HTTPError, type LinkFile, linkResolver, LOADED, OpError, parseSearch, Plugin, type SearchDoc, SearchError, searchMatches, wikiTargets } from "../../../core/plugins.ts"
 import { type Entry, readText, stemOf, type Vault } from "../../../core/vault.ts"
-import { buildGraph, filterGraph, type Graph, type GraphFile, type GraphNode, localGraph, localMarkdown, MAX_DEPTH } from "./graph.ts"
+import { BODY, buildGraph, type Built, filterGraph, type Graph, type GraphFile, type GraphNode, localGraph, localMarkdown, MAX_DEPTH } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -21,19 +21,37 @@ function linkReader(vault: Vault, rel: string): ((text: string) => string[]) | n
   return null
 }
 
-let cached: { vault: Vault; version: string; plugins: unknown[]; graph: Graph } | null = null
+let cached: { vault: Vault; version: string; plugins: unknown[]; graph: Graph; built: Built } | null = null
 
-// A file's link targets (its text's, and its frontmatter's by key), once per read of it (an Entry is new each time its
-// file is read): a change to one file doesn't read every other file's links again.
-const targetsOf = new WeakMap<Entry, { links: string[]; props: [string, string][] }>()
-function linksIn(e: Entry) {
-  let t = targetsOf.get(e)
-  if (!t) targetsOf.set(e, t = { links: wikiTargets(e.body), props: frontmatterLinks(e.fm) })
-  return t
+// A file's links (its text's, and its frontmatter's by key), its place in the graph and as a link target, once per read
+// of it (an Entry is new each time its file is read): a change to one file doesn't read every other file's again.
+type Seen = { excluded: boolean; file: GraphFile; target: LinkFile; key: string }
+const seenOf = new WeakMap<Entry, Seen>()
+function seen(vault: Vault, rel: string, e: Entry): Seen {
+  const excluded = vault.excluded(rel)
+  let s = seenOf.get(e)
+  if (s?.excluded !== excluded) {
+    const title = e.fm.title || e.fm.name || stemOf(rel), aliases = e.fm.aliases
+    const target = { path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived }
+    seenOf.set(e, s = { excluded, target, key: `${rel}\u0001${target.aliases.join("\u0001")}${e.archived ? "\u0002" : ""}`,
+      file: { path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: e.tags, links: s?.file.links ?? wikiTargets(e.body),
+        props: s?.file.props ?? frontmatterLinks(e.fm), ...(e.archived ? { archived: true } : {}), ...(excluded ? { excluded: true } : {}) } })
+  }
+  return s
 }
 
+// The resolver, kept while the files links can go to are the same, and what each file's links resolve to, kept while
+// its links and the resolver are: an edit of a note's text resolves only its own links again.
+let resolving: { key: string; resolve: (t: string, from?: string) => string | null } | null = null
+function resolverFor(targets: LinkFile[], key: string) {
+  if (resolving?.key !== key) resolving = { key, resolve: linkResolver(targets) }
+  return resolving
+}
+const resolved = new WeakMap<string[], { key: string; to: [string, string | null][] }>()
+const NO_LINKS: string[] = []
+
 // Other files' links, kept until the file or its reader changes: a big drawing is read once, not on every change.
-const otherLinks = new WeakMap<Vault, Map<string, { ns: bigint; read: unknown; links: string[] }>>()
+const otherLinks = new WeakMap<Vault, Map<string, { ns: bigint; read: unknown; links: string[]; file?: GraphFile }>>()
 
 /** The whole vault's graph, built again only when the vault's files changed or the plugins that are off did (their
  *  services name links); the same object meanwhile, frozen (so the server serializes it once). */
@@ -42,16 +60,10 @@ export function vaultGraph(vault: Vault): Graph {
   if (cached?.vault === vault && cached.version === version && cached.plugins.length === LOADED.length &&
     LOADED.every((p, i) => p === cached!.plugins[i])) return cached.graph
 
-  const files: GraphFile[] = []
-  const targets: LinkFile[] = []
+  const files: GraphFile[] = [], targets: LinkFile[] = [], keys: string[] = []
   for (const [rel, e] of vault.entries) {
-    const title = e.fm.title || e.fm.name || stemOf(rel)
-    const aliases = e.fm.aliases
-    targets.push({ path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
-    files.push({
-      path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: e.tags, ...linksIn(e), ...(e.archived ? { archived: true } : {}),
-      ...(vault.excluded(rel) ? { excluded: true } : {}),
-    })
+    const s = seen(vault, rel, e)
+    files.push(s.file); targets.push(s.target); keys.push(s.key)
   }
   // Other files: those a plugin reads links out of, and the ones something links to (attachments).
   const others: GraphFile[] = []
@@ -60,24 +72,31 @@ export function vaultGraph(vault: Vault): Graph {
   for (const rel of known.keys()) if (!vault.others.has(rel)) known.delete(rel)
   for (const [rel, st] of vault.others) {
     const read = linkReader(vault, rel)
-    let links: string[] = []
-    const had = known.get(rel)
-    if (read && had?.ns === st.ns && had.read === read) links = had.links
-    else if (read) {
-      try {
-        links = read(readText(vault.abs(rel)))
-        known.set(rel, { ns: st.ns, read, links })
-      } catch { /* half-written: no links this time */ }
+    let had = known.get(rel)
+    if (had?.ns !== st.ns || had.read !== read) {
+      let links = NO_LINKS
+      try { if (read) links = read(readText(vault.abs(rel))) } catch { /* half-written: no links this time */ }
+      known.set(rel, had = { ns: st.ns, read, links })
     }
-    others.push({ path: rel, title: rel.slice(rel.lastIndexOf("/") + 1), type: null, tags: [], links, ...(vault.excluded(rel) ? { excluded: true } : {}) })
-    targets.push({ path: rel })
+    const excluded = vault.excluded(rel)
+    if (!had.file || !!had.file.excluded !== excluded) had.file = { path: rel, title: rel.slice(rel.lastIndexOf("/") + 1), type: null, tags: [], links: had.links, ...(excluded ? { excluded: true } : {}) }
+    others.push(had.file)
+    targets.push({ path: rel }); keys.push(rel)
   }
-  const resolve = linkResolver(targets)
+  const { key, resolve } = resolverFor(targets, keys.join("\0"))
+  const linksOf = (f: GraphFile) => {
+    let hit = resolved.get(f.links)
+    if (hit?.key !== key) {
+      resolved.set(f.links, hit = { key, to: [...f.links.map((t): [string, string | null] => [BODY, resolve(t, f.path)]),
+        ...(f.props ?? []).map(([k, t]): [string, string | null] => [k, resolve(t, f.path)])] })
+    }
+    return hit.to
+  }
   const linked = new Set<string>()
-  for (const f of [...files, ...others]) for (const t of [...f.links, ...(f.props ?? []).map(([, x]) => x)]) { const p = resolve(t, f.path); if (p) linked.add(p) }
-  const graph = buildGraph([...files, ...others.filter((o) => o.links.length || linked.has(o.path))], resolve)
-  cached = { vault, version, plugins: [...LOADED], graph: Object.freeze(graph) }
-  return graph
+  for (const f of [...files, ...others]) for (const [, p] of linksOf(f)) if (p) linked.add(p)
+  const built = buildGraph([...files, ...others.filter((o) => o.links.length || linked.has(o.path))], linksOf, cached?.vault === vault ? cached.built : undefined)
+  cached = { vault, version, plugins: [...LOADED], graph: Object.freeze(built.graph), built }
+  return built.graph
 }
 
 /** How a path is written as a [[link]]: its name, or its path when another file has the same name. */
@@ -107,7 +126,10 @@ function shown(g: Graph, all: boolean, keep = "") {
 
 plugin.route("GET", "graph", (req) => {
   const path = String(req.query.path ?? "")
-  const g = shown(vaultGraph(plugin.vault), req.query.archived === "true", path)
+  const all = vaultGraph(plugin.vault), archived = req.query.archived === "true"
+  // (a local graph of a file left out of the graph keeps it: filtered for it alone)
+  let g = shown(all, archived)
+  if (path && g !== all && !g.nodes.some((n) => n.path === path)) g = shown(all, archived, path)
   if (!path) return g
   if (!plugin.vault.entries.has(path) && !plugin.vault.others.has(path)) {
     if (!fs.existsSync(plugin.vault.abs(path))) throw new HTTPError(404, `no file '${path}'`)

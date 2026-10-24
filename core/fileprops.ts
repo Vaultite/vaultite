@@ -7,7 +7,7 @@ export const ARCHIVED = "archived"
 export const ARCHIVE_DIR = ".archive"
 
 /** Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not. */
-export const inArchive = (rel: string) => rel.split("/").slice(0, -1).includes(ARCHIVE_DIR)
+export const inArchive = (rel: string) => rel.startsWith(`${ARCHIVE_DIR}/`) || rel.includes(`/${ARCHIVE_DIR}/`)
 /** The path as if it weren't archived (People/.archive/Kai.md -> People/Kai.md): what kinds and homes go by. */
 export const unarchived = (rel: string) => (inArchive(rel) ? rel.split("/").filter((p, i, a) => p !== ARCHIVE_DIR || i === a.length - 1).join("/") : rel)
 /** The same path archived or not: People/Kai.md <-> People/.archive/Kai.md. */

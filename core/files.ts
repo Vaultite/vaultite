@@ -132,8 +132,9 @@ function row(vault: Vault, rel: string, e: Entry): Item {
 }
 
 // Rows are worked out once per read of a file (an Entry is new each time its file is read), except for files with
-// Markdown links, which resolve against the other files there are now (mdTarget).
-const rows = new WeakMap<Entry, Item>()
+// Markdown links, which resolve against the other files there are now (mdTarget). Frozen: serialized once.
+const rows = new WeakMap<Entry, { row: Item; excluded?: Item }>()
+const otherRows = new WeakMap<object, Item>() // (by the file's stat: new each time it changed)
 // The tree as of a vault version (it bumps on any change: a file, another file, a folder) and the plugins drawing pages
 // (`looks:<ext>`), hidden files aside.
 type Tree = { files: Item[]; others: Item[]; folders: string[] }
@@ -156,15 +157,19 @@ export function tree(vault: Vault): Tree {
     for (const [rel, e] of [...vault.entries].sort(([a], [b]) => cmp(a, b))) {
       let r = rows.get(e)
       if (!r) {
-        r = row(vault, rel, e)
+        r = { row: Object.freeze(row(vault, rel, e)) }
         if (!e.body.includes("](")) rows.set(e, r)
       }
-      files.push(vault.excluded(rel) ? { ...r, excluded: true } : r)
+      files.push(vault.excluded(rel) ? r.excluded ??= Object.freeze({ ...r.row, excluded: true }) : r.row)
     }
     // Files a plugin makes pages (its `looks:<ext>`: an artifact, a table) are files you open, like notes, named by their
     // title (else their name without the extension); the rest (images, PDFs, canvases) are only served.
     for (const [r, st] of [...vault.others].sort(([a], [b]) => cmp(a, b))) {
-      const base = { path: r, mtime: ms(st.ns), ctime: st.born, size: st.size, ...(inArchive(r) ? { archived: true } : {}), ...(vault.excluded(r) ? { excluded: true } : {}) }
+      const excluded = vault.excluded(r)
+      let base = otherRows.get(st)
+      if (base?.path !== r || !!base.excluded !== excluded) {
+        otherRows.set(st, base = Object.freeze({ path: r, mtime: ms(st.ns), ctime: st.born, size: st.size, ...(inArchive(r) ? { archived: true } : {}), ...(excluded ? { excluded: true } : {}) }))
+      }
       const looks = serviceFor(pages, "looks", r) as Looks | null
       if (!looks) {
         others.push(base)

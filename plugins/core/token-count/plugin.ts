@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { OpError, pathAsSaid, Plugin } from "../../../core/plugins.ts"
-import { parseText, type Vault } from "../../../core/vault.ts"
+import { type Entry, parseText, type Vault } from "../../../core/vault.ts"
 import { estimateTokens, shortTokens, tokenText } from "./estimate.ts"
 import { importsOf, isChainRoot, levelOf, limitFor, type Limits, limitsOf, type Link, MAX_DEPTH, NEAR, pathLike, type Sized, worse } from "./limits.ts"
 
@@ -13,7 +13,7 @@ const decls = plugin.manifest.settings ?? {}
 const DEFAULTS: Limits = { limit: decls.limit?.default ?? 0, limits: decls.limits?.default ?? {} }
 export const limits = () => limitsOf(plugin.settings(), DEFAULTS)
 
-// Read again only when a file's stat changed: the text's tokens, its imports and its frontmatter.
+// Read again only when a file's stat changed: the text's tokens, its imports and its frontmatter (by vault path).
 type Read = { ns: bigint; size: number; tokens: number; imports: string[]; fm: Record<string, unknown> }
 const reads = new Map<string, Read>()
 
@@ -23,14 +23,14 @@ function readAt(vault: Vault, rel: string, stat?: { ns: bigint; size: number }):
   if (!st) {
     try { const s = fs.statSync(abs, { bigint: true }); if (!s.isFile()) return null; st = { ns: s.mtimeNs, size: Number(s.size) } } catch { return null }
   }
-  const had = reads.get(abs)
+  const had = reads.get(rel)
   if (had && had.ns === st.ns && had.size === st.size) return had
   let text: string
   try { text = fs.readFileSync(abs, "utf8") } catch { return null } // (any size the index reads too; past what a string holds, none)
   let fm: Record<string, unknown> = {}
   if (rel.endsWith(".md")) try { fm = parseText(text)[0] } catch { /* a header that doesn't parse: no max_tokens */ }
   const r = { ns: st.ns, size: st.size, tokens: estimateTokens(text), imports: rel.endsWith(".md") ? importsOf(text) : [], fm }
-  reads.set(abs, r)
+  reads.set(rel, r)
   return r
 }
 
@@ -97,27 +97,30 @@ function size(vault: Vault, rel: string, r: Read, l: Limits): Sized {
 /** At most this many tokens a byte (a CJK character is 3 bytes and about 1.2 tokens): what a file can't be near its
  *  limit by, told from its size alone. */
 const MAX_PER_BYTE = 1.2
+// A file's limit, once per read of it (an Entry is new each time) and per limits.
+const limitOf = new WeakMap<Entry, { key: string; limit: number }>()
 
 /** Every Markdown file sized (the index's, and agent files in hidden folders), biggest first. `flaggedOnly`: only the
  *  files that may be flagged are read, so a big vault isn't read again for the few near a limit (most have none). */
 export function sizes(vault: Vault, { flaggedOnly = false } = {}): Sized[] {
-  const l = limits(), out: Sized[] = []
+  const l = limits(), key = JSON.stringify(l), out: Sized[] = []
   const live = new Set<string>()
   for (const e of vault.entries.values()) {
-    live.add(vault.abs(e.rel))
+    live.add(e.rel)
     if (flaggedOnly && !isChainRoot(e.rel)) {
-      const limit = limitFor(e.rel, e.fm, l)
-      if (!limit || e.stat.size * MAX_PER_BYTE < limit * NEAR) continue
+      let had = limitOf.get(e)
+      if (had?.key !== key) limitOf.set(e, had = { key, limit: limitFor(e.rel, e.fm, l) })
+      if (!had.limit || e.stat.size * MAX_PER_BYTE < had.limit * NEAR) continue
     }
     const r = readAt(vault, e.rel, e.stat)
     if (r) out.push(size(vault, e.rel, r, l))
   }
   for (const rel of hiddenAgentFiles(vault)) {
     const r = readAt(vault, rel)
-    live.add(vault.abs(rel))
+    live.add(rel)
     if (r) out.push(size(vault, rel, r, l))
   }
-  for (const k of reads.keys()) if (!live.has(k) && !fs.existsSync(k)) reads.delete(k)
+  for (const k of reads.keys()) if (!live.has(k) && !fs.existsSync(vault.abs(k))) reads.delete(k)
   return out.sort((a, b) => (b.total ?? b.tokens) - (a.total ?? a.tokens) || a.path.localeCompare(b.path))
 }
 

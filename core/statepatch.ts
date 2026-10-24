@@ -10,7 +10,15 @@ const isPlain = (x: unknown): x is Record<string, unknown> => {
   const proto = Object.getPrototypeOf(x)
   return proto === Object.prototype || proto === null
 }
-const json = (x: unknown) => JSON.stringify(x) ?? "null"
+// A frozen object's JSON is kept: it's the same object while what it shows is (the tree's rows), so an edit
+// serializes only what changed.
+const kept = new WeakMap<object, string>()
+function json(x: unknown) {
+  if (x === null || typeof x !== "object" || !Object.isFrozen(x)) return JSON.stringify(x) ?? "null"
+  let j = kept.get(x)
+  if (j === undefined) kept.set(x, j = JSON.stringify(x) ?? "null")
+  return j
+}
 
 /** Each item's first index in an array of pieces (built once per array, when a patch is made from it). */
 const indexes = new WeakMap<string[], Map<string, number>>()
@@ -29,8 +37,13 @@ function indexOf(items: string[]) {
 export function snapshot(value: unknown, prev?: Piece): Piece {
   if (Array.isArray(value)) {
     const was = prev !== undefined && typeof prev !== "string" && "items" in prev ? prev.items : null
-    const at = was && indexOf(was)
-    return { items: value.map((x) => { const j = json(x), i = at?.get(j); return i === undefined ? j : was![i] }) }
+    let at: Map<string, number> | null = null
+    return { items: value.map((x, n) => {
+      const j = json(x)
+      if (!was || was[n] === j) return j
+      const i = (at ??= indexOf(was)).get(j)
+      return i === undefined ? j : was[i]
+    }) }
   }
   if (isPlain(value)) {
     const was = prev !== undefined && typeof prev !== "string" && "keys" in prev ? prev.keys : null

@@ -894,11 +894,11 @@ function settingsFiles(vaultPath: string) {
 const serialized = new WeakMap<object, Buffer>()
 
 /** An answer as JSON, without its private keys (what server.ts sends). One given again while nothing changed is
- *  frozen (state(), the graph): it's serialized once. */
+ *  frozen (state(), the graph): it's serialized once, from its frozen items' JSON (core/statepatch.ts). */
 export function jsonOf(body: unknown): string | Buffer {
   if (body === null || typeof body !== "object" || !Object.isFrozen(body)) return JSON.stringify(publicOf(body) ?? null)
   let data = serialized.get(body)
-  if (!data) serialized.set(body, data = Buffer.from(JSON.stringify(publicOf(body))))
+  if (!data) serialized.set(body, data = Buffer.from(SP.jsonOf(SP.snapshot(publicOf(body)))))
   return data
 }
 

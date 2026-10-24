@@ -549,7 +549,7 @@ export class Plugin {
 
   async getState(): Promise<Item> {
     if (this.stateFn) return await this.stateFn()
-    return Object.fromEntries(this.kinds.map((k) => [k.collection, this.vault.items(k.collection)]))
+    return Object.fromEntries(this.kinds.map((k) => [k.collection, this.vault.shared(k.collection)]))
   }
 
   /** Offer `fn` as the service `name` (People: plugin.provide("geocode", geocode), which Me uses for ME.md's place);

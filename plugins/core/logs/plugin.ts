@@ -120,7 +120,7 @@ plugin.kind(new Kind({
   blocks: (fm) => ["log", ...(areas().find((a) => a.slug === fm.area)?.blocks ?? [])],
 }))
 
-plugin.state(() => ({ areas: areas(), logs: plugin.vault.items("logs") }))
+plugin.state(() => ({ areas: areas(), logs: plugin.vault.shared("logs") }))
 /** The areas as the app has them (Today's routines take their icon and weekly goal). */
 plugin.provide("logs:areas", areas)
 

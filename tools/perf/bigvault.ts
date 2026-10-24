@@ -78,7 +78,10 @@ async function boot() {
   child.once("exit", (code) => { if (code && !child.killed) console.error(`the server stopped (exit ${code}):\n${said}`) })
   const answers = async (url: string) => {
     for (;;) {
-      try { const r = await fetch(BASE + url, { headers: HEADERS }); await r.arrayBuffer(); if (r.ok) return performance.now() - t0 } catch { /* not up yet */ }
+      let r: Response | null = null
+      try { r = await fetch(BASE + url, { headers: HEADERS }); await r.arrayBuffer() } catch { /* not up yet */ }
+      if (r?.ok) return performance.now() - t0
+      if (r?.status === 404 && !url) throw new Error(`no web app in ${ROOT}: npm run build there first`)
       if (child.exitCode !== null) throw new Error("the server exited")
       await new Promise((r) => setTimeout(r, 20))
     }
@@ -139,13 +142,31 @@ try {
     for (let i = 0; i < RUNS; i++) ms.push((await time(method, url, body)).ms)
     endpoints[name] = { first: Math.round(first.ms), median: median(ms), cpu: +((cpu(child) - c0) / RUNS).toFixed(0), bytes: first.bytes }
   }
-  // After an edit (a note changed on disk, as by an AI): what the app asks for again.
+  // After an edit (a note changed on disk, as by an AI): the change told over /api/events, then what the app asks for
+  // again (the state as a patch of the one it has), and the whole files and graph.
   const notePath = path.join(VAULT, NOTE)
-  for (const [name, url] of [["files after an edit", "api/files"], ["graph after an edit", "api/graph"], ["search after an edit", `api/search?q=${q(SEARCH)}`]]) {
-    const ms: number[] = []
-    for (let i = 0; i < RUNS; i++) { fs.appendFileSync(notePath, `\nOne more line ${i}.\n`); ms.push((await time("GET", url)).ms) }
-    endpoints[name] = { median: median(ms) }
+  const ws = new WebSocket(`ws://127.0.0.1:${PORT}/api/events`)
+  let told: (() => void) | null = null
+  ws.onmessage = (m) => { if (JSON.parse(String(m.data)).type === "change") told?.() }
+  await new Promise((r) => { ws.onopen = r })
+  let v = (await time("GET", "api/state?since=0")).json().v as string
+  const after: Record<string, number[]> = { "change told after an edit": [], "state patch after an edit": [], "files after an edit": [], "graph after an edit": [], "search after an edit": [] }
+  let patchBytes = 0
+  for (let i = 0; i < RUNS; i++) {
+    const heard = new Promise<void>((r) => { told = r })
+    const t0 = performance.now()
+    fs.appendFileSync(notePath, `\nOne more line ${i}.\n`)
+    await heard
+    after["change told after an edit"].push(performance.now() - t0)
+    const st = await time("GET", `api/state?since=${q(v)}`)
+    v = st.json().v; patchBytes = st.bytes
+    after["state patch after an edit"].push(st.ms)
+    after["files after an edit"].push((await time("GET", "api/files")).ms)
+    after["graph after an edit"].push((await time("GET", "api/graph")).ms)
+    after["search after an edit"].push((await time("GET", `api/search?q=${q(SEARCH)}`)).ms)
   }
+  ws.close()
+  for (const [name, ms] of Object.entries(after)) endpoints[name] = { median: median(ms), ...(name.startsWith("state") ? { bytes: patchBytes } : {}) }
   result.endpoints = endpoints
 
   // A rename of the most linked note: every file linking to it rewritten (core/vault.ts relink), then back.

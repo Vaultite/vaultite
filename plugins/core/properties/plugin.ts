@@ -1,7 +1,7 @@
 // All properties' server side: keys with counts and types (in /api/state, so the panel is live), rename and retype
 // across files as one-key small edits (a file that can't be edited safely is skipped), and restore for Undo.
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
-import { readText, renameProperty, setPropertyText, sortBy, writeAtomic, type Vault } from "../../../core/vault.ts"
+import { type Entry, readText, renameProperty, setPropertyText, sortBy, writeAtomic, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -23,22 +23,25 @@ export function typeOf(v: unknown): PropType {
 }
 
 /** The vault's Markdown files that are notes (no hidden folders: settings, the trash). */
-const files = (vault: Vault) => [...vault.entries].filter(([rel]) => !rel.split("/").some((p) => p.startsWith(".")))
+const files = (vault: Vault) => [...vault.entries].filter(([rel]) => rel[0] !== "." && !rel.includes("/."))
 
 type Summary = { key: string; count: number; type: PropType; types: Partial<Record<PropType, number>> }
 let cached: { vault: Vault; version: number; list: Summary[] } | null = null
+// Each file's keys and their types, once per read of it (an Entry is new each time its file is read).
+const typed = new WeakMap<Entry, [string, PropType][]>()
 
 /** Every key, most used first (kept until the vault's files change). */
 export function summary(vault: Vault): Summary[] {
   if (cached && cached.vault === vault && cached.version === vault.version) return cached.list
   const byKey = new Map<string, Summary>()
   for (const [, e] of files(vault)) {
-    for (const [key, v] of Object.entries(e.fm ?? {})) {
-      const s = byKey.get(key) ?? { key, count: 0, type: "empty" as PropType, types: {} }
+    let keys = typed.get(e)
+    if (!keys) typed.set(e, keys = Object.entries(e.fm ?? {}).map(([key, v]) => [key, typeOf(v)]))
+    for (const [key, t] of keys) {
+      let s = byKey.get(key)
+      if (!s) byKey.set(key, s = { key, count: 0, type: "empty", types: {} })
       s.count++
-      const t = typeOf(v)
       s.types[t] = (s.types[t] ?? 0) + 1
-      byKey.set(key, s)
     }
   }
   for (const s of byKey.values()) {

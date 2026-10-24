@@ -197,15 +197,23 @@ plugin.kind(new Kind({
 
 const publicPerson = (p: Item) => Object.fromEntries(Object.entries(p).filter(([k]) => !k.startsWith("_") && k !== "timeline"))
 
+// Each person as the app gets them, and their interactions: the same objects while their file and pin are, so an edit
+// elsewhere serializes none of them again (core/statepatch.ts).
+const shown = new WeakMap<Item, { pin: string; person: Item; inter: Item[] }>()
+
 plugin.state(() => {
-  const ps = plugin.vault.items("people")
-  const inter: Item[] = []
-  for (const p of ps) {
-    entries(p).forEach(([, i], k) => {
-      inter.push({ ...Object.fromEntries(FIELDS.map((f) => [f, i[f]])), id: `${p.id}#${k}`, person_id: p.id, source: "vault" })
-    })
+  const people: Item[] = [], inter: Item[] = []
+  for (const p of plugin.vault.shared("people")) {
+    const pin = typeof p.lat === "number" && typeof p.lon === "number" ? "" : String(truthy(p.location) ? places.known(str(p.location)) : null)
+    let s = shown.get(p)
+    if (s?.pin !== pin) {
+      shown.set(p, s = { pin, person: Object.freeze(pinned(publicPerson(p))), inter: entries(p).map(([, i], k) =>
+        Object.freeze({ ...Object.fromEntries(FIELDS.map((f) => [f, i[f]])), id: `${p.id}#${k}`, person_id: p.id, source: "vault" })) })
+    }
+    people.push(s.person)
+    inter.push(...s.inter)
   }
-  return { people: ps.map((p) => pinned(publicPerson(p))), interactions: sortBy(inter, (i) => i.date, true) }
+  return { people, interactions: sortBy(inter, (i) => i.date, true) }
 })
 
 function personFor(body: Item) {

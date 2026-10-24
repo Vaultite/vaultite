@@ -330,10 +330,21 @@ function withKeys(text: string, m: RegExpExecArray | null, fm: Item, set: Item):
 
 const isEmpty = (y: unknown) => y !== null && typeof y === "object" && !Array.isArray(y) && !Object.keys(y).length
 
+const publics = new WeakMap<object, unknown>()
+
 /** An item without its private `_` keys and empty records. Copies only what changes, since /api/state is megabytes
- *  of items that have nothing private. */
+ *  of items that have nothing private; a frozen one's is kept. */
 export function publicOf(x: unknown): unknown {
   if (x === null || typeof x !== "object") return x
+  if (Object.isFrozen(x)) {
+    let y = publics.get(x)
+    if (y === undefined) publics.set(x, y = Object.freeze(publicCopy(x)))
+    return y
+  }
+  return publicCopy(x)
+}
+
+function publicCopy(x: object): unknown {
   if (Array.isArray(x)) {
     let out: unknown[] | null = null
     for (let i = 0; i < x.length; i++) {
@@ -613,7 +624,7 @@ export class Vault {
   version = 0                              // bumps on every change to the files (other files and folders too), so callers can cache derived data
   settingsVersion = 0                      // the same for settings: .vaultite/ (see settingsStats) and the .obsidian/ files the app reads
   private settingsSeen = ""                // the settings files' stats at the last sync (settingsStats)
-  private ordered = new Map<Kind, Item[]>() // each kind's items in order, until one of its files is read or dropped
+  private ordered = new Map<Kind, readonly Item[]>() // each kind's items in order, until one of its files is read or dropped
   private settings = new Map<string, string | null>() // settings files read since the last sync began (their text)
   private lastGood = new Map<string, { text: string; stat: string }>() // each settings file as it last read or was written, with its mtime and size then (config, readConfig)
   private queue: Promise<unknown> = Promise.resolve()
@@ -1121,9 +1132,10 @@ export class Vault {
     const set = where ? null : this.folderSet(collection)
     if (set !== null) return set
     const k = this.kind(collection), paths: string[] = []
-    for (const e of this.entries.values()) {
+    for (const item of this.shared(collection)) {
       // (not a folder that's gone for now: sync keeps its files a moment, but nothing new goes there)
-      if (e.kind === k && e.item !== null && (!where || where(e.item)) && !this.missing.has(e.rel.split("/")[0])) paths.push(e.rel)
+      const id = String(item.id)
+      if ((!where || where(item)) && !this.missing.has(id.split("/", 1)[0])) paths.push(id)
     }
     return homeFolder(paths, k.folder, k.recursive)
   }
@@ -1359,7 +1371,7 @@ export class Vault {
       // Archiving is the core's: every kind's items say it the same way.
       if (e.archived) item.archived = true
       else delete item.archived
-      e.item = item
+      e.item = Object.freeze(item)
       this.byId.set(kind.collection + "\0" + item.id, rel)
     }
     e.problems = problems
@@ -1375,18 +1387,23 @@ export class Vault {
     if (e && e.item && e.kind) this.byId.delete(e.kind.collection + "\0" + e.item.id)
   }
 
-  /** A kind's items, in its order: copies, each call's own. The order is worked out again only when one of its files was
-   *  read or dropped since. */
+  /** A kind's items, in its order: copies, each call's own. */
   items(collection: string): Item[] {
+    return this.shared(collection).map((i) => ({ ...i }))
+  }
+
+  /** A kind's items in its order as the index keeps them: frozen, the same objects while their files are (so /api/state
+   *  serializes only what changed), the order worked out again once one of its files was read or dropped. */
+  shared(collection: string): readonly Item[] {
     const k = this.kind(collection)
     noteSource("kinds", collection)
     let hit = this.ordered.get(k)
     if (!hit) {
       const items: Item[] = []
-      for (const e of this.entries.values()) if (e.kind === k && e.item !== null) items.push({ ...e.item })
-      this.ordered.set(k, hit = k.order(items))
+      for (const e of this.entries.values()) if (e.kind === k && e.item !== null) items.push(e.item)
+      this.ordered.set(k, hit = Object.freeze(k.order(items)))
     }
-    return hit.map((i) => ({ ...i }))
+    return hit
   }
 
   /** An item by id ("People/Alice Park"), by file name ("Alice Park"), or by its key (a note's `id`). */
