@@ -55,6 +55,16 @@ const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHov
   )
 }, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item) as <T>(p: RowProps<T>) => ReactNode
 
+/** The field's clear button, the same through typing. */
+const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
+  return (
+    <button type="button" aria-label="Clear" onClick={onClear}
+      className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card hover:bg-foreground/80">
+      <X className="size-4" strokeWidth={3} />
+    </button>
+  )
+})
+
 export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string) => void
@@ -115,6 +125,9 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
     else if (e.key === "ArrowUp" || (e.ctrlKey && (e.key === "k" || (isMac && e.key === "p")))) { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)) }
     else if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); pick(sel, e) }
   }
+  const clears = useRef(setQuery)
+  clears.current = setQuery
+  const [clear] = useState(() => () => { clears.current(""); input.current?.focus() })
   // Tab stays in its field (its rows are chosen with the arrows).
   const onDialogKey = (e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); input.current?.focus() } }
 
@@ -125,12 +138,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
           autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="go" role="combobox" aria-expanded aria-controls="palette-results"
           aria-activedescendant={items[sel] ? `palette-${items[sel].id}` : undefined}
           className="h-14 min-w-0 flex-1 bg-transparent text-[17px] outline-none placeholder:text-muted-foreground" />
-        {query && (
-          <button type="button" aria-label="Clear" onClick={() => { setQuery(""); input.current?.focus() }}
-            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card hover:bg-foreground/80">
-            <X className="size-4" strokeWidth={3} />
-          </button>
-        )}
+        {query && <Clear onClear={clear} />}
       </div>
       <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
         {heading && <div className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}

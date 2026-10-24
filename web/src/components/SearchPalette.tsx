@@ -69,8 +69,14 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   const typed = useMemo(() => (plain && !error ? typedHits(q, disabled, order) : []), [q, plain, error, disabled, order])
   // (a launcher whose plugin opens nothing here, the web app's Browser, is the switcher with a new tab's picks)
   const lead = launcher ? launcherText(disabled, order) : null
+  // The search tab with everything, the same row while the query is (results arriving don't draw it again).
+  const everything = useMemo<Hit>(() => {
+    const query = q.trim()
+    return { id: "search-tab", title: `Search for "${query}" in every file`, meta: "", kind: "Search", icon: Search, tint: "var(--muted-foreground)",
+      text: "", recent: 0, marks: [], score: 0, run: () => openView(`search/${query}`, { newTab: true }) }
+  }, [q])
   // Plugins' finds, words inside files, archived files after everything (core/search.ts); then the typed rows (first in a
-  // launcher) and the search tab with everything.
+  // launcher) and the search tab.
   const { hits, sections } = useMemo(() => {
     const have = new Set(local.map((h) => h.file).filter(Boolean))
     const inFiles = text.hits.filter((h) => !have.has(h.file))
@@ -78,12 +84,10 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     const all = [...local.filter((h) => !h.archived), ...found, ...inFiles.filter((h) => !h.archived), ...local.filter((h) => h.archived), ...inFiles.filter((h) => h.archived)]
     const sections = new Map<string, string>([...queried.flatMap((g) => g.hits.map((h) => [h.id, g.section] as const)), ...typed.map((h) => [h.id, lead ? "" : "More"] as const)])
     const query = q.trim()
-    const everything: Hit = { id: "search-tab", title: `Search for "${query}" in every file`, meta: "", kind: "Search", icon: Search, tint: "var(--muted-foreground)",
-      text: "", recent: 0, marks: [], score: 0, run: () => openView(`search/${query}`, { newTab: true }) }
     const rows = !query ? all : lead ? [...typed, ...all, ...(all.length ? [everything] : [])] : [...all, ...typed, ...(all.length ? [everything] : [])]
     const seen = new Set<string>()
     return { hits: rows.filter((h) => !seen.has(h.id) && !!seen.add(h.id)), sections }
-  }, [local, text, q, queried, typed, lead])
+  }, [local, text, q, queried, typed, lead, everything])
   const more = named.length > local.length || text.files > text.hits.length
 
   const go = (h: Hit, mod = false) => {

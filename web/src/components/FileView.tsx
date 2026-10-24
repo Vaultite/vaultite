@@ -1,6 +1,6 @@
 // A file, opened: title (rename), properties and the live-preview editor; saves as you type and
 // merges changes made on disk meanwhile. Pages, plugin formats, media and outside-the-vault files each have their view.
-import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react"
+import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { AlertTriangle, BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
 import { menuFor, menuOnCard } from "@/components/ContextMenu"
@@ -432,10 +432,13 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const edit: Mode = code || readOnlyDrawn ? "source" : format ? "live" : editMode()
   // JSON (a plugin's settings, a notebook, a canvas) saves as typed, with a note while it doesn't parse.
   const strict = json || notebook || !!format?.json
-  const [body, setBody] = useState(first.body)
+  // The body is `cur`: typing redraws nothing here (the status bar and the JSON check follow it: onTyped); a change
+  // that comes from elsewhere (the server, a drawing) redraws with `redraw`.
+  const [tick, redraw] = useReducer((n: number) => n + 1, 0)
   const [status, setStatus] = useState<SaveStatus>({ kind: "ok" })
   const [problems, setProblems] = useState(initial.problems)
   const cur = useRef({ fm: first.fm, body: first.body })
+  const onTyped = useRef(() => {})
   const full = () => joinFm(cur.current.fm, cur.current.body)
   const editor = useRef<{ api: EditorApi; source: boolean } | null>(null)
   /** The cursor at the end of the text (Enter in the title). */
@@ -650,7 +653,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     cur.current = { fm: f, body: b }
     setFm(f)
     editor.current?.api.replace(text)
-    setBody(b)
+    redraw()
   }, [])
 
   const saver = useAutosave(path, initial.text, {
@@ -678,7 +681,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const s = start === null ? splitFm(text) : { fm: text.slice(0, start), body: text.slice(start) }
     cur.current = s
     setFm(s.fm)
-    setBody(s.body)
+    onTyped.current()
     changed()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -694,15 +697,18 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   useEffect(() => onSettle(path, settle), [path, settle])
 
   const [badJson, setBadJson] = useState<string | null>(null)
-  useEffect(() => {
+  const jsonCheck = useRef(0)
+  const checkJson = () => {
+    clearTimeout(jsonCheck.current)
     if (!strict) return
-    const t = setTimeout(() => {
+    jsonCheck.current = window.setTimeout(() => {
       const text = full()
       try { if (text.trim()) JSON.parse(text); setBadJson(null) } catch (e) { setBadJson(String((e as Error).message ?? e)) }
     }, 600)
-    return () => clearTimeout(t)
+  }
+  useEffect(() => { checkJson(); return () => clearTimeout(jsonCheck.current) },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strict, fm, body])
+    [strict, fm, tick])
   // Edits a closed window didn't get saved (core/drafts.ts), offered back while nothing typed here is pending.
   const [leftover, setLeftover] = useState<Draft | null>(null)
   useEffect(() => {
@@ -731,7 +737,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   useEffect(() => { if (initial.text !== saver.disk) void saver.check(initial) }, [initial, saver])
 
   const changeable = !ro && !isProtected(path) && !inTrash(path) && !outside && isMd(path)
-  const ctx: FileCtx = { store, path, fm: props, body, setProperty: changeable ? setProperty : undefined }
+  const ctx: FileCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: changeable ? setProperty : undefined }
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
   // (read when a block is drawn again: a block keeps the function that first drew it)
@@ -821,7 +827,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const says = format?.status
   // What plugins' items in the header and the status bar get: a change to the frontmatter redraws them, typing doesn't.
   const fileHead = useMemo<FileHead>(() => ({ path, fm: props, type, setProperty: changeable ? setProperty : undefined }), [path, props, type, changeable, setProperty])
-  usePublish(live, () => ({ path, mode: shown, setMode, body, fm, head: fileHead, views, says }), [path, shown, setMode, body, fm, fileHead, views, says])
+  const republish = usePublish(live, () => ({ path, mode: shown, setMode, body: cur.current.body, fm, head: fileHead, views, says }), [path, shown, setMode, tick, fm, fileHead, views, says])
+  onTyped.current = () => { republish(); checkJson() }
 
   // Source mode is the file as it is: no Properties (the frontmatter is in the text), blocks as their text.
   const source = shown === "source"
@@ -842,7 +849,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // included), under the path bar.
   const layout = format?.layout ?? "box"
   const page = layout === "full" && shown === "read" && pane
-  const pageCtx: PageCtx = { ...ctx, title: stem(path), place: pane ? "page" : "sheet", disabled }
+  const pageCtx: PageCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: ctx.setProperty, title: stem(path), place: pane ? "page" : "sheet", disabled }
   pageRef.current = pageCtx
   // A page read, or edited as it's read, is as wide as its cards; one of only text reads as a note does, in the same
   // column whether it's read or edited.
@@ -860,8 +867,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const size = useTextSize("note")
   useTextSizeWheel(article, note ? "note" : null)
   const zoom = note && size !== 100 ? size / 100 : 0
-  const drawing = format && !source ? format.render({ store, path, text: joinFm(fm, body), editable: shown === "live" && !ro, place: pane ? "page" : "sheet",
-    onChange: (text) => { if (text === full()) return; const s = splitFm(text); cur.current = s; setFm(s.fm); setBody(s.body); changed() } }) : null
+  const drawing = format && !source ? format.render({ store, path, text: full(), editable: shown === "live" && !ro, place: pane ? "page" : "sheet",
+    onChange: (text) => { if (text === full()) return; const s = splitFm(text); cur.current = s; setFm(s.fm); redraw(); changed() } }) : null
   // Aliases another file has too: [[Alias]] goes to one of them only.
   const clashes = useMemo(() => {
     const own = path.replace(/\.md$/i, "")
@@ -932,10 +939,10 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
           {isMd(path) && !source && !drawing && <NoteTop head={fileHead} place={pane ? "page" : "sheet"} />}
           {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<div className="min-h-40" />}>
             {drawing ? framed(layout, pane, drawing) : notebook && !source ? (
-              <Notebook text={body} />
+              <Notebook text={cur.current.body} />
             ) : json && !source ? (
-              <JsonView text={body} editable={shown === "live" && !ro}
-                onChange={(text) => { cur.current = { fm: "", body: text }; setBody(text); changed() }} />
+              <JsonView text={cur.current.body} editable={shown === "live" && !ro}
+                onChange={(text) => { cur.current = { fm: "", body: text }; redraw(); changed() }} />
             ) : (
               <Editor key={source ? `${path}:source` : `${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} config={config} {...wiring} label={stem(path)}
                 docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}

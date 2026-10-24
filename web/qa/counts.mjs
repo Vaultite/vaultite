@@ -1,4 +1,5 @@
-// Counts that can only go down: how many components React renders per keystroke in a note and in the quick switcher,
+// Counts that can only go down: how many components React renders per keystroke in a note (with the companion's agent
+// in it too) and in the quick switcher,
 // when the command palette opens, and when a note that isn't open changes behind the app (as Claude would write it). Counted, not timed (a stand-in for
 // React DevTools' hook, as perf.mjs's), so it's the same run after run and can fail a change: above its limit in
 // counts.json, it fails. Each limit is 5% over the best count seen (commits per key wobbled more: left out). With
@@ -63,22 +64,40 @@ await page.keyboard.press("End")
 await quiet()
 
 const now = {}, why = {}
-// Typing: per keystroke, the commits and components rendered (before the autosave: its own after a pause). Keys 200 ms
+// Typing: per keystroke, the components rendered (before the autosave: its own after a pause). Keys 200 ms
 // apart, so each one's deferred renders are done before the next (at typing speed they merge, by timing).
 // (its saves held till the keys are counted: a key late on a busy machine leaves the 600 ms pause that saves, and the
 // store's refresh after it is what elsewhere.rendered counts)
-const saves = []
-await page.route("**/api/file", (r) => (r.request().method() === "PUT" ? saves.push(r) : r.continue()))
-const typed = " the quick brown fox jumps"
-await reset()
-await page.keyboard.type(typed, { delay: 200 })
-let c = await read()
-now["typing.renderedPerKey"] = c.rendered / typed.length
-why.typing = `${busiest(c)}${saves.length ? `; ${saves.length} saves held` : ""}`
-await page.unroute("**/api/file")
-for (const r of saves) await r.continue()
-await wait(1500)
+// The fewer of two rounds: a refresh landing in one (a busy machine's late load) isn't the keys'.
+const typeCounted = async (name, typed) => {
+  for (const words of [typed, typed.split("").reverse().join("")]) {
+    const saves = []
+    await page.route("**/api/file", (r) => (r.request().method() === "PUT" ? saves.push(r) : r.continue()))
+    await reset()
+    await page.keyboard.type(words, { delay: 200 })
+    const c = await read(), k = `${name}.renderedPerKey`
+    if (!(c.rendered / words.length >= now[k])) { now[k] = c.rendered / words.length; why[name] = `${busiest(c)}${saves.length ? `; ${saves.length} saves held` : ""}` }
+    await page.unroute("**/api/file")
+    for (const r of saves) await r.continue()
+    await wait(1500)
+    await quiet()
+  }
+}
+await typeCounted("typing", " the quick brown fox jumps")
+
+// Typing with the companion in the note: its agent's cursor on a line above and a comment in the margin by it.
+const op = (id, params = {}) => fetch(new URL(`/api/ops/${id}`, B), { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) }).then((r) => r.json())
+const SPOT = "Where this vault keeps things"
+await op("companion.look", { path: NOTE, find: SPOT })
+await op("companion.comment", { path: NOTE, find: SPOT, text: "A comment the keys don't move." })
+await until(() => page.evaluate(() => !!document.querySelector(".companion-cursor") && !!document.querySelector("[data-companion-note], [data-companion-gutter]")), 8000)
+await page.click(".cm-content")
+await page.keyboard.press("ControlOrMeta+End")
 await quiet()
+await typeCounted("companion", " over the lazy dog")
+await op("companion.clear")
+await quiet()
+let c
 
 // A note no tab shows, changed behind the app: what redraws for it. The fewest of three (what else the page was doing
 // only adds: the least is the change's own).
@@ -95,13 +114,17 @@ for (let i = 0; i < 3; i++) {
 await page.keyboard.press("ControlOrMeta+o")
 await until(() => page.evaluate(() => !!document.querySelector("[role=dialog] input[role=combobox]")), 5000)
 await quiet()
-const query = "vault"
+// (words inside files held till the keys are counted: on a busy machine they'd land between two keys, or not)
+const query = "vault", found = []
+await page.route("**/api/search?*", (r) => found.push(r))
 await reset()
 await page.keyboard.type(query, { delay: 120 })
 await wait(300)
 c = await read()
 now["switcher.renderedPerKey"] = c.rendered / query.length
 why.switcher = busiest(c)
+await page.unroute("**/api/search?*")
+for (const r of found) await r.continue().catch(() => {})
 await page.keyboard.press("Escape")
 
 // The command palette opened: it draws the rows near the screen, not one per command (~700 on a big vault).

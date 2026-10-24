@@ -103,9 +103,13 @@ function publish(s: Status_) { status_ = s; statusSubs.notify() }
  *  its tab is hidden (another tab of the pane shown), unless another file's has replaced it meanwhile. */
 export function usePublish(live: boolean, make: () => NonNullable<Status_>, deps: unknown[]) {
   const mine = useRef<Status_>(null)
+  const latest = useRef(make)
+  latest.current = make
   const { hidden } = usePane()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (live) { mine.current = make(); publish(mine.current) } }, [live, ...deps])
   useEffect(() => { if (hidden && mine.current && status_ === mine.current) publish(null) }, [hidden])
   useEffect(() => () => { if (mine.current && status_ === mine.current) publish(null) }, [])
+  // Published again from what `make` reads now (typing: the file's text, without drawing the file again).
+  return useCallback(() => { if (mine.current && status_ === mine.current) { mine.current = latest.current(); publish(mine.current) } }, [])
 }

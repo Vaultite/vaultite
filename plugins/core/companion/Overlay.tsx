@@ -1,6 +1,6 @@
 // The agents over the whole app: each one's cursor gliding to where its attention is (parked by the status bar when
 // it's nowhere), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
-import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
+import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Ellipsis, Pin, X } from "lucide-react"
 import { canvasOf, canvasShown, capitalize, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, snippet } from "@vaultite"
@@ -192,9 +192,19 @@ function Fan({ agents, up, right, pop, close, keep }: { agents: Agent[]; up: boo
   )
 }
 
-function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
+/** The same props, but callbacks (made again each draw, doing the same) and objects equal key by key (a spot, a stack):
+ *  a keystroke elsewhere redraws no cursor or card that stays where it was. */
+const shallow = (x: unknown, y: unknown) => !!x && !!y && typeof x === "object" && typeof y === "object"
+  && Object.keys(x).length === Object.keys(y).length && Object.entries(x).every(([k, v]) => Object.is(v, (y as Record<string, unknown>)[k]))
+const sameProps = <P extends object>(a: P, b: P) => Object.entries(b).every(([k, v]) => typeof v === "function" || Object.is((a as Record<string, unknown>)[k], v) || shallow((a as Record<string, unknown>)[k], v))
+
+const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, typed, open, setOpen, pop }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
   /** Its place in a stack on one spot: drawn this many steps to the right, so each colour shows. */
   shift: number
+  /** Since it last acted: 0 under 3 s (its name shows), 1 under 4 s, 2 after (only watching, it fades). */
+  age: 0 | 1 | 2
+  /** It's typing an edit in. */
+  typed: boolean
   open: boolean; setOpen: (open: boolean) => void; pop: (name: string) => void }) {
   const tint = `var(--${a.tint})`
   const [hover, setHover] = useState(false)
@@ -222,10 +232,10 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
   // (what opens beside it opens toward the room: its flag needs a little, its words more)
   const right = at.x > innerWidth - 320 && at.x > innerWidth / 2, flagRight = at.x > innerWidth - 140
   // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
-  const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
+  const idle = a.state === "watching" && !said && !typed && age === 2
   const seen = a.state === "watching" && !!a.seen
   // (its name shows as it moves or acts, then fades to the bare arrow, as in a shared doc; hovered, again)
-  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || !!a.asks || typing?.agent === a.name || hover || open || !!drag || fan
+  const flag = age === 0 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || !!a.asks || typed || hover || open || !!drag || fan
   const low = !drag && !!spot.low, tag = flag && (!under || hover || open)
   useEffect(() => {
     if (!open && !fan) return
@@ -283,7 +293,7 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
   return (
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
-      style={{ transform: `translate(${at.x - 3}px, ${at.y - 2}px)`, transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typing?.agent === a.name ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
+      style={{ transform: `translate(${at.x - 3}px, ${at.y - 2}px)`, transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
         opacity: idle && !hover && !open && !fan ? 0.55 : 1, zIndex: open || drag || fan ? 57 : many ? 56 : undefined }}>
       {!spot.drawn && <>
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")} style={{ transform: nudge ? `translate(${nudge.x}px, ${nudge.y}px)` : undefined, transition: "transform .18s ease-out" }}>
@@ -338,13 +348,13 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
       )}
     </div>
   )
-}
+}, sameProps)
 
 /** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
 export const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
 
 /** A margin card. Not open, a long one shows its first lines faded (a dot, where the margin's narrow); open, all of it. */
-function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: number; y: number; folded: boolean; open: boolean; cap: number
+const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: number; y: number; folded: boolean; open: boolean; cap: number
   onHeight: (h: number) => void; onOpen: (open: boolean) => void }) {
   const ref = useRef<HTMLElement | null>(null), keep = (el: HTMLElement | null) => { ref.current = el }
   const body = useRef<HTMLDivElement>(null)
@@ -415,7 +425,7 @@ function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: nu
       )}
     </div>
   )
-}
+}, sameProps)
 
 const STYLE = `
 .companion-bob { animation: companion-bob 1.1s ease-in-out infinite; }
@@ -487,7 +497,9 @@ export function Overlay() {
   }, [])
   useEffect(() => {
     let frame = 0
-    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); redraw() }) }
+    // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing)
+    const idle = () => { const st = getState(); return st.mode === "off" || (!st.notes.length && !st.agents.length && !roomy.size) }
+    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
     addEventListener("scroll", later, { capture: true, passive: true })
@@ -594,6 +606,7 @@ export function Overlay() {
         </div>
       ))}
       {cursors.map(({ a, spot, said, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} others={others} under={under} shift={shift}
+        age={Date.now() - a.t < 3000 ? 0 : Date.now() - a.t <= 4000 ? 1 : 2} typed={typing?.agent === a.name}
         open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} />)}
     </div>,
     document.body,

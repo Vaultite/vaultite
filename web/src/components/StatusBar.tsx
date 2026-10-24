@@ -1,14 +1,14 @@
 // The status bar (desktop, bottom right): one list of items, ambient ones and those for the focused file (its view and
 // counts: usePublish), each hidden by right-click or the palette, dragged along it or into its tray (core/statusbar.ts).
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
+import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { Ellipsis, PanelBottom } from "lucide-react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
 import { Catch, Drawn } from "@/components/Guard"
-import { MODES, status_, statusSubs, viewItems, VIEWS } from "@/components/fileState"
+import { MODES, status_, statusSubs, viewItems, VIEWS, type Mode } from "@/components/fileState"
 import { useCommands } from "@/core/commands"
 import { countText, type Counts } from "@/core/counts"
 import { numberText } from "@/core/data"
-import type { OpenFile } from "@/core/define"
+import type { FileHead, OpenFile, StatusItem } from "@/core/define"
 import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
 import { joinFm } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
@@ -197,7 +197,9 @@ export function StatusBar() {
   const body = late?.body ?? "", fm = late?.fm ?? ""
   const head = late?.head, path = late?.path ?? ""
   // What plugins' items get: the file as typed (theirs are drawn after the keystroke too).
-  const file = useMemo<OpenFile>(() => ({ ...(head ?? { path, fm: {}, type: null }), text: head ? joinFm(fm, body) : "" }), [head, path, fm, body])
+  const fileHead = useMemo(() => head ?? { path, fm: {}, type: null }, [head, path])
+  const fileText = useMemo(() => (head ? joinFm(fm, body) : ""), [head, fm, body])
+  const reads = useRef(new Map<string, { text: boolean }>())
   const text = !!late && !late.info && !late.says
   const code = !!late && /^(code|other|notebook)$/.test(kindOf(path))
   const nb = !!late && /\.ipynb$/i.test(path)
@@ -233,20 +235,13 @@ export function StatusBar() {
   const fileDraw = (x: BarItem): ReactNode => {
     if (!s || !late) return null
     const { mode, views, setMode } = late
-    if (x.status) return item_(x.key, () => x.status!.render(file))
-    const n = (v: number, one: string) => <span>{numberText(v)} {one}{v === 1 ? "" : "s"}</span>
-    if (x.key === "core:view") {
-      if (views.length < 2) return null
-      const cur = MODES[mode], tip = `Current view: ${VIEWS.find((v) => v.value === mode)!.label.toLowerCase()}`
-      // Click: the file's views (three, or reading and source), the current one checked.
-      const menu = (e: MouseEvent) => menuAbove(e, viewItems(views, mode, setMode))
-      return (
-        <button type="button" onClick={menu} aria-label={`${tip}. Change view`} aria-haspopup="menu" data-tip={tip} data-tip-side="top"
-          className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground">
-          <cur.icon className="size-3.5" strokeWidth={2.25} />
-        </button>
-      )
+    if (x.status) {
+      const box = reads.current.get(x.key) ?? { text: false }
+      reads.current.set(x.key, box)
+      return <FileItem key={x.key} item={x.status} head={fileHead} text={fileText} reads={box} />
     }
+    const n = (v: number, one: string) => <span>{numberText(v)} {one}{v === 1 ? "" : "s"}</span>
+    if (x.key === "core:view") return views.length < 2 ? null : <ViewButton mode={mode} views={views} setMode={setMode} />
     if (x.key === "core:words") {
       return late.info ? late.info.map((v) => <span key={v}>{v}</span>)
         : late.says ? item_("says", () => { const said = late.says!(body); return said && <span>{said}</span> })
@@ -270,7 +265,7 @@ export function StatusBar() {
   const ambientSlots = useMemo(() => new Map(inBar.filter((x) => x.ambient).map((x) => [x.key, slot(x, item_(x.key, () => x.ambient!.render()), "bar", holdOf(x.key))])), [inBar, held, dragged, path])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fileSlots = useMemo(() => new Map(inBar.filter((x) => !x.ambient).map((x) => [x.key, open ? slot(x, fileDraw(x), "bar", holdOf(x.key))
-    : <span key={x.key} aria-hidden data-status-coming data-fit={fitRank(x)} className="shrink-0" style={{ width: holdOf(x.key) }} />])), [inBar, held, dragged, open, late, counts, file])
+    : <span key={x.key} aria-hidden data-status-coming data-fit={fitRank(x)} className="shrink-0" style={{ width: holdOf(x.key) }} />])), [inBar, held, dragged, open, late, counts, fileHead, fileText])
   // In one row, a line where the ambient items meet the file's (shown only between two that show something: index.css).
   const els: ReactNode[] = []
   let kind = ""
@@ -360,6 +355,25 @@ function useBarDrops(barRef: RefObject<HTMLElement | null>, itemsRef: RefObject<
   }, (item, g) => moveBarItem(item.status!, g.before, true))
   return { barHit: useDropHit<Gap>("status:bar"), trayHit: useDropHit<Gap>("status:more") }
 }
+
+/** The file's view; clicked, its views (three, or reading and source), the current one checked. */
+const ViewButton = memo(function ViewButton({ mode, views, setMode }: { mode: Mode; views: typeof VIEWS; setMode: (m: Mode) => void }) {
+  const cur = MODES[mode], tip = `Current view: ${VIEWS.find((v) => v.value === mode)!.label.toLowerCase()}`
+  const menu = (e: MouseEvent) => menuAbove(e, viewItems(views, mode, setMode))
+  return (
+    <button type="button" onClick={menu} aria-label={`${tip}. Change view`} aria-haspopup="menu" data-tip={tip} data-tip-side="top"
+      className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground">
+      <cur.icon className="size-3.5" strokeWidth={2.25} />
+    </button>
+  )
+})
+
+/** A plugin's item for the file, drawn again as the text changes only once it has read it (`file.text`): most read only
+ *  the file's head (its properties, where it came from). */
+const FileItem = memo(function FileItem({ item, head, text, reads }: { item: StatusItem; head: FileHead; text: string; reads: { text: boolean } }) {
+  const file = useMemo(() => Object.defineProperty({ ...head }, "text", { enumerable: true, get: () => { reads.text = true; return text } }) as OpenFile, [head, text, reads])
+  return <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(file)} /></Catch>
+}, (a, b) => a.item === b.item && a.head === b.head && a.reads === b.reads && (a.text === b.text || !b.reads.text))
 
 /** The file as it is, a moment after each keystroke; a long one's once typing pauses (another file's at once). */
 function useSettled(s: typeof status_) {
