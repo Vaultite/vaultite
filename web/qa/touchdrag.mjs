@@ -20,7 +20,12 @@ const [moved] = top
 
 const page = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }))
 const { touch } = await fingers(page)
-const mid = async (sel) => { const b = await page.locator(sel).first().boundingBox(); return { x: b.x + Math.min(b.width / 2, 80), y: b.y + b.height / 2 } }
+// (once it's laid out: a row the tree is redrawing has no box for a moment)
+const mid = async (sel) => {
+  const b = await until(() => page.locator(sel).first().boundingBox({ timeout: 2000 }), 10000)
+  if (!b) throw new Error(`${sel} is never laid out`)
+  return { x: b.x + Math.min(b.width / 2, 80), y: b.y + b.height / 2 }
+}
 /** A finger on `from`, held `ms`, then moved to `to` in steps (and held there `rest` ms), then lifted. */
 const gesture = async (from, { ms = 0, to, steps = 10, rest = 0, before } = {}) => {
   await touch("touchStart", from.x, from.y)
@@ -100,11 +105,12 @@ check("swiped right in the left drawer: Move and Delete show", w > 40 && await p
 check("swiped right: the drawer stays out", await drawerOut())
 await page.screenshot({ path: path.join(OUT, "swiped.png") })
 await del.tap()
-check("Delete: the file goes to the trash", await until(() => !existsSync(path.join(VAULT, swiped))))
+// (its row folds away but stays till the tree is read again: picked next, it would be gone under the finger)
+check("Delete: the file goes to the trash, its row leaves", await until(async () => !existsSync(path.join(VAULT, swiped)) && await page.locator(row(swiped)).count() === 0))
 
 // Swiped left in the left drawer: the drawer's own swipe closes it.
 await openDrawer()
-const o = await mid(row(await inSight()))
+const o = await mid(row(await until(inSight)))
 await gesture({ x: 300, y: o.y }, { to: { x: 60, y: o.y }, steps: 8 })
 check("swiped left in the left drawer: the drawer closes, no actions show", !(await drawerOut()))
 
