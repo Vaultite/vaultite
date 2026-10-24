@@ -2,7 +2,7 @@
 // GraphCanvas (its own chunk).
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, Filter, Maximize, Search, SquareArrowOutUpRight, Waypoints, X } from "lucide-react"
-import { cn, HeadingButton, isViewOpen, menuFor, openFile, openTag, openView, pluginSettings, SidebarHeading, useFocusedFile, useLive, useVaultChange, type MenuItem, type SidebarCtx } from "@vaultite"
+import { cn, HeadingButton, isViewOpen, menuFor, openFile, openTag, openView, pluginSettings, SidebarHeading, useFocusedFile, useLive, usePatched, useVaultChange, type MenuItem, type SidebarCtx } from "@vaultite"
 import { BODY, filterGraph, grouping, isAttachment, linkColour, linkTypes, localGraph, nameOf, PALETTE, tokenOf, withoutLinks, withTags, type ColorBy, type ColorGroup, type Direction, type Graph, type GraphEdge, type LegendRow } from "./graph"
 import { colourItems, GraphPanel, Swatch } from "./GraphPanel"
 import type { Look } from "./GraphCanvas"
@@ -36,7 +36,9 @@ export function useGraph(path?: string, depth = 1, archived = false) {
   })
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
   const q = (path ? `graph?path=${encodeURIComponent(path)}&depth=${depth}` : "graph") + (archived ? `${path ? "&" : "?"}archived=true` : "")
-  return useLive<Graph>(q, v || undefined)
+  // (the whole vault's comes as a patch of the one drawn: in a big vault that's megabytes less after each change)
+  const local = useLive<Graph>(path ? q : null, v || undefined), whole = usePatched<Graph>(path ? null : q, v || undefined)
+  return path ? local : whole
 }
 
 type Match = { paths?: string[]; error?: string }

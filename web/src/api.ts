@@ -6,7 +6,7 @@ import { getPrefs } from "@/core/prefs"
 // they `require`; never the core's internals (web/src/core, components), so the core can change underneath them.
 export {
   addDays, dateText, dow, fmtAgo, fmtDay, fmtLongDay, fmtMin, fmtStamp, fmtTime, getStore, stampMs, iso, mutate, numberText, optimistic, parse, plain,
-  range, reload, today, useLive, usePreview, useStore, useTick, weekStart,
+  range, reload, today, useLive, usePatched, usePreview, useStore, useTick, weekStart,
 } from "@/core/data"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
 export type { Store } from "@/core/data"

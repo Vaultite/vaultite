@@ -211,6 +211,39 @@ export function useLive<T>(path: string | null, version?: string | number, files
   return { data, error, loading: !!path && data === null && error === null }
 }
 
+/** useLive for an answer the server keeps frozen (the graph), asked again on `version` and its plugin's changes as a
+ *  patch of the one it has (?patch=<v>, core/app.ts patched): only what changed comes, the rest keeps its objects. */
+export function usePatched<T>(path: string | null, version?: string | number) {
+  const mock = useContext(PreviewLive)
+  const [got, setGot] = useState<{ path: string; v: string; data: T } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const had = useRef(got)
+  const [again, setAgain] = useState(0)
+  useEffect(() => (path ? onVaultChange((paths) => { if (liveData(paths, path)) setAgain((n) => n + 1) }) : undefined), [path])
+  useEffect(() => {
+    if (!path || mock) return
+    let on = true
+    type Answer = { v: string; whole: T } | { v: string; since: string; patch: Patch | null }
+    const ask = (was: typeof got): Promise<void> => send<Answer>("GET", `${path}${path.includes("?") ? "&" : "?"}patch=${encodeURIComponent(was?.v || "0")}`, undefined, "no-cache").then((a): Promise<void> | void => {
+      if (!on) return
+      if (!("whole" in a) && (!was || a.since !== was.v)) return ask(null)
+      let data: T
+      try { data = "whole" in a ? a.whole : a.patch ? applyPatch(was!.data, a.patch) as T : was!.data } catch { return ask(null) }
+      had.current = { path, v: a.v, data }
+      setGot(had.current)
+      setError(null)
+    }).catch((e) => { if (on) setError(errorText(e)) })
+    void ask(had.current?.path === path ? had.current : null)
+    return () => { on = false }
+  }, [path, version, again, mock])
+  if (mock) {
+    const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
+    return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
+  }
+  const data = got?.path === path ? got.data : null
+  return { data, error, loading: !!path && data === null && error === null }
+}
+
 // The one store: /api/state, loaded as soon as the app's code runs and again on every change in the vault. Plugins
 // change it optimistically with mutate() after a write, or reload().
 type Loaded = { store: Store | null; error: string | null }

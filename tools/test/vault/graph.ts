@@ -308,5 +308,18 @@ export default async ($: VaultTest) => {
     unarchived("A/.archive/B/.archive/c.md") === "A/B/c.md" && inArchive(".archive/x.md") && !inArchive("A/.archive") && !isHiddenPath("A/.archive/b.md") && isHiddenPath(".trash/a.md") &&
     homeOf(["People/.archive/a.md", "People/.archive/b.md", "People/c.md"], "People") === "People")
   check("archived: only true or yes counts", [true, "yes", "True", " YES "].every(archivedValue) && ![false, "false", "no", 0, 1, "", "2026-09-01", "maybe", [1], { a: 1 }, null, undefined].some(archivedValue) && isArchived({ archived: true }) && !isArchived(null))
+  {
+    // The whole graph as a patch of the one the app has (?patch=<v>, core/app.ts patched): an edit sends what changed.
+    const { applyPatch } = await import("../../../core/statepatch.ts")
+    const [, w0] = await api("GET", "graph?patch=0"), a0 = JSON.parse(w0)
+    const [, w1] = await api("GET", `graph?patch=${a0.v}`), a1 = JSON.parse(w1)
+    write("Graph test/Alone.md", "Now it links to [[Far]].\n")
+    const [, w2] = await api("GET", `graph?patch=${a0.v}`), a2 = JSON.parse(w2)
+    const [, now] = await api("GET", "graph")
+    check("graph patch: the whole graph first, with its version", typeof a0.v === "string" && a0.v !== "" && Array.isArray(a0.whole.nodes), Object.keys(a0))
+    check("graph patch: nothing changed, nothing sent", a1.v === a0.v && a1.patch === null, a1)
+    check("graph patch: after an edit, a patch that makes the graph", a2.v !== a0.v && a2.since === a0.v && w2.length < w0.length / 2 && sameJson(applyPatch(a0.whole, a2.patch), now), w2.slice(0, 300))
+    write("Graph test/Alone.md", "No links at all.\n")
+  }
   Object.assign($.vars, { board })
 }

@@ -373,6 +373,29 @@ export class App {
     return snap
   }
 
+  /** GET <route>?patch=<v>: a frozen answer (the graph) as a patch of answer v, which the app has, when it's still kept
+   *  (`{v, since, patch}`), else whole (`{v, whole}`); `v` is "" for an answer that isn't kept. */
+  private patched(key: string, since: string, res: Reply): Reply {
+    const body = res.body
+    if (res.status !== 200 || body === null || typeof body !== "object" || !Object.isFrozen(body)) {
+      return res.status === 200 ? reply(200, new Text(`{"v":"","whole":${JSON.stringify(publicOf(body) ?? null)}}`, "application/json")) : res
+    }
+    let kept = this.answers.get(key) ?? []
+    this.answers.delete(key)
+    let now = kept.find((a) => a.body === body)
+    if (!now) {
+      now = { v: `${this.boot}.${++this.seq}`, body, piece: SP.snapshot(publicOf(body), kept.at(-1)?.piece) }
+      kept = [...kept, now].slice(-2)
+    }
+    this.answers.set(key, kept)
+    if (this.answers.size > 20) this.answers.delete(this.answers.keys().next().value!)
+    const v = JSON.stringify(now.v), was = kept.find((a) => a.v === since)
+    const text = was ? `{"v":${v},"since":${JSON.stringify(since)},"patch":${was === now ? "null" : SP.patchOf(was.piece, now.piece) ?? "null"}}`
+      : `{"v":${v},"whole":${SP.jsonOf(now.piece)}}`
+    return reply(200, new Text(text, "application/json"))
+  }
+  private answers = new Map<string, { v: string; body: object; piece: SP.Piece }[]>() // (patched's, by route: the last two)
+
   /** What bundles (core/bundles.ts) work with: the vault, the plugins, and this API for their edits (apiAs, as the
    *  plugins call it: held, as `http`'s caller). */
   host(http?: IncomingMessage): B.Host {
@@ -767,6 +790,10 @@ export class App {
   /** The one way into the API, over HTTP (run) or in-process: a read after a sync (unless `synced`), a write held from
    *  its sync to its last write (at once inside a hold); `lock: false` routes and ops sync like a read. */
   private async respond(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage, synced = false): Promise<Reply> {
+    if (method === "GET" && query.patch !== undefined) {
+      const { patch: since, ...rest } = query
+      return this.patched(`${parts.join("/")}?${new URLSearchParams(rest)}`, since, await this.respond(method, parts, rest, body, http, synced))
+    }
     const go = () => this.dispatchOrReply(method, parts, query, body ?? {}, http)
     if (this.holding.getStore()?.on || this.unsynced(method, parts)) return go()
     if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced({ trusting: this.trusts(http) }).then(go)

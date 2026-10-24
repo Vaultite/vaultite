@@ -97,6 +97,11 @@ const found = await until(async () => { const n = await nodes(); return n > 0 &&
 check(`search leaves only what it finds (${found} of ${all.nodes.length})`, !!found)
 await page.fill("[data-graph-search]", "")
 check("cleared, every file again", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)))
+// A file made meanwhile shows up (the graph comes again as a patch of the one drawn), and goes once it's gone.
+await req("POST", "file", { path: "Qa graph/Made while open.md", text: `Links to [[${hub.path.replace(/\.md$/, "")}]].\n` })
+check("a file made while it's open joins the graph", !!(await until(async () => (await nodes()) === all.nodes.length + 1, 8000)), await nodes())
+await req("DELETE", `file?path=${encodeURIComponent("Qa graph/Made while open.md")}`)
+check("and leaves it once deleted", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)), await nodes())
 
 // Filters panel: files with no links, a switch (saved at once, the panel staying open).
 await page.click("[data-graph-filters]")
