@@ -327,6 +327,21 @@ plugin.op({
   }).join("\n"),
 })
 
+type ArchivedReport = { archived: { id: string; to: string; title: string; archived: string }[] }
+plugin.op({
+  id: "tabs.archived",
+  cli: "tabs archived",
+  summary: "The user's archived tabs: unpinned ones that closed themselves unseen a while (Archive tabs), the latest first.",
+  help: `The tabs archived in the user's window (with Workspaces, the current workspace's), the latest first: each one's id,
+when it was archived, what it showed (file:<path>, view:<view>) and its title. Tabs archive themselves with the Tabs
+setting archive_after (never, 12h, 24h, 7d, 30d); the user reopens them from the Archived tabs view or the quick switcher.
+
+  vau tabs archived`,
+  kind: "read",
+  run: (_p, ctx) => ask(ctx, { action: "archived-tabs" }),
+  text: (r: ArchivedReport) => r.archived.length ? r.archived.map((e) => `${e.id}  ${e.archived}  ${e.to}${e.title ? ` (${e.title})` : ""}`).join("\n") : "No archived tabs.",
+})
+
 plugin.op({
   id: "tabs.group",
   cli: "tabs group",

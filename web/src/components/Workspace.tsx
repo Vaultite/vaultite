@@ -6,7 +6,7 @@ import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
-import { closeTab, focusGroup, replaceTabTarget, selectTab, setCloseGuard, setOpenElsewhere, setOpener, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
+import { closeTab, focusGroup, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
 import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
 import { evenOut, resize } from "@/core/splits"
 import { layout, shownTab, tabPath, type Divider as DividerAt, type Group, type Rect } from "@/core/layout"
@@ -25,6 +25,7 @@ import { Resizer } from "@/components/Resizer"
 import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
+import { unsavedIn } from "@/core/unsaved"
 
 setTabCloser((to, tab, last) => {
   const v = viewFor(to, getPrefs().disabled)
@@ -36,6 +37,13 @@ setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
 setOpener((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.opensBeside?.(v.arg)) || null })
 setPageTest((path) => isPage(path))
+setArchivable((t) => {
+  if (t.to.startsWith("file:")) return !unsavedIn(t.to.slice(5))
+  if (!t.to.startsWith("view:")) return true
+  const v = viewFor(t.to, getPrefs().disabled), a = v?.def.archives
+  if (!v?.on) return false
+  try { return typeof a === "function" ? a(v.arg, t.id) : a ?? !(v.def.keepsTab || v.def.onClose || v.def.confirmClose) } catch { return false }
+})
 // Views that ask before their tabs close (a terminal running something): one question per view, in turn.
 setCloseGuard(async (tos) => {
   const byView = new Map<ViewDef, string[]>()

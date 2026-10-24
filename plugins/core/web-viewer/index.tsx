@@ -215,6 +215,8 @@ export default definePlugin({
         const s = soundOf(arg, tab)
         return s ? { icon: s.muted ? VolumeX : Volume2, label: s.muted ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.muted ? "unmute" : "mute") } : null
       },
+      // (a page playing sound is in use, seen or not)
+      archives: (arg, tab) => !soundOf(arg, tab)?.playing,
       // (a tab's page is its own, whatever else shows the address)
       // (once the window paints behind it again, as WebPage lets go of one)
       onTabClose: (_arg, tab) => void painted().then(() => webPages?.close(tab)),

@@ -66,7 +66,7 @@ const changed = signal()
  *  fixSets). A focused group that closed hands the focus to its neighbour. */
 export function set(next: Workspace) {
   const was = leaves(state.root).map((g) => g.id)
-  const root = tidy(fixAllSets(next.root)) ?? blankGroup()
+  const root = stamped(tidy(fixAllSets(next.root)) ?? blankGroup(), state.root)
   const gs = leaves(root)
   let focus = next.focus
   if (!gs.some((g) => g.id === focus)) {
@@ -98,7 +98,10 @@ export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) 
       return {
         ...g,
         active: mine && g.tabs.some((t) => t.id === mine.active) ? mine.active : g.active,
-        tabs: g.tabs.map((t) => { const o = tabs.get(t.id); return o && o.to === t.to && !t.back && !t.fwd ? { ...t, back: o.back, fwd: o.fwd, from: o.from } : t }),
+        tabs: g.tabs.map((t) => {
+          const o = tabs.get(t.id), seen = Math.max(t.seen ?? 0, o?.seen ?? 0) || undefined
+          return o && o.to === t.to && !t.back && !t.fwd ? { ...t, back: o.back, fwd: o.fwd, from: o.from, seen } : seen === t.seen ? t : { ...t, seen }
+        }),
       }
     })
     gs = leaves(root)
@@ -419,16 +422,25 @@ function lastOf(tabs: Tab[]) {
 }
 function closed(tabs: Tab[], pane?: Group) {
   remember(tabs, pane)
+  heard(tabs)
+}
+/** Views hear their tabs leave (`last` once a place: with the last of its tabs). */
+function heard(tabs: Tab[]) {
   const last = new Set(lastOf(tabs))
-  // (`last` once a place: with the last of its tabs)
   tabs.forEach((t, i) => { if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, last.has(t.to) && !tabs.slice(i + 1).some((x) => x.to === t.to)) })
 }
 
+/** A closed tab, with its pane and its place there: what ⌘⇧T and the archived tabs (core/tabarchive.ts) bring back. */
+export type ClosedTab = { tab: Tab; group: string; at: number }
 /** Tabs closed lately, for ⌘⇧T, with their pane and place; or a whole pane (closePane), with where it sat. Not blank
  *  tabs, nor views that end with their tab (a terminal's shell). */
-type Closed = { tab: Tab; group: string; at: number } | { pane: Group; spot: Spot | null }
+type Closed = ClosedTab | { pane: Group; spot: Spot | null }
 const reopenable: Closed[] = []
 const keptTab = (t: Tab): Tab => ({ id: t.id, to: t.to, back: t.back, fwd: t.fwd, ...(t.pinned ? { pinned: true } : {}), ...(t.set ? { set: t.set } : {}) })
+function closedEntry(t: Tab): ClosedTab | null {
+  const g = groupOfTab(t.id)
+  return g ? { tab: keptTab(t), group: g.id, at: g.tabs.indexOf(t) } : null
+}
 function remember(tabs: Tab[], pane?: Group) {
   const ending = new Set(lastOf(tabs).filter(keeps))
   if (pane) {
@@ -437,30 +449,34 @@ function remember(tabs: Tab[], pane?: Group) {
   }
   // The last first: reopened one by one, each goes back in front of those after it.
   else for (const t of [...tabs].reverse()) {
-    const g = groupOfTab(t.id)
-    if (!g || isBlank(t) || ending.has(t.to)) continue
-    reopenable.push({ tab: keptTab(t), group: g.id, at: g.tabs.indexOf(t) })
+    const e = isBlank(t) || ending.has(t.to) ? null : closedEntry(t)
+    if (e) reopenable.push(e)
   }
   reopenable.splice(0, Math.max(0, reopenable.length - 50))
 }
 export const canReopenTab = () => reopenable.length > 0
-/** Reopen the tab closed last where it was (its pane gone: the focused one), with its history and tab group; skips ones
- *  open again or `gone`. A blank active tab there makes way for it. A pane closed last comes back whole (reopenPane). */
+/** Reopen the tab closed last where it was (restoreTab); skips ones open again or `gone`. A pane closed last comes back
+ *  whole (reopenPane). */
 export function reopenTab(gone: (to: string) => boolean = () => false) {
   const back = (t: Tab) => !findOpen(t.to) && !gone(t.to)
   let last = reopenable.pop()
   while (last && ("pane" in last ? !last.pane.tabs.some(back) : !back(last.tab))) last = reopenable.pop()
   if (!last) return
   if ("pane" in last) return reopenPane(last.pane, last.spot, back)
-  const r = last, { tab } = r
+  restoreTab(last)
+}
+/** Put a closed tab back where it was (its pane gone: the focused one), with its history and tab group (if still
+ *  there): shown, a blank active tab there making way for it, or (`shown` false) behind the one on screen. */
+export function restoreTab(r: ClosedTab, shown = true) {
+  const { tab } = r
   const gid = groups().some((g) => g.id === r.group) ? r.group : state.focus
   set(withGroup(gid, (g) => {
     const cur = shownTab(g)
-    const tabs = g.tabs.filter((t) => t.id !== tab.id && !(isBlank(t) && t === cur))
+    const tabs = g.tabs.filter((t) => t.id !== tab.id && !(shown && isBlank(t) && t === cur))
     const at = Math.min(r.at, tabs.length)
-    return { ...g, tabs: [...tabs.slice(0, at), tab, ...tabs.slice(at)], active: tab.id }
-  }, { focus: gid }))
-  show(tab.to, !isDesktop())
+    return { ...g, tabs: [...tabs.slice(0, at), tab, ...tabs.slice(at)], active: shown ? tab.id : g.active }
+  }, shown ? { focus: gid } : {}))
+  if (shown) show(tab.to, !isDesktop())
 }
 /** A closed pane back where it sat (putBack; the part it sat by gone: beside the focused pane, on that side), with its
  *  tabs that `back` keeps, their pins and tab groups, and its tab shown, focused. */
@@ -526,13 +542,69 @@ export function closeTabIds(ids: string[], { keep = false, force = false }: { ke
   if (!going.length) return
   if (!force) return guarded(going, () => closeTabIds(ids, { keep, force: true }))
   closed(going)
+  without(going)
+}
+/** The panes left without `going`, which closed. */
+function without(going: Tab[]) {
   const gone = new Set(going.map((t) => t.id))
-  for (const g of panes) {
-    const now = groups().find((x) => x.id === g.id)
-    if (!now) continue
-    const rest = now.tabs.filter((t) => !gone.has(t.id))
-    leave(now.id, rest, rest.some((t) => t.id === now.active) ? now.active : rest[0]?.id ?? now.active)
+  for (const g of groups().filter((x) => x.tabs.some((t) => gone.has(t.id)))) {
+    const rest = g.tabs.filter((t) => !gone.has(t.id))
+    leave(g.id, rest, rest.some((t) => t.id === g.active) ? g.active : rest[0]?.id ?? g.active)
   }
+}
+
+// ---------- tabs that archive themselves: an unpinned tab unseen a while (Tabs' setting; core/tabarchive.ts) ----------
+
+/** How long a tab may go unseen before it archives itself (0: never, and no tab is stamped `seen`). */
+let archiveAfter = 0
+export function setArchiveAfter(ms: number) { archiveAfter = ms; touchSeen() }
+export const archivesAfter = () => archiveAfter
+const minute = () => Math.floor(Date.now() / 60_000) * 60_000
+/** `root` with its tabs on screen, or on screen until now in `was`, stamped as seen now (and any never stamped). */
+function stamped(root: Layout, was: Layout): Layout {
+  if (!archiveAfter) return root
+  const now = minute(), on = new Set([...leaves(was), ...leaves(root)].map((g) => g.active))
+  const due = (t: Tab) => !isBlank(t) && (on.has(t.id) || typeof t.seen !== "number") && t.seen !== now
+  if (!leaves(root).some((g) => g.tabs.some(due))) return root
+  return mapGroups(root, (g) => (g.tabs.some(due) ? { ...g, tabs: g.tabs.map((t) => (due(t) ? { ...t, seen: now } : t)) } : g))
+}
+/** The tabs on screen are being looked at (the window is in view): stamped as seen now. */
+export function touchSeen() { if (stamped(state.root, state.root) !== state.root) set(state) }
+const seenIn = (l: unknown) => {
+  const root = clean((l as Partial<Workspace> | null)?.root)
+  return new Map(root ? leaves(root).flatMap((g) => g.tabs).map((t) => [t.id, typeof t.seen === "number" ? t.seen : 0]) : [])
+}
+/** Another copy of these tabs (the workspace's file, from another device): where it saw a tab later, that's taken. */
+export function mergeSeen(other: unknown) {
+  const theirs = seenIn(other)
+  const later = (t: Tab) => (theirs.get(t.id) ?? 0) > (t.seen ?? 0)
+  if (!groups().some((g) => g.tabs.some(later))) return
+  set({ ...state, root: mapGroups(state.root, (g) => ({ ...g, tabs: g.tabs.map((t) => (later(t) ? { ...t, seen: theirs.get(t.id) } : t)) })) })
+}
+/** Whether a tab was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive
+ *  time: worth a write of its own. Else the stamps ride on writes that happen anyway, so they cost iCloud nothing. */
+export function seenSince(saved: unknown) {
+  if (!archiveAfter) return false
+  const theirs = seenIn(saved)
+  return groups().some((g) => g.tabs.some((t) => typeof t.seen === "number" && t.seen - (theirs.get(t.id) ?? 0) > archiveAfter / 4))
+}
+/** Whether a tab may archive itself (ViewDef.archives; a file with unsaved edits mayn't). Set by the app. */
+let archivable: (t: Tab) => boolean = () => false
+export const setArchivable = (fn: (t: Tab) => boolean) => { archivable = fn }
+/** The tabs unseen since `before` that may archive themselves: unpinned, on screen in no pane, nothing lost closing them. */
+export function unseenTabs(before: number): Tab[] {
+  const on = new Set(groups().map((g) => g.active))
+  return groups().flatMap((g) => g.tabs).filter((t) => !t.pinned && !isBlank(t) && !on.has(t.id) && typeof t.seen === "number" && t.seen < before && archivable(t))
+}
+/** Close tabs into the archive: without asking (what's archived loses nothing), and not for ⌘⇧T. */
+export function closeToArchive(ids: string[]): ClosedTab[] {
+  const want = new Set(ids)
+  const going = groups().flatMap((g) => g.tabs).filter((t) => want.has(t.id))
+  const out = going.flatMap((t) => closedEntry(t) ?? [])
+  if (!going.length) return out
+  heard(going)
+  without(going)
+  return out
 }
 
 /** Rename a file from elsewhere (the tab menu): its bar's name turns into a field once the file shows. */

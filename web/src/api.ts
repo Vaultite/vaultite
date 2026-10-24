@@ -46,13 +46,16 @@ export { BrandIcon, GitHubIcon } from "@/core/icons"
 export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout } from "@/core/workspace"
 export { type Workspace as TabLayout } from "@/core/layout"
 export { startedFresh } from "@/core/workspace"
+// When each tab was last on screen, which archives unpinned ones unseen a while (Tabs' setting): Workspaces carries it.
+export { mergeSeen as mergeTabsSeen, seenSince as tabsSeenSince, setArchiveAfter, touchSeen as touchTabsSeen } from "@/core/workspace"
+export { archivedTabs, archiveUnseen, removeArchived, reopenArchived, restoreArchived, useArchivedTabs, type ArchivedTab } from "@/core/tabarchive"
 // Its tabs one by one (the Tabs panel): the layout live, its panes, showing, closing and opening a tab, and what each
 // tab shows and its menu, as in its bar.
 export { closeTab, goHere, hashOf, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
 // What the + buttons open: a blank tab, or the quick switcher picking it (newtab.json's `opens`).
 export { openNewTab } from "@/core/launcher"
 export { leaves as panesOf, type Group as TabGroup, type Tab } from "@/core/layout"
-export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
+export { dragTab, TABS, tabLabel, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Tab groups (a pane's named, coloured runs of tabs): their menu, names and folding, and drops among a pane's tabs drawn
 // as a list (the Tabs panel), which join or leave them as the tab bar's do.
 export { setMenu, setName, SetLabel } from "@/components/Tabs"

@@ -12,7 +12,7 @@ import { type TreeWatcher, watchTree } from "./treewatch.ts"
 const QUIET = 100, MAX = 500, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask), only through ops, never
  *  POST /api/ui: the dev ones are the owner's. Seconds an ask may wait: a person gets longer than a window. */
-const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
+const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30], ["archived-tabs", 30]])
 type Answer = { ran?: boolean; result?: unknown; error?: unknown }
 
 /** Changes nobody needs to hear about. */

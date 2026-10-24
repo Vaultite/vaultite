@@ -1,13 +1,17 @@
 // Whether the page may go away now (a reload into a new build, a restart to update): nothing unsaved, and the user
 // isn't at work in it. No imports: errors.ts asks before the app loads.
 
-const editors = new Set<() => boolean>()
-/** An editor's unsaved state while it's drawn (autosave: typed and not yet saved, a save failed or in conflict). */
-export function trackUnsaved(dirty: () => boolean) {
-  editors.add(dirty)
+const editors = new Map<() => boolean, () => string>()
+/** An editor's unsaved state while it's drawn (autosave: typed and not yet saved, a save failed or in conflict), and
+ *  the file it edits. */
+export function trackUnsaved(dirty: () => boolean, path: () => string = () => "") {
+  editors.set(dirty, path)
   return () => { editors.delete(dirty) }
 }
-const hasUnsavedEdits = () => [...editors].some((f) => { try { return f() } catch { return true } })
+const isDirty = (f: () => boolean) => { try { return f() } catch { return true } }
+const hasUnsavedEdits = () => [...editors.keys()].some(isDirty)
+/** Whether a file has edits not saved yet in an editor drawn now. */
+export const unsavedIn = (path: string) => [...editors].some(([f, p]) => p() === path && isDirty(f))
 
 // (0: none yet, so a page that failed as it started may reload at once)
 let lastKey = 0, lastInput = 0

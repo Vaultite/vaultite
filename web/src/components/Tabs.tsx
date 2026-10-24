@@ -334,16 +334,17 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
 export function useTabInfo(store: Store | null, pageInfo: (id: string) => TabInfo | null) {
   const { disabled } = usePrefs()
   useViewsVersion()
-  return (t: Tab): TabInfo => {
-    if (t.to === "new") return { label: "New tab", icon: SquareDashed }
-    if (t.to.startsWith("file:")) {
-      const path = t.to.slice(5)
-      const f = store?.files.files.find((x) => x.path === path)
-      return { label: stem(path), ...fileIcon(path, f?.type ?? null, disabled, f) }
-    }
-    if (t.to.startsWith("view:")) return viewInfo(t.to, disabled, t.id)
-    return pageInfo(t.to) ?? { label: t.to, icon: FileText }
+  return (t: Tab): TabInfo => infoOf(t, store, disabled, pageInfo)
+}
+function infoOf(t: Tab, store: Store | null, disabled: string[], pageInfo: (id: string) => TabInfo | null): TabInfo {
+  if (t.to === "new") return { label: "New tab", icon: SquareDashed }
+  if (t.to.startsWith("file:")) {
+    const path = t.to.slice(5)
+    const f = store?.files.files.find((x) => x.path === path)
+    return { label: stem(path), ...fileIcon(path, f?.type ?? null, disabled, f) }
   }
+  if (t.to.startsWith("view:")) return viewInfo(t.to, disabled, t.id)
+  return pageInfo(t.to) ?? { label: t.to, icon: FileText }
 }
 
 /** A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too);
@@ -361,6 +362,8 @@ let pageInfoOf: (id: string) => TabInfo | null = () => null
 export const setPageInfo = (fn: (id: string) => TabInfo | null) => { pageInfoOf = fn }
 /** What each tab shows (its label and icon), as its bar does: for plugins (the Tabs panel). */
 export const useTabLabels = (store: Store | null) => useTabInfo(store, (id) => pageInfoOf(id))
+/** The same outside a render (what the quick switcher finds). */
+export const tabLabel = (t: Tab, store: Store | null) => infoOf(t, store, getPrefs().disabled, pageInfoOf)
 /** A tab's right-click menu, the one its bar has. */
 export function tabMenuOf(id: string): MenuItem[] {
   const g = leaves(getWorkspace().root).find((x) => x.tabs.some((t) => t.id === id))

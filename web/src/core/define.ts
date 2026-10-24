@@ -249,6 +249,9 @@ export type ViewDef = {
   /** Its tab is its own (a terminal): opening anything else from it (a link, the sidebar, Graph view) opens beside it,
    *  never in its place, so it's never navigated away from by accident. */
   keepsTab?: boolean
+  /** Whether its tab, unpinned, archives itself once unseen a while (Tabs' setting); a function says per tab (a page
+   *  playing sound doesn't). Unset: yes, unless closing it ends something (keepsTab, onClose, confirmClose). */
+  archives?: boolean | ((arg: string, tab: string) => boolean)
   /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session). */
   tabMenu?: (arg: string) => (FileMenuItem & { danger?: boolean })[]
   /** The arg its pin keeps (Pinned; null: this one can't be): unset, its arg as is (none: `view:<name>`, in Pinned's

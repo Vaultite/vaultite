@@ -13,6 +13,7 @@ import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
 import { isDesktop } from "@/core/platform"
+import { retargetArchived } from "@/core/tabarchive"
 import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, openBehind, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
@@ -308,6 +309,7 @@ function followMove(from: string, to: string | null) {
   if (moves.length > 100) moves.shift()
   movePlaces(from, to) // (before the tabs follow: they look for their place under the new path)
   retarget(from, to)
+  retargetArchived(from, to)
   retargetDetail(from, to) // a phone's file sheet follows too, whatever moved it (the tree, Undo, a rename, an AI)
 }
 onVaultMove(followMove)

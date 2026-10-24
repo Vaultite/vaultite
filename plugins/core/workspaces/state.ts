@@ -2,7 +2,7 @@
 // into it and following the file (see index.tsx). No components here: they're in Numbers.tsx.
 import { Copy, LayoutPanelLeft, Pencil, Plus, Settings2, Trash2 } from "lucide-react"
 import {
-  cell, del, devicePref, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
+  cell, del, devicePref, mergeTabsSeen, tabsSeenSince, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, panesOf, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
   type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
@@ -195,9 +195,9 @@ const VISIT = new Set(["back", "fwd", "from"])
 /** The tabs as saved in the vault: without what's kept for this visit. */
 const strip = (l: TabLayout): TabLayout => JSON.parse(JSON.stringify(l, (k, v) => (VISIT.has(k) ? undefined : v)))
 /** What devices share of a layout: the tabs, their places and the splits; not which tab each group shows or which
- *  group has the focus (each device's own). "" for none. */
+ *  group has the focus (each device's own), nor when a tab was seen (that rides along: tabsSeenSince). "" for none. */
 const shape = (l: TabLayout | null | undefined) =>
-  !l || blankLayout(l) ? "" : JSON.stringify(l, (k, v) => (VISIT.has(k) || k === "active" || k === "focus" ? undefined : v))
+  !l || blankLayout(l) ? "" : JSON.stringify(l, (k, v) => (VISIT.has(k) || k === "active" || k === "focus" || k === "seen" ? undefined : v))
 /** Each workspace's tabs as they were left in this visit, history and all. */
 const kept = new Map<number, TabLayout>()
 /** What this device saved lately: the file bringing one back is its own write coming round, not news. */
@@ -211,8 +211,8 @@ export function saveTabs() {
   if (moving) { timer = window.setTimeout(saveTabs, 300); return }
   const n = current()
   if (!n) return
-  const l = strip(getTabLayout())
-  if (shape(l) === shape(slots()?.[n - 1]?.layout)) return
+  const l = strip(getTabLayout()), saved = slots()?.[n - 1]?.layout
+  if (shape(l) === shape(saved) && !tabsSeenSince(saved)) return
   mine.add(shape(l))
   if (mine.size > 20) mine.delete(mine.values().next().value!)
   // Back to a lone blank tab: the layout goes (null), so a workspace that's nothing more than that is unused again.
@@ -281,13 +281,14 @@ export function sync() {
     if (unsaved || startedFresh) { saveTabs(); arrive(); return }
     const want = list[n - 1]?.layout ?? null
     if (shape(want) !== shape(strip(getTabLayout()))) apply(want, true)
+    else mergeTabsSeen(want)
     arrive()
     return
   }
   if (timer) return
   const want = list[n - 1]?.layout ?? null
   const there = shape(want)
-  if (there === shape(strip(getTabLayout()))) return
+  if (there === shape(strip(getTabLayout()))) { mergeTabsSeen(want); return }
   if (mine.has(there)) return
   mine.clear()
   apply(want, true)

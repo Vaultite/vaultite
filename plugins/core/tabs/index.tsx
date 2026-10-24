@@ -1,19 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react"
-import { ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
+import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
   canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
-  notifyError, openView, panesOf, pastEnd, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
+  notifyError, openView, panesOf, pastEnd, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
+import { ArchivedView, archivedSearch, Archiver } from "./archived"
+import { settings } from "./settings"
 import { closeOn, deviceItems, deviceName, DeviceNameField, DevicesPanel, inPanel, KIND_ICON, LiveDot, openHere, tabItems, useDevices, useLeaving } from "./devices"
 
 // The open tabs as a list in the sidebar, pane by pane, so the tab bar can be off (`tabBar`); under them the other
 // devices' tabs (plugin.ts), to open here.
 
-const settings = pluginSettings<{ other_devices?: boolean }>("tabs")
 /** Other devices' tabs on or off, from a right-click on the heading or a device (the setting's sheet has it too). */
 const othersItem = (shown: boolean) => ({
   label: "Other devices' tabs", checked: shown, run: () => { settings.set({ other_devices: !shown }).catch((e) => notifyError(e, "Couldn't change it")) },
@@ -236,14 +237,16 @@ function TabsPanel({ store, open }: SidebarCtx) {
 }
 
 export default definePlugin({
-  background: ({ store }) => (isPopout() ? null : <Report store={store} />),
+  background: ({ store }) => (isPopout() ? null : <><Report store={store} /><Archiver store={store} /></>),
+  searchLive: archivedSearch,
   sidebar: {
     tabs: {
       title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,
       view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />,
       // (Show tabs on top, the way back to the tab bar, and other devices' tabs on or off)
       menu: () => [...commandItems("tab:sidebar"), othersItem(settings.get().other_devices !== false),
-        { label: "Show all devices", icon: MonitorSmartphone, run: () => openView("devices", { newTab: true }) }],
+        { label: "Show all devices", icon: MonitorSmartphone, run: () => openView("devices", { newTab: true }) },
+        { label: "Show archived tabs", icon: Archive, run: () => openView("archived-tabs", { newTab: true }) }],
     },
   },
   views: {
@@ -257,10 +260,14 @@ export default definePlugin({
         </div>
       ),
     },
+    "archived-tabs": { icon: Archive, title: () => "Archived tabs", render: ({ store }) => <ArchivedView store={store} /> },
     devices: {
       icon: MonitorSmartphone, title: () => "Devices",
       render: ({ store }) => <div className="pt-2 pb-10" data-devices-view><DevicesPanel store={store} /></div>,
     },
   },
-  commands: [{ id: "tabs:devices", name: "Show all devices", run: () => openView("devices", { newTab: true }) }],
+  commands: [
+    { id: "tabs:devices", name: "Show all devices", run: () => openView("devices", { newTab: true }) },
+    { id: "tabs:archived", name: "Show archived tabs", run: () => openView("archived-tabs", { newTab: true }) },
+  ],
 })

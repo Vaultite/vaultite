@@ -50,7 +50,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `appWindows`: The desktop app's other apps' windows, or null (a browser, an app build from before App windows).
 - `AppWindows`: Other Mac apps' windows in the desktop app's tabs (see electron/apps.ts): kept right behind the window, under a part of the page left see-through.
 - `ARCHIVE_DIR`: The hidden folder archived files move into, inside their own folder (the Archive plugin).
+- `ArchivedTab`: An archived tab: what it showed and was called, where it was (its pane, its place there, its tab group), and when it was archived.
+- `archivedTabs()`: The archived tabs, the latest first.
 - `archiveTwin(rel)`: The same path archived or not: People/Kai.md <-> People/.archive/Kai.md.
+- `archiveUnseen(title)`: Archive the tabs unseen for longer than the setting says (none while it's Never), named by `title` as their tab is.
 - `askAbout(question, file?)`: Hand a question about a file to the AI chat a plugin that's on brings (its `ask`); false when there's none.
 - `askedAt(id)`: When the user asked for terminal `id`, if this page made it (for its opening's span).
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).
@@ -301,6 +304,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `menuFor(items)`: For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's).
 - `MenuItem`
 - `menuShowing()`: A menu is showing.
+- `mergeTabsSeen(other)`: Another copy of these tabs (the workspace's file, from another device): where it saw a tab later, that's taken.
 - `mintedHere(id)`: Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it: a tab put back (a reload, the app reopened, another device) only attaches, and never starts…
 - `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop Browser) hands back as keydowns for `runShortcut`.
 - `modKey`: The app's Mod key in words, for "⌘-click" / "Ctrl-click".
@@ -432,6 +436,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `registerCanvas(c)`: A canvas came on screen: registered until it goes (the returned function).
 - `reload()`
 - `removals()`: Items taken off a list before the write that removes them is done: one per source (a module's, shared by every list drawing it), with keys unique in it.
+- `removeArchived(ids)`
+- `reopenArchived(id, shown?)`: Reopen an archived tab where it was (it leaves the list), shown or (`shown` false) behind the tab on screen; one open again meanwhile is shown instead.
 - `reorder(keys, moving, index)`: What a drop at slot `index` of `keys` (slotAt) leaves: their `order`, with `moving` there (those not among them come in as one INCOMING), the key it goes `before` (null: the end), and whether…
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
@@ -439,6 +445,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
 - `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then aliases and plugins' names), or null.
 - `resolveView(target, disabled?)`: The target to open for this one (its view's `resolve`): a conversation already running, its terminal.
+- `restoreArchived(entries)`: Put archived tabs back in the list (Undo of a removal).
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
 - `revealInTree(path, opts?)`: Open every folder above a file.
@@ -477,6 +484,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `selectItem(list, key)`: Phones (no keys): "Select" in a row's menu starts selecting with it.
 - `selectTab(id)`: Show a tab (false: there's none).
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
+- `setArchiveAfter(ms)`
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
 - `SetLabel({ s, n, target })`: A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its text white or dark by the colour's lightness; without a name, a small square of it.
@@ -537,6 +545,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `TabDrop`: Where a dragged tab or file would land: a place in a tab bar (`set`: the tab group it joins there, null none), or a pane's edge or middle.
 - `TabGroup`
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).
+- `tabLabel(t, store)`: The same outside a render (what the quick switcher finds).
 - `TabLayout`
 - `tabMenuOf(id)`: A tab's right-click menu, the one its bar has.
 - `tabPreview(g, item, d)`
@@ -545,6 +554,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `TabSet`: A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by side), folded to its name while `collapsed`.
 - `tabSlot(g, slots, pos, axis)`: Where `pos` along a pane's tabs as drawn lands: before which tab (`index`), in which tab group.
 - `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, move them into a split of their own.
+- `tabsSeenSince(saved)`: Whether a tab was seen here later than `saved` (the workspace's file) says, by more than a quarter of the archive time: worth a write of its own.
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.
 - `tagsOf(fm, body)`: A file's tags: its frontmatter `tags` (or `tag`), then its inline #tags, each once.
 - `takeAppErrors()`: The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied).
@@ -567,6 +577,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `today()`
 - `tokens(n)`
 - `touches(paths, path)`: Does this change touch `path` (the file itself, or a folder it's in)?
+- `touchTabsSeen()`: The tabs on screen are being looked at (the window is in view): stamped as seen now.
 - `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.
 - `TraceEvent`
 - `treeShownItems()`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse).
@@ -575,6 +586,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
+- `useArchivedTabs()`
 - `useBusy()`: A slow action of a button's: `busy` while it runs (`<Button busy>`: it shows it and takes no second press).
 - `useChosen(value)`: A value the user just changed (a switch, a name), shown at once over `value`, the source's: until the source says the same or moves on, or the old one again when the write fails (saying `failed`).
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.

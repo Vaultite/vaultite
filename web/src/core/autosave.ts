@@ -128,7 +128,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
       s.alive = true
       const leave = () => s.flush(s.inflight?.text ?? s.disk, false)
       addEventListener("pagehide", leave)
-      const untrack = trackUnsaved(() => !o.current.readOnly && (!!timer || saving || status.kind !== "ok" || o.current.text() !== s.disk))
+      const untrack = trackUnsaved(() => !o.current.readOnly && (!!timer || saving || status.kind !== "ok" || o.current.text() !== s.disk), where)
       return () => {
         s.alive = false
         untrack()

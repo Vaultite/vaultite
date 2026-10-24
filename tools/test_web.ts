@@ -1014,6 +1014,33 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("close pane: reopened in turn, each where it sat", tree() === "row(a:0.70 col(b:0.25 c:0.75):0.30)", tree())
   one([A], "a"); ws.closePane()
   check("close pane: not the only one", tree() === "a" && !ws.canClosePane(), tree())
+
+  // Tabs that archive themselves: stamped while on screen (only with archiving on); never one on screen, pinned or that
+  // closing would lose; closed with no ⌘⇧T entry, put back where they were; stamps from another device's copy are taken.
+  const H = 3600_000, old = Date.now() - 48 * H
+  while (ws.canReopenTab()) ws.reopenTab()
+  ws.setArchivable((t: T) => t.to !== "file:keep.md")
+  one([A, B], "a")
+  check("archive: off, no tab is stamped", ws.groups()[0].tabs.every((t: Any) => t.seen === undefined), ws.groups()[0].tabs)
+  ws.replaceWorkspace({ root: { id: "g0", active: "a", tabs: [{ ...A, seen: old }, { ...B, seen: old }, { id: "p", to: "file:p.md", pinned: true, seen: old },
+    { id: "k", to: "file:keep.md", seen: old }, { ...C }] }, focus: "g0" })
+  ws.setArchiveAfter(24 * H)
+  const seenOf = (id: string) => ws.groups()[0].tabs.find((t: Any) => t.id === id)?.seen
+  check("archive: on, the tab on screen and those never stamped are seen now; the rest keep theirs", seenOf("a") > old && seenOf("c") > old && seenOf("b") === old,
+    ws.groups()[0].tabs)
+  check("archive: due are the unseen, unpinned, not on screen and archivable", ws.unseenTabs(Date.now() - 24 * H).map((t: T) => t.id).join() === "b")
+  const gone = ws.closeToArchive(["b"])
+  check("archive: closed, its place kept, nothing for ⌘⇧T", tabs() === "file:a.md,file:p.md,file:keep.md,file:c.md *" && gone[0]?.at === 1 && !ws.canReopenTab(), [tabs(), gone])
+  ws.selectTab("c"); ws.restoreTab(gone[0], false)
+  check("archive: put back behind the tab on screen", tabs() === "file:a.md,file:b.md,file:p.md,file:keep.md,file:c.md *" && ws.activeTab().id === "c", tabs())
+  const soon = Math.floor(Date.now() / 60_000) * 60_000 + 5 * 60_000
+  ws.mergeSeen({ root: { id: "g0", active: "a", tabs: [{ ...A, seen: soon }, { ...B, seen: old }] }, focus: "g0" })
+  check("archive: a later stamp from another device's copy is taken, an earlier one isn't", seenOf("a") === soon && seenOf("b") > old)
+  const copy = (b: number) => ({ ...ws.getWorkspace(), root: { ...ws.groups()[0], tabs: ws.groups()[0].tabs.map((t: Any) => (t.id === "b" ? { ...t, seen: b } : t)) } })
+  check("archive: a stamp behind the file by over a quarter of the archive time is worth a write, else it rides along",
+    ws.seenSince(copy(old)) && !ws.seenSince(copy(Date.now() - H)) && !ws.seenSince(ws.getWorkspace()))
+  ws.setArchiveAfter(0)
+  check("archive: off, nothing is worth a write", !ws.seenSince(copy(old)))
 }
 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------

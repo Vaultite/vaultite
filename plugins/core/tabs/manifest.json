@@ -5,9 +5,10 @@
   "alwaysOn": true,
   "exports": ["devices", "types"],
   "settings": {
+    "archive_after": { "type": "enum", "values": ["never", "12h", "24h", "7d", "30d"], "labels": { "never": "Never", "12h": "After 12 hours", "24h": "After 24 hours", "7d": "After 7 days", "30d": "After 30 days" }, "default": "never", "label": "Archive tabs", "description": "unpinned tabs you haven't looked at for this long close into Archived tabs, to reopen or find in the quick switcher; never the ones on screen, nor what closing would lose (a terminal, unsaved edits)" },
     "other_devices": { "type": "boolean", "default": true, "label": "Other devices' tabs", "description": "under this device's tabs, what your other devices have open (open now or used this week), to open here, move here or close there (right-click the Tabs heading to switch)" }
   },
   "name": "Tabs",
-  "description": "A sidebar panel with the open tabs, pane by pane, and their tab groups: show, close and drag them from the sidebar, with or without the tab bar (Show tabs in the sidebar makes them vertical tabs). Under them, the tabs your other devices have open, to open here, move here or close there; Devices lists every app and browser, which are open now, to rename or forget.",
+  "description": "A sidebar panel with the open tabs, pane by pane, and their tab groups: show, close and drag them from the sidebar, with or without the tab bar (Show tabs in the sidebar makes them vertical tabs). Under them, the tabs your other devices have open, to open here, move here or close there; Devices lists every app and browser, which are open now, to rename or forget. Unpinned tabs can archive themselves when unseen a while (Archived tabs).",
   "replaces": { "obsidian": ["vertical-tabs"] }
 }

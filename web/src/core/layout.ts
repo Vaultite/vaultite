@@ -11,7 +11,9 @@ export type Tab = { id: string; to: string
   /** Pinned: what's opened from it opens in a tab beside it, ⌘W and closing others leave it open. */
   pinned?: boolean
   /** The tab group it's in (one of its pane's `sets`). */
-  set?: string }
+  set?: string
+  /** When it was last on screen (ms, to the minute), stamped while tabs archive themselves (Tabs' setting). */
+  seen?: number }
 /** A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by
  *  side), folded to its name while `collapsed`. A "set" in code, since the code's groups are panes. */
 export type TabSet = { id: string; name: string; color: Color; collapsed?: boolean }

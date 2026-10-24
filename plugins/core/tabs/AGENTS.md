@@ -10,6 +10,11 @@ app or browser (`label`: the user's name for it). A browser driven by automation
 its tabs. Which are open isn't kept in a file: each server knows its own windows, and asks the other machines for theirs.
 `vau tabs device-close <device> [tabs...]` closes tabs on one that's open now (all of them without tabs).
 
+**Archived tabs**: with `archive_after` (never, 12h, 24h, 7d, 30d), an unpinned tab off screen that long
+closes into Archived tabs (`view:archived-tabs`, the quick switcher, `vau tabs archived`), unless closing it loses
+something (a terminal, unsaved edits, a page playing sound). Kept with the tabs (the workspace's
+`state["core:archived-tabs"]`, or this device's); a tab's `seen` is when it was last on screen (ms).
+
 **Tab groups**, as in a browser: a named, coloured run of a pane's tabs, side by side, that folds to its name. In the
 tab bar a group is a solid chip of its colour before its tabs, which are underlined in it; in the panel, the same chip
 on a row, its tabs set in beside a line in its colour hanging from it. A click folds it (its tabs shrink into the chip);
