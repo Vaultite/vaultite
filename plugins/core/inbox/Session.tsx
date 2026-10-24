@@ -24,7 +24,9 @@ const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answ
 
 export function SessionSheet({ id }: { id: string }) {
   const e = useEvents().events.find((x) => x.id === id)
-  const agent = e ? agentOf(e, useAgents()) : null
+  // (every render calls the same hooks: the event shows up once the inbox loads)
+  const agents = useAgents()
+  const agent = e ? agentOf(e, agents) : null
   // Opened is read, as a mail is; a permission still waits on its answer.
   useEffect(() => { if (e && !e.read && !answerable(e)) markRead([e.id]) }, [e?.id, e?.t]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!e) return <Empty>This session is no longer in the inbox.</Empty>

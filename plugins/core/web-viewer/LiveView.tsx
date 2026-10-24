@@ -73,7 +73,8 @@ function Container({ id }: { id: string | null }) {
 
 function Tabs({ open }: { open: (tab: number) => void }) {
   const { hidden } = usePane()
-  const { tabs, error } = useTabs(!hidden && useOnScreen())
+  const onScreen = useOnScreen()
+  const { tabs, error } = useTabs(!hidden && onScreen)
   const asking = (tabs ?? []).filter((t) => t.asking)
   const agents = (tabs ?? []).filter((t) => !t.asking && t.by)
   const yours = (tabs ?? []).filter((t) => !t.asking && !t.by)
