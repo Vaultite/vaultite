@@ -135,10 +135,13 @@ function DocPreview({ store, path }: { store: Store; path: string }) {
 }
 
 /** The tab's icon, large, on a muted ground, with its name and what it is: views, the app's pages, other files. */
+// An icon and its words, near the top: a card shows only the top of its page-shaped box (padding follows its width).
+const PLACED = "absolute inset-0 flex flex-col items-center gap-2 pt-[32%]"
+
 function IconPreview({ info, meta }: { info: TabInfo; meta: string }) {
   const Icon = info.icon
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted px-3 text-center">
+    <div className={cn(PLACED, "bg-muted px-3 text-center")}>
       <Icon className={cn("size-10", !info.tint && "text-muted-foreground", info.iconClassName)} strokeWidth={1.5} style={info.tint ? { color: info.tint } : undefined} />
       <span className="max-w-full truncate text-[13px] text-muted-foreground">{meta}</span>
     </div>
@@ -152,7 +155,7 @@ export function TabPreview({ store, tab, info }: { store: Store; tab: Tab; info:
   if (shot) return <img data-tab-picture src={shot} alt="" decoding="async" draggable={false} className="absolute inset-0 size-full object-cover object-top" />
   if (to === "new") {
     return (
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+      <div className={cn(PLACED, "text-muted-foreground")}>
         <Plus className="size-9" strokeWidth={1.5} />
         <span className="text-[13px]">New tab</span>
       </div>

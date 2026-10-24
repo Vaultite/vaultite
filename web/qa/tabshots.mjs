@@ -2,7 +2,7 @@
 // answers a red picture (and records the rect asked for). Opening the tab list pictures the tab on screen and its card
 // shows the picture; the rect is the page between the header and the bar; a tab that has moved on (another file in it)
 // shows the drawn stand-in again; pictures outlast a reload (Cache API); a closed tab's picture goes; without the
-// shell, no picture is asked for. Opens files and tabs only: run it against a throwaway server.
+// shell, no picture is asked for, and a stand-in's icon and name show whole in its card. Opens files and tabs only: run it against a throwaway server.
 //   node web/qa/tabshots.mjs <base url>
 import { qa, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, noErrors, done } = await qa(import.meta.url)
@@ -82,5 +82,16 @@ const Q = await plain.newPage()
 await Q.goto(`${B}${H(a)}`); await Q.waitForSelector("[data-phone-bar]"); await wait(800)
 await Q.click("[data-tabs-button]"); await settle()
 check("in a browser: cards drawn, no pictures", await Q.evaluate(() => !document.querySelector("[data-tab-shot] img[src^=blob]") && !!document.querySelector("[data-tab-shot]")), null)
+// A tab with no picture of its page (the search tab): its icon and name show whole inside the card.
+await Q.click("[data-tabs-button]").catch(() => {}); await Q.keyboard.press("Escape").catch(() => {})
+await Q.goto("about:blank"); await Q.goto(`${B}#view/search`); await Q.waitForSelector("[data-phone-bar]"); await wait(800)
+await Q.click("[data-tabs-button]"); await settle()
+const placed = await Q.evaluate(() => [...document.querySelectorAll("[data-tab-shot]")].flatMap((box) => {
+  const words = box.querySelector("[data-tab-pic] > div > svg + span") // (a stand-in: its icon, then its name)
+  if (!words) return []
+  const b = box.getBoundingClientRect(), w = words.getBoundingClientRect()
+  return [{ text: words.textContent.trim(), inside: w.top >= b.top && w.bottom <= b.bottom }]
+}))
+check("a card's stand-in (icon and name) shows whole inside it", placed.length > 0 && placed.every((x) => x.inside), placed)
 
 await done()
