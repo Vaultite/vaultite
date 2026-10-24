@@ -40,20 +40,28 @@ function load() {
 
 const openIds = () => new Set(leaves(getWorkspace().root).flatMap((g) => g.tabs.map((t) => t.id)))
 
+/** The picture being taken, shared by whoever asks for the same page meanwhile (the bar's press starts it). */
+let taking: { id: string; to: string; at: number; done: Promise<void> } | null = null
+
 /** Take a picture of the tab on screen (resolves when it's kept, or after WAIT at most; never rejects). */
 export function shootTab(): Promise<void> {
   if (off) return Promise.resolve()
   const tab = activeTab()
-  if (!tab || tab.to === "new" || document.querySelector("dialog[open]")) return Promise.resolve()
+  if (!tab || document.querySelector("dialog[open]")) return Promise.resolve()
   const top = document.querySelector("[data-phone-header]")?.getBoundingClientRect().bottom ?? 0
   const bottom = document.querySelector("[data-phone-bar]")?.getBoundingClientRect().top ?? innerHeight
   if (bottom - top < 40) return Promise.resolve()
-  const taking = phoneApp!.snapshot({ x: 0, y: top, width: innerWidth, height: bottom - top, scaled: WIDTH, quality: 0.65 })
+  if (taking && taking.id === tab.id && taking.to === tab.to && performance.now() - taking.at < 600) return capped(taking.done)
+  const done = phoneApp!.snapshot({ x: 0, y: top, width: innerWidth, height: bottom - top, scaled: WIDTH, quality: 0.65 })
     .then(async ({ url }) => {
       const blob = await (await fetch(url)).blob()
-      const was = shots.get(tab.id)
+      const was = shots.get(tab.id), own = URL.createObjectURL(blob)
+      // Decoded before it's shown: the tab list zooms from it the moment it opens.
+      const img = new Image()
+      img.src = own
+      await img.decode().catch(() => {})
       if (was) URL.revokeObjectURL(was.url)
-      shots.set(tab.id, { to: tab.to, url: URL.createObjectURL(blob) })
+      shots.set(tab.id, { to: tab.to, url: own })
       forgetClosed()
       changed()
       openCache().then((c) => c.put(key(tab.id), new Response(blob, { headers: { "Content-Type": "image/jpeg", "X-Tab-To": tab.to } }))).catch(() => {})
@@ -62,7 +70,15 @@ export function shootTab(): Promise<void> {
       // An app built before it could: stop asking.
       if (/not implemented|unimplemented/i.test(String(e))) off = true
     })
-  return Promise.race([taking, new Promise<void>((r) => setTimeout(r, WAIT))])
+  taking = { id: tab.id, to: tab.to, at: performance.now(), done }
+  return capped(done)
+}
+const capped = (p: Promise<void>) => Promise.race([p, new Promise<void>((r) => setTimeout(r, WAIT))])
+
+/** The tab's picture now, if it's still of what the tab shows. */
+export function shotOf(id: string, to: string): string | null {
+  const s = shots.get(id)
+  return s && s.to === to ? s.url : null
 }
 
 /** Pictures of tabs that have closed go. */

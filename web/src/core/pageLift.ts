@@ -46,6 +46,9 @@ export function liftFrom(bar: HTMLElement, off: () => boolean) {
     if (g && e.pointerId !== g.id) up(null)
     if (e.button || g || !bar.contains(e.target as Node) || off() || document.querySelector("dialog[open]")) return
     g = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false, ready: false, dy: 0, t: e.timeStamp, v: 0, els: [] }
+    // The page's picture, for a drag or for what the press is about to do (the tab list, a new tab, Back): started now,
+    // it's usually there by the tap's end.
+    void shootTab()
   }
   const move = (e: PointerEvent) => {
     if (!g || e.pointerId !== g.id) return

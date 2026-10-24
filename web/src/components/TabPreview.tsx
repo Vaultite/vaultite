@@ -1,7 +1,6 @@
 // A tab's small picture on its card: the iPhone app's real snapshot while still current, else a cheap static stand-in
 // (only the tab on screen is mounted, so there's nothing else to picture).
-import { useEffect, useState } from "react"
-import { Plus } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import type { Store } from "@/core/data"
 import { get } from "@/core/http"
 import { kindOf } from "@/core/filekinds"
@@ -11,6 +10,7 @@ import { tabMeta } from "@/core/phoneTabs"
 import { useTabShot } from "@/core/tabShots"
 import { fileAt, pageView } from "@/core/pages"
 import { Markdown } from "@/components/Markdown"
+import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { rawUrl } from "@/components/FileViewers"
 import type { TabInfo } from "@/components/Tabs"
 import { cn } from "@/lib/utils"
@@ -148,19 +148,39 @@ function IconPreview({ info, meta }: { info: TabInfo; meta: string }) {
   )
 }
 
+/** `children` drawn as the page draws them, at its width, shrunk to the card's (a picture of it, nothing in it to tap). */
+function AtPageSize({ children }: { children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [k, setK] = useState(0)
+  useLayoutEffect(() => {
+    const card = box.current?.parentElement
+    if (!card) return
+    const fit = () => setK(card.offsetWidth / innerWidth)
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(card)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={box} inert aria-hidden className="pointer-events-none absolute top-0 left-0 origin-top-left px-4"
+      style={{ width: innerWidth, transform: `scale(${k})`, visibility: k ? undefined : "hidden" }}>
+      {children}
+    </div>
+  )
+}
+
+/** A new tab: what it opens to (the page chosen for new tabs, or the new tab page's sections), like any other tab. */
+function NewTabPreview({ store }: { store: Store }) {
+  const page = useNewTabPage(store)
+  return page ? <DocPreview store={store} path={page} /> : <AtPageSize><NewTab store={store} phone /></AtPageSize>
+}
+
 /** The preview inside a tab's card (it fills a positioned box). */
 export function TabPreview({ store, tab, info }: { store: Store; tab: Tab; info: TabInfo }) {
   const to = tab.to
   const shot = useTabShot(tab.id, to)
   if (shot) return <img data-tab-picture src={shot} alt="" decoding="async" draggable={false} className="absolute inset-0 size-full object-cover object-top" />
-  if (to === "new") {
-    return (
-      <div className={cn(PLACED, "text-muted-foreground")}>
-        <Plus className="size-9" strokeWidth={1.5} />
-        <span className="text-[13px]">New tab</span>
-      </div>
-    )
-  }
+  if (to === "new") return <NewTabPreview store={store} />
   const path = vaultPath(to)
   if (path !== null) {
     const kind = kindOf(path)

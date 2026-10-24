@@ -3,6 +3,8 @@
 // +, Back and Forward sliding (Forward lit only after Back), and the edge swipes never going back or forward (they're
 // the drawers'). Each runs to its end, leaves nothing behind (no data-motion, no transform, no copy of the list) and
 // lands where it should. Frames mid-way go to the out dir.
+// Stepped through paused, the zooms keep the card's picture in its box, unstretched, and the box inside the list; Done
+// tapped while the list opens turns the page around from where it got to; a card closed at once has the rest glide on.
 // Opens files and tabs (the workspace's tabs, device-local) and sets appearance.json's pullActions, then unsets it: run it
 // against a throwaway server.
 //   node web/qa/tabmotion.mjs <base url> [out dir]
@@ -33,9 +35,12 @@ await ctx.addInitScript(() => {
   // The tab zooms (Web Animations): what each moved (the card's picture flying, or the new page), and whether it ran to
   // its end.
   window.__zooms = []
+  // While __hold is set, animations start paused (in __held), to be stepped through.
+  window.__held = []
   const animate = Element.prototype.animate
   Element.prototype.animate = function (frames, o) {
     const a = animate.call(this, frames, o)
+    if (window.__hold) { a.pause(); window.__held.push(a) }
     const kind = this.matches("[data-tab-hero]") ? "hero" : this.matches("#main-scroll > main") ? "new" : null
     if (kind && JSON.stringify(frames).includes("transform")) {
       const rec = { kind, ok: null }
@@ -73,6 +78,57 @@ const settled = async () => {
 const clean = (s) => !s.motion && !s.zoom && !/--m(to|from)/.test(s.vars) && !s.moved && !s.copies
 const title = () => P.evaluate(() => document.querySelector("[data-phone-title]")?.textContent ?? "")
 const stem = (p) => p.split("/").pop().replace(/\.md$/, "")
+
+// The zooms stepped through: at each point the picture fills its box's width from its top, unstretched (the page's
+// shape), and the box is inside the list; at the start the box is the page, at the end the card's.
+const stepped = (dir) => P.evaluate(async (dir) => {
+  const out = []
+  const box = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height } }
+  const page = (() => { const t = document.querySelector("[data-phone-header]").offsetHeight; return { l: 0, t, w: innerWidth, h: innerHeight - document.querySelector("[data-phone-bar]").offsetHeight - t } })()
+  for (const f of [0, 0.1, 0.25, 0.5, 0.75, 1]) {
+    for (const a of window.__held) { const t = a.effect.getComputedTiming(); a.currentTime = f * (t.delay + t.duration) }
+    const win = document.querySelector("[data-tab-hero] [data-hero-window]"), pic = win?.querySelector("img, span")
+    const list = document.querySelector("dialog[open] .overflow-y-auto")
+    if (!win || !pic || !list) { out.push({ f, missing: true }); continue }
+    const w = box(win), p = box(pic), l = box(list)
+    const near = (a, b, d = 1.5) => Math.abs(a - b) <= d
+    out.push({ f, w, p, ok: near(p.l, w.l) && near(p.t, w.t) && near(p.w, w.w) && Math.abs(p.h / p.w - page.h / page.w) < 0.02
+      && w.l >= l.l - 1 && w.t >= l.t - 1 && w.l + w.w <= l.l + l.w + 1 && w.t + w.h <= l.t + l.h + 1
+      && (f !== (dir === "out" ? 0 : 1) || (near(w.l, page.l, 2) && near(w.t, page.t, 2) && near(w.w, page.w, 2) && near(w.h, page.h, 2))) })
+  }
+  // (what starts later, the page drawn under a card growing, runs as usual)
+  window.__hold = false
+  for (const a of window.__held) a.finish()
+  window.__held = []
+  return out
+}, dir)
+await P.evaluate(() => { window.__hold = true })
+await P.click("[data-tabs-button]")
+await P.waitForSelector("[data-tab-hero]")
+let frames = await stepped("out")
+check("tab list opening, stepped: the picture stays in its card, unstretched, inside the list", frames.every((x) => x.ok), frames.filter((x) => !x.ok))
+await wait(600)
+await P.evaluate(() => { window.__hold = true })
+await P.click("[data-sheet-done]")
+await P.waitForSelector("[data-tab-hero]")
+frames = await stepped("in")
+check("Done, stepped: the picture stays in its card, unstretched, inside the list", frames.every((x) => x.ok), frames.filter((x) => !x.ok))
+await wait(800)
+
+// Done tapped while the list is still opening: the page turns around from where it had got to, not from its card.
+const win = () => P.evaluate(() => { const r = document.querySelector("[data-tab-hero] [data-hero-window]")?.getBoundingClientRect(); return r && [r.left, r.top, r.width, r.height] })
+await P.evaluate(() => { window.__hold = true })
+await P.click("[data-tabs-button]")
+await P.waitForSelector("[data-tab-hero]")
+await P.evaluate(() => { for (const a of window.__held) { const t = a.effect.getComputedTiming(); a.currentTime = 0.4 * (t.delay + t.duration) } window.__held = [] })
+const caughtAt = await win()
+await P.click("[data-sheet-done]")
+await P.waitForSelector("[data-tab-hero]")
+const backFrom = await win()
+await P.evaluate(() => { window.__hold = false; for (const a of window.__held) a.finish(); window.__held = [] })
+check("Done mid-opening: the page turns around where it was", !!caughtAt && !!backFrom && caughtAt.every((v, i) => Math.abs(v - backFrom[i]) < 2) && caughtAt[2] < 380, { caughtAt, backFrom })
+const mid = await settled()
+check("Done mid-opening: list closed, nothing left behind", !(await P.isVisible("[data-tab-card]")) && clean(mid), mid)
 
 // Tabs: open the list.
 await P.click("[data-tabs-button]")
@@ -187,5 +243,24 @@ s = await settled()
 check("new tab: zoomed", (await zoomed())?.ok === true && (await zoomed()).kind === "new", await zoomed())
 check("new tab: nothing left behind", clean(s), s)
 check("new tab: blank", (await P.evaluate(() => location.hash)) === "#new", await P.evaluate(() => location.hash))
+
+// A card closed right after the list opens (nothing drawn since): the others glide on from where they were.
+await P.click("[data-tabs-button]"); await settled()
+const glide = await P.evaluate(() => new Promise((done) => {
+  const grid = document.querySelector("[data-tabs-grid]"), o = grid.getBoundingClientRect()
+  const at = () => new Map([...grid.querySelectorAll("[data-tab-row]")].map((r) => { const b = r.querySelector("[data-tab-card]").getBoundingClientRect(); return [r.dataset.tabRow, [b.left - o.left, b.top - o.top]] }))
+  const was = at(), gone = [...grid.querySelectorAll("[data-tab-row]")].find((r) => !r.querySelector("[aria-current]"))
+  new MutationObserver((_, mo) => {
+    if (gone.isConnected) return
+    mo.disconnect()
+    for (const a of document.getAnimations()) { a.pause(); a.currentTime = 0 }
+    const now = at()
+    done({ moved: [...now].filter(([id, [x, y]]) => Math.hypot(x - was.get(id)[0], y - was.get(id)[1]) > 2).map(([id]) => id), n: now.size })
+  }).observe(grid, { childList: true, subtree: true })
+  gone.querySelector("button[aria-label^=Close]").click()
+}))
+check("a card closed: the others start their glide where they were", glide.n >= 1 && !glide.moved.length, glide)
+await P.evaluate(() => { for (const a of document.getAnimations()) a.finish() })
+await P.click("[data-sheet-done]"); await settled()
 
 await done()

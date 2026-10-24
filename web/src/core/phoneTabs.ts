@@ -5,13 +5,13 @@ import { openNewTab, opensSwitcher } from "@/core/launcher"
 import { zoomIn, zoomNew, zoomOut } from "@/core/motion"
 import { afterSheets, closeDetail, replaceHash, route } from "@/core/nav"
 import { isPage } from "@/core/pages"
-import { shootTab } from "@/core/tabShots"
+import { shootTab, shotOf } from "@/core/tabShots"
 
 /** Open the tab list without a history entry of its own (closing tabs in it would leave one pointing at a gone tab):
  *  it replaces the address, and closing replaces it back with whatever tab is active then. */
 export async function openSwitcher(from?: { page: DOMRect; reset: () => void }) {
-  // A picture of the tab for its card (the iPhone app: core/tabShots.ts), then the page shrinks into it (core/motion.ts).
-  // From a finger dragging the bar up: taken as the drag began, and the page shrinks on from where the finger left it.
+  // A picture of the tab for its card (the iPhone app: core/tabShots.ts, started as the bar was pressed), then the page
+  // shrinks into it (core/motion.ts). From a finger dragging the bar up: the page shrinks on from where it left it.
   if (!from) await shootTab()
   zoomOut(() => {
     replaceHash(`${route().tab}/tabs`, { sheet: 0 })
@@ -34,7 +34,8 @@ export async function newPhoneTab(button: Element | null, gid?: string) {
   // (the switcher picks what it shows: nothing to grow till then)
   if (opensSwitcher()) return afterSheets(() => openNewTab(gid))
   await shootTab()
-  zoomNew(button, () => afterSheets(() => openNewTab(gid)))
+  const t = activeTab()
+  zoomNew(button, () => afterSheets(() => openNewTab(gid)), shotOf(t.id, t.to))
 }
 
 /** The line under a tab's name in the switcher: where the file is, or what kind of tab it is. */

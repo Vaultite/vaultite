@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Phone tabs move like Chrome's**: the tab list opens, and a card grows into its page, on the frame you lift your
+  finger; the picture stays inside its card all the way, Done tapped while the list opens turns it back, and the other
+  cards close up after one you close from where they were. A new tab's card shows its page instead of a plus.
 - **The status bar keeps its items while you drag one back**: an item dragged out of its tray over the bar no longer
   makes the bar leave out every other item, so it can go among them.
 - **The quick switcher lists every match**: scrolling down a long list of matches no longer stops partway, short of

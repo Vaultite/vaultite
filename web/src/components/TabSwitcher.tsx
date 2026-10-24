@@ -24,17 +24,16 @@ import { menuBelow, menuOnCard, type MenuItem } from "@/components/ContextMenu"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
-import { spring, useLingeringSheet } from "@/core/motion"
+import { spring, unmark, useLingeringSheet } from "@/core/motion"
 import { cn } from "@/lib/utils"
 import { hasWords } from "@/core/fuzzy"
 import { Drawn, Guard } from "@/components/Guard"
 import { HeldView, viewBody } from "@/components/Workspace"
 
-const EASE = "cubic-bezier(.2,.8,.2,1)"
 /** What cards making room for a lifted one move with: barely past their place and back, like a native grid's. */
-const SPRING = spring(0.86, 0.3)
-/** What cards closing up after one goes move with: no overshoot (the list would seem to wobble). */
-const CLOSE_UP = "280ms cubic-bezier(.2, 0, 0, 1)"
+const GLIDE = spring(0.32, 0.86)
+/** What cards closing up after one goes move with, and a swiped card going back: no overshoot (the list would wobble). */
+const CLOSE_UP = spring(0.3, 1)
 /** How long a lifted card rests over another's middle before the two group, and still on its edge before it takes its
  *  place (moving on an edge, not towards the middle, takes it at once). */
 const GROUP_MS = 300
@@ -49,7 +48,7 @@ const CARD = "relative isolate flex aspect-[3/4] scroll-mt-[calc(env(safe-area-i
 const PAGE_SHAPE = { aspectRatio: "var(--tab-aspect, 3 / 5)" }
 /** A card's ground and ring: its own layer, behind its face and picture (faded in as the page zooms into it). */
 function Ground({ className }: { className?: string }) {
-  return <span aria-hidden className={cn("absolute inset-0 -z-10 rounded-[14px] bg-[color-mix(in_srgb,var(--foreground)_4%,var(--card))] transition-[box-shadow] duration-150", className)} />
+  return <span aria-hidden data-card-ground className={cn("absolute inset-0 -z-10 rounded-[14px] bg-[color-mix(in_srgb,var(--foreground)_4%,var(--card))] transition-[box-shadow] duration-150", className)} />
 }
 
 /** Where the finger took the card it's moving (kept from its press): the card's size and the finger's place on it. */
@@ -112,33 +111,43 @@ function Lifted({ store, info, current }: { store: Store; info: (t: Tab) => TabI
 function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { store: Store; tab: Tab; info: TabInfo; current: boolean; into: boolean; lifted: boolean; onPick: () => void; menu: () => MenuItem[] }) {
   const card = useRef<HTMLDivElement>(null)
   const picked = useSelected(TABS, tab.id)
-  const drag = useRef<{ x: number; y: number; axis: "x" | "y" | null; dx: number; t: number; quit?: () => void } | null>(null)
+  /** The finger on it: where it went down, which way it's going, how far across (dx) and how fast (v, px/ms). */
+  const drag = useRef<{ x: number; y: number; axis: "x" | "y" | null; dx: number; t: number; v: number; quit?: () => void } | null>(null)
   const swiped = useRef(false)
   const gone = useRef(false)
-  /** Put the card `dx` px from its place (animated over `ms`), fading as it goes. */
-  const slide = (dx: number, ms = 0) => {
+  /** Put the card `dx` px from its place, fading as it goes; `back`: it springs there. */
+  const slide = (dx: number, back = false) => {
     const c = card.current
     if (!c) return
-    c.style.transition = ms ? `transform ${ms}ms ${EASE}, opacity ${ms}ms ${EASE}` : "none"
+    c.style.transition = back ? `transform ${CLOSE_UP.ms}ms ${CLOSE_UP.easing}, opacity ${CLOSE_UP.ms}ms ${CLOSE_UP.easing}` : "none"
     c.style.transform = dx ? `translateX(${dx}px)` : ""
-    c.style.opacity = dx ? String(Math.max(0.2, 1 - Math.abs(dx) / c.offsetWidth)) : ""
+    c.style.opacity = dx ? String(fadeAt(dx, c.offsetWidth)) : ""
   }
-  /** Close it: swiped (`dir`), it flies on that way; its X, it shrinks away where it is. */
-  const close = (dir?: 1 | -1) => {
+  /** Close it: a copy goes on where the card was (swiped, `dir`, it flies on at the finger's speed `v`; its X, it shrinks
+   *  away, a moment ahead) while the tab closes and the cards after it close up over it. */
+  const close = (dir?: 1 | -1, v = 0) => {
     if (gone.current) return
     gone.current = true
-    const c = card.current, w = c?.offsetWidth ?? 200
-    if (dir) slide(dir * w * 1.4, 200)
-    else if (c) {
-      c.style.transition = "transform 180ms cubic-bezier(.4, 0, 1, 1), opacity 180ms linear"
-      c.style.transform = "scale(0.8)"
+    const c = card.current
+    const g = c && ghostOf(c)
+    if (c && g) {
+      const dx = drag.current?.dx ?? (parseFloat(/translateX\((-?[\d.]+)px\)/.exec(c.style.transform)?.[1] ?? "0") || 0)
+      const w = c.offsetWidth, to = (dir ?? 0) * w * 1.3
+      const flight = dir
+        // (an ease-out starting at twice its average speed: about the finger's, so it doesn't jump or stall)
+        ? g.animate([{ transform: `translateX(${dx}px)`, opacity: fadeAt(dx, w) }, { transform: `translateX(${to}px)`, opacity: 0 }],
+          { duration: Math.min(260, Math.max(140, (2 * Math.abs(to - dx)) / Math.max(0.8, Math.abs(v)))), easing: "cubic-bezier(.25, .5, .5, 1)", fill: "forwards" })
+        : g.animate([{ transform: "none", opacity: 1 }, { transform: "scale(0.84)", opacity: 0 }], { duration: 180, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" })
+      void flight.finished.finally(() => g.remove())
+      c.style.transition = "none"
       c.style.opacity = "0"
     }
-    setTimeout(() => {
+    const shut = () => {
       closeTab(tab.id)
       // Still open: its view is asking (or said no). The card comes back; if the tab closes after all, it goes then.
-      if (isOpen(tab.id)) { gone.current = false; slide(0, 260) }
-    }, 190)
+      if (isOpen(tab.id)) { gone.current = false; g?.remove(); slide(0, true) }
+    }
+    if (dir) shut(); else setTimeout(shut, 70)
   }
   return (
     <div tabIndex={-1} data-tab-row={tab.id} data-select-key={tab.id} onContextMenu={menuOnCard(rowMenu(TABS, tab.id, menu))}
@@ -154,7 +163,10 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
           // (Selecting, a tap picks it: it doesn't swipe away.)
           if (gone.current || e.button || e.pointerType === "mouse" || selecting()) return
           drag.current?.quit?.()
-          drag.current = { x: e.clientX, y: e.clientY, axis: null, dx: 0, t: e.timeStamp }
+          // Caught while springing back: it goes on from where it shows.
+          const c = card.current, at = c ? new DOMMatrix(getComputedStyle(c).transform).m41 : 0
+          if (c && at) { c.style.transition = "none"; slide(at) }
+          drag.current = { x: e.clientX - at, y: e.clientY, axis: null, dx: at, t: e.timeStamp, v: 0 }
           swiped.current = false
         }}
         onPointerMove={(e) => {
@@ -166,17 +178,18 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
           if (!d.axis) {
             if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
               d.axis = "x"
-              d.t = e.timeStamp
               try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not a live pointer */ }
               // The app sent away mid-swipe (core/away.ts): it springs back.
-              d.quit = onAway(() => { if (drag.current === d) { drag.current = null; d.quit?.(); slide(0, 260) } })
+              d.quit = onAway(() => { if (drag.current === d) { drag.current = null; d.quit?.(); slide(0, true) } })
             }
             else if (Math.abs(my) > 8) d.axis = "y"
           }
           if (d.axis !== "x") return
           swiped.current = true
-          // When it last turned back: a flick is measured from there.
-          if (Math.abs(mx) < Math.abs(d.dx) || Math.sign(mx) !== Math.sign(d.dx)) d.t = e.timeStamp
+          // Its speed, smoothed over the last few moves (a flick is measured by it).
+          const dt = Math.max(1, e.timeStamp - d.t)
+          d.v = 0.6 * ((mx - d.dx) / dt) + 0.4 * d.v
+          d.t = e.timeStamp
           const w = card.current?.offsetWidth ?? 200
           if ((Math.abs(mx) > w * 0.35) !== (Math.abs(d.dx) > w * 0.35)) haptic()
           d.dx = mx
@@ -184,14 +197,17 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
         }}
         onPointerUp={(e) => {
           const d = drag.current
-          drag.current = null
           d?.quit?.()
-          if (!d || d.axis !== "x") return
+          if (!d || d.axis !== "x") { if (d?.dx) slide(0, true); drag.current = null; return }
           const w = card.current?.offsetWidth ?? 200
-          const flick = Math.abs(d.dx) > 30 && Math.abs(d.dx) / Math.max(16, e.timeStamp - d.t) > 0.6
-          if (Math.abs(d.dx) > w * 0.35 || flick) close(d.dx < 0 ? -1 : 1); else slide(0, 260)
+          // A flick: fast, and still going that way when let go (not a swipe brought back).
+          const v = e.timeStamp - d.t > 80 ? 0 : d.v
+          const flick = Math.abs(v) > 0.5 && Math.sign(v) === Math.sign(d.dx) && Math.abs(d.dx) > 16
+          if (Math.abs(d.dx) > w * 0.35 || flick) close(d.dx < 0 ? -1 : 1, v)
+          else slide(0, true)
+          drag.current = null
         }}
-        onPointerCancel={() => { const d = drag.current; drag.current = null; d?.quit?.(); if (d?.axis === "x") slide(0, 260) }}>
+        onPointerCancel={() => { const d = drag.current; drag.current = null; d?.quit?.(); if (d?.axis === "x") slide(0, true) }}>
         <Ground className={picked || into ? "ring-[3px] ring-[var(--primary)]" : current ? "ring-2 ring-[var(--primary)]" : "ring-[0.5px] ring-border"} />
         <CardFace store={store} tab={tab} info={info} current={current} />
         {/* The whole card is the tap target, laid over it (the preview holds links and blocks that mustn't be). */}
@@ -200,6 +216,23 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
       </div>
     </div>
   )
+}
+
+/** How opaque a card swiped `dx` across (of `w`) is. */
+const fadeAt = (dx: number, w: number) => Math.max(0.2, 1 - Math.abs(dx) / w)
+
+/** A copy of a card where it is, in the list's scroller (it scrolls and clips with the list), to go on going while the
+ *  card itself leaves the list: under the cards, which close up over it. */
+function ghostOf(card: HTMLElement) {
+  const sc = card.closest<HTMLElement>(".overflow-y-auto"), cell = card.parentElement
+  if (!sc || !cell) return null
+  const r = cell.getBoundingClientRect(), o = sc.getBoundingClientRect()
+  const g = card.cloneNode(true) as HTMLElement
+  unmark(g)
+  Object.assign(g.style, { position: "absolute", left: `${r.left - o.left + sc.scrollLeft}px`, top: `${r.top - o.top + sc.scrollTop}px`,
+    width: `${r.width}px`, height: `${r.height}px`, aspectRatio: "auto", minWidth: "0", margin: "0", pointerEvents: "none", transition: "none" })
+  sc.prepend(g)
+  return g
 }
 
 /** A card's tap target, laid over all of it, and its X. */
@@ -247,6 +280,9 @@ function GroupCard({ store, group, name, info, current, lit, onOpen }: { store: 
   )
 }
 
+/** Each card's place in the grid (`el`, their offset parent): its layout, whatever transform is moving it or the grid. */
+const places = (el: HTMLElement) => new Map([...el.querySelectorAll<HTMLElement>("[data-tab-row]")].map((c) => [c.dataset.tabRow!, { x: c.offsetLeft, y: c.offsetTop }]))
+
 /** Cards glide to new places (FLIP) when one goes or room's made for a lifted one, from where they show, mid-glide
  *  too. When one goes the list keeps its height until scrolled up, or a scroller at its end would jump. */
 function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean) {
@@ -255,19 +291,21 @@ function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean) {
   useLayoutEffect(() => {
     const el = box.current
     if (!el) return
+    // Not laid out yet (the sheet opens after its content's first draw): where the cards are is read once it is, or
+    // the first card closed has the rest glide in from the corner.
+    if (!el.offsetWidth) {
+      const f = requestAnimationFrame(() => { last.current = places(el); height.current = el.offsetHeight })
+      return () => cancelAnimationFrame(f)
+    }
     // (before anything is measured: measuring lays it out, which is when the scroller would jump)
     const ids = new Set([...el.querySelectorAll<HTMLElement>("[data-tab-row]")].map((c) => c.dataset.tabRow!))
     const lost = [...last.current.keys()].some((id) => !ids.has(id))
     if (lost && height.current) el.style.minHeight = `${Math.max(height.current, parseFloat(el.style.minHeight) || 0)}px`
     const o = el.getBoundingClientRect()
-    const now = new Map<string, { x: number; y: number; card: HTMLElement | null }>()
-    for (const cell of el.querySelectorAll<HTMLElement>("[data-tab-row]")) {
-      const r = cell.getBoundingClientRect()
-      now.set(cell.dataset.tabRow!, { x: r.left - o.left, y: r.top - o.top, card: cell.querySelector<HTMLElement>("[data-tab-card]") })
-    }
+    const now = places(el)
     const land = landing
     landing = null
-    const glide = (c: HTMLElement, from: string, how = `300ms ${SPRING}`) => {
+    const glide = (c: HTMLElement, from: string, how = `${GLIDE.ms}ms ${GLIDE.easing}`) => {
       c.style.transition = "none"
       c.style.transform = from
       void c.offsetWidth
@@ -275,16 +313,16 @@ function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean) {
       c.style.transform = ""
     }
     for (const [id, p] of now) {
-      const c = p.card
+      const c = el.querySelector<HTMLElement>(`[data-tab-row="${CSS.escape(id)}"] [data-tab-card]`)
       if (!c) continue
-      if (land?.id === id) { glide(c, `translate(${land.x - o.left - p.x}px, ${land.y - o.top - p.y}px) scale(1.06)`, `320ms ${SPRING}`); continue }
+      if (land?.id === id) { glide(c, `translate(${land.x - o.left - p.x}px, ${land.y - o.top - p.y}px) scale(1.06)`); continue }
       const was = last.current.get(id)
       if (!(lost || live) || !was || (was.x === p.x && was.y === p.y)) continue
       // Where it shows now, on its way from an earlier move: the glide's offset still on it.
       const cell = c.parentElement!.getBoundingClientRect(), shown = c.getBoundingClientRect()
-      glide(c, `translate(${was.x - p.x + shown.left - cell.left}px, ${was.y - p.y + shown.top - cell.top}px)`, lost && !live ? CLOSE_UP : undefined)
+      glide(c, `translate(${was.x - p.x + shown.left - cell.left}px, ${was.y - p.y + shown.top - cell.top}px)`, lost && !live ? `${CLOSE_UP.ms}ms ${CLOSE_UP.easing}` : undefined)
     }
-    last.current = new Map([...now].map(([id, p]) => [id, { x: p.x, y: p.y }]))
+    last.current = now
     height.current = el.offsetHeight
   })
   useEffect(() => {
@@ -647,7 +685,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
             </div>
           )}
         </>}>
-        <div ref={box} className="@container">
+        <div ref={box} data-tabs-grid className="relative @container">
           <div className={grid} data-select-list={TABS}>
             {found ? found.map(card)
               : open ? sections(open, inOrder(open.tabs))
