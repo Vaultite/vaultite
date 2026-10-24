@@ -43,6 +43,14 @@ await set({})
 for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]) {
   const page = await open(w, dark, "settings")
   await shot(page, `settings-${w}-${dark ? "dark" : "light"}`)
+  if (w === 390 && !dark) {
+    // The scheme tiles at a phone's width: their Aa clear of the dots, the row flush under its label.
+    const fit = await page.$eval("[data-settings-row=scheme]", (row) => {
+      const label = row.getBoundingClientRect().left, tiles = [...row.querySelectorAll("[role=radio]")]
+      return { flush: Math.round(tiles[0].getBoundingClientRect().left - label), clear: tiles.every((t) => { const aa = t.querySelector(".scheme-preview > span")?.getBoundingClientRect(), dot = t.querySelector(".scheme-preview > span + span > span")?.getBoundingClientRect(); return !!aa && !!dot && aa.right <= dot.left }) }
+    })
+    check("phone: the scheme tiles' Aa clear of their dots, flush under the label", fit.clear && fit.flush <= 12, fit)
+  }
   if (w === 1440 && !dark) {
     check("no font size setting", !(await page.getByText("Font size", { exact: true }).count()) && !(await page.locator('input[type="range"]').count()))
     const appearance = page.locator('[data-settings-section="appearance"]')

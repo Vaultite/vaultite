@@ -31,8 +31,9 @@ export function Swatches({ id, mode, className }: { id: string; mode?: "light" |
   return (
     <div data-scheme={id === "default" ? undefined : id} aria-hidden
       className={cn("scheme-preview flex h-10 items-center gap-1.5 overflow-hidden rounded-[7px] border-[0.5px] border-border bg-background px-2 text-foreground", dark && "dark", className)}>
-      <span className="text-[14px] leading-none font-semibold">Aa</span>
-      <span className="flex min-w-0 flex-1 justify-end gap-[3px]">
+      <span className="shrink-0 text-[14px] leading-none font-semibold">Aa</span>
+      {/* (narrow, the last dots go, never over the Aa) */}
+      <span className="flex min-w-0 flex-1 justify-end-safe gap-[3px] overflow-hidden">
         {["primary", "red", "yellow", "green", "blue"].map((c) => <span key={c} className="size-2 shrink-0 rounded-full" style={{ background: `var(--${c})` }} />)}
       </span>
     </div>
@@ -137,7 +138,8 @@ const FONTS = {
 function WithReset({ on, onReset, label, children }: { on: boolean; onReset: () => void; label: string; children: ReactNode }) {
   return (
     <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
-      <ResetButton on={on} onClick={onReset} label={label} />
+      {/* (its room always kept, so nothing moves; stacked under its label on a phone, at the end: the control flush with it) */}
+      <div className="shrink-0 max-sm:order-last"><ResetButton on={on} onClick={onReset} label={label} /></div>
       {children}
     </div>
   )
