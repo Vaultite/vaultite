@@ -44,6 +44,27 @@ export default async ($: VaultTest) => {
   cr = await vau("notify", "It broke", "--error")
   ;[, inboxNow] = await api("GET", "inbox/events")
   check("vau notify --error: an error event, no link", cr.code === 0 && inboxNow.events[0]?.title === "It broke" && inboxNow.events[0].kind === "error" && !inboxNow.events[0].link, inboxNow.events[0])
+  {
+    // The core's notices (vau notify, plugins updated) are Inbox's events; with no Inbox (always on: its service taken
+    // away), a toast with the link behind its button, kept nowhere.
+    await app.tellUpdated([{ id: "lighthouse", name: "Lighthouse", to: "1.2.0" }])
+    ;[, inboxNow] = await api("GET", "inbox/events")
+    check("plugins updated: an inbox event, no toast", inboxNow.events[0]?.title === "Lighthouse updated to 1.2.0" && inboxNow.events[0].source === "plugins" &&
+      inboxNow.events[0].link === "detail:plugin/lighthouse" && ![...uiOf(w1), ...uiOf(w2)].some((m: Any) => m.action === "notify"), inboxNow.events[0])
+    const inbox = app.plugins.find((p) => p.id === "inbox")!, add = inbox.services["inbox:event"]
+    delete inbox.services["inbox:event"]
+    try {
+      cr = await vau("notify", "Wrote the plan", "--action-open", "Errors", "--error")
+      await app.tellUpdated([{ id: "lighthouse", name: "Lighthouse", to: "1.3.0" }])
+    } finally { inbox.services["inbox:event"] = add }
+    ;[, inboxNow] = await api("GET", "inbox/events")
+    const toasts = [...uiOf(w1), ...uiOf(w2)].filter((m: Any) => m.action === "notify")
+    check("vau notify, no Inbox: a toast with its Open button, as an error, not kept", cr.code === 0 && toasts[0]?.text === "Wrote the plan" &&
+      toasts[0].kind === "error" && toasts[0].button?.label === "Open" && toasts[0].button.open === "Dashboards/Errors.md" && cr.out.includes("Shown: Wrote the plan") &&
+      !cr.out.includes("kept in the inbox") && !inboxNow.events.some((e: Any) => e.title === "Wrote the plan"), [cr, toasts])
+    check("plugins updated, no Inbox: a toast with What's new", toasts[1]?.text === "Lighthouse updated to 1.3.0" && toasts[1].button?.label === "What's new" &&
+      toasts[1].button.open === "detail:plugin/lighthouse" && !inboxNow.events.some((e: Any) => e.title.includes("1.3.0")), toasts)
+  }
   await api("DELETE", "inbox/events")
   cr = await vau("notify")
   check("vau notify: the text is required", cr.code === 1 && cr.err.includes("text is missing"), cr)

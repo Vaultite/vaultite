@@ -1742,9 +1742,12 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
   text: (r) => `In the inbox: ${r.path}${r.terminal ? `; ${cap(String(r.terminal).split(/[-_]/)[0])} has it in ${r.terminal}` : r.why ? ` (not dispatched: ${r.why})` : ""}.`,
 })
 
-/** Add an event from another plugin's backend (what it would POST): the service "inbox:event". */
+/** Add an event from another plugin's backend or the core (what it would POST); returns it. */
 plugin.provide("inbox:event", (b: Item) => addEvent(eventOf(b)))
+/** Take away the event of this source and key (what it said isn't so anymore). */
 plugin.provide("inbox:drop", (source: string, key: string) => dropEvent(source, key))
+/** Mark the event of this source and key read (the core's notice of a paused plugin, once it's allowed again). */
+plugin.provide("inbox:read", (source: string, key: string) => markRead(new Set(list().filter((e) => sameKey(e, source, key)).map((e) => e.id))))
 
 /** Who waits on a gate's answer, by its event's id (in memory: after a restart the answer is still on the event). */
 const gates = new Map<string, Set<(answer: "approve" | "deny") => void>>()

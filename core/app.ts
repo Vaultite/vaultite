@@ -225,44 +225,44 @@ export class App {
     }
   }
 
-  /** Tell the user plugins updated on their own: one notification for them all, kept in the inbox (else a toast). */
+  /** Tell the user: an event kept in the inbox (the service "inbox:event"), else a toast whose `button` opens its link.
+   *  The event, or null for a toast. */
+  async notice(e: Item, button = "Open"): Promise<Item | null> {
+    const add = service(this.on(), "inbox:event")
+    if (add) return await add(e) as Item
+    if (!this.ui) throw new OpError("no inbox to keep it and no window to show it", 503)
+    await this.ui({ action: "notify", text: e.title, kind: e.kind === "error" ? "error" : null, ...(e.link ? { button: { label: button, open: e.link } } : {}) })
+    return null
+  }
+
+  /** Tell the user plugins updated on their own: one notice for them all. */
   async tellUpdated(rows: { id: string; name: string; to: string; notes?: string[] }[]) {
     if (!rows.length) return
     const one = rows.length === 1 ? rows[0] : null
     const title = one ? `${one.name} updated to ${one.to}${one.notes?.length ? `: ${one.notes[0]}` : ""}`
       : `${rows.length} plugins updated: ${rows.map((r) => `${r.name} ${r.to}`).join(", ")}`
-    const link = one ? `detail:plugin/${one.id}` : "view:plugins"
-    try {
-      const r = await this.respond("POST", ["inbox", "events"], {}, { source: "plugins", kind: "info", title, link })
-      if (r.status < 300) return
-    } catch { /* no Inbox: a toast */ }
-    try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "What's new", open: link } }) } catch { /* no window */ }
+    try { await this.notice({ source: "plugins", kind: "info", title, link: one ? `detail:plugin/${one.id}` : "view:plugins" }, "What's new") } catch { /* no window */ }
   }
 
-  private pausedNotices = new Map<string, string>() // plugin id -> its inbox event, read once it's allowed again
+  private pausedTold = new Set<string>() // plugins whose paused notice is in the inbox, read once allowed again
 
   /** A plugin that changed after this machine allowed it stops until allowed again, its schedule too: say so once, in
    *  the inbox as waiting on the user, since a toast nobody saw lets a morning job go quiet for days. */
   private tellPaused() {
     const vps = this.vaultPlugins
     const paused = vps.paused()
-    for (const [id, event] of this.pausedNotices) {
+    for (const id of this.pausedTold) {
       if (paused.some((p) => p.id === id)) continue
-      this.pausedNotices.delete(id)
-      void this.respond("POST", ["inbox", "events", "read"], {}, { ids: [event] }).catch(() => {})
+      this.pausedTold.delete(id)
+      service(this.on(), "inbox:read")?.("plugins", `paused:${id}`)
     }
     for (const p of paused) {
       if (!vps.trust.tellPaused(p.id)) continue
       const jobs = p.jobs.map((j) => `${j.name} (every ${j.every}${j.at ? ` at ${j.at}` : ""})`)
       const title = `${p.name} changed and is paused until you allow it again${jobs.length ? `: ${jobs.join(", ")} won't run` : ""}`
       const body = `Changed: ${p.changed.join(", ")}. Allow it: vau plugin allow ${p.id}`
-      void (async () => {
-        try {
-          const r = await this.respond("POST", ["inbox", "events"], {}, { source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}` })
-          if (r.status < 300) { this.pausedNotices.set(p.id, (r.body as { event: { id: string } }).event.id); return }
-        } catch { /* no Inbox: a toast */ }
-        try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "Review", open: `detail:plugin/${p.id}` } }) } catch { /* no window */ }
-      })()
+      this.notice({ source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}` }, "Review")
+        .then((e) => { if (e) this.pausedTold.add(p.id) }, () => { /* no window */ })
     }
   }
 

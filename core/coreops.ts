@@ -194,12 +194,15 @@ error shows it as an error (a red icon).
     },
     args: ["text"],
     run: async ({ text, actionOpen, error, terminal }, ctx) => {
+      // (events are toasts and notifications on this machine's screen: its owner's, as Inbox's own route says)
+      const why = await ctx.refusal?.("the inbox")
+      if (why) throw new OpError(why, 403)
       const source = ctx.who.source === "cli" || ctx.who.source === "api" ? "vau" : ctx.who.source
-      const event = await ctx.api("POST", "inbox/events", { source, kind: error ? "error" : "info", title: text,
+      const event = await app.notice({ source, kind: error ? "error" : "info", title: text,
         ...(actionOpen ? { link: actionOpen } : {}), ...(terminal ? { terminal } : {}) })
       return { event }
     },
-    text: (_, p) => `Shown: ${p.text}${p.actionOpen ? ` [Open: ${p.actionOpen}]` : ""} (kept in the inbox)`,
+    text: (r: Any, p) => `Shown: ${p.text}${p.actionOpen ? ` [Open: ${p.actionOpen}]` : ""}${r.event ? " (kept in the inbox)" : ""}`,
     did: ({ text }) => ({ action: "ui", text: `Showed ${quoted(text)}` }),
   }, {
     id: "ui.choose",

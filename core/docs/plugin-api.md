@@ -183,8 +183,9 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `inbox:needs` (inbox): Whether an agent's session (by its terminal, or its own session id) has a row that needs the user, unread: Terminal's list says so (its tab's dot, Terminals' first rows).
 - `inbox:state` (inbox): Terminal's stream of its terminals' states.
 - `inbox:handed` (inbox): Dispatch marks the terminals it starts.
-- `inbox:event` (inbox): Add an event from another plugin's backend (what it would POST): the service "inbox:event".
-- `inbox:drop` (inbox)
+- `inbox:event` (inbox): Add an event from another plugin's backend or the core (what it would POST); returns it.
+- `inbox:drop` (inbox): Take away the event of this source and key (what it said isn't so anymore).
+- `inbox:read` (inbox): Mark the event of this source and key read (the core's notice of a paused plugin, once it's allowed again).
 - `inbox:ask` (inbox): Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer.
 - `inbox:answer` (inbox): A gate's answer (approve, deny), or "waiting" once `ms` passed without one; "gone" when the event isn't kept.
 - `links:canvas` (canvas)
