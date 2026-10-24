@@ -61,9 +61,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   option with its description, no longer one cut line or "Asks permission"; tap an option to answer it, or reply with
   its number, its name or your own words. A plan to approve shows the plan.
 - **Agents log in with your passwords, never seeing them**: give the browser a KeePass file for agents (KeeShare's export
-  of an Agents group) on the Mac it runs on, and `vau browser login` fills a site's username, password and one-time code
-  from it. Entries not tagged agent-free wait for your yes, given with a passkey on your phone, and nothing an agent reads
-  of the page shows what was filled.
+  of an Agents group) on the computer it runs on, and `vau browser login` fills a site's username, password and one-time
+  code from it. Its password is kept in the Mac's Keychain or Linux's keyring (on a Linux with none, only till the app
+  quits). Entries not tagged agent-free wait for your yes, given on a Mac with a passkey on your phone, and nothing an
+  agent reads of the page shows what was filled.
 - **Agents can't say yes for you**: an agent's permission prompt in a terminal, and one the server waits on (an app's
   tool through MCP), are approved or denied only in the app or on your phone, never by an agent or vau.
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's

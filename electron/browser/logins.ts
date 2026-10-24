@@ -1,5 +1,5 @@
 // Agents' logins (`vau browser login`): the app fills a username, password or one-time code from the agents' KeePass file
-// (set up on this Mac); agents hear only what happened, and what's filled is hidden from them after (pagesecrets.ts).
+// (set up on this computer); agents hear only what happened, and what's filled is hidden from them after (pagesecrets.ts).
 import { app, dialog, safeStorage, systemPreferences } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -14,25 +14,39 @@ import { register, verify, type Asserted, type Created, type Passkey } from "./p
 // (its reader, kdbxweb, loads at the first login: a Mac whose agents never log in never loads it)
 const keepass = () => import("./keepass.ts")
 
-/** This Mac's: the file and its password, encrypted with the Keychain's key (safeStorage). Never the vault's. */
+const HERE = process.platform === "darwin" ? "this Mac" : "this computer"
+/** What keeps a secret with the system's key (safeStorage): a Mac's Keychain, Linux's keyring (a Secret Service). */
+const KEYRING = process.platform === "darwin" ? "this Mac's Keychain" : "this computer's keyring"
+/** With no keyring (a Linux without a Secret Service), secrets are held only till the app quits: never on disk, where
+ *  agents running as the user could read them. */
+const keyring = () => safeStorage.isEncryptionAvailable()
+
+/** This computer's: the file and its password, encrypted with the keyring's key (no `key`: held in memory). Never the
+ *  vault's. */
 const CONFIG = () => path.join(app.getPath("userData"), "agent-logins.json")
-type Config = { file: string; key: string }
+type Config = { file: string; key: string | null }
+let held: { file: string; password: string } | null = null
 function config(): Config | null {
   try {
     const c = JSON.parse(fs.readFileSync(CONFIG(), "utf8")) as Partial<Config>
-    return typeof c.file === "string" && typeof c.key === "string" ? { file: c.file, key: c.key } : null
+    return typeof c.file === "string" ? { file: c.file, key: typeof c.key === "string" ? c.key : null } : null
   } catch { return null }
 }
 
-const SETUP = "the user sets it up in the desktop app on this Mac (an Agents container's menu, Passwords for agents)"
+const SETUP = `the user sets it up in the desktop app on ${HERE} (an Agents container's menu, Passwords for agents)`
 /** The file, opened now (KeeShare may have just written it). Its errors say what's wrong, never a value. */
 async function database(): Promise<Database> {
   const c = config()
-  if (!c) throw new Error(`no passwords for agents on this Mac: ${SETUP}`)
+  if (!c) throw new Error(`no passwords for agents on ${HERE}: ${SETUP}`)
   let data: Buffer
   try { data = fs.readFileSync(c.file) } catch { throw new Error(`the agents' passwords file isn't there (${path.basename(c.file)}): ${SETUP}`) }
   let password: string
-  try { password = safeStorage.decryptString(Buffer.from(c.key, "base64")) } catch { throw new Error(`this Mac's Keychain didn't give the file's password: ${SETUP}`) }
+  if (c.key === null) {
+    if (held?.file !== c.file) throw new Error(`the agents' passwords file is locked since the app started (${HERE} has no keyring to keep its password): the user types it again in Passwords for agents`)
+    password = held.password
+  } else {
+    try { password = safeStorage.decryptString(Buffer.from(c.key, "base64")) } catch { throw new Error(`${KEYRING} didn't give the file's password: ${SETUP}`) }
+  }
   const { openDatabase } = await keepass()
   try { return await openDatabase(data, password) } catch (e) { throw new Error(`the agents' passwords file doesn't open (${(e as Error).message}): ${SETUP}`) }
 }
@@ -65,16 +79,19 @@ function grantFor(id: unknown) {
   return g
 }
 
-// ---------- the user's passkeys, this Mac's: encrypted with the Keychain's key, so only the app adds one ----------
+// ---------- the user's passkeys, this computer's: encrypted with the keyring's key, so only the app adds one ----------
 
 const PASSKEYS = () => path.join(app.getPath("userData"), "agent-approvals.bin")
+let heldPasskeys: Passkey[] = []
 function passkeys(): Passkey[] {
+  if (!keyring()) return heldPasskeys
   try {
     const list = JSON.parse(safeStorage.decryptString(fs.readFileSync(PASSKEYS()))) as unknown
     return Array.isArray(list) ? list as Passkey[] : []
   } catch { return [] }
 }
 function savePasskeys(list: Passkey[]) {
+  if (!keyring()) { heldPasskeys = list; return tellAll({ type: "engine:logins:passkeys" }) }
   const tmp = `${PASSKEYS()}.${process.pid}.tmp`
   fs.writeFileSync(tmp, safeStorage.encryptString(JSON.stringify(list)), { mode: 0o600 })
   fs.renameSync(tmp, PASSKEYS())
@@ -91,7 +108,8 @@ function additionFor(token: unknown) {
 /** The user, at this Mac: Touch ID. A passkey added without it could be an agent's own (computer use clicks the app). */
 async function here(reason: string) {
   if (!app.isPackaged && process.env.VAULTITE_TEST_TOUCHID === "yes") return true // (QA: no finger in a test)
-  if (process.platform !== "darwin" || !systemPreferences.canPromptTouchID()) {
+  if (process.platform !== "darwin") throw new Error("Touch ID confirms a new passkey, and only a Mac has it: here agents log in only with entries tagged agent-free")
+  if (!systemPreferences.canPromptTouchID()) {
     throw new Error("this Mac can't ask for Touch ID now (its lid closed?), which confirms a new passkey")
   }
   return systemPreferences.promptTouchID(reason).then(() => true, () => false)
@@ -162,10 +180,12 @@ serve("agent:login-wait", async (_win, id, ms) => {
 handle("logins:status", async () => {
   const c = config()
   if (!c) return null
+  const kept = c.key === null ? { held: true } : {}
+  if (c.key === null && held?.file !== c.file) return { file: c.file, ...kept, locked: true, error: "locked since the app started: type its password again" }
   try {
     const db = await database()
-    return { file: c.file, entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
-  } catch (e) { return { file: c.file, error: (e as Error).message } }
+    return { file: c.file, ...kept, entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
+  } catch (e) { return { file: c.file, ...kept, error: (e as Error).message } }
 })
 handle("logins:choose", async (win) => {
   const r = await dialog.showOpenDialog(win, { title: "Passwords for agents", buttonLabel: "Choose", properties: ["openFile"], filters: [{ name: "KeePass", extensions: ["kdbx"] }] })
@@ -175,20 +195,22 @@ handle("logins:choose", async (win) => {
 // what's wrong is answered, for the page to say)
 handle("logins:set", async (_win, file, password) => {
   if (typeof file !== "string" || !path.isAbsolute(file) || typeof password !== "string" || !password) throw new Error("give a KeePass file and its password")
-  if (!safeStorage.isEncryptionAvailable()) return { error: "this Mac's Keychain can't keep its password" }
   let data: Buffer
   try { data = fs.readFileSync(file) } catch { return { error: "the file can't be read" } }
   let db: Database
   try { db = await (await keepass()).openDatabase(data, password) } catch (e) { return { error: (e as Error).message } }
+  const kept = keyring()
   const tmp = `${CONFIG()}.${process.pid}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify({ file, key: safeStorage.encryptString(password).toString("base64") }), { mode: 0o600 })
+  fs.writeFileSync(tmp, JSON.stringify({ file, key: kept ? safeStorage.encryptString(password).toString("base64") : null }), { mode: 0o600 })
   fs.renameSync(tmp, CONFIG())
+  held = kept ? null : { file, password }
   approvals.clear()
   grants.clear()
-  return { file, entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
+  return { file, ...(kept ? {} : { held: true }), entries: db.entries.length, free: db.entries.filter((e) => e.free).length }
 })
 handle("logins:forget", () => {
   fs.rmSync(CONFIG(), { force: true })
+  held = null
   approvals.clear()
   grants.clear()
 })

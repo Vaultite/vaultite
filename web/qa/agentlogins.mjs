@@ -85,10 +85,11 @@ const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
 fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "web-viewer", "inbox"])], disabled: (on.disabled ?? []).filter((x) => x !== "inbox") }))
 const USER_DATA = path.join(TMP, "userData"), LOCAL_DIR = path.join(TMP, "local")
-const app = await _electron.launch({
+const launch = () => _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: USER_DATA, VAULTITE_LOCAL: LOCAL_DIR, VAULTITE_TEST_TOUCHID: "yes" },
 })
+const app = await launch()
 let output = ""
 app.process().stdout?.on("data", (d) => { output += d })
 app.process().stderr?.on("data", (d) => { output += d })
@@ -110,7 +111,7 @@ await wait(2000)
 check("no passwords for agents yet", (await engine("logins:status")) === null)
 const early = await op("open", { url: `${SITE}/login` })
 const unset = await op("login", { tab: early.tab })
-check("a login before it's set up says how", /no passwords for agents on this Mac/.test(String(unset.error)), unset)
+check("a login before it's set up says how", /no passwords for agents on this (Mac|computer)/.test(String(unset.error)), unset)
 const wrongPw = await engine("logins:set", DB, "not it")
 check("a wrong password for the file is said, plainly", /password doesn't open it/.test(wrongPw?.error ?? "") && (await engine("logins:status")) === null, wrongPw)
 const set = await engine("logins:set", DB, DB_PASSWORD)
@@ -119,6 +120,10 @@ const status = await engine("logins:status")
 check("its status: the file, its entries", status?.file === DB && status?.entries === 3, status)
 const kept = fs.readFileSync(path.join(USER_DATA, "agent-logins.json"), "utf8")
 check("the file's password is kept encrypted, never as is", !kept.includes(DB_PASSWORD) && JSON.parse(kept).file === DB, kept.slice(0, 80))
+// (a Mac's Keychain, Linux's keyring; a Linux with none, as CI's: held only till the app quits)
+const keyring = await app.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable())
+check(keyring ? "… with the keyring's key" : "… or, with no keyring here, not kept at all: held till the app quits", keyring
+  ? typeof JSON.parse(kept).key === "string" && !set?.held && !status?.held : JSON.parse(kept).key === null && set?.held === true && status?.held === true, [keyring, set, status])
 
 // ---------- a free entry: username and password, then the one-time code ----------
 const t = early.tab
@@ -336,8 +341,24 @@ check("nor the browser's history (the GET form's address isn't kept, nor a title
 check("no secret in the vault, nor the server's own files", files(VAULT).length > 10 && files(LOCAL_DIR).length > 0 && !leaks(VAULT).length && !leaks(LOCAL_DIR).length, [...leaks(VAULT), ...leaks(LOCAL_DIR)])
 check("no secret in the app's or the server's output", ![SECRET, HARBOR, ADMIN, DB_PASSWORD].some((s) => output.includes(s)), output.slice(-500))
 
-console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
+// ---------- after a restart: still set with a keyring; with none, locked till the user types it again ----------
 await app.close()
+const app2 = await launch()
+const win2 = await app2.firstWindow()
+await win2.waitForSelector("[role=tree]", { timeout: 60000 })
+const after = await win2.evaluate(() => window.vaultite.web.engine("logins:status"))
+check(keyring ? "restarted: still set, from the keyring" : "restarted: locked, saying to type its password again", keyring
+  ? after?.file === DB && after.entries === 3 : after?.file === DB && after.locked === true && /type its password again/.test(after.error ?? ""), after)
+if (!keyring) {
+  const url = new URL(win2.url()).origin
+  const opened = await fetch(`${url}/api/ops/web-viewer.open`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify({ url: `${SITE}/login` }) }).then((r) => r.json())
+  const locked = await fetch(`${url}/api/ops/web-viewer.login`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify({ tab: (opened.result ?? opened).tab }) }).then((r) => r.json())
+  check("… and a login says it's locked", /locked since the app started/.test(String(locked.error)), locked)
+  const unlocked = await win2.evaluate(([f, p]) => window.vaultite.web.engine("logins:set", f, p), [DB, DB_PASSWORD])
+  check("… typed again, it's set till the app quits", unlocked?.entries === 3 && unlocked.held === true, unlocked)
+}
+await app2.close()
+console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 site.close()
 elsewhere.close()
 fs.rmSync(TMP, { recursive: true, force: true })
