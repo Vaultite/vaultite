@@ -109,10 +109,12 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const [limitFor, setLimitFor] = useState(query)
   if (limitFor !== query) { setLimitFor(query); setLimit(ROWS) }
   const drawn = Math.min(items.length, Math.max(limit, sel + ROWS / 3))
+  // (watched again whenever either mark is swapped in: more rows arriving with as many drawn swap the end for more)
+  const marks = `${drawn}/${items.length}`
   const more = useRef<HTMLDivElement>(null)
-  useNearEnd(more, () => setLimit(drawn + ROWS), drawn)
+  useNearEnd(more, () => setLimit(drawn + ROWS), marks)
   const end = useRef<HTMLDivElement>(null)
-  useNearEnd(end, () => onEnd?.(), drawn, "200px")
+  useNearEnd(end, () => onEnd?.(), marks, "200px")
   const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })
   // The rows' handlers stay the same (so a row's memo holds), calling the latest.
   const picks = useRef(pick)

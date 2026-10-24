@@ -65,12 +65,14 @@ try {
   const options = () => page.$$eval('[role="listbox"] [role="option"]', (es) => es.length)
   const before = await options()
   const lastOption = () => page.$eval('[role="listbox"] [role="option"]:last-of-type', (e) => e.textContent)
-  // (a page of rows drawn per scroll, and another page of hits found when all are drawn: to the end, however many)
-  for (let n = 0; n < 40 && !/in every file/.test(await lastOption()); n++) { await page.$eval('[role="listbox"]', (l) => { l.scrollTop = 1e9 }); await wait(250) }
+  // (a page of rows drawn per scroll, and another page of hits found when all are drawn, the search tab last meanwhile:
+  // to the end, every file)
+  const atEnd = async () => /in every file/.test(await lastOption()) && (await options()) > FILES
+  for (let n = 0; n < 60 && !(await atEnd()); n++) { await page.$eval('[role="listbox"]', (l) => { l.scrollTop = 1e9 }); await wait(250) }
   const after = await options()
   check("the quick switcher lists more as it's scrolled", before <= 81 && after > before + 100, { before, after })
   const last = await lastOption()
-  check("it ends with the search tab", /Search for "qa note" in every file/.test(last), last)
+  check("it ends with the search tab, every file above it", /Search for "qa note" in every file/.test(last) && after > FILES, { last, after })
   await page.fill('[role="dialog"][aria-label="Search"] input', "xq")
   await until(async () => (await page.textContent('[role="listbox"]')).includes("Qa note 7"), 4000).catch(() => {})
   check("text matches from two letters", (await page.textContent('[role="listbox"]')).includes("Qa note 7"), await page.textContent('[role="listbox"]'))
