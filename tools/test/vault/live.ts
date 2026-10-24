@@ -67,6 +67,7 @@ export default async ($: VaultTest) => {
     await vault.synced({ trusting: true })
     check("live: so the app's next read walks", walks === 1, walks)
     vault.removeConfig("live-check")
+    await new Promise((r) => setTimeout(r, 400)) // (what the watcher heard of that, passed on)
     await vault.synced()
     ;(vault as Any).walked = Date.now() - 60_000 // (the last walk long ago: past the watcher's word alone)
     walks = 0
@@ -74,6 +75,16 @@ export default async ($: VaultTest) => {
     const answered = walks
     await wait(() => walks === 1)
     check("live: past that, the app's read is answered at once and a walk follows it", answered === 0 && walks === 1, [answered, walks])
+    if (process.platform === "linux") {
+      // Linux's watcher hears each change as it's made: an agent's read waits for what it heard, not for a walk.
+      await vault.synced()
+      walks = 0
+      await vault.synced({ drained: true })
+      check("live: on Linux, an agent's read with nothing heard doesn't walk", walks === 0, walks)
+      fs.writeFileSync(path.join(VAULT, "Notes/Live four.md"), "Edited by an agent, then read at once.\n")
+      await vault.synced({ drained: true })
+      check("live: ...and one right after its write sees it, without a walk", walks === 0 && !!vault.entries.get("Notes/Live four.md")?.body.includes("then read at once"), walks)
+    }
     vault.sync = sync
   }
   {

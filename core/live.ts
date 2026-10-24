@@ -78,7 +78,8 @@ export class Live {
         ? watchTree(root, unwatched, (rel) => this.add(rel))
         : fs.watch(root, { recursive: true }, (_event, name) => this.add(name === null || name === undefined ? null : String(name).split(path.sep).join("/")))
       this.watcher.on("error", (e) => this.restart(e))
-      this.vault.watching(true)
+      // (inotify, folder by folder, hears each change as it's made; FSEvents tells of them a while later)
+      this.vault.watching(true, process.platform === "linux" ? () => this.timer !== null || this.flushing : undefined)
     } catch (e) {
       this.restart(e)
     }
@@ -124,16 +125,20 @@ export class Live {
     })
   }
 
+  private flushing = false
   private async flush() {
     this.timer = null
     const paths = this.all ? null : this.narrow([...this.pending]).sort()
     this.pending.clear()
     this.all = false
     // (the folders iCloud touched beside a write left out here too, or each of the server's own saves walks the vault)
+    this.flushing = true
     try {
       await this.vault.hear(paths) // (notes edited on disk read again on their own, else a walk)
     } catch (e) {
       console.error(e)
+    } finally {
+      this.flushing = false
     }
     // A folder gone from disk is only let go of a few seconds later (Vault.sync): look again then.
     if (this.vault.waiting()) this.recheck()

@@ -28,7 +28,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   only what changed. It starts sooner too: lists in
   properties as Obsidian writes them, and nested ones read before, no longer go through the YAML library; renaming a
   note many others link to takes half the time, and a search, half; the first click after a pause no longer waits
-  while it looks the vault over.
+  while it looks the vault over, nor, on Linux, does an agent's every read.
 - **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
   header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
   makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big

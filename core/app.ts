@@ -796,7 +796,7 @@ export class App {
     }
     const go = () => this.dispatchOrReply(method, parts, query, body ?? {}, http)
     if (this.holding.getStore()?.on || this.unsynced(method, parts)) return go()
-    if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced({ trusting: this.trusts(http) }).then(go)
+    if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced({ trusting: this.trusts(http), drained: !!http?.socket }).then(go)
     return this.hold(go, { trusting: this.trusts(http) })
   }
 

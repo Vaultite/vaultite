@@ -680,11 +680,19 @@ export class Vault {
   private walked = 0
   private linkedOut = false // a linked folder was followed: the watcher doesn't see into it
 
-  /** Live watches the vault, or stopped (until it restarts, every read walks it). */
-  watching(on: boolean) {
+  /** Live watches the vault, or stopped (until it restarts, every read walks it). `untold`: whether it heard changes
+   *  it hasn't passed on yet, when its watcher hears each change as it's made (Linux's inotify; not FSEvents). */
+  watching(on: boolean, untold?: () => boolean) {
     this.watched = on
+    this.untold = on ? untold ?? null : null
     this.stale = true
     this.heardCount++
+  }
+  private untold: (() => boolean) | null = null
+  private async drain() {
+    await turn(); await turn()
+    for (let waited = 0; this.untold?.() && waited < 1000; waited += 20) await new Promise((r) => setTimeout(r, 20))
+    return !this.next && this.vouched() && !!this.untold && !this.untold()
   }
   /** Changes Live heard so far (and starts and stops): what was worked out from the disk at one count still holds. */
   heardCount = 0
@@ -764,8 +772,11 @@ export class Vault {
 
   /** Sync before a read; reads asking before the next turn share one walk. `trusting`: the watcher's word will do (the
    *  app's reads, not an agent's, which may have just written), and past VOUCH a walk after the answer makes sure. */
-  synced({ trusting = false } = {}): Promise<boolean> {
+  synced({ trusting = false, drained = false } = {}): Promise<boolean> {
     if (trusting && !this.next && this.vouched()) return Promise.resolve(false)
+    // An agent's read (`drained`), with a watcher that hears each change as it's made: what it just wrote is heard
+    // within two turns, then passed on (a note edited is read again on its own); the index vouched for, no walk.
+    if (drained && this.untold && !this.next) return this.drain().then((ok) => (ok ? false : this.synced()))
     if (trusting && !this.next && this.vouched(Infinity)) {
       // (a moment later: the answer goes out first)
       this.rewalk ??= setTimeout(() => { this.rewalk = null; this.synced().catch((e) => console.error(e)) }, 100)
