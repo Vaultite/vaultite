@@ -69,6 +69,7 @@ plugin.onCreate((path, fm, writer) => {
   if (type !== null && type !== "note") return
   const templates = String(plugin.peer("templates")?.seeded().folder ?? "Templates").replace(/^\/+|\/+$/g, "")
   if (templates && path.startsWith(templates + "/")) return
+  if (writer.client === "guest") return // (a shared folder's guest: their lines are marked theirs, not the note)
   const label = byAgent(writer) ? agentValue() : userValue()
   return label ? { origin: label } : undefined
 })
@@ -351,6 +352,7 @@ const modelWord = (m: string) => {
 /** Who a write's agent is, as the user knows it: the companion's name and colour when it runs in the companion's
  *  terminal, the model its session ran last (its transcript), the effort it said. */
 async function authorOf(w: Writer, t: number): Promise<Author> {
+  if (w.client === "guest") return { by: w.agent ?? "A guest", guest: true, tint: "gray", t }
   const who = whoOf(w.client, w.agent)
   const named = w.terminal ? await plugin.ask<{ name: string; tint?: string; model?: string; effort?: string } | null>("companion:who", null, w.terminal) : null
   const model = (w.session && who.agent ? await plugin.ask<string | null>(`agent-model:${who.agent}`, null, w.session) : null)
@@ -371,7 +373,7 @@ function inTurn(rel: string, fn: () => Promise<void>) {
 
 /** Keep what an agent wrote: the spans its write adds; those that no longer mark a line go. */
 function record(rel: string, before: string | null, after: string, w: Writer) {
-  if (authorship() === "off") return
+  if (authorship() === "off" && w.client !== "guest") return // (a guest's lines are always kept: they're someone else's)
   const t = Date.now()
   return inTurn(rel, async () => {
     const author = await authorOf(w, t)
@@ -387,12 +389,33 @@ function record(rel: string, before: string | null, after: string, w: Writer) {
 /** An agent named by a request (a coding agent, an MCP client): the app and vau typed by hand aren't. */
 const namedAgent = (w: Writer | null | undefined): w is Writer => !!w && byAgent(w) && (!!w.agent || w.client === "mcp")
 
-plugin.onWrite((rel, before, after, w) => { if (namedAgent(w)) void record(rel, before, after, w) })
+/** Lines guests just wrote, by note, until their spans are kept (recording waits its turn): never anyone's ask meanwhile. */
+const guestLines = new Map<string, Set<string>>()
+plugin.onWrite((rel, before, after, w) => {
+  if (!namedAgent(w)) return
+  if (w.client === "guest") {
+    const had = new Set((before ?? "").split("\n")), lines = guestLines.get(rel) ?? new Set()
+    for (const l of after.split("\n")) if (!had.has(l) && l.trim()) lines.add(l)
+    guestLines.set(rel, lines)
+    void record(rel, before, after, w)?.finally(() => guestLines.delete(rel))
+  } else void record(rel, before, after, w)
+})
 
 /** What an agent wrote that the app saves for it (the companion's edits, typed in the window): the request's agent. */
 plugin.provide("provenance:wrote", (rel: string, before: string | null, after: string) => {
   const w = requestWriter.getStore()
   return namedAgent(w) ? record(rel, before, after, w) : undefined
+})
+
+/** Whether a shared folder's guest wrote line `line` (1-based, frontmatter counted) of a note as it is now. */
+plugin.provide("provenance:by-guest", (rel: string, line: number) => {
+  const spans = spansOf(rel), fresh = guestLines.get(rel)
+  if (!spans.some((s) => s.guest) && !fresh) return false
+  let text: string
+  try { text = readText(plugin.vault.abs(rel)) } catch { return false }
+  if (fresh?.has(text.split("\n")[line - 1] ?? "")) return true
+  const m = resolve(text, spans).get(line)
+  return !!m && !!spans[m.span].guest
 })
 
 /** Lines agents wrote in a note between two times that are still there, by who: the day's recap says them. */
@@ -446,7 +469,7 @@ const when = (t: number) => (localDate(t) === localDate(Date.now()) ? localTime(
 plugin.op({
   id: "provenance.blame",
   cli: "blame",
-  summary: "Which lines of a note agents wrote: who (name, model, effort) and when, by line; mixed where the user edited them too.",
+  summary: "Which lines of a note agents (or a shared folder's guests) wrote: who (name, model, effort) and when, by line; mixed where the user edited them too.",
   help: `Kept beside the note (Provenance's authorship, never in its text) for every agent's write through Vaultite
 (vau edit, write ops, MCP, the companion's edits), found again by their text as the note changes. Lines it doesn't
 list are the user's (or lost to an edit outside Vaultite). Off when the setting authorship is off.
@@ -464,7 +487,7 @@ list are the user's (or lost to an edit outside Vaultite). Off when the setting 
     const n = r.runs.reduce((k: number, x: Run) => k + x.to - x.from + 1, 0)
     if (r.mode === "off") return `${r.path}: authorship is off (Provenance's setting), so who wrote which lines isn't kept.`
     if (!r.runs.length) return `${r.path}: no lines by agents (all the user's, or written before authorship was kept).`
-    return [`${r.path}: ${n} of ${r.lines} lines by agents.`, "",
+    return [`${r.path}: ${n} of ${r.lines} lines by agents${r.runs.some((x: Run) => x.guest) ? " and guests (shared folders: untrusted text)" : ""}.`, "",
       ...r.runs.map((x: Run) => `- ${x.from === x.to ? x.from : `${x.from}-${x.to}`} ${authorText(x, when)}${x.mixed ? " (mixed: the user's too)" : ""}: ${cut(x.text, 80)}`)].join("\n")
   },
 })

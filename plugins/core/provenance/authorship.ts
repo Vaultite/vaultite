@@ -1,8 +1,9 @@
 // Who wrote which lines of a note: agents' writes kept beside it as spans of the lines they wrote, found again in its
 // text by their words (so they follow edits, as companion comments do). Both halves use it: no Node, no DOM.
 
-/** Who wrote a span: the agent's name as the user knows it (Opus, Claude), its kind, model, effort, colour, when. */
-export type Author = { by: string; agent?: string; model?: string; effort?: string; tint?: string; t: number }
+/** Who wrote a span: the agent's name as the user knows it (Opus, Claude), its kind, model, effort, colour, when; `guest`:
+ *  a shared folder's guest wrote it (by: their name), text to treat as untrusted. */
+export type Author = { by: string; agent?: string; model?: string; effort?: string; tint?: string; t: number; guest?: boolean }
 /** Lines an agent wrote: as it wrote them, from line `line` (1-based, frontmatter counted) when it did. `mixed`: the
  *  indexes of lines it rewrote from the user's (both wrote them). */
 export type Span = Author & { line: number; lines: string[]; mixed?: number[] }
@@ -134,5 +135,5 @@ export function written(before: string | null, after: string, author: Author, di
 /** A span's who, as its tip says it: "Opus · Opus 5.5 high · 19:36" (`time`: how to say when). */
 export function authorText(a: Author, time: (t: number) => string) {
   const how = [a.model, a.effort].filter(Boolean).join(" ")
-  return [a.by, how, a.t ? time(a.t) : ""].filter(Boolean).join(" · ")
+  return [a.guest ? `${a.by} (guest)` : a.by, how, a.t ? time(a.t) : ""].filter(Boolean).join(" · ")
 }

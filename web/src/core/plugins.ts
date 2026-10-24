@@ -2,6 +2,7 @@
 // own once /api/state lists them. Which are on is plugins.json (prefs.ts); a plugin is off while one it `requires` is.
 import { useEffect, type ReactNode } from "react"
 import { signal } from "@/core/signal"
+import { share } from "@/core/share"
 import { PanelTop, Puzzle } from "lucide-react"
 import BUILT_IN_ICONS from "virtual:plugin-icons"
 import * as official from "virtual:official-plugins"
@@ -154,6 +155,7 @@ export function turnPluginsBackOn() {
 /** On: not switched off (opt-in: switched on, and nothing wrong with it), and everything it requires is on too.
  *  `!<id>` in `disabled` draws an opt-in one as on (its preview while it's off). */
 export function isEnabled(id: string, disabled: string[], seen: string[] = []): boolean {
+  if (share) return share.plugins.includes(id) && !!pluginById(id) // (a guest's app: only theirs, core/share.ts)
   const p = pluginById(id)
   if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted"))) return false
   const own = p.tier === "hosted" ? hostedOwn(p, disabled, seen)

@@ -225,6 +225,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
 - `grouped(groups)`: A menu made of groups, a line between each two (empty groups left out): the file menus' one shape.
+- `guestEdits()`: Whether the guest may change notes (else the app is read-only for them).
 - `haptic(weight?)`
 - `Haptic`: iOS's kinds: impacts (light: a menu, a swipe past its mark, a tick; medium: picked up, put down, a row's action done), `selection` (an item passing another, a choice ticked), notifications…
 - `hashOf(to)`: The hash for a tab's target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new".
@@ -504,6 +505,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
+- `share`
+- `Share`
 - `SheetActions({ children })`: Buttons for the sheet's header, left of Close (a glance's Open in tab).
 - `SheetHead({ icon, tint, kicker, title, sub, children })`: No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new).
 - `showAnchorIn(within, path, anchor)`: Scroll a file shown inside `within` (a glance's sheet) to a heading or block, once its editor is there.
@@ -713,6 +716,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
+- `liveMarkdown(text)`: Whether words a guest adds (a comment, a reply: all of it theirs) hold anything live.
 - `load(vault)`: Import every plugin.ts and register its kinds, in discover() order (manifest-only plugins too, for their AGENTS.md).
 - `LOADED`
 - `LOCAL`: This machine's own files: secrets.

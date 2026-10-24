@@ -172,6 +172,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.
 - `companion:who` (companion): The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour, and the model and effort it was started with; null when it's no companion's.
+- `companion:guest` (companion): A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `fence:<…>` (genui, chart, base): genui; query
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
@@ -212,9 +213,13 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `provenance:user` (provenance): What the user said or wrote, made by another plugin's backend (Inbox's voice notes): the label to give it.
 - `provenance:agent` (provenance): And what an agent's are labelled (an AI app's note for the inbox).
 - `provenance:wrote` (provenance): What an agent wrote that the app saves for it (the companion's edits, typed in the window): the request's agent.
+- `provenance:by-guest` (provenance): Whether a shared folder's guest wrote line `line` (1-based, frontmatter counted) of a note as it is now.
 - `provenance:authored` (provenance): Lines agents wrote in a note between two times that are still there, by who: the day's recap says them.
 - `sample` (claude-code)
 - `setting-defaults` (other-apps)
+- `share:public` (share)
+- `share:upgrade` (share)
+- `share:gateway` (share)
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).

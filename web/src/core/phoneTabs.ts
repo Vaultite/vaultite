@@ -5,6 +5,7 @@ import { openNewTab, opensSwitcher } from "@/core/launcher"
 import { zoomIn, zoomNew, zoomOut } from "@/core/motion"
 import { afterSheets, closeDetail, replaceHash, route } from "@/core/nav"
 import { isPage } from "@/core/pages"
+import { share } from "@/core/share"
 import { shootTab, shotOf } from "@/core/tabShots"
 
 /** Open the tab list without a history entry of its own (closing tabs in it would leave one pointing at a gone tab):
@@ -44,7 +45,7 @@ export function tabMeta(to: string) {
   if (to.startsWith("file:/")) return "Outside the vault"
   if (to.startsWith("file:")) {
     const p = to.slice(5)
-    return isPage(p) ? "Page" : folderOf(p).split("/").filter(Boolean).join(" / ") || "Vault"
+    return isPage(p) ? "Page" : folderOf(p).split("/").filter(Boolean).join(" / ") || (share?.folder ?? "Vault")
   }
   if (to.startsWith("view:")) return "Plugin view"
   return "App"

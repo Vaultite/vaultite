@@ -6,6 +6,7 @@ import { noteActivity } from "@/core/activity"
 import { isDesktop, isMac as MAC } from "@/core/platform"
 import { notifyError } from "@/core/notify"
 import { signal } from "@/core/signal"
+import { guestCommand } from "@/core/share"
 import { confirmDialog } from "@/components/ConfirmDialog"
 
 export type Command = {
@@ -62,6 +63,7 @@ const changed = () => { list = [...reg.values()]; knownList = [...known.values()
 
 /** Add commands (the same id replaces the older one); returns how to take them away again. */
 export function registerCommands(cs: Command[]) {
+  cs = cs.filter((c) => guestCommand(c.id))
   for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name }) }
   changed()
   return () => { for (const c of cs) if (reg.get(c.id) === c) reg.delete(c.id); changed() }

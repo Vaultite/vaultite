@@ -1,9 +1,9 @@
 import { useEffect, useSyncExternalStore } from "react"
-import { Crosshair, MessageCirclePlus, MessagesSquare, MousePointer2, Power, SquareTerminal } from "lucide-react"
-import { choose, cn, currentEditor, definePlugin, menuAbove, notify, op, useFocusedFile, type MenuItem } from "@vaultite"
+import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, MousePointer2, Power, SquareTerminal } from "lucide-react"
+import { choose, cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { connect, getState, liveAgents, type Note, sendMoment, subscribe, viewOf } from "./live"
+import { connect, getState, liveAgents, type Note, sendMoment, setGuest, startComment, subscribe, viewOf } from "./live"
 import { follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
 import { MODES, setMode, showSession } from "./session"
@@ -31,6 +31,18 @@ function ask(agent?: string) {
   v.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input" })
   v.focus()
 }
+
+setGuest(share)
+
+/** Comment on the selection, or on the caret's line: a card in the margin to write it in. A guest who may only read can't. */
+const comments = () => !share || share.role !== "read"
+function addComment() {
+  const ed = currentEditor()
+  if (!ed?.path || ed.kind !== "markdown") return void notify("Open a note to comment on it")
+  const v = ed.view, sel = v.state.selection.main, find = v.state.sliceDoc(sel.from, sel.to).trim().slice(0, 200)
+  startComment({ path: ed.path, line: v.state.doc.lineAt(sel.from).number, ...(find ? { find } : {}) })
+}
+const COMMENT = { id: "companion:comment", name: "Add comment", label: "Comment", keys: ["Mod+Alt+M"], run: addComment, icon: MessageSquarePlus }
 
 /** The status bar's companion: its pointer in its colour (who's around shows on the note), and its menu. */
 function Status() {
@@ -77,20 +89,25 @@ function Background() {
   return <Overlay />
 }
 
+// (a shared folder's guest gets the threads and nothing of the agents)
 export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
   background: () => <Background />,
-  ambient: { status: { title: "Companion", sort: 25, render: () => <Status /> } },
-  fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
+  ambient: share ? undefined : { status: { title: "Companion", sort: 25, render: () => <Status /> } },
+  fileBar: share ? undefined : { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   // (its key is threads.ts' PANEL)
   sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads"], flyout: { icon: ConversationsIcon, width: 320 },
     render: (ctx) => <ConversationsPanel {...ctx} /> } },
   views: { conversations: { icon: MessagesSquare, title: () => "Conversations", render: () => <ConversationsView /> } },
-  commands: [
+  commands: share ? (comments() ? [COMMENT] : []) : [
     { id: "companion:ask", name: "Ask the companion", label: "Ask", keys: ["Mod+Shift+K"], run: () => ask(), icon: MessageCirclePlus },
+    COMMENT,
     ...MODES.map((m) => ({ id: `companion:${m.mode}`, name: `Companion: ${m.label}`, when: () => getState().mode !== m.mode, run: () => void setMode(m.mode) })),
     { id: "companion:session", name: "Show the companion's session", run: () => void showSession(), icon: SquareTerminal },
   ],
-  editorMenu: ({ view, path }) => (path && !view.state.selection.main.empty && getState().mode !== "off"
-    ? (liveAgents().length > 1 ? liveAgents().map((a) => a.name) : [getState().name]).map((n) => ({ label: `Ask ${n} about this`, icon: MessageCirclePlus, run: () => ask(n) })) : []),
+  editorMenu: ({ view, path }) => [
+    ...(path && !share && !view.state.selection.main.empty && getState().mode !== "off"
+      ? (liveAgents().length > 1 ? liveAgents().map((a) => a.name) : [getState().name]).map((n) => ({ label: `Ask ${n} about this`, icon: MessageCirclePlus, run: () => ask(n) })) : []),
+    ...(path && comments() ? [{ label: "Add comment", icon: MessageSquarePlus, run: addComment }] : []),
+  ],
 })

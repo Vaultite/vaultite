@@ -3,10 +3,10 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Ellipsis, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, capitalize, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, snippet } from "@vaultite"
+import { canvasOf, canvasShown, capitalize, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, share, snippet } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, getState, type Target, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, authorOf, comment, getState, type Target, type Note, onBump, pick, pin, pointAt, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { agentMenu } from "./session"
 import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -16,6 +16,8 @@ type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boo
 const FLAG = 44 // the arrow and its flag below it
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
 export const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+/** The card of a comment being written (live.ts Draft). */
+const DRAFT = "draft"
 
 /** A target's position in its editor, or null when the text is gone. */
 function posIn(v: EditorView, t: { line?: number; find?: string }) {
@@ -359,9 +361,12 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }
   const ref = useRef<HTMLElement | null>(null), keep = (el: HTMLElement | null) => { ref.current = el }
   const body = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState(false)
-  const [replying, setReplying] = useState(false)
+  const writing = n.id === DRAFT
+  const [replying, setReplying] = useState(writing)
   const [draft, setDraft] = useState("")
-  const tint = tintOf(n.agent)
+  const tint = threadTint(n), author = writing ? (share ? share.guest : "You") : authorOf(n)
+  // (a guest closes only their own threads; the user, any)
+  const closes = !share || (n.by === "guest" && n.agent === share.guest)
   // (how far below its line it reaches: the next card goes under it, and the note keeps room to scroll to it)
   useLayoutEffect(() => {
     if (ref.current) onHeight(ref.current.offsetHeight)
@@ -372,25 +377,30 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }
   useEffect(() => { if (replies > had.current) body.current?.scrollTo({ top: body.current.scrollHeight }); had.current = replies }, [replies])
   if (folded && !open) {
     return (
-      <button ref={keep} type="button" aria-label={`${n.agent}'s ${n.kind}`} data-companion-dot={n.id} className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full shadow"
+      <button ref={keep} type="button" aria-label={`${author}'s ${n.kind}`} data-companion-dot={n.id} className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full shadow"
         style={{ transform: `translate(${x}px, ${y}px)`, background: tint }} onClick={() => onOpen(true)}>
         <span className="size-1.5 rounded-full bg-white" />
       </button>
     )
   }
-  const send = () => { const t = draft.trim(); if (t) answer(n.id, "reply", t); setDraft(""); setReplying(false) }
+  const send = () => {
+    const t = draft.trim()
+    if (writing) return t ? comment(t) : startComment(null)
+    if (t) answer(n.id, "reply", t)
+    setDraft(""); setReplying(false)
+  }
   return (
     <div ref={keep} data-companion-note={n.id} data-open={open || undefined} onPointerDown={() => !open && onOpen(true)} className="companion-pop pointer-events-auto absolute top-0 left-0 flex w-[212px] flex-col rounded-[10px] border border-border/60 bg-background pl-1.5 text-[13px] leading-snug shadow-md"
       style={{ transform: `translate(${x}px, ${y}px)`, transition: "transform .25s ease-out", maxHeight: cap, zIndex: open ? 1 : undefined }}>
       {/* (its colour as a straight bar clear of the rounded corners, not a border bent around them) */}
       <span aria-hidden className="absolute inset-y-2.5 left-[3px] w-[3px] rounded-full" style={{ background: tint }} />
       <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2 text-[11.5px] font-semibold text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate" style={{ color: inked(tint) }}>{n.agent}{n.kind === "suggestion" ? " suggests" : ""}</span>
-        <button type="button" aria-label={n.kind === "suggestion" ? "Reject" : "Dismiss"} data-tip={n.kind === "suggestion" ? `Reject (${keyHint("Escape")})` : "Dismiss"}
+        <span className="min-w-0 flex-1 truncate" style={{ color: inked(tint) }}>{author}{n.kind === "suggestion" ? " suggests" : ""}</span>
+        {(closes || writing) && <button type="button" aria-label={writing ? "Cancel" : n.kind === "suggestion" ? "Reject" : "Dismiss"} data-tip={writing ? "Cancel" : n.kind === "suggestion" ? `Reject (${keyHint("Escape")})` : "Dismiss"}
           className="grid size-5 cursor-pointer place-items-center rounded hover:bg-foreground/[0.07]"
-          onClick={() => (folded && n.kind === "comment" ? onOpen(false) : answer(n.id, n.kind === "suggestion" ? "reject" : "dismiss"))}>
+          onClick={() => (writing ? startComment(null) : folded && n.kind === "comment" ? onOpen(false) : answer(n.id, n.kind === "suggestion" ? "reject" : "dismiss"))}>
           <X className="size-3.5" />
-        </button>
+        </button>}
       </div>
       {/* (open, one taller than the pane scrolls inside, its buttons kept in sight) */}
       <div ref={body} className={cn("min-h-0", open ? "overflow-y-auto overscroll-contain [scrollbar-width:thin]" : "max-h-[84px] overflow-hidden", more && "companion-more")}>
@@ -399,7 +409,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }
         {n.kind === "comment" && replies > 0 && (
           <div className="px-2.5">
             {n.replies!.map((r, i) => (
-              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><div className="text-[11.5px] font-semibold text-muted-foreground" style={r.by === "user" ? undefined : { color: inked(tint) }}>{r.by === "user" ? "You" : n.agent}</div><Markdown text={r.text} className="companion-md" /></div>
+              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><div className="text-[11.5px] font-semibold text-muted-foreground" style={r.by === "agent" ? { color: inked(tint) } : undefined}>{replyAuthor(n, r)}</div><Markdown text={r.text} className="companion-md" /></div>
             ))}
           </div>
         )}
@@ -415,8 +425,9 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }
       {n.kind === "comment" && (
         <div className="shrink-0 px-2.5 pb-2">
           {replying ? (
-            <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply"
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); send() } else if (e.key === "Escape") setReplying(false) }} onBlur={() => !draft && setReplying(false)}
+            <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={writing ? "Comment" : "Reply"} aria-label={writing ? "Comment" : "Reply"} enterKeyHint="send"
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() } else if (e.key === "Escape") { if (writing) startComment(null); else setReplying(false) } }}
+              onBlur={() => !draft && (writing ? startComment(null) : setReplying(false))}
               className="mt-1.5 h-7 w-full rounded-[6px] border border-border bg-transparent px-2 text-[13px] outline-none focus:border-foreground/30" />
           ) : (
             <button type="button" className="mt-1 cursor-pointer text-[12px] font-medium text-muted-foreground hover:text-foreground" onClick={() => setReplying(true)}>Reply</button>
@@ -478,7 +489,8 @@ function shownOf(el: Element) {
 
 /** Where on screen the line of `pos` starts, drawn or not. */
 function topOf(v: EditorView, pos: number) {
-  try { const c = v.coordsAtPos(pos); if (c) return c.top } catch { /* outside the drawn part */ }
+  // (a position in markup drawn hidden, as a read-only task's box, has no box of its own: its line's then)
+  try { const c = v.coordsAtPos(pos); if (c && c.bottom > c.top) return c.top } catch { /* outside the drawn part */ }
   return v.documentTop + v.lineBlockAt(pos).top
 }
 
@@ -498,7 +510,7 @@ export function Overlay() {
   useEffect(() => {
     let frame = 0
     // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing)
-    const idle = () => { const st = getState(); return st.mode === "off" || (!st.notes.length && !st.agents.length && !roomy.size) }
+    const idle = () => { const st = getState(); return !st.draft && !roomy.size && (st.mode === "off" ? !st.notes.some((n) => n.by) : !st.notes.length && !st.agents.length) }
     const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
@@ -508,10 +520,7 @@ export function Overlay() {
     const ro = new ResizeObserver(later), watch = () => { for (const el of document.querySelectorAll("[data-pane], #main-scroll")) ro.observe(el) }
     watch()
     // (only with something to place: an idle app with no agents or comments does nothing every 1.5 s)
-    const tick = setInterval(() => {
-      const st = getState()
-      if (document.visibilityState === "visible" && st.mode !== "off" && (st.notes.length || st.agents.length)) later()
-    }, 1500)
+    const tick = setInterval(() => { if (document.visibilityState === "visible" && !idle()) later() }, 1500)
     return () => { off(); ro.disconnect(); removeEventListener("scroll", later, { capture: true }); removeEventListener("resize", resized); clearInterval(tick); cancelAnimationFrame(frame) }
   }, [])
   // The note's own room under its text, so scrolling reaches its lowest card.
@@ -524,9 +533,12 @@ export function Overlay() {
     }
   })
   rooms.current = new Map()
-  if (s.mode === "off") return null
+  // (off, the companion draws nothing of its own: people's threads still show)
+  const off = s.mode === "off"
+  const notes = [...(off ? s.notes.filter((n) => n.by) : s.notes), ...(s.draft ? [{ ...s.draft, id: DRAFT, kind: "comment", agent: "", by: share ? "guest" : "user", t: Date.now() } as Note] : [])]
+  if (off && !notes.length) return null
 
-  const cursors = s.agents.map((a, i) => {
+  const cursors = (off ? [] : s.agents).map((a, i) => {
     const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name) ?? null
     return { a, spot: spotOf(a, i, !!said), said, with: [] as Agent[], under: false, shift: 0 }
   })
@@ -540,7 +552,7 @@ export function Overlay() {
   const panes = new Map<Element, Pane>()
   const perLine = new Map<string, number>()
   let caret: string | null = null
-  for (const n of s.notes) {
+  for (const n of notes) {
     if (n.kind !== "comment" && n.kind !== "suggestion") continue
     const v = n.path ? viewOf(n.path) : null
     const pos = v ? posIn(v, n) : null
@@ -554,7 +566,7 @@ export function Overlay() {
       panes.set(el, p = { id: paneIds.get(el)!, ...shownOf(el), cards: [], dots: [] })
     }
     const box = el.getBoundingClientRect(), text = v.contentDOM.getBoundingClientRect()
-    if (!margin) {
+    if (!margin && n.id !== DRAFT) {
       // (in the gutter left of the text; without room there, at the line's end. Several on one line side by side)
       const line = v.state.doc.lineAt(pos).number, k = `${paneIds.get(el)}:${views.get(v)}:${line}`, i = perLine.get(k) ?? 0
       perLine.set(k, i + 1)
@@ -615,9 +627,9 @@ export function Overlay() {
 
 /** A thread's dot by its line (centred on `y`): hovered, who and its first words; clicked, the thread in the panel. */
 function Gutter({ n, x, y, picked }: { n: Note; x: number; y: number; picked: boolean }) {
-  const tint = tintOf(n.agent)
+  const tint = threadTint(n)
   return (
-    <button type="button" aria-label={`${n.agent}'s ${n.kind}`} data-companion-gutter={n.id} data-picked={picked || undefined} data-tip={`${n.agent}: ${cut(snippet(n.text ?? n.replace ?? ""), 80)}`}
+    <button type="button" aria-label={`${authorOf(n)}'s ${n.kind}`} data-companion-gutter={n.id} data-picked={picked || undefined} data-tip={`${authorOf(n)}: ${cut(snippet(n.text ?? n.replace ?? ""), 80)}`}
       onClick={() => showThread(n.id)}
       className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full [@media(pointer:coarse)]:size-8"
       style={{ transform: `translate(${x}px, ${y}px) translate(-50%, -50%)` }}>

@@ -2,6 +2,7 @@
 // Every other page is a file. Setup's tabs (pages/Setup.tsx) are each an address of their own: #bundles, #plugins.
 import { Blocks, Settings, type LucideIcon } from "lucide-react"
 import { isDesktop } from "@/core/platform"
+import { share } from "@/core/share"
 import { findOpen, go, replaceTabTarget } from "@/core/workspace"
 
 export const SETUP_TABS = ["bundles", "plugins"] as const
@@ -16,7 +17,7 @@ export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIco
    *  pane scrolls it. */
   full?: boolean }
 
-export const APP_PAGES: AppPage[] = [
+export const APP_PAGES: AppPage[] = share ? [] : [
   { id: "setup", label: "Setup", icon: Blocks, tint: "var(--primary)", words: "bundles plugins extensions", tabs: SETUP_TABS },
   { id: "settings", label: "Settings", icon: Settings, tint: "var(--muted-foreground)", keys: ["Mod+,"], full: true },
 ]

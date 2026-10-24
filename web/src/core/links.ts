@@ -3,6 +3,7 @@
 import { FilePlus } from "lucide-react"
 import type { Store } from "@/core/data"
 import { type Choice, choose } from "@/components/Chooser"
+import { confirmDialog } from "@/components/ConfirmDialog"
 import { desktop } from "@/core/desktop"
 import { splitAnchor, tagName } from "../../../core/sections.ts"
 import { openAt } from "@/core/anchors"
@@ -113,10 +114,12 @@ const UNSAFE = /^(javascript|data|vbscript|blob):/i
 
 /** Open a link of any other scheme (mailto:, tel:, obsidian://, zotero://, file://) the system's way: a plugin's if one
  *  takes it, else the app it belongs to (the desktop app opens file:// with the Mac's app for it). */
-function openOtherLink(url: string, mod = false) {
+async function openOtherLink(url: string, mod = false) {
   if (UNSAFE.test(url)) return notify("That link can't be opened")
   if (takeSchemeLink(url, mod)) return
   if (/^file:/i.test(url) && !desktop) return notify("File links open in the desktop app")
+  // (another app does what the link says: asked first, as browsers do, whoever wrote the note; the desktop app asks itself)
+  if (!desktop && !/^mailto:/i.test(url) && !(await confirmDialog({ title: "Open this link in another app?", body: url, confirm: "Open" }))) return
   window.open(url, "_blank", "noopener,noreferrer")
 }
 

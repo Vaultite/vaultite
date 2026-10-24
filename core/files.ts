@@ -15,6 +15,7 @@ import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
+import { byGuest, guestRefusal } from "./guests.ts"
 import { cmp, DEVICE_NAME, type Entry, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
@@ -556,7 +557,8 @@ const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
   "created-old": [(r) => r.created, false],
 }
 
-type SearchOpts = { lines?: number; folder?: string; path?: string; matchCase?: boolean; sort?: string; context?: number; offset?: number }
+/** `only`: the files it may look at, no other (a shared folder's guest's: plugins/core/share). */
+type SearchOpts = { lines?: number; folder?: string; path?: string; only?: Set<string>; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
 /** Files matching a query (core/searchquery.ts: words, "phrases", -not, OR, file:, path:, tag:, line:(), [property]...),
  *  from `offset`, with the first line that matched (`lines`: each, `context` around), and how many matched in all. */
@@ -614,7 +616,7 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
     return ""
   }
   const out: Item[] = []
-  const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.path ? rel !== opts.path : excluded(rel))
+  const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.only && !opts.only.has(rel)) || (opts.path ? rel !== opts.path : excluded(rel))
   for (const [rel, e] of vault.entries) {
     if (skip(rel)) continue
     const item = check(rel, e.body, e.stat.ns, e.stat.born, e, e.bodyLine)
@@ -699,7 +701,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (query.sort && !(query.sort in SORTS)) throw new HTTPError(400, `sort is one of ${Object.keys(SORTS).join(", ")}`)
     // (a page at a time from `offset`; `total=1`: with how many files and lines matched in all)
     const found = await searchAll(vault, query.q ?? "", n(query.limit, 500) || 60, { lines: n(query.lines, 100_000), folder: query.folder, path: query.path,
-      matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
+      only: query.only !== undefined ? new Set(query.only.split("\n")) : undefined, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
     return query.total === "1" ? found : found.results
   }
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
@@ -740,6 +742,8 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         if (!body.unique) throw new HTTPError(409, `${target} already exists`)
         target = freeName(vault, target)
       }
+      const why = byGuest() ? guestRefusal(vault, target, null, text) : ""
+      if (why) throw new HTTPError(403, why)
       text = newText(vault, target, text) // what plugins add to a new file (plugin.onCreate, onCreateFile)
       writeAtomic(vault.abs(target), text)
       await vault.sync()
@@ -766,6 +770,9 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         if (merged === null) return reply(409, { error: "the file changed on disk in the same place", ...read(vault, rel) })
         text = merged
       }
+      // (a guest's write as it would land: merged, at its own name)
+      const why = byGuest() && cur !== text ? guestRefusal(vault, rel, cur, text) : ""
+      if (why) throw new HTTPError(403, why)
       if (cur === null) text = newText(vault, rel, text)
       else text = vault.saving(rel, cur, text) // (what plugins set in the same write: plugin.onSave)
       const before = vault.entries.get(rel) ?? null

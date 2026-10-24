@@ -13,6 +13,7 @@ import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
+import { guestEdits, share } from "@/core/share"
 import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, keepsTab, openBehind, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
@@ -108,10 +109,10 @@ export const isDoc = (path: string) => isMd(path) || isJson(path) || !!pageExt(p
 export const isHidden = isHiddenPath
 export { inArchive }
 export const inTrash = (path: string) => path.startsWith(".trash/")
-/** The app's own: can't be renamed, moved or deleted (the settings folder, the trash, the generated copies). */
-export const isProtected = (path: string) => path === ".vaultite" || path === ".trash" || path === ".vaultite/generated" || path.startsWith(".vaultite/generated/")
-/** Read-only in the editor: things in the trash (restore them to edit) and the app's generated copies. */
-export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/")
+/** The app's own: can't be renamed, moved or deleted (the settings folder, the trash, the generated copies; for a guest, all). */
+export const isProtected = (path: string) => path === ".vaultite" || path === ".trash" || path === ".vaultite/generated" || path.startsWith(".vaultite/generated/") || !!share
+/** Read-only in the editor: things in the trash (restore them to edit), the app's generated copies, all for a guest who reads. */
+export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/") || !guestEdits()
 
 /** Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body. */
 export function splitFm(text: string): { fm: string; body: string } {

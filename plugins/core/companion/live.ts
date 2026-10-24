@@ -8,17 +8,22 @@ export type Target = { path?: string; line?: number; find?: string; x?: number; 
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
   model?: string; effort?: string; asks?: { event: string; text: string } }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
-  text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string
+  text?: string; replace?: string; replies?: Reply[]; pinned?: string
+  /** A person's thread (the user's, a guest's: `agent` is their name), and their colour. */
+  by?: "user" | "guest"; tint?: string
   /** A comment the user dismissed, when (companion.history's). */
   dismissed?: number
   /** The text it was on is gone: shown by its last line. */
   orphaned?: boolean }
+export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string }
+/** A comment being written (Add comment): where it goes. */
+export type Draft = { path: string; line: number; find?: string }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 
 /** said: each agent's last says (gone from the screen or not), oldest first. */
 /** picked: the margin card the user opened (clicked, or picked from the note's history). */
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; fresh: { model: string; effort: string } }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, fresh: { model: "", effort: "" } }
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; fresh: { model: string; effort: string }; draft: Draft | null }
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, fresh: { model: "", effort: "" }, draft: null }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -56,6 +61,25 @@ export function listen(name: string, path: string, line: number) {
 
 /** An agent's colour, as a CSS value. */
 export const tintOf = (name: string) => `var(--${state.agents.find((a) => a.name === name)?.tint ?? "orange"})`
+/** A shared folder's guest, when this app is theirs (index.tsx says): no agent works for them. */
+let share: { guest: string } | null = null
+export const setGuest = (g: { guest: string } | null) => { share = g }
+/** A thread's colour: its person's, else its agent's. */
+export const threadTint = (n: Note) => (n.tint ? `var(--${n.tint})` : n.by === "user" ? "var(--muted-foreground)" : tintOf(n.agent))
+/** Who started a thread, as this window names them (a guest's app: the folder's owner is "Owner"). */
+export const authorOf = (n: Note) => (n.by === "user" ? (share ? "Owner" : "You") : n.by === "guest" && share?.guest === n.agent ? "You" : n.agent)
+/** Who wrote a reply, likewise. */
+export const replyAuthor = (n: Note, r: Reply) => (r.by === "user" ? (share ? "Owner" : "You") : r.by === "guest" ? (share?.guest === r.name ? "You" : r.name ?? "Guest") : n.agent)
+
+/** Start writing a comment there (Add comment), or stop. */
+export const startComment = (d: Draft | null) => set({ draft: d, picked: d ? "draft" : state.picked === "draft" ? null : state.picked })
+/** Send the comment being written: a thread of the user's (a guest's, in theirs), which no agent is told of. */
+export function comment(text: string) {
+  const d = state.draft
+  if (!d || !text.trim()) return
+  say({ t: "comment", ...d, text: text.trim() })
+  set({ draft: null, picked: null })
+}
 
 // ---------- editors showing files
 
@@ -150,6 +174,7 @@ const edit = (e: EditAsk) => inTurn(async () => {
  *  `waited`: ms since they last typed. */
 export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
   x?: number; y?: number; changes?: string[]; scene?: string }) {
+  if (share) return // (no agent works for a guest)
   say({ t: "moment", ...m })
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
   if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
@@ -185,7 +210,7 @@ export function mentionAgent(name: string): Agent | undefined {
   return state.agents.find((a) => a.name.toLowerCase() === k && a.state !== "away") ?? state.agents.find((a) => a.name === state.name)
 }
 /** The names that address an agent after @ (lower case): every agent's, and the companion's own, "claude" and "companion". */
-export const mentionNames = () => [...new Set(["companion", "claude", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase())])]
+export const mentionNames = () => (share ? [] : [...new Set(["companion", "claude", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase())])])
 
 // ---------- for the overlay
 
@@ -226,7 +251,7 @@ const MENTION_RE = /(?<![\w@./])@([\w-]+)/g
 /** Whether an @ typed after `before` (the line up to it) starts a mention. */
 export const canMention = (before: string) => !/[\w@./]$/.test(before)
 /** The names that address an agent mid-line (lower case): the companion's and the agents around. */
-export const midNames = () => [...new Set([state.name, ...liveAgents().map((a) => a.name)].map((n) => n.toLowerCase()))]
+export const midNames = () => (share ? [] : [...new Set([state.name, ...liveAgents().map((a) => a.name)].map((n) => n.toLowerCase()))])
 export type Mention = { from: number; to: number; name: string }
 /** A line's @names that address an agent: at its start any agent's name, after that only `mid` ones. */
 export function mentionsOf(line: string, names = mentionNames(), mid = midNames()): Mention[] {

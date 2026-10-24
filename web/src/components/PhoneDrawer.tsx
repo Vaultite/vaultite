@@ -15,6 +15,8 @@ import { menuFor } from "@/components/ContextMenu"
 import { Drawn, Guard } from "@/components/Guard"
 import { panelMenu, SidebarPanels } from "@/components/Sidebar"
 import { cn } from "@/lib/utils"
+import { share } from "@/core/share"
+import { SharedWith } from "@/components/SharedWith"
 import { selecting } from "@/core/select"
 import { signal } from "@/core/signal"
 
@@ -194,11 +196,12 @@ function DrawerBody({ side, store, file, tab, vaultName, vaultMenu }: { side: Si
         <div className="shrink-0 border-t-[0.5px] border-border pt-1.5">
         <Dock store={store} file={file} tab={tab} />
         <nav aria-label="App" className="flex items-center gap-1 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
+          {share ? <SharedWith phone /> : (
           <button type="button" onClick={vaultMenu} aria-haspopup="menu"
             className="-ml-1.5 flex h-11 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[10px] px-1.5 text-left active:bg-foreground/[0.06]">
             <span className="min-w-0 truncate text-[15px] font-semibold">{vaultName}</span>
             <ChevronsUpDown className="size-4 shrink-0 text-tertiary" strokeWidth={2} />
-          </button>
+          </button>)}
           {APP_PAGES.map((p) => (
             <a key={p.id} href={hrefOf(p)} aria-label={p.label} aria-current={appPageOf(on) === p ? "page" : undefined} data-app-page={p.id}
               onClick={(e) => { e.preventDefault(); openAppPage(p) }}

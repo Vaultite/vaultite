@@ -677,7 +677,7 @@ export class Vault {
   defaults: () => Record<string, Item> = () => ({})
   private seeds: { version: number; all: Record<string, Item> } | null = null // defaults(), until the settings change
   /** The plugins loaded, set as they load (core/plugins.ts, App.syncPlugins): what switchedOff() reads their manifests for. */
-  pluginList: { id: string; manifest: Item }[] = []
+  pluginList: { id: string; manifest: Item; tier?: string }[] = []
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   /** Files a sync went on without, still being read (iCloud downloading them): as last read, or not indexed yet. */
   downloading: string[] = []
@@ -1011,7 +1011,9 @@ export class Vault {
   /** The hooks of `hooks` whose plugin is on. */
   private on<F>(hooks: Set<{ plugin: string; fn: F }>): F[] {
     const off = hooks.size ? this.switchedOff() : new Set<string>()
-    return [...hooks].filter((h) => !off.has(h.plugin)).map((h) => h.fn)
+    // (a shared folder's guest's write: only the app's own plugins hear of it, never a vault plugin's code)
+    const own = hooks.size && requestWriter.getStore()?.client === "guest" ? new Set(this.pluginList.filter((p) => p.tier === "core").map((p) => p.id)) : null
+    return [...hooks].filter((h) => !off.has(h.plugin) && (!own || own.has(h.plugin))).map((h) => h.fn)
   }
 
   private placers = new Set<{ plugin: string; fn: ArchiveHook }>()

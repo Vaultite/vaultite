@@ -84,6 +84,8 @@ export { allowedPath as outsidePath, isOutside } from "./outside.ts"
 /** A safe path in the vault from what a request names, or an HTTPError: 400 for one outside it (`..`) or hidden while
  *  hidden files aren't shown, 404 (`mustExist`) for one that isn't there (core/files.ts's `clean`). */
 export { clean as vaultPath } from "./files.ts"
+/** Whether Markdown holds what draws live in the app (core/guests.ts): a guest's words never do. */
+export { liveIn as liveMarkdown } from "./guests.ts"
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
 export { byUser, NOT_THE_USER, userSurface, type Op, type OpCtx, type OpDid, type OpEntry, OpError, type Param, quoted, type Schema, type Who, whoOf } from "./ops.ts"

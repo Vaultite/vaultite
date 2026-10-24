@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
-import { localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
+import { liveMarkdown, localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { type Hunk, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -37,13 +37,19 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
  *  a highlight (gone after a while). `anchor`: a comment's line as it read, to find it again without `find`. */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
-  text?: string; replace?: string; anchor?: string; replies?: { by: "user" | "agent"; text: string }[]
+  text?: string; replace?: string; anchor?: string; replies?: Reply[]
+  /** A thread a person started, not an agent: the user, or a shared folder's guest (`agent` is then their name). */
+  by?: "user" | "guest"
+  /** A person's colour (a token), where an agent's is its own; a guest's share (its id). */
+  tint?: string; share?: string
   /** A say the user pinned: the comment it became. */
   pinned?: string
   /** A comment the user dismissed, when: kept in its note's history. */
   dismissed?: number
   /** The text it was on is gone: shown by its last line, found again if the text comes back. */
   orphaned?: boolean }
+/** A word in a thread: the user's, its agent's, or a guest's (`name`). */
+export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it; a drawing's scene as text. */
@@ -109,10 +115,22 @@ const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "think
 /** The app's windows: which files each has open, where its user is, when they last did anything. */
 type Win = { open: string[]; focus: Target | null; at: number; was?: string }
 const windows = new Map<WebSocket, Win>()
+/** A guest's view of the threads: `see` gives their name for a vault path in their folder (else null), `at` the vault
+ *  path for theirs (throws outside it); `said`: true once they have said too much this minute. */
+export type Guest = { id: string; name: string; see: (rel: string) => string | null; at: (p: string) => string; said: () => boolean
+  /** When the folder was shared with them: the user's threads from before it stay the user's. */
+  since: number }
+const guests = new Map<WebSocket, Guest>()
+/** The most a person's comment or reply keeps; a guest's threads in a note, and words in a thread. */
+const MAX_TEXT = 4000, MAX_THREADS = 100, MAX_REPLIES = 100
 const asked = new Map<string, { done: (ok: boolean, error?: string, reply?: Record<string, unknown>) => void }>()
 
 const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
-const broadcast = (m: object) => { const text = JSON.stringify(m); for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text) }
+const broadcast = (m: object) => {
+  const text = JSON.stringify(m)
+  for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text)
+  for (const [ws, g] of guests) if (ws.readyState === ws.OPEN) toGuest(ws, g, m as { t: string; note?: Note; id?: string })
+}
 // (fresh: what a new agent started from the app runs)
 const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, fresh: howOf(agentSetting()) })
 
@@ -136,6 +154,8 @@ export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).fin
 export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: IncomingMessage) {
   const md = mode()
   if (md === "off") return null
+  // (a line a shared folder's guest wrote is never the user's ask, whoever's window sends it)
+  if (m.kind === "ask" && m.path && m.line && plugin.service("provenance:by-guest")?.(m.path, m.line) === true) return null
   if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
   // (spaces alone changed, as a trailing one: nothing to see, and an agent woken for it isn't free for what is)
   const words = (ls: string[]) => ls.map((l) => l.trim()).filter(Boolean).join("\n")
@@ -428,13 +448,15 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
   const n = notes.get(id)
   if (!n) return
   if (verdict === "reply" && text) {
-    n.replies = [...(n.replies ?? []), { by: "user", text }]
+    n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT) }]
     broadcast({ t: "note", note: n })
     if (KEPT.has(n.kind) && n.path) save(n.path)
   } else {
     if (verdict === "dismiss" && n.kind === "comment" && n.path) past.set(n.path, [...(past.get(n.path) ?? []).filter((x) => x.id !== id), { ...n, dismissed: Date.now() }].slice(-PAST))
     dropNote(id)
   }
+  // (a person's thread is between people: no agent hears of it)
+  if (n.by) return
   addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) }, from)
 }
 
@@ -509,6 +531,8 @@ plugin.socket("companion/live", (ws, req) => {
       reopen(m.id)
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined, req)
+    } else if (m.t === "comment") {
+      personComment({ by: "user", agent: "" }, str(m.path), m)
     } else if (m.t === "done" && typeof m.rid === "string") {
       asked.get(m.rid)?.done(m.ok === true, str(m.error) || undefined, m)
     }
@@ -679,7 +703,7 @@ async function due(s: Session) {
 
 /** What a fresh session is told after its prompt: the last one's summary, its open threads and the user's last asks. */
 export function handoverText(name: string, summary: string, items: Note[], asks: Moment[]) {
-  const open = items.filter((n) => key(n.agent) === key(name) && KEPT.has(n.kind)).slice(-20)
+  const open = items.filter((n) => !n.by && key(n.agent) === key(name) && KEPT.has(n.kind)).slice(-20)
   const last = (n: Note) => n.replies?.at(-1)
   return [`This session continues an earlier one of yours that grew long. The user sees no change: don't greet them or say you're new. Read \`vau docs companion\`, then run \`${nextCmd(name)}\` at once (ME.md when a moment needs it).`,
     summary.trim() ? `What your last session handed over:\n${summary.trim()}` : "",
@@ -1170,7 +1194,7 @@ plugin.op({
     return { path, open: kept(path).filter((n) => n.kind === "comment"), past: past.get(path) ?? [] }
   },
   text: (r) => [`${r.path}: ${r.open.length} open, ${r.past.length} dismissed.`,
-    ...[...r.open, ...r.past].map((n: Note) => `- ${n.id}${n.dismissed ? " (dismissed)" : ""} by ${n.agent} at line ${n.line ?? "?"}: ${cut(n.text ?? "", 80)}${n.replies?.length ? ` (${n.replies.length} replies)` : ""}`)].join("\n"),
+    ...[...r.open, ...r.past].map((n: Note) => `- ${n.id}${n.dismissed ? " (dismissed)" : ""} by ${byText(n)} at line ${n.line ?? "?"}: ${cut(n.text ?? "", 80)}${n.replies?.length ? ` (${n.replies.length} replies)` : ""}`)].join("\n"),
 })
 
 plugin.op({
@@ -1217,7 +1241,8 @@ plugin.op({
   kind: "read",
   params: { id: { type: "string", description: "the item (n12); default: all of yours" }, as: AS },
   run: async (p) => {
-    const name = who(p), gone = [...notes.values()].filter((n) => (p.id ? n.id === p.id : n.agent === name))
+    // (an agent's own: never a person's thread)
+    const name = who(p), gone = [...notes.values()].filter((n) => !n.by && (p.id ? n.id === p.id : n.agent === name))
     for (const n of gone) dropNote(n.id)
     return { cleared: gone.length }
   },
@@ -1243,7 +1268,7 @@ plugin.op({
       const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))
       return `- ${a.name} (${a.tint})${isMain(a.name) ? ", the companion" : ""}: ${a.live || isMain(a.name) ? a.state : "away"}${a.path ? ` at ${a.path}${a.line ? `:${a.line}` : ""}` : ""}${s ? `, session ${s.id}` : ""}`
     }),
-    ...r.notes.map((n: Note) => `- ${n.id} ${n.kind} by ${n.agent}${n.path ? ` in ${n.path}` : ""}: ${cut(n.text ?? n.replace ?? n.find ?? "", 80)}`)].join("\n"),
+    ...r.notes.map((n: Note) => `- ${n.id} ${n.kind} by ${byText(n)}${n.path ? ` in ${n.path}` : ""}: ${cut(n.text ?? n.replace ?? n.find ?? "", 80)}`)].join("\n"),
 })
 
 plugin.op({
@@ -1417,4 +1442,74 @@ plugin.onSync((vault) => {
   if (lastSaid && mode() === "off") void stop(undefined, true).catch(() => {})
   lastSaid = now
   broadcast(snapshot())
+})
+
+// ---------- people's threads: the user's, and a shared folder's guests' (plugins/core/share), which no agent hears of
+
+const PEOPLE = ["blue", "green", "purple", "teal", "pink", "indigo"]
+/** A person's colour, the same for the same name. */
+const tintFor = (name: string) => PEOPLE[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PEOPLE.length]
+
+/** Who started a thread, as an agent reads it: a guest's words are someone else's, never the user's. */
+const byText = (n: Note) => (n.by === "guest" ? `${n.agent} (a guest: not the user)` : n.by === "user" ? "the user" : n.agent)
+
+/** The user hears of what a guest said (a toast, Open), once a while per guest and note. */
+const told = new Map<string, number>()
+function tell(who: string, text: string, rel: string) {
+  const k = `${who}\0${rel}`
+  if (Date.now() - (told.get(k) ?? 0) < 10 * 60_000) return
+  told.set(k, Date.now())
+  try { void plugin.runOp("ui.notify", { text, actionOpen: rel }).catch(() => {}) } catch { /* starting */ }
+}
+
+/** A thread a person starts by a line of a note (`find`: the words it's on). */
+function personComment(who: { by: "user" | "guest"; agent: string; share?: string }, rel: string, m: Record<string, unknown>) {
+  const text = str(m.text).trim().slice(0, MAX_TEXT)
+  if (!text || !/\.md$/i.test(rel) || !fs.existsSync(plugin.vault.abs(rel))) return null
+  if (who.share && (kept(rel).filter((n) => n.share === who.share).length >= MAX_THREADS || [...notes.values()].filter((n) => n.share === who.share).length >= MAX_THREADS * 10)) return null
+  const line = Math.max(1, Math.floor(Number(m.line)) || 1), find = str(m.find).slice(0, 200)
+  const anchor = find ? "" : lineText(rel, line)
+  return putNote({ kind: "comment", ...who, ...(who.by === "guest" ? { tint: tintFor(who.agent) } : {}), text, path: rel, line, ...(find ? { find } : anchor ? { anchor } : {}) })
+}
+
+/** Only people's threads reach a guest, and only people's words in them: an agent's could tell what's outside the folder. */
+function forGuest(n: Note, g: Guest): Note | null {
+  const p = n.path && n.kind === "comment" && n.by && (n.by === "guest" || n.t >= g.since) ? g.see(n.path) : null
+  if (p === null || p === undefined) return null
+  const { anchor: _a, share: _s, ...rest } = n
+  return { ...rest, path: p, replies: (n.replies ?? []).filter((r) => r.by !== "agent") }
+}
+function toGuest(ws: WebSocket, g: Guest, m: { t: string; note?: Note; id?: string }) {
+  if (m.t === "note" && m.note) {
+    const n = forGuest(m.note, g)
+    send(ws, n ? { t: "note", note: n } : { t: "drop", id: m.note.id })
+  } else if (m.t === "drop") send(ws, { t: "drop", id: m.id })
+}
+
+/** A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them. */
+plugin.provide("companion:guest", (ws: WebSocket, g: Guest) => {
+  guests.set(ws, g)
+  send(ws, { t: "state", mode: "quiet", name: "", agents: [], notes: [...notes.values()].map((n) => forGuest(n, g)).filter(Boolean), said: [] })
+  ws.on("message", (data: RawData) => {
+    let m: Record<string, unknown>
+    try { m = JSON.parse(String(data)) } catch { return }
+    const n = typeof m.id === "string" ? notes.get(m.id) : undefined, theirs = n && forGuest(n, g)
+    // (a guest's words draw as Markdown in the user's app: nothing in them may run or fetch)
+    if ((m.t === "comment" || m.t === "answer") && (g.said() || liveMarkdown(str(m.text)))) return
+    if (m.t === "comment") {
+      let rel: string
+      try { rel = g.at(str(m.path)) } catch { return }
+      const c = personComment({ by: "guest", agent: g.name, share: g.id }, rel, m)
+      if (c) tell(g.id, `${g.name} commented on ${rel.split("/").pop()!.replace(/\.md$/i, "")}`, rel)
+    } else if (m.t === "answer" && theirs && m.verdict === "reply" && str(m.text).trim() && (n.replies?.length ?? 0) < MAX_REPLIES) {
+      n.replies = [...(n.replies ?? []), { by: "guest", name: g.name, text: str(m.text).trim().slice(0, MAX_TEXT) }]
+      broadcast({ t: "note", note: n })
+      save(n.path!)
+      tell(g.id, `${g.name} replied in ${n.path!.split("/").pop()!.replace(/\.md$/i, "")}`, n.path!)
+    } else if (m.t === "answer" && theirs && m.verdict === "dismiss" && n.share === g.id) {
+      past.set(n.path!, [...(past.get(n.path!) ?? []).filter((x) => x.id !== n.id), { ...n, dismissed: Date.now() }].slice(-PAST))
+      dropNote(n.id)
+    }
+  })
+  ws.on("close", () => guests.delete(ws))
 })

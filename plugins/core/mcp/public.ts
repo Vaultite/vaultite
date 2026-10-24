@@ -166,6 +166,7 @@ export class PublicMcp {
       socket.on("error", () => socket.destroy())
       void (async () => {
         if (await this.plugin.ask("machines:upgrade", false, req, socket, head)) return
+        if (!same(String(req.headers[RELAY_HEADER] ?? ""), RELAYED) && await this.plugin.ask("share:upgrade", false, req, socket, head)) return
         // Machines not loaded yet (a server starting): a file agent waits and dials again.
         if (new URL(req.url ?? "/", "http://localhost").pathname.startsWith("/machines/dial/")) return socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         const signed = this.signedOwner(req)
@@ -410,6 +411,9 @@ export class PublicMcp {
     const signed = this.signedOwner(req)
     if (signed === true) return serveApp(req, res, this.connectOptions())
     if (signed === "bad") return this.json(res, 401, { error: "sign_in", message: "Vaultite Cloud's sign-in for this Mac didn't check out: sign in again" })
+    // A shared folder's guest (plugins/core/share): its own routes, never MCP's nor the app's; not on Vaultite Cloud's
+    // address, where the owner's app answers.
+    if (!this.relayed(req) && await this.plugin.ask("share:public", false, req, res)) return
     const url = new URL(req.url ?? "/", "http://localhost")
     const p = url.pathname.replace(/\/+$/, "") || "/"
     res.setHeader("Access-Control-Allow-Origin", "*")

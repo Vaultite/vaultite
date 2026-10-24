@@ -59,6 +59,7 @@ import type { PreviewConfig } from "@/editor/livePreview"
 
 import { beforeMode, CODE_VIEWS, editMode, MODES, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
 import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps, spotOf, useTextFocus, type Spot } from "@/components/filePlace"
+import { share } from "@/core/share"
 
 // The editor is its own chunk (editor/lazy.ts: one chunk for FileView and the editors in a canvas's cards).
 const Notebook = lazy(() => import("@/editor/Notebook"))
@@ -232,7 +233,7 @@ function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
 }
 
 /** Where a file is, above its title: "Notes / Ideas", "Vault". */
-const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/").join(" / ") : "Vault")
+const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/").join(" / ") : share?.folder ?? "Vault")
 
 /** The line above a file's title where there's no path bar (sheets, phones): its folder, and what plugins put at its
  *  end. In a sheet its header floats over it (Close, the view toggle): the line stops short of them. */
@@ -879,7 +880,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [props, resolve, path])
   const notices = <>
     {inTrash(path) && <InTrash path={path} note=" Restore it to edit it." />}
-    {isReadOnly(path) && !inTrash(path) && <Banner tone="info">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</Banner>}
+    {path.startsWith(".vaultite/generated/") && <Banner tone="info">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</Banner>}
     {status.kind === "conflict" && status.inline !== undefined && <Banner tone="warn" actions={status.inline ? [["Show", () => editor.current?.api.revealConflict()]]
       : [["Keep yours", () => saver.keep("mine")], [`Keep ${theirName(status.who).replace(/^the other$/, "theirs")}`, () => saver.keep("theirs")]]}>
       {conflictText(status, editor.current && !editor.current.source ? fmLines(cur.current) : 0)}{" "}

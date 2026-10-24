@@ -88,11 +88,16 @@ function openVaultFile(abs: string) {
 }
 /** A link the app's page hands to the system, as Obsidian does: any app's scheme (obsidian://, zotero://, tel:), never
  *  one that runs code; a file:// one as a vault file opens (with the Mac's app for it, an app or a folder shown in Finder). */
-function openLink(url: string) {
+async function openLink(url: string) {
   if (!/^[a-z][a-z0-9+.-]*:/i.test(url) || /^(javascript|data|vbscript|blob|about|chrome|devtools):/i.test(url)) return
   if (/^file:/i.test(url)) {
     try { openVaultFile(fileURLToPath(url)) } catch { /* not a file address */ }
     return
+  }
+  // (another app does what the link says: asked first, as browsers do, whoever wrote the note and however it was clicked)
+  if (!/^(https?|mailto):/i.test(url)) {
+    const { response } = await dialog.showMessageBox({ type: "question", buttons: ["Open", "Cancel"], defaultId: 0, cancelId: 1, message: "Open this link in another app?", detail: url })
+    if (response !== 0) return
   }
   shell.openExternal(url).catch((e) => console.error(`couldn't open ${url.split(":")[0]}: link`, e))
 }
@@ -500,7 +505,7 @@ function guard(win: AppWindow, origin: string) {
     // (the app's page only: a vault's own file served under its origin, /v/ or /api/raw, would get the bridge)
     if (appPage(url, origin)) return
     e.preventDefault()
-    openLink(url)
+    void openLink(url)
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`${origin}/?popout=`)) {
@@ -513,7 +518,7 @@ function guard(win: AppWindow, origin: string) {
       const w = [...wins.values()].find((x) => x.win === win)
       const rel = new URL(url).searchParams.get("path")
       if (w && rel && !rel.split("/").includes("..")) openVaultFile(path.join(w.vault.path, rel))
-    } else openLink(url)
+    } else void openLink(url)
     return { action: "deny" }
   })
 }

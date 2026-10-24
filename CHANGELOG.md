@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Share a folder**: a folder's menu has Share…, for one person at a time (`vau share create`): a link of their own,
+  to open the folder in their browser over the vault's public address and read it, comment (margin threads, as
+  themselves) or edit its notes, until it expires or you remove it. Nothing else of the vault reaches them, no agent
+  works for them, and what they write is marked theirs (`vau blame`). You can start a comment on a line too (Add
+  comment, in the editor's menu): a thread between people, which no agent is told of.
+- A link to another app in a note (zotero://, shortcuts://, tel:) asks before it opens that app, as browsers do.
 - **Tabs move between windows as a browser's**: a tab dragged out of the window and let go clear of it goes on in a
   new window there. With the tabs in the sidebar, a new window (which has no sidebar) shows its tabs on top, so they
   can be switched, right-clicked and moved back; and right-clicking the top of a pane has the menu of the tab it shows

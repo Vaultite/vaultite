@@ -1,0 +1,9 @@
+{
+  "id": "share",
+  "icon": "share-2",
+  "category": "writing",
+  "alwaysOn": true,
+  "name": "Sharing",
+  "description": "Share one folder with someone by a link of their own: they read it in their browser, and comment or edit if you let them, as themselves. Nothing outside the folder reaches them, and no agent acts for them. Needs the vault on the internet (a tunnel to MCP's public listener).",
+  "requires": ["mcp"]
+}

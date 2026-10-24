@@ -9,6 +9,8 @@ export {
   range, reload, today, useLive, usePatched, usePreview, useStore, useTick, weekStart,
 } from "@/core/data"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
+/** A shared folder's guest (plugins/core/share), when this app is theirs: their name, role and folder; else null. */
+export { guestEdits, share, type Share } from "@/core/share"
 export type { Store } from "@/core/data"
 
 /** What plugins keep in the store, declared by each in a module of its own: `declare
