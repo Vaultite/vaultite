@@ -261,7 +261,7 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 .font-keys { font-family: var(--font-sans), 'Lucida Grande'; }
 /* 0.5px hairlines on retina, like UIKit separators. Drawn as a background, not a border: a rounded row's border bends
    at its corners, while this stays a straight line (its ends inside the corners clipped, like an inset separator). */
-.hairline > * + * {
+.hairline > :where(:not(:first-child)) {
   background-image: linear-gradient(var(--border), var(--border));
   background-size: 100% 0.5px; background-position: top; background-repeat: no-repeat;
 }
@@ -475,8 +475,6 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 .vau-toaster[data-sonner-toaster][data-sonner-theme] {
   --normal-bg: var(--card); --normal-text: var(--foreground); --normal-border: var(--border);
   --border-radius: 8px; --width: 340px; font-family: var(--font-sans);
-  /* under what the user opened (a menu: 60, a drag: 70, a tooltip: 100), not sonner's top of everything */
-  z-index: 55;
 }
 [data-sonner-toaster] .vau-toast[data-styled=true] {
   gap: 10px; padding: 9px 8px 9px 12px; min-height: 40px; font-size: 13px; line-height: 18px;
@@ -767,13 +765,13 @@ dialog { --vau-panel-bottom: 0px; }
 .note-embed-head { display: flex; max-width: 100%; align-items: center; gap: 6px; padding: 2px 0 6px; font-size: 13px; font-weight: 500;
   color: var(--muted-foreground); cursor: pointer; text-align: left; }
 .note-embed-head:hover { color: var(--foreground); }
-.note-embed-body > * + * { margin-top: 10px; }
+.note-embed-body > :where(:not(:first-child)) { margin-top: 10px; }
 .note-embed-missing { font-size: 15px; color: var(--muted-foreground); }
 /* Markdown between a dashboard's blocks (a heading over a group of cards, a line of text) */
 /* Its type is the editor's (sizes, heading colours), so reading and editing a dashboard show the same text. */
 .dash-prose { font-size: 17px; line-height: 25px; }
 @media (min-width: 768px) { .dash-prose { font-size: 16px; line-height: 24px; } }
-.dash-prose > * + * { margin-top: 10px; }
+.dash-prose > :where(:not(:first-child)) { margin-top: 10px; }
 .dash-prose > :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: 22px; }
 .dash-prose h1 { font-size: 1.625em; line-height: 1.31; font-weight: 700; color: var(--h1); }
 .dash-prose h2 { font-size: 1.3125em; line-height: 1.333; font-weight: 700; color: var(--h2); }

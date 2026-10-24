@@ -13,9 +13,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   about the page you're on. Life OS moved to Get bundles, beside Agents; a setup made with it stays as it is.
 - **Big vaults keep up with edits**: in a 24,000-note vault the server does a third of the work it did to refresh the
   app after an edit, and a fifteenth for an open local graph (the graph updates only the edited files' links).
-- **Lighter typing**: a keystroke in a note redraws a third of what it did (its title, properties and header items
-  stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer makes the
-  page lay itself out again for it; the quick switcher redraws less per letter.
+- **Lighter typing and scrolling**: a keystroke in a note redraws a third of what it did (its title, properties and
+  header items stay as they are), and as little with an agent's cursor and comments in it, and the status bar no longer
+  makes the page lay itself out again for it; the quick switcher redraws less per letter; scrolling a long note or a big
+  folder in the file tree restyles a sixth of what it did each step.
 - **Workspaces are spaces**: each can have an icon and a colour, shown in the sidebar's switcher (the sidebars take a
   little of the colour), and a Browser container its web pages open in; a two-finger swipe over a sidebar goes to the
   next or previous one.
@@ -49,8 +50,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   without link brackets, task boxes, callout types or TeX.
 - **Keys named as each computer names them**: plugins' descriptions and settings say Ctrl, Alt and Shift on Linux and
   Windows (Find, Ctrl+F) instead of a Mac's ⌘ and ⌥.
-- **A new tab opened while the app loads stays**: on a device's first visit, a new tab asked for before the vault
-  arrived was replaced by the first pinned page.
 - **Two web pages side by side stay still**: the keyboard no longer bounces between them many times a second, the
   focused pane flickering in the tab list and the app busy, after it moved from one to the other quickly.
 - **Agents' lines are no longer drawn by default**: Provenance still keeps which lines agents wrote (for `vau blame`,
@@ -63,10 +62,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   option with its description, no longer one cut line or "Asks permission"; tap an option to answer it, or reply with
   its number, its name or your own words. A plan to approve shows the plan.
 - **Agents log in with your passwords, never seeing them**: give the browser a KeePass file for agents (KeeShare's export
-  of an Agents group) on the computer it runs on, and `vau browser login` fills a site's username, password and one-time
-  code from it. Its password is kept in the Mac's Keychain or Linux's keyring (on a Linux with none, only till the app
-  quits). Entries not tagged agent-free wait for your yes, given on a Mac with a passkey on your phone, and nothing an
-  agent reads of the page shows what was filled.
+  of an Agents group) on the Mac it runs on, and `vau browser login` fills a site's username, password and one-time code
+  from it. Entries not tagged agent-free wait for your yes, given with a passkey on your phone, and nothing an agent reads
+  of the page shows what was filled.
 - **Agents can't say yes for you**: an agent's permission prompt in a terminal, and one the server waits on (an app's
   tool through MCP), are approved or denied only in the app or on your phone, never by an agent or vau.
 - **Agents' tabs in sight**: the pane agents' browser tabs open in no longer shrinks a little with each tab till it's

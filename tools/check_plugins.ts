@@ -362,6 +362,14 @@ for (const f of sources.filter((f) => /\.(ts|tsx|mjs)$/.test(f))) {
   flush()
 }
 
+// `X > * + *` restyles all of X's subtree each time a child comes or goes (an editor's lines, a long list's rows, as
+// they scroll): `X > :where(:not(:first-child))` matches the same, at the same specificity.
+for (const f of sources.filter((f) => /\.(tsx|css)$/.test(f))) {
+  fs.readFileSync(f, "utf8").split("\n").forEach((l, i) => {
+    if (/\*\s*\+\s*\*/.test(l) && !/^\s*(\/\/|\/?\*)/.test(l)) problems.push(`${path.relative(ROOT, f)}:${i + 1}: \`* + *\` restyles the whole list as it changes: :where(:not(:first-child))`)
+  })
+}
+
 // The browser engine stands alone (electron/browser/CLAUDE.md): it reaches the app only through its host.
 for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(ts|cjs|js)$/.test(f)))
   for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))

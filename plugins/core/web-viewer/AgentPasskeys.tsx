@@ -29,7 +29,7 @@ export function AgentPasskeys() {
       <PageHeader title="Passkeys for agents' logins" subtitle="An agent logging in with an entry not tagged agent-free waits for your yes, given with one of these" />
       {keys === null ? null : !keys.length ? <Empty>None yet. Add one from your phone: it then approves agents' logins with Face ID.</Empty> : (
         <Panel className="py-1">
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
             {keys.map((k) => (
               <div key={k.id} className="flex min-h-12 items-center gap-3 py-1.5" data-agent-passkey={k.name}>
                 <KeyRound className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />

@@ -62,7 +62,7 @@
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.18), inset 0 0 0 0.5px var(--border);
   font-family: var(--font-sans);
 }
-.pm-list > * + * { border-top: 0.5px solid var(--border); }
+.pm-list > :where(:not(:first-child)) { border-top: 0.5px solid var(--border); }
 .pm-row {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 10px;
   text-align: left; background: none; border-radius: 8px; color: inherit;

@@ -993,7 +993,7 @@ export function SaveBundle() {
           <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it's for" className={input} />
         </label>
         <Panel className="py-1">
-          <div className="hairline flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+          <div className="hairline flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
             {shot && (
               <div className="flex min-h-12 items-center gap-3 py-2">
                 <img src={`data:image/png;base64,${shot}`} alt="" className="h-10 w-16 shrink-0 rounded-[5px] border-[0.5px] border-border object-cover object-top-left" />
@@ -1070,7 +1070,7 @@ export function ShareBundle({ id }: { id: string }) {
       </div>
       {parts.items.length > 0 && (
         <Panel title="What it sends" className="py-1">
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
             {parts.items.map((x) => (
               <div key={x.path} className="flex min-h-12 items-center gap-3 py-2" data-share-part={x.path}>
                 <div className="min-w-0 flex-1"><div className="truncate text-[15px]">{x.kind === "page" ? stem(x.path) : x.label}</div><div className="text-[13px] text-muted-foreground">{PART[x.kind](x)}</div></div>

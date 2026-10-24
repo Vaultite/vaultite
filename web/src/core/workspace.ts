@@ -619,8 +619,6 @@ export const takeRename = (path: string) => { if (toRename !== path) return fals
 /** A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one: a blank tab, one per pane
  *  (the blank tab it has already moves next to the active one instead; none, or the active one itself: nothing moves). */
 export function newTab(gid = state.focus) {
-  // (asked for before the vault arrived, on a first visit's blank tab: it stays one, not filled with the home page)
-  unsaved = false
   set(withGroup(gid, (g) => {
     if (isBlank(shownTab(g))) return g
     const had = g.tabs.find(isBlank), blank = had ? inSet(had, undefined) : { id: newId(), to: "new" }

@@ -135,15 +135,13 @@ function serve(local, port) {
   servers.push({ proc, port })
   return proc
 }
-/** A server and its terminal keeper stopped; resolved once it exited (its claim on the vault let go). */
-function stop({ proc, port }) {
-  const exited = proc.exitCode === null ? new Promise((res) => proc.once("exit", res)) : Promise.resolve()
-  if (proc.exitCode === null) proc.kill()
-  try { process.kill(Number(fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch {}
-  spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
-  return exited
+function stopAll() {
+  for (const { proc, port } of servers) {
+    if (proc.exitCode === null) proc.kill()
+    try { process.kill(Number(fs.readFileSync(path.join(os.tmpdir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch {}
+    spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
+  }
 }
-function stopAll() { for (const s of servers) void stop(s) }
 
 const relay = await fakeRelay()
 const target = await fakeTarget()
@@ -317,8 +315,7 @@ try {
   check("the relay's host is the one used", other.resource === "https://bob.vaultite.app/mcp", other)
   check("only the public listener is reachable", (await through("GET", "/api/state")).status === 404 && (await through("GET", "/api/mcp/connections")).status === 404 && (await through("POST", "/api/ops/terminal.list", { body: "{}" })).status === 404)
   const mainMeta = await fetch(`${BASE}/.well-known/oauth-authorization-server`, { headers: { "X-Forwarded-Host": "evil.example" } })
-  const mainText = await mainMeta.text()
-  check("the app's port never answers as the public listener", !/"issuer"|https?:\/\/evil\.example/.test(mainText), [mainMeta.status, mainText.slice(0, 120)])
+  check("the app's port never answers as the public listener", !(await mainMeta.text()).includes("evil.example"))
 
   // An app connects through the relay: register, sign in with the code, tokens, MCP.
   const REDIRECT = "https://claude.ai/api/mcp/auth_callback"
@@ -327,7 +324,7 @@ try {
   const challenge = crypto.createHash("sha256").update(verifier).digest("base64url")
   const q = new URLSearchParams({ response_type: "code", client_id: reg.client_id ?? "", redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", state: "s1" })
   const signInPage = (await through("GET", `/authorize?${q}`)).text
-  const code = /<div class="code"[^>]*>(?:<span[^>]*>)?([^<]+)</.exec(signInPage)?.[1]?.replace(/\s/g, "")
+  const code = /<div class="code"[^>]*>([^<]+)</.exec(signInPage)?.[1]?.replace(/\s/g, "")
   const sid = /const id = "([^"]+)"/.exec(signInPage)?.[1]
   check("the sign-in page comes through the relay", !!code && !!sid, signInPage.slice(0, 200))
   check("it carries Vaultite's logo", signInPage.includes('<img src="/icon.svg"') && (await through("GET", "/icon.svg")).status === 200)
@@ -350,9 +347,6 @@ try {
   check("a tool runs through the relay", found.result?.isError === false, found)
   // Its page: open from its row, made read only (the server then lists and runs only reads), renamed.
   await page.waitForSelector("[data-connection] >> text=Lighthouse AI", { timeout: 10_000 }).catch(() => {})
-  // (its "connected" toast can lie over the row, and stays while the mouse is on it)
-  await page.mouse.move(5, 5)
-  await page.waitForFunction(() => !document.querySelector("[data-sonner-toast]"), null, { timeout: 20_000 }).catch(() => {})
   await page.click("[data-connection] >> text=Lighthouse AI")
   await page.waitForSelector("[data-connection-sheet]", { timeout: 5000 }).catch(() => {})
   check("a connected app opens its page, with its access", await page.isVisible("[data-connection-sheet] [role=radiogroup]"))
@@ -459,10 +453,6 @@ try {
   relay.tokens.add(t2)
   fs.writeFileSync(path.join(local2, "config.json"), JSON.stringify({ mcp: { public: { url: `http://127.0.0.1:${pubPort}`, port: pubPort }, cloud: { token: t2, handle: "alice", url: "https://alice.vaultite.app" } } }))
   const conns2 = relay.conns
-  // (one server per vault on a machine: the first one goes first)
-  await browser.close()
-  browser = null
-  await stop(servers[0])
   serve(local2, port2)
   check("signed in from before, it connects on start", !!(await until(() => relay.conns > conns2 && relay.conn, 40_000)))
   const both = await (await fetch(`http://127.0.0.1:${port2}/api/mcp/connections`)).json()

@@ -62,9 +62,7 @@ try {
   const csp = signIn.headers.get("content-security-policy") ?? ""
   check("the sign-in page names its own origin for its poll (Safari's 'self' matches nothing once Vaultite Cloud sandboxes it)", csp.includes(`connect-src 'self' ${PUB}`), csp)
   const page = await signIn.text()
-  /** The code a sign-in page shows (beside its copy button). */
-  const codeOf = (html) => /<div class="code"[^>]*>(?:<span[^>]*>)?([^<]+)</.exec(html)?.[1]?.replace(/\s/g, "")
-  const code = codeOf(page)
+  const code = /<div class="code"[^>]*>(?:<span[^>]*>)?([^<]+)</.exec(page)?.[1]?.replace(/\s/g, "")
   const id = /const id = "([^"]+)"/.exec(page)?.[1]
   check("the sign-in page shows a code", code?.length === 6 && !!id, page.slice(0, 300))
   const st = async () => (await json(await fetch(`${PUB}/authorize/status?id=${encodeURIComponent(id)}`))).body
@@ -90,7 +88,7 @@ try {
   check("… and Connections says it didn't connect, and why", failed?.length === 1 && failed[0].name === "Lighthouse AI" && /refused: code_verifier/.test(failed[0].why), failed)
   // Again, with a fresh sign-in, the right way.
   const page2 = await (await auth({})).text()
-  const code2 = codeOf(page2)
+  const code2 = /<div class="code"[^>]*>([^<]+)</.exec(page2)?.[1]?.replace(/\s/g, "")
   const id2 = /const id = "([^"]+)"/.exec(page2)?.[1]
   await fetch(`${BASE}/api/mcp/connections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code2, as: "Lighthouse Desk" }) })
   const finishing = async () => (await json(await fetch(`${BASE}/api/mcp/connections`))).body?.finishing
@@ -179,7 +177,7 @@ try {
     const waiting = await rpc("tools/call", dispatchArgs)
     check("dispatch.run waits for the owner's yes", waiting.body?.result?.isError === true && /Waiting/.test(waiting.body.result.content[0].text), waiting.body)
     const askD = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.find((e) => e.gate && !e.answer && e.title.includes("coding agent"))
-    await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(askD?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ answer: "approve" }) })
+    await fetch(`${BASE}/api/inbox/events/${encodeURIComponent(askD?.id ?? "x")}/answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answer: "approve" }) })
     const dispatched = await rpc("tools/call", dispatchArgs)
     check("approved, it runs as the owner's (the op itself answers, not the owner check)", !!askD && dispatched.body?.result?.isError === true && /there's no file/.test(dispatched.body.result.content[0].text), dispatched.body)
   }

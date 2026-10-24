@@ -173,7 +173,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
         </Empty>
       ) : (
         <Panel className="py-1">
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
             {exts.map((x) => (
               <div key={x.id} className="flex min-h-12 items-center gap-3 py-1.5" data-ext-row={x.id} data-leaving={leaving(x.id)}>
                 <span className={cn("grid size-8 shrink-0 place-items-center", !x.on && "opacity-45")}>
@@ -220,7 +220,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
         <div className="mt-8" data-ext-others>
           <div className="mb-1 text-[13px] font-semibold text-muted-foreground">In your other browsers</div>
           <Panel className="py-1">
-            <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+            <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
               {others.map((o) => (
                 <div key={o.id} className="flex min-h-11 items-center gap-3 py-1.5" data-ext-other={o.id}>
                   <span className="grid size-8 shrink-0 place-items-center">

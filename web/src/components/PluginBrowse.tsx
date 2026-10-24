@@ -140,7 +140,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
 function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
   return (
     <Panel className="loading-in py-0.5">
-      <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border" aria-busy>
+      <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border" aria-busy>
         {Array.from({ length: count }, (_, i) => (
           <div key={i} className="flex items-start gap-3 py-2.5">
             {tile && <span className="mt-0.5 size-9 shrink-0 rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" />}
@@ -254,7 +254,7 @@ function HostBrowse({ host, src, query, filters, showInstalled, onListed }: { ho
       ) : (
         <>
           <Panel className="py-0.5">
-            <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+            <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
               {entries.map((e) => <HostRow key={e.id} host={host} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} more={more} />)}
             </div>
           </Panel>
@@ -363,7 +363,7 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
       <section className="mt-5" data-plugins-not-installed>
         <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">Not installed</h2>
         <Panel className="py-0.5">
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
             {notHere.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
           </div>
         </Panel>
@@ -385,7 +385,7 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{emptyText(query, found.plugins.length > 0, "No plugins in the directory yet.")}</p>
       ) : (
         <Panel className="py-0.5">
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
             {shown.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
           </div>
         </Panel>

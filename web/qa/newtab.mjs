@@ -3,7 +3,7 @@
 // right-click menu (a button moved and removed, a section hidden, each section's items only on it, Reset with Undo), dragging a section by its title and
 // a button to reorder them, a sidebar panel shown as a section, a button running its command, `opens` (the switcher as
 // a launcher, Settings' choice), and the phone's page
-// (Pinned's tiles first; + tapped before the vault arrives stays a new tab). Recently changed and opened list the user's files, the pages plugins wrote too. WRITES
+// (Pinned's tiles first). Recently changed and opened list the user's files, the pages plugins wrote too. WRITES
 // .vaultite/newtab.json, plugins.json and a note: throwaway only.
 //   node web/qa/newtab.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs"
@@ -206,17 +206,6 @@ try {
   await phone.click("[data-bar='new']")
   check("phone: + with opens switcher opens the switcher", !!(await until(() => phone.$('[role="dialog"][aria-label="Search"]'), 8000)))
   await phone.close()
-  rmSync(file, { force: true })
-
-  // A first visit's + tapped before the vault arrives (its tab already blank): the new tab stays, not filled with home.
-  const early = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }))
-  await early.route(/\/api\/state/, async (r) => { await wait(2000); await r.continue() })
-  await early.goto(B)
-  await early.waitForSelector("[data-bar='new']", { timeout: 30000 })
-  await early.click("[data-bar='new']")
-  await wait(3500)
-  check("phone: + before the vault arrives keeps its new tab", await early.evaluate(() => location.hash) === "#new" && !!(await early.$("[data-newtab-section]")), await early.evaluate(() => location.hash))
-  await early.close()
 } finally {
   if (before === null) rmSync(file, { force: true }); else writeFileSync(file, before)
   rmSync(note, { force: true })

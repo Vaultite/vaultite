@@ -180,7 +180,7 @@ export function Rows({ list, files, originals, openSettings, grouped = true }: {
   const prefs = usePrefs(), { disabled } = prefs
   return (
     <Panel className="py-1">
-      <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+      <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
         {list.map((p, i) => grouped && p.group ? list.findIndex((q) => q.group === p.group) === i && <GroupRow key={`group:${p.group}`} id={p.group} /> : (
           <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} openSettings={openSettings} />
         ))}
