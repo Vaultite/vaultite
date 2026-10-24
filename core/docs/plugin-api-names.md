@@ -530,6 +530,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `standingIn(app, id)`: The opt-in plugins on that stand in for another app's plugin (`standingIn("obsidian", "dataview")`): its original stays off while one is.
 - `startDrag(e, item, { touch }?)`: Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else a finger scrolls or taps).
 - `startedFresh`: Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back in one pane with a new tab shown, so the one that stopped the app isn't drawn.
+- `startMap(ml, box, zoom, fail, onLoad)`: A map in `box` as the app draws one: no rotation or tilt, the attribution folded to its "i", the scheme's colours followed.
 - `startSelecting(list)`: Start a phone's select mode in a list with nothing picked yet (a list's own Select button).
 - `Stat({ label, value, unit, hint })`
 - `StatusItem`: Drawn in the desktop status bar for the focused file: before its view and counts (Vim's mode), or `after` them (Token count).

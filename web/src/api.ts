@@ -168,7 +168,7 @@ export { SheetActions } from "@/components/DetailSheet"
 export { TargetView } from "@/components/TargetView"
 export { WeeksGrid } from "@/components/WeeksGrid"
 // Maps: the base map's look (core/mapstyle.ts), its buttons, and a lazy map of pins (MapLibre loads with it).
-export { followMapTheme, MAP_STYLE, mapTheme, restyleMap, type MapTheme } from "@/core/mapstyle"
+export { followMapTheme, MAP_STYLE, mapTheme, restyleMap, startMap, type MapTheme } from "@/core/mapstyle"
 export { MapControls, type MapButton } from "@/components/MapControls"
 export type { MapPin } from "@/components/PinMap"
 export const PinMap = lazy(() => import("@/components/PinMap"))

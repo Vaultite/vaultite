@@ -1,6 +1,6 @@
 // How the app's maps look: OpenFreeMap vector tiles (free, no key) recoloured to the scheme with quiet labels. Types
 // only: maps load MapLibre in their own chunk.
-import type { Map as MLMap } from "maplibre-gl"
+import type { Map as MLMap, MapOptions } from "maplibre-gl"
 import { onLook } from "@/core/appearance"
 
 export type MapTheme = "light" | "dark"
@@ -83,4 +83,32 @@ export function followMapTheme(map: MLMap, onTheme: (t: MapTheme) => void): () =
     onTheme(t)
     map.setStyle(MAP_STYLE[t])
   })
+}
+
+/** A map in `box` as the app draws one: no rotation or tilt, the attribution folded to its "i", the scheme's colours
+ *  followed. `fail` runs when it can't draw (no WebGL) or its style hasn't loaded in 12 s. Null when it can't. */
+export function startMap(ml: typeof import("maplibre-gl"), box: HTMLElement, zoom: Pick<MapOptions, "minZoom" | "maxZoom">, fail: () => void, onLoad: () => void) {
+  let map: MLMap, styled = false, t = mapTheme()
+  try {
+    map = new ml.Map({
+      container: box, style: MAP_STYLE[t], renderWorldCopies: false, center: [0, 20], zoom: 1.5, ...zoom, // the world, until there are pins to fit
+      dragRotate: false, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true },
+    })
+  } catch {
+    fail()
+    return null
+  }
+  map.touchZoomRotate.disableRotation()
+  map.keyboard.disableRotation()
+  const failed = () => { if (!styled) fail() }
+  const timer = setTimeout(failed, 12000)
+  map.on("error", failed)
+  map.on("style.load", () => { styled = true; clearTimeout(timer); restyleMap(map, t) })
+  const unfollow = followMapTheme(map, (nt) => { t = nt })
+  map.on("load", () => {
+    onLoad()
+    // The compact attribution starts expanded; keep it to its small "i" until tapped.
+    box.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show")
+  })
+  return { map, stop: () => { clearTimeout(timer); unfollow(); map.remove() } }
 }

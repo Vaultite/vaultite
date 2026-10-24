@@ -8,7 +8,7 @@ import type { Map as MLMap, Marker } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url"
 import { Maximize2 } from "lucide-react"
-import { followMapTheme, MAP_STYLE, mapTheme, restyleMap } from "@/core/mapstyle"
+import { startMap } from "@/core/mapstyle"
 import { MapControls } from "@/components/MapControls"
 import { namedIcon } from "@/core/pages"
 import "./PinMap.css"
@@ -108,28 +108,10 @@ export default function PinMap({ pins, onOpen, onFail, zoom }: {
   const near = useNearScreen(box)
   useEffect(() => {
     if (!box.current || !near) return
-    let map: MLMap
-    let styled = false
-    let t = mapTheme()
-    const fail = () => { if (!styled) live.current.onFail() }
-    try {
-      map = new maplibregl.Map({
-        container: box.current, style: MAP_STYLE[t], renderWorldCopies: false,
-        center: [0, 20], zoom: 1.5, minZoom: 1, maxZoom: 17,
-        dragRotate: false, pitchWithRotate: false, touchPitch: false, cooperativeGestures: false,
-        attributionControl: { compact: true },
-      })
-    } catch {
-      live.current.onFail()
-      return
-    }
+    const started = startMap(maplibregl, box.current, { minZoom: 1, maxZoom: 17 }, () => live.current.onFail(), () => { fitAll(false); render(); redraw.current = render })
+    if (!started) return
+    const { map } = started
     mapRef.current = map
-    map.touchZoomRotate.disableRotation()
-    map.keyboard.disableRotation()
-    const timer = setTimeout(fail, 12000)
-    map.on("error", fail)
-    map.on("style.load", () => { styled = true; clearTimeout(timer); restyleMap(map, t) })
-    const unfollow = followMapTheme(map, (nt) => { t = nt })
 
     // Markers, diffed by group key so pins don't flash when the zoom changes.
     const markers = new Map<string, Marker>()
@@ -159,14 +141,9 @@ export default function PinMap({ pins, onOpen, onFail, zoom }: {
         markers.set(it.key, new maplibregl.Marker({ element: node, anchor: "center" }).setLngLat([it.lon, it.lat]).addTo(map))
       }
     }
-    map.on("load", () => {
-      fitAll(false); render(); redraw.current = render
-      // The compact attribution starts expanded; keep it to its small "i" until tapped.
-      box.current?.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show")
-    })
     map.on("zoomend", render)
     map.on("resize", render)
-    return () => { clearTimeout(timer); unfollow(); map.remove(); mapRef.current = null; redraw.current = null }
+    return () => { started.stop(); mapRef.current = null; redraw.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [near])
 
