@@ -124,6 +124,8 @@ try {
   await P.click("[data-tabs-workspace]")
   const marks = await until(() => P.$$eval("[role=menu] [role=menuitemradio]", (els) => els.map((e) => e.querySelector("[data-workspace-icon]")?.getAttribute("data-workspace-icon") ?? e.textContent.trim())), 3000)
   check("… its menu shows each workspace's mark, as the computer's list does", marks?.[0] === "book-open" && marks?.[1] === "2Reading", marks)
+  const fits = await P.$eval("[role=menu]", (m) => ({ right: Math.round(m.getBoundingClientRect().right), w: innerWidth, cut: [...m.querySelectorAll(".truncate")].some((t) => t.scrollWidth > t.clientWidth) }))
+  check("… within the screen, a long name cut off", fits.right <= fits.w && fits.cut, fits)
   await pctx.close()
 } finally {
   writeFileSync(PLUGINS, pluginsBefore)

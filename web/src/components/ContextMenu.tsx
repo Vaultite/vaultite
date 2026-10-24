@@ -429,7 +429,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   return (
     <div ref={ref} role="menu" tabIndex={-1} onKeyDown={onKey} style={{ ...(pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, visibility: "hidden" }), minWidth: width }}
       onPointerEnter={() => { clearTimeout(timer.current); onHover?.() }}
-      className="glass-strong fixed z-[61] max-h-[calc(100dvh-1rem)] min-w-56 overflow-y-auto overscroll-contain rounded-[12px] p-1 shadow-xl outline-none md:min-w-48 md:rounded-[10px]">
+      className="glass-strong fixed z-[61] max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] min-w-56 overflow-y-auto overscroll-contain rounded-[12px] p-1 shadow-xl outline-none md:min-w-48 md:rounded-[10px]">
       {parent && (
         <button type="button" onClick={back}
           className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] font-medium whitespace-nowrap text-muted-foreground hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none">
@@ -460,6 +460,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
             </p>
           ) : <button type="button" data-index={i}
             role={it.checked === undefined ? "menuitem" : it.keep ? "menuitemcheckbox" : "menuitemradio"} aria-checked={it.checked}
+            data-tip={it.label} data-tip-trunc data-tip-side="right" /* (a label too long for the screen, cut off: whole on hover) */
             aria-haspopup={it.items ? "menu" : undefined} aria-expanded={it.items ? subAt === i : undefined}
             disabled={it.disabled}
             onPointerEnter={(e) => {
@@ -481,8 +482,8 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
               it.danger && "text-destructive", (subAt === i || (inField && query && i === bestAt)) && "bg-foreground/[0.07]")}>
             {!trailing && it.checked !== undefined && <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />}
             {(trailing || it.checked === undefined) && (it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />)}
-            <span className="flex-1">{it.label}</span>
-            {it.hint && <span className="pl-4 text-muted-foreground">{it.hint}</span>}
+            <span className="min-w-0 flex-1 truncate">{it.label}</span>
+            {it.hint && <span className="shrink-0 pl-4 text-muted-foreground">{it.hint}</span>}
             {trailing && it.checked !== undefined && <Check className={cn(icon, "-mr-1", !it.checked && "invisible")} strokeWidth={2.5} />}
             {it.items && (it.split
               // A finger's target of its own on phones (44px, a line before it); on desktop hovering opens it anyway.
