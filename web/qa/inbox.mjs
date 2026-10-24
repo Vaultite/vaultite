@@ -1,5 +1,5 @@
 // The Inbox (plugins/core/inbox): events (posted, an agent's session that needs you, `vau notify`) toast and count on
-// the header's button; a session's sheet (Approve and Deny, its answer, the reply); results (a file in Inbox/, one through the API) too; the Inbox view (Done with Undo, File to…,
+// the header's button; a session's sheet (Approve and Deny, its answer, the reply); results (a file in Inbox/, one through the API) too; the Inbox view (Done with Undo, File to…, Snooze,
 // read and unread, the right-click menu); the sidebar panel (unread only; show_read); the block on a page; a phone.
 // Screenshots in the out dir. WRITES Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back) and starts a shell: throwaway
 // server only (then `tmux -L vaultite-<port> kill-server`).
@@ -26,7 +26,7 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
 const shot = (p, name) => p.screenshot({ path: `${OUT}${name}.png` })
 const toasts = (p = page) => p.locator("[data-sonner-toast]")
-const toastWith = (text, p = page) => until(async () => (await toasts(p).allInnerTexts()).find((t) => t.includes(text)))
+const toastWith = (text, p = page, ms) => until(async () => (await toasts(p).allInnerTexts()).find((t) => t.includes(text)), ms)
 const count = () => page.locator("aside [data-inbox-button]").getAttribute("data-count").then(Number).catch(() => -1)
 const enc = encodeURIComponent
 // A page with the Inbox's block (removed at the end).
@@ -221,6 +221,49 @@ const filed = await until(() => read("Notes/Filed/Notes to file away.md"))
 check("File to…: moved, without its inbox keys", !!filed && !/type: inbox|status:/.test(filed) && filed.includes("from: Codex") && !existsSync(path.join(VAULT, "Inbox/Notes to file away.md")), filed)
 await wait(500)
 await shot(page, "3-after-actions")
+
+// 7b. Snooze: out of the list till its time (in the file), under Snoozed meanwhile, Unsnooze brings it back; Pick a
+// time… sets any; an event too. Its time come, it's back at once and toasts.
+// (toasts pause under the pointer and cover the rows' right end and menus: moved off, they go; menus' rows dispatched)
+const noToasts = async () => { await page.mouse.move(5, 5); await until(async () => (await toasts().count()) === 0, 15_000) }
+await noToasts()
+await row("A field guide to tiling").getByRole("button", { name: "Snooze" }).click()
+check("Snooze: the choices, each with its time", (await page.getByRole("menuitem", { name: /^Tomorrow/ }).count()) === 1 && (await page.getByRole("menuitem", { name: /^Pick a time/ }).count()) === 1)
+await shot(page, "3b-snooze-menu")
+await page.getByRole("menuitem", { name: /^Tomorrow/ }).dispatchEvent("click")
+check("Snooze: its time in the file, out of the list", !!(await until(() => /^snoozed: '\d{4}-\d\d-\d\d 08:00:00'$/m.test(read("Inbox/A field guide to tiling.md")))) &&
+  !!(await until(async () => (await row("A field guide to tiling").count()) === 0)), read("Inbox/A field guide to tiling.md"))
+check("Snooze: a toast says till when", !!(await toastWith("Snoozed “A field guide to tiling” until Tomorrow 8:00")), await toasts().allInnerTexts())
+const later = page.locator("[data-inbox-view] [data-inbox-snoozed]")
+await later.getByRole("button", { name: /^Snoozed \d/ }).click()
+const laterRow = later.locator("[data-snoozed]", { hasText: "A field guide to tiling" })
+check("Snoozed: listed, with when it comes back", !!(await until(() => laterRow.count())) && /Until tomorrow 8:00/.test(await laterRow.innerText()), await later.innerText().catch(() => ""))
+const evName = (await api("GET", "inbox/events")).events.find((e) => !e.gate && !e.snoozed)?.title
+if (evName) {
+  await noToasts()
+  await evRow(evName).click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Snooze" }).dispatchEvent("click")
+  await page.getByRole("menuitem", { name: /^In 1 hour/ }).dispatchEvent("click")
+  check("an event snoozed: read, under Snoozed", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.title === evName)?.snoozed > Date.now())) &&
+    !!(await until(() => later.locator("[data-snoozed]", { hasText: evName }).count())))
+}
+await wait(400)
+await shot(page, "3c-snoozed")
+await laterRow.getByRole("button", { name: "Unsnooze" }).dispatchEvent("click")
+check("Unsnooze: back to review", !!(await until(async () => (await row("A field guide to tiling").count()) === 1)), read("Inbox/A field guide to tiling.md"))
+if (evName) await later.locator("[data-snoozed]", { hasText: evName }).getByRole("button", { name: "Unsnooze" }).dispatchEvent("click")
+await noToasts()
+await row("A field guide to tiling").click({ button: "right" })
+await page.getByRole("menuitem", { name: "Snooze" }).dispatchEvent("click")
+await page.getByRole("menuitem", { name: /^Pick a time/ }).dispatchEvent("click")
+const pick = page.locator("[data-snooze-sheet]")
+await until(() => pick.count())
+await pick.locator("input").fill("2031-05-06T07:30")
+await shot(page, "3d-snooze-pick")
+await pick.getByRole("button", { name: "Snooze" }).click()
+check("Pick a time…: that time", !!(await until(() => read("Inbox/A field guide to tiling.md").includes("snoozed: '2031-05-06 07:30:00'"))), read("Inbox/A field guide to tiling.md"))
+await api("PUT", `inbox/${enc("Inbox/A field guide to tiling")}`, { snoozed: new Date(Date.now() + 2000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace("T", " ") })
+check("its time come: back at once, with a toast", !!(await toastWith("Back in your inbox: A field guide to tiling", page, 8000)) && (await row("A field guide to tiling").count()) === 1, [await toasts().allInnerTexts(), read("Inbox/A field guide to tiling.md")])
 
 // 8. The sidebar panel, shown through sidebars.json.
 writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "inbox:inbox", "pages:pages", "files:files"], right: [], collapsed: [] }))

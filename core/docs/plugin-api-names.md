@@ -537,7 +537,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `stepTextSize(kind, step)`: One step bigger (1), smaller (-1), or back to 100% (0).
 - `Store`: The store every block, detail and panel gets: the state without the settings, which the app applies itself.
 - `subscribeScoped(f)`: Subscribe to the current workspace and what's kept in it (for useSyncExternalStore with a getter of your own).
-- `SwipeAction`: `removes`: it takes the row away (Done, Delete): the row goes at once, like Mail's, and comes back if `run` fails (rejects) or the row is still there once it's done.
+- `SwipeAction`: `removes`: it takes the row away (Done, Delete) at once, like Mail's, back if `run` fails or the row stays.
 - `SwipeRow({ actions, under, children, className, … })`: `actions`: asked for when a swipe starts (none: the row doesn't swipe), so rows that are never swiped make no buttons.
 - `Switch({ on, onChange, label, disabled })`: A small switch in the app's accent colour.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…

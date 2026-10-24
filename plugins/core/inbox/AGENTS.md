@@ -11,12 +11,15 @@ from: Claude                # who put it here
 source: https://example.com/a-page   # optional: the page it's about (the same address again updates it)
 created: '2026-10-01 18:00:00'      # local time, set by the app
 updated: '2026-10-01 19:30:00'      # local time, set by the app: its thread's latest report (an agent's, after a reply)
+snoozed: '2026-10-02 08:00:00'      # optional, set by Snooze: out of what's to review until then, then back on top
 ---
 
 What it says, as Markdown.
 ````
 - Mark it done with `vau inbox done <path>`, not by editing `status` (that leaves the file in place): done is archived,
   into `Inbox/.archive/`, and its events are read and link it there. A clip lands here with `inbox: true`.
+- Snooze (`vau inbox snooze <path|event id> --until tomorrow`, or 3h, weekend, now...): out of the way until then, then
+  back on top, unread, and told again (toast, phone). A snoozed event is read meanwhile; news from its session wakes it.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
   three plain sentences.
 - **A report** ends a task you were handed to do alone (a voice note, a note handed to you: Dispatch, a schedule):

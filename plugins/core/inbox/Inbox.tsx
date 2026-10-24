@@ -2,34 +2,53 @@
 // and unread events; read ones are folded under Read on the page (show_read: the last day's stay, greyed).
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import {
-  Bell, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
+  AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
   Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  askMove, askMoveMany, Badged, Bar, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
-  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
+  askMove, askMoveMany, backDetail, Badged, Bar, Button, cn, currentFile, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
+  notify, notifyError, openDetail, openFile, openMenu, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet, stampMs,
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, forget, getEvents, markRead, markSeen, markUnread, openEvent, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, forget, getEvents, markRead, markSeen, markUnread, openEvent, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { settings } from "./settings"
+import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 
 
-const waiting = (r: InboxItem) => r.status === "new" && !isArchived(r)
-/** The results waiting for review: status new, newest first (the store's order). */
-export const toReview = (store: Store): InboxItem[] => (store.inbox ?? []).filter(waiting)
+/** Not dealt with yet: to review, or snoozed. */
+const open = (r: InboxItem) => r.status === "new" && !isArchived(r)
+const waiting = (r: InboxItem) => open(r) && !snoozed(r.snoozed)
+/** When a result last had news (plugin.ts' latest): its last report, else when it came, or when its snooze ended. */
+const latestOf = (r: InboxItem) => Math.max(stampMs(r.updated || r.created || "") || 0, snoozed(r.snoozed) ? 0 : snoozeMs(r.snoozed))
+/** The results waiting for review: status new, newest first (one whose snooze just ended on top). */
+export const toReview = (store: Store): InboxItem[] => (store.inbox ?? []).filter(waiting).sort((a, b) => latestOf(b) - latestOf(a))
 
 /** The results already dealt with: done (so in Inbox/.archive/; an old one archived without it too), newest first. */
-const settled = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => !waiting(r))
+const settled = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => !open(r))
 
-/** A report's session row: the report is listed itself (to review), so the row isn't, nor counted. */
-const shadowed = (e: InboxEvent, store: Store) => e.ask === "report" && !!e.link && toReview(store).some((r) => pathOf(r) === e.link)
-/** The events a list shows. */
-const listed = (events: InboxEvent[], store: Store) => events.filter((e) => !shadowed(e, store))
+/** A report's session row: the report is listed itself (to review, or snoozed), so the row isn't, nor counted. */
+const shadowed = (e: InboxEvent, store: Store) => e.ask === "report" && !!e.link && (store.inbox ?? []).some((r) => open(r) && pathOf(r) === e.link)
+/** The events a list shows: not the snoozed ones (under Snoozed on the page). */
+const listed = (events: InboxEvent[], store: Store) => events.filter((e) => !shadowed(e, store) && !snoozed(e.snoozed))
+
+/** Draw again when the next snooze ends, so what comes back shows (and counts) right then. */
+export function useBack(store: Store) {
+  const { events } = useEvents()
+  const [, redraw] = useState(0)
+  const now = Date.now()
+  const next = Math.min(...[...(store.inbox ?? []).filter(open).map((r) => snoozeMs(r.snoozed)), ...events.map((e) => e.snoozed ?? 0)].filter((t) => t > now))
+  useEffect(() => {
+    if (!Number.isFinite(next)) return
+    const t = setTimeout(() => redraw((n) => n + 1), Math.min(next - Date.now() + 100, 2 ** 31 - 1))
+    return () => clearTimeout(t)
+  }, [next])
+}
 
 /** How many things are new: unread events and results to review. */
 export function useCount(store: Store) {
+  useBack(store)
   const { events } = useEvents()
   return listed(events, store).filter((e) => !e.read).length + toReview(store).length
 }
@@ -83,10 +102,11 @@ export function markDone(r: InboxItem, done = true) {
   return now
 }
 
-/** The result after `r` in what's to review (the one before, when it's the last). */
-function nextToReview(r: InboxItem) {
-  const list = toReview(getStore() ?? ({} as Store)), i = list.findIndex((x) => x.id === r.id)
-  return i < 0 ? undefined : list[i + 1] ?? list[i - 1]
+/** The result after `r` in what's to review (the one before, when it's the last), not one of `going` too. */
+function nextToReview(r: InboxItem, going: InboxItem[] = [r]) {
+  const all = toReview(getStore() ?? ({} as Store)), i = all.findIndex((x) => x.id === r.id)
+  const list = all.filter((x) => x === r || !going.some((g) => g.id === x.id)), j = list.indexOf(all[i])
+  return i < 0 ? undefined : list[j + 1] ?? list[j - 1]
 }
 
 /** File it into another folder: it's no longer an inbox item there (its `type` and `status` go), then it moves (Undo). */
@@ -95,6 +115,57 @@ export function fileTo(r: InboxItem) {
   askMove(p, { before: () => unInbox(p) })
 }
 const unInbox = async (p: string) => { await setProperty(p, "status", undefined); await setProperty(p, "type", undefined) }
+
+// ---------- snooze: out of the way until a time, then back on top (the server wakes it, and tells the phone)
+
+/** Snooze results and events (by selection key) till `at`, or bring them back now (null: their snooze ends now, so
+ *  they're on top); the result being read gives its tab to the next one, as Done does. Undo puts each as it was. */
+export function snoozeKeys(keys: string[], at: Date | null) {
+  const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && open(r))
+  const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && !e.gate)
+  const reading = at && results.find((r) => currentFile() === pathOf(r))
+  const next = reading ? nextToReview(reading, results) : undefined
+  const now = at ?? new Date()
+  for (const r of results) void change(r, { snoozed: stampOf(now) })
+  if (evs.length) snoozeEvents(evs.map((e) => e.id), at ? at.getTime() : null)
+  if (next) openFile(pathOf(next))
+  const n = results.length + evs.length
+  if (!n) return
+  const what = n === 1 ? `“${results[0]?.title ?? evs[0].title}”` : plural(n, "item")
+  notify(at ? `Snoozed ${what} until ${whenText(at)}` : `${what} back in the inbox`, { action: { label: "Undo", run: () => {
+    for (const r of results) void change({ ...r, snoozed: stampOf(now) }, { snoozed: r.snoozed ?? null })
+    for (const e of evs) snoozeEvents([e.id], snoozed(e.snoozed) ? e.snoozed! : null)
+  } } })
+}
+
+/** The Snooze ▸ choices for these keys, then Pick a time… (a sheet). */
+export const snoozeItems = (keys: string[]): MenuItem[] => [
+  // (its time, without the day its name says)
+  ...choices().map((c) => ({ label: c.label, hint: whenText(c.at).replace(/^Tomorrow /, ""), run: () => snoozeKeys(keys, c.at) })),
+  { label: "Pick a time…", icon: CalendarClock, sep: true, run: () => openDetail(detailPath(SNOOZE_DETAIL, ...keys)) },
+]
+const snoozeMenu = (keys: string[], icon = true): MenuItem => ({ label: "Snooze", ...(icon ? { icon: Clock } : {}), run: () => {}, items: snoozeItems(keys) })
+/** The choices as a menu under a button, or under a swiped row. */
+const snoozeBelow = (keys: string[]) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); menuBelow(e, snoozeItems(keys)) }
+const snoozeAtRow = (keys: string[]) => (row?: DOMRect) => openMenu({ x: row ? row.left + 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3 }, snoozeItems(keys))
+
+/** The sheet's own time (Pick a time…): any time to come, tomorrow morning to start. */
+export const SNOOZE_DETAIL = "inbox-snooze"
+export function SnoozeSheet({ keys }: { keys: string[] }) {
+  const tomorrow = choices().find((c) => c.key === "tomorrow")!.at
+  const [v, setV] = useState(stampOf(tomorrow).slice(0, 16).replace(" ", "T"))
+  const at = new Date(v), ok = !Number.isNaN(at.getTime()) && at.getTime() > Date.now()
+  return (
+    <div data-snooze-sheet>
+      <SheetHead icon={Clock} tint="var(--inbox)" kicker="Inbox" title="Snooze until" sub={ok ? whenText(at) : "A time to come"} />
+      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (!ok) return; snoozeKeys(keys, at); backDetail() }}>
+        <input type="datetime-local" value={v} onChange={(e) => setV(e.target.value)} aria-label="Until" autoFocus
+          className="h-11 min-w-0 flex-1 rounded-[8px] border-[0.5px] border-border bg-card px-2.5 text-[16px] outline-none focus:ring-2 focus:ring-primary/40 md:h-8 md:text-[13px]" />
+        <Button type="submit" look="primary" className="h-11 px-4 md:h-8" disabled={!ok}>Snooze</Button>
+      </form>
+    </div>
+  )
+}
 
 // ---------- several at once (selected together: ⌘- or ⇧-click, a phone's Select)
 
@@ -114,13 +185,18 @@ async function markManyDone(list: InboxItem[], done = true) {
 function selectionItems(store: Store, keys: string[]): MenuItem[] {
   const all = store.inbox ?? [], { events } = getEvents()
   const results = all.filter((r) => keys.includes(resultKey(r)))
-  const fresh = results.filter(waiting), dealt = results.filter((r) => !fresh.includes(r))
+  const fresh = results.filter(waiting), dealt = results.filter((r) => !open(r))
   const evs = events.filter((e) => keys.includes(eventKey(e)))
   const out: MenuItem[] = []
   if (fresh.length) out.push(
     { label: "Done", icon: Check, run: () => void markManyDone(fresh) },
     { label: "File to…", icon: FolderInput, run: () => askMoveMany(fresh.map(pathOf), { before: unInbox }) },
   )
+  // (what's snoozed is in the Snoozed list: picked there, it comes back)
+  const later = [...results.filter((r) => open(r) && snoozed(r.snoozed)).map(resultKey), ...evs.filter((e) => snoozed(e.snoozed)).map(eventKey)]
+  const soon = [...fresh.map(resultKey), ...evs.filter((e) => !e.gate && !snoozed(e.snoozed)).map(eventKey)]
+  if (soon.length) out.push(snoozeMenu(soon))
+  if (later.length) out.push({ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys(later, null) })
   if (dealt.length) out.push({ label: "Back to review", icon: RotateCcw, run: () => void markManyDone(dealt, false) })
   if (evs.some((e) => !e.read)) out.push({ label: "Mark as read", icon: MailOpen, sep: out.length > 0, run: () => markRead(evs.map((e) => e.id)) })
   if (evs.some((e) => e.read)) out.push({ label: "Mark as unread", icon: Mail, sep: out.length > 0 && !evs.some((e) => !e.read), run: () => markUnread(evs.filter((e) => e.read).map((e) => e.id)) })
@@ -134,18 +210,24 @@ function useInboxSelect(store: Store) {
 
 /** Phones: a row swiped sideways shows what's done with it most (SwipeRow): Done and File to…, back to review, Dismiss. */
 const resultSwipe = (r: InboxItem): SwipeAction[] => waiting(r)
-  ? [{ label: "File to", icon: FolderInput, run: () => fileTo(r) }, { label: "Done", icon: Check, run: () => markDone(r), removes: true }]
+  ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) }, { label: "File to", icon: FolderInput, run: () => fileTo(r) },
+    { label: "Done", icon: Check, run: () => markDone(r), removes: true }]
+  : open(r) ? [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
   : [{ label: "To review", icon: RotateCcw, run: () => reopen(r), removes: true }]
-const eventSwipe = (e: InboxEvent): SwipeAction[] => [
-  ...(!e.read ? [{ label: "Read", icon: MailOpen, run: () => markRead([e.id]) }] : []),
-  { label: "Dismiss", icon: X, run: () => forget(e.id), danger: true, removes: true },
-]
+const eventSwipe = (e: InboxEvent): SwipeAction[] => snoozed(e.snoozed)
+  ? [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([eventKey(e)], null), removes: true }]
+  : [
+    ...(!e.read ? [{ label: "Read", icon: MailOpen, run: () => markRead([e.id]) }] : []),
+    ...(!e.gate ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([eventKey(e)]) }] : []),
+    { label: "Dismiss", icon: X, run: () => forget(e.id), danger: true, removes: true },
+  ]
 
 // (then what other plugins do with a file, like Dispatch's agents)
 const resultItems = (r: InboxItem): MenuItem[] => [
   { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
   ...(r.source && /^https?:/.test(r.source) ? [{ label: "Open the page", icon: Globe, run: () => void window.open(r.source, "_blank", "noopener") }] : []),
   { label: "File to…", icon: FolderInput, sep: true, run: () => fileTo(r) },
+  snoozeMenu([resultKey(r)]),
   ...pluginFileGroups(pathOf(r), "inbox").rest.flat().map((it, i) => ({ ...it, sep: i === 0 })),
 ]
 
@@ -167,6 +249,7 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   shownNew
     ? { label: "Mark as read", icon: MailOpen, run: () => { markRead([e.id]); touched?.(e.id) } }
     : { label: "Mark as unread", icon: Mail, run: () => markUnread([e.id]) },
+  ...(e.gate ? [] : [snoozeMenu([eventKey(e)])]),
   { label: "Dismiss", icon: X, sep: true, run: () => forget(e.id) },
 ]
 
@@ -303,6 +386,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   const results = toReview(store)
   const { shown: latest, earlier, all, toggle } = useFold(events, 8)
   useTick()
+  useBack(store)
   useInboxSelect(store)
   if (!open) return null
   return (
@@ -316,6 +400,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
             icon={<Badged on><FileText className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /></Badged>} onClick={() => openFile(pathOf(r))} onContextMenu={menuFor(rowMenu(SELECT, resultKey(r), resultItemsMenu(r)))}>
             <HeadingButton icon={Check} label="Done" onClick={stop(() => { haptic("medium"); void markDone(r) })} />
+            <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([resultKey(r)])} />
             <HeadingButton icon={MoreHorizontal} label="More" onClick={(e) => { e.preventDefault(); e.stopPropagation(); moreMenu(e, r) }} />
           </PanelRow>
         ))}
@@ -360,6 +445,8 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
         ? <button type="button" className={iconButton} aria-label="Back to review" data-tip="Back to review" onClick={() => { haptic("medium"); void reopen(r) }}><RotateCcw className="size-4" strokeWidth={2.25} /></button>
         : <>
           <button type="button" className={iconButton} aria-label="Done" data-tip="Done" onClick={() => { haptic("medium"); void markDone(r) }}><Check className="size-4" strokeWidth={2.25} /></button>
+          {/* (a phone swipes for it) */}
+          <button type="button" className={cn(iconButton, "max-md:hidden")} aria-label="Snooze" data-tip="Snooze" data-snooze onClick={snoozeBelow([resultKey(r)])}><Clock className="size-4" strokeWidth={2.25} /></button>
           <button type="button" className={iconButton} aria-label="More" data-tip="More" onClick={(e) => moreMenu(e, r)}><MoreHorizontal className="size-4" strokeWidth={2.25} /></button>
         </>}
     </div>
@@ -428,6 +515,38 @@ function FoldedLoading({ label }: { label: string }) {
   )
 }
 
+/** What's snoozed, soonest back first: its results and events, each with when it comes back. */
+function Snoozed({ store }: { store: Store }) {
+  const results = (store.inbox ?? []).filter((r) => open(r) && snoozed(r.snoozed))
+  const evs = useEvents().events.filter((e) => snoozed(e.snoozed))
+  const rows = [
+    ...results.map((r) => ({ sel: resultKey(r), title: r.title, until: snoozeMs(r.snoozed), icon: <Clock className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />, open: () => openFile(pathOf(r)), swipe: () => resultSwipe(r) })),
+    ...evs.map((e) => ({ sel: eventKey(e), title: e.title, until: e.snoozed!, icon: <EventIcon e={e} className="size-[18px] shrink-0" />, open: () => openEvent(e), swipe: () => eventSwipe(e) })),
+  ].sort((a, b) => a.until - b.until)
+  return <Folded label="Snoozed" n={rows.length} attr="data-inbox-snoozed">{rows.map((x) => <SnoozedRow key={x.sel} {...x} />)}</Folded>
+}
+
+function SnoozedRow({ sel, title, until, icon, open: openIt, swipe }: { sel: string; title: string; until: number; icon: ReactNode; open: () => void; swipe: () => SwipeAction[] }) {
+  const picked = useSelected(SELECT, sel)
+  return (
+    <SwipeRow actions={swipe} className={pageSwipe}>
+      <div data-snoozed={sel} data-select-key={sel} {...selectedAttr(picked)}
+        onContextMenu={menuFor(rowMenu(SELECT, sel, () => [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([sel], null) }, snoozeMenu([sel])]))}
+        className={cn("group/sn relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]", pickedRow)}>
+        <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(e) => { if (!selectClick(e, SELECT, sel)) openIt() }}>
+          {icon}
+          <span className="min-w-0 flex-1">
+            <span className="line-clamp-2 text-[15px] leading-[20px]">{title}</span>
+            <span className="block truncate text-[13px] text-muted-foreground">Until {whenText(new Date(until)).replace(/^Tomorrow/, "tomorrow")}</span>
+          </span>
+        </button>
+        <button type="button" className={iconButton} aria-label="Unsnooze" data-tip="Unsnooze" onClick={() => { haptic("medium"); snoozeKeys([sel], null) }}>
+          <AlarmClockOff className="size-4" strokeWidth={2.25} /></button>
+      </div>
+    </SwipeRow>
+  )
+}
+
 /** The results dealt with: done (or archived). */
 function Settled({ store }: { store: Store }) {
   const list = settled(store)
@@ -444,12 +563,14 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   const results = toReview(store).slice(0, nr)
   const { shown: latest, earlier, rest, all, toggle } = useFold(ne ? events : [], ne, fresh)
   useTick()
+  useBack(store)
   useInboxSelect(store)
   const more = <FoldButton earlier={earlier} all={all} toggle={toggle} className="mt-1 h-8 text-[13px]" />
   // (while the events come, as many skeleton rows as there were last time; none: the Loading line, as tall as "Nothing new.")
   const loading = !!ne && !ready
   const read = useKeptCount(dealt && ne ? "inbox:page:read" : null, loading ? undefined : rest.length, 0)
   const past = dealt && <>
+    <Snoozed store={store} />
     {loading && read > 0 ? <FoldedLoading label="Read" />
       : <Folded label="Read" n={rest.length} attr="data-inbox-read">{rest.map((e) => <EventRow key={e.id} e={e} touched={touched} />)}</Folded>}
     <Settled store={store} />

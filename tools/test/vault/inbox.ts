@@ -737,4 +737,59 @@ export default async ($: VaultTest) => {
     const [readIt] = await api("POST", "ops/inbox.answer", { id: perm, answer: "read" }, from("cli", "claude-code"))
     check("inbox permissions: marking one read is anyone's", readIt === 200, readIt)
   }
+
+  // Snooze: out of the inbox until a time, then back on top, unread, told again.
+  {
+    const { choices, parseUntil } = await import("../../../plugins/core/inbox/snooze.ts")
+    const { wake } = await import("../../../plugins/core/inbox/plugin.ts")
+    const tue = new Date(2026, 9, 20, 10, 0) // a Tuesday morning
+    const keys = choices(tue).map((c) => c.key)
+    const fri = new Date(2026, 9, 23, 19, 0)
+    check("snooze: Gmail's choices, this evening only while it's to come, this weekend only before Friday",
+      keys.join() === "1h,3h,evening,tomorrow,weekend,week" && choices(fri).map((c) => c.key).join() === "1h,3h,tomorrow,week" &&
+      choices(tue).find((c) => c.key === "week")!.at.getTime() === new Date(2026, 9, 26, 8).getTime(), keys)
+    check("snooze: until as an agent writes it", parseUntil("tomorrow", tue)?.getTime() === new Date(2026, 9, 21, 8).getTime() &&
+      parseUntil("2h", tue)?.getTime() === tue.getTime() + 7_200_000 && parseUntil("2026-10-24 9:30", tue)?.getTime() === new Date(2026, 9, 24, 9, 30).getTime() &&
+      parseUntil("next week", tue)?.getDay() === 1 && parseUntil("soonish", tue) === null)
+
+    await api("POST", "inbox", { title: "Snooze me", body: "Later." })
+    cr = await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "3h")
+    let list = await vau("inbox")
+    check("vau inbox snooze: the result keeps its time, out of what's to review, listed as snoozed",
+      cr.code === 0 && /^snoozed: '\d{4}-\d\d-\d\d \d\d:\d\d:\d\d'$/m.test(read("Inbox/Snooze me.md")) && !/To review:[^]*Snooze me[^]*Snoozed:/.test(list.out) && /Snoozed:\n.*Inbox\/Snooze me\.md/.test(list.out), [cr, list.out])
+    cr = await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "yesterday-ish")
+    check("vau inbox snooze: a time it can't read is refused", cr.code !== 0, cr)
+    const stampNow = (ms = 0) => { const d = new Date(Date.now() + ms); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace("T", " ") }
+    await api("PUT", "inbox/Snooze me", { snoozed: stampNow(-1000) })
+    let [, items] = await api("GET", "inbox")
+    const firstOpen = () => items.find((r: Any) => r.status === "new")?.id
+    list = await vau("inbox")
+    check("snooze: its time come, it's back on top, with nothing written", firstOpen() === "Inbox/Snooze me" && /To review:\n  Inbox\/Snooze me\.md/.test(list.out) && /^snoozed: '/m.test(read("Inbox/Snooze me.md")), [items.map((r: Any) => r.id), list.out])
+    await wake()
+    await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "tomorrow")
+    cr = await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "now")
+    ;[, items] = await api("GET", "inbox")
+    check("vau inbox snooze --until now: back at once, on top", cr.code === 0 && firstOpen() === "Inbox/Snooze me" && /Back in the inbox/.test(cr.out), [cr, read("Inbox/Snooze me.md")])
+    let [, b] = await api("PUT", "inbox/Snooze me", { snoozed: "2099-01-01 08:00:00" })
+    ;[, b] = await api("PUT", "inbox/Snooze me", { status: "done" })
+    check("snooze: done isn't snoozed any more", b.status === "done" && !b.snoozed, b)
+
+    const [, ev] = await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Look at this later" })
+    let [st] = await api("POST", "inbox/events/snooze", { ids: [ev.event.id], until: Date.now() - 1 })
+    check("inbox events snooze: a time to come", st === 400, st)
+    ;[st] = await api("POST", "inbox/events/snooze", { ids: [ev.event.id], until: Date.now() + 200 })
+    let [, l] = await api("GET", "inbox/events")
+    let e = l.events.find((x: Any) => x.id === ev.event.id)
+    check("inbox events snooze: read meanwhile, with its time", st === 200 && e.read === true && e.snoozed > Date.now(), e)
+    await sleep(250)
+    await wake()
+    ;[, l] = await api("GET", "inbox/events")
+    e = l.events.find((x: Any) => x.id === ev.event.id)
+    check("inbox events snooze: its time come, unread on top and told again", l.events[0].id === ev.event.id && e.read === false && !e.snoozed && e.nt === e.t, e)
+    await api("POST", "inbox/events/snooze", { ids: [ev.event.id], until: Date.now() + 3_600_000 })
+    await api("POST", "inbox/events/unread", { ids: [ev.event.id] })
+    ;[, l] = await api("GET", "inbox/events")
+    e = l.events.find((x: Any) => x.id === ev.event.id)
+    check("inbox events snooze: marked unread, it's back", e.read === false && !e.snoozed, e)
+  }
 }

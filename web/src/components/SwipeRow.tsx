@@ -7,9 +7,9 @@ import { haptic } from "@/core/haptics"
 import { selecting } from "@/core/select"
 import { cn } from "@/lib/utils"
 
-/** `removes`: it takes the row away (Done, Delete): the row goes at once, like Mail's, and comes back if `run` fails
- *  (rejects) or the row is still there once it's done. */
-export type SwipeAction = { label: string; icon: LucideIcon; run: () => unknown; danger?: boolean; removes?: boolean }
+/** `removes`: it takes the row away (Done, Delete) at once, like Mail's, back if `run` fails or the row stays. `run`
+ *  gets the row's box, for a menu it opens (Snooze ▸). */
+export type SwipeAction = { label: string; icon: LucideIcon; run: (row?: DOMRect) => unknown; danger?: boolean; removes?: boolean }
 
 /** How wide each button is (px). */
 const BUTTON = 74
@@ -62,7 +62,7 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
   const act = (a: SwipeAction) => {
     haptic("medium")
     const el = box.current, r = row.current
-    if (!a.removes || !el || !r) { close(); a.run(); return }
+    if (!a.removes || !el || !r) { close(); a.run(el?.getBoundingClientRect()); return }
     if (shut === close) shut = null
     const t = "200ms cubic-bezier(.2,.8,.2,1)"
     el.style.height = `${el.offsetHeight}px`
@@ -77,7 +77,7 @@ export function SwipeRow({ actions, under: behind, children, className, ...rest 
       place(0)
       setShown([])
     }, 250) // (past a removal's fold, core/leaving.ts: a row taken off is gone by then)
-    setTimeout(() => { Promise.resolve().then(a.run).then(back, back) }, 200)
+    setTimeout(() => { Promise.resolve().then(() => a.run()).then(back, back) }, 200)
   }
 
   const down = (e: React.PointerEvent) => {

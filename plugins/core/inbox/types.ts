@@ -12,6 +12,8 @@ export type InboxItem = {
   /** Its thread's latest report (an agent's reply in the same file), a local stamp like created. */
   updated?: string | null
   archived?: boolean
+  /** Snoozed until then (a local stamp): out of what's to review till it comes back. */
+  snoozed?: string | null
   /** An agent's report (inbox.report): who wrote it, its session, the app terminal and the machine it ran on, for the reply. */
   agent?: string; session?: string; terminal?: string; machine?: string
 }
@@ -40,6 +42,8 @@ export type InboxEvent = {
   answer?: "approve" | "deny"
   /** Another machine's (Machines), kept there: its id is `<id>@<machine>`, its terminal too. */
   machine?: string; machineLabel?: string
+  /** Snoozed until then (ms): read till it comes back, unread on top. */
+  snoozed?: number
 }
 
 declare module "@vaultite" {

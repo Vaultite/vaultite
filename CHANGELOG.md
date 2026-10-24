@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Snooze in the inbox**: a result or an agent's event can be put off (a phone's swipe, the clock button, a right-click:
+  in an hour, this evening, tomorrow, next week or a time you pick) and comes back on top when it's due, with a toast and
+  a phone notification; the Inbox page lists what's snoozed, to bring back early. `vau inbox snooze`.
 - **A Browser bundle**: built in beside Standard and Zen, the app as a web browser first: your favourite pages as
   tiles over vertical tabs, ⌘T an address bar that finds anything, spaces, tabs archived after 12 hours and the notes
   about the page you're on. Life OS moved to Get bundles, beside Agents (a setup made with it stays as it is), and a

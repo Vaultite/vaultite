@@ -4,7 +4,7 @@
   "category": "agents",
   "alwaysOn": true,
   "name": "Inbox",
-  "description": "What your agents tell you, in one place: each coding agent's session that needs you (it asks something, wants an approval, or answered with something to read), one row each to read and reply to, with toasts, a badge, the Mac's and the phone's notifications; a turn done with nothing for you goes in quietly. And results to review (an agent's research, a clipped page) as files in Inbox/ to mark done (into Inbox/.archive/) or file away.",
+  "description": "What your agents tell you, in one place: each coding agent's session that needs you (it asks something, wants an approval, or answered with something to read), one row each to read and reply to, with toasts, a badge, the Mac's and the phone's notifications; a turn done with nothing for you goes in quietly. And results to review (an agent's research, a clipped page) as files in Inbox/ to mark done (into Inbox/.archive/), file away, or snooze till later.",
   "forAgents": "Something for the user to read later (research, a summary) goes in their inbox: `inbox.add`.",
   "tint": "blue",
   "enhances": ["terminal", "clipper", "mcp"],

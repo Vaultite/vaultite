@@ -1,12 +1,13 @@
 // The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for what the server says to
 // tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef } from "react"
-import { Check, CheckCheck, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
+import { AlarmClockOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
 import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
-import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
+import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
+import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
@@ -46,16 +47,25 @@ function Background({ store }: { store: Store }) {
   useEffect(() => void settings.ready(), [])
   useEffect(() => follow(), [])
   useEffect(() => onFresh((e) => announce(e, settings.get())), [])
-  // A result that just arrived (an agent's inbox_add, a clip, a file written there): said once, like an event. Not the
-  // ones there when the app loads, nor one coming back (Undo), nor a report (its session's row tells it, on every machine).
+  // A result that just arrived (an agent's inbox_add, a clip) or a snoozed one whose time came: said once. Not the ones
+  // there when the app loads, nor one brought back (Undo, Unsnooze), nor a report (its session's row tells it).
   const known = useRef<Set<string> | null>(null)
+  const away = useRef(new Map<string, number>())
+  useBack(store)
   const review = toReview(store)
   useEffect(() => {
     const first = known.current === null
     const seen = known.current ?? new Set<string>()
+    for (const r of store.inbox ?? []) if (r.status === "new" && snoozed(r.snoozed)) { away.current.set(r.id, snoozeMs(r.snoozed)); seen.delete(r.id) }
     for (const r of review) {
       if (seen.has(r.id)) continue
       seen.add(r.id)
+      const until = away.current.get(r.id)
+      away.current.delete(r.id)
+      if (until !== undefined && until <= Date.now() + 5000) {
+        if (settings.get().toasts !== false) notify(`Back in your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
+        continue
+      }
       if (first || Date.now() - latestAt(r) > 10 * 60_000 || r.session || r.terminal) continue
       if (settings.get().toasts !== false) notify(`In your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
       if (settings.get().notifications !== false && !document.hasFocus()) {
@@ -122,6 +132,7 @@ export default definePlugin({
   details: {
     [GATE_DETAIL]: { title: (_s, [id]) => gateTitle(id), render: (_s, [id]) => <GateSheet id={id} /> },
     [SESSION_DETAIL]: { title: (_s, [id]) => sessionTitle(id), render: (_s, [id]) => <SessionSheet id={id} /> },
+    [SNOOZE_DETAIL]: { title: () => "Snooze until", render: (_s, keys) => <SnoozeSheet keys={keys} /> },
   },
   blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} /> },
   files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)" },
@@ -133,6 +144,9 @@ export default definePlugin({
         ? { label: "Mark as new", icon: RotateCcw, section: "actions", run: () => markDone(r, false) }
         : { label: "Done", icon: Check, section: "actions", run: () => markDone(r) },
       { label: "File to…", icon: FolderInput, section: "actions", run: () => fileTo(r) },
+      ...(r.status === "done" ? [] : snoozed(r.snoozed)
+        ? [{ label: "Unsnooze", icon: AlarmClockOff, section: "actions", run: () => snoozeKeys([`r:${r.id}`], null) }]
+        : [{ label: "Snooze", icon: Clock, section: "actions", run: () => {}, items: snoozeItems([`r:${r.id}`]) }]),
     ]
   },
   commands: [

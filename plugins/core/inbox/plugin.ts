@@ -12,6 +12,7 @@ import {
 import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import { judge, type Need, type Turn } from "./needs.ts"
 import * as push from "./push.ts"
+import { parseUntil, snoozed, snoozeMs, stampOf, whenText } from "./snooze.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
@@ -33,11 +34,11 @@ plugin.kind(new Kind({
       title: truthy(fm.title) ? str(fm.title) : stem, status, from: truthy(fm.from) ? str(fm.from) : "",
       source: truthy(fm.source) ? str(fm.source) : "", created: fm.created ?? null, updated: fm.updated ?? null, origin: truthy(fm.origin) ? str(fm.origin) : "",
       agent: truthy(fm.agent) ? str(fm.agent) : "", session: truthy(fm.session) ? str(fm.session) : "", terminal: truthy(fm.terminal) ? str(fm.terminal) : "",
-      machine: truthy(fm.machine) ? str(fm.machine) : "", body,
+      machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, body,
     }, STATUSES.includes(status) ? [] : [`status \`${status}\` is not one of ['new', 'done']`]]
   },
   render: (r) => [{ status: r.status || "new", from: r.from || null, source: r.source || null, created: r.created, updated: r.updated || null, origin: r.origin || null,
-    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null }, r.body || ""],
+    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null }, r.body || ""],
   // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
   // so. Taking either back (Back to review, Undo, the same page added again) makes it new, out of the archive.
   prepare(r, old) {
@@ -48,6 +49,8 @@ plugin.kind(new Kind({
     if (done) r.status = "done"
     else if (reopened) r.status = "new"
     r.archived = done
+    // (what's dealt with isn't waiting to come back)
+    if (done || reopened) r.snoozed = null
     return r
   },
   // To review first, the latest first (a thread by its last report); then what's dealt with, the last done first. An
@@ -58,11 +61,15 @@ plugin.kind(new Kind({
   },
   // Where it came from (a page's address): adding the same page again updates it.
   key: (r) => (truthy(r.source) ? str(r.source) : null),
-  stamps: ["created", "updated"],
+  stamps: ["created", "updated", "snoozed"],
 }))
 
-/** When a result last had news: its thread's latest report (`updated`), else when it came. */
-export const latest = (r: Item) => str(r.updated || r.created || "")
+/** When a result last had news: its thread's latest report (`updated`), else when it came, or its snooze's end once
+ *  that's past (it came back then). */
+export const latest = (r: Item) => {
+  const at = str(r.updated || r.created || ""), back = str(r.snoozed || "")
+  return back > at && !snoozed(back) ? back : at
+}
 
 /** Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this
  *  plugin is on. */
@@ -103,6 +110,8 @@ export type InboxEvent = {
   kept?: boolean
   /** Another machine's (Machines): its id there is `<id>@<machine>` here, its terminal too. */
   machine?: string; machineLabel?: string
+  /** Snoozed until then (ms): read till it comes back unread, on top, told again. News from its session wakes it. */
+  snoozed?: number
 }
 
 /** This vault's folder here: <LOCAL>/inbox/<vault key>/ (made when an event is saved). */
@@ -156,7 +165,7 @@ export function byThread(es: InboxEvent[]): InboxEvent[] {
 export function prune(es: InboxEvent[]) {
   const since = Date.now() - settings().keep * DAY
   let read = 0
-  return es.filter((e) => !e.read || (e.t >= since && ++read <= MAX))
+  return es.filter((e) => !e.read || e.snoozed || (e.t >= since && ++read <= MAX))
 }
 
 function save() {
@@ -207,7 +216,8 @@ plugin.onMove((from, to) => {
 const unread = (local = false) => shown(local).filter((e) => !e.read).length
 
 function changed(next: InboxEvent[]) {
-  events = prune(next)
+  // (an unread one isn't snoozed: news, or marked unread, brought it back)
+  events = prune(next.map((e) => (!e.read && e.snoozed ? (({ snoozed: _, ...rest }) => rest)(e) : e)))
   save()
   broadcast()
   // The phone's agents widget shows who's waiting: only a change there reloads it.
@@ -568,6 +578,66 @@ plugin.route("POST", "inbox/events/unread", async (req) => {
   return { unread: unread(local) }
 })
 
+/** Snooze events until `until` (ms; null: back now). A permission the server waits on can't be: it'd wait unseen. */
+plugin.route("POST", "inbox/events/snooze", async (req) => {
+  await owner(req)
+  const b = (req.body ?? {}) as Item
+  if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events to snooze")
+  const until = b.until === null ? null : Number(b.until)
+  if (until !== null && !(until > Date.now())) throw new HTTPError(400, "until: when it comes back (ms), to come; null: back now")
+  const local = !!req.query.local
+  for (const [m, some] of byMachine(b.ids.map(String))) {
+    if (!m) snooze(new Set(some), until)
+    else if (!local) await onMachine(m, "POST", "inbox/events/snooze?local=1", { ids: some, until }, (e) => (isOne(e, some) ? snoozedAs(e, until) ?? e : e))
+  }
+  return { unread: unread(local) }
+})
+
+/** `e` snoozed till `until` (read meanwhile), or woken (null: unread, on top, told again); null when it can't be. */
+function snoozedAs(e: InboxEvent, until: number | null): InboxEvent | null {
+  if (e.gate) return null
+  if (until !== null) return { ...readThere(e), snoozed: until }
+  if (!e.snoozed) return null
+  const { snoozed: _, ...rest } = e
+  return { ...rest, read: false, t: Date.now() }
+}
+
+/** Snooze these events, or (null) bring them back now: the user did, so it's no news. */
+function snooze(ids: Set<string>, until: number | null) {
+  for (const old of list().filter((e) => ids.has(e.id))) {
+    const e = snoozedAs(old, until)
+    if (e) put(e, old, list(), false)
+  }
+}
+
+// ---------- snoozed results and events come back: on top, unread, told again. A result needs no write: its snooze's
+// end past, it's to review again (`latest`); here the phones are told.
+
+const WAKE = 30_000
+/** Results whose return was told, by id and time. */
+const toldBack = new Set<string>()
+export async function wake() {
+  const now = Date.now()
+  for (const old of list().filter((e) => e.snoozed && e.snoozed <= now)) {
+    const e = put(snoozedAs(old, null)!, old, list(), true)
+    // (asked back, so it rings even where only what waits on the user does)
+    if (e.nt === e.t && settings().push === "waiting" && !waitsOnYou(e)) pushBack(e.title, e.preview || e.body, { event: e.id })
+  }
+  // (results are the vault's, which every machine's server reads: the first of them by id tells, once)
+  const back = plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && r.snoozed && !toldBack.has(`${r.id}\0${r.snoozed}`) &&
+    !snoozed(r.snoozed, now) && snoozeMs(r.snoozed) > now - 2 * WAKE)
+  if (!back.length || !(await firstMachine())) return
+  for (const r of back) { toldBack.add(`${r.id}\0${r.snoozed}`); pushBack("Back in your inbox", str(r.title)) }
+}
+const wakeTimer = setInterval(() => { if (plugin.loaded && !plugin.isOff()) void wake().catch((e) => console.error("inbox: wake:", e)) }, WAKE)
+wakeTimer.unref?.()
+plugin.onUnload(() => clearInterval(wakeTimer))
+
+/** This machine is the first online one with the Inbox on (by id), or Machines is off. */
+async function firstMachine() {
+  const self = await selfMachine()
+  return !self || !(await machineList()).some((m) => !m.self && m.online && m.plugins?.includes(plugin.id) && m.id < self)
+}
 
 /** Answer a permission the server waits on (gate: the service "inbox:ask"): approve or deny. The owner's only, so what
  *  asked can't answer itself. */
@@ -614,6 +684,13 @@ plugin.route("DELETE", "inbox/events/*", async (req) => {
 })
 
 // ---------- phone push (push.ts): each new event on the phone, and on the watch
+
+/** Something snoozed is back: to the phones, unless push is off (the user asked for it back). `data`: its event's. */
+function pushBack(title: string, body?: string, data?: { event: string }) {
+  if (settings().push === "off" || !push.devices().length) return
+  void push.send(apns(), { title, body, thread: "inbox", ...(data ? { category: "event" as const, data } : {}) })
+    .then((x) => { if (x.failed.length) console.error(`inbox: push failed: ${x.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))
+}
 
 const apns = () => ((plugin.secrets().inbox ?? {}) as Item).apns as push.Apns ?? null
 
@@ -916,8 +993,12 @@ for the user, else read, holding its last answer.
   params: { limit: { type: "integer", minimum: 1, default: 20, description: "at most this many events" } },
   run: async ({ limit }, ctx) => {
     const [ev, items] = await Promise.all([ctx.api("GET", `inbox/events?limit=${limit}`), ctx.api("GET", "inbox")]) as [Item, Item[]]
-    const results = (items ?? []).filter((r) => r.status === "new" && !isArchived(r)).map((r) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null }))
-    return { results, events: ev.events, unread: ev.unread }
+    const open = (items ?? []).filter((r) => r.status === "new" && !isArchived(r))
+    const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
+    const later = (ev.events as InboxEvent[]).filter((e) => snoozed(e.snoozed))
+    return { results: open.filter((r) => !snoozed(r.snoozed)).map(row), events: (ev.events as InboxEvent[]).filter((e) => !later.includes(e)), unread: ev.unread,
+      snoozed: [...open.filter((r) => snoozed(r.snoozed)).map((r) => ({ ...row(r), until: str(r.snoozed) })),
+        ...later.map((e) => ({ id: e.id, title: e.title, until: stampOf(new Date(e.snoozed!)) }))] }
   },
   text: (r) => {
     const out: string[] = []
@@ -927,6 +1008,7 @@ for the user, else read, holding its last answer.
         ...r.events.map((e: InboxEvent) => `  ${localTime(e.t)}  ${e.read ? " " : "*"} ${e.title}${e.kind === "waiting" && e.ask ? ` [${NEEDS[e.ask] ?? e.ask}]` : ""}` +
           `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`))
     }
+    if (r.snoozed.length) out.push(`${out.length ? "\n" : ""}Snoozed:`, ...r.snoozed.map((x: Item) => `  until ${x.until}  ${x.path ?? `${x.title}  (${x.id})`}`))
     return out.length ? out.join("\n") : "Nothing new."
   },
 })
@@ -1134,7 +1216,7 @@ two or three plain sentences, no jargon; the push says it too.
         const at = body.lastIndexOf(REPLY_BLOCK)
         return at < 0 ? `${body.replace(/\n*$/, "")}\n\n${next}${REPLY_BLOCK}\n` : body.slice(0, at) + next + body.slice(at)
       })
-      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: "new", updated: nowStamp(), title: reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), subjectOf(str(prior.title))), ...who }) as Item
+      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: "new", updated: nowStamp(), snoozed: null, title: reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), subjectOf(str(prior.title))), ...who }) as Item
     } else {
       r = await ctx.api("POST", "inbox", { title, body: [round, terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }) as Item
     }
@@ -1414,6 +1496,43 @@ note ends with it (not by editing its status: that leaves it in the inbox). With
 })
 
 plugin.op({
+  id: "inbox.snooze",
+  cli: "inbox snooze",
+  summary: "Snooze something in the inbox (a result, or an event): out of the way until a time, then back on top, told again.",
+  help: `What the user's Snooze does. A result keeps the time in its \`snoozed\` field (past, it's back on top); an event is read
+meanwhile, and news from its session brings it back early. until: tomorrow, evening, weekend, week (next Monday's
+morning), a while (30m, 3h, 2d), a local time (2026-10-24 09:00), or now to bring it back.
+
+  vau inbox snooze "Inbox/Plant care apps compared.md" --until tomorrow
+  vau inbox snooze lzk3p2-a1b2c3 --until 3h`,
+  kind: "write",
+  params: {
+    item: { type: "string", required: true, description: "the result (Inbox/<Title>.md) or the event's id (vau inbox lists them)" },
+    until: { type: "string", required: true, description: "when it comes back: tomorrow, evening, weekend, week, 3h, 2d, 2026-10-24 09:00, or now" },
+  },
+  args: ["item"],
+  run: async (p, ctx) => {
+    const item = str(p.item).trim(), now = /^(now|off|none)$/i.test(str(p.until).trim())
+    const at = now ? null : parseUntil(str(p.until))
+    if (!now && !at) throw new OpError(`until: ${quoted(str(p.until))} isn't a time (tomorrow, evening, weekend, week, 3h, 2d, 2026-10-24 09:00, now)`)
+    if (at && at.getTime() <= Date.now()) throw new OpError("until: that time has passed")
+    if (EVENT_ID.test(item)) {
+      await ctx.api("POST", "inbox/events/snooze", { ids: [item], until: at ? at.getTime() : null })
+      return { item, until: at ? stampOf(at) : null, when: at ? whenText(at) : null }
+    }
+    await plugin.vault.sync()
+    const r = resultAt(item)
+    if (!r || r.status !== "new" || isArchived(r)) throw new OpError(`no ${item} to review in the inbox`, 404)
+    if (!at && !snoozed(r.snoozed)) return { item: `${r.id}.md`, until: null, when: null }
+    // (back now: its snooze ends now, so it's on top)
+    await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { snoozed: stampOf(at ?? new Date()) })
+    return { item: `${r.id}.md`, until: at ? stampOf(at) : null, when: at ? whenText(at) : null }
+  },
+  text: (r) => (r.until ? `Snoozed until ${r.when} (${r.until}): ${r.item}.` : `Back in the inbox: ${r.item}.`),
+  did: (p) => ({ action: "save", text: `Snoozed ${quoted(p.item)} in the inbox` }),
+})
+
+plugin.op({
   id: "inbox.read",
   cli: "inbox read",
   summary: "Mark the inbox's events read: some by id (vau inbox lists them), or all.",
@@ -1665,8 +1784,8 @@ const stampAt = (s: unknown) => stampMs(str(s)) || 0
 plugin.block("inbox", (ctx) => {
   const o = ctx.options
   const nr = Number(o.results ?? 10), ne = Number(o.events ?? 5)
-  const results = plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r)).slice(0, nr)
-  const es = plugin.isOff() ? [] : shown().slice(0, ne)
+  const results = plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && !snoozed(r.snoozed)).slice(0, nr)
+  const es = plugin.isOff() ? [] : shown().filter((e) => !snoozed(e.snoozed)).slice(0, ne)
   ctx.source(nr > 0 ? results : [])
   const parts: string[] = []
   if (nr > 0 && results.length) {

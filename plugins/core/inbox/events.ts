@@ -85,6 +85,15 @@ export function markUnread(ids: string[]) {
   void post("inbox/events/unread", { ids }).catch(undo(before, "Couldn't mark it unread"))
 }
 
+/** Snooze events till `until` (ms; read meanwhile), or bring them back now (null). A gate can't be: it'd wait unseen. */
+export function snoozeEvents(ids: string[], until: number | null) {
+  const want = new Set(ids)
+  const before = getEvents().events
+  set(before.map((e) => (!want.has(e.id) || e.gate ? e : until !== null ? { ...e, read: true, kept: undefined, snoozed: until }
+    : e.snoozed ? { ...e, read: false, snoozed: undefined, t: Date.now() } : e)))
+  void post("inbox/events/snooze", { ids, until }).catch(undo(before, "Couldn't snooze it"))
+}
+
 /** Seeing the Inbox reads news, but not what the user marked unread, nor what waits on them: a session that needs them
  *  is read once opened or answered, as a mail is. */
 export function markSeen() {
