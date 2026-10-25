@@ -128,6 +128,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ConfirmOptions`
 - `Conventions`: How the vault wants new files placed and links written, when it says so itself (another app's settings in it); undefined leaves it to the app.
 - `copyText(text)`: Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy.
+- `Corner`
+- `CORNERS`
 - `createFile(folder, name?, text?)`
 - `createNamed(folder, typed, text?)`: A note named as typed (a link's target, the switcher's query): with "/" from the vault's top, else in `folder`.
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
@@ -364,7 +366,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `OpenFile`: The file a status item is drawn for: its head, and its whole text, frontmatter included ("" for a file that isn't text: an image), as typed (each change redraws it, a moment after the keystroke).
 - `openingSoon(path, now?)`
 - `openInList(newTab?)`: Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab).
-- `openInSet(to, name)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying; no such group: beside the focused pane, in a new one of that name.
+- `openInSet(to, name, here?)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying; no such group: beside the focused pane (`here`: in it, after its tab), in a…
 - `openInSplit(to, side?, focusIt?, tabId?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openLinkMenu(link, at, opts?)`
@@ -610,6 +612,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.
 - `useCommandList()`
 - `useCommands(make, deps)`: Register commands while a component is mounted (again whenever `deps` change).
+- `useCornerDrag(corner, setCorner)`: Dragging a corner card anywhere (a click still clicks), and where it lands: the corner it was thrown towards, as iOS's and browsers' picture in picture do.
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
 - `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not while a menu is open, nor when `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
@@ -662,6 +665,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
 - `viewInfo(to, disabled?, tab?)`: A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too); `tab`: the tab's id, for what's that tab's (its icon's action).
 - `viewMenuItems(target, disabled?)`: The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target.
+- `viewOnScreen(target, disabled?)`: Whether what a view target shows is on screen in another form (its view's `onScreen`).
 - `viewPinLabel(target, disabled?)`: A pinned view's name now, when its view knows it (its `pinLabel`: a web page's title, once loaded), else null.
 - `viewsChanged()`: Tell the tabs that a view's `title` or `iconClass` answers something else now.
 - `viewShown(target, disabled?)`: Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show).

@@ -15,6 +15,9 @@
   one when shown again, ended when the tab closes or leaves the window (`onTabClose`) or shows something else. None
   outlives its tab: a reloaded window's tabs take theirs back within seconds or they end. Never match pages by address:
   `getURL()` is "" till the first load commits (it was how hidden pages kept playing with no tab).
+- An agent's page opens with no tab (web.ts `make(..., agent)`), parked: shown off the window, unthrottled, so it draws
+  on (live pictures, screenshots); a hidden view stops drawing at its next cross-site load. Unused a minute it rests
+  hidden (agent.ts), and every agent call or watch wakes it (EnginePage `wake`). Open as tab hands it to a tab (`own`).
 - A page in its player (a window of its own, web.ts's players) is still its tab's, `win` its tab's window: only where
   it's drawn changes (`fit`), so ending, reclaiming and closing work as for any; its tab draws nothing over it meanwhile.
   Esc never reaches a page that's full screen (Electron takes it), so the player's video leaving full screen leaves it.

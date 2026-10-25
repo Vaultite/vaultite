@@ -87,10 +87,17 @@ export function addToSet(ids: string[], setId: string, shown?: string) {
 }
 
 /** `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying;
- *  no such group: beside the focused pane, in a new one of that name. Returns its id. */
-export function openInSet(to: string, name: string): string {
+ *  no such group: beside the focused pane (`here`: in it, after its tab), in a new one of that name. Returns its id. */
+export function openInSet(to: string, name: string, here = false): string {
   const named = name.trim() ? allSets().find((s) => s.name === name) : undefined
   const where = named && setById(named.id)
+  const g = here ? groups().find((x) => x.id === getWorkspace().focus) : undefined
+  if ((!named || !where) && g) {
+    const tab: Tab = { id: newId(), to }, sid = `s${newId()}`, at = outsideSets(g.tabs, g.tabs.findIndex((t) => t.id === g.active) + 1)
+    const def: TabSet | undefined = name.trim() ? { id: sid, name: name.trim().slice(0, 80), color: nextColor() } : undefined
+    set({ ...getWorkspace(), root: gather([tab], g.id, () => at, def ? sid : "", def, tab.id) })
+    return tab.id
+  }
   if (!named || !where) {
     const id = openInSplit(to, "right", false)
     if (name.trim()) makeSet([id], { name })

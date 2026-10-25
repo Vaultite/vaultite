@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents browse out of your way**: a page an agent opens no longer joins your tabs. A card in the window's corner
+  (dragged to any corner, like the mini player) shows it live, the agent's pointer moving to what it clicks; Open as tab
+  brings the same page into your tabs, and the agent chip in its bar sends it back. An agent asking you opens its page
+  as a tab with a card at its foot and a large Done, instead of a thin bar; the bar's agent status no longer moves the
+  page as it comes and goes, and an ask in front of you no longer also toasts.
 - **A link's own menu**: right-clicking a link in a note (reading or editing), a table, a callout or a timeline offers
   Open link or Open in new tab (and to the right), Copy link, Copy link text, Copy email address for a mailto:, the
   file's actions for a [[link]], and Edit link and Remove link while editing. Drawn Markdown's selected text has Copy.

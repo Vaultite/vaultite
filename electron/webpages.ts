@@ -5,6 +5,8 @@ export type Owned<W> = {
   id: number; win: W
   /** The id of the tab it's for ("": none, a glance in a sheet: it ends when let go of). */
   tab: string
+  /** An agent's, in the background: no tab, kept till the agent closes it or the user opens it as a tab (`tab` set). */
+  agent?: boolean
   profile: string
   /** How many views show it now (a tab drawn again before the last let go); 0: its tab is in the background. */
   holds: number
@@ -35,7 +37,7 @@ export function letGo<W>(p: Owned<W>, now: number): boolean {
   p.holds = Math.max(0, p.holds - 1)
   if (p.holds) return false
   p.let = now
-  return p.closing || !p.tab
+  return p.closing || (!p.tab && !p.agent)
 }
 
 /** `tab` left `win` (closed, or moved to another window): its pages to end now. One a view still holds ends when let go of. */
@@ -49,14 +51,15 @@ export function tabGone<W, P extends Owned<W>>(pages: Iterable<P>, win: W, tab: 
   return out
 }
 
-/** `win` loaded its page again: every view of its pages is gone. Its tabs' pages wait to be taken back (`unclaimed`);
- *  the rest, returned, end now. */
+/** `win` loaded its page again: every view of its pages is gone. Its tabs' pages wait to be taken back (`unclaimed`),
+ *  agents' in the background stay; the rest, returned, end now. */
 export function windowReloaded<W, P extends Owned<W>>(pages: Iterable<P>, win: W, now: number): P[] {
   const out: P[] = []
   for (const p of pages) {
     if (p.win !== win) continue
     p.holds = 0
     p.let = now
+    if (p.agent && !p.closing) continue
     if (p.closing || !p.tab) out.push(p)
     else p.orphan = now
   }
@@ -72,7 +75,7 @@ export const unclaimed = <W, P extends Owned<W>>(pages: Iterable<P>, now: number
 export function discardable<W, P extends Owned<W>>(pages: Iterable<P>, playing: (p: P) => boolean): P[] {
   const all = [...pages]
   return [...new Set(all.map((p) => p.win))].flatMap((w) =>
-    all.filter((p) => p.win === w && !p.holds && !p.closing && !playing(p)).sort((a, b) => b.let - a.let).slice(KEEP))
+    all.filter((p) => p.win === w && !p.holds && !p.closing && !p.agent && !playing(p)).sort((a, b) => b.let - a.let).slice(KEEP))
 }
 
 /** How long a silent page still counts as playing: sound without media (a game's Web Audio) has no pause to end it;

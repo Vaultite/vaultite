@@ -71,17 +71,17 @@ export function setSounds(next: Sound[]) {
   if (redraw) viewsChanged()
 }
 
-/** An agent at work in a page, by the page's id: who, doing what, when (its bar shows it a few seconds). */
-export type AgentNews = { by: string; what: string; at: number }
-export const agentNews = cell(new Map<number, AgentNews>())
-/** Pages the user paused agents in (the bar's Pause). */
-export const pausedPages = cell(new Set<number>())
-/** What an agent asked the user to do in a page (sign in, a check), by the page's id, till they say it's done. */
-export const helpAsks = cell(new Map<number, { by: string; reason: string }>())
 /** A page waiting on a passkey from a phone (electron/browser/passkeys.ts), by the page's id: its QR code while it's to be
  *  scanned, then how it's going. */
 export type PasskeyAsk = { ask: number; state: string; qr: string; site: string; create: boolean }
 export const passkeyAsks = cell(new Map<number, PasskeyAsk>())
+
+/** The pages shown in a tab now, by id: an agent's there needs no card of its own (AgentsCard.tsx). */
+export const onScreen = cell(new Set<number>())
+export function setOnScreen(id: number, on: boolean) {
+  if (onScreen.get().has(id) === on) return
+  onScreen.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
+}
 
 /** A page on screen (WebPage.tsx): what the desktop app's events about it reach. */
 export type Shown = {

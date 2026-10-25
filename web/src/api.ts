@@ -87,7 +87,7 @@ export { askMove, askMoveMany, FileTree, iconAt, moveManyInto, pinsOpen as pinne
 // Recent files: opened lately in the workspace, and changed lately in the vault (a blank tab's sections, the Recent
 // files panel).
 export { changedFiles, RecentList, useFileIcon, useOpenedFiles, type RecentKind } from "@/components/RecentFiles"
-export { agentOfTerminal, agentsOn, askAbout, iconNamed, pinOfView, resolveView, useAgents, useEnabled, viewMenuItems, viewPinLabel, viewShown, viewSurfaces, type Agent } from "@/core/plugins"
+export { agentOfTerminal, agentsOn, askAbout, iconNamed, pinOfView, resolveView, useAgents, useEnabled, viewMenuItems, viewOnScreen, viewPinLabel, viewShown, viewSurfaces, type Agent } from "@/core/plugins"
 export { parseTerminal, type TerminalAgent } from "../../core/terminalids.ts"
 // Plugins' colours (--<id>), which an artifact gets too (as --vau-<id>).
 export { editorMenuItems, tintNames, webContainers, webPageActions } from "@/core/plugins"
@@ -167,6 +167,7 @@ export { FileEmbed } from "@/components/FileEmbed"
 export { rawUrl } from "@/components/FileViewers"
 export { kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
+export { CORNERS, useCornerDrag, type Corner } from "@/components/CornerCard"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
 export { Badged, Bar, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch, type Dot } from "@/components/kit"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.

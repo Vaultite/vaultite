@@ -245,7 +245,7 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 }
 /* Phones: the bar docked at the bottom (components/PhoneBar.tsx): a 3rem row over the home indicator's safe area. What
    sits above it (the page's end, a toast, the bar's menu) keeps clear of it with this. */
-:root { --phone-bar: calc(max(env(safe-area-inset-bottom), 0.25rem) + 3rem); --mini-player: 0px; --trial-bar: 0px; }
+:root { --phone-bar: calc(max(env(safe-area-inset-bottom), 0.25rem) + 3rem); --mini-player: 0px; --agents-card: 0px; --trial-bar: 0px; }
 /* A bundle being tried (components/BundleTrial.tsx): its bar's height and a gap, which toasts sit above. */
 :root[data-trying] { --trial-bar: 44px; }
 @media (max-width: 767px) { :root[data-trying] { --trial-bar: 62px; } }

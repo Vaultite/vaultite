@@ -6,6 +6,7 @@ import { Button, cn, dateText, FilterField, get, notifyError, selectTab, Sidebar
 import { hostOf } from "./address"
 import type { LiveTab } from "./livetabs"
 import { showAppTab } from "./LiveView"
+import { agentPage, openAsTab } from "./agentpages"
 
 type Run = { run: string; by: string; task: string; summary: string; steps: number; start: number; end: number; title: string; url: string }
 type Step = { t: number; tab: number; by: string; url: string; title: string; action: string; ref?: string; name?: string; value?: string
@@ -88,12 +89,16 @@ export function ReplaysView() {
 /** A tab an agent is at work in: its page as it is now, who, what for and its last step. */
 function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => void }) {
   // (its container from the owner's list: the tab may be gone, made anew there)
-  const show = () => { if (l.appTab && !selectTab(l.appTab)) void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => { const t = r.tabs.find((x) => x.tab === l.tab); if (t) showAppTab(t) }, (e) => notifyError(e, "Couldn't show the tab")) }
+  // (an agent's page in the background opens as a tab)
+  const show = () => {
+    if (!l.appTab) { const p = agentPage(l.tab); if (p) void openAsTab(p); return }
+    if (!selectTab(l.appTab)) void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => { const t = r.tabs.find((x) => x.tab === l.tab); if (t) showAppTab(t) }, (e) => notifyError(e, "Couldn't show the tab"))
+  }
   const [paused, choose] = useChosen(!!l.paused)
   const pause = () => choose(!paused, () => Promise.resolve(webPages?.engine?.("agents:pause", l.tab, !paused)), paused ? "Couldn't resume it" : "Couldn't pause it")
   return (
     <div className="flex min-w-0 overflow-hidden rounded-[8px] border-[0.5px] border-border bg-card" data-web-live={l.tab}>
-      <button type="button" onClick={show} aria-label={`Show ${l.title || hostOf(l.url)}`} disabled={!l.appTab}
+      <button type="button" onClick={show} aria-label={`Show ${l.title || hostOf(l.url)}`}
         className="relative block aspect-[16/10] w-[42%] max-w-[240px] shrink-0 cursor-pointer self-start overflow-hidden border-r-[0.5px] border-border bg-muted">
         {l.shot ? <img src={l.shot} alt="" className="size-full object-cover object-top" />
           : <Globe className="absolute top-1/2 left-1/2 size-7 -translate-1/2 text-tertiary" strokeWidth={1.5} />}
@@ -108,7 +113,7 @@ function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => vo
         {l.summary && <span className="line-clamp-2 text-[12px] text-muted-foreground">{l.summary}</span>}
         <span className="truncate text-[12px] text-tertiary">{l.asking ?? (l.step && l.at ? `${said(l.step)} · ${time(l.at)}` : hostOf(l.url))}</span>
         <div className="mt-auto flex flex-wrap items-center gap-1 pt-1.5">
-          <Button look="secondary" size="small" onClick={show} disabled={!l.appTab}>Show tab</Button>
+          <Button look="secondary" size="small" onClick={show}>{l.appTab ? "Show tab" : "Open as tab"}</Button>
           <Button look="quiet" size="small" onClick={pause} data-web-live-pause={paused ? "resume" : "pause"}>
             {paused ? <Play className="size-3.5" strokeWidth={2.25} /> : <Pause className="size-3.5" strokeWidth={2.25} />}{paused ? "Resume" : "Pause"}
           </Button>
@@ -164,7 +169,7 @@ function Replay({ run, live, back }: { run: string; live: boolean; back: () => v
         <div className="flex min-w-0 flex-1 flex-col items-center overflow-auto p-4">
           {s?.action === "run" && s.value && <pre className="mb-3 max-h-48 w-full overflow-auto rounded-[6px] bg-muted p-2 text-[12px]">{s.value}</pre>}
           {s?.shot ? <img src={s.shot} alt={said(s)} className="max-w-full rounded-[6px] shadow-sm ring-[0.5px] ring-border" />
-            : s ? <div className="flex flex-col items-center pt-16 text-center text-[13px] text-tertiary"><Globe className="mb-3 size-8" strokeWidth={1.5} />No picture of this step: the tab wasn't on screen.</div> : null}
+            : s ? <div className="flex flex-col items-center pt-16 text-center text-[13px] text-tertiary"><Globe className="mb-3 size-8" strokeWidth={1.5} />No picture of this step.</div> : null}
           {s && <p className="mt-2 max-w-full truncate text-[12px] text-tertiary">{s.title} · {s.url}</p>}
         </div>
       </div>

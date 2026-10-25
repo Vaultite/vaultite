@@ -209,8 +209,8 @@ export type AgentDef = { label: string; icon: LucideIcon; tint?: string
    *  something about a session goes when no terminal of the app runs it (the Inbox's events). */
   session?: string }
 
-/** A view's tab's mark (ViewDef `tabMark`): an icon a click on runs `run`, named by `label`. */
-export type TabMark = { icon: LucideIcon; label: string; run: () => void }
+/** A view's tab's mark (ViewDef `tabMark`): an icon a click on runs `run`, named by `label`, in `tint` (a CSS colour). */
+export type TabMark = { icon: LucideIcon; label: string; run: () => void; tint?: string }
 
 /** A kind of tab it opens that isn't a file (a terminal), desktop only. The tab's target is `view:<name>` or
  *  `view:<name>/<arg>` (arg: which one, e.g. a terminal session id); open one with openView (the plugin API). */
@@ -232,6 +232,9 @@ export type ViewDef = {
   iconTint?: (arg: string) => string | undefined
   /** A dot on its tab's icon (Badged's kinds): a coding agent at work, waiting for an answer, with one to read. */
   iconBadge?: (arg: string) => Dot
+  /** What it shows is on screen in another form (a browser tab's live view: the tab itself): news about it isn't
+   *  toasted. */
+  onScreen?: (arg: string) => boolean
   /** A colour its tab takes lightly while it's the active one, when the appearance setting `tabTint` is on (a web
    *  page's container). */
   tabTint?: (arg: string) => string | undefined

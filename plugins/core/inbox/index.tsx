@@ -2,7 +2,7 @@
 // tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef } from "react"
 import { AlarmClockOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
-import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, type Store } from "@vaultite"
+import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
@@ -12,10 +12,10 @@ import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
 
-/** The user is looking at what an agent's news is about (its session needs them): its terminal or session is the
- *  focused tab, in a window that's in front. (Not a message meant to be seen, `vau notify`'s: info, error.) */
+/** The user is looking at what an agent's news is about, in a window in front: its terminal or session is the focused
+ *  tab, or what it links to is on screen (a browser tab's ask). (Not a message meant to be seen: info, error.) */
 const watching = (e: InboxEvent) => (e.kind === "done" || e.kind === "waiting") && document.visibilityState === "visible" && document.hasFocus() &&
-  [targetOf(e), viewOf(e)].includes(focusedTarget())
+  ([targetOf(e), viewOf(e)].includes(focusedTarget()) || viewOnScreen(targetOf(e) ?? ""))
 
 /** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a session's answer, a
  *  day's learnings, a log). */
@@ -28,12 +28,12 @@ function toastText(e: InboxEvent) {
 function announce(e: InboxEvent, s: Settings) {
   if (getEvents().events.find((x) => x.id === e.id)?.read) return
   const to = targetOf(e)
-  if (s.toasts !== false) {
-    notify(toastText(e), {
-      id: `inbox-${e.id}`, kind: e.kind === "error" ? "error" : undefined,
-      action: to ? { label: "Open", run: () => openEvent(e) } : undefined,
-    })
+  // (an agent's news a moment later: what it's about may be opening on screen, a browser ask's tab)
+  const toast = () => {
+    if (s.toasts === false || watching(e) || getEvents().events.find((x) => x.id === e.id)?.read) return
+    notify(toastText(e), { id: `inbox-${e.id}`, kind: e.kind === "error" ? "error" : undefined, action: to ? { label: "Open", run: () => openEvent(e) } : undefined })
   }
+  if (e.kind === "done" || e.kind === "waiting") setTimeout(toast, 800); else toast()
   if (s.notifications !== false && !document.hasFocus()) systemNotify(e.title, e.preview || e.body || "")?.then((clicked) => { if (clicked) openEvent(e) })
 }
 

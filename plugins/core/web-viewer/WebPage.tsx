@@ -1,10 +1,10 @@
 // A web page in a tab: a slim bar over the desktop app's native page. While anything of the app covers the box, the
 // window goes over its pages and shows the live page through a hole (layers.ts).
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, Check, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
+import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
   VolumeX, X, type LucideIcon } from "lucide-react"
 import {
-  cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages, type MenuItem,
+  Button, cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages, type MenuItem,
   type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -18,7 +18,8 @@ import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
 import { Passkey } from "./Passkey"
-import { agentNews, bookmark, hasKeyboard, helpAsks, passkeyAsks, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
+import { bookmark, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown } from "./state"
+import { agentPages, doneAsk, pauseAgents, toBackground, working, WORKING_MS } from "./agentpages"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -197,6 +198,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (gone) return undefined
       const placed = await web.place(id, to && { x: to.left, y: to.top, width: to.width, height: to.height }).catch(() => undefined)
       at = placed?.shown === false ? null : to
+      setOnScreen(id, !!at)
       if (!gone) setHole(id, el, at)
       return placed
     }
@@ -269,6 +271,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       unpass()
       setCover(id, null)
       setHole(id, el, null)
+      setOnScreen(id, false)
     }
   }, [id, web, away])
   // (an error's note in the box: the page goes, and comes back with a retry)
@@ -304,6 +307,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <AddressBar url={state.url} current={tabArg} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} manage={manageContainers} />}
           trail={id > 0 && onWeb ? <ShieldsButton id={id} url={state.url} loading={state.loading} /> : null} />
+        {id > 0 && <AgentChip id={id} />}
         {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
         )}
@@ -321,7 +325,6 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           ...withSep(extensionItems(ext, at)),
         ]} />
       </div>
-      {id > 0 && <AgentBar web={web} id={id} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab)} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
@@ -330,55 +333,61 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         {locked && inside && <Locked name={inside.name} unlock={() => void Promise.resolve(web.engine?.("lock:unlock", profileIn(container), inside.name))
           .then((ok) => { if (ok === true) setLocked(false) }, (e) => notifyError(e, "Couldn't unlock it"))} />}
       </div>
+      {id > 0 && <AskCard id={id} />}
     </div>
   )
 }
 
-/** How long an agent's last step shows in the bar. */
-const NEWS_MS = 6000
-
-/** An agent at work in this tab: who and what it's doing, with Pause (its next steps are refused till Resume); or
- *  what it asked the user to do here, with Done. */
-function AgentBar({ web, id }: { web: WebPages; id: number }) {
-  const news = agentNews.use((m) => m.get(id))
-  const paused = pausedPages.use((s) => s.has(id))
-  const ask = helpAsks.use((m) => m.get(id))
+/** An agent at work in this tab, in its bar: who, what it's doing now, paused; its menu pauses agents here, or moves an
+ *  agent's own page back to the background. Never a bar of its own: the page doesn't move as agents come and go. */
+function AgentChip({ id }: { id: number }) {
+  const page = agentPages.use((l) => l.find((p) => p.id === id))
   const [, tick] = useState(0)
-  const fresh = !!news && Date.now() - news.at < NEWS_MS
+  const busy = !!page && working(page)
   useEffect(() => {
-    if (!fresh || !news) return
-    const t = setTimeout(() => tick((n) => n + 1), NEWS_MS - (Date.now() - news.at) + 50)
+    if (!busy || !page?.at) return
+    const t = setTimeout(() => tick((n) => n + 1), WORKING_MS - (Date.now() - page.at) + 50)
     return () => clearTimeout(t)
-  }, [fresh, news])
-  if (ask) {
-    const done = () => void Promise.resolve(web.engine?.("agents:helped", id)).catch((e) => notifyError(e, "Couldn't tell the agent"))
-    return (
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b-[0.5px] border-border px-3 text-[13px]" data-web-agent-ask
-        style={{ background: "color-mix(in srgb, var(--purple) 14%, transparent)" }}>
-        <Bot className="size-4 shrink-0" strokeWidth={2} style={{ color: "var(--purple)" }} />
-        <span className="min-w-0 flex-1 truncate"><span className="font-medium">{ask.by} needs you:</span> {ask.reason}</span>
-        <button type="button" onClick={done} data-web-agent-done
-          className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-2 text-[12px] font-medium hover:bg-foreground/[0.06]">
-          <Check className="size-3.5" strokeWidth={2.25} />
-          Done
-        </button>
-      </div>
-    )
-  }
-  if (!fresh && !paused) return null
-  const pause = (on: boolean) => void Promise.resolve(web.engine?.("agents:pause", id, on)).catch((e) => notifyError(e, "Couldn't pause it"))
+  }, [busy, page?.at])
+  if (!page) return null
+  const menu = (e: React.MouseEvent) => menuBelow(e, [
+    { label: page.paused ? "Resume agents in this tab" : "Pause agents in this tab", icon: page.paused ? Play : Pause, run: () => void pauseAgents(id, !page.paused) },
+    ...(page.own && page.tab ? [{ label: "Move to background", icon: MousePointer2, run: () => void toBackground(page) }] : []),
+    { label: "Show agents in the browser", icon: AppWindow, sep: true, run: () => openView("agent-runs", { newTab: true }) },
+  ])
+  const label = page.paused ? "Paused" : busy ? page.what : page.by
   return (
-    <div className="flex h-8 shrink-0 items-center gap-2 border-b-[0.5px] border-border px-3 text-[13px]" data-web-agent
-      style={{ background: "color-mix(in srgb, var(--purple) 9%, transparent)" }}>
-      <Bot className="size-4 shrink-0" strokeWidth={2} style={{ color: "var(--purple)" }} />
-      <span className="min-w-0 flex-1 truncate">
-        {paused ? "Agents are paused in this tab" : <><span className="font-medium">{news!.by}</span> <span className="text-muted-foreground">{news!.what}</span></>}
-      </span>
-      <button type="button" onClick={() => pause(!paused)} data-web-agent-pause={paused ? "resume" : "pause"}
-        className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-2 text-[12px] font-medium hover:bg-foreground/[0.06]">
-        {paused ? <Play className="size-3.5" strokeWidth={2.25} /> : <Pause className="size-3.5" strokeWidth={2.25} />}
-        {paused ? "Resume" : "Pause"}
-      </button>
+    <button type="button" onClick={menu} data-web-agent={page.paused ? "paused" : busy ? "working" : "idle"} aria-haspopup="menu"
+      data-tip={page.paused ? `Agents are paused in this tab` : `${page.by}${page.task ? `: ${page.task}` : ""}`}
+      className="ml-0.5 flex h-7 max-w-52 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[12px] hover:bg-foreground/[0.06]"
+      style={{ background: page.paused ? undefined : "color-mix(in srgb, var(--purple) 10%, transparent)" }}>
+      {page.paused ? <Pause className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} />
+        : <MousePointer2 className={cn("size-3.5 shrink-0", busy && "animate-pulse")} strokeWidth={2.25} style={{ color: "var(--purple)" }} />}
+      <span className={cn("min-w-0 truncate @max-xl/bar:hidden", page.paused && "text-muted-foreground")}>{label}</span>
+    </button>
+  )
+}
+
+/** What an agent asked the user to do in this tab (sign in, a check), with Done: a card at the tab's foot, under the page,
+ *  never over it (what's asked is on the page). */
+function AskCard({ id }: { id: number }) {
+  const page = agentPages.use((l) => l.find((p) => p.id === id && !!p.asking))
+  if (!page?.asking) return null
+  return (
+    <div className="@container/ask shrink-0 border-t-[0.5px] border-border px-3 py-2.5" data-web-agent-ask>
+      <div className="mx-auto flex max-w-[720px] animate-in items-center gap-3 rounded-[12px] px-3.5 py-3 shadow-md ring-1 duration-300 fade-in slide-in-from-bottom-2"
+        style={{ background: "color-mix(in srgb, var(--purple) 9%, var(--card))", ["--tw-ring-color" as string]: "color-mix(in srgb, var(--purple) 40%, transparent)" }}>
+        <span className="grid size-9 shrink-0 place-items-center rounded-full @max-sm/ask:hidden" style={{ background: "color-mix(in srgb, var(--purple) 18%, transparent)" }}>
+          <MousePointer2 className="size-[18px]" strokeWidth={2.25} style={{ color: "var(--purple)" }} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[12px] font-semibold" style={{ color: "var(--purple)" }}>{page.by} needs you</span>
+          <span className="line-clamp-4 text-[15px] leading-[20px] @max-sm/ask:text-[13px] @max-sm/ask:leading-[18px]" data-web-agent-reason>{page.asking}</span>
+        </span>
+        <Button look="primary" onClick={() => void doneAsk(id)} data-web-agent-done className="px-4">
+          <Check className="size-4" strokeWidth={2.5} />Done
+        </Button>
+      </div>
     </div>
   )
 }

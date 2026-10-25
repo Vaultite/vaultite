@@ -341,7 +341,7 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
         {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.mark && "@max-[80px]/tab:hidden", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
         <span className={cn("min-w-0 truncate", icons && "@max-[80px]/tab:hidden", active && focused ? "font-medium text-foreground" : active ? "font-medium text-muted-foreground" : "text-muted-foreground")}>{info.label}</span>
-        {info.mark && <IconAction action={info.mark} className="ml-auto @max-[80px]/tab:ml-0"><info.mark.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} /></IconAction>}
+        {info.mark && <IconAction action={info.mark} className="ml-auto @max-[80px]/tab:ml-0"><info.mark.icon className={cn("size-3.5 shrink-0", !info.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={info.mark.tint ? { color: info.mark.tint } : undefined} /></IconAction>}
       </button>
       {/* A pinned tab's pin, where the X goes: a click unpins it. */}
       {tab.pinned ? (

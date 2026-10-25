@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, tell, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, openInBackground, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 
 type Access = "none" | "read" | "act"
@@ -36,8 +36,18 @@ export function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
   if (need === "act" && filling.has(p.id)) throw new Error("the app is filling a login in this tab: try again in a moment")
   // (an extension's own page, Focus's blocked page and its ask for time among them, is the user's alone)
   if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("agents use web pages only, not an extension's or the app's")
+  used.set(p.id, Date.now())
+  void p.wake()
   return p
 }
+
+/** When agents last used each page: one in the background unused a while rests (draws nothing) till they're back. */
+const used = new Map<number, number>()
+const REST_MS = 60_000
+setInterval(() => {
+  const old = Date.now() - REST_MS
+  for (const p of allPages()) if (!p.resting() && (used.get(p.id) ?? 0) < old && !watched.has(p.id) && !asks.has(p.id)) p.rest()
+}, 15_000).unref()
 
 // ---------- snapshots ----------
 
@@ -197,18 +207,61 @@ async function describe(p: EnginePage, id: number) {
   return { tag: node.nodeName.toLowerCase(), attrs }
 }
 
-/** A dot where the agent clicks, so whoever watches sees it (drawn in a world of its own, never the page's). */
-const pointAt = (p: EnginePage, x: number, y: number) => p.wc.executeJavaScriptInIsolatedWorld(1010, [{ code: `(() => {
-  const d = document.createElement("div")
-  d.style.cssText = "position:fixed;z-index:2147483647;pointer-events:none;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;" +
-    "background:rgba(175,82,222,.35);border:2px solid rgb(175,82,222);transition:transform .5s,opacity .5s;left:${Math.round(x)}px;top:${Math.round(y)}px"
-  document.documentElement.append(d)
-  requestAnimationFrame(() => { d.style.transform = "scale(1.8)"; d.style.opacity = "0" })
-  setTimeout(() => d.remove(), 700)
-})()` }]).catch(() => {})
+// ---------- the agent's pointer: where it acts, its name, and a faint frame round the page while it's at work ----------
+
+/** Where each page's pointer last was, so a new document's starts there. */
+const pointers = new WeakMap<WebContents, { x: number; y: number }>()
+/** Pages someone watches live (live.ts): the pointer gets there before the agent acts, as on a page on screen. */
+const watched = new Set<number>()
+export const setWatched = (id: number, on: boolean) => { if (on) watched.add(id); else watched.delete(id) }
+const GLIDE_MS = 320
+// (in a world of its own and a closed shadow root: the page's scripts and styles never reach it)
+const POINTER = `(x, y, from, name, clicked) => {
+  let a = window.__vaultiteAgent
+  if (!a || !a.host.isConnected) {
+    const host = document.createElement("vaultite-agent")
+    host.style.cssText = "all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483647!important;display:block!important"
+    const root = host.attachShadow({ mode: "closed" })
+    root.innerHTML = \`<style>
+      .frame { position: fixed; inset: 0; box-shadow: inset 0 0 0 2px rgba(175,82,222,.5), inset 0 0 28px rgba(175,82,222,.22); opacity: 0; transition: opacity .4s }
+      .at { position: fixed; left: 0; top: 0; transition: transform ${GLIDE_MS}ms cubic-bezier(.3,.7,.2,1), opacity .4s; opacity: 0 }
+      svg { display: block; width: 22px; height: 22px; margin: -3px 0 0 -3px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)) }
+      .name { position: absolute; left: 16px; top: 19px; padding: 2px 6px; border-radius: 6px; background: rgb(175,82,222); color: #fff;
+        font: 500 11px/15px -apple-system, system-ui, sans-serif; white-space: nowrap; transition: opacity .4s }
+      .ring { position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgb(175,82,222); opacity: 0 }
+      .ring.go { animation: ring .5s ease-out }
+      @keyframes ring { from { transform: scale(.4); opacity: 1 } to { transform: scale(1.6); opacity: 0 } }
+      :host([data-on]) .frame, :host([data-on]) .at { opacity: 1 }
+      :host([data-quiet]) .name { opacity: 0 }
+    </style><div class="frame"></div><div class="at"><div class="ring"></div><svg viewBox="0 0 24 24"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z" fill="rgb(175,82,222)" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg><span class="name"></span></div>\`
+    document.documentElement.append(host)
+    a = window.__vaultiteAgent = { host, at: root.querySelector(".at"), ring: root.querySelector(".ring"), name: root.querySelector(".name"), off: 0, quiet: 0 }
+    a.at.style.transform = \`translate(\${from.x}px, \${from.y}px)\`
+    a.at.getBoundingClientRect()
+  }
+  a.name.textContent = name
+  a.host.setAttribute("data-on", "")
+  a.host.removeAttribute("data-quiet")
+  if (x !== null) a.at.style.transform = \`translate(\${x}px, \${y}px)\`
+  if (clicked) setTimeout(() => { a.ring.classList.remove("go"); a.ring.getBoundingClientRect(); a.ring.classList.add("go") }, ${GLIDE_MS})
+  clearTimeout(a.off); clearTimeout(a.quiet)
+  a.quiet = setTimeout(() => a.host.setAttribute("data-quiet", ""), 2500)
+  a.off = setTimeout(() => a.host.removeAttribute("data-on"), 6000)
+}`
+/** The agent's pointer to x, y (null: where it is, the page lit as at work), `clicked` with a ring; once there when the
+ *  page is seen (on screen or watched live), so the act follows it. */
+async function pointTo(p: EnginePage, who: string, x: number | null, y: number | null, clicked = false) {
+  const from = pointers.get(p.wc) ?? { x: 160, y: 120 }
+  if (x !== null && y !== null) pointers.set(p.wc, { x, y })
+  const args = [x === null ? null : Math.round(x), y === null ? null : Math.round(y), from, who || "Agent", clicked].map((v) => JSON.stringify(v)).join(", ")
+  await p.wc.executeJavaScriptInIsolatedWorld(1010, [{ code: `(${POINTER})(${args})` }]).catch(() => {})
+  if (x !== null && (p.visible() || watched.has(p.id))) await new Promise((r) => setTimeout(r, GLIDE_MS))
+}
+/** Who's acting in each page now (`actIn` sets it), for the pointer's name. */
+const actor = new WeakMap<WebContents, string>()
 
 async function click(p: EnginePage, x: number, y: number, count = 1) {
-  void pointAt(p, x, y)
+  await pointTo(p, actor.get(p.wc) ?? "", x, y, true)
   await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y })
   for (let i = 1; i <= count; i++) {
     await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: i })
@@ -262,7 +315,7 @@ async function step(p: EnginePage, a: Act) {
   switch (a.action) {
     case "click": case "dblclick": case "hover": {
       const n = await nodeOf(p, need(a.ref, "a ref"))
-      if (a.action === "hover") { void pointAt(p, n.x, n.y); await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x: n.x, y: n.y }) }
+      if (a.action === "hover") { await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x: n.x, y: n.y }) }
       else await click(p, n.x, n.y, a.action === "dblclick" ? 2 : 1)
       break
     }
@@ -278,7 +331,8 @@ async function step(p: EnginePage, a: Act) {
     case "press": {
       const key = String(need(a.key ?? a.value, "a key")).replace(/\s+/g, "")
       if (COPY.test(key) && heldNear(p)) throw new Error("no copying in a page the app filled a login in")
-      if (a.ref) { const n = await nodeOf(p, a.ref); await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {}) }
+      if (a.ref) { const n = await nodeOf(p, a.ref); await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y); await cdp(p.wc, "DOM.focus", { backendNodeId: n.id }).catch(() => {}) }
+      else await pointTo(p, actor.get(p.wc) ?? "", null, null)
       await press(p, key)
       break
     }
@@ -296,6 +350,7 @@ async function step(p: EnginePage, a: Act) {
       const want = String(need(a.value, "a value"))
       const d = await describe(p, n.id)
       if (d.tag !== "select") throw new Error("select is for a list (a <select>): click the option instead")
+      await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y, true)
       type DomNode = { nodeName: string; nodeValue?: string; children?: DomNode[] }
       const { node } = await cdp<{ node: DomNode }>(p.wc, "DOM.describeNode", { backendNodeId: n.id, depth: -1 })
       const textOf = (x: DomNode): string => (x.nodeValue ?? "") + (x.children ?? []).map(textOf).join("")
@@ -312,12 +367,14 @@ async function step(p: EnginePage, a: Act) {
       const n = await nodeOf(p, need(a.ref, "a ref"))
       const d = await describe(p, n.id)
       if (d.tag !== "input" || d.attrs.type !== "file") throw new Error("upload is for a file input (<input type=file>): its ref, from the snapshot")
+      await pointTo(p, actor.get(p.wc) ?? "", n.x, n.y, true)
       await cdp(p.wc, "DOM.setFileInputFiles", { backendNodeId: n.id, files: uploadFiles(a.files) })
       break
     }
     case "scroll": {
       const n = a.ref ? await nodeOf(p, a.ref) : null
       const dy = { up: -600, down: 600 }[String(a.direction ?? a.value ?? "down")] ?? 600
+      await pointTo(p, actor.get(p.wc) ?? "", n?.x ?? null, n?.y ?? null)
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x: n?.x ?? 400, y: n?.y ?? 300, deltaX: 0, deltaY: dy })
       break
     }
@@ -391,14 +448,16 @@ export async function record(p: EnginePage, asked: By, step: Record<string, unkn
   const by = { ...asked, task: asked.task || owner?.task, summary: asked.summary || (owner && sameAgent(owner, asked) ? owner.summary : undefined) }
   const run = runOf(by), t = Date.now()
   latest.set(p.id, { by, run, t, step })
+  changed(p.win)
   lastStep = t
   try {
     const dir = path.join(RUNS(), run)
     fs.mkdirSync(dir, { recursive: true })
     let shot = ""
-    // (no picture of a page showing a filled secret: the runs are files on this Mac)
-    if (p.visible() && !p.wc.isDestroyed() && !await exposed(p)) {
-      const img = await p.wc.capturePage().catch(() => null)
+    // (no picture of a page showing a filled secret: the runs are files on this Mac; an agent's page out of sight draws on)
+    if (!p.wc.isDestroyed() && !await exposed(p)) {
+      await p.wake()
+      const img = await p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
       if (img && !img.isEmpty()) {
         shot = `${t}.jpg`
         const { width } = img.getSize()
@@ -419,8 +478,37 @@ setTimeout(() => {
   } catch { /* none yet */ }
 }, 60_000).unref()
 
-/** Tell the window an agent is at work in a tab (its bar shows who and what, a moment). */
-export const acting = (p: EnginePage, by: By, what: string) => tell(p.win, { type: "engine:agent:acting", id: p.id, by: by.name || "An agent", what })
+/** What an agent is doing in each page now, and since when (the pages' list says it). */
+const doing = new Map<number, { what: string; at: number }>()
+/** An agent is at work in a page: who and what, for the pages' list and its pointer. */
+export const acting = (p: EnginePage, by: By, what: string) => {
+  actor.set(p.wc, by.name || "Agent")
+  doing.set(p.id, { what, at: Date.now() })
+  changed(p.win)
+}
+
+// ---------- the pages agents are at work in, told to their window as they change (its corner card, tabs) ----------
+
+type Shown = { id: number; tab: string; url: string; title: string; profile: string; by: string; task: string; summary: string; group: string
+  what: string; at: number | null; own: boolean; paused: boolean; asking: string | null }
+const atWork = (p: EnginePage, now = Date.now()) => owners.has(p.id) || (latest.get(p.id)?.t ?? 0) > now - LIVE_MS
+function pagesOf(win: EngineWindow): Shown[] {
+  return allPages().filter((p) => p.win === win && !p.wc.isDestroyed() && atWork(p)).map((p) => {
+    const by = owners.get(p.id) ?? latest.get(p.id)?.by ?? {}, d = doing.get(p.id)
+    return { id: p.id, tab: p.tab(), url: scrub(p.wc.getURL() || p.url), title: scrub(p.wc.getTitle()), profile: p.profile, by: by.name || "An agent",
+      task: by.task ?? "", summary: by.summary ?? "", group: groupOf(by), what: d?.what ?? "", at: d?.at ?? null, own: owners.has(p.id), paused: paused.has(p.id),
+      asking: asks.get(p.id)?.reason ?? null }
+  })
+}
+const soon = new Map<EngineWindow, ReturnType<typeof setTimeout>>()
+/** The window's list changed: told it a moment later, once for a burst. */
+function changed(win: EngineWindow) {
+  if (soon.has(win)) return
+  soon.set(win, setTimeout(() => { soon.delete(win); tell(win, { type: "engine:agent:pages", pages: pagesOf(win) }) }, 120))
+}
+// (a page's title and address show in the list as they change)
+eachPage((p) => { for (const ev of ["did-navigate", "page-title-updated"] as const) p.wc.on(ev as "did-navigate", () => { if (atWork(p)) changed(p.win) }) })
+handle("agents:pages", (win) => pagesOf(win))
 
 /** An element's name for the log ("Sign in"), from its ref. */
 async function nameOf(p: EnginePage, ref: unknown) {
@@ -447,18 +535,20 @@ export const byOf = (x: unknown): By => {
   return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300) }
 }
 
+const DOING: Record<string, string> = { click: "Clicking", dblclick: "Double-clicking", hover: "Pointing at", fill: "Filling", type: "Typing in",
+  press: "Pressing", check: "Checking", uncheck: "Unchecking", select: "Picking in", upload: "Uploading into", scroll: "Scrolling" }
 async function actIn(p: EnginePage, a: Act, who: By) {
   if (a.fields) {
     const fields = fieldsOf(a.fields)
     const kept = await Promise.all(fields.map(async (f) => ({ ref: f.ref, ...(await logged(p, f.ref, f.value)) })))
-    acting(p, who, `filling ${fields.length === 1 ? "a field" : `${fields.length} fields`}`)
+    acting(p, who, `Filling ${fields.length === 1 ? "a field" : `${fields.length} fields`}`)
     const r = await act(p, { ...a, action: "fill", fields })
     void record(p, who, { action: "form", fields: kept })
     return r
   }
   const files = a.action === "upload" && Array.isArray(a.files) ? (a.files as { name?: unknown }[]).map((f) => String(f?.name ?? "")).join(", ") : ""
   const kept = await logged(p, a.ref, files || (a.value ?? a.key ?? a.direction))
-  acting(p, who, `${a.action}${kept.name ? ` “${kept.name}”` : ""}`)
+  acting(p, who, `${DOING[a.action] ?? a.action}${kept.name ? ` “${kept.name}”` : ""}`)
   const r = await act(p, a)
   void record(p, who, { action: a.action, ref: a.ref, ...kept })
   return r
@@ -498,10 +588,11 @@ async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   }
 }
 
+const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return u } }
 async function navigateIn(p: EnginePage, to: unknown, who: By) {
   const was = p.wc.getURL(), t = String(to ?? "")
   if (!["back", "forward", "reload"].includes(t) && !/^https?:\/\//i.test(t)) throw new Error("an http(s) address, back, forward or reload")
-  acting(p, who, t === "back" ? "going back" : t === "forward" ? "going forward" : t === "reload" ? "reloading" : `opening ${t}`)
+  acting(p, who, t === "back" ? "Going back" : t === "forward" ? "Going forward" : t === "reload" ? "Reloading" : `Opening ${hostOf(t)}`)
   const h = p.wc.navigationHistory
   if (t === "back") { if (h.canGoBack()) h.goBack() } else if (t === "forward") { if (h.canGoForward()) h.goForward() }
   else if (t === "reload") p.wc.reload()
@@ -598,7 +689,7 @@ async function runIn(p: EnginePage, script: string, who: By) {
     void (fn ? fn(...(Array.isArray(m.args) ? m.args : [])) : Promise.reject(new Error(`no call ${String(m.name)}`)))
       .then((v) => answer(m.id, true, v), (err: Error) => answer(m.id, false, err.message))
   })
-  acting(p, who, "running a script")
+  acting(p, who, "Running a script")
   void record(p, who, { action: "run", value: script.slice(0, 2000) })
   let late = false, timer: NodeJS.Timeout | undefined
   try {
@@ -631,7 +722,7 @@ handle("agents:access", (_win, map, where) => {
 // The user did what an agent asked (the bar's Done, or the live view's), or the tab closed.
 export function helped(id: number) {
   if (!asks.delete(id)) return
-  for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:help", id, on: false })
+  for (const p of allPages()) if (p.id === id) { tell(p.win, { type: "engine:agent:help", id, on: false }); changed(p.win) }
   for (const done of helpWaits.get(id) ?? []) done()
   helpWaits.delete(id)
 }
@@ -639,24 +730,45 @@ handle("agents:helped", (_win, id) => helped(Number(id)))
 /** Agents paused in page `id` (the bar's Stop, or the live view's), or let go on. */
 export function setPaused(id: number, on: boolean) {
   if (on) paused.add(id); else paused.delete(id)
-  for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:paused", id: p.id, on })
+  for (const p of allPages()) if (p.id === id) changed(p.win)
 }
 handle("agents:pause", (_win, id, on) => setPaused(Number(id), !!on))
+/** An agent's page the user picked: into the app's tab `tab` (Open as tab), back to the background (""), or ended. */
+function agentPage(win: EngineWindow, id: unknown) {
+  const p = allPages().find((x) => x.id === Number(id) && x.win === win)
+  if (!p || p.wc.isDestroyed() || !atWork(p)) throw new Error("that page is gone")
+  return p
+}
+handle("agents:own", (win, id, tab) => {
+  const p = agentPage(win, id), to = typeof tab === "string" && /^[\w-]{1,64}$/.test(tab) ? tab : ""
+  if (to ? !!p.tab() : !owners.has(p.id)) throw new Error(to ? "that page is a tab already" : "only an agent's own page goes to the background")
+  p.own(to)
+  changed(win)
+})
+handle("agents:end", (win, id) => {
+  const p = agentPage(win, id)
+  if (!owners.has(p.id)) throw new Error("that page is the user's")
+  p.close()
+})
 /** The task page `id` was opened for by an agent ("" for the user's). */
 export const taskOf = (id: number) => owners.get(id)?.task ?? ""
 /** Whose page `id` is (an agent's, else the user's), whether agents are paused in it and what one asked the user there. */
 export const agentState = (id: number) => ({ by: owners.get(id) ?? null, paused: paused.has(id), ask: asks.get(id) ?? null })
+/** Each page's last small picture (agents:live). */
+const shots = new WeakMap<WebContents, string>()
 // The pages agents are at work in now, each with a small picture of it as it is.
 handle("agents:live", async () => {
   const now = Date.now()
   const live = allPages().filter((p) => !p.wc.isDestroyed() && (owners.has(p.id) || (latest.get(p.id)?.t ?? 0) > now - LIVE_MS))
   return Promise.all(live.map(async (p) => {
     const last = latest.get(p.id), by = last?.by ?? owners.get(p.id) ?? {}
-    const img = await p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
+    // (a resting page's last picture: it hasn't changed, and waking it to look would keep it from resting)
+    const img = p.resting() ? null : await p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
+    if (img && !img.isEmpty()) shots.set(p.wc, `data:image/jpeg;base64,${img.resize({ width: 640 }).toJPEG(65).toString("base64")}`)
     return {
       tab: p.id, appTab: p.tab(), by: by.name ?? "", task: by.task ?? "", summary: by.summary ?? "", url: p.wc.getURL(), title: p.wc.getTitle(),
       run: last?.run ?? null, at: last?.t ?? null, step: last?.step ?? null, paused: paused.has(p.id), asking: asks.get(p.id)?.reason ?? null,
-      shot: img && !img.isEmpty() ? `data:image/jpeg;base64,${img.resize({ width: 640 }).toJPEG(65).toString("base64")}` : null,
+      shot: shots.get(p.wc) ?? null,
     }
   }))
 })
@@ -710,20 +822,18 @@ serve("agent:open", async (win, url, container, by) => {
   const profile = container ? `c-${String(container)}` : home
   if (!profile) throw new Error("no container lets agents act: set one's Agents to Act (the container menu in a page's bar)")
   if (access.get(profile) !== "act" || !mayOpen(profile)) throw new Error(`agents may not act in ${container ? `the container ${String(container)}` : "that container"}`)
-  const before = Math.max(0, ...allPages().map((p) => p.id)), who = byOf(by)
-  tell(win, { type: "engine:agent:open", url: u, profile, by: who.name ?? "", group: groupOf(who) })
+  // (in the background of the vault's window: no tab of the user's; they see it in the status bar's agents, and open it
+  // as a tab if they want)
+  const who = byOf(by), p = await openInBackground(win, u, profile)
+  owners.set(p.id, who)
+  used.set(p.id, Date.now())
+  actor.set(p.wc, who.name || "Agent")
+  doing.set(p.id, { what: `Opening ${hostOf(u)}`, at: Date.now() })
+  changed(win)
   const until = Date.now() + 20_000
-  for (;;) {
-    const p = allPages().find((x) => x.id > before && x.profile === profile && x.url === u) ?? allPages().find((x) => x.profile === profile && x.wc.getURL() === u)
-    if (p) {
-      owners.set(p.id, who)
-      while (Date.now() < until && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
-      void record(p, who, { action: "open", value: u })
-      return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
-    }
-    if (Date.now() > until) throw new Error("the tab didn't open: is the vault's window open?")
-    await new Promise((r) => setTimeout(r, 150))
-  }
+  while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
+  void record(p, who, { action: "open", value: u })
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
 serve("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
 serve("agent:read", (_win, tab) => readIn(pageFor(tab, "read")))
@@ -731,7 +841,7 @@ serve("agent:close", async (_win, tab) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   if (!owners.has(p.id)) throw new Error("this tab is the user's: agents close only the tabs agents opened")
-  tell(p.win, { type: "engine:agent:close", id: p.id, tab: p.tab() })
+  if (p.tab()) tell(p.win, { type: "engine:agent:close", id: p.id, tab: p.tab() }); else p.close()
   const until = Date.now() + 5000
   while (Date.now() < until && !p.wc.isDestroyed()) await new Promise((r) => setTimeout(r, 100))
   if (!p.wc.isDestroyed()) throw new Error("the tab didn't close: is the vault's window open?")
@@ -741,6 +851,7 @@ serve("agent:close", async (_win, tab) => {
 const SHOT_WIDTH = 1280
 /** No picture of a page showing a secret the app filled (a revealed password, a one-time code in its field). */
 async function unexposed(p: EnginePage) {
+  await p.wake()
   if (await exposed(p)) throw new Error("the page shows a secret the app filled (a password shown, a one-time code): no picture of it now")
   return p
 }
@@ -777,7 +888,7 @@ serve("agent:evaluate", async (_win, tab, expression, by) => {
   if (await p.wc.executeJavaScriptInIsolatedWorld(1015, [{ code: PASSWORD_GIVEN }]).catch(() => true)) {
     throw new Error("evaluate is off in this page: a password field in it has something typed in it")
   }
-  acting(p, who, "running a script")
+  acting(p, who, "Running a script")
   // A world of its own: the DOM, never the page's scripts or their variables (nor they the agent's).
   const value = await Promise.race([p.wc.executeJavaScriptInIsolatedWorld(1013, [{ code }]),
     new Promise((_r, fail) => setTimeout(() => fail(new Error("the expression took over 30 s")), 30_000))])
@@ -793,7 +904,11 @@ serve("agent:help", (_win, tab, reason, by) => {
   if (!why) throw new Error("say what the user should do (sign in, solve the check)")
   const who = byOf(by)
   asks.set(p.id, { by: who.name || "An agent", reason: why })
-  tell(p.win, { type: "engine:agent:help", id: p.id, tab: p.tab(), by: who.name || "An agent", reason: why, on: true })
+  // (a page in the background opens as a tab, in the agent's tab group, where the user can do it)
+  const mine = owners.get(p.id) ?? who
+  tell(p.win, { type: "engine:agent:help", id: p.id, tab: p.tab(), by: who.name || "An agent", reason: why, on: true, url: p.wc.getURL() || p.url,
+    profile: p.profile, group: groupOf(mine) })
+  changed(p.win)
   void record(p, who, { action: "help", value: why })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
@@ -810,7 +925,12 @@ serve("agent:player", (_win, tab, on, fullScreen) => {
 serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act"), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
 
 // A page that ends isn't paused, anyone's, live or asking any more.
-eachPage((p) => p.wc.once("destroyed", () => { paused.delete(p.id); owners.delete(p.id); latest.delete(p.id); helped(p.id) }))
+eachPage((p) => p.wc.once("destroyed", () => {
+  const was = atWork(p)
+  helped(p.id)
+  paused.delete(p.id); owners.delete(p.id); latest.delete(p.id); doing.delete(p.id); watched.delete(p.id); used.delete(p.id)
+  if (was && appWindows().includes(p.win)) changed(p.win)
+}))
 // Files given to file inputs, a day on.
 setTimeout(() => {
   try {

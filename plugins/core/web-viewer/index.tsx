@@ -1,8 +1,8 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, KeyRound, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, isWindows, modKey, modifiedSteps, notify, notifyError, openInSet, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
+import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, isWindows, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
@@ -16,7 +16,9 @@ import { liveTitle, LiveView } from "./LiveView"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, pageTookKeyboard, passkeyAsks, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { bookmark, focusedPage, focusedPageId, linksInViewer, onScreen, pageTookKeyboard, passkeyAsks, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { agentPage, agentPageOfTab, agentPages, openAsTab, pauseAgents, setAgentPages, working, type AgentPage } from "./agentpages"
+import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
@@ -95,6 +97,10 @@ function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
 
 /** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events. */
 function Background() {
+  return <><Events /><AgentsCard /></>
+}
+
+function Events() {
   useEffect(() => void settings.ready(), [])
   useEffect(() => { if (hasExtensions()) extensionsChanged() }, [])
   useEffect(watchShields, [])
@@ -121,19 +127,20 @@ function Background() {
     const off = web.on((m) => { if (m.type === "state" || m.type === "pages") { clearTimeout(timer); timer = window.setTimeout(read, 250) } })
     return () => { off(); clearTimeout(timer) }
   }, [])
+  // The pages agents are at work in: as the desktop app tells them, and as they are when this window loads.
+  useEffect(() => { void Promise.resolve(webPages?.engine?.("agents:pages")).then((l) => { if (Array.isArray(l)) setAgentPages(l as AgentPage[]) }, () => {}) }, [])
   useEffect(() => webPages?.on((m) => {
     if (m.type === "state") shown.get(m.id)?.onState(m.state)
     else if (m.type === "open") openPage(m.url, shown.get(m.id)?.container ?? null)
-    // An agent's tab: beside the user's work, without taking the keyboard, in its task's tab group.
-    else if (m.type === "engine:agent:open" && typeof m.url === "string" && typeof m.profile === "string") {
-      const to = `view:web/${argOf(m.url, containerOfProfile(m.profile))}`
-      openInSet(to, typeof m.group === "string" ? m.group : "")
-    } else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
-    else if (m.type === "engine:agent:help" && typeof m.id === "number") {
-      const id = m.id, on = !!m.on
-      helpAsks.update((a) => { const next = new Map(a); if (on) next.set(id, { by: String(m.by ?? "An agent"), reason: String(m.reason ?? "") }); else next.delete(id); return next })
-      // (shown, so the user sees what's asked where it's asked)
-      if (on && typeof m.tab === "string" && m.tab) selectTab(m.tab)
+    else if (m.type === "engine:agent:pages" && Array.isArray(m.pages)) setAgentPages(m.pages as AgentPage[])
+    else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
+    // An agent asks: its page shown as a tab (opened as one from the background, in its agent's tab group), so the user
+    // does it where it's asked.
+    else if (m.type === "engine:agent:help" && typeof m.id === "number" && m.on) {
+      if (typeof m.tab === "string" && m.tab) selectTab(m.tab)
+      else if (typeof m.url === "string" && typeof m.profile === "string") {
+        void openAsTab({ id: m.id, tab: "", url: m.url, profile: m.profile, group: String(m.group ?? "") }, false)
+      }
     }
     // A page asked for a passkey: its QR code over it, the tab shown (a request in a hidden tab is refused, but the tab may
     // have gone behind since).
@@ -146,13 +153,6 @@ function Background() {
         return next
       })
       if (state === "scan" && typeof m.tab === "string" && m.tab) selectTab(m.tab)
-    }
-    else if (m.type === "engine:agent:acting" && typeof m.id === "number") {
-      const id = m.id
-      agentNews.update((n) => new Map(n).set(id, { by: String(m.by ?? "An agent"), what: String(m.what ?? ""), at: Date.now() }))
-    } else if (m.type === "engine:agent:paused" && typeof m.id === "number") {
-      const id = m.id, on = !!m.on
-      pausedPages.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
     }
     else if (m.type === "focus") { pageTookKeyboard(m.id); const s = shown.get(m.id); if (s) focusGroup(s.group) }
     else if (m.type === "address") shown.get(m.id)?.focusAddress()
@@ -213,9 +213,15 @@ export default definePlugin({
       render: ({ arg, focused, setArg }) => (
         <Suspense fallback={null}><WebPage key={splitArg(arg).container ?? ""} arg={arg} focused={focused} setArg={setArg} /></Suspense>
       ),
-      // (playing sound or muted: a speaker beside the site's icon, a click on it mutes the tab, as a browser's does)
+      // (an agent asking or at work in it: its pointer beside the site's icon, a click pausing it; else playing sound or
+      // muted: a speaker, a click on it mutes the tab, as a browser's does)
       tabMark: (arg, tab) => {
-        const s = soundOf(arg, tab)
+        const a = agentPageOfTab(tab), s = soundOf(arg, tab)
+        if (a?.asking) return { icon: Hand, label: `${a.by} needs you`, tint: "var(--purple)", run: () => {} }
+        if (a && (a.own || (working(a) && !s))) {
+          return { icon: MousePointer2, label: a.paused ? `${a.by}: paused here, click to resume` : `${a.by} is using this tab: click to pause`, tint: a.paused ? undefined : "var(--purple)",
+            run: () => void pauseAgents(a.id, !a.paused) }
+        }
         return s ? { icon: s.muted ? VolumeX : Volume2, label: s.muted ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.muted ? "unmute" : "mute") } : null
       },
       // (a page playing sound is in use, seen or not)
@@ -236,6 +242,8 @@ export default definePlugin({
     "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <AgentPasskeys /> },
     // (every machine's browser tabs, one watched live: `3`, or `3@m1` in another machine's browser)
     "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(arg) || "Browser tab" : "Browser tabs"), argState: true, full: true,
+      // (a page of this window's agents shown in its tab: an ask there needs no toast)
+      onScreen: (arg) => { const p = agentPage(Number(arg.split("@")[0])); return !!p && onScreen.get().has(p.id) },
       render: ({ arg, setArg }) => <LiveView arg={arg} setArg={setArg} /> },
     // (named web-pages from when it listed open pages too: kept, as sidebars and tabs name it)
     "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
@@ -259,6 +267,8 @@ export default definePlugin({
     { id: "web:live", name: "Show browser tabs", icon: MonitorPlay, run: () => openView("web-live", { newTab: !isViewOpen("view:web-live") }) },
     { id: "web:agent-runs", name: "Show agents in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
       run: () => openView("agent-runs", { newTab: !isViewOpen("view:agent-runs") }) },
+    { id: "web:agent-pages", name: "Show agents' pages", nameWhenOn: "Hide agents' pages", desktop: true, icon: MousePointer2,
+      when: () => agentPages.get().length > 0, on: agentsCardShown, run: () => showAgentsCard(!agentsCardShown()) },
     // (Windows sets the default browser only in its Settings, among browsers it knows)
     { id: "web:default-browser", name: "Make Vaultite the default browser", desktop: true, when: () => !!webPages?.engine && !isWindows, icon: Globe,
       run: () => void Promise.resolve(webPages?.engine?.("browser:make-default")).then((yes) => notify(yes ? "Vaultite is the default browser: links from other apps open here" : "Confirm it in the box macOS shows"), (e) => notifyError(e, "Couldn't make it the default browser")) },

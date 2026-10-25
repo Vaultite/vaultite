@@ -68,9 +68,10 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   `browser_evaluate`, `browser_ask_user`, `browser_login`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a
   machine: the app attaches to the always-on one there); a server without one passes each call to an always-on machine
   in Machines that has one (its tab numbers, its Downloads), never to a laptop's app, and says so when none has. `vau browser tabs` lists the tabs, whose each is
-  (yours, another agent's, the user's) and what agents may do in it; `vau browser open <url> --task "<task>"` opens one
-  for you beside the user's, in the Agents container (signed in to what the user signed in to there), in a tab group of
-  yours, `<you>/<task>` ("Claude Code/flight search"; `--summary` says what for), answering its number; `vau browser close <tab>` closes one an
+  (yours, another agent's, the user's) and what agents may do in it; `vau browser open <url> --task "<task>"` opens a
+  page for you in the background, in the Agents container (signed in to what the user signed in to there), answering
+  its number: no tab of the user's (they see it live in a card in the window's corner, and may open it as a tab, in a
+  tab group `<you>/<task>`: "Claude Code/flight search"; `--summary` says what for); `vau browser close <tab>` closes one an
   agent opened (never the user's). Then `vau browser snapshot <tab>` (the page as an accessibility tree, its controls
   with refs like e12), `vau browser act <tab> <action> <ref>` (click, dblclick, hover, fill/type with `--value`, press
   with `--key`, check, uncheck, select an option by its text, upload `--files` from the vault into a file input, scroll;
@@ -84,9 +85,14 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   the user can pause agents in a tab. Pages' scripts never run for agents, nor see what agents do:
   `vau browser evaluate <tab> "<expression>"` (Act only) runs in a world of its own, which sees the DOM, not the page's
   scripts. A site asking for a passkey shows a QR code in the tab for the user's phone. Where only the user can go on (a
-  sign-in, a passkey, a captcha), `vau browser ask <tab> "<what to do>"` brings the tab to the front with that and a
-  Done button in its bar, and tells their Inbox (their phone too); `vau browser wait <tab>
-  --helped` waits for Done. "Show agents in the browser": the tabs agents are at work in now, each a live picture with
+  sign-in, a passkey, a captcha), `vau browser ask <tab> "<what to do>"` opens the page as a tab, in front, with that
+  and a Done button in a card at its foot, and tells their Inbox (their phone too); `vau browser wait <tab>
+  --helped` waits for Done. While agents browse, a card in the window's corner (dragged to any
+  corner, as the mini player) has their pages out of sight, the picked one live with the agent's pointer moving in it
+  (its name beside it, a faint frame round the page): Open as tab, Pause, Close page; it closes till another page or an
+  ask. In a tab, an agent at work shows in the bar (what it's doing; its menu pauses it, or moves its own page back to
+  the background) and as its pointer on the tab. A page an agent left a minute rests (draws nothing) till it's back.
+  "Show agents in the browser": the tabs agents are at work in now, each a live picture with
   Show tab and Pause, then past runs searched by agent, task or summary; each agent's steps are kept on the Mac for 14
   days, with pictures, to replay (never what's typed into a password field).
 - Passwords for agents: agents log in without ever seeing a password. On the Mac whose browser agents use, an Agents

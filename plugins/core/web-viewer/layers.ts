@@ -24,7 +24,8 @@ export function setCover(id: number, c: Cover) {
 /** What the app draws over pages that says what it is: dialogs (the app's menus, sheets and boxes are), popovers, menus
  *  and lists. Found wherever they are, however small. */
 const POPUPS = "dialog[open], :popover-open, [role=menu], [role=listbox], [role=dialog], [role=alertdialog]"
-const NEVER = "[data-sonner-toaster], [data-under-pages], [data-status-bar]"
+// (a float takes the pointer only on itself, as a toast does: the agents' panel)
+const NEVER = "[data-sonner-toaster], [data-under-pages], [data-status-bar], [data-floats]"
 /** Whether a popup is open anywhere (a page isn't shown before what covers it is known). */
 export const popupOpen = () => [...document.querySelectorAll(POPUPS)].some((p) => p.getClientRects().length > 0)
 /** How far apart the hit tests along the page's edges are, and how many across its inside. */

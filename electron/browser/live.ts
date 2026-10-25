@@ -1,24 +1,26 @@
 // A page watched and driven by its owner from the app's web client (a phone, another Mac: plugins/core/web-viewer's
-// live routes, owner only, never ops): its frames pushed to the server while someone watches, their input made real.
+// live routes, owner only, never ops), or watched by the app's window (the agents' panel): its frames sent while watched.
 import type { NativeImage } from "electron"
-import { agentState, helped, press, setPaused } from "./agent.ts"
-import { allPages, busyWhen, cdp, eachPage, handle, mayOpen, tellServer, type EnginePage } from "./engine.ts"
+import { agentState, helped, press, setPaused, setWatched } from "./agent.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, handle, mayOpen, tell, tellServer, type EngineWindow, type EnginePage } from "./engine.ts"
 
-/** At most this many frames a second reach the server, at most this big (device pixels). */
-const FPS = 8
+/** At most this many frames a second reach the server (a window here: LOCAL_FPS), at most this big (device pixels). */
+const FPS = 8, LOCAL_FPS = 15
 const MAX_W = 1280, MAX_H = 1600
 /** A watch the server stopped renewing (it went away) ends after this. */
 const RENEW_MS = 30_000
 /** Without a frame this long (a hidden page doesn't paint, a still one sends none), the page is drawn for it. */
 const STILL_MS = 1000
 
-/** `cast` and `drawn`: the last frame each way (a drawing makes the page paint a frame too: each is sent once). */
+/** `cast` and `drawn`: the last frame each way (a drawing makes the page paint a frame too: each is sent once). `by`: who
+ *  watches, the server (SERVER) or a window by its id, and when each last renewed. */
 type Watch = { p: EnginePage; css: { w: number; h: number }; frame: string; cast: string; drawn: string; sent: number; checked: number
   trailing: ReturnType<typeof setTimeout> | null
-  tick: ReturnType<typeof setInterval>; renewed: number; state: string; onMessage: (...a: unknown[]) => void }
+  tick: ReturnType<typeof setInterval>; by: Map<number, number>; state: string; onMessage: (...a: unknown[]) => void }
 const watches = new Map<number, Watch>()
+const SERVER = 0
 // (an update's restart waits while the user watches or drives a tab from another device)
-busyWhen(() => watches.size ? "the user is watching a tab live" : null)
+busyWhen(() => [...watches.values()].some((w) => w.by.has(SERVER)) ? "the user is watching a tab live" : null)
 const opened = new Map<number, number>()
 const queues = new Map<number, Promise<unknown>>()
 eachPage((p) => {
@@ -45,11 +47,13 @@ function stateOf(p: EnginePage) {
 function send(w: Watch, jpeg: string) {
   w.frame = jpeg
   w.sent = Date.now()
-  tellServer(w.p.win, "live:frame", { tab: w.p.id, jpeg, w: w.css.w, h: w.css.h })
+  const frame = { tab: w.p.id, jpeg, w: w.css.w, h: w.css.h }
+  if (w.by.has(SERVER)) tellServer(w.p.win, "live:frame", frame)
+  for (const win of appWindows()) if (w.by.has(win.id)) tell(win, { type: "engine:live:frame", ...frame })
 }
 /** A frame, throttled: one coming too soon waits, the newest replacing it, so the last one always arrives. */
 function offer(w: Watch, jpeg: string) {
-  const wait = w.sent + 1000 / FPS - Date.now()
+  const wait = w.sent + 1000 / ([...w.by.keys()].some((k) => k !== SERVER) ? LOCAL_FPS : FPS) - Date.now()
   if (wait <= 0 && !w.trailing) return send(w, jpeg)
   w.frame = jpeg
   w.trailing ??= setTimeout(() => { w.trailing = null; if (watches.get(w.p.id) === w) send(w, w.frame) }, Math.max(0, wait))
@@ -66,7 +70,7 @@ const jpegOf = (img: NativeImage) => {
 }
 
 async function start(p: EnginePage) {
-  const w: Watch = { p, css: { w: 0, h: 0 }, frame: "", cast: "", drawn: "", sent: 0, checked: 0, trailing: null, renewed: Date.now(), state: "", tick: setInterval(() => void tick(w), 700),
+  const w: Watch = { p, css: { w: 0, h: 0 }, frame: "", cast: "", drawn: "", sent: 0, checked: 0, trailing: null, by: new Map(), state: "", tick: setInterval(() => void tick(w), 700),
     onMessage: (_e, method, params) => {
       if (method !== "Page.screencastFrame") return
       const f = params as { data: string; sessionId: number; metadata: { deviceWidth: number; deviceHeight: number } }
@@ -75,7 +79,9 @@ async function start(p: EnginePage) {
       if (f.data !== w.cast) offer(w, (w.cast = f.data))
     } }
   watches.set(p.id, w)
+  setWatched(p.id, true)
   try {
+    await p.wake()
     await measure(w)
     p.wc.debugger.on("message", w.onMessage as never)
     await cdp(p.wc, "Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: MAX_W, maxHeight: MAX_H })
@@ -95,9 +101,10 @@ async function still(w: Watch) {
 }
 
 async function tick(w: Watch) {
-  if (w.p.wc.isDestroyed() || Date.now() - w.renewed > RENEW_MS) return stop(w.p.id)
+  for (const [k, at] of w.by) if (Date.now() - at > RENEW_MS) w.by.delete(k)
+  if (w.p.wc.isDestroyed() || !w.by.size) return stop(w.p.id)
   const s = JSON.stringify(stateOf(w.p))
-  if (s !== w.state) { w.state = s; tellServer(w.p.win, "live:state", JSON.parse(s)) }
+  if (s !== w.state) { w.state = s; if (w.by.has(SERVER)) tellServer(w.p.win, "live:state", JSON.parse(s)) }
   if (Date.now() - Math.max(w.sent, w.checked) > STILL_MS) await still(w)
 }
 
@@ -105,9 +112,10 @@ function stop(id: number, gone = false) {
   const w = watches.get(id)
   if (!w) return
   watches.delete(id)
+  setWatched(id, false)
   clearInterval(w.tick)
   if (w.trailing) clearTimeout(w.trailing)
-  if (gone) tellServer(w.p.win, "live:gone", { tab: id })
+  if (gone && w.by.has(SERVER)) tellServer(w.p.win, "live:gone", { tab: id })
   if (w.p.wc.isDestroyed()) return
   w.p.wc.debugger.removeListener("message", w.onMessage as never)
   void cdp(w.p.wc, "Page.stopScreencast").catch(() => {})
@@ -173,13 +181,32 @@ function entryOf(p: EnginePage) {
 }
 handle("agent:live:tabs", () => allPages().filter((p) => !p.wc.isDestroyed() && /^https?:/i.test(p.wc.getURL() || p.url) && mayOpen(p.profile)).map(entryOf))
 // (renewed by the server while anyone watches: what it answers is the page now, its last frame among it)
+/** Page `p` watched by `who` (SERVER, or a window's id) from now, renewed within RENEW_MS. */
+async function watch(p: EnginePage, who: number) {
+  const w = watches.get(p.id) ?? await start(p)
+  w.by.set(who, Date.now())
+  return w
+}
+function unwatch(id: number, who: number) {
+  const w = watches.get(id)
+  if (!w) return
+  w.by.delete(who)
+  if (!w.by.size) stop(id)
+}
 handle("agent:live:watch", async (_win, tab) => {
   const p = pageOf(tab)
-  const w = watches.get(p.id) ?? await start(p)
-  w.renewed = Date.now()
+  const w = await watch(p, SERVER)
   return { ...entryOf(p), frame: w.frame }
 })
-handle("agent:live:unwatch", (_win, tab) => stop(Number(tab)))
+handle("agent:live:unwatch", (_win, tab) => unwatch(Number(tab), SERVER))
+// The app's window watching a page of its own (the agents' panel): frames come as engine:live:frame, renewed as here.
+handle("agents:watch", async (win: EngineWindow, tab) => {
+  const p = pageOf(tab)
+  if (p.win !== win) throw new Error("that page is another window's")
+  const w = await watch(p, win.id)
+  return { frame: w.frame, w: w.css.w, h: w.css.h }
+})
+handle("agents:unwatch", (win: EngineWindow, tab) => unwatch(Number(tab), win.id))
 handle("agent:live:input", (_win, tab, e) => {
   const p = pageOf(tab)
   return queued(p.id, () => input(p, (e && typeof e === "object" ? e : {}) as Input)).then(() => null)

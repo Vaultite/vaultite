@@ -31,7 +31,14 @@ export type EnginePage = { id: number; wc: WebContents; profile: string; win: En
   /** Into a window of its own to watch it in (`fullScreen`: on a Space of its own), or back in its tab. */
   player: (on: boolean, fullScreen: boolean) => void
   /** The app's tab it's for ("": none). */
-  tab: () => string }
+  tab: () => string
+  /** Give it to the app's tab `tab` (opened as a tab), or to the background ("": an agent's, with no tab). */
+  own: (tab: string) => void
+  /** End it, as closing its tab would. */
+  close: () => void
+  /** An agent's page in the background: resting (hidden, throttled: it draws nothing) after a while unused, woken (its
+   *  next frame drawn, when the promise settles) for whatever needs it. Others are always awake. */
+  rest: () => void; wake: () => Promise<void>; resting: () => boolean }
 type PageSetup = (p: EnginePage) => void
 
 const sessionSetups: SessionSetup[] = []
@@ -189,6 +196,12 @@ export const engineOpens = (url: string) => openers.some((fn) => { try { return 
 
 /** Every open page. */
 export const allPages = () => [...pages.values()]
+
+type Opener = (win: EngineWindow, url: string, profile: string) => Promise<EnginePage>
+let opener: Opener = () => Promise.reject(new Error("no pages here"))
+/** How a page opens with no tab, in the background (web.ts hands it): an agent's. */
+export const setOpener = (fn: Opener) => { opener = fn }
+export const openInBackground: Opener = (...a) => opener(...a)
 
 // ---------- talking with the app ----------
 

@@ -818,7 +818,7 @@ function safeView(name: string, def: ViewDef): ViewDef {
     try { return f(arg) } catch (e) { console.error(`view ${name}`, e); return or }
   })
   safe = { ...def, title: guard(def.title, name)!, iconFor: guard(def.iconFor, def.icon), iconClass: guard(def.iconClass, undefined),
-    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), tabTint: guard(def.tabTint, undefined), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null), opensBeside: guard(def.opensBeside, null) }
+    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), tabTint: guard(def.tabTint, undefined), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null), opensBeside: guard(def.opensBeside, null), onScreen: guard(def.onScreen, false) }
   safeViews.set(def, safe)
   return safe
 }
@@ -868,6 +868,9 @@ export function viewSurfaces(disabled = getPrefs().disabled): { key: string; lab
     return []
   })
 }
+
+/** Whether what a view target shows is on screen in another form (its view's `onScreen`). */
+export const viewOnScreen = (target: string, disabled = getPrefs().disabled) => { const v = viewFor(target, disabled); return !!v?.on && !!v.def.onScreen?.(v.arg) }
 
 /** Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show). */
 export const viewShown = (target: string, disabled = getPrefs().disabled) => !!viewFor(target, disabled)?.on

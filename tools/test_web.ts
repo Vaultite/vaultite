@@ -1025,6 +1025,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   two([A], [C], "gL"); ts.openInSet("view:web/https://z.test/", "Agent/other")
   check("agent tabs: the first of a task goes beside the user's pane, in a new group of its name, the focus staying",
     runs() === `a | c,${ws.groups()[1].tabs[1].id}(Agent/other)` && ws.getWorkspace().focus === "gL", runs())
+  two([A], [C], "gL"); const here = ts.openInSet("view:web/https://h.test/", "Agent/here", true)
+  check("agent pages opened as a tab by the user: in their pane, after its tab, in a new group, shown",
+    runs() === `a,${here}(Agent/here) | c` && ws.groups()[0].active === here && shares() === "0.50,0.50", runs())
   const WB = { id: "wb", to: "view:web/" }
   two([A], [WB], "gL"); ws.goAnother("view:web/")
   check("new web page: a tab of its own in the focused pane, though another pane has a blank page", tabs() === "file:a.md,view:web/ * | view:web/", tabs())
@@ -1086,7 +1089,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------
 {
   const wp = await import("../electron/webpages.ts")
-  type P = { id: number; win: string; tab: string; profile: string; holds: number; closing: boolean; let: number; orphan?: number }
+  type P = { id: number; win: string; tab: string; profile: string; holds: number; closing: boolean; let: number; orphan?: number; agent?: boolean }
   let n = 0
   const page = (tab: string, o: Partial<P> = {}): P => ({ id: ++n, win: "w", tab, profile: "", holds: 1, closing: false, let: 0, ...o })
   const a = page("t1"), b = page("t2")
@@ -1108,8 +1111,12 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const ended = wp.windowReloaded([r1, r2, r3], "w", 1000)
   check("pages: a window reloading: tabs' pages wait to be taken back, the rest end", ended.length === 2 && r1.orphan === 1000 && r1.holds === 0, ended)
   check("pages: one not taken back in time ends", !wp.unclaimed([r1], 1000 + wp.RECLAIM_MS - 1).length && wp.unclaimed([r1], 1000 + wp.RECLAIM_MS)[0] === r1)
+  const mine = page("", { agent: true, holds: 0 })
+  check("pages: an agent's in the background stays through a window reload, never orphaned", !wp.windowReloaded([mine], "w", 1000).length && mine.orphan === undefined)
+  mine.holds = 1
+  check("pages: an agent's peeked and let go of stays; opened as a tab, it's that tab's", !wp.letGo(mine, 2) && (mine.tab = "t9", mine.agent = false, wp.claim([mine], "w", "t9", "").reuse === mine))
   const bg = Array.from({ length: wp.KEEP + 3 }, (_, i) => page(`b${i}`, { holds: 0, let: i }))
-  const out = wp.discardable([...bg, page("x")], (p: P) => p.tab === "b0")
+  const out = wp.discardable([...bg, page("x"), page("", { agent: true, holds: 0, let: -1 })], (p: P) => p.tab === "b0")
   check("pages: short of memory, the longest in the background are discarded, never shown or playing ones",
     out.map((p: P) => p.tab).join() === "b2,b1", out.map((p: P) => p.tab))
 

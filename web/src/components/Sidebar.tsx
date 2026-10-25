@@ -369,7 +369,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
         <Icon className={cn("size-4 shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
       </Badged>}
       {/* (on the left, where hovering the row doesn't move it: the … and X come in on the right) */}
-      {open && mark && <IconAction action={mark} className="-ml-1"><mark.icon className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2.25} /></IconAction>}
+      {open && mark && <IconAction action={mark} className="-ml-1"><mark.icon className={cn("size-3.5 shrink-0", !mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={mark.tint ? { color: mark.tint } : undefined} /></IconAction>}
       <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>
       {open && children}
       {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}

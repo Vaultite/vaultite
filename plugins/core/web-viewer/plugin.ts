@@ -72,10 +72,10 @@ plugin.op({
   id: "web-viewer.open",
   cli: "browser open",
   mcp: "browser_open",
-  summary: "Open a web page in a new tab of the desktop app, beside the user's work, for you to read and act in.",
+  summary: "Open a web page in the desktop app's browser, in the background (no tab of the user's), for you to read and act in.",
   help: `It opens in the container meant for agents (or the one you name, if agents may act there), signed in to what the
-user signed in to there, in a tab group of yours (<you>/<task>). The user sees it and what you do in it. Answers its tab
-number. summary says what you're doing, for the user watching agents at work ("Show agents in the browser") and
+user signed in to there, in the background: the user watches it live in a corner of their window, and may open it as a
+tab (in a tab group of yours, <you>/<task>). Answers its tab number. summary says what you're doing, for the user watching agents at work ("Show agents in the browser") and
 searching past runs. Close it when you're done with it, unless the user would want to see it.
 
   vau browser open https://example.com --task "order status" --summary "Checking where order 1042 is"
@@ -398,9 +398,9 @@ plugin.op({
   id: "web-viewer.ask",
   cli: "browser ask",
   mcp: "browser_ask_user",
-  summary: "Ask the user to do something in a tab you can't (sign in, a captcha, a passkey): shown in its bar, and in their Inbox.",
-  help: `The tab comes to the front with what you asked in its bar and a Done button, and the user hears of it (the Inbox,
-their phone). Then wait for their Done with browser wait --helped (a minute at a time), or for what the page shows once
+  summary: "Ask the user to do something in a tab you can't (sign in, a captcha, a passkey): shown on it, and in their Inbox.",
+  help: `The page opens as a tab, in front, with what you asked and a Done button in a card at its foot, and the user hears
+of it (the Inbox, their phone). Then wait for their Done with browser wait --helped (a minute at a time), or for what the page shows once
 they did it (--text, --url). Never ask for their password: they type it themselves, or you log in with browser login.
 
   vau browser ask 3 "Sign in to your bank, then click Done"
@@ -416,7 +416,7 @@ they did it (--text, --url). Never ask for their password: they type it themselv
       body: `${String(p.reason).slice(0, 300)} (${r.title || r.url})`, link: `view:web-live/${r.tab}${on ? `@${on}` : ""}` })
     return r
   },
-  text: (r: Page) => `Asked the user in tab ${r.tab} (its bar, and their Inbox). Wait for their Done: browser wait ${r.tab} --helped`,
+  text: (r: Page) => `Asked the user in tab ${r.tab} (on the tab, and their Inbox). Wait for their Done: browser wait ${r.tab} --helped`,
   did: (p) => ({ action: "run", text: `Asked for help in browser tab ${String(p.tab)}: ${String(p.reason).slice(0, 80)}` }),
 })
 

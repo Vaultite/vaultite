@@ -1,12 +1,12 @@
 // Agents in the desktop app's browser (Electron), end to end on a throwaway vault, against a made-up site this script
-// serves on 127.0.0.1: through the browser ops (POST /api/ops/web-viewer.*), an agent opens a tab (in the Agents
-// container, in a pane beside the user's), snapshots it, fills a form and submits it with real input, reads the result
+// serves on 127.0.0.1: through the browser ops (POST /api/ops/web-viewer.*), an agent opens a page (in the Agents
+// container, in the background: no tab of the user's), snapshots it, fills a form and submits it with real input, reads the result
 // and takes a screenshot; it can't use a tab in Personal (no access), nor one the user paused; its steps can be replayed.
 // Each act answers what it changed (refs lasting), a whole form fills in one call, a script runs a flow in one call in a
 // sandbox (no network, 30 s), a page saves as a PDF, and the cockpit shows the tab live (Pause) and finds past runs.
-// Then as Claude Code over MCP (vau mcp, plugins/core/mcp/cli.ts): its tabs grouped by task and marked its own, a
+// Then as Claude Code over MCP (vau mcp, plugins/core/mcp/cli.ts): its pages named by task and marked its own, a
 // form filled, a file uploaded and one downloaded, the page searched, a picture, an expression in its own world, the
-// user asked for help (Done in the bar), its tab closed; and a server on another machine with no desktop app
+// user asked for help (its page opens as a tab, Done on its card), its tab closed; and a server on another machine with no desktop app
 // (plugins/core/machines/plugin.ts) isn't answered by this app's, a laptop's (web/qa/attach.mjs: an always-on one's is).
 // WRITES: the throwaway vault only.
 //   node web/qa/agents.mjs <vault copy>
@@ -89,8 +89,8 @@ await wait(2000) // (the app tells the desktop app what agents may do as it star
 const opened = await op("open", { url: `${SITE}/form` })
 check("an agent opens a tab: its number", typeof opened?.tab === "number", opened)
 await wait(1500)
-const panes = await win.locator("[data-pane]").count()
-check("… in a pane beside the user's", panes >= 2, panes)
+const pages = await win.locator("[data-web-page]").count()
+check("… in the background, with no tab of the user's", pages === 0, pages)
 const tabs = await op("tabs")
 check("tabs lists it, in Agents, with act", Array.isArray(tabs) && tabs.some((t) => t.tab === opened.tab && t.container === "agents" && t.access === "act"), tabs)
 const snap = await op("snapshot", { tab: opened.tab })
@@ -109,7 +109,7 @@ const read = await op("read", { tab: opened.tab })
 check("read: what the form sent", /Hello Alice, subscribed, Large/.test(read?.text ?? ""), read)
 const shot = await op("screenshot", { tab: opened.tab })
 check("a screenshot, as a PNG file", typeof shot?.path === "string" && fs.existsSync(shot.path) && fs.readFileSync(shot.path).subarray(1, 4).toString() === "PNG", shot)
-check("the bar says an agent is at work", await until(async () => (await win.locator("[data-web-agent]:visible").count()) === 1, 5000), null)
+check("the corner card says an agent is at work", await until(async () => (await win.locator("[data-agents-card]:visible").count()) === 1, 5000), null)
 
 // ---------- what agents may not do ----------
 await ui({ action: "open", path: `view:web/@personal/${SITE}/form?mine`, newTab: true })
@@ -239,12 +239,12 @@ const t1 = Number(/^Tab (\d+)/.exec(text(o1))?.[1])
 const o2 = await mcp.tool("browser_open", { url: `${SITE}/upload`, task: "form test" })
 const t2 = Number(/^Tab (\d+)/.exec(text(o2))?.[1])
 check("MCP: browser_open answers its tab, each time", !o1.isError && t1 > 0 && !o2.isError && t2 > t1, [text(o1), text(o2)])
-const groups = await until(async () => {
-  const r = await fetch(`${origin}/api/ops/tabs.list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((x) => x.json())
-  const g = r.panes?.flatMap((p) => p.groups).find((x) => x.name === "Claude Code/form test")
-  return g?.tabs === 2 ? g : null
+const named = await until(async () => {
+  const l = await win.evaluate(() => window.vaultite.web.engine("agents:pages"))
+  const mine = l.filter((p) => p.group === "Claude Code/form test" && !p.tab)
+  return mine.length === 2 ? mine : null
 }, 5000)
-check("MCP: its two tabs in one tab group, Claude Code/form test", !!groups, groups)
+check("MCP: its two pages in the background, named Claude Code/form test (their tab group if opened as tabs)", !!named, named)
 const listed = text(await mcp.tool("browser_tabs", { task: "form test" }))
 check("MCP: browser_tabs marks them its own, the user's as theirs", listed.split("\n").filter((l) => /\(yours\)$/.test(l)).length === 2 && /\(the user's\)/.test(listed), listed)
 const snap2 = text(await mcp.tool("browser_snapshot", { tab: t1 }))
@@ -269,13 +269,13 @@ const linkRef = /link "The log book" \[ref=(e\d+)\]/.exec(text(await mcp.tool("b
 const dl = text(await mcp.tool("browser_act", { tab: t2, action: "click", ref: linkRef }))
 check("MCP: a click that downloads says where it went", dl.includes(`Downloaded log book.txt to ${path.join(DOWNLOADS, "log book.txt")}`), dl)
 const asked = await mcp.tool("browser_ask_user", { tab: t1, reason: "Sign in to the made-up site" })
-check("MCP: asking the user: its bar says so", !asked.isError && await until(async () => /Claude Code needs you:\s*Sign in to the made-up site/.test(await win.locator("[data-web-agent-ask]").innerText().catch(() => "")), 5000), text(asked))
+check("MCP: asking the user: its page opens as a tab, a card saying so", !asked.isError && await until(async () => /Claude Code needs you\s*Sign in to the made-up site/.test(await win.locator(`[data-web-page="${t1}"] [data-web-agent-ask]`).innerText().catch(() => "")), 8000), text(asked))
 const events = await fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.json())
 check("… and the Inbox", events.events?.some((e) => e.source === "browser" && e.kind === "waiting" && /Sign in/.test(e.body)), events.events?.slice(0, 3))
 const waited2 = mcp.tool("browser_wait", { tab: t1, helped: true, timeout: 20 })
 await wait(500)
 const t0 = Date.now()
-await win.locator("[data-web-agent-done]").click()
+await win.locator("[data-web-agent-done]").dispatchEvent("click") // (a toast of the playground's may be over the corner)
 const w2 = await waited2
 check("… its Done ends the agent's wait at once", !w2.isError && Date.now() - t0 < 3000, [text(w2), Date.now() - t0])
 const after = await fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.json())
