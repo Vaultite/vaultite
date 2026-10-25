@@ -11,6 +11,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   brings the same page into your tabs, and the agent chip in its bar sends it back. An agent asking you opens its page
   as a tab with a card at its foot and a large Done, instead of a thin bar; the bar's agent status no longer moves the
   page as it comes and goes, and an ask in front of you no longer also toasts.
+- **Hold the inbox**: `vau inbox hold 30m --label "Practice guitar"` (or 07:30, off) keeps toasts and the Mac's and the
+  phone's notifications quiet on every machine, with a muted bell in the status bar; when it ends, one line says what
+  came meanwhile. Plugins add their own items to the agenda (`agenda:items`), like a focus block.
 - **A link's own menu**: right-clicking a link in a note (reading or editing), a table, a callout or a timeline offers
   Open link or Open in new tab (and to the right), Copy link, Copy link text, Copy email address for a mailto:, the
   file's actions for a [[link]], and Edit link and Remove link while editing. Drawn Markdown's selected text has Copy.

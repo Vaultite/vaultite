@@ -791,5 +791,22 @@ export default async ($: VaultTest) => {
     ;[, l] = await api("GET", "inbox/events")
     e = l.events.find((x: Any) => x.id === ev.event.id)
     check("inbox events snooze: marked unread, it's back", e.read === false && !e.snoozed, e)
+
+    const nine = new Date(2026, 9, 20, 9, 0)
+    check("snooze: a time alone is its next one", parseUntil("07:30", nine)?.getTime() === new Date(2026, 9, 21, 7, 30).getTime() &&
+      parseUntil("9:45", nine)?.getTime() === new Date(2026, 9, 20, 9, 45).getTime() && parseUntil("25:00", nine) === null)
+    cr = await vau("inbox", "hold", "30m", "--label", "Practice guitar")
+    check("vau inbox hold: held till then, in the vault", cr.code === 0 && /Held until .*\(Practice guitar\)/.test(cr.out) &&
+      /"label": "Practice guitar"/.test(read(".vaultite/plugins/inbox/hold.json")), [cr, exists(".vaultite/plugins/inbox/hold.json")])
+    const [, held] = await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Told while held" })
+    ;[, l] = await api("GET", "inbox/events")
+    check("inbox hold: what comes is kept unread, not told", held.event.read !== true && !held.event.nt && l.hold?.label === "Practice guitar", [held, l.hold])
+    cr = await vau("inbox", "hold", "off")
+    await wake()
+    ;[, l] = await api("GET", "inbox/events")
+    const sum = l.events.find((x: Any) => x.source === "inbox" && /^During Practice guitar: \d+ new/.test(x.title))
+    check("inbox hold off: one line of what came, told", cr.code === 0 && !l.hold && sum && sum.nt === sum.t, [cr, l.hold, l.events.slice(0, 3)])
+    cr = await vau("inbox", "hold", "yesterday-ish")
+    check("vau inbox hold: a time it can't read is refused", cr.code !== 0, cr)
   }
 }

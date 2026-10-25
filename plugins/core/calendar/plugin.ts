@@ -2,7 +2,7 @@
 // links are secrets (anyone with one can read the calendar), so they live in data/config.json only.
 import ICAL from "ical.js"
 import { addDays, bullets, OpError, Plugin, section, today as todayIso } from "../../../core/plugins.ts"
-import { type Item, sortBy } from "../../../core/vault.ts"
+import { type Item, sortBy, str } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 const TTL = 600
@@ -88,8 +88,14 @@ async function events(start: string, end: string) {
         start: iso(o.start), end: iso(o.end), all_day: o.start.isDate })
     }
   }
-  return { events: sortBy(out, (x) => x.start), errors, configured: calendars.length > 0 }
+  // (other plugins' own items, a focus block: the service "agenda:items", (first day, last day) -> events like these)
+  for (const items of plugin.allServices("agenda:items")) {
+    try { for (const e of await (items as AgendaItems)(start, end) ?? []) out.push({ calendar: str(e.calendar), title: str(e.title), location: str(e.location), start: str(e.start), end: e.end ? str(e.end) : null, all_day: !!e.all_day }) }
+    catch (e) { errors.push(`${(e as Error).name}`) }
+  }
+  return { events: sortBy(out, (x) => x.start), errors, configured: calendars.length > 0 || out.length > 0 }
 }
+type AgendaItems = (from: string, to: string) => Promise<Item[]> | Item[]
 
 /** ?from=YYYY-MM-DD&to=YYYY-MM-DD (default: the next 7 days) */
 plugin.route("GET", "calendar", async (req) => {

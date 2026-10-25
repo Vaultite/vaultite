@@ -1,23 +1,28 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
 import { agentsOn, canRunAgents, cell, del, detailPath, fetchMachines, get, getTabLayout, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
+import { snoozeMs } from "./snooze"
 import type { InboxEvent } from "./types"
 
-export type Events = { events: InboxEvent[]; unread: number; ready: boolean }
+/** Nothing told till `until` (inbox.hold), on every machine. */
+export type Hold = { until: string; from: string; label?: string }
+export type Events = { events: InboxEvent[]; unread: number; ready: boolean; hold: Hold | null }
 /** The sheet of a permission the server waits on (Inbox.tsx's GateSheet): inbox-gate/<event id>. */
 export const GATE_DETAIL = "inbox-gate"
 /** The sheet of an agent's session (Session.tsx): its last answer or what it asks, the reply: inbox-session/<event id>. */
 export const SESSION_DETAIL = "inbox-session"
-const state = cell<Events>({ events: [], unread: 0, ready: false })
+const state = cell<Events>({ events: [], unread: 0, ready: false, hold: null })
 const fresh = new Set<(e: InboxEvent) => void>()
 
 export const { get: getEvents, subscribe: subscribeEvents, use: useEvents } = state
+/** The hold on now, if any (it ends by its time, unannounced). */
+export const heldNow = (h = state.get().hold) => (h && snoozeMs(h.until) > Date.now() ? h : null)
 /** Hear each event the user is to be told of (the server stamps it `nt` when they may be), once; not the ones there
  *  when the app loads. */
 export function onFresh(fn: (e: InboxEvent) => void) { fresh.add(fn); return () => { fresh.delete(fn) } }
 
-function set(events: InboxEvent[]) {
-  state.set({ events, unread: events.filter((e) => !e.read).length, ready: true })
+function set(events: InboxEvent[], hold = state.get().hold) {
+  state.set({ events, unread: events.filter((e) => !e.read).length, ready: true, hold })
 }
 
 // ---------- the socket
@@ -37,12 +42,12 @@ function open() {
   sock = ws
   ws.onopen = () => { retry = 0 }
   ws.onmessage = (m) => {
-    let msg: { t?: string; events?: InboxEvent[] }
+    let msg: { t?: string; events?: InboxEvent[]; hold?: Hold | null }
     try { msg = JSON.parse(String(m.data)) } catch { return }
     if (msg.t !== "events" || !Array.isArray(msg.events)) return
     const before = seen
     seen = new Map(msg.events.map((e) => [e.id, e.nt ?? 0]))
-    set(msg.events)
+    set(msg.events, msg.hold ?? null)
     if (!before) return
     for (const e of [...msg.events].reverse()) {
       if (!e.read && e.nt && (before.get(e.id) ?? 0) < e.nt && Date.now() - e.nt < STALE) fresh.forEach((f) => f(e))

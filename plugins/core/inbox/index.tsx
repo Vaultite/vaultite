@@ -1,9 +1,9 @@
 // The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for what the server says to
 // tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
-import { useEffect, useRef } from "react"
-import { AlarmClockOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { AlarmClockOff, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
 import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
-import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, viewOf } from "./events"
+import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
 import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
@@ -54,7 +54,7 @@ function Background({ store }: { store: Store }) {
   useBack(store)
   const review = toReview(store)
   useEffect(() => {
-    const first = known.current === null
+    const first = known.current === null, held = !!heldNow()
     const seen = known.current ?? new Set<string>()
     for (const r of store.inbox ?? []) if (r.status === "new" && snoozed(r.snoozed)) { away.current.set(r.id, snoozeMs(r.snoozed)); seen.delete(r.id) }
     for (const r of review) {
@@ -63,10 +63,10 @@ function Background({ store }: { store: Store }) {
       const until = away.current.get(r.id)
       away.current.delete(r.id)
       if (until !== undefined && until <= Date.now() + 5000) {
-        if (settings.get().toasts !== false) notify(`Back in your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
+        if (!held && settings.get().toasts !== false) notify(`Back in your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
         continue
       }
-      if (first || Date.now() - latestAt(r) > 10 * 60_000 || r.session || r.terminal) continue
+      if (first || held || Date.now() - latestAt(r) > 10 * 60_000 || r.session || r.terminal) continue
       if (settings.get().toasts !== false) notify(`In your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
       if (settings.get().notifications !== false && !document.hasFocus()) {
         systemNotify("In your inbox", r.title)?.then((clicked) => { if (clicked) openFile(`${r.id}.md`) })
@@ -118,7 +118,19 @@ function mock(): Partial<Store> {
 /** The status bar's count of what's new, when there's any. */
 function InboxNew() {
   const n = useCount(useStore().store ?? ({} as Store))
+  const hold = heldNow(useEvents().hold)
+  useMinute(!!hold)
+  if (hold) {
+    const until = new Date(snoozeMs(hold.until)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    return <AmbientButton icon={BellOff} text={n || undefined} tip={`Inbox held until ${until}${hold.label ? `, for ${hold.label}` : ""}${n ? `: ${n} new` : ""}`} onClick={openInbox} />
+  }
   return n ? <AmbientButton icon={InboxIcon} text={n} tip={`Inbox, ${n} new`} tint="var(--inbox)" onClick={openInbox} /> : null
+}
+
+/** Draw again every half minute while `on` (a hold ends by its time). */
+function useMinute(on: boolean) {
+  const [, tick] = useState(0)
+  useEffect(() => { if (!on) return; const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [on])
 }
 
 export default definePlugin({

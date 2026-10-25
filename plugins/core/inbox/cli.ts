@@ -3,19 +3,19 @@
 import { CliError, done, execute, type PluginCli } from "../../../core/cli.ts"
 
 const SUBS: Record<string, string> = { "": "inbox.list", add: "inbox.add", read: "inbox.read", unread: "inbox.unread", clear: "inbox.clear",
-  answer: "inbox.answer", push: "inbox.push", voice: "inbox.voice", report: "inbox.report", reply: "inbox.reply", done: "inbox.done", snooze: "inbox.snooze" }
+  answer: "inbox.answer", push: "inbox.push", voice: "inbox.voice", report: "inbox.report", reply: "inbox.reply", done: "inbox.done", snooze: "inbox.snooze", hold: "inbox.hold" }
 
 export const cli: PluginCli = {
   commands: [{
     name: "inbox",
     after: "notify",
     summary: "What's new in the inbox (results to review, agents' sessions that need you, events); add a result; an agent's hook posts here.",
-    usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --summary <text> | reply <path|id> <text> | done <path> [--title <title>] | snooze <path|id> --until <when> | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <approve|deny|reply|read> [--text <text>] | push <title> | voice <text> | clear]",
+    usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --summary <text> | reply <path|id> <text> | done <path> [--title <title>] | snooze <path|id> --until <when> | hold <until|off> [--label <what>] | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <approve|deny|reply|read> [--text <text>] | push <title> | voice <text> | clear]",
     help: `The Inbox: results to review (files in Inbox/, status new), coding agents' sessions while they need you (one row
 each: a question, an approval, an answer to read) and other events, kept on the server's machine until read, then for a
 week. Without a subcommand: all of it, newest first. The subcommands are
 operations: vau inbox.add --help explains one (inbox.list, inbox.add, inbox.report, inbox.reply, inbox.done,
-inbox.snooze, inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
+inbox.snooze, inbox.hold, inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
 
   vau inbox                                   what's new
   vau inbox add "Plant care apps compared" --body "## Findings ..." --from Claude
@@ -30,6 +30,7 @@ inbox.snooze, inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, i
   vau inbox reply mg3k2a-1f9c0e "The second one"            the same, to a session's row (ids: vau inbox)
   vau inbox done "Inbox/Sidebar fixed.md"     archive a result (--title names it anew)
   vau inbox snooze "Inbox/Sidebar fixed.md" --until tomorrow   out of the way till then (3h, weekend, now...)
+  vau inbox hold 30m --label "Practice guitar"   nothing told till then, then what came (off ends it)
 
 Hooks (for an agent started outside the app; the app's own terminals need none): \`vau inbox hook <agent>\` reads the
 hook's JSON from stdin, or from its last argument, and says which app terminal it ran in ($VAULTITE_TERMINAL):

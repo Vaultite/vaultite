@@ -272,7 +272,7 @@ function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
 /** Keep event `e` (in place of `old`, at the top of `es`), the user told of it when it's news and they may be (nt). */
 function put(e: InboxEvent, old: InboxEvent | null, es: InboxEvent[], news: boolean): InboxEvent {
   if (e.read) delete e.kept
-  if (news && !e.read && mayTell(old, e)) e.nt = e.t
+  if (news && !e.read && !holdNow() && mayTell(old, e)) e.nt = e.t
   changed([e, ...es.filter((x) => x !== old)])
   told(e)
   if (e.nt === e.t) pushed(e)
@@ -375,7 +375,7 @@ function resolve(terminal: string, session: string) {
 const watchers = new Map<WebSocket, boolean>() // socket -> this machine's events only
 let sendTimer: ReturnType<typeof setTimeout> | null = null
 
-const message = (local: boolean) => JSON.stringify({ t: "events", events: shown(local), unread: unread(local) })
+const message = (local: boolean) => JSON.stringify({ t: "events", events: shown(local), unread: unread(local), hold: holdNow() })
 
 let mineChanged = false
 /** Tell the watchers (within 30 ms). `mine`: this machine's events changed; else only the followed machines' did, which
@@ -541,7 +541,7 @@ plugin.route("GET", "inbox/events", async (req) => {
   const limit = req.query.all ? Infinity : Math.max(Math.trunc(Number(req.query.limit)) || 50, 1)
   const local = !!req.query.local
   if (!local) await others()
-  return { events: shown(local).slice(0, limit), unread: unread(local) }
+  return { events: shown(local).slice(0, limit), unread: unread(local), hold: holdNow() }
 })
 
 plugin.route("POST", "inbox/events", async (req) => {
@@ -618,6 +618,8 @@ const WAKE = 30_000
 const toldBack = new Set<string>()
 export async function wake() {
   const now = Date.now()
+  await holdEnds(now)
+  if (holdNow(now)) return
   for (const old of list().filter((e) => e.snoozed && e.snoozed <= now)) {
     const e = put(snoozedAs(old, null)!, old, list(), true)
     // (asked back, so it rings even where only what waits on the user does)
@@ -632,6 +634,45 @@ export async function wake() {
 const wakeTimer = setInterval(() => { if (plugin.loaded && !plugin.isOff()) void wake().catch((e) => console.error("inbox: wake:", e)) }, WAKE)
 wakeTimer.unref?.()
 plugin.onUnload(() => clearInterval(wakeTimer))
+
+// ---------- hold: nothing is told (toasts, notifications, the phone) until a time, then one line of what came. It's
+// .vaultite/plugins/inbox/hold.json, so every machine's server keeps it; each sums up its own events.
+
+export type Hold = { until: string; from: string; label?: string }
+/** The hold on now, if any. */
+export function holdNow(now = Date.now()): Hold | null {
+  const h = (plugin.loaded ? plugin.settings({}, "hold") : {}) as Partial<Hold>
+  return h.until && h.from && snoozeMs(h.until) > now ? h as Hold : null
+}
+
+/** Hold until `until` (null: end it now), saying what for. */
+export function hold(until: Date | null, label = "") {
+  const was = holdNow()
+  if (!until) { if (was) { plugin.saveSettings({ ...was, until: stampOf(new Date()) }, "hold"); broadcast() } return null }
+  const h: Hold = { until: stampOf(until), from: was?.from ?? stampOf(new Date()), ...(label ? { label } : {}) }
+  plugin.saveSettings(h, "hold")
+  heldSince = h
+  broadcast()
+  return h
+}
+
+/** The hold this machine last saw on, summed up once it's over. */
+let heldSince: Hold | null = null
+async function holdEnds(now = Date.now()) {
+  const h = holdNow(now)
+  if (h) { heldSince = h; return }
+  if (!heldSince) return
+  const from = snoozeMs(heldSince.from), what = heldSince.label
+  heldSince = null
+  broadcast()
+  const came = list().filter((e) => !e.read && e.t >= from && e.source !== "inbox")
+  // (results are the vault's: the first machine counts them)
+  const results = (await firstMachine()) ? plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && !r.session && !r.terminal && stampMs(str(r.created)) >= from).length : 0
+  const n = came.length + results, waiting = came.filter(waitsOnYou).length
+  if (!n) return
+  const e = addEvent({ source: "inbox", kind: "info", title: `${what ? `During ${what}` : "While on hold"}: ${n} new${waiting ? `, ${waiting} waiting on you` : ""}` })
+  if (e.nt === e.t && settings().push === "waiting") pushBack(e.title, undefined, { event: e.id })
+}
 
 /** This machine is the first online one with the Inbox on (by id), or Machines is off. */
 async function firstMachine() {
@@ -1530,6 +1571,38 @@ morning), a while (30m, 3h, 2d), a local time (2026-10-24 09:00), or now to brin
   },
   text: (r) => (r.until ? `Snoozed until ${r.when} (${r.until}): ${r.item}.` : `Back in the inbox: ${r.item}.`),
   did: (p) => ({ action: "save", text: `Snoozed ${quoted(p.item)} in the inbox` }),
+})
+
+plugin.op({
+  id: "inbox.hold",
+  cli: "inbox hold",
+  summary: "Hold the inbox: nothing is told (toasts, the Mac's and the phone's notifications) until a time, then one line of what came meanwhile.",
+  help: `Do not disturb for the inbox, on every machine: events and results still come in, unread, told of only when it ends.
+until: a while (30m, 2h), a time today (07:30), a local time (2026-10-24 09:00), or off to end it now; left out: the
+hold on now, if any. label says what for ("Practice guitar"), in the line at its end.
+
+  vau inbox hold 30m --label "Practice guitar"
+  vau inbox hold off`,
+  kind: "write",
+  params: {
+    until: { type: "string", description: "when it ends: 30m, 2h, 07:30, 2026-10-24 09:00, or off; left out: the hold on now" },
+    label: { type: "string", description: "what it's for, a few words" },
+  },
+  args: ["until"],
+  run: async (p, ctx) => {
+    const v = str(p.until).trim()
+    if (!v) return { hold: holdNow() }
+    const why = await ctx.refusal?.("the inbox")
+    if (why) throw new OpError(why, 403)
+    if (/^(off|now|none)$/i.test(v)) { hold(null); return { hold: null } }
+    const at = parseUntil(v)
+    if (!at) throw new OpError(`until: ${quoted(v)} isn't a time (30m, 2h, 07:30, 2026-10-24 09:00, off)`)
+    if (at.getTime() <= Date.now()) throw new OpError("until: that time has passed")
+    if (at.getTime() - Date.now() > DAY) throw new OpError("until: at most a day away")
+    return { hold: hold(at, clip(p.label, 60)) }
+  },
+  text: (r) => (r.hold ? `Held until ${whenText(new Date(snoozeMs(r.hold.until)))}${r.hold.label ? ` (${r.hold.label})` : ""}: told of what came then.` : "Not held."),
+  did: (p) => ({ action: "save", text: str(p.until) ? `Held the inbox: ${str(p.until)}` : "Read the inbox's hold" }),
 })
 
 plugin.op({

@@ -30,7 +30,7 @@ export function whenText(t: Date, now = new Date()) {
   return `${t.toLocaleDateString([], { month: "short", day: "numeric", ...(t.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) })}, ${time}`
 }
 
-/** `until` as an agent writes it: a choice's key (tomorrow, weekend...), a while (30m, 2h, 3d) or a local time
+/** `until` as an agent writes it: a choice's key (tomorrow, weekend...), a while (30m, 2h, 3d), a time (07:30) or a local time
  *  ("2026-10-24 09:00"); null when it isn't one. */
 export function parseUntil(s: string, now = new Date()): Date | null {
   const v = s.trim().toLowerCase().replace(/^next[- ]week$/, "week").replace(/^this[- ](evening|weekend)$/, "$1")
@@ -38,6 +38,9 @@ export function parseUntil(s: string, now = new Date()): Date | null {
   if (c) return c.at
   const m = /^(\d+(?:\.\d+)?)\s*(m|min|h|d)$/.exec(v)
   if (m) return new Date(now.getTime() + Number(m[1]) * (m[2] === "d" ? 24 * HOUR : m[2] === "h" ? HOUR : HOUR / 60))
+  // (a time alone: its next one, today or tomorrow)
+  const hm = /^(\d\d?):(\d\d)$/.exec(v)
+  if (hm) { const t = new Date(now); t.setHours(Number(hm[1]), Number(hm[2]), 0, 0); if (t <= now) t.setDate(t.getDate() + 1); return Number(hm[1]) < 24 && Number(hm[2]) < 60 ? t : null }
   // (a day alone: its morning)
   const d = /^(\d{4}-\d\d-\d\d)(?:[ t](\d\d?):(\d\d))?$/.exec(v)
   const t = d ? new Date(`${d[1]}T${(d[2] ?? String(MORNING)).padStart(2, "0")}:${d[3] ?? "00"}`) : null

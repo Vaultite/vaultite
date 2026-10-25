@@ -44,11 +44,11 @@ function answers(vault: Vault): Record<string, Record<string, Answer>> {
   return out
 }
 
-/** A declared folder and where the user keeps its files now (the folder set for, or most of, the plugin's kinds that
- *  default to it), that first. */
+/** A declared folder and where the user keeps its files now (the folder set for, or most of, the kinds that default to
+ *  it: the plugin's own first, then any's, so "Logs" is wherever the logs are), that first. */
 function foldersOf(vault: Vault, p: Plugin, w: WriteDecl) {
   const out: string[] = []
-  for (const k of p.kinds) {
+  for (const k of [...p.kinds, ...vault.kinds.filter((x) => !p.kinds.includes(x))]) {
     if (k.folder !== w.folder) continue
     try { const h = vault.home(k.collection); if (h) out.push(h) } catch { /* not registered here */ }
   }

@@ -109,7 +109,7 @@ what isn't the user's files or settings), and `VAULTITE_OP` + `VAULTITE_PARAMS_J
 (the type, `startup` or `schedule` with `VAULTITE_SCHEDULE` its name) + `VAULTITE_EVENT_JSON` (an event). `timeout` is seconds (ops 60, hooks 120, at most 600).
 What they did: `vau vault-plugin.log <id>` (each run's command, exit, time and stderr).
 - `"writes": [{"folder": "Recaps", "why": "a recap of each day"}]` (or `"file": "AGENTS.md"`): where it writes outside
-  `.vaultite/` on its own (its `schedule`, `events` and `startup` commands, `plugin.every`, `plugin.onEvent`, the timers
+  `.vaultite/` on its own (a kind's folder, "Logs", is wherever the user keeps those files) (its `schedule`, `events` and `startup` commands, `plugin.every`, `plugin.onEvent`, the timers
   it starts). The user is asked once ("Lighthouse wants to write a recap of each day into Recaps/"); until they allow it,
   such a write is refused (`WriteRefused`, a 403 for `vau`) and logged. What a user or their agent asks for (its ops,
   routes) is never gated. Data it wants anyway goes in `.vaultite/` (its `data.json`, `plugin.writeCache`).

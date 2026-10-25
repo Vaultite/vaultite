@@ -93,6 +93,13 @@ plugin.every("gone", null)
     await api("POST", "ops/schedule.run", { id: "wordcount/now" })
     check("write gate: Not now, still refused", !fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")) && JSON.parse(read(".vaultite/grants.json")).wordcount?.Notes === "not now")
     await api("POST", "ops/plugin.grant", { id: "wordcount" })
+    {
+      const folders = vault.config("folders")
+      vault.setConfig("folders", { ...folders, notes: "Writing/Notes" })
+      check("write gate: a folder granted is wherever the user keeps that kind's files, another plugin's kind too",
+        vault.mayWrite("wordcount", "Writing/Notes/x.md") && vault.mayWrite("wordcount", "Notes/x.md") && !vault.mayWrite("wordcount", "Elsewhere/x.md"))
+      vault.setConfig("folders", folders)
+    }
     await api("POST", "ops/schedule.run", { id: "wordcount/now" })
     await vault.synced()
     check("schedule: a manifest's op ran, as a schedule (the middleware saw who)", fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")) && read("Notes/Scheduled note.md").includes("From a schedule. (schedule)"), fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")) && read("Notes/Scheduled note.md"))

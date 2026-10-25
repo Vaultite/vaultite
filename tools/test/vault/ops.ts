@@ -257,6 +257,14 @@ export default async ($: VaultTest) => {
     check("calendar.events: with no calendars, says so", !t.error && t.text.startsWith("No calendars connected yet"), t)
     t = await run("calendar.events", { from: "2026-10-05", to: "2026-10-01" })
     check("calendar.events: a range backwards is refused", t.error, t)
+    {
+      const { plugin: cal } = await import("../../../plugins/core/calendar/plugin.ts")
+      let asked = ""
+      cal.provide("agenda:items", (from: string, to: string) => { asked = `${from} ${to}`; return [{ calendar: "Focus", title: "Practice guitar", start: "2026-10-05T07:00:00", end: "2026-10-05T07:30:00" }] })
+      t = await run("calendar.events", { from: "2026-10-05" })
+      delete (cal as unknown as { services: Record<string, unknown> }).services["agenda:items"]
+      check("calendar.events: plugins' own items (agenda:items) are in it, for the days asked", !t.error && asked === "2026-10-05 2026-10-05" && t.text.includes("- 07:00-07:30 Practice guitar · Focus"), [asked, t])
+    }
     const en: string[] = vault.config("plugins").enabled
     vault.setConfig("plugins", { ...vault.config("plugins"), enabled: en.filter((x) => x !== "people") })
     check("ops: an offByDefault plugin's aren't there until it's turned on", !app.opNamed("people.remember"), app.opNamed("people.remember")?.op.id)
