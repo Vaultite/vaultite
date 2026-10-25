@@ -169,9 +169,6 @@ function pauseIn(state: EditorState) {
   return before && !/[.?!…:;]["'”’)\]*_`]*$/u.test(before) && !mentionIn(line.text) ? ms * 2.5 : ms
 }
 
-/** The ask a pause will send, per editor: its line's start, the pause (ms), and a count that restarts its chip's fill. */
-const waiting = new WeakMap<EditorView, { from: number; ms: number; k: number }>()
-
 function watcher(path: string) {
   return ViewPlugin.fromClass(class {
     decorations: DecorationSet
@@ -231,14 +228,13 @@ function watcher(path: string) {
       if (!typed) return
       this.dirty = true
       this.later()
-      this.wait(u.state)
+      this.beckon(u.state)
     }
-    /** The line they're on, when it asks something not sent yet: its chip fills over the pause, its agent comes over. */
-    wait(state: EditorState) {
+    /** The line they're on, when it asks something not sent yet: its agent comes over, the cue that it's coming (no
+     *  countdown: Enter sends it, the pause quietly). */
+    beckon(state: EditorState) {
       const line = state.doc.lineAt(state.selection.main.head), ask = mentionIn(line.text)
-      if (!ask || getState().mode === "off" || this.asked.includes(line.text) || !asksSomething(line.text, mentionsOf(line.text))) return void waiting.delete(this.view)
-      waiting.set(this.view, { from: line.from, ms: pauseIn(state), k: (waiting.get(this.view)?.k ?? 0) + 1 })
-      listen(ask.name, path, line.number)
+      if (ask && getState().mode !== "off" && !this.asked.includes(line.text) && asksSomething(line.text, mentionsOf(line.text))) listen(ask.name, path, line.number)
     }
     /** Send line `n`'s ask, if it has one not sent as it reads now; `pause`: only one with words besides the @name. */
     ask(n: number, doc: Text, pause = false) {
@@ -257,7 +253,6 @@ function watcher(path: string) {
       // (an ask not ended with Enter, as "how is it going @claude?": sent at the pause)
       const asks = [...new Set(this.touched.filter((p) => p <= doc.length).map((p) => doc.lineAt(p).number))].filter((n) => this.ask(n, doc, true))
       this.touched = []
-      if (waiting.delete(this.view) && !asks.length) queueMicrotask(() => { if (this.view.dom.isConnected) this.view.dispatch({ effects: refresh.of(null) }) })
       if (asks.length && this.view.dom.isConnected) markSent(this.view, asks)
       this.dirty = false
       const md = getState().mode
@@ -303,7 +298,7 @@ function markSent(view: EditorView, lines: number[]) {
 function chipsOf(view: EditorView, path: string): DecorationSet {
   const st = getState()
   if (st.mode === "off") return Decoration.none
-  const names = mentionNames(), mid = midNames(), lit = view.state.field(sentAt, false) ?? [], w = waiting.get(view), b = new RangeSetBuilder<Decoration>()
+  const names = mentionNames(), mid = midNames(), lit = view.state.field(sentAt, false) ?? [], b = new RangeSetBuilder<Decoration>()
   let last = -1
   for (const r of view.visibleRanges) {
     for (let pos = r.from; pos <= r.to;) {
@@ -313,9 +308,9 @@ function chipsOf(view: EditorView, path: string): DecorationSet {
       last = line.number
       for (const m of mentionsOf(line.text, names, mid)) {
         const a = mentionAgent(m.name)
-        const asked = lit.includes(line.from) || (a?.state === "thinking" && a.path === path && a.line === line.number), soon = !asked && w?.from === line.from
-        b.add(line.from + m.from, line.from + m.to, Decoration.mark({ class: asked ? "cm-companion-mention cm-companion-asked" : soon ? "cm-companion-mention cm-companion-soon" : "cm-companion-mention",
-          attributes: { style: `--c: var(--${a?.tint ?? "orange"})${soon ? `; --d: ${w.ms}ms` : ""}`, "data-agent": a?.name ?? st.name, ...(soon ? { "data-k": String(w.k) } : {}) } }))
+        const asked = lit.includes(line.from) || (a?.state === "thinking" && a.path === path && a.line === line.number)
+        b.add(line.from + m.from, line.from + m.to, Decoration.mark({ class: asked ? "cm-companion-mention cm-companion-asked" : "cm-companion-mention",
+          attributes: { style: `--c: var(--${a?.tint ?? "orange"})`, "data-agent": a?.name ?? st.name } }))
       }
     }
   }
@@ -337,11 +332,7 @@ const theme = EditorView.baseTheme({
     fontWeight: "550", transition: "background-color .3s" },
   ".cm-companion-asked": { backgroundColor: "color-mix(in srgb, var(--c) 26%, transparent)", animation: "cm-companion-pulse 1.1s ease-in-out infinite" },
   "@keyframes cm-companion-pulse": { "0%, 100%": { boxShadow: "0 0 0 0 transparent" }, "50%": { boxShadow: "0 0 0 3px color-mix(in srgb, var(--c) 28%, transparent)" } },
-  // (an ask the pause will send: a line fills under its @name until it goes)
-  ".cm-companion-soon": { backgroundImage: "linear-gradient(var(--c), var(--c))", backgroundRepeat: "no-repeat", backgroundPosition: "0 100%", backgroundSize: "0% 2px",
-    animation: "cm-companion-fill var(--d) linear forwards" },
-  "@keyframes cm-companion-fill": { to: { backgroundSize: "100% 2px" } },
-  "@media (prefers-reduced-motion: reduce)": { ".cm-companion-asked, .cm-companion-soon": { animation: "none" } },
+  "@media (prefers-reduced-motion: reduce)": { ".cm-companion-asked": { animation: "none" } },
   ".cm-companion-hl": { backgroundColor: "color-mix(in srgb, var(--c) 32%, transparent)", borderRadius: "3px", animation: "cm-companion-in .4s ease-out" },
   ".cm-companion-hl-line": { backgroundColor: "color-mix(in srgb, var(--c) 14%, transparent)" },
   ".cm-companion-anchor": { textDecoration: "underline dotted var(--c)", textDecorationThickness: "2px", textUnderlineOffset: "4px" },

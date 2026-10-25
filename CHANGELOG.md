@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Companion modes in its menus**: right-click an agent's cursor or its face at the top of a note for Quiet, Notice
+  and Pair side by side, with a line on what each sees (the status bar's menu has Off too). Its cursor no longer slides
+  away as you click it: it rests just past the end of what it looks at, whatever has the focus, and holds still while
+  hovered, open or dragged. An @ask no longer fills under its name before it goes: Enter sends it, a pause quietly.
 - **Type in a note together**: with a note open in more than one window (your phone and your Mac, or a guest of a
   shared folder), what each types shows in the others as it's typed, each one's caret and selection named and coloured,
   their faces at the top. The note is saved a person at a time, so each one's lines stay theirs; alone, it saves as ever.

@@ -40,23 +40,23 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
   }, (item, g) => moveBarItem(item.panel!, g.before), { hint: () => (sideOf(getDrag()?.item.panel ?? "") ? "To the top bar" : undefined) })
   useSlide(box, hit?.order ?? null, place === "bar" ? "x" : "wrap")
   const keys = items.map((x) => x.key)
-  const menu = (key: string, i: number) => menuFor((): MenuItem[] => [
+  const rows = (key: string, i: number): MenuItem[] => [
     ...(keys.length > 1 ? [
       { label: "Move left", icon: ArrowLeft, disabled: i === 0, run: () => moveBarItem(key, keys[i - 1]) },
       { label: "Move right", icon: ArrowRight, disabled: i === keys.length - 1, run: () => moveBarItem(key, keys[i + 2] ?? null) },
     ] : []),
     { label: "Move to right sidebar", icon: PanelRight, sep: keys.length > 1, run: () => dockAtEnd(key, "right") },
     { label: "Move to left sidebar", icon: PanelLeft, run: () => dockAtEnd(key, "left") },
-  ])
+  ]
   // (one that throws is left out, its error in Errors: it's in every file's header)
   return (
     <div ref={box} data-file-bar={place} className={cn("relative flex items-center empty:hidden", dragging && "min-h-6 min-w-6 empty:flex",
       // (a line's items are 44px targets, their room the gap between them)
       place === "bar" ? "shrink-0 gap-2" : "ml-auto min-w-0 flex-wrap justify-end md:gap-1")}>
       {items.map(({ key, plugin, item }, i) => (
-        <span key={key} data-file-bar-key={key} data-slide={key} onContextMenu={menu(key, i)} className={cn("flex shrink-0 items-center empty:hidden", lifted?.panel === key && "opacity-50")}
+        <span key={key} data-file-bar-key={key} data-slide={key} onContextMenu={menuFor(() => rows(key, i))} className={cn("flex shrink-0 items-center empty:hidden", lifted?.panel === key && "opacity-50")}
           onPointerDown={(e) => startDrag(e, { from: "panel", panel: key, label: item.title ?? plugin.name })}>
-          <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(ctx)} /></Catch>
+          <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render({ ...ctx, menu: () => rows(key, i) })} /></Catch>
         </span>
       ))}
       {/* Where one from a sidebar would go: its room kept from the drag's start, so the path beside it doesn't narrow

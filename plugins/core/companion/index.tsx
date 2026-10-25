@@ -6,7 +6,7 @@ import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conv
 import { connect, getState, liveAgents, type Note, sendMoment, setGuest, startComment, subscribe, viewOf } from "./live"
 import { follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
-import { MODES, setMode, showSession } from "./session"
+import { modeItem, MODES, setMode, showSession } from "./session"
 import { offerThreads } from "./threads"
 
 // Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
@@ -51,7 +51,7 @@ function Status() {
   const tint = s.mode === "off" ? undefined : `var(--${a?.tint ?? "orange"})`
   const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "watching" ? null : a.state
   const items = (): MenuItem[] => [
-    ...MODES.map((m) => ({ label: m.label, checked: s.mode === m.mode, run: () => void setMode(m.mode) })),
+    modeItem(true),
     ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
     { label: `Ask ${s.name}`, icon: MessageCirclePlus, run: () => ask(), sep: true },
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },

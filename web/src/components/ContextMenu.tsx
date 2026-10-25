@@ -10,6 +10,7 @@ import { holdFocus } from "@/core/focus"
 import { haptic } from "@/core/haptics"
 import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
+import { Segmented } from "@/components/kit"
 import { signal } from "@/core/signal"
 import { isDesktop, isMac } from "@/core/platform"
 import { COLOR_NAMES, COLORS, colorVar, type Color } from "../../../core/colors.ts"
@@ -38,6 +39,9 @@ export type MenuItem = {
   /** Not a choice: the shared palette (core/colors.ts) as a row of swatches, `value` ringed. Picking one keeps the menu
    *  open (redrawn), as a browser's tab group editor does. `label` names it. */
   colors?: { value: string; pick: (c: Color) => void }
+  /** Not a choice: a few side by side (a segmented control), `value` on, with the `note` of the one on under it (what
+   *  it does). Picking one keeps the menu open (redrawn). `label` names it. */
+  segments?: { value: string; options: { value: string; label: string; note?: string }[]; pick: (v: string) => void }
 }
 /** Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check
  *  ("Line numbers"), one that switches something else by what it does now ("Hide left sidebar"). */
@@ -75,6 +79,8 @@ export function replaceMenu(was: MenuItem[], items: MenuItem[]) {
 }
 /** A menu is showing. */
 export const menuShowing = () => open !== null
+/** A menu is showing, as a hook (what it was opened from holds still meanwhile). */
+export const useMenuShowing = () => subs.use(() => open !== null)
 /** The open menu's items are being asked for again (after a `keep` click), not for a new menu. */
 let redrawing = false
 const closeMenu = () => { set(null); if (release) { const r = release; release = null; r() } }
@@ -298,7 +304,7 @@ function found(items: MenuItem[], q: string): Found[] {
   const out: (Found & { score: number; where: string })[] = []
   // (a split row's submenu repeats its choice first: found once)
   const walk = (its: MenuItem[], at: number[], where: string, skip?: string) => its.forEach((it, i) => {
-    if (it.caption || it.field || it.colors || it.label === skip) return
+    if (it.caption || it.field || it.colors || it.segments || it.label === skip) return
     const m = fuzzy(q, it.label)
     if (m) out.push({ it, at: [...at, i], score: m.score, where })
     if (it.items) walk(it.items, [...at, i], it.label, it.split ? it.label : undefined)
@@ -342,7 +348,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const hits = query ? found(shown, query) : null
   const rows = hits ? hits.map((f) => f.it) : shown
   const lead = rows.some((it) => it.icon || it.items)
-  const bestAt = rows.findIndex((it) => !it.caption && !it.field && !it.colors && !it.disabled)
+  const bestAt = rows.findIndex((it) => !it.caption && !it.field && !it.colors && !it.segments && !it.disabled)
   // Rows with an icon of their own and a check (a container, a panel): the check goes at the end, so no row keeps two
   // empty columns at its start.
   const trailing = rows.some((it) => it.checked !== undefined && it.icon)
@@ -415,7 +421,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
       e.preventDefault()
       const i = all.indexOf(cur)
       // (↑ from the first row goes up to what's atop it: a tab group's colours, else its name)
-      const above = e.key === "ArrowUp" && i === 0 && ["[data-menu-colors] [aria-checked=true]", "[data-menu-colors] button", "[data-menu-field] input"]
+      const above = e.key === "ArrowUp" && i === 0 && ["[data-menu-segments] [aria-checked=true]", "[data-menu-colors] [aria-checked=true]", "[data-menu-colors] button", "[data-menu-field] input"]
         .map((q) => ref.current?.querySelector<HTMLElement>(q)).find(Boolean)
       ;(above || all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length])?.focus()
     } else if (e.key === "ArrowRight") {
@@ -456,6 +462,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
           {it.sep && <div role="separator" className="mx-2.5 my-1 h-px bg-border" />}
           {it.field ? <MenuField it={it} first={() => ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")} />
           : it.colors ? <MenuColors it={it} redraw={again} />
+          : it.segments ? <MenuSegments it={it} redraw={again} />
           : it.caption ? (
             <p className="flex max-w-80 gap-3 px-3 py-2 text-[15px] leading-5 text-muted-foreground md:max-w-72 md:gap-2.5 md:px-2.5 md:py-1.5 md:text-[12px] md:leading-4">
               {it.icon ? <it.icon className={cn(icon, "md:mt-px")} strokeWidth={2} /> : lead && <span className={icon} />}
@@ -529,6 +536,39 @@ function MenuField({ it, first }: { it: MenuItem; first: () => HTMLElement | nul
           else if (e.key === "ArrowDown") { e.preventDefault(); first()?.focus() }
         }}
         className="h-10 w-full rounded-[8px] bg-foreground/[0.06] px-3 text-[17px] outline-none ring-primary/60 placeholder:text-muted-foreground focus:ring-2 md:h-7 md:rounded-[6px] md:px-2 md:text-[13px]" />
+    </div>
+  )
+}
+
+/** A menu's segmented control (MenuItem `segments`): ← and → move along it, ↓ and ↑ leave it. */
+function MenuSegments({ it, redraw }: { it: MenuItem; redraw?: () => MenuItem[] }) {
+  const { options, pick } = it.segments!
+  // (its own: a menu opened without `again` can't be drawn anew)
+  const [value, setValue] = useState(it.segments!.value)
+  const choose = (v: string) => {
+    if (v === value) return
+    setValue(v)
+    runOrSay(() => pick(v), it.label)
+    if (redraw && openState()) set({ ...openState()!, items: redraw() })
+  }
+  return (
+    <div data-menu-segments className="px-1 pt-1 pb-1.5 md:px-0.5 md:pt-0.5 md:pb-1"
+      onKeyDown={(e) => {
+        const el = e.currentTarget, menu = el.closest("[role=menu]"), rows = [...menu?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? []]
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); (e.key === "ArrowDown" ? rows[0] : rows.at(-1))?.focus(); return }
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+        e.preventDefault(); e.stopPropagation()
+        const i = options.findIndex((o) => o.value === value), next = options[(i + (e.key === "ArrowRight" ? 1 : -1) + options.length) % options.length]
+        choose(next.value)
+        requestAnimationFrame(() => el.querySelector<HTMLElement>("[aria-checked=true]")?.focus())
+      }}>
+      <Segmented big label={it.label} value={value} options={options.map((o) => ({ value: o.value, label: o.label }))} onChange={choose} className="[&>button]:px-3" />
+      {/* (every note in one cell, only the one on shown: the menu keeps its size as the choice changes) */}
+      {options.some((o) => o.note) && (
+        <div className="grid max-w-80 px-2 pt-1.5 text-[15px] leading-5 text-muted-foreground md:max-w-72 md:px-1.5 md:pt-1 md:text-[12px] md:leading-4">
+          {options.map((o) => <p key={o.value} aria-hidden={o.value !== value} className={cn("[grid-area:1/1]", o.value !== value && "invisible")}>{o.note}</p>)}
+        </div>
+      )}
     </div>
   )
 }

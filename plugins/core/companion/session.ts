@@ -5,12 +5,20 @@ import { type Agent, getState, type Mode } from "./live"
 
 const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
 
-export const MODES: { mode: Mode; label: string }[] = [
-  { mode: "off", label: "Off" },
-  { mode: "quiet", label: "Quiet: only when asked" },
-  { mode: "notice", label: "Notice: speaks up when useful" },
-  { mode: "pair", label: "Pair: writes with you" },
+/** `note`: what it sees in that mode, under the menus' choice of it. */
+export const MODES: { mode: Mode; label: string; short: string; note: string }[] = [
+  { mode: "off", label: "Off", short: "Off", note: "Sees nothing, and asks don't reach it" },
+  { mode: "quiet", label: "Quiet: only when asked", short: "Quiet", note: "Sees only what you ask it" },
+  { mode: "notice", label: "Notice: speaks up when useful", short: "Notice", note: "Also sees what you write when you pause, and speaks up when it helps" },
+  { mode: "pair", label: "Pair: writes with you", short: "Pair", note: "Also sees what you write, and may write in your notes" },
 ]
+
+/** The mode as a menu's segmented row; `off`: Off among them (the status bar's, where the companion is switched off;
+ *  an agent's menu has Stop). */
+export const modeItem = (off = false): MenuItem => ({
+  label: "Mode", run: () => {},
+  segments: { value: getState().mode, options: MODES.filter((m) => off || m.mode !== "off").map((m) => ({ value: m.mode, label: m.short, note: m.note })), pick: (v) => void setMode(v as Mode) },
+})
 
 const main = (name: string) => name.toLowerCase() === getState().name.toLowerCase()
 const as = (name: string) => (main(name) ? {} : { as: name })
@@ -52,14 +60,13 @@ async function fresh(name: string) {
   } catch (e) { notifyError(e) }
 }
 
-/** An agent's cursor's menu (right-click, a held finger on its name, … in its box). */
+/** An agent's menu: its cursor's (right-click, a held finger on its name, … in its box) and its face's. */
 export function agentMenu(a: Agent): MenuItem[] {
   const how = [a.model && capitalize(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")
-  const modes = main(a.name) ? MODES.filter((m) => m.mode !== "off") : []
   return [
-    ...(how ? [{ label: how, caption: true, run: () => {} }] : []),
-    { label: "Show its session", icon: SquareTerminal, run: () => void showSession(a.name) },
-    ...modes.map((m, i) => ({ label: m.label, checked: getState().mode === m.mode, run: () => void setMode(m.mode), sep: i === 0 })),
+    ...(main(a.name) ? [modeItem()] : []),
+    ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),
+    { label: "Show its session", icon: SquareTerminal, run: () => void showSession(a.name), sep: main(a.name) && !how },
     { label: "Start fresh", icon: RotateCcw, run: () => void fresh(a.name), disabled: a.state === "starting", sep: true },
     { label: "Stop", icon: Power, danger: true, run: () => void stop(a.name) },
   ]

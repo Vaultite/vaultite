@@ -1,16 +1,17 @@
-// Who's in the note, top right as in a shared doc: each agent around in its colour (a click goes where it is). Atop the
-// Conversations panel too.
+// Who's in the note, top right as in a shared doc: each agent around in its colour (a click goes where it is, a
+// right-click is its menu). Atop the Conversations panel too.
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
-import { cn, type FileHead, menuBelow } from "@vaultite"
+import { cn, type FileHead, menuBelow, menuFor, type MenuItem } from "@vaultite"
 import { type Agent, getState, goToPerson, liveAgents, subscribe } from "./live"
 import { follow } from "./Overlay"
+import { agentMenu } from "./session"
 
 const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting" }
 const FACES = 4
 const fileOf = (p: string) => p.split("/").pop()!.replace(/\.md$/, "")
 
-export function Presence({ file }: { file: FileHead & { place: "bar" | "line" } }) {
-  return <Faces path={file.path} big={file.place !== "bar"} />
+export function Presence({ file }: { file: FileHead & { place: "bar" | "line"; menu?: () => MenuItem[] } }) {
+  return <Faces path={file.path} big={file.place !== "bar"} more={file.menu} />
 }
 
 /** How many faces fit the parent's width (unbounded until measured), from the first two faces' size and step. */
@@ -38,9 +39,9 @@ function useFit(on?: boolean) {
   return [ref, fit] as const
 }
 
-/** Who's in `path` with this window, then the agents around (in `path` first), overlapping as a shared doc's faces;
- *  `big`: a phone's sizes; `fit`: no more than the parent's width holds (the rest behind +N). */
-export function Faces({ path, big, fit }: { path: string; big?: boolean; fit?: boolean }) {
+/** Who's in `path` with this window, then the agents around (in `path` first), as a shared doc's faces; `big`: a phone's
+ *  sizes; `fit`: what the parent's width holds (the rest behind +N); `more`: the top bar's rows, after an agent's menu. */
+export function Faces({ path, big, fit, more }: { path: string; big?: boolean; fit?: boolean; more?: () => MenuItem[] }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [ref, room] = useFit(fit)
   const people = s.people[path] ?? []
@@ -62,6 +63,7 @@ export function Faces({ path, big, fit }: { path: string; big?: boolean; fit?: b
       ))}
       {shown.map((a, i) => (
         <button key={a.name} type="button" aria-label={`Go to ${a.name}`} data-tip={where(a)} data-agent={a.name} data-state={a.state} onClick={() => follow(a)}
+          onContextMenu={menuFor(() => [...agentMenu(a), ...(more?.() ?? []).map((x, i) => (i ? x : { ...x, sep: true }))])}
           className={cn("relative grid cursor-pointer place-items-center rounded-full hover:z-10", size, (i > 0 || people.length > 0) && overlap)}>
           <span className={cn("relative grid place-items-center rounded-full font-bold text-white ring-2 ring-background transition-transform hover:scale-110", big ? "size-6 text-[12px]" : "size-[20px] text-[10.5px]",
             a.path !== path && "opacity-60")} style={{ background: `var(--${a.tint})` }}>

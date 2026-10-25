@@ -410,7 +410,8 @@ export type AmbientItem = {
 /** Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title
  *  (`"line"`); docked in a sidebar by the user, there for the focused file. Nothing when render answers null. */
 export type FileBarItem = {
-  render: (file: FileHead & { place: "bar" | "line" }) => ReactNode
+  /** `menu`: the bar's rows for it (moving it), for one with a right-click menu of its own to end with. */
+  render: (file: FileHead & { place: "bar" | "line"; menu?: () => MenuItem[] }) => ReactNode
   /** Its name where it's moved (its sidebar section's heading, menus): the plugin's name unless set. */
   title?: string
   /** Its place, left to right, when several plugins have one. */
