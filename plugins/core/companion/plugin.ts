@@ -150,6 +150,8 @@ const windows = new Map<WebSocket, Win>()
 /** A guest's view of the threads: `see` gives their name for a vault path in their folder (else null), `at` the vault
  *  path for theirs (throws outside it); `said`: true once they have said too much this minute. */
 export type Guest = { id: string; name: string; who: Who; role: "read" | "comment" | "edit"; see: (rel: string) => string | null; at: (p: string) => string; said: () => boolean
+  /** Whether the share still holds (not revoked nor expired). */
+  holds: () => boolean
   /** Why a change of theirs to a note can't land, and whether they're typing too fast (the share's rules). */
   may: (rel: string, before: string, after: string) => string; slow: () => boolean
   /** When the folder was shared with them: the user's threads from before it stay the user's. */
@@ -1561,14 +1563,17 @@ plugin.provide("companion:guest", (ws: WebSocket, g: Guest) => {
     if (co.heard(ws, m, rel)) return
     if (g.role === "read") return // (who reads only sees: the note, its threads and who's in it)
     const n = typeof m.id === "string" ? notes.get(m.id) : undefined, theirs = n && forGuest(n, g)
-    // (a guest's words draw as Markdown in the user's app: nothing in them may run or fetch)
-    if ((m.t === "comment" || m.t === "answer") && (g.said() || liveMarkdown(str(m.text)))) return
+    if (m.t !== "comment" && m.t !== "answer") return
+    if (!g.holds()) return void ws.terminate() // (revoked or expired since the socket opened)
+    // (a guest's words draw as Markdown in the user's app: nothing in them may run or fetch; checked as they're kept)
+    const text = str(m.text).trim().slice(0, MAX_TEXT)
+    if (g.said() || liveMarkdown(text)) return
     if (m.t === "comment") {
       if (!rel) return
-      const c = personComment({ by: "guest", agent: g.name, share: g.id }, rel, m)
+      const c = personComment({ by: "guest", agent: g.name, share: g.id }, rel, { ...m, text })
       if (c) tell(g.id, `${g.name} commented on ${rel.split("/").pop()!.replace(/\.md$/i, "")}`, rel)
-    } else if (m.t === "answer" && theirs && m.verdict === "reply" && str(m.text).trim() && (n.replies?.length ?? 0) < MAX_REPLIES) {
-      n.replies = [...(n.replies ?? []), { by: "guest", name: g.name, text: str(m.text).trim().slice(0, MAX_TEXT) }]
+    } else if (m.t === "answer" && theirs && m.verdict === "reply" && text && (n.replies?.length ?? 0) < MAX_REPLIES) {
+      n.replies = [...(n.replies ?? []), { by: "guest", name: g.name, text }]
       broadcast({ t: "note", note: n })
       save(n.path!)
       tell(g.id, `${g.name} replied in ${n.path!.split("/").pop()!.replace(/\.md$/i, "")}`, n.path!)

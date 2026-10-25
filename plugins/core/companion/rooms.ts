@@ -17,7 +17,7 @@ export type Peer = { who: Who; name: string; tint: string; edits: boolean; see: 
 /** `queued`: a guest's updates waiting to be checked together (a check reads the whole note: not one per keystroke). */
 type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; peers: Map<WebSocket, Set<number>>; disk: string
   pending: { peer: Peer; timer: ReturnType<typeof setTimeout>; since: number } | null; turn: Promise<void>
-  queued: Map<WebSocket, { updates: Uint8Array[]; timer: ReturnType<typeof setTimeout> }>
+  queued: Map<WebSocket, { updates: Uint8Array[]; bytes: number; timer: ReturnType<typeof setTimeout> }>
   /** Each Yjs client id's window, as first seen: no window writes under another's. */
   clients: Map<number, WebSocket>
   /** Typed in by guests too much to check their changes on a copy any more (see check). */
@@ -114,6 +114,10 @@ export function rooms(plugin: Plugin) {
         if (f.text !== text) become(r, now === text ? f.text : merge3(text, now, f.text) ?? now, "disk")
         return
       }
+      // (a guest's that didn't land goes from the doc, or the next one to save it would write it as theirs)
+      if (!peer.may) return
+      become(r, merge3(text, r.text.toString(), r.disk) ?? r.disk, "disk")
+      for (const [ws, p] of peers) if (p === peer && r.peers.has(ws)) refuse(r, ws, peer, "it couldn't be saved")
     })
   }
   // (the text as it is now: what comes after is the next one's)
@@ -170,7 +174,9 @@ export function rooms(plugin: Plugin) {
       removeAwarenessStates(r.aw, [...ids], ws)
       tell(r, ws, { t: "aw", u: toBase64(encodeAwarenessUpdate(r.aw, [...ids])) })
     }
-    counted(r)
+    // (what they typed is written as theirs before the others hear they're alone: alone, a window saves the doc as its own)
+    if (peer && r.pending?.peer === peer) flush(r)
+    void inTurn(r, async () => counted(r))
     if (r.peers.size) return
     flush(r)
     void r.turn.then(() => { if (!r.peers.size && all.get(path) === r) { all.delete(path); r.aw.destroy(); r.doc.destroy() } })
@@ -252,11 +258,13 @@ export function rooms(plugin: Plugin) {
     // (before the copy, which costs as much as the doc)
     if (r.text.length > GUEST_LIVE_MAX) return no("this note is too long to type in together")
     if (r.worn) return no(WORN)
-    const u = Y.mergeUpdates(q.updates), copy = new Y.Doc()
+    const copy = new Y.Doc()
     try {
+      const u = Y.mergeUpdates(q.updates)
+      if (u.length > MAX_UPDATE) return no()
       const { structs } = Y.decodeUpdate(u), ids = new Set(structs.map((s) => s.id.client))
       const claimed = [...r.clients.entries()].filter(([id, w]) => w === ws && !ids.has(id)).length
-      if (u.length > MAX_UPDATE || structs.length > MAX_STRUCTS || ids.size > MAX_IDS || claimed + ids.size > IDS_PER_WINDOW || !ownClients(r, ws, u)) return no()
+      if (structs.length > MAX_STRUCTS || ids.size > MAX_IDS || claimed + ids.size > IDS_PER_WINDOW || !ownClients(r, ws, u)) return no()
       Y.applyUpdate(copy, Y.encodeStateAsUpdate(r.doc))
       Y.applyUpdate(copy, u)
       if (copy.store.pendingStructs || copy.store.pendingDs || [...copy.share.keys()].some((k) => k !== "md") || !onlyText(copy.getText("md"))) return no()
@@ -316,9 +324,12 @@ export function rooms(plugin: Plugin) {
           try { if (ownClients(r, ws, u)) land(r, ws, peer, u) } catch { send(ws, { t: "y-reject", path: p }) }
           return true
         }
-        const q = r.queued.get(ws) ?? { updates: [], timer: setTimeout(() => check(r, ws, peer), CHECK_MS) }
+        const q = r.queued.get(ws) ?? { updates: [], bytes: 0, timer: setTimeout(() => check(r, ws, peer), CHECK_MS) }
         q.updates.push(u)
+        q.bytes += u.length
         r.queued.set(ws, q)
+        // (more than a check takes, refused before it's merged: each update holds a piece at least)
+        if (q.bytes > MAX_UPDATE || q.updates.length > MAX_STRUCTS) { clearTimeout(q.timer); r.queued.delete(ws); refuse(r, ws, peer) }
       }
       return true
     },

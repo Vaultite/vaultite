@@ -4,7 +4,8 @@ link, once (kept only as a hash in this machine's `data/config.json`, `share`). 
 in the app, a folder's menu: Share…. Only this machine's owner shares (not an app on the internet).
 - The guest opens it in a browser at MCP's public address (`mcp.public.url` behind a tunnel): the app, with that folder
   as their whole vault. read: they read it; comment: and start and answer comments (margin threads); edit: and write its
-  notes (not a note's type, nor CLAUDE.md or AGENTS.md). Nothing outside the folder (search, links, embeds, other
+  notes (not a note's type, nor CLAUDE.md or AGENTS.md, nor YAML that reuses a value or Markdown too long or nested too
+  deep to check at once). Nothing outside the folder (search, links, embeds, other
   plugins), no agents, terminals or settings.
 - What the folder draws, they see: its HTML pages run sandboxed (scripts only, an origin of no one's, nothing to reach:
   not the network, WebRTC, the guest's API or cookies; nothing of the app's, nor what the page kept); Kanban, Excalidraw

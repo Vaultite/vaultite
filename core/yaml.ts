@@ -95,7 +95,8 @@ export function loadYaml(text: string): unknown {
     return parseYaml(text, {
       version: "1.1", schema: "yaml-1.1",
       customTags: (tags) => [...tags.filter((t) => typeof t !== "string" && !REPLACED.has(t.tag)), ...SCALARS],
-      uniqueKeys: false, merge: true, maxAliasCount: -1, prettyErrors: false,
+      // (aliases expanding to more than 100 values are an alias bomb: a few lines that hold the server for minutes)
+      uniqueKeys: false, merge: true, maxAliasCount: 100, prettyErrors: false,
     }) ?? null
   } catch (e) {
     throw new YAMLError((e as Error).message)

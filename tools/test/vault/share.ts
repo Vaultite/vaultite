@@ -152,13 +152,13 @@ export default async ($: VaultTest) => {
       let seen: Any = null
       fake.services["dataview:within"] = (scope: string, only: (rel: string) => boolean) => {
         seen = { scope, sees: ["Shared/A.md", "Secret/S.md", "Shared/link.md", "Shared/.hidden/H.md", "Shared2/X.md"].filter(only) }
-        return { query: async (q: string, p?: string) => { seen.p = p; return { result: { rows: [{ path: "Shared/A.md", q, p }] } } }, inline: (q: string) => ({ value: q }) }
+        return { query: async (q: string, p?: string) => { seen.p = p; return { result: { rows: [{ path: "Shared/A.md", folder: "Shared", q, p }] } } }, inline: (q: string) => ({ value: q }) }
       }
       const r = await (await get(`${a.at}/api/dataview/query?q=${encodeURIComponent('TABLE FROM "Secret"')}&path=A.md`, as(a))).json()
       const first = { ...seen }
       const out = await get(`${a.at}/api/dataview/query?q=x&path=../Secret/S.md`, as(a))
       check("share: a guest's query sees only their folder's notes, by their paths", JSON.stringify(first.sees) === JSON.stringify(["Shared/A.md"])
-        && first.p === "Shared/A.md" && r.result.rows[0].path === "A.md" && r.result.rows[0].p === "A.md" && out.status >= 400, [seen, r])
+        && first.p === "Shared/A.md" && r.result.rows[0].path === "A.md" && r.result.rows[0].p === "A.md" && r.result.rows[0].folder === "" && out.status >= 400, [seen, r])
       const task = await send("POST", `${a.at}/api/dataview/task`, { path: "A.md", line: 1, raw: "x" }, as(a))
       check("share: no task ticked through a query (it writes past the guest's checks)", task.status === 403)
       if (had) fake.services["dataview:within"] = had; else delete fake.services["dataview:within"]
@@ -225,6 +225,25 @@ export default async ($: VaultTest) => {
       await put(a, "A.md", "# A\n")
       const alias = await put(a, "A.md", "---\naliases: [Setup]\n---\n# A\n")
       check("share: a guest gives no note aliases (the user's [[links]] could land on their words)", alias.status === 403 && !read("Shared/A.md").includes("aliases"), alias.status)
+      // A guest's write is checked in a moment, whatever it holds: YAML that reuses a value (an alias bomb: 330 bytes
+      // that expand past memory), Markdown marked reads slowly (a long run of `*a_`, lines nested deep).
+      let bomb = "a0: &a0 [x]\n"
+      for (let i = 1; i <= 8; i++) bomb += `a${i}: &a${i} [${Array(10).fill(`*a${i - 1}`).join(", ")}]\n`
+      const timed = async (text: string) => { const t0 = performance.now(), res = await put(a, "A.md", text); return { status: res.status, ms: performance.now() - t0 } }
+      const bombed = await timed(`---\n${bomb}---\n# A\n`), reused = await timed("---\nx: &x [a]\ny: *x\n---\n# A\n")
+      const slow = [await timed(`# A\n\n${"*a_".repeat(20_000)}\n`), await timed(`# A\n\n${"> ".repeat(60_000)}x\n`), await timed(`# A\n\n${"- ".repeat(60_000)}x\n`)]
+      const spaced = await timed(`# A\n\n]:${" ".repeat(120_000)}!\n`)
+      const long = await timed(`# A\n\n${Array.from({ length: 1500 }, (_, i) => `Note ${i} has **bold**, _a word_ and [a link](https://example.com/${i}).`).join("\n\n")}\n`)
+      check("share: no alias bomb in a guest's YAML, nor any reused value, refused at once", bombed.status === 403 && reused.status === 403 && bombed.ms < 1000 && !read("Shared/A.md").includes("&a0"), [bombed, reused])
+      check("share: Markdown that would take long to read is refused at once; long text that isn't, taken at once", slow.every((x) => x.status === 403 && x.ms < 1000)
+        && spaced.status === 200 && spaced.ms < 1000 && long.status === 200 && long.ms < 1000, [slow, spaced, long])
+      await put(a, "A.md", "# A\n")
+      const { load } = await import("../../../core/yaml.ts")
+      let blown = ""
+      const t0 = performance.now()
+      try { load(bomb) } catch (e) { blown = (e as Error).message }
+      check("share: the vault reads no alias bomb either (it would hold the server), but values reused a few times, yes", /alias/i.test(blown) && performance.now() - t0 < 1000
+        && JSON.stringify(load("base: &b {x: 1}\none:\n  <<: *b\n  y: 2\ntwo: *b\n")) === '{"base":{"x":1},"one":{"x":1,"y":2},"two":{"x":1}}', blown)
       const around = await put(a, "T.md", "Owner's template: <% tp.date.now() %>\nA guest's line\nNote: see [the lessons](https://example.com/lessons), a < b, [[Sub/B]], **bold** and `code`\n\n[^1]: Source: the lessons\n")
       const inside = await put(a, "Dash.md", "# Dash\n\n```dataviewjs\ndv.paragraph(1)\nfetch(1)\n```\n")
       check("share: not even a line inside the user's own code block", inside.status === 403 && !read("Shared/Dash.md").includes("fetch"), inside.status)
@@ -309,16 +328,30 @@ export default async ($: VaultTest) => {
       // Caps: a guest's threads in a note, and words in a thread, stop at a hundred.
       let said: ((d: string) => void) | null = null
       const fake = { readyState: 1, OPEN: 1, send: () => {}, on: (ev: string, fn: Any) => { if (ev === "message") said = fn } }
-      ;(mcp.service("companion:guest") as Any)(fake, { id: "cap-test", name: "Zed", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false })
+      ;(mcp.service("companion:guest") as Any)(fake, { id: "cap-test", name: "Zed", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false, holds: () => true })
       for (let i = 0; i < 105; i++) said!(JSON.stringify({ t: "comment", path: "A.md", line: 1, text: `c${i}` }))
       const zed = (await op("companion.status", {})).notes.filter((n: Any) => n.share === "cap-test")
       for (let i = 0; i < 105; i++) said!(JSON.stringify({ t: "answer", id: zed[0].id, verdict: "reply", text: `r${i}` }))
       const thread = (await op("companion.status", {})).notes.find((n: Any) => n.id === zed[0].id)
       check("share: a guest's threads in a note, and replies in one, are capped", zed.length === 100 && thread.replies.length === 100, [zed.length, thread?.replies?.length])
+      // A long comment is checked as it's kept (cut short), at once; a share gone since the socket opened takes none.
+      const t0 = performance.now()
+      said!(JSON.stringify({ t: "answer", id: zed[1].id, verdict: "reply", text: `]:${" ".repeat(60_000)}!` }))
+      said!(JSON.stringify({ t: "answer", id: zed[1].id, verdict: "reply", text: `${"x".repeat(4000)} ![p](https://tracker.example/p.png)` }))
+      const ms = performance.now() - t0, replies = (await op("companion.status", {})).notes.find((n: Any) => n.id === zed[1].id)?.replies ?? []
+      check("share: a guest's long comment is checked at once, as it's kept", ms < 500 && replies.length === 2 && replies.every((x: Any) => x.text.length <= 4000), [ms, replies.length])
+      let gone: ((d: string) => void) | null = null, cut = false
+      const ended = { readyState: 1, OPEN: 1, send: () => {}, terminate: () => { cut = true }, on: (ev: string, fn: Any) => { if (ev === "message") gone = fn } }
+      ;(mcp.service("companion:guest") as Any)(ended, { id: "gone-test", name: "Yan", see: (p: string) => (p.startsWith("Shared/") ? p.slice(7) : null), at: (p: string) => `Shared/${p}`, said: () => false, holds: () => false })
+      gone!(JSON.stringify({ t: "comment", path: "A.md", line: 1, text: "after the revoke" }))
+      check("share: a share revoked since the socket opened says nothing more, and its socket goes", cut && !(await op("companion.status", {})).notes.some((n: Any) => n.share === "gone-test"))
     }
 
-    // Ending it: revoked or expired, the link and the cookie stop working at once.
+    // Ending it: revoked or expired, the link and the cookie stop working at once, and its sockets go.
+    const open = await socket(c, "companion/live") as Exclude<Awaited<ReturnType<typeof socket>>, number>
+    const closed = new Promise<boolean>((ok) => { open.ws.on("close", () => ok(true)); setTimeout(() => ok(false), 1000) })
     await op("share.revoke", { id: comment.id })
+    check("share: revoked, its guest's sockets go at once", await closed)
     const all = config().share.shares
     all[reader.id].expires = new Date(Date.now() - 1000).toISOString()
     fs.writeFileSync(CONFIG, JSON.stringify({ ...config(), share: { shares: all } }))

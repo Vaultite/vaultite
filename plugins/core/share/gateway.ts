@@ -166,7 +166,7 @@ export class Gateway {
       if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v() }))
       // (Companion's: threads for a guest who may comment, who's in a note and its text as typed, in their folder, by their paths)
       const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
-      if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS),
+      if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS), holds: () => this.holds(g),
         may: (rel: string, before: string, after: string) => this.mayWrite(g, rel, before, after), slow: () => this.limited(`type:${g.id}`, TYPES) })
       else ws.send(JSON.stringify({ t: "state", mode: "quiet", name: "", agents: [], notes: [], said: [] }))
     })
@@ -332,10 +332,15 @@ export class Gateway {
     return `${this.boot}:${this.plugin.vault.version}`
   }
 
+  /** Whether a guest's share still holds: not revoked, made again or expired. */
+  holds(g: Guest, cur: Share | undefined = this.shares()[g.id]): cur is Share {
+    return !!cur && cur.token === g.share.token && !expired(cur)
+  }
+
   /** Why a guest's change to a note, typed live (Companion's rooms), can't land: as a write of theirs would be checked. */
   mayWrite(g: Guest, rel: string, before: string, after: string) {
     const cur = this.shares()[g.id]
-    if (!cur || cur.token !== g.share.token || expired(cur)) return "this folder isn't shared with you any more"
+    if (!this.holds(g, cur)) return "this folder isn't shared with you any more"
     if (cur.role !== "edit" || new Folder(this.plugin.vault.path, g.share.folder).see(rel) === null) return "you can't change this folder"
     if (after.length > NOTE_MAX) return "a note this long can't be written here"
     const has = folderSize(this.plugin.vault, g.share.folder), room = cur.room ?? { notes: has.notes + ROOM.notes, bytes: has.bytes + ROOM.bytes }
@@ -386,7 +391,7 @@ export class Gateway {
 
   /** A share turned off: its guests' sockets close. */
   close(id: string) {
-    for (const [ws, { g }] of this.sockets) if (g.id === id) ws.close()
+    for (const [ws, { g }] of this.sockets) if (g.id === id) ws.terminate() // (at once: a close waits on the guest)
   }
 
   // ---------- HTTP
@@ -464,9 +469,9 @@ function plainQuery(q: string) {
   return ok(node as Item)
 }
 
-/** An answer with the folder's paths as the guest's: every text that starts with it. */
+/** An answer with the folder's paths as the guest's: every text that starts with it, and the folder itself (their root). */
 function theirPaths(v: unknown, folder: string): unknown {
-  if (typeof v === "string") return v.startsWith(`${folder}/`) ? v.slice(folder.length + 1) : v
+  if (typeof v === "string") return v === folder ? "" : v.startsWith(`${folder}/`) ? v.slice(folder.length + 1) : v
   if (Array.isArray(v)) return v.map((x) => theirPaths(x, folder))
   if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, theirPaths(x, folder)]))
   return v

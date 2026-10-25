@@ -35,8 +35,7 @@ plugin.onChange((paths) => gateway.changed(paths))
 // Sockets of shares revoked or expired since they opened close; the rest are kept alive through the tunnel.
 const pinger = setInterval(() => {
   for (const [ws, { g }] of gateway.sockets) {
-    const s = shares()[g.id]
-    if (!s || s.token !== g.share.token || expired(s)) ws.close()
+    if (!gateway.holds(g)) ws.terminate()
     else ws.send(JSON.stringify({ type: "ping" }))
   }
 }, 25_000)

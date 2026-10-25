@@ -42,7 +42,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   works for them, and what they write is marked theirs (`vau blame`). You can start a comment on a line too (Add
   comment, in the editor's menu): a thread between people, which no agent is told of. What the folder draws they see
   too: its HTML pages, sandboxed with nothing to reach; its Kanban boards (theirs to change if they edit), Excalidraw
-  drawings and Dataview queries, over the folder alone.
+  drawings and Dataview queries, over the folder alone. What they write is checked at once whatever it holds (a note
+  too long or nested too deep to check is refused), and removing their link cuts off their open pages at once.
 - **Renaming never moves**: a "/" in a file's or folder's new name (its title, the path bar, the file tree) is refused
   like the other characters a name can't have, as in Obsidian; moving is dragging or Move to. Creating from a path
   (Folder/Note in the switcher, a [[Folder/Note]] link) still makes the folders.

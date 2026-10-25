@@ -19,7 +19,7 @@ export function loadFm(raw: string): Item {
   return fm as Item
 }
 
-const HEAD = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/
+export const HEAD = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/
 /** [frontmatter, body]. Throws on a broken header. */
 export function parseText(text: string): [Item, string] {
   const m = HEAD.exec(text)

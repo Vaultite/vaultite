@@ -238,6 +238,62 @@ export default async ($: VaultTest) => {
     check("cotype: a guest's change in a note too long to type in together is refused", lena.got.some((m) => m.t === "y-reject" && /too long/.test(m.why)) && !read("Co/L.md").startsWith("hi"))
     lena.close()
   }
+  {
+    // A guest's waiting changes are capped as they come (many small ones, or bytes), before they're merged; ones that
+    // aren't Yjs updates are refused, not thrown where nothing catches them.
+    const kit = win("Kit", { who: { ...guestWho, agent: "Kit" }, may: () => "" })
+    co.heard(kit.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
+    await $.sleep(100)
+    const d = new Y.Doc(), many: Uint8Array[] = []
+    Y.applyUpdate(d, Y.encodeStateAsUpdate(owner.doc))
+    d.on("update", (u: Uint8Array) => many.push(u))
+    for (let i = 0; i < 600; i++) d.getText("md").insert(0, "q")
+    const k = kit.got.length, t0 = performance.now()
+    for (const u of many) co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md")
+    const big = new Y.Doc()
+    Y.applyUpdate(big, Y.encodeStateAsUpdate(owner.doc))
+    const bytes: Uint8Array[] = []
+    for (let i = 0; i < 3; i++) { const sv = Y.encodeStateVector(big); big.getText("md").insert(0, "w".repeat(150_000)); bytes.push(Y.encodeStateAsUpdate(big, sv)) }
+    for (const u of bytes) co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md")
+    const capped = kit.got.slice(k).filter((m) => m.t === "y-reject").length, ms = performance.now() - t0
+    co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(new Uint8Array([1, 2, 3, 250, 250])) }, "Co/N.md")
+    co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(new Uint8Array([9, 9, 9, 9])) }, "Co/N.md")
+    await $.sleep(400)
+    check("cotype: a guest's waiting changes stop at so many, or so many bytes, refused as they come", capped >= 2 && ms < 1000 && !owner.text.toString().includes("qqq") && !owner.text.toString().includes("www"), [capped, ms])
+    check("cotype: ...and what isn't an update is refused", kit.got.slice(k).filter((m) => m.t === "y-reject").length > capped)
+    kit.close()
+  }
+  {
+    // A guest who leaves just after typing: what they typed is written as theirs before the owner's window hears it's
+    // alone (alone, it saves the doc as the user's).
+    write("Co/P.md", "# P\n")
+    await $.vault.sync()
+    const me = win("Lucas", { who: you }, "Co/P.md"), bea = win("Bea", { who: { ...guestWho, agent: "Bea" }, may: () => "" }, "Co/P.md")
+    for (const w of [me, bea]) co.heard(w.ws, { t: "y-open", path: "Co/P.md" }, "Co/P.md")
+    await $.sleep(100)
+    let onDisk: string | null = null
+    const sent = me.ws.send
+    me.ws.send = (t: string) => { const m = JSON.parse(t); if (m.t === "y-peers" && m.others === 0) onDisk ??= read("Co/P.md"); sent(t) }
+    bea.text.insert(bea.text.length, "Bea's words\n")
+    await $.sleep(50)
+    bea.close()
+    await $.sleep(800)
+    const blame = (await $.app.callOp("provenance.blame", { path: "Co/P.md" })).result as Any
+    check("cotype: a guest who leaves right after typing has it written as theirs before the owner's window is alone", String(onDisk).includes("Bea's words")
+      && blame.runs.some((r: Any) => r.by === "Bea" && r.guest && r.text.includes("Bea's words")), [onDisk, blame.runs])
+    // A guest's change the file won't take (the share's rules, as the write checks them) goes from the doc, said back to
+    // them, so the owner's next save doesn't write it as the user's.
+    const cy = win("Cy", { who: { ...guestWho, agent: "Cy" }, may: () => "" }, "Co/P.md")
+    co.heard(cy.ws, { t: "y-open", path: "Co/P.md" }, "Co/P.md")
+    await $.sleep(100)
+    cy.text.insert(cy.text.length, "<script>alert(1)</script>\n")
+    await $.sleep(1200)
+    me.text.insert(0, "Owner ")
+    await $.sleep(1000)
+    check("cotype: a guest's change the file won't take goes from the doc and is said back, never saved as the owner's", !me.text.toString().includes("<script>") && !read("Co/P.md").includes("<script>")
+      && read("Co/P.md").includes("Owner ") && cy.got.some((m) => m.t === "y-reject" && m.why === "it couldn't be saved"), [read("Co/P.md"), me.text.toString()])
+    for (const w of [me, cy]) w.close()
+  }
   for (const w of [owner, ada, rex]) w.close()
   await $.sleep(100)
   check("cotype: the note's room goes with its last window", !co.list().some((r: Any) => r.path === "Co/N.md"))
