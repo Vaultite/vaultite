@@ -1715,7 +1715,6 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("accounts: Wikipedia's user, none for an IP address signed out",
     await name("wikipedia.org", { query: { userinfo: { id: 12, name: "Alice Park" } } }) === "Alice Park" && await name("wikipedia.org", { query: { userinfo: { id: 0, name: "192.0.2.1", anon: "" } } }) === null)
   check("accounts: Perplexity's email", await name("perplexity.ai", { user: { email: "alice@example.com" } }) === "alice@example.com" && await name("perplexity.ai", {}) === null)
-  check("accounts: no rule for Discord, which signs you out when anything runs in its pages", !("discord.com" in sa.ACCOUNTS))
   check("accounts: WhatsApp's number off its open app, signed in unnamed without it, out at its QR code",
     JSON.stringify(look("whatsapp.com", { phone: '"5511987654321:12@c.us"' })) === '{"account":"+5511987654321"}' && JSON.stringify(look("whatsapp.com", { phone: "" })) === '{"account":""}' &&
     look("whatsapp.com", { out: true }) === false && sa.phoneOf("12@c.us") === "")

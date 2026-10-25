@@ -40,7 +40,7 @@ const WHATSAPP_LOOK = `(() => { if (document.querySelector("#pane-side")) return
   return document.querySelector("[data-ref] canvas") ? { out: true } : null })()`
 
 /** Sites whose account we know how to ask for, by site ("ycombinator.com" for news.ycombinator.com), each tested in
- *  tools/test_web.ts. Never discord.com: running anything in its pages (a look, a page fetch) signs you out. */
+ *  tools/test_web.ts. */
 export const ACCOUNTS: Record<string, Rule> = {
   "claude.ai": { url: "https://claude.ai/api/account", page: true, signed: "sessionKey", read: (b) => at(b, "email_address") || at(b, "account.email_address") || at(b, "full_name") },
   "chatgpt.com": { url: "https://chatgpt.com/api/auth/session", page: true, read: (b) => ({ account: at(b, "user.email") || at(b, "user.name"), avatar: at(b, "user.image") }) },
