@@ -5,7 +5,7 @@ import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuild
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { capitalize, keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 import { nearest } from "./text"
 
 /** Its own changes: not the user's, so not said back as theirs. */
@@ -383,8 +383,8 @@ const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string
 function begin(view: EditorView, path: string, name: string, from: number, to: number, how: How) {
   const insert = `${name.toLowerCase()} `
   view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.complete" })
-  void op("companion.start", { as: capitalize(name), ...(how.agent ? { agent: how.agent } : {}), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
-    path, line: view.state.doc.lineAt(from).number }).catch((e) => notifyError(e, `Couldn't start ${capitalize(name)}`))
+  void op("companion.start", { as: nameAs(name), ...(how.agent ? { agent: how.agent } : {}), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
+    path, line: view.state.doc.lineAt(from).number }).catch((e) => notifyError(e, `Couldn't start ${nameAs(name)}`))
 }
 
 /** @ anywhere a mention can start: the agents around now, the companion first; once a letter is typed, the profiles'

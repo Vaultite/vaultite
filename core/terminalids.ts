@@ -3,6 +3,8 @@
 
 /** An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal"). */
 export const TERMINAL_AGENT = /^[a-z][a-z0-9]*(?:_[a-z0-9]{1,32})?$/
+/** A model's or an effort's name as an agent takes it: sonnet[1m], gpt-6.1-sol, opencode/deepseek-v4.1-flash-free. */
+export const MODEL_NAME = /^[\w.[\]/:-]{1,100}$/
 const PROFILE = /^[a-z0-9]{1,32}$/
 
 export type TerminalAgent = { agent: string; profile: string | null; resume: string | null; machine: string | null }

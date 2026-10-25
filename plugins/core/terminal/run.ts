@@ -2,7 +2,7 @@
 // schedules, `vau`); terminal.ask: a question for an agent in a new background terminal (the Ask box).
 import fs from "node:fs"
 import path from "node:path"
-import { agentIn, newTerminalId, shellQuote, startAgent, TERMINAL_AGENT } from "../../../core/agents.ts"
+import { agentIn, MODEL_NAME, newTerminalId, shellQuote, startAgent, TERMINAL_AGENT } from "../../../core/agents.ts"
 import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 import { show } from "./ops.ts"
 
@@ -227,7 +227,7 @@ the prompt's first words, until the agent names its session.
       if (!said) throw new OpError("say what to ask")
       if (!TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
       if (account && !/^[a-z0-9]{1,32}$/.test(account)) throw new OpError(`'${account}' isn't an account's id`)
-      if (model && !/^[\w.[\]-]{1,60}$/.test(model)) throw new OpError(`'${model}' isn't a model's name`)
+      if (model && !MODEL_NAME.test(model)) throw new OpError(`'${model}' isn't a model's name`)
       const m = await machineFor(machine)
       let id: string
       if (m) id = (await passOn(ctx, m, "terminal.ask", { prompt: said, agent, ...(account ? { account } : {}), ...(model ? { model } : {}) })).id

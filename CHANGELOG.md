@@ -20,9 +20,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   where it was. Deleting a container signed in somewhere offers to move its logins first. A container's sites reorder
   by dragging, always-open ones first until you do.
 - **Names pick the agent**: @opus in a note starts a companion on Opus, @opus-review another; @haiku, @fable, @sonnet
-  likewise, @codex Codex on GPT-6.1 Sol at medium (@sol, @astra, @luna its other models). An ask to one not running
-  starts it, no picker needed; Start @name says what it runs, and its chooser picks the agent too, with that agent's
-  models. The names are a setting (Companion > Names), and Codex companions now run the model and effort they're given.
+  likewise, @codex Codex on GPT-6.1 Sol at medium (@sol, @astra, @luna its other models), @opencode OpenCode, which
+  now runs the model it's given (`opencode/deepseek-v4.1-flash-free`) and shows its permission asks by its cursor. An
+  ask to one not running starts it, no picker needed; Start @name says what it runs, and its chooser picks the agent
+  too, with that agent's models. The names are a setting (Companion > Names), and Codex companions now run the model
+  and effort they're given.
 - **Set up Vaultite asks about your agents and your Mac**: after the vault, it finds the coding agents on the
   computer (Claude Code, Codex, OpenClaw, Hermes, Gemini, OpenCode; the install command of the others to copy), lets
   you pick the companion's, and turns on what you tick: Claude Code's computer use for the vault, Codex's, OpenClaw and

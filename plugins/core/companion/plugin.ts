@@ -190,7 +190,7 @@ function addressee(name?: string) {
   const a = name ? agents.get(key(name)) : undefined
   if (!name || (a && a.state !== "away" && live(a.name))) return a?.name ?? ownName()
   if (isMain(name) || key(name) === "companion" || key(name) === key(nameOf(agentSetting()))) return ownName()
-  return session(name) || profileOf(name, offered()) ? a?.name ?? name.charAt(0).toUpperCase() + name.slice(1) : ownName()
+  return session(name) || profileOf(name, offered()) ? a?.name ?? nameOf(key(name)) : ownName()
 }
 /** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch. */
 const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) : isMain(name) || watching.has(key(name)))

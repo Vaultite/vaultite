@@ -29,7 +29,7 @@ Loop forever: `vau companion next --timeout 240` (give the command a timeout abo
   Prefer text (`--find`, `--after` for new lines): a line number goes stale as they type.
 - Several agents: `vau companion start --as Ada` starts another, in its own colour, which passes `--as Ada` to every
   command. A name's first part picks what it runs (the setting `profiles`): @opus and @opus-review run Claude Code on
-  Opus, @codex Codex on GPT-6.1 Sol at medium, @sol, @astra, @luna Codex on those; other names the settings `agent`,
+  Opus, @codex Codex on GPT-6.1 Sol at medium, @sol, @astra, @luna Codex on those, @opencode OpenCode on its own model; other names the settings `agent`,
   `model` and `effort` (`--agent`, `--model`, `--effort` override). In a note, an ask to one not running starts it, and
   @ offers Start @name with what it runs. Asks sent while it starts wait for its first `next`. Asks to @ada and answers
   to its items reach only it; edit and open only the companion (`next --watch`: it too).

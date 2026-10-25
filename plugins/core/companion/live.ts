@@ -247,6 +247,8 @@ export function howText(h: Partial<How> & { runs?: string }) {
   return [harness?.name ?? (id && capitalize(id)), model, h.effort && effortName(h.effort)].filter(Boolean).join(" · ")
 }
 export const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
+/** A new agent's name as typed after @, as its agent calls itself when it's one (opencode: OpenCode). */
+export const nameAs = (name: string) => state.harnesses.find((x) => x.id === name.toLowerCase())?.name ?? capitalize(name)
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // ---------- for the overlay

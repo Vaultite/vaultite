@@ -936,6 +936,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Limits`: A plan's limits as an agent reads them: where from, when, and each window.
 - `limitWindow(id, label, minutes, used, resets, now)`: A plan limit's window at `now` (epoch s; `resets` too): one that renewed since it was read is unused.
 - `Live`: A session open now as its process tells (times in epoch ms; `tmux`, its pane): codingAgent adds what the usage knows of it (cost, tokens, project, model) and the app's terminal it runs in.
+- `MODEL_NAME`: A model's or an effort's name as an agent takes it: sonnet[1m], gpt-6.1-sol, opencode/deepseek-v4.1-flash-free.
 - `newTerminalId(agent?)`: A new terminal's id: 8 letters and digits, after `agent` (a name, or a name and account: TERMINAL_AGENT) when it runs one.
 - `notOnThisMachine(agent, id)`: A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell.
 - `numberOf(v)`: A number as stored, else 0.
