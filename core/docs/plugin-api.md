@@ -160,13 +160,15 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `activity:report-url` (activity): The same as a URL its hook POSTs the JSON to, for an agent whose hooks can (Claude Code's http hooks on Windows).
 - `activity:changes` (activity)
 - `agent:claude` (claude-code)
-- `agent:codex` (codex): `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared background server, so no context (it reads the vault's AGENTS.md itself) and no hooks.
+- `agent:codex` (codex): `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost.
 - `agent-asking:claude` (claude-code): What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's.
 - `agent-asks:claude` (claude-code)
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
 - `agent-meters:claude` (claude-code)
 - `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
 - `agent-model:claude-code` (claude-code)
+- `agent-models:claude` (claude-code): The models a session may run, by the aliases --model takes (each its family's latest), and its efforts.
+- `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices` ("agent-pick:claude"): a digit picks (in a multi-select toggles, Tab goes on), the one after the options types an answer; 1 submits the review several questions or a multi-select end in.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.

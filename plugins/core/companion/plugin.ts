@@ -4,9 +4,10 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
+import { type AgentMeter, type AgentModels, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
 import { liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { rooms } from "./rooms.ts"
 import { type Hunk, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -32,9 +33,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
  *  drawing, an element (`find`: its id or text) or a point of it (x, y). */
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change;
- *  starting: its session boots (asks wait for its first `next`); model, effort: what it runs; asks: a permission it waits on. */
+ *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
-  model?: string; effort?: string; asks?: { event: string; text: string } }
+  runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
  *  a highlight (gone after a while). `anchor`: a comment's line as it read, to find it again without `find`. */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
@@ -79,6 +80,36 @@ const ownName = () => str(plugin.settings().name).trim() || nameOf(agentSetting(
 const nameOf = (agent: string) => {
   const base = agent.split("_")[0]
   return base === "claude" ? "Claude" : agentName(base) ?? base.charAt(0).toUpperCase() + base.slice(1)
+}
+/** The names that pick an agent: the manifest's, then the user's lines. */
+const profiles = () => parseProfiles([plugin.manifest.settings?.profiles?.default, plugin.settings().profiles].flatMap((v) => (Array.isArray(v) ? v : [])))
+/** A profile's agent in the companion's account (claude_work) when it's the same agent. */
+const inAccount = (agent: string) => (agent && agent === agentSetting().split("_")[0] ? agentSetting() : agent)
+/** What agent `name` runs, filled in where it isn't told: as its last session did (started again), else its profile
+ *  (its name's first part), else the settings. */
+export function howFor(name: string, agent = "", model = "", effort = "") {
+  const kept = isMain(name) ? null : session(name), t = kept ? parseTerminal(kept.id) : null
+  let base: Partial<Profile> = t ? { agent: agentIn(t.agent, t.profile), model: kept!.model, effort: kept!.effort } : isMain(name) ? {} : profileOf(name, profiles()) ?? {}
+  if (agent && agent !== base.agent) base = {}
+  const runs = agent || inAccount(base.agent ?? "") || agentSetting()
+  return { agent: runs, ...howOf(runs, model || base.model, effort || base.effort) }
+}
+/** Programs whose name isn't their agent's. */
+const BIN: Record<string, string> = { cursor: "cursor-agent" }
+let found: { t: number; off: string; list: { id: string; name: string; installed: boolean; models: AgentModels["models"]; efforts: string[] }[] } | null = null
+/** The coding agents a plugin that's on runs, whether they're installed here, and their models. */
+function harnesses() {
+  const off = [...plugin.vault.switchedOff()].join()
+  if (found && found.off === off && Date.now() - found.t < 60_000) return found.list
+  const list = KNOWN_AGENTS.flatMap((a) => {
+    const id = a.terminal ?? a.id
+    if (typeof plugin.service(`agent:${id}`) !== "function") return []
+    let m: AgentModels | null = null
+    try { m = plugin.service(`agent-models:${id}`)?.() ?? null } catch { /* none */ }
+    return [{ id, name: a.name, installed: !!findBin(BIN[id] ?? id), models: m?.models ?? [], efforts: m?.efforts ?? [] }]
+  })
+  found = { t: Date.now(), off, list }
+  return list
 }
 
 // ---------- state ----------
@@ -134,17 +165,29 @@ const broadcast = (m: object) => {
   for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text)
   for (const [ws, g] of guests) if (ws.readyState === ws.OPEN) toGuest(ws, g, m as { t: string; note?: Note; id?: string })
 }
-// (fresh: what a new agent started from the app runs)
-const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, fresh: howOf(agentSetting()) })
+// (fresh: what a new agent started from the app runs, profiles what the names that pick one start, harnesses what can run)
+const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said, ...offers() })
+function offers() {
+  const named = Object.entries(offered()).map(([name, p]) => [name, { agent: p.agent, ...howOf(p.agent, p.model, p.effort) }])
+  return { fresh: { agent: agentSetting(), ...howOf(agentSetting()) }, profiles: Object.fromEntries(named), harnesses: harnesses() }
+}
+/** The profiles of agents installed here, and of the companion's own agent (in its account). */
+function offered() {
+  const here = harnesses(), on = (agent: string) => here.some((h) => h.id === agent.split("_")[0] && (h.installed || h.id === agentSetting().split("_")[0]))
+  return Object.fromEntries(Object.entries(profiles()).flatMap(([name, p]) => (on(p.agent) ? [[name, { ...p, agent: inAccount(p.agent) }]] : [])))
+}
 
 const key = (name: string) => name.trim().toLowerCase()
 const isMain = (name: string) => key(name) === key(ownName())
 /** An agent still around: waiting for moments, or it waited a moment ago. */
 const live = (name: string) => waiters.has(key(name)) || Date.now() - (seen.get(key(name)) ?? 0) < LIVE_MS
-/** Who an ask to @name is for: that agent when it's around, else the companion (@claude, @companion, a name gone). */
+/** Who an ask to @name is for: that agent when it's around; the companion by its names (@companion, @claude when it
+ *  runs Claude Code); one with a profile (@opus-review) or a session before, itself, to start; else the companion. */
 function addressee(name?: string) {
   const a = name ? agents.get(key(name)) : undefined
-  return a && a.state !== "away" && live(a.name) ? a.name : ownName()
+  if (!name || (a && a.state !== "away" && live(a.name))) return a?.name ?? ownName()
+  if (isMain(name) || key(name) === "companion" || key(name) === key(nameOf(agentSetting()))) return ownName()
+  return session(name) || profileOf(name, offered()) ? a?.name ?? name.charAt(0).toUpperCase() + name.slice(1) : ownName()
 }
 /** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch. */
 const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) : isMain(name) || watching.has(key(name)))
@@ -195,13 +238,15 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
 }
 
 const waking = new Set<string>()
-/** An ask to the companion while its session isn't running (it ended, or never started): it starts, and the ask waits
- *  for its first `next`. As the window's request, so only this machine's owner starts it. */
+/** An ask to an agent whose session isn't running (ended, or never started: @opus) starts it, the ask waiting for its
+ *  first `next`; one running that stopped watching is nudged. As the window's request: only this machine's owner starts. */
 async function wake(m: Moment, from: IncomingMessage) {
-  const name = m.for!, k = key(name)
-  if (!isMain(name) || waiters.has(k) || waking.has(k) || await running(sessionId(name))) return
+  const name = m.for!, k = key(name), id = sessionId(name)
+  // (another around has a session, or joined from one of its own: the ask waits for its next)
+  if (waiters.has(k) || waking.has(k) || (!isMain(name) && live(name))) return
+  if (await running(id)) return void (isMain(name) || nudge(name, id!))
   waking.add(k)
-  try { await plugin.runOp("companion.start", { ...(m.path ? { path: m.path, line: m.line } : {}), after: m.seq - 1 }, undefined, from) }
+  try { await plugin.runOp("companion.start", { ...(isMain(name) ? {} : { as: name }), ...(m.path ? { path: m.path, line: m.line } : {}), after: m.seq - 1 }, undefined, from) }
   catch (e) {
     setAgent(name, { state: "watching" })
     putNote({ kind: "say", agent: name, text: `I couldn't start: ${(e as Error).message}`, ...(m.path ? { path: m.path, line: m.line } : {}) }, SAY_MS)
@@ -230,17 +275,17 @@ export function mergeHunks(a: Hunk[], b: Hunk[]): Hunk[] | null {
 const tintsFile = () => `${plugin.localDir()}/tints.json`
 let tints: Record<string, string> | null = null
 /** The agent named `name`, made the first time it acts (its tint its own from before, else the next free one: Claude
- *  orange, Codex blue, which the others take last). */
+ *  Code's orange, Codex's blue, which the others take last). */
 function agentOf(name: string): Agent {
   let a = agents.get(key(name))
   if (!a) {
     if (!tints) try { tints = JSON.parse(fs.readFileSync(tintsFile(), "utf8")) } catch { tints = {} }
     const used = new Set([...agents.values()].map((x) => x.tint))
-    const want = tints![key(name)] ?? (isMain(name) || /claude/i.test(name) ? "orange" : /codex/i.test(name) ? "blue" : null)
+    const s = session(name), runs = (s && parseTerminal(s.id)?.agent) || (isMain(name) ? agentSetting() : profileOf(name, offered())?.agent ?? "")
+    const want = tints![key(name)] ?? ({ claude: "orange", codex: "blue" } as Record<string, string>)[runs.split("_")[0]] ?? null
     const tint = want && !used.has(want) ? want : TINTS.find((t) => !used.has(t) && t !== "orange" && t !== "blue") ?? TINTS.find((t) => !used.has(t)) ?? TINTS[agents.size % TINTS.length]
     if (tints![key(name)] !== tint) { tints![key(name)] = tint; try { fs.writeFileSync(tintsFile(), JSON.stringify(tints)) } catch { /* as it was */ } }
-    const s = session(name)
-    a = { name, tint, state: "watching", t: Date.now(), ...(s?.model ? { model: s.model } : {}), ...(s?.effort ? { effort: s.effort } : {}) }
+    a = { name, tint, state: "watching", t: Date.now(), ...(runs ? { runs } : {}), ...(s?.model ? { model: s.model } : {}), ...(s?.effort ? { effort: s.effort } : {}) }
     agents.set(key(name), a)
   }
   return a
@@ -670,11 +715,10 @@ async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, ef
   if (!/^[\w-]{1,30}$/.test(name)) throw new OpError("a name is one word (letters, digits, - or _): it's what @ calls it by")
   const was = sessionId(name)
   if (await running(was)) return { id: was!, running: true, name }
-  const runs = agent || agentSetting(), id = newTerminalId(runs)
-  const prompt = promptFor(name)
   // (a quicker model answers sooner: each moment is one of its turns)
-  const how = howOf(runs, model, effort)
-  starting(name, { ...at, model: how.model || undefined, effort: how.effort || undefined }, after)
+  const how = howFor(name, agent, model, effort), runs = how.agent, id = newTerminalId(runs)
+  const prompt = promptFor(name)
+  starting(name, { ...at, runs, model: how.model || undefined, effort: how.effort || undefined }, after)
   try {
     await startAgent(ctx, id, prompt, { allow: ALLOW, model: how.model || null, effort: how.effort || null })
   } catch (e) { seen.delete(key(name)); setAgent(name, { state: isMain(name) ? "watching" : "away" }); throw e }
@@ -795,7 +839,7 @@ plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
 })
 
 // A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. An agent quiet
-// that long is away (asks to it go to the companion), the companion too once its session isn't running.
+// that long is away (an ask to it nudges it, or starts it again), the companion too once its session isn't running.
 const NUDGE = 5 * 60_000
 /** The watchdog's round, each minute (and the tests'). */
 export async function tend() {
@@ -824,9 +868,12 @@ export async function tend() {
   for (const s of sessions()) {
     const k = key(s.name)
     if (waiters.has(k) || Date.now() - (seen.get(k) ?? loaded) < NUDGE || !(await running(s.id))) continue
-    seen.set(k, Date.now())
-    await plugin.runOp("terminal.send", { id: s.id, text: `Keep watching: run \`${nextCmd(s.name)}\` again, and never end your turn.` }).catch(() => {})
+    await nudge(s.name, s.id)
   }
+}
+async function nudge(name: string, id: string) {
+  seen.set(key(name), Date.now())
+  await plugin.runOp("terminal.send", { id, text: `Keep watching: run \`${nextCmd(name)}\` again, and never end your turn.` }).catch(() => {})
 }
 const watchdog = setInterval(tend, 60_000)
 watchdog.unref?.()
@@ -1291,18 +1338,19 @@ plugin.op({
   owner: "a coding agent",
   summary: "Start the companion's always-on session (its agent, in a terminal on this machine), or another agent's by name.",
   help: `With --as, another agent joins under that name, with its own cursor colour: @name in a note asks it (asks sent while
-it starts wait for it). --model and --effort pick its model (each moment is one of its turns), for an agent that takes
-them: Claude Code runs Sonnet at medium effort unless the settings say otherwise.
+it starts wait for it). The name's first part picks what it runs (the setting profiles: Opus-review runs Claude Code on
+Opus, Codex runs Codex); --agent, --model and --effort override that (each moment is one of the model's turns). Other
+names run the settings' agent, model and effort.
 
   vau companion start
-  vau companion start --as Ada --agent codex
-  vau companion start --as Quick --model haiku --effort medium`,
+  vau companion start --as Opus-review
+  vau companion start --as Ada --agent codex --model gpt-6-luna --effort high`,
   kind: "write",
   lock: false,
   params: { as: { type: "string", description: "start another agent under this name (one word; default: the companion)" },
-    agent: { type: "string", description: "the coding agent it runs (claude, codex, claude_personal...; default: the setting)" },
-    model: { type: "string", description: "the model it runs (sonnet, haiku, a full name; default: the setting, else the agent's own)" },
-    effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], description: "its effort (default: the setting, else the agent's own)" },
+    agent: { type: "string", description: "the coding agent it runs (claude, codex, claude_personal...; default: its name's profile, else the setting)" },
+    model: { type: "string", description: "the model it runs (sonnet, opus, gpt-6.1-sol, a full name; default: its name's profile, else the setting, else the agent's own)" },
+    effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], description: "its effort (default: its name's profile, else the setting, else the agent's own)" },
     path: { type: "string", format: "path", description: "the note it was called from: its cursor waits there while it starts" }, line: LINE,
     after: { type: "integer", minimum: 0, description: "the moments after this one wait for it (the ask that started it); default: those from now" } },
   run: async (p, ctx) => {
@@ -1310,7 +1358,7 @@ them: Claude Code runs Sonnet at medium effort unless the settings say otherwise
     const at = str(p.path) ? { path: str(p.path), ...(p.line ? { line: Number(p.line) } : {}) } : {}
     return await start(ctx, str(p.as), str(p.agent), str(p.model), str(p.effort), at, p.after)
   },
-  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.model || r.effort ? ` (${[r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (vau terminal screen ${r.id}).`,
+  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.agent ? ` (${[agentName(r.agent.split("_")[0]) ?? r.agent, r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (vau terminal screen ${r.id}).`,
 })
 
 plugin.op({
@@ -1450,7 +1498,7 @@ plugin.onSync((vault) => {
     // (again a moment later: Terminal may not have started yet)
     void rejoin(); setTimeout(() => void rejoin(), 5000).unref?.()
   }
-  const now = JSON.stringify([mode(), ownName(), howOf(agentSetting())])
+  const now = JSON.stringify([mode(), ownName(), offers()])
   if (now === lastSaid) return
   // (turned off: its session ends too)
   if (lastSaid && mode() === "off") void stop(undefined, true).catch(() => {})

@@ -392,6 +392,9 @@ export type Asking = { kind: "question"; questions: Question[] } | { kind: "plan
 export type Choice = number[] | string
 /** How a session is started, besides its id and first prompt. */
 export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
+/** What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes
+ *  it), and its efforts, least first. */
+export type AgentModels = { models: { id: string; label: string }[]; efforts: string[] }
 
 /** What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's
  *  claude.sample). It answers SampleAnswer, or throws an Error with `code` (a claude.sample error code). */

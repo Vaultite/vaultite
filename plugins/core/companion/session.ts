@@ -1,7 +1,7 @@
 // Its sessions from the app: the mode, showing one, stopping one, a fresh one. The status bar's menu and each cursor's.
 import { Power, RotateCcw, SquareTerminal } from "lucide-react"
-import { capitalize, notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
-import { type Agent, getState, type Mode } from "./live"
+import { notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
+import { type Agent, getState, howText, type Mode } from "./live"
 
 const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
 
@@ -32,10 +32,10 @@ export async function setMode(mode: Mode) {
   } catch (e) { notifyError(e) }
 }
 
-/** Start agent `name` again: another at the model and effort it ran (Start @name's picks), the companion as set. */
+/** Start agent `name` again: another as it ran (Start @name's picks), the companion as set. */
 async function start(name: string) {
   const a = main(name) ? undefined : getState().agents.find((x) => x.name.toLowerCase() === name.toLowerCase())
-  try { await op("companion.start", { ...as(name), ...(a?.model ? { model: a.model } : {}), ...(a?.effort ? { effort: a.effort } : {}) }) } catch (e) { notifyError(e) }
+  try { await op("companion.start", { ...as(name), ...(a?.runs ? { agent: a.runs } : {}), ...(a?.model ? { model: a.model } : {}), ...(a?.effort ? { effort: a.effort } : {}) }) } catch (e) { notifyError(e) }
 }
 
 /** Agent `name`'s terminal (the companion's by default), in a new tab. */
@@ -62,7 +62,7 @@ async function fresh(name: string) {
 
 /** An agent's menu: its cursor's (right-click, a held finger on its name, … in its box) and its face's. */
 export function agentMenu(a: Agent): MenuItem[] {
-  const how = [a.model && capitalize(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")
+  const how = howText(a)
   return [
     ...(main(a.name) ? [modeItem()] : []),
     ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),

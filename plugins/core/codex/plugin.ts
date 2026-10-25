@@ -2,7 +2,7 @@
 // from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentAsk, type AgentCommand, programOf, type AgentMeter, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
+import { type AgentAsk, type AgentCommand, programOf, type AgentMeter, type AgentModels, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
   priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
@@ -337,14 +337,26 @@ plugin.provide("agent-meters:codex", async (): Promise<AgentMeter[]> =>
 
 // ---------- Terminal runs it (the service "agent:codex")
 
-/** `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared
- *  background server, so no context (it reads the vault's AGENTS.md itself) and no hooks. */
-plugin.provide("agent:codex", async ({ resume, prompt, wsl }: AgentStart): Promise<AgentCommand> => {
+/** `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without
+ *  its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost. */
+plugin.provide("agent:codex", async ({ resume, prompt, wsl, model, effort, allow }: AgentStart): Promise<AgentCommand> => {
   // (inside WSL its sessions are the distro's own)
   const t = resume && !wsl ? await transcript(resume) : null
   if (resume && !t && !wsl) return notOnThisMachine("Codex", resume)
-  const argv = ["codex", ...(resume ? ["resume", resume, ...(prompt ? [prompt] : [])] : prompt ? ["--", prompt] : [])]
-  return { command: argv.map((x, i) => (i && x !== "resume" && x !== "--" ? shellQuote(x) : x)).join(" "), argv, cwd: t?.talk.head.cwd || null }
+  // (commands to run unasked, vau's: they reach the app's server, which its sandbox's network, off by default, blocks;
+  // it takes no list of commands)
+  const how = [...(model ? ["-m", model] : []), ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []), ...(allow?.length ? ["-c", "sandbox_workspace_write.network_access=true"] : [])]
+  const argv = ["codex", ...(resume ? ["resume", ...how, resume, ...(prompt ? [prompt] : [])] : [...how, ...(prompt ? ["--", prompt] : [])])]
+  return { command: argv.map((x, i) => (i && !["resume", "--", "-m", "-c"].includes(x) ? shellQuote(x) : x)).join(" "), argv, cwd: t?.talk.head.cwd || null }
+})
+
+/** The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take. */
+plugin.provide("agent-models:codex", (): AgentModels => {
+  let list: Item[] = []
+  try { list = (JSON.parse(fs.readFileSync(path.join(CODEX, "models_cache.json"), "utf8")).models ?? []).filter((m: Item) => m.visibility === "list" && typeof m.slug === "string") } catch { /* none yet */ }
+  const efforts = (m: Item) => (Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.map((l: Item) => String(l.effort)) : [])
+  return { models: sortBy(list, (m) => Number(m.priority) || 0).map((m) => ({ id: String(m.slug), label: modelName(String(m.slug)) })),
+    efforts: list.length ? efforts(list[0]).filter((e: string) => list.every((m) => efforts(m).includes(e))) : ["low", "medium", "high", "xhigh"] }
 })
 
 /** Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC

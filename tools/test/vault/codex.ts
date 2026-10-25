@@ -72,6 +72,18 @@ export default async ($: VaultTest) => {
       const agent = (await import("../../../core/plugins.ts")).service(app.plugins, "agent:codex")!
       const [back, gone] = await Promise.all([agent({ resume: a, context: "", state: null }), agent({ resume: "0000aaaa-1111-4222-8333-444455556666", context: "", state: null })])
       check("codex agent: a session on this machine is resumed; one that isn't, a note", back.command === `codex resume '${a}'` && gone.command.startsWith("printf") && gone.command.includes("no Codex session"), [back, gone])
+      const how = await agent({ resume: null, context: "", state: null, model: "gpt-6-luna", effort: "high", prompt: "hi" })
+      const allowed = await agent({ resume: null, context: "", state: null, allow: ["vau companion"] })
+      check("codex agent: its model by -m, an effort by -c (it has no flag for one), commands to run unasked reach the app", how.command === `codex -m 'gpt-6-luna' -c 'model_reasoning_effort="high"' -- 'hi'` &&
+        allowed.command === "codex -c 'sandbox_workspace_write.network_access=true'", [how.command, allowed.command])
+      fs.writeFileSync(path.join(CODEX_DIR, "models_cache.json"), JSON.stringify({ models: [
+        { slug: "gpt-6-luna", visibility: "list", priority: 5, supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }] },
+        { slug: "gpt-6.1-sol", visibility: "list", priority: 1, supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }, { effort: "ultra" }] },
+        { slug: "codex-auto-review", visibility: "hide", priority: 9, supported_reasoning_levels: [{ effort: "low" }] }] }))
+      const models = (await import("../../../core/plugins.ts")).service(app.plugins, "agent-models:codex")!()
+      fs.rmSync(path.join(CODEX_DIR, "models_cache.json"))
+      check("codex agent: the models its picker lists, in its order, and the efforts all take", JSON.stringify(models) ===
+        JSON.stringify({ models: [{ id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-6-luna", label: "GPT-6 Luna" }], efforts: ["low", "medium", "high"] }), models)
     }
     // Today's tokens: a session written now, and a fork of it replaying the same counts (counted once); the same total
     // again (a rate limit update) doesn't count.

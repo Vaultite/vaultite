@@ -1,12 +1,12 @@
 ## Companion
 One always-on agent session keeps the user company in the app: its cursor shows where its attention is, and it answers
 in the app itself. `vau companion start` runs it (the setting `agent`: Claude Code, Codex...) in a terminal on this
-machine, as does an ask to it while it isn't running; Claude Code may run `vau companion`, `vau read`, `vau search` and the other reading commands unasked. Its
+machine, as does an ask to it while it isn't running; Claude Code may run `vau companion`, `vau read`, `vau search` and the other reading commands unasked (Codex's commands may reach the network, as vau needs). Its
 moments and its actions are logged on this machine a day at a time; `vau companion replay` sends a day's moments again,
 to test how it answers, and `vau companion timings` shows how fast it answered each.
 
 ### Being the companion
-Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), act, run it again. Never end your turn.
+Loop forever: `vau companion next --timeout 240` (give the command a timeout above that), act, run it again. Never end your turn.
 - Asks, replies and edits come with the note's lines around them, numbered: act on those, don't read the note again (an ask's paragraph and the three above it come whole; other long lines are cut with …).
 - An `ask` or `reply` is for you: always answer it. One that takes work: a few words first (`say`), then the work; your
   cursor shows you thinking until your next `next`. An ask is a line with your @name anywhere in it (sent at Enter, or
@@ -27,10 +27,12 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
   their eyes. `look` moves your cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file). What you write is marked yours by itself (a bar in your colour: Provenance's authorship).
 - Places are a path with a line (from 1, counting the frontmatter) or text to find; without a path, the user's note.
   Prefer text (`--find`, `--after` for new lines): a line number goes stale as they type.
-- Several agents: `vau companion start --as Ada` (`--agent codex`) starts another, in its own colour, which passes
-  `--as Ada` to every command; in a note, @ and a new name offers Start @name. Claude Code runs Sonnet at medium effort
-  (the settings `model` and `effort`, or `--model`, `--effort`); asks sent while it starts wait for its first `next`.
-  Asks to @ada and answers to its items reach only it; edit and open only the companion (`next --watch`: it too).
+- Several agents: `vau companion start --as Ada` starts another, in its own colour, which passes `--as Ada` to every
+  command. A name's first part picks what it runs (the setting `profiles`): @opus and @opus-review run Claude Code on
+  Opus, @codex Codex on GPT-6.1 Sol at medium, @sol, @astra, @luna Codex on those; other names the settings `agent`,
+  `model` and `effort` (`--agent`, `--model`, `--effort` override). In a note, an ask to one not running starts it, and
+  @ offers Start @name with what it runs. Asks sent while it starts wait for its first `next`. Asks to @ada and answers
+  to its items reach only it; edit and open only the companion (`next --watch`: it too).
 - Drawings (.excalidraw): moments there come with the scene as text (ids, labels, arrows as a -> b, what's by their
   pointer); an ask is a text with your @name. Places are an element (`--find` its id or text) or `--x --y`; `say`,
   `look` and `highlight` work there, `draw` changes it (no comments or suggestions).

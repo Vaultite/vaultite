@@ -898,6 +898,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentHow`: How a session is started, besides its id and first prompt.
 - `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
 - `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
+- `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), and its efforts, least first.
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
 - `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell (AgentCommand).
 - `AgentState`: A terminal's agent as the Terminals panel shows it.

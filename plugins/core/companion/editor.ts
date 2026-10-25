@@ -5,7 +5,7 @@ import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuild
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { capitalize, keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, getState, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 import { nearest } from "./text"
 
 /** Its own changes: not the user's, so not said back as theirs. */
@@ -373,11 +373,9 @@ const theme = EditorView.baseTheme({
   "@keyframes cm-companion-fade": { "0%, 40%": {}, "100%": { backgroundColor: "transparent" } },
 })
 
-// ---------- @ and a new name: Start @name, at the model and effort a new one runs, or others picked (its chip, Tab or →)
+// ---------- @ and a name: an agent around, or Start @name at what its name picks (a profile, else the default), or
+// others picked (its chip, Tab or →)
 
-type How = { model: string; effort: string }
-const MODELS = ["sonnet", "opus", "haiku"], EFFORTS = ["low", "medium", "high", "xhigh", "max"]
-const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
 /** The Start row's name (as typed) on its option. */
 const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string }) | null)?.startAs
 
@@ -385,35 +383,51 @@ const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string
 function begin(view: EditorView, path: string, name: string, from: number, to: number, how: How) {
   const insert = `${name.toLowerCase()} `
   view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.complete" })
-  void op("companion.start", { as: capitalize(name), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
+  void op("companion.start", { as: capitalize(name), ...(how.agent ? { agent: how.agent } : {}), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
     path, line: view.state.doc.lineAt(from).number }).catch((e) => notifyError(e, `Couldn't start ${capitalize(name)}`))
 }
 
-/** @ anywhere a mention can start: the agents around now, the companion first; a name none has, a Start row last. */
+/** @ anywhere a mention can start: the agents around now, the companion first; once a letter is typed, the profiles'
+ *  names that fit and a name none has, as Start rows last. */
 const mentions = (path: string) => (ctx: CompletionContext) => {
   const m = ctx.matchBefore(/@[\w-]*$/)
   if (!m || getState().mode === "off" || !canMention(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
   const st = getState(), names = liveAgents().map((a) => a.name), typed = m.text.slice(1)
-  const known = [...new Set(["companion", "claude", st.name, ...names].map((n) => n.toLowerCase()))]
-  const some = (t: string) => known.some((n) => n.startsWith(t.toLowerCase()))
+  const known = [...new Set(["companion", st.fresh.agent.split("_")[0] || "claude", st.name, ...names].map((n) => n.toLowerCase()))]
+  const named = Object.keys(st.profiles).filter((p) => !known.includes(p))
+  const some = (t: string) => [...known, ...named].some((n) => n.startsWith(t.toLowerCase()))
   const options: (Completion & { highlight?: string; startAs?: string; trail?: (view: EditorView) => Node })[] = (names.length ? names : [st.name]).map((n) => ({ label: n.toLowerCase(), detail: n === st.name ? "companion" : undefined,
     boost: n === st.name ? 1 : 0, apply: `${n.toLowerCase()} `, highlight: mentionAgent(n)?.tint ?? "orange" }))
+  // (a split button: the row starts as is, its chip opens the chooser; one with nothing to choose names what it runs)
+  const start = (name: string, how: How, boost: number) => ({ label: name, displayLabel: `Start @${name}`, boost, startAs: name,
+    ...(rowsOf(how).length ? { trail: (view: EditorView) => startChip(view, name, how) } : { detail: howText(how) }),
+    apply: (view: EditorView, _c: Completion, from: number, to: number) => begin(view, path, name, from, to, how) })
+  if (typed) for (const p of named) options.push(start(p, st.profiles[p], -50))
   // (one word, as companion.start takes)
   const fresh = !!typed && typed.length <= 30 && !some(typed)
-  if (fresh) {
-    const how = st.fresh
-    // (a split button: the row starts as is, its chip opens the chooser; an agent that takes no model has none)
-    options.push({ label: typed, displayLabel: `Start @${typed}`, boost: -99, startAs: typed,
-      detail: how.model ? "new companion" : ["new companion", effortName(how.effort)].filter(Boolean).join(" · "),
-      ...(how.model ? { trail: (view: EditorView) => startChip(view, typed, how) } : {}),
-      apply: (view: EditorView, _c: Completion, from: number, to: number) => begin(view, path, typed, from, to, how) })
-  }
-  // (asked again as they type once no agent's name fits, for the Start row to name what they typed)
-  return { from: m.from + 1, options, ...(fresh ? {} : { validFor: (t: string) => /^[\w-]*$/.test(t) && (!t || some(t)) }) }
+  if (fresh) options.push(start(typed, howOf(typed), -99))
+  // (asked again at the first letter, for the profiles' rows, and once no name fits, for the Start row to name it)
+  return { from: m.from + 1, options, ...(fresh ? {} : { validFor: (t: string) => /^[\w-]*$/.test(t) && (typed ? some(t) : !t) }) }
+}
+
+/** The chooser's rows for what's picked: the agents installed (when more than one), its models and its efforts. */
+type Row = { key: "agent" | "model" | "effort"; label: string; list: { id: string; label: string }[]; on: string }
+function rowsOf(c: How): Row[] {
+  const id = c.agent.split("_")[0], hs = getState().harnesses.filter((x) => x.installed || x.id === id), h = hs.find((x) => x.id === id)
+  return [
+    ...(hs.length > 1 ? [{ key: "agent" as const, label: "Agent", list: hs.map((x) => ({ id: x.id, label: x.name })), on: id }] : []),
+    ...(h?.models.length ? [{ key: "model" as const, label: "Model", list: h.models, on: c.model }] : []),
+    ...(h?.efforts.length ? [{ key: "effort" as const, label: "Effort", list: h.efforts.map((e) => ({ id: e, label: capitalize(effortName(e)) })), on: c.effort }] : []),
+  ]
+}
+/** What picking agent `id` makes it run: as the companion does when it's the same agent, else as @id would. */
+function agentPicked(id: string): How {
+  const st = getState()
+  return st.fresh.agent.split("_")[0] === id ? st.fresh : st.profiles[id] ?? { agent: id, model: "", effort: "" }
 }
 
 /** The chooser under a Start row: its name and where it was typed (from: after the @), what's picked, the row on. */
-type Choice = How & { name: string; from: number; row: 0 | 1; tip: Tooltip }
+type Choice = How & { name: string; from: number; row: number; tip: Tooltip }
 const choose = StateEffect.define<Choice | null>()
 const chooser = StateField.define<Choice | null>({
   create: () => null,
@@ -430,28 +444,33 @@ const chooser = StateField.define<Choice | null>({
   provide: (f) => showTooltip.from(f, (v) => v?.tip ?? null),
 })
 
-/** The Start row selected in the list (or `name`'s, its chip tapped): its chooser opens, set to what a new one runs
- *  (none when its agent takes no model). */
+/** The Start row selected in the list (or `name`'s, its chip tapped): its chooser opens, set to what it would run
+ *  (none when there's nothing to choose). */
 function openChooser(view: EditorView, name = completionStatus(view.state) === "active" ? startOf(selectedCompletion(view.state)) : undefined) {
-  const how = getState().fresh
-  if (!name || !how.model) return false
+  if (!name) return false
+  const st = getState(), how = Object.hasOwn(st.profiles, name.toLowerCase()) ? st.profiles[name.toLowerCase()] : howOf(name)
+  if (!rowsOf(how).length) return false
   const from = view.state.selection.main.head - name.length
   closeCompletion(view)
   view.dispatch({ effects: choose.of({ ...how, name, from, row: 0, tip: { pos: from - 1, above: false, create: (v) => chooserView(v) } }) })
   return true
 }
 
+/** A row's pick made: another agent brings what it runs by default. */
+const picked = (c: Choice, r: Row, id: string): Choice => (r.key === "agent" ? { ...c, ...agentPicked(id) } : { ...c, [r.key]: id })
+
 /** The chooser's keys: ← → pick, ↑ ↓ (or Tab) the row, Enter starts, Escape goes back to the list. */
 function chooserKey(key: string) {
   return (view: EditorView) => {
     const c = view.state.field(chooser, false)
     if (!c) return key === "Tab" || key === "ArrowRight" ? openChooser(view) : false
-    const set = (next: Partial<Choice>) => view.dispatch({ effects: choose.of({ ...c, ...next }) })
-    const list = c.row ? EFFORTS : MODELS, at = list.indexOf(c.row ? c.effort : c.model)
-    if (key === "ArrowLeft" || key === "ArrowRight") {
-      const pick = list[(Math.max(0, at) + (key === "ArrowLeft" ? list.length - 1 : 1)) % list.length]
-      set(c.row ? { effort: pick } : { model: pick })
-    } else if (key === "ArrowUp" || key === "ArrowDown" || key === "Tab" || key === "Shift-Tab") set({ row: c.row ? 0 : 1 })
+    const rows = rowsOf(c), row = Math.min(c.row, rows.length - 1), r = rows[row]
+    if (r && (key === "ArrowLeft" || key === "ArrowRight")) {
+      const at = r.list.findIndex((x) => x.id === r.on), n = r.list.length
+      const next = at < 0 ? (key === "ArrowLeft" ? n - 1 : 0) : (at + (key === "ArrowLeft" ? n - 1 : 1)) % n
+      view.dispatch({ effects: choose.of({ ...picked(c, r, r.list[next].id), row }) })
+    } else if (key === "ArrowUp" || key === "Shift-Tab") view.dispatch({ effects: choose.of({ ...c, row: (row + rows.length - 1) % rows.length }) })
+    else if (key === "ArrowDown" || key === "Tab") view.dispatch({ effects: choose.of({ ...c, row: (row + 1) % rows.length }) })
     else if (key === "Enter") { view.dispatch({ effects: choose.of(null) }); begin(view, pathOf(view), c.name, c.from, c.from + c.name.length, c) }
     else if (key === "Escape") { view.dispatch({ effects: choose.of(null) }); startCompletion(view) }
     return true
@@ -459,12 +478,12 @@ function chooserKey(key: string) {
 }
 const pathOf = (view: EditorView) => views.get(view) ?? ""
 
-/** The Start row's chip: the model and effort it would run, a tap or click on it opens the chooser instead of starting. */
+/** The Start row's chip: what it would run, a tap or click on it opens the chooser instead of starting. */
 function startChip(view: EditorView, name: string, how: How) {
   const chip = document.createElement("span")
   chip.className = "cm-companion-chip"
   chip.setAttribute("role", "button")
-  chip.textContent = `${[capitalize(how.model), how.effort && effortName(how.effort)].filter(Boolean).join(" · ")} ›`
+  chip.textContent = `${howText(how)} ›`
   // (the list applies its row on mousedown, a tap's too: this one comes first and keeps it from bubbling there)
   chip.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); openChooser(view, name) })
   return chip
@@ -479,21 +498,20 @@ function chooserView(view: EditorView) {
   const draw = (c: Choice | null) => {
     if (!c) return
     dom.replaceChildren()
-    const row = (i: 0 | 1, label: string, list: string[], on: string) => {
+    rowsOf(c).forEach((rw, i, rows) => {
       const r = dom.appendChild(document.createElement("div"))
-      r.className = `cm-companion-start-row${c.row === i ? " cm-companion-start-on" : ""}`
-      r.appendChild(document.createElement("span")).textContent = label
+      r.className = `cm-companion-start-row${Math.min(c.row, rows.length - 1) === i ? " cm-companion-start-on" : ""}`
+      r.setAttribute("data-row", rw.key)
+      r.appendChild(document.createElement("span")).textContent = rw.label
       const picks = r.appendChild(document.createElement("div"))
-      for (const x of list.includes(on) ? list : [on, ...list]) {
+      for (const x of rw.list.some((y) => y.id === rw.on) || !rw.on ? rw.list : [{ id: rw.on, label: capitalize(rw.on) }, ...rw.list]) {
         const b = picks.appendChild(document.createElement("button"))
         b.type = "button"
-        b.textContent = capitalize(i ? effortName(x) : x)
-        if (x === on) b.setAttribute("aria-pressed", "true")
-        b.onclick = () => view.dispatch({ effects: choose.of({ ...c, row: i, ...(i ? { effort: x } : { model: x }) }) })
+        b.textContent = x.label
+        if (x.id === rw.on) b.setAttribute("aria-pressed", "true")
+        b.onclick = () => view.dispatch({ effects: choose.of({ ...picked(c, rw, x.id), row: i }) })
       }
-    }
-    row(0, "Model", MODELS, c.model)
-    row(1, "Effort", EFFORTS, c.effort)
+    })
     const go = dom.appendChild(document.createElement("button"))
     go.type = "button"
     go.className = "cm-companion-start-go"

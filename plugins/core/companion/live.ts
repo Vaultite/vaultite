@@ -1,12 +1,17 @@
 // The companion as this window knows it: the server's agents and notes (/api/companion/live), the editors showing
 // files, and what the user does in them, said back. No CodeMirror here: the editor is its own chunk (editor.ts).
 import type { EditorView } from "@codemirror/view"
+import { profileOf } from "./profiles.ts"
 import type { Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
-  model?: string; effort?: string; asks?: { event: string; text: string } }
+  runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
+/** What a session runs: its coding agent (claude, codex, claude_work), model and effort ("": its own). */
+export type How = { agent: string; model: string; effort: string }
+/** A coding agent a plugin runs: whether it's installed here, its models (none: it runs its own) and efforts. */
+export type Harness = { id: string; name: string; installed: boolean; models: { id: string; label: string }[]; efforts: string[] }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: Reply[]; pinned?: string
   /** A person's thread (the user's, a guest's: `agent` is their name), and their colour. */
@@ -24,9 +29,12 @@ export type EditAsk = Target & { rid: string; agent: string; text: string; after
 
 /** said: each agent's last says, oldest first; picked: the margin card the user opened; people: who else has each
  *  note open with this window (cotype.ts), by path. */
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; fresh: { model: string; effort: string }; draft: Draft | null
-  people: Record<string, Person[]> }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, fresh: { model: "", effort: "" }, draft: null, people: {} }
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; draft: Draft | null
+  people: Record<string, Person[]>
+  /** What a new agent runs: one whose name picks none, those whose name does (by profile name), what's installed. */
+  fresh: How; profiles: Record<string, How>; harnesses: Harness[] }
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, draft: null, people: {},
+  fresh: { agent: "", model: "", effort: "" }, profiles: {}, harnesses: [] }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -151,7 +159,8 @@ function open() {
     try { m = JSON.parse(String(ev.data)) } catch { return }
     if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [],
       // (what an agent started from here runs; no model: its agent takes none)
-      fresh: (m.fresh as State["fresh"] | undefined) ?? { model: "", effort: "" } }); heard(m.agents as Agent[]) }
+      fresh: (m.fresh as How | undefined) ?? { agent: "", model: "", effort: "" }, profiles: (m.profiles as State["profiles"] | undefined) ?? {},
+      harnesses: (m.harnesses as Harness[] | undefined) ?? [] }); heard(m.agents as Agent[]) }
     else if (m.t === "said") set({ said: m.said as Note[] })
     else if (m.t === "agent") {
       const a = m.agent as Agent
@@ -218,13 +227,27 @@ export function sayWhere(active = false) {
 
 /** The agents around now, the companion first. */
 export const liveAgents = () => state.agents.filter((a) => a.state !== "away").sort((a, b) => Number(b.name === state.name) - Number(a.name === state.name))
-/** The agent an @name reaches: that one while it's around, else the companion (as the server routes it). */
+/** The agent an @name reaches: that one while it's around; one a profile starts (@opus), none yet; else the companion
+ *  (as the server routes it). */
 export function mentionAgent(name: string): Agent | undefined {
   const k = name.toLowerCase()
-  return state.agents.find((a) => a.name.toLowerCase() === k && a.state !== "away") ?? state.agents.find((a) => a.name === state.name)
+  return state.agents.find((a) => a.name.toLowerCase() === k && a.state !== "away") ?? (mainName(k) || !profileOf(k, state.profiles) ? state.agents.find((a) => a.name === state.name) : undefined)
 }
-/** The names that address an agent after @ (lower case): every agent's, and the companion's own, "claude" and "companion". */
-export const mentionNames = () => (share ? [] : [...new Set(["companion", "claude", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase())])])
+/** Whether @name is the companion's: its own name, "companion", or its agent's ("claude" while it runs Claude Code). */
+const mainName = (k: string) => k === "companion" || k === state.name.toLowerCase() || k === (state.fresh.agent.split("_")[0] || "claude")
+/** The names that address an agent after @ (lower case): every agent's, the companion's own, "claude" and "companion",
+ *  and the profiles' (@opus starts one). */
+export const mentionNames = () => (share ? [] : [...new Set(["companion", "claude", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase()), ...Object.keys(state.profiles)])])
+/** What a new agent called `name` runs: its profile's (its name's first part), else the default. */
+export const howOf = (name: string): How => profileOf(name, state.profiles) ?? state.fresh
+/** What a session runs, as the user reads it: "Claude Code · Opus · high", "Codex · GPT-6.1 Sol · medium". */
+export function howText(h: Partial<How> & { runs?: string }) {
+  const id = (h.agent ?? h.runs ?? "").split("_")[0], harness = state.harnesses.find((x) => x.id === id)
+  const model = h.model && (harness?.models.find((m) => m.id === h.model)?.label ?? capitalize(h.model))
+  return [harness?.name ?? (id && capitalize(id)), model, h.effort && effortName(h.effort)].filter(Boolean).join(" · ")
+}
+export const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // ---------- for the overlay
 
@@ -272,7 +295,9 @@ export function mentionsOf(line: string, names = mentionNames(), mid = midNames(
   const out: Mention[] = [], lead = LEAD.exec(line)![0].length
   for (const m of line.matchAll(MENTION_RE)) {
     const k = m[1].toLowerCase()
-    if ((m.index === lead ? names : mid).includes(k)) out.push({ from: m.index, to: m.index + m[0].length, name: m[1] })
+    // (at its start, a name a profile picks too: @opus-review)
+    if ((m.index === lead ? names : mid).includes(k) || (m.index === lead && k.includes("-") && names.includes(k.split("-")[0]) && !!profileOf(k, state.profiles)))
+      out.push({ from: m.index, to: m.index + m[0].length, name: m[1] })
   }
   return out
 }

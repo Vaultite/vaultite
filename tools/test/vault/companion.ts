@@ -317,6 +317,26 @@ export default async ($: VaultTest) => {
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: up, its first next gets the ask that waited, and it thinks on it", got.moments.length === 1 && got.moments[0].text === "for Bob" &&
       r.agents.find((a: Any) => a.name === "Bob")?.state === "thinking", [got, r.agents])
+    // A name's first part picks what it runs (the setting profiles, the user's lines on the defaults); an ask to one not
+    // around is its own, to start it; @claude stays the companion's while it runs Claude Code.
+    const { parseProfiles, profileOf } = await import("../../../plugins/core/companion/profiles.ts")
+    const table = parseProfiles(["opus: claude opus", "sol: codex gpt-6.1-sol medium", "nonsense", "opus: claude opus high"])
+    check("companion: profiles are name: agent model effort, a later line replacing a name, a name's first part picking one",
+      JSON.stringify([profileOf("Opus-review", table), profileOf("sol", table), profileOf("bob", table), profileOf("opus2", table)]) ===
+      JSON.stringify([{ agent: "claude", model: "opus", effort: "high" }, { agent: "codex", model: "gpt-6.1-sol", effort: "medium" }, null, null]), table)
+    check("companion: a new agent runs its name's profile, else the settings; an agent given drops the profile's model",
+      JSON.stringify([c.howFor("Opus-review"), c.howFor("Luna"), c.howFor("Bob"), c.howFor("Opus-x", "codex"), c.howFor("Claude")]) ===
+      JSON.stringify([{ agent: "claude", model: "opus", effort: "medium" }, { agent: "codex", model: "gpt-6-luna", effort: "medium" }, { agent: "claude", model: "sonnet", effort: "medium" },
+        { agent: "codex", model: "", effort: "" }, { agent: "claude", model: "sonnet", effort: "medium" }]))
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    c.addMoment({ kind: "ask", for: "opus-review", path: "Notes/A.md", line: 3, text: "for Opus" })
+    c.addMoment({ kind: "ask", for: "claude", path: "Notes/A.md", line: 3, text: "for the companion" })
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    const opus = r.agents.find((a: Any) => a.name === "Opus-review")
+    check("companion: @opus-review, not around, is its own (Claude Code, in Claude Code's colour unless taken), @claude the companion's",
+      got.moments.map((m: Any) => m.text).join() === "for the companion" && opus?.state === "thinking" && opus.runs === "claude" && opus.tint !== "orange" &&
+      r.moments.some((m: Any) => m.text === "for Opus" && m.for === "Opus-review"), [got, opus])
     // An ask that finds the companion's session not running starts it: the ask waits for its first next.
     await api("POST", "ops/companion.next", { timeout: 0 })
     const woke = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "are you there" })!

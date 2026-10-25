@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type AgentAsk, type AgentCommand, type AgentMeter, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage, lastTurn, parseTerminal } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
@@ -524,6 +524,10 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
     argv: ["claude", ...args], env, cwd,
   }
 })
+
+/** The models a session may run, by the aliases --model takes (each its family's latest), and its efforts. */
+plugin.provide("agent-models:claude", (): AgentModels => ({ models: ["sonnet", "opus", "haiku", "fable"].map((id) => ({ id, label: modelName(id) })),
+  efforts: ["low", "medium", "high", "xhigh", "max"] }))
 
 /** Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question
  *  can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now. */

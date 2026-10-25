@@ -3,10 +3,10 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Ellipsis, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, capitalize, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, share, snippet, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, share, snippet, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, authorOf, comment, getState, type Target, type Note, onBump, pick, pin, pointAt, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { agentMenu } from "./session"
 import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -149,7 +149,7 @@ function Popover({ a, left, up, close, menu }: { a: Agent; left: number; up: boo
     <div data-companion-popover={a.name} className={cn("companion-pop pointer-events-auto absolute flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg", up ? "bottom-[26px]" : "top-[42px]")}
       style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
       <div className="flex items-center gap-1 pt-1 pr-1 pl-3">
-        <div data-companion-how className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground">{[a.model && capitalize(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")}</div>
+        <div data-companion-how className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground">{howText(a)}</div>
         <button type="button" aria-label={`More for ${a.name}`} data-tip="More" className="grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-9"
           onClick={(e) => { close(); menu(e) }}><Ellipsis className="size-3.5 max-sm:size-4.5" /></button>
       </div>
