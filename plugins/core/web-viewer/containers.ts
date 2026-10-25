@@ -75,7 +75,10 @@ export function addContainer(name: string, color?: Color): Container {
 }
 export const updateContainer = (id: string, change: Partial<Omit<Container, "id">>) =>
   save(containers().map((c) => (c.id === id ? { ...c, ...change } : c)))
-export const removeContainer = (id: string) => save(containers().filter((c) => c.id !== id))
+export function removeContainer(id: string) {
+  const { [profileIn(id)]: _, ...order } = settings.get().siteOrder ?? {}
+  return settings.set({ containers: containers().filter((c) => c.id !== id), siteOrder: Object.keys(order).length ? order : null })
+}
 /** Put a container before another (null: last): every list of them follows this order. */
 export function moveContainer(id: string, before: string | null) {
   const list = containers(), c = list.find((x) => x.id === id)

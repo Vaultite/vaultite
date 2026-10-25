@@ -439,6 +439,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RecentKind`
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
 - `registerCanvas(c)`: A canvas came on screen: registered until it goes (the returned function).
+- `rehit()`: Ask the targets again what a drop where the pointer rests would do: for an answer that changes with time while the pointer is still (a card held over another groups them after a moment: TabSwitcher).
 - `reload()`
 - `removals()`: Items taken off a list before the write that removes them is done: one per source (a module's, shared by every list drawing it), with keys unique in it.
 - `removeArchived(ids)`

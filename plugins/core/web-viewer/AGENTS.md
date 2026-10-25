@@ -40,10 +40,15 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   workspaces) or a container's, picked on its heading's right (+ adds a container). Who's signed in leads: the account
   (and its picture) for Google (YouTube and google.<country> in the same row, and any other Google accounts signed in
   beside it), X, Reddit, GitHub, Hacker News (ycombinator.com), Claude and ChatGPT; a site whose login cookie is there is
-  signed in even when it won't say who ("Signed in", or the name it last gave) (Sign out clears a site's cookies and storage), with a container's always-open sites; the
+  signed in even when it won't say who ("Signed in", or the name it last gave) (Sign out clears a site's cookies and storage), with a container's always-open sites (see the Sites tab for their order); the
   rest, latest visited first, and one line for trackers (cookies other sites' pages left, which it clears) fold behind
   "N more sites" when there are more than a few. The Sites tab ("Show sites and logins") has every set of logins, each
-  container a card in its colour with its options (dragged by its name to reorder containers everywhere), and a filter by site or account. The address bar's container menu names who's signed in
+  container a card in its colour with its options (dragged by its name to reorder containers everywhere), and a filter by site or account.
+  A signed-in row dragged onto another card moves its login there (⌥: copies it), as its menu's Move to and Copy to
+  do: its cookies go there (a site keeping its login in storage instead stays put), its always-open rule follows, Undo
+  takes it back; the user's own act, never an op. Deleting a container signed in somewhere offers to move its logins
+  first. Accounts and always-open sites keep the order they're dragged into (`siteOrder`, by profile), else
+  always-open first, then A to Z. The address bar's container menu names who's signed in
   to the page's site in each container. The Browser's settings have the same for every set of logins, under Sites and logins.
 - Icons: a site's is its home page's or its /favicon.ico; a page with one of its own under a path (Maps on google.com)
   has it on its tab without changing its site's.

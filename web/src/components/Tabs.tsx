@@ -2,7 +2,7 @@
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
@@ -286,6 +286,7 @@ export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
     : item.status ? { label: item.label ?? item.status, icon: PanelBottom }
     : item.block ? { label: item.label ?? item.block, icon: Blocks }
     : item.column ? { label: item.label ?? item.column.key, icon: Columns3 }
+    : item.site ? { label: item.label ?? item.site.site, icon: Globe }
     : item.panel && !(item.to && overPanes) ? { label: item.label ?? item.panel, icon: PanelTop }
     : item.group ? { label: item.label ?? "Pane", icon: AppWindow }
     : item.tabset ? { label: item.label ?? "", icon: dotIcon(colorVar(setById(item.tabset)?.s.color ?? "gray")) }

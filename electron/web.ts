@@ -825,20 +825,9 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "web:list": (win) => [...pages.values()].filter((p) => p.win === win && !p.closing)
     .map((p) => ({ id: p.id, profile: p.profile, tab: p.tab, shown: p.holds > 0, ...stateOf(p) })),
   "web:sites": (_win, profile) => sitesOf(profileOf(profile)),
-  "web:forget": async (_win, profile, site) => {
-    const prof = profileOf(profile), s = await readySession(prof), name = str(site).toLowerCase()
-    for (const c of await s.cookies.get({})) {
-      const host = (c.domain ?? "").replace(/^\./, "")
-      if (siteOf(host) !== name) continue
-      await s.cookies.remove(`http${c.secure ? "s" : ""}://${host}${c.path ?? "/"}`, c.name).catch(() => {})
-    }
-    await s.clearData({ origins: [`https://${name}`, `https://www.${name}`], dataTypes: ["cookies", "localStorage", "indexedDB", "serviceWorkers", "cache", "fileSystems"] }).catch(() => {})
-    accounts.delete(`${prof} ${name}`)
-    keepKnown(prof, name, "", null)
-    for (const k of Object.keys(loadAnswers()[prof]?.[name] ?? {})) answer(prof, name, k, null) // what it may use is asked again
-    // Its pages in that profile show it signed out.
-    for (const p of pages.values()) if (p.profile === prof && siteOf(hostOfUrl(p.view.webContents.getURL())) === name) p.view.webContents.reload()
-  },
+  "web:forget": async (_win, profile, site) => forgetSite(profileOf(profile), str(site).toLowerCase()),
+  "web:move": (_win, from, to, sites, copy) => moveLogins(profileOf(from), profileOf(to),
+    (Array.isArray(sites) ? sites : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20), copy === true),
   // Claude Code on the web's sessions in the profiles the app names: the window is told them from now on, as they
   // change (`cloud`) and their news. Asked again with what changed (a workspace, the user's yes, an account hidden).
   "web:cloud": (win, want) => {
@@ -989,6 +978,76 @@ async function sitesOf(profile: string): Promise<WebSite[]> {
   // Signed in first, then the latest visited, then A to Z.
   return out.filter((s) => !joined.has(s.site))
     .sort((a, b) => Number(!b.signed) - Number(!a.signed) || (b.last ?? 0) - (a.last ?? 0) || a.site.localeCompare(b.site))
+}
+
+/** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
+async function forgetSite(prof: string, name: string) {
+  const s = await readySession(prof)
+  for (const c of await s.cookies.get({})) {
+    const host = (c.domain ?? "").replace(/^\./, "")
+    if (siteOf(host) !== name) continue
+    await s.cookies.remove(`http${c.secure ? "s" : ""}://${host}${c.path ?? "/"}`, c.name).catch(() => {})
+  }
+  // (an address's site, 127.0.0.1, has no www.: clearData throws on an origin it can't parse)
+  const origins = /^[\d.]+$|^localhost$/.test(name) ? [`http://${name}`, `https://${name}`] : [`https://${name}`, `https://www.${name}`]
+  await Promise.resolve().then(() => s.clearData({ origins, dataTypes: ["cookies", "localStorage", "indexedDB", "serviceWorkers", "cache", "fileSystems"] })).catch(() => {})
+  accounts.delete(`${prof} ${name}`)
+  keepKnown(prof, name, "", null)
+  for (const k of Object.keys(loadAnswers()[prof]?.[name] ?? {})) answer(prof, name, k, null) // what it may use is asked again
+  reloadSite(prof, name)
+}
+const reloadSite = (prof: string, name: string) => {
+  for (const p of pages.values()) if (p.profile === prof && siteOf(hostOfUrl(p.view.webContents.getURL())) === name) p.view.webContents.reload()
+}
+
+/** cookies.set for a cookie read from another session: a host-only one names no domain (a __Host- one must not). */
+const setOfCookie = (c: Electron.Cookie): Electron.CookiesSetDetails => ({
+  url: `${c.secure ? "https" : "http"}://${(c.domain ?? "").replace(/^\./, "")}${c.path || "/"}`, name: c.name, value: c.value,
+  path: c.path || "/", secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite,
+  ...(c.hostOnly ? {} : { domain: c.domain }), ...(c.session || !c.expirationDate ? {} : { expirationDate: c.expirationDate }) })
+async function setCookies(s: Session, list: Electron.Cookie[]) {
+  let failed = 0
+  for (const c of list) await s.cookies.set(setOfCookie(c)).catch(() => { failed++ })
+  return failed
+}
+async function dropCookies(s: Session, names: string[]) {
+  for (const c of await s.cookies.get({})) {
+    if (!names.includes(siteOf(c.domain ?? ""))) continue
+    await s.cookies.remove(`http${c.secure ? "s" : ""}://${(c.domain ?? "").replace(/^\./, "")}${c.path ?? "/"}`, c.name).catch(() => {})
+  }
+}
+
+/** Move (or copy) a login to another profile: its sites' cookies, replacing any there; taken back when the site then names
+ *  nobody where it named someone (its login kept in storage), and the source signs out only once it's in. */
+async function moveLogins(from: string, to: string, names: string[], copy: boolean): Promise<{ ok: boolean; account?: string }> {
+  if (from === to || !names.length) throw new Error("nothing to move")
+  if (!mayOpen(from) || !mayOpen(to)) throw new Error("this container is locked")
+  const [src, dst] = await Promise.all([readySession(from), readySession(to)])
+  const of = (all: Electron.Cookie[]) => all.filter((c) => names.includes(siteOf(c.domain ?? "")))
+  const moving = of(await src.cookies.get({})), had = of(await dst.cookies.get({}))
+  if (!moving.length) throw new Error("no cookies to move")
+  const main = names[0], how = ACCOUNTS[main]
+  const before = (how?.url ? await askWho(src, how, undefined).catch(() => null) : null) || null
+  await dropCookies(dst, names)
+  if (await setCookies(dst, moving) > moving.length / 2) { await dropCookies(dst, names); await setCookies(dst, had); throw new Error("couldn't set its cookies") }
+  if (before && how) {
+    const after = await askWho(dst, how, undefined).catch(() => null)
+    if (!after || after.account !== before.account) {
+      await dropCookies(dst, names)
+      await setCookies(dst, had)
+      return { ok: false, account: before.account }
+    }
+  }
+  // Named there at once, as it was here; not a tracker there, since it was opened here.
+  for (const n of names) {
+    accounts.delete(`${to} ${n}`)
+    const kept = loadKnown()[from]?.[n]
+    if (kept) keepKnown(to, n, kept.login, kept.who)
+  }
+  addVisited(to, names.filter((n) => visitedOf(from).has(n)).concat(main))
+  for (const n of names) reloadSite(to, n)
+  if (!copy) for (const n of names) await forgetSite(from, n)
+  return { ok: true, account: before?.account }
 }
 
 /** The sites a page was opened at, by profile (this Mac's, in userData: never the vault). */

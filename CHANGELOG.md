@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Move a login to another container**: in the Sites tab, drag a signed-in site onto another container's card to move
+  it there (hold ⌥ to copy it), or right-click it for Move to and Copy to; Undo takes it back. Moving asks first when
+  it would replace another account there or let agents use it, and a site that keeps its login outside cookies stays
+  where it was. Deleting a container signed in somewhere offers to move its logins first. A container's sites reorder
+  by dragging, always-open ones first until you do.
 - **Names pick the agent**: @opus in a note starts a companion on Opus, @opus-review another; @haiku, @fable, @sonnet
   likewise, @codex Codex on GPT-6.1 Sol at medium (@sol, @astra, @luna its other models). An ask to one not running
   starts it, no picker needed; Start @name says what it runs, and its chooser picks the agent too, with that agent's

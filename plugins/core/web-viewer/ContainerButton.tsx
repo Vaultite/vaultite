@@ -2,8 +2,9 @@
 // tab to another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
-import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
-import { accountIn, askSites } from "./accounts"
+import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notify, notifyError, plural, webPages, type MenuItem, type WebSite } from "@vaultite"
+import { accountIn, askSites, keep, listed } from "./accounts"
+import { allLogins, andList, isIn, loginsOf, moveLogin, sitesOf } from "./loginsets"
 import { siteOf } from "./address"
 import { passwordsForAgents } from "./agentlogins"
 import {
@@ -35,7 +36,38 @@ export function newContainer(then?: (c: Container) => void) {
   askName("New container", "", (name) => { const c = addContainer(name); then?.(c) })
 }
 
+/** Delete a container: one signed in somewhere asks first whether its logins move to another set of logins, so you stay
+ *  signed in; it's deleted only once they're all there. */
 async function deleteContainer(c: Container) {
+  const prof = profileIn(c.id)
+  const sites = await (webPages?.sites?.(prof).then((s) => keep(prof, s), () => null) ?? null) ?? listed.get().get(prof) ?? []
+  const signed = sites.filter(isIn), to = allLogins().filter((l) => l.prof !== prof)
+  if (!signed.length || !webPages?.move || !to.length) return confirmDelete(c)
+  const them = signed.length > 1 ? "them" : "it"
+  const who = (s: WebSite) => (s.account ? `${s.site} (${s.account})` : s.site)
+  choose({
+    title: `Delete ${c.name}`, placeholder: "Move to…",
+    heading: `${c.name} is signed in to ${andList(signed.map(who))}. Move ${them} before it's deleted?`,
+    items: [
+      ...to.map((l) => ({ id: l.prof, label: `Move ${them} to ${l.name}`, icon: dotIcon(l.color) })),
+      { id: "", label: `Delete ${them} with ${c.name}`, icon: Trash2 },
+    ],
+    onPick: (it) => {
+      const target = to.find((l) => l.prof === it.id)
+      if (!target) return void confirmDelete(c)
+      void (async () => {
+        const left: string[] = []
+        for (const s of signed) if (await moveLogin(loginsOf(c), target, s, false, { quiet: true }) !== "moved") left.push(sitesOf(s)[0])
+        if (left.length) return notify(`${c.name} is kept: ${andList(left)} didn't move`, { kind: "error" })
+        await removeContainer(c.id)
+        await webPages?.engine?.("containers:clear", prof)
+        notify(`Moved ${plural(signed.length, "login")} to ${target.name} and deleted ${c.name}`)
+      })().catch((e) => notifyError(e, "Couldn't delete the container"))
+    },
+  })
+}
+
+async function confirmDelete(c: Container) {
   const ok = await confirmDialog({
     title: `Delete ${c.name}?`,
     body: `Its logins go: the cookies and what sites keep in the browser in ${c.name} are deleted. Its open tabs stay, in no container once reopened.`,

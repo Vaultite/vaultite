@@ -3,7 +3,9 @@
 // saying "Signed in"; the rest and the trackers fold away behind one line; a login
 // that covers other sites (Google's, YouTube) is one row, and signing out of it signs out of both; the filter keeps only
 // what matches; a container dragged by its heading moves everywhere it's listed; the address bar's container menu
-// names who's signed in to the page's site in each container.
+// names who's signed in to the page's site in each container. A login moves to another container from its menu
+// (asking before it replaces one there) or dragged onto that container's card (⌥: copied), Undo takes it back, one
+// whose login won't move stays; a container's sites reorder by dragging; deleting a container moves its logins first.
 // WRITES: the throwaway vault only.
 //   node web/qa/sitesview.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -47,6 +49,17 @@ await app.evaluate(({ BaseWindow, ipcMain }, fix) => {
   ipcMain.handle("web:sites", (_e, prof) => (fix[prof] ?? []).filter((s) => !globalThis.forgot.includes(`${prof} ${s.site}`)))
   ipcMain.removeHandler("web:forget")
   ipcMain.handle("web:forget", (_e, prof, site) => { globalThis.forgot.push(`${prof} ${site}`) })
+  // (a move takes the row there, a copy leaves it here too; zoom.us keeps its login outside cookies: it won't move)
+  globalThis.moves = []
+  ipcMain.removeHandler("web:move")
+  ipcMain.handle("web:move", (_e, from, to, sites, copy) => {
+    globalThis.moves.push([from, to, sites.join(), copy])
+    if (sites.includes("zoom.us")) return { ok: false }
+    const row = (fix[from] ?? []).find((s) => s.site === sites[0])
+    fix[to] = [...(fix[to] ?? []).filter((s) => s.site !== sites[0]), { ...row }]
+    if (!copy) fix[from] = fix[from].filter((s) => s.site !== sites[0])
+    return { ok: true }
+  })
 }, FIX)
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 await ui({ action: "command", id: "web:sites-tab" })
@@ -67,7 +80,7 @@ check("… unfolded: the latest visited first, then the trackers' line", await u
 const work = win.locator("[data-web-logins-section=work]")
 check("a container with a few sites shows them all, its always-open site with them", await until(async () => (await work.locator("[data-web-site]").count()) === 4, 5000)
   && (await work.locator("[data-web-more]").count()) === 0 && (await work.locator("[data-web-site='linear.app'] [data-web-always]").count()) === 1, await work.innerText())
-check("a site signed in whose name it can't have leads, saying so", JSON.stringify(await work.locator("[data-web-site]").evaluateAll((els) => els.slice(0, 2).map((e) => e.getAttribute("data-web-site")))) === JSON.stringify(["github.com", "x.com"])
+check("its always-open site leads, then the accounts A to Z, one whose name it can't have saying so", JSON.stringify(await work.locator("[data-web-site]").evaluateAll((els) => els.slice(0, 3).map((e) => e.getAttribute("data-web-site")))) === JSON.stringify(["linear.app", "github.com", "x.com"])
   && /Signed in/.test(await work.locator("[data-web-site='x.com']").innerText()), await work.innerText())
 const card = await work.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, border: getComputedStyle(e).borderTopWidth }))
 check("each container is a card in its colour", card.bg !== "rgba(0, 0, 0, 0)" && parseFloat(card.border) > 0, card)
@@ -117,6 +130,71 @@ check("the container menu names each container's account for the site", await un
 }, 5000), await items())
 check("… in the order they were dragged to", (await items()).findIndex((t) => t.startsWith("Work")) < (await items()).findIndex((t) => t.startsWith("Personal")), await items())
 await win.keyboard.press("Escape")
+await ui({ action: "command", id: "web:sites-tab" })
+await until(async () => (await work.isVisible()), 5000)
+
+const data = () => JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/web-viewer/data.json"), "utf8"))
+const moves = () => app.evaluate(() => globalThis.moves.map((m) => m.join(" ")))
+const top = (sec) => sec.locator("[data-web-sites-top] > [data-slide]").evaluateAll((els) => els.map((e) => e.getAttribute("data-slide")))
+/** Drag a row by the mouse onto `to` (⌥ held on the way: `alt`); `over` runs while it's held there. */
+async function dragRow(row, to, { alt = false, dy = 0, over } = {}) {
+  const a = await row.boundingBox(), b = await to.boundingBox()
+  await win.mouse.move(a.x + 30, a.y + a.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(a.x + 34, a.y + a.height / 2 + 6, { steps: 3 })
+  if (alt) await win.keyboard.down("Alt")
+  await win.mouse.move(b.x + 40, b.y + (dy || b.height / 2), { steps: 12 })
+  await over?.()
+  await win.mouse.up()
+  if (alt) await win.keyboard.up("Alt")
+}
+
+// Reorder: x.com dragged above Work's first row stays there, kept per set of logins.
+await dragRow(work.locator("[data-slide='x.com']"), work.locator("[data-slide='linear.app']"), { dy: 3 })
+check("a site dragged above another in its card stays there, kept in the settings", await until(async () => JSON.stringify(await top(work)) === '["x.com","linear.app","github.com"]'
+  && JSON.stringify(data().siteOrder?.["c-work"]) === '["x.com","linear.app","github.com"]', 5000), [await top(work), data().siteOrder])
+
+// Move from the menu: Personal's GitHub to Work, which has another GitHub account: it asks first.
+const pGithub = personal.locator("[data-web-site='github.com']")
+await pGithub.hover()
+await pGithub.locator("[data-row-more]").click()
+await win.locator("[role=menuitem]", { hasText: /^Move to/ }).click()
+await win.locator("[role=menuitem]", { hasText: /^Work/ }).click()
+check("moving onto another account there asks before replacing it", await until(async () => /Replace alice-lighthouse in Work/.test(await dialog.innerText().catch(() => "")), 5000), await dialog.innerText().catch(() => ""))
+await dialog.locator("button", { hasText: "Replace" }).click()
+check("… it moves: gone from Personal, Work signed in as alicepark", await until(async () => (await moves()).includes("c-personal c-work github.com false")
+  && (await pGithub.count()) === 0 && /alicepark/.test(await work.locator("[data-web-site='github.com']").innerText().catch(() => "")), 8000), [await moves(), await work.innerText()])
+const toast = win.locator("[data-sonner-toast]", { hasText: "Moved github.com to Work" })
+check("… a toast says so, with Undo", await until(async () => (await toast.count()) === 1, 3000))
+await toast.getByRole("button", { name: "Undo" }).click()
+check("Undo moves it back", await until(async () => (await moves()).includes("c-work c-personal github.com false") && (await pGithub.count()) === 1, 8000), await moves())
+
+// Drag with ⌥ onto Personal's card: copied, the card saying so while held over it.
+let said = ""
+await dragRow(work.locator("[data-slide='x.com']"), personal, { alt: true, over: async () => {
+  await until(async () => (said = await personal.getAttribute("data-web-logins-taking") ?? "") === "copy", 3000)
+} })
+check("held over another card with ⌥, it says it copies there", said === "copy", said)
+check("… dropped: copied, still in Work, now in Personal too", await until(async () => (await moves()).includes("c-work c-personal x.com true")
+  && (await personal.locator("[data-web-site='x.com']").count()) === 1 && (await work.locator("[data-web-site='x.com']").count()) === 1, 8000), await moves())
+
+// A site keeping its login outside cookies doesn't move: it stays, and says why.
+await dragRow(work.locator("[data-slide='zoom.us']"), personal)
+check("a login that won't move stays where it was, saying so", await until(async () => (await moves()).includes("c-work c-personal zoom.us false")
+  && (await win.locator("[data-sonner-toast]", { hasText: "didn't stay signed in" }).count()) === 1, 8000)
+  && await until(async () => (await work.locator("[data-web-site='zoom.us']:visible").count()) === 1, 5000), await moves())
+
+// Deleting Work, signed in to x.com: its logins move first, then it goes.
+await head.hover()
+await head.locator("button").last().click()
+await win.locator("[role=menuitem]", { hasText: /^Delete Work/ }).click()
+const pick = win.locator("[role=option]", { hasText: "Move it to Personal" })
+check("deleting a container signed in somewhere offers to move its logins", await until(async () => (await pick.count()) === 1, 5000))
+await pick.click()
+check("… one already there asks before replacing it", await until(async () => /Replace/.test(await dialog.innerText().catch(() => "")), 5000))
+await dialog.locator("button", { hasText: "Replace" }).click()
+check("… moved, then the container's gone", await until(async () => (await moves()).includes("c-work c-personal x.com false") && !data().containers.some((c) => c.id === "work")
+  && (await work.count()) === 0, 8000), [await moves(), data().containers])
 
 await app.close()
 fs.rmSync(TMP, { recursive: true, force: true })

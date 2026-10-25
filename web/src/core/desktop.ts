@@ -154,6 +154,9 @@ export type WebPages = {
   sites?: (profile: string) => Promise<WebSite[]>
   /** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
   forget?: (profile: string, site: string) => Promise<unknown>
+  /** Move a login (its sites' cookies) to another profile, or copy it (`copy`): not ok when the site there names nobody
+   *  after (it keeps its login elsewhere), then left as it was. Older builds don't have it. */
+  move?: (from: string, to: string, sites: string[], copy: boolean) => Promise<{ ok: boolean; account?: string }>
   /** Claude Code on the web's sessions in the profiles named, read with their logins once `read` (the user's yes), told
    *  from now on as `cloud` events, news as `session` ones. Older builds take nothing and answer the sessions. */
   cloud?: (want: { profiles: string[]; read: boolean; hidden: string[] }) => Promise<CloudState | CloudSession[]>

@@ -2,7 +2,8 @@
 // script serves on 127.0.0.1 (a cookie login): signed in on a page in workspace 1, a page in workspace 2 isn't (its own
 // session, persist:web-2) and workspace 1 still is (persist:web, the one pages shared before); the Sites tab (every
 // set of logins, plugins/core/web-viewer/Sites.tsx) lists the site signed in to (a tracker's cookie as one line, Clear) under
-// its workspace's logins, and Sign out (after asking) clears it; with logins "shared", a page in workspace 2 gets workspace 1's session. Notifications: a page's becomes an Inbox event linking to its tab
+// its workspace's logins, Move to takes its cookies to another workspace's logins (Undo: back), and Sign out (after
+// asking) clears it; with logins "shared", a page in workspace 2 gets workspace 1's session. Notifications: a page's becomes an Inbox event linking to its tab
 // (one from another workspace's logins says so and links nowhere), a frame inside the page can't make one, none with
 // notifications off, and a burst is cut short.
 // WRITES: the throwaway vault only.
@@ -116,6 +117,28 @@ await command("web:sites-tab")
 check("… Sites: workspace 2's logins have no sites", await until(async () => (await logins("Workspace 2").count()) === 1 && (await logins("Workspace 2").locator("[data-web-site]").count()) === 0, 10000),
   await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
 check("workspace 1's logins kept", (await cookiesIn("persist:web")).includes("who=Alice"), await cookiesIn("persist:web"))
+
+// ---------- move the login to workspace 2's, and back ----------
+const w1site = logins("Workspace 1").locator("[data-web-site='127.0.0.1']")
+await until(async () => (await w1site.count()) === 1, 10000)
+await w1site.hover()
+await w1site.locator("[data-row-more]").click()
+await win.locator("[role=menuitem]", { hasText: /^Move to/ }).click()
+await win.locator("[role=menuitem]", { hasText: /^Workspace 2/ }).click()
+const moved = win.locator("[data-sonner-toast]", { hasText: "Moved 127.0.0.1 to Workspace 2" })
+check("… a toast says so", await until(async () => (await moved.count()) === 1, 10000), await win.locator("[data-sonner-toast]").allInnerTexts())
+const jars = async () => [await cookiesIn("persist:web"), await cookiesIn("persist:web-2")]
+check("Move to: the site's cookie goes to workspace 2's logins, out of workspace 1's", await until(async () => {
+  const [one, two] = await jars()
+  return two.includes("who=Alice") && !one.includes("who=Alice")
+}, 10000), await jars())
+check("… Sites lists it there", await until(async () => (await logins("Workspace 2").locator("[data-web-site='127.0.0.1']").count()) === 1
+  && (await w1site.count()) === 0, 10000), await win.locator("[data-web-sites-view]").innerText().catch(() => ""))
+await moved.getByRole("button", { name: "Undo" }).click()
+check("Undo: back in workspace 1's logins only", await until(async () => {
+  const [one, two] = await jars()
+  return one.includes("who=Alice") && !two.includes("who=Alice")
+}, 10000), await jars())
 
 // ---------- sign out, in workspace 1 ----------
 await command("workspace:1")

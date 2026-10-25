@@ -77,7 +77,7 @@ export { diffLines } from "@/core/diff"
 export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // The one drag primitive: plugins' drop targets (Workspaces' switcher rows take a dragged tab) and things they drag (a
 // database view's cards).
-export { edgeScroller, pastEnd, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+export { edgeScroller, pastEnd, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions, secretDialog } from "@/components/ConfirmDialog"
 export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups, rowFileMenu } from "@/components/FileActions"
 export { deleteFile, restoreFile } from "@/core/files"

@@ -10,7 +10,7 @@ import { signal } from "@/core/signal"
 export type DragItem = {
   /** Where it comes from ("row": a database view's file, a board's card or a calendar's item; with `to`, a panel's row
    *  that opens something, like a terminal in the Terminals panel). */
-  from: "tab" | "group" | "tabset" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block" | "table" | "column" | "container"
+  from: "tab" | "group" | "tabset" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block" | "table" | "column" | "container" | "site"
   /** What it opens in a tab ("file:Notes/Idea.md", "view:terminal/abc", "settings"); none for a folder. */
   to?: string
   /** The tab it is (dropping it moves that tab); otherwise a drop opens a new one. */
@@ -39,6 +39,9 @@ export type DragItem = {
   table?: string
   /** A browser container, by id, reordered in the Sites tab (web-viewer/Sites.tsx). */
   container?: string
+  /** A site's login in Sites (web-viewer/Sites.tsx), by its set of logins (a profile) and site: moved to another set,
+   *  or reordered in its own. */
+  site?: { logins: string; site: string }
   /** A database view's column, by key, moved along its table's header (`table`: which table). */
   column?: { table: string; key: string }
   /** Its source draws its own picture of it following the pointer (a phone's tab card, lifted whole): no DragGhost. */

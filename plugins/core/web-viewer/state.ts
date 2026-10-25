@@ -14,6 +14,9 @@ export type Settings = {
   logins?: "workspace" | "shared"
   /** Containers a tab can open in (containers.ts); unset: the defaults. */
   containers?: Container[]
+  /** Each set of logins' sites in the order they were dragged into in Sites, by profile ("c-work"; a workspace's: "",
+   *  "2"): those not in it come after (loginsets.ts). */
+  siteOrder?: Record<string, string[]>
   /** Whether ads and trackers are blocked (the default) or not (false). */
   shields?: boolean
   /** Sites where nothing is blocked ("example.com"). */
