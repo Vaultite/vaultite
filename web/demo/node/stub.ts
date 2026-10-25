@@ -19,7 +19,8 @@ export const STATUS_CODES: Record<number, string> = {}
 export const isIP = () => 0
 export class Readable { static from = needsApp }
 export class Writable {}
-export class WebSocketServer { constructor() { needsApp() } }
+// (made freely, as a plugin may at its start: only a socket coming in needs the app)
+export class WebSocketServer { handleUpgrade = needsApp; on() { return this } close() {} }
 export class WebSocket { static OPEN = 1; constructor() { needsApp() } }
 export class Session { connect() { needsApp() } disconnect() {} post() { return needsApp() } }
 export const constants = {}
