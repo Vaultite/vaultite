@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Set up Vaultite asks about your agents and your Mac**: after the vault, it finds the coding agents on the
+  computer (Claude Code, Codex, OpenClaw, Hermes, Gemini, OpenCode; the install command of the others to copy), lets
+  you pick the companion's, and turns on what you tick: Claude Code's computer use for the vault, Codex's, OpenClaw and
+  Hermes connected to the vault. Then Accessibility and Screen recording, each opening its pane of System Settings with
+  a hint of the switch, ticking as soon as it's on, and a Relaunch that comes back to the same step. Settings >
+  Permissions opens it again (Set up agents).
 - **Companion modes in its menus**: right-click an agent's cursor or its face at the top of a note for Quiet, Notice
   and Pair side by side, with a line on what each sees (the status bar's menu has Off too). Its cursor no longer slides
   away as you click it: it rests just past the end of what it looks at, whatever has the focus, and holds still while

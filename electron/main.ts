@@ -17,7 +17,7 @@ import { setTranslucent, translucentAt, translucentWindow } from "./translucency
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
-import { plainError, sentence } from "../core/plainerror.ts"
+import { plainError, plainText, sentence } from "../core/plainerror.ts"
 import { RUNS_CODE } from "../core/filetypes.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
@@ -613,8 +613,9 @@ async function probe(url: string): Promise<{ ok: boolean; error?: string }> {
 }
 
 // ---------- Set up Vaultite ----------
-/** What Set up Vaultite has done (userData/setup.json): `done` once finished. */
-type SetupState = { done?: string }
+/** userData/setup.json: `done` once finished; `at`, its step and vault, for a relaunch (`revisit`: from Settings). */
+type SetupAt = { step: "vault" | "agents" | "permissions"; vault?: string; made?: boolean; added?: boolean; revisit?: boolean }
+type SetupState = { done?: string; at?: SetupAt }
 const SETUP = () => path.join(app.getPath("userData"), "setup.json")
 function setupState(): SetupState {
   try { const j = JSON.parse(fs.readFileSync(SETUP(), "utf8")); return j && typeof j === "object" ? j : {} } catch { return {} }
@@ -635,14 +636,20 @@ const where = (): Setup.Where => {
     home, exe: process.execPath, root: ROOT, userData: app.getPath("userData"),
     env: process.env.VAULTITE_USER_DATA ? { VAULTITE_USER_DATA: app.getPath("userData") } : {},
     ...(process.env.VAULTITE_SETUP_HOME ? {} : { documents: app.getPath("documents") }),
+    ...(!process.env.VAULTITE_SETUP_HOME && process.env.CLAUDE_CONFIG_DIR ? { claudeDir: path.resolve(process.env.CLAUDE_CONFIG_DIR) } : {}),
+    ...(!process.env.VAULTITE_SETUP_HOME && process.env.CODEX_HOME ? { codexHome: path.resolve(process.env.CODEX_HOME) } : {}),
   }
 }
 /** The user's PATH, asked of their shell once (it takes a moment). */
 let dirs: string[] | null = null
 const pathDirs = () => (dirs ??= process.env.VAULTITE_SETUP_HOME ? [] : Setup.shellPath(where()))
 
-function showSetup() {
+function showSetup(at?: SetupAt) {
   if (setupWin && !setupWin.isDestroyed()) return setupWin.focus()
+  const { at: was, ...st } = setupState()
+  at ??= was
+  if (at?.vault) chosen = { path: at.vault, made: !!at.made, added: !!at.added }
+  saveSetup(at ? { ...st, at } : st)
   setupWin = new AppWindow({
     // (useContentSize: a Linux window frame is outside it, so the page gets its 560×600 as on a Mac)
     width: 560, height: 600, useContentSize: true, resizable: false, maximizable: false, fullscreenable: false, show: false, title: "Set up Vaultite",
@@ -652,6 +659,8 @@ function showSetup() {
   void setupWin.ready.then(() => setupWin?.show())
   setupWin.on("closed", () => {
     setupWin = null
+    // (closed by the user: it starts over next time; by a quit, it comes back where it was)
+    if (!quitting) { const { at: _, ...st } = setupState(); saveSetup(st) }
     dropChosen()
   })
   guard(setupWin, pathToFileURL(DIST).href)
@@ -688,7 +697,12 @@ function setupHandle(name: string, fn: (...args: never[]) => unknown) {
 
 setupHandle("setup:info", () => {
   const w = where()
-  return { places: Setup.places(w), obsidian: Setup.obsidianVaults(w), vau: Setup.vauStatus(w, pathDirs()) }
+  return { places: Setup.places(w), obsidian: Setup.obsidianVaults(w), vau: Setup.vauStatus(w, pathDirs()), at: setupState().at ?? null, mac: MAC, app: app.getName() }
+})
+/** The step the window is on, kept (with the vault chosen) for a relaunch. */
+setupHandle("setup:step", (step: SetupAt["step"]) => {
+  const { at, ...st } = setupState()
+  saveSetup({ ...st, at: { ...(at?.revisit ? { revisit: true } : {}), ...(chosen ? { vault: chosen.path, made: chosen.made, added: chosen.added } : {}), step } })
 })
 setupHandle("setup:pick", async () => {
   const r = await dialog.showOpenDialog(setupWin!, { properties: ["openDirectory", "createDirectory"] })
@@ -731,9 +745,70 @@ setupHandle("setup:sandbox", async () => {
   await sandbox()
   setupWin?.close()
 })
+/** The vault chosen's server: its port. */
+async function chosenPort() {
+  if (!chosen) throw new Error("No vault is chosen")
+  return (await servedHere(chosen.path))?.port ?? (await serverFor(remember(chosen.path)))[1]
+}
+/** An op of the chosen vault's server, as the desktop app. */
+async function vaultOp(id: string, body: Record<string, unknown> = {}) {
+  const r = await fetch(`http://127.0.0.1:${await chosenPort()}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: JSON.stringify(body) })
+  const j = await r.json().catch(() => null)
+  if (!r.ok) throw Object.assign(new Error(j?.error ?? `${id} answered ${r.status}`), { status: r.status })
+  return j
+}
+/** The coding agents here, and the companion's agent in the chosen vault (its default, Claude Code, unless set). */
+setupHandle("setup:agents", () => {
+  let agent = "claude"
+  try { agent = JSON.parse(fs.readFileSync(path.join(chosen!.path, ".vaultite", "plugins", "companion", "data.json"), "utf8")).agent || agent } catch { /* the default */ }
+  return { list: Setup.harnesses(where(), pathDirs(), chosen?.path ?? null), agent }
+})
+/** What the user said yes to: the companion's agent (written only when it isn't the default), and each agent's extra
+ *  (computer use, the vault's tools): their errors, by agent. */
+setupHandle("setup:apply", async (a: { agent?: string | null; extras?: string[] }) => {
+  if (!chosen) throw new Error("No vault is chosen")
+  const w = where(), vault = chosen.path, found = Setup.harnesses(w, pathDirs(), vault).filter((h) => h.path)
+  const failed: Record<string, string> = {}
+  const step = async (id: string, what: string, fn: () => Promise<unknown>) => { try { await fn() } catch (e) { failed[id] = plainText(e, what) } }
+  const agent = found.find((h) => h.agent && h.agent === a?.agent)
+  if (agent) await step(agent.id, `Couldn't make ${agent.name} the companion's agent`, async () => {
+    const data = path.join(vault, ".vaultite", "plugins", "companion", "data.json")
+    let had: unknown
+    try { had = JSON.parse(fs.readFileSync(data, "utf8"))?.agent } catch { /* none */ }
+    if (agent.agent !== "claude") await vaultOp("plugin.enable", { id: agent.id })
+    // (an account's, claude_work, is still Claude Code: kept)
+    if ((typeof had === "string" && had ? had.split("_")[0] : "claude") !== agent.agent) await vaultOp("settings.set", { name: "plugin/companion", values: { agent: agent.agent === "claude" ? null : agent.agent } })
+  })
+  for (const id of strings(a?.extras)) {
+    const h = found.find((x) => x.id === id)
+    if (!h?.extra || h.extra.state !== "off") continue
+    if (id === "claude-code" || id === "codex") await step(id, "Couldn't turn on computer use", () =>
+      (id === "codex" ? Setup.setCodexComputerUse(w, h.path!) : Setup.setClaudeComputerUse(w, vault)))
+    else if (id === "openclaw" || id === "hermes") await step(id, "Couldn't connect it", async () => {
+      // Its plugin (Vaultite's directory), on in this vault, then its own connect op.
+      if (!fs.existsSync(path.join(vault, ".vaultite", "plugins", id, "manifest.json"))) await vaultOp("plugin.install", { source: `Vaultite/plugins/${id}` })
+      await vaultOp("plugin.enable", { id })
+      for (let i = 0; ; i++) {
+        try { return await vaultOp(`${id}.connect`) } catch (e) {
+          if ((e as { status?: number }).status !== 404 || i >= 20) throw e
+          await new Promise((r) => setTimeout(r, 500)) // (its backend loading)
+        }
+      }
+    })
+  }
+  return failed
+})
+setupHandle("setup:permissions", () => (MAC ? macPermissions() : null))
+setupHandle("setup:permission", (id: string) => (MAC ? permissionAct(str(id)) : undefined))
+/** Quit and open again on the same step: macOS gives screen recording to an app only once it restarts. */
+setupHandle("setup:relaunch", () => {
+  app.relaunch()
+  app.quit()
+})
 /** Done: open the vault chosen (a new one on its Start here note), and never show this window by itself again. */
 setupHandle("setup:finish", async () => {
   saveSetup({ done: new Date().toISOString() })
+  dirs = null // (an agent installed meanwhile is on the PATH next time)
   const c = chosen
   chosen = null // (kept: the window opening now takes its server)
   if (c) {
@@ -895,7 +970,8 @@ handle("vaults:pick", async (w) => {
 })
 handle("vaults:reveal", (_w, p: string) => { if (find(str(p))) shell.showItemInFolder(p) })
 handle("vaults:manage", () => showManager())
-handle("app:setup", () => showSetup())
+/** Set up Vaultite again: from the start, or (Settings) at its agents for this window's vault. */
+handle("app:setup", (w, step: unknown) => showSetup(w && step === "agents" ? { step: "agents", vault: w.vault.path, revisit: true } : undefined))
 handle("files:copy-in", (w, paths: string[], folder: string, move: boolean) => {
   if (!w) throw new Error("no vault here")
   return copyIn(w, strings(paths), str(folder), !!move)
@@ -1428,7 +1504,7 @@ function buildMenu() {
       click: () => openVault(v.path).catch((e) => failedBox(`Couldn't open ${nameOf(v.path)}`, e)) })),
       ...remotes.map((r) => ({ label: r.name, sublabel: r.url, type: "checkbox" as const, checked: remoteWins.has(r.url), click: () => openRemote(r.url) }))],
     manageVaults: showManager,
-    setup: showSetup,
+    setup: () => showSetup(),
     pickOutside: () => { void pickOutside(null) },
     zoom: zoomBy,
     openDoc: (name) => { void openDoc(name) },
@@ -1666,7 +1742,8 @@ app.whenReady().then(async () => {
   const go = !a || await madeIfAsked(a) // (else the vaults list)
   await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => console.error(e))))
   if (!asked()) for (const r of remotes.filter((x) => x.open)) openRemote(r.url)
-  if (firstRun() && !asked() && DEV) await sandbox().catch((e) => console.error(e))
+  if (setupState().at) showSetup() // (a relaunch from its Permissions step)
+  else if (firstRun() && !asked() && DEV) await sandbox().catch((e) => console.error(e))
   else if (firstRun() && !asked()) showSetup()
   else if (!wins.size && !remoteWins.size && !early.length) showManager()
   if (early.length) await openFiles(early.splice(0), null)

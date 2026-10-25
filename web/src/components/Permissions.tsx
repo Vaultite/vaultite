@@ -50,6 +50,9 @@ export function PermissionsPanel() {
     <div className="flex flex-col gap-4">
       <Panel>
         <div className="hairline">
+          {/* (Set up Vaultite again, at its agents step for this vault) */}
+          {desktop?.setup && <SettingRow label="Set up agents" sub="Your coding agents, their computer use, and what they need here, step by step" data-settings-row="permission-setup"
+            onClick={() => void desktop!.setup!("agents")} />}
           <SettingRow label="Vault folder" sub={vaultLine(vault)} data-settings-row="permission-vault">
             {vaultState === "denied" && <Button size="small" onClick={() => void act("vault")}>Open Settings</Button>}
             <State state={vaultState} />

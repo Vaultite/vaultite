@@ -17,8 +17,11 @@
 - The menu bar (`menu.ts`) is the focused window's commands as its page tells them: an item is a command id, never a
   copy of what it does. Only single ⌘/⌃/⌥ steps become accelerators (the page gets every key first).
 - The Dock icon a page draws changes only the Dock, never the bundle.
-- Set up Vaultite writes nothing outside `.vaultite/` in a folder of the user's (`npm run smoke` checks); its tests
-  write only under `VAULTITE_SETUP_HOME`. Vaultite Dev (`npm run app:dev`) opens the sandbox, never Set up.
+- Set up Vaultite writes nothing outside `.vaultite/` in a folder of the user's (`npm run smoke` checks) but what they
+  turn on there (an agent's plugin and its page), nor outside the vault but what they tick (an agent's config: Claude
+  Code's computer use, Codex's, OpenClaw's and Hermes' MCP servers); its tests write only under `VAULTITE_SETUP_HOME`.
+- macOS credits what programs in the app's terminals do (screen capture, Accessibility) to the app: the terminal keeper
+  is the app's child, and stays its even after the app quits. One grant covers every agent there. Vaultite Dev (`npm run app:dev`) opens the sandbox, never Set up.
 - Windows: a release build only (no update.sh; Vaultite Main is Mac and Linux). Its title bar is the page's, with
   Windows' controls drawn over the top-right corner (preload.cjs tells their colours, index.css keeps clear of them);
   files and vaultite:// links come in argv and `second-instance`, outside paths go to the page with forward slashes.

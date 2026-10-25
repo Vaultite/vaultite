@@ -1,6 +1,6 @@
 // macOS's privacy permissions as the app has them now (core/permissions.ts lists them): read only through calls that
 // never make macOS ask, so opening Settings > Permissions pops nothing up. A folder is read only when its Check is pressed.
-import { app, shell, systemPreferences } from "electron"
+import { app, desktopCapturer, shell, systemPreferences } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -15,6 +15,8 @@ const FOLDERS: Record<string, () => string> = {
 const checked = new Map<string, PermissionState>()
 /** Accessibility asked once since launch: macOS shows its prompt only once a launch, so the next press opens the pane. */
 let askedTrust = false
+/** Screen recording asked once since launch: a capture puts Vaultite in its pane's list (macOS asks the first time). */
+let askedScreen = false
 
 /** EPERM is macOS saying no; anything else (no such folder) isn't about permission. */
 const refused = (e: unknown): PermissionState => (["EPERM", "EACCES"].includes((e as NodeJS.ErrnoException).code ?? "") ? "denied" : "unknown")
@@ -37,7 +39,7 @@ function stateOf(id: string): PermissionState {
 }
 
 function actionOf(id: string, state: PermissionState): PermissionAction {
-  if (state === "not-asked" || (id === "accessibility" && state === "denied" && !askedTrust)) return "ask"
+  if (state === "not-asked" || (state === "denied" && ((id === "accessibility" && !askedTrust) || (id === "screen" && !askedScreen)))) return "ask"
   if (FOLDERS[id] && state === "unknown") return "check"
   return "settings"
 }
@@ -64,6 +66,10 @@ export async function permissionAct(id: string) {
   const action = actionOf(id, stateOf(id))
   if (action === "ask" && (id === "microphone" || id === "camera")) return void await systemPreferences.askForMediaAccess(id)
   if (action === "ask" && id === "accessibility") { askedTrust = true; return void systemPreferences.isTrustedAccessibilityClient(true) }
+  if (action === "ask" && id === "screen") {
+    askedScreen = true
+    await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }).catch(() => {})
+  }
   if (action === "check") return void checked.set(id, await readable(FOLDERS[id]()))
   await shell.openExternal(paneUrl(def.pane))
 }

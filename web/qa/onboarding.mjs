@@ -1,7 +1,9 @@
 // Set up Vaultite (web/src/components/Onboarding.tsx, electron/setup.ts, main.ts's setup:*) in the desktop app, on a
-// made-up home folder (VAULTITE_SETUP_HOME: iCloud Drive, an Obsidian vault, Claude Code's config): the first launch
-// shows one screen; a new vault in iCloud Drive starts from Standard, its Start here written, pinned and opened, vau
-// installed (it runs without Node and serves MCP), no AI app's config touched; a relaunch doesn't show it, the menu does;
+// made-up home folder (VAULTITE_SETUP_HOME: iCloud Drive, an Obsidian vault, Claude Code and its config): the first
+// launch shows the vault step, then the agents found (Claude Code's computer use turned on for the vault only when
+// left ticked) and, on a Mac, the permissions; a new vault in iCloud Drive starts from Standard, its Start here written,
+// pinned and opened, vau installed (it runs without Node and serves MCP); a relaunch doesn't show it, the menu does, a
+// relaunch from the permissions step comes back to it, and Settings opens it at the agents for its vault;
 // an Obsidian vault opened changes none of its files; Manage vaults connects to another machine's server, opened in a
 // window with no bridge; "Try the playground first" opens the sandbox, and the next launch shows setup again; Manage vaults
 // offers the playground too. Screenshots, light and dark. WRITES: temp folders only (its own userData, home, vaults and server).
@@ -30,7 +32,8 @@ const mine = { "Welcome.md": "My garden.\n", "Notes/Plain.md": "Just a thought.\
 for (const [f, t] of Object.entries(mine)) put(path.join(OBSIDIAN, f), t)
 put(path.join(HOME, "Library/Application Support/obsidian/obsidian.json"), JSON.stringify({ vaults: { a1: { path: OBSIDIAN, ts: 2, open: true } } }))
 const CLAUDE_JSON = put(path.join(HOME, ".claude.json"), JSON.stringify({ numStartups: 4, mcpServers: { other: { type: "stdio", command: "other", args: [], env: {} } } }, null, 2))
-const claudeBefore = fs.readFileSync(CLAUDE_JSON, "utf8")
+fs.chmodSync(put(path.join(HOME, ".local/bin/claude"), "#!/bin/sh\n"), 0o755)
+const claudeJson = () => JSON.parse(fs.readFileSync(CLAUDE_JSON, "utf8"))
 const tree = (dir) => Object.fromEntries((fs.readdirSync(dir, { recursive: true })).sort().filter((f) => !f.startsWith(".vaultite") && fs.statSync(path.join(dir, f)).isFile()).map((f) => [f.split(path.sep).join("/"), fs.readFileSync(path.join(dir, f), "latin1")]))
 const obsidianBefore = tree(OBSIDIAN)
 
@@ -52,6 +55,8 @@ async function launch(userData) {
   apps.push(a)
   // Links leave for the browser: not in a test.
   await a.evaluate(({ shell }) => { globalThis.opened = []; shell.openExternal = async (u) => { globalThis.opened.push(u) } })
+  // (macOS' own prompts are the user's: never from a test)
+  await a.evaluate(({ systemPreferences, desktopCapturer }) => { systemPreferences.isTrustedAccessibilityClient = () => false; desktopCapturer.getSources = async () => [] })
   return a
 }
 const setupOf = (a) => until(() => a.windows().find((w) => w.url().endsWith("onboarding.html")), 15000)
@@ -80,8 +85,10 @@ try {
   const size = await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().find((x) => x.getTitle() === "Set up Vaultite")?.getContentSize())
   check("a small fixed window", size?.[0] === 560 && size?.[1] === 600, size)
   check("no other window opens with it", app.windows().length === 1, app.windows().map((x) => x.url()))
-  check("one screen: New vault by default, called Vault, in iCloud Drive", await w.isChecked("[data-choice=new] input") && await w.inputValue("[data-vault-name]") === "Vault"
+  check("the vault step first: New vault by default, called Vault, in iCloud Drive", await w.isChecked("[data-choice=new] input") && await w.inputValue("[data-vault-name]") === "Vault"
     && await w.getAttribute("[data-place=icloud]", "aria-checked") === "true")
+  const MAC = process.platform === "darwin"
+  check("its steps in the title bar", JSON.stringify(await w.$$eval("[data-steps] li", (l) => l.map((e) => e.textContent))) === JSON.stringify(["1Vault", "2Agents", ...(MAC ? ["3Permissions"] : [])]))
   check("it fits: nothing scrolls", await w.evaluate(() => document.scrollingElement.scrollHeight <= innerHeight))
   await shoot(app, w, "1-welcome")
   await w.click("[data-choice=open]")
@@ -91,13 +98,51 @@ try {
   await shoot(app, w, "2-open-folder")
   await w.click("[data-choice=new]")
   await w.fill("[data-vault-name]", "Lighthouse")
-  const vaultWin = app.waitForEvent("window", { timeout: 60000 })
   await w.keyboard.press("Enter")
+  const VAULT = path.join(ICLOUD, "Lighthouse")
+  check("Enter makes the vault, then shows the agents", !!(await w.waitForSelector("[data-step=agents] [data-agent=claude-code]", { timeout: 60000 })) && fs.existsSync(path.join(VAULT, ".vaultite")))
+  check("Claude Code is found, its computer use ticked; the others say how to install them", await w.isChecked("[data-extra=claude-code]")
+    && (await w.textContent("[data-agent=claude-code]")).includes("~/.local/bin/claude") && (await w.$$("[data-missing]")).length === 5
+    && /npm i -g @openai\/codex/.test(await w.textContent("[data-missing=codex]")))
+  check("one agent: no default to pick", !(await w.$("[data-default]")))
+  check("the agents step fits", await w.evaluate(() => document.scrollingElement.scrollHeight <= innerHeight))
+  await shoot(app, w, "3-agents")
+  check("nothing outside the vault changes before Continue", JSON.stringify(claudeJson().projects ?? {}) === "{}")
+  await w.click("[data-back]")
+  check("Back shows the vault as chosen, to go on with", await w.isVisible("[data-step=vault]") && (await w.textContent("[data-step=vault] [data-next]")) === "Continue" && await w.inputValue("[data-vault-name]") === "Lighthouse")
+  await w.click("[data-step=vault] [data-next]")
+  await w.waitForSelector("[data-step=agents] [data-agent=claude-code]")
+  await w.click("[data-step=agents] [data-next]")
+  const claudeAfter = claudeJson(), project = claudeAfter.projects?.[fs.realpathSync(VAULT)]
+  check("Continue turns Claude Code's computer use on for this vault, its other settings kept", JSON.stringify(project?.enabledMcpServers) === '["computer-use"]'
+    && claudeAfter.numStartups === 4 && claudeAfter.mcpServers.other.command === "other" && Object.keys(claudeAfter.projects).length === 1, claudeAfter)
+  if (MAC) {
+    await w.waitForSelector("[data-step=permissions] [data-permission=accessibility]")
+    check("then the permissions: Accessibility and Screen recording first, the rest folded", JSON.stringify(await w.$$eval("[data-permission]", (l) => l.map((e) => e.dataset.permission))) === '["accessibility","screen"]')
+    await shoot(app, w, "4-permissions")
+    // (Accessibility reads as not allowed here: the test answers macOS' question so)
+    await w.click("[data-act=accessibility]")
+    check("Allow… asks macOS, then shows what to switch on", await until(() => w.evaluate(() => !!document.querySelector("[data-permission=accessibility] [data-hint]")
+      && document.querySelector("[data-act=accessibility]")?.textContent === "Open Settings"), 3000), await w.textContent("[data-permission=accessibility]"))
+    await w.click("[data-act=accessibility]")
+    check("then Open Settings goes to its exact pane", await until(() => app.evaluate(() => globalThis.opened.some((u) => u.endsWith("?Privacy_Accessibility"))), 3000))
+    if (await w.$("[data-act=screen]")) {
+      await w.click("[data-act=screen]")
+      check("Screen recording's goes to its pane, with a relaunch", await until(() => app.evaluate(() => globalThis.opened.some((u) => u.endsWith("?Privacy_ScreenCapture"))), 3000)
+        && await w.isVisible("[data-permission=screen] [data-hint]") && await w.isVisible("[data-relaunch]"))
+    }
+    await shoot(app, w, "5-permissions-hint")
+    await w.click("[data-more]")
+    check("More permissions lists the rest", (await w.$$("[data-permission]")).length > 5)
+    check("the permissions step fits, folded", await w.evaluate(() => { document.querySelector("[data-more]").click(); return true }) && await until(() => w.evaluate(() => document.scrollingElement.scrollHeight <= innerHeight), 2000))
+    check("its button opens the vault", (await w.textContent("[data-step=permissions] [data-next]")) === "Open vault")
+  }
+  const vaultWin = app.waitForEvent("window", { timeout: 60000 })
+  await w.click(`[data-step=${MAC ? "permissions" : "agents"}] [data-next]`)
   const vw = await vaultWin
   watch(vw, { label: "vault", console: true })
   await vw.waitForSelector("[data-tab-id]", { timeout: 60000 })
-  const VAULT = path.join(ICLOUD, "Lighthouse")
-  check("Enter makes the vault in iCloud Drive and opens it", fs.existsSync(path.join(VAULT, ".vaultite")) && new URL(vw.url()).hostname === "127.0.0.1")
+  check("the last step opens the vault", new URL(vw.url()).hostname === "127.0.0.1")
   check("the setup window closes", await until(() => !app.windows().some((x) => x.url().endsWith("onboarding.html")), 15000))
   check("setup is remembered as done, outside the vault", !!JSON.parse(fs.readFileSync(path.join(TMP, "userData/setup.json"), "utf8")).done && !fs.readdirSync(VAULT, { recursive: true }).some((f) => /setup\.json$/.test(f)))
   // (Standard is the app's defaults: no plugins.json at all)
@@ -106,8 +151,7 @@ try {
   check("Start here is written and the only pin", fs.existsSync(path.join(VAULT, "Start here.md")) && JSON.stringify(pages.pinned) === '["Start here.md"]', pages)
   check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate(() => decodeURIComponent(location.hash).includes("Start here") && /@claude what can I do/.test(document.querySelector("[data-pane]")?.textContent ?? "")), 20000),
     await vw.evaluate(() => location.hash))
-  check("no AI app's config is touched", fs.readFileSync(CLAUDE_JSON, "utf8") === claudeBefore)
-  await vw.screenshot({ path: path.join(SHOTS, "3-vault.png") })
+  await vw.screenshot({ path: path.join(SHOTS, "6-vault.png") })
   const VAU = path.join(HOME, ".local/bin/vau")
   check("vau is installed", await until(() => fs.existsSync(VAU), 15000))
   const help = spawnSync(VAU, ["--help"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME } })
@@ -124,9 +168,32 @@ try {
   await vw.click("nav[aria-label=App] button[aria-haspopup=menu]")
   check("the vault menu has Open the playground", await until(() => vw.$("[role=menu] >> text=Open the playground"), 3000))
   await vw.keyboard.press("Escape")
+  // Settings opens it again at the agents, for this vault: its computer use on.
+  await vw.evaluate(() => window.vaultite.setup("agents"))
+  const again = await setupOf(app)
+  await again.waitForSelector("[data-step=agents] [data-agent=claude-code]")
+  check("Settings' Set up agents opens at the agents, no vault step", JSON.stringify(await again.$$eval("[data-steps] li", (l) => l.map((e) => e.textContent))) === JSON.stringify(["1Agents", ...(MAC ? ["2Permissions"] : [])])
+    && await again.isChecked("[data-extra=claude-code]") && await again.isDisabled("[data-extra=claude-code]") && (await again.textContent("[data-agent=claude-code]")).includes(": on"))
+  await shoot(app, again, "7-agents-again")
+  await again.close()
   await app.close()
 
-  // ---------- 2. a relaunch, then the menu: an Obsidian vault ----------
+  // ---------- a relaunch from the permissions step comes back to it ----------
+  const st = JSON.parse(fs.readFileSync(path.join(TMP, "userData/setup.json"), "utf8"))
+  check("closing it starts over next time", !st.at, st)
+  if (MAC) {
+    fs.writeFileSync(path.join(TMP, "userData/setup.json"), JSON.stringify({ ...st, at: { step: "permissions", vault: VAULT } }))
+    app = await launch("userData")
+    w = await setupOf(app)
+    check("a relaunch on the permissions step shows it again there", !!(await w.waitForSelector("[data-step=permissions] [data-permission=screen]", { timeout: 15000 })))
+    await w.click("[data-back]")
+    check("its Back goes to the agents of the same vault", !!(await w.waitForSelector("[data-step=agents] [data-agent=claude-code]")) && await w.isDisabled("[data-extra=claude-code]"))
+    await app.close()
+    fs.writeFileSync(path.join(TMP, "userData/setup.json"), JSON.stringify(st))
+  }
+
+  // ---------- 2. a relaunch, then the menu: an Obsidian vault, with Codex and OpenClaw installed too ----------
+  for (const b of ["codex", "openclaw"]) fs.chmodSync(put(path.join(HOME, ".npm-global/bin", b), "#!/bin/sh\n"), 0o755)
   app = await launch("userData")
   const vw2 = await until(() => app.windows().find((x) => x.url().startsWith("http://127.0.0.1")), 60000)
   await wait(1500)
@@ -138,10 +205,21 @@ try {
   await w.waitForSelector("[data-choice=open]")
   await w.click("[data-choice=open]")
   await w.click("[data-obsidian=Garden]")
-  await w.click("[data-next]")
+  await w.click("[data-step=vault] [data-next]")
+  await w.waitForSelector("[data-step=agents] [data-extra=claude-code]", { timeout: 60000 })
+  check("several found: each with its extra, Claude Code the default", await w.isChecked("[data-extra=openclaw]") && /comes with the Codex app/.test(await w.textContent("[data-agent=codex]"))
+    && await w.getAttribute("[data-default=claude-code]", "aria-checked") === "true" && !(await w.$("[data-default=openclaw]")))
+  await shoot(app, w, "8-agents-several")
+  const claudeBefore = fs.readFileSync(CLAUDE_JSON, "utf8")
+  await w.click("[data-extra=claude-code]")
+  await w.click("[data-extra=openclaw]")
+  await w.click("[data-step=agents] [data-next]")
+  if (process.platform === "darwin") { await w.waitForSelector("[data-step=permissions]"); await w.click("[data-step=permissions] [data-next]") }
   const gw = await until(() => app.windows().find((x) => x.url().startsWith("http://127.0.0.1") && x !== vw2 && !x.isClosed()), 60000)
   await gw?.waitForSelector("[data-tab-id]", { timeout: 60000 })
   await wait(1500)
+  check("an agent's extra unticked: its config untouched", fs.readFileSync(CLAUDE_JSON, "utf8") === claudeBefore)
+  check("Claude Code, the default, kept: the companion's settings untouched", !fs.existsSync(path.join(OBSIDIAN, ".vaultite/plugins/companion/data.json")))
   const obsidianAfter = tree(OBSIDIAN)
   const touched = Object.keys({ ...obsidianBefore, ...obsidianAfter }).filter((f) => obsidianBefore[f] !== obsidianAfter[f])
   check("the Obsidian vault: none of its files changed, nothing added outside .vaultite/", !touched.length, touched)
@@ -151,7 +229,20 @@ try {
     && !((fs.existsSync(gpFile) ? JSON.parse(fs.readFileSync(gpFile, "utf8")) : {}).enabled ?? []).includes("people"), gp)
   const rows = await gw.evaluate(() => [...document.querySelectorAll("[role=tree] [role=treeitem] > :first-child")].map((e) => e.textContent.trim()))
   check("the file tree shows its notes", rows.some((t) => /Welcome/.test(t)) && !rows.some((t) => /vaultite|^Dashboards$/.test(t)), rows)
-  await gw.screenshot({ path: path.join(SHOTS, "4-own-folder.png") })
+  await gw.screenshot({ path: path.join(SHOTS, "9-own-folder.png") })
+  // Its Settings, Codex made the companion's: Codex turned on there (its page the one file it brings).
+  await gw.evaluate(() => window.vaultite.setup("agents"))
+  w = await setupOf(app)
+  await w.waitForSelector("[data-step=agents] [data-default=codex]")
+  await w.click("[data-default=codex]")
+  await w.click("[data-extra=claude-code]")
+  await w.click("[data-extra=openclaw]")
+  await w.click("[data-step=agents] [data-next]")
+  if (process.platform === "darwin") await w.waitForSelector("[data-step=permissions]")
+  const companion = JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/plugins/companion/data.json"), "utf8"))
+  check("Codex picked: the companion runs it, its plugin on", companion.agent === "codex" && JSON.parse(fs.readFileSync(gpFile, "utf8")).enabled?.includes("codex"), companion)
+  check("and nothing else changed", fs.readFileSync(CLAUDE_JSON, "utf8") === claudeBefore && Object.keys(tree(OBSIDIAN)).filter((f) => obsidianBefore[f] === undefined).every((f) => f === "Dashboards/Codex.md"))
+  await w.close()
   await app.close()
 
   // ---------- 3. Manage vaults: another machine ----------
@@ -166,7 +257,7 @@ try {
   await mgr.fill("[data-server]", "nothing.invalid")
   await mgr.keyboard.press("Enter")
   check("an address that doesn't answer says so, plainly", await until(() => mgr.$eval("[role=alert]", (e) => /^No machine has that name/.test(e.textContent)), 15000), await mgr.textContent("body"))
-  await mgr.screenshot({ path: path.join(SHOTS, "5-connect.png") })
+  await mgr.screenshot({ path: path.join(SHOTS, "10-connect.png") })
   await mgr.fill("[data-server]", OTHER_URL)
   await mgr.keyboard.press("Enter")
   const rw = await until(() => app.windows().find((x) => x.url().startsWith(OTHER_URL)), 30000)

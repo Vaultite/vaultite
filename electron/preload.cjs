@@ -75,6 +75,12 @@ contextBridge.exposeInMainWorld("vaultite", {
     choose: call("setup:choose"),
     vau: call("setup:vau"),
     sandbox: call("setup:sandbox"),
+    step: call("setup:step"),
+    agents: call("setup:agents"),
+    apply: call("setup:apply"),
+    permissions: call("setup:permissions"),
+    permission: call("setup:permission"),
+    relaunch: call("setup:relaunch"),
     finish: call("setup:finish"),
   },
   // (Windows' with forward slashes, as main.ts hands outside files to the page)

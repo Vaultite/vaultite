@@ -447,6 +447,25 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 .dot-in.breathe { animation: dot-in 180ms ease-out, breathe 2.2s ease-in-out infinite; }
 .dot-ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: dot-ping 1s ease-out; }
 @media (prefers-reduced-motion: reduce) { .dot-in, .dot-ping::after { animation: none; } }
+/* Set up Vaultite's hint of what to do in System Settings: a pointer comes to the app's switch, clicks, and it turns on. */
+@keyframes setup-hint-pointer {
+  0%, 10% { transform: translate(-90px, 6px); opacity: 0; }
+  25% { opacity: 1; }
+  45%, 50% { transform: translate(0, 0) scale(1); }
+  54% { transform: translate(0, 0) scale(0.82); }
+  58%, 85% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(0, 0); opacity: 0; }
+}
+@keyframes setup-hint-switch { 0%, 54% { background: color-mix(in srgb, var(--foreground) 16%, transparent); } 60%, 100% { background: var(--green); } }
+@keyframes setup-hint-knob { 0%, 54% { transform: translateX(0); } 60%, 100% { transform: translateX(12px); } }
+.setup-hint-pointer { animation: setup-hint-pointer 3s ease-in-out infinite; }
+.setup-hint-switch { animation: setup-hint-switch 3s ease-in-out infinite; }
+.setup-hint-knob { animation: setup-hint-knob 3s cubic-bezier(.3, .7, .3, 1) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .setup-hint-pointer { animation: none; }
+  .setup-hint-switch { animation: none; background: var(--green); }
+  .setup-hint-knob { animation: none; transform: translateX(12px); }
+}
 /* A row taken off its list (core/leaving.ts) folds away before it goes: its height to nothing, fading. */
 @keyframes leave { to { height: 0; min-height: 0; padding-block: 0; margin-block: 0; border-width: 0; opacity: 0; } }
 [data-leaving] { interpolate-size: allow-keywords; overflow: hidden; pointer-events: none; animation: leave 180ms cubic-bezier(.2, .8, .2, 1) both; }

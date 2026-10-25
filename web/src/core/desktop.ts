@@ -27,8 +27,9 @@ export type DesktopApi = {
   openSandbox?: () => Promise<unknown>
   /** Open another machine's Vaultite server (its address, checked first) in a window. Older builds don't have it. */
   connectServer?: (address: string) => Promise<unknown>
-  /** Set up Vaultite (the first-run window): again, from the menu or the palette. Older builds don't have it. */
-  setup?: () => Promise<unknown>
+  /** Set up Vaultite (the first-run window): again, from the menu or the palette; "agents": at its agents step, for this
+   *  window's vault (Settings). Older builds don't have it. */
+  setup?: (step?: "agents") => Promise<unknown>
   /** The full path of a dropped file (Electron's webUtils). */
   pathOf: (file: File) => string
   copyIn: (paths: string[], folder: string, move: boolean) => Promise<string[]>

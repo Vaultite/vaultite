@@ -1,9 +1,10 @@
-// Set up Vaultite's machine side (web/onboarding.html): where vaults go, Obsidian's vaults, and `vau` running bin/vau with
-// the app as Node, in ~/.local/bin (Windows: a folder on the user's PATH; no password). tools/test_setup.ts tests it.
+// Set up Vaultite's machine side (web/onboarding.html, tools/test_setup.ts): where vaults go, Obsidian's vaults, the
+// coding agents and their computer use, and `vau` (bin/vau with the app as Node) in ~/.local/bin or Windows' PATH.
 import { execFile, execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { agentName } from "../core/terminalids.ts"
 import { vauShims } from "../core/vaushims.ts"
 
 /** Where it looks and writes: a made-up home folder in tests and QA, never the user's. */
@@ -20,6 +21,9 @@ export type Where = {
   documents?: string
   /** The platform it sets up for (tests: Windows' logic anywhere). */
   platform?: string
+  /** Claude Code's and Codex's folders when the app's environment moves them (CLAUDE_CONFIG_DIR, CODEX_HOME). */
+  claudeDir?: string
+  codexHome?: string
 }
 
 const exists = (p: string) => fs.existsSync(p)
@@ -59,6 +63,112 @@ export function obsidianVaults(w: Where): { path: string; name: string }[] {
       .sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0))
       .map((v) => ({ path: v.path as string, name: path.basename(v.path as string) }))
   } catch { return [] }
+}
+
+// ---------- coding agents ----------
+/** What it looks for (KNOWN_AGENTS' ids): command, install line, and terminal name when the companion runs it. */
+const HARNESSES: { id: string; bin: string; install: string; installWin?: string; agent?: string }[] = [
+  { id: "claude-code", bin: "claude", agent: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash", installWin: "irm https://claude.ai/install.ps1 | iex" },
+  { id: "codex", bin: "codex", agent: "codex", install: "npm i -g @openai/codex" },
+  { id: "openclaw", bin: "openclaw", install: "npm i -g openclaw@latest" },
+  { id: "hermes", bin: "hermes", install: "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash" },
+  { id: "gemini", bin: "gemini", install: "npm i -g @google/gemini-cli" },
+  { id: "opencode", bin: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
+]
+
+/** What makes a found agent more useful here, for the user to say yes to: computer use, or the vault's tools. */
+export type Extra = { kind: "computer-use" | "connect"; state: "on" | "off" | "unavailable" }
+export type Harness = { id: string; name: string; path: string | null; install: string; agent?: string; extra?: Extra }
+
+/** Where installers put agents' commands, besides the user's PATH (an app's PATH is launchd's). */
+const binDirs = (w: Where, dirs: string[]) => platformOf(w) === "win32"
+  ? [...dirs, path.join(w.home, "AppData", "Roaming", "npm"), path.join(w.home, ".local", "bin")]
+  : [...dirs, ...[".local/bin", ".npm-global/bin", ".bun/bin", ".opencode/bin", ".claude/local"].map((d) => path.join(w.home, d))]
+function findBin(w: Where, dirs: string[], bin: string) {
+  const names = platformOf(w) === "win32" ? [`${bin}.exe`, `${bin}.cmd`, bin] : [bin]
+  return binDirs(w, dirs).flatMap((d) => names.map((n) => path.join(d, n))).find((p) => fs.statSync(p, { throwIfNoEntry: false })?.isFile()) ?? null
+}
+
+/** The coding agents on this machine, and what's on for them (`vault`: the one being set up). */
+export function harnesses(w: Where, dirs: string[], vault: string | null): Harness[] {
+  const mac = platformOf(w) === "darwin"
+  return HARNESSES.map((h) => {
+    const found = findBin(w, dirs, h.bin) ?? (h.id === "hermes" && exists(path.join(w.home, ".hermes", "hermes-agent")) ? path.join(w.home, ".hermes") : null)
+    const extra: Extra | undefined = !found ? undefined
+      : h.id === "claude-code" ? (mac && vault ? { kind: "computer-use", state: claudeComputerUse(w, vault) ? "on" : "off" } : undefined)
+      : h.id === "codex" ? (mac ? { kind: "computer-use", state: codexComputerUse(w) } : undefined)
+      : h.id === "openclaw" || h.id === "hermes" ? (vault ? { kind: "connect", state: "off" } : undefined) : undefined
+    return { id: h.id, name: agentName(h.id) ?? h.id, path: found, install: platformOf(w) === "win32" && h.installWin ? h.installWin : h.install,
+      ...(h.agent ? { agent: h.agent } : {}), ...(extra ? { extra } : {}) }
+  })
+}
+
+// Claude Code's built-in computer-use server is off until /mcp turns it on, per project: the project's
+// enabledMcpServers in its .claude.json (a project is the git repository a folder is in, else the folder).
+const CU = "computer-use"
+const claudeJson = (w: Where) => path.join(w.claudeDir ?? w.home, ".claude.json")
+/** The folder Claude Code keeps the vault's project settings under. */
+export function claudeProject(vault: string) {
+  let real = vault
+  try { real = fs.realpathSync(vault) } catch { /* not there yet */ }
+  for (let d = real; ; d = path.dirname(d)) {
+    if (exists(path.join(d, ".git"))) return d
+    if (path.dirname(d) === d) return real
+  }
+}
+const readJson = (p: string) => { try { return JSON.parse(fs.readFileSync(p, "utf8")) } catch { return null } }
+export function claudeComputerUse(w: Where, vault: string) {
+  const list = readJson(claudeJson(w))?.projects?.[claudeProject(vault)]?.enabledMcpServers
+  return Array.isArray(list) && list.includes(CU)
+}
+/** A new project's settings as Claude Code makes them (it reads some without checking they're there). */
+const NEW_PROJECT = { allowedTools: [], mcpContextUris: [], mcpServers: {}, enabledMcpjsonServers: [], disabledMcpjsonServers: [], hasTrustDialogAccepted: false,
+  hasClaudeMdExternalIncludesApproved: false, hasClaudeMdExternalIncludesWarningShown: false }
+
+/** Turns Claude Code's computer use on for the vault, holding the lock Claude Code takes on its config (proper-lockfile's
+ *  `<file>.lock` folder) so a running session's next write keeps it: it reads the file again under that lock. */
+export async function setClaudeComputerUse(w: Where, vault: string) {
+  const file = claudeJson(w), lock = `${file}.lock`
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  for (let i = 0; ; i++) {
+    try { fs.mkdirSync(lock); break } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e
+      // (stale after 10 s without an update, as proper-lockfile has it: a Claude that died holding it)
+      if (Date.now() - (fs.statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? 0) > 10_000) { fs.rmSync(lock, { recursive: true, force: true }); continue }
+      if (i > 50) throw new Error("Claude Code is busy writing its settings: try again in a moment")
+      await new Promise((r) => setTimeout(r, 100))
+    }
+  }
+  try {
+    const text = exists(file) ? fs.readFileSync(file, "utf8") : ""
+    const j = text.trim() ? JSON.parse(text) : {}
+    if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error(`${tilde(w, file)} isn't Claude Code's settings`)
+    const key = claudeProject(vault), project = j.projects?.[key] ?? NEW_PROJECT
+    const list: unknown[] = Array.isArray(project.enabledMcpServers) ? project.enabledMcpServers : []
+    if (list.includes(CU)) return
+    j.projects = { ...j.projects, [key]: { ...project, enabledMcpServers: [...list, CU] } }
+    writeAtomic(file, JSON.stringify(j, null, 2), text ? fs.statSync(file).mode & 0o777 : 0o600)
+  } finally {
+    fs.rmSync(lock, { recursive: true, force: true })
+  }
+}
+
+// Codex's computer use comes with the Codex app (its helper app in ~/.codex/computer-use), a plugin of its bundled
+// marketplace that `codex plugin add` turns on, for every folder.
+const CODEX_CU = "computer-use@openai-bundled"
+const codexHome = (w: Where) => w.codexHome ?? path.join(w.home, ".codex")
+export function codexComputerUse(w: Where): Extra["state"] {
+  if (!exists(path.join(codexHome(w), "computer-use", "Codex Computer Use.app"))) return "unavailable"
+  let toml = ""
+  try { toml = fs.readFileSync(path.join(codexHome(w), "config.toml"), "utf8") } catch { /* none yet */ }
+  const table = toml.split(/^(?=\s*\[)/m).find((t) => t.trimStart().startsWith(`[plugins."${CODEX_CU}"]`))
+  return table && /^\s*enabled\s*=\s*true\s*$/m.test(table) ? "on" : "off"
+}
+/** `codex plugin add`, by its own CLI (its config is its own). */
+export function setCodexComputerUse(w: Where, codex: string): Promise<void> {
+  const env = { ...process.env, HOME: w.home, CODEX_HOME: codexHome(w), PATH: [path.dirname(codex), process.env.PATH].filter(Boolean).join(path.delimiter) }
+  return new Promise((ok, fail) => execFile(codex, ["plugin", "add", CODEX_CU], { env, timeout: 60_000 }, (e, _out, err) =>
+    (e ? fail(new Error(`codex plugin add failed: ${(String(err).trim() || e.message).split("\n").slice(-2).join(" ")}`)) : ok())))
 }
 
 // ---------- vau ----------
