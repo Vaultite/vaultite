@@ -2,8 +2,8 @@
 // a permission, and the reply that goes back into it (on the machine it runs on). Opening it reads it.
 import { useEffect } from "react"
 import { Bot, Check, SquareTerminal, X } from "lucide-react"
-import { Button, Empty, fmtAgo, haptic, Markdown, notify, notifyError, SheetHead, useAgents } from "@vaultite"
-import { agentOf, answerable, answerAsk, getEvents, markRead, openSession, useEvents } from "./events"
+import { Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
+import { agentOf, answerable, answerAsk, getEvents, markRead, openSession, SESSION_DETAIL, useEvents } from "./events"
 import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
@@ -54,7 +54,7 @@ export function SessionSheet({ id }: { id: string }) {
           own questions take a reply as their answer) */}
       {blocked && !e.questions
         ? <Button look="quiet" className="h-11 px-3 md:h-8" onClick={() => void open().catch((err) => notifyError(err, "Couldn't open it"))}><SquareTerminal className="size-4" /> Open session</Button>
-        : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])}
+        : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])} back={() => openDetail(detailPath(SESSION_DETAIL, e.id))}
           placeholder={!e.questions ? undefined : e.questions.length === 1 && !e.questions[0].multi ? "Or answer in your own words" : "Or tell it something else instead"} />}
     </div>
   )

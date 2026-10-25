@@ -15,6 +15,8 @@ import { agentOf, answerable, answerAsk, forget, getEvents, markRead, markSeen, 
 import type { InboxEvent, InboxItem } from "./types"
 import { settings } from "./settings"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
+import { useDrafted, useHasDraft } from "./drafts"
+import { DraftTag } from "./Reply"
 
 
 /** Not dealt with yet: to review, or snoozed. */
@@ -253,6 +255,14 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   { label: "Dismiss", icon: X, sep: true, run: () => forget(e.id) },
 ]
 
+/** What a reply to it is kept under (drafts.ts): a report's path, else the session's id. */
+const draftKey = (e: InboxEvent) => { const t = targetOf(e); return t?.startsWith("file:") ? t.slice(5) : e.id }
+/** The events with a reply not sent: listed as if new, so the draft is seen (`also`, what's kept drawn anyway). */
+function useWithDrafts(events: InboxEvent[], also?: ReadonlySet<string>): ReadonlySet<string> {
+  const drafted = useDrafted()
+  return new Set([...(also ?? []), ...events.filter((e) => drafted.has(draftKey(e))).map((e) => e.id)])
+}
+
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return "" } }
 
 // ---------- events: how one looks
@@ -306,8 +316,8 @@ export function InboxRailIcon({ className, strokeWidth }: { className?: string; 
   return <Badged on={n > 0}><InboxIcon className={className} strokeWidth={strokeWidth} /></Badged>
 }
 
-function PanelRow({ icon, label, time, active, dim, select, swipe, onClick, onContextMenu, children, ...rest }: {
-  icon: ReactNode; label: string; time?: string; active?: boolean; dim?: boolean; onClick: () => void; onContextMenu?: (e: MouseEvent) => void; children?: ReactNode
+function PanelRow({ icon, label, tag, time, active, dim, select, swipe, onClick, onContextMenu, children, ...rest }: {
+  icon: ReactNode; label: string; tag?: ReactNode; time?: string; active?: boolean; dim?: boolean; onClick: () => void; onContextMenu?: (e: MouseEvent) => void; children?: ReactNode
   /** Its key in the Inbox's selection; `swipe`: what a phone's swipe shows. */
   select: string; swipe: () => SwipeAction[]
 } & Record<`data-${string}`, string | undefined>) {
@@ -320,6 +330,7 @@ function PanelRow({ icon, label, time, active, dim, select, swipe, onClick, onCo
           dim && "opacity-50 hover:opacity-100")}>
         {icon}
         <span className="min-w-0 flex-1 truncate">{label}</span>
+        {tag}
         {time && <span className="shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{time}</span>}
         {children && <span className="hidden shrink-0 gap-0.5 group-hover/row:flex">{children}</span>}
       </a>
@@ -384,7 +395,8 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   const { unread } = useEvents()
   const events = listed(useEvents().events, store)
   const results = toReview(store)
-  const { shown: latest, earlier, all, toggle } = useFold(events, 8)
+  const drafted = useWithDrafts(events)
+  const { shown: latest, earlier, all, toggle } = useFold(events, 8, drafted)
   useTick()
   useBack(store)
   useInboxSelect(store)
@@ -397,7 +409,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
       </SidebarHeading>
       <div className="flex flex-col gap-px pb-1" data-select-list={SELECT}>
         {results.map((r) => (
-          <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
+          <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} tag={<DraftTag to={pathOf(r)} short />} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
             icon={<Badged on><FileText className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /></Badged>} onClick={() => openFile(pathOf(r))} onContextMenu={menuFor(rowMenu(SELECT, resultKey(r), resultItemsMenu(r)))}>
             <HeadingButton icon={Check} label="Done" onClick={stop(() => { haptic("medium"); void markDone(r) })} />
             <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([resultKey(r)])} />
@@ -405,8 +417,8 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           </PanelRow>
         ))}
         {latest.map((e) => (
-          <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.preview || e.body ? `${e.title}: ${e.preview || snippet(e.body!)}` : e.title} time={fmtAgo(e.t, { short: true })}
-            dim={e.read} icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
+          <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.preview || e.body ? `${e.title}: ${e.preview || snippet(e.body!)}` : e.title} tag={<DraftTag to={draftKey(e)} short />} time={fmtAgo(e.t, { short: true })}
+            dim={e.read && !drafted.has(e.id)} icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
             <GateButtons e={e} className={small} size="size-3.5" />
             {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
             <HeadingButton icon={X} label="Dismiss" onClick={stop(() => { haptic("medium"); void forget(e.id) })} />
@@ -430,6 +442,7 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
   const meta = [r.from && `from ${r.from}`, r.source && host(r.source), (r.updated || r.created) && fmtAgo((r.updated || r.created)!), done && "done"]
     .filter(Boolean).join(" · ")
   const key = resultKey(r), picked = useSelected(SELECT, key)
+  const draft = useHasDraft(pathOf(r))
   return (
     <SwipeRow actions={() => resultSwipe(r)} className={pageSwipe}>
     <div data-result={r.id} data-select-key={key} {...selectedAttr(picked)} onContextMenu={menuFor(rowMenu(SELECT, key, done ? () => settledItems(r) : resultItemsMenu(r)))}
@@ -438,7 +451,7 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
         {r.source ? <Globe className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} /> : <FileText className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="min-w-0 flex-1">
           <span className="line-clamp-2 text-[15px] leading-[20px]">{r.title}</span>
-          {meta && <span className="block text-[13px] text-muted-foreground max-md:line-clamp-2 md:truncate">{meta}</span>}
+          {(meta || draft) && <span className="block text-[13px] text-muted-foreground max-md:line-clamp-2 md:truncate"><DraftTag to={pathOf(r)} className="mr-1.5 align-[1px]" />{meta}</span>}
         </span>
       </button>
       {done
@@ -462,18 +475,19 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const asks = answerable(e)
   // (an agent's answer is Markdown: one plain line here, whole in its sheet)
   const line = e.preview || (e.body ? snippet(e.body) : "")
+  const draft = useHasDraft(draftKey(e))
   return (
     <SwipeRow actions={() => eventSwipe(e)} className={pageSwipe}>
     <div data-event={e.id} data-kind={e.kind} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}
       onContextMenu={menuFor(rowMenu(SELECT, key, eventItems(e, !read, touched)))}
       className={cn("group/ev relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]",
-        pickedRow, read && "opacity-50 hover:opacity-100")}>
+        pickedRow, read && !draft && "opacity-50 hover:opacity-100")}>
       <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; if (!targetOf(e)) { setWhole(!whole); markRead([e.id]); return } openEvent(e); touched?.(e.id) }}>
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
           <span className={cn("line-clamp-2 text-[15px] leading-[20px]", (!e.read || fresh) && "font-semibold")}>{e.title}</span>
-          {(e.body || e.machineLabel) && <span data-tip={whole ? undefined : line} data-tip-trunc
-            className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}>{[whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
+          {(e.body || e.machineLabel || draft) && <span data-tip={whole ? undefined : line} data-tip-trunc
+            className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />{[whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>}
       </button>
@@ -561,7 +575,7 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   const { ready } = useEvents()
   const events = listed(useEvents().events, store)
   const results = toReview(store).slice(0, nr)
-  const { shown: latest, earlier, rest, all, toggle } = useFold(ne ? events : [], ne, fresh)
+  const { shown: latest, earlier, rest, all, toggle } = useFold(ne ? events : [], ne, useWithDrafts(events, fresh))
   useTick()
   useBack(store)
   useInboxSelect(store)

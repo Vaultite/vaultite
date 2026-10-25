@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Unsent replies stay drafts until sent**: a reply typed in an inbox session or a report and not sent shows Draft,
+  not sent on its row (kept in the list after it's read) and on its box, and leaving the box says so, with Back to it. A
+  reply on its way stays saved until the server has it: the app closed or updated mid-send finds it again, not lost.
 - **Move a login to another container**: in the Sites tab, drag a signed-in site onto another container's card to move
   it there (hold ⌥ to copy it), or right-click it for Move to and Copy to; Undo takes it back. Moving asks first when
   it would replace another account there or let agents use it, and a site that keeps its login outside cookies stays
