@@ -122,26 +122,55 @@ function stateOf(vault: Vault, rel: string): Record<string, string> {
   }
 }
 
-/** What claude.ai's runtime (runtime.ts) starts with; an outside page gets none of it. */
-export type Runtime = { outside?: boolean; data?: ArtifactData; version?: number; name?: string; sample?: boolean; sampleAllowed?: boolean }
+/** What claude.ai's runtime (runtime.ts) starts with (an outside page gets none of it); `shown`: the page's path as a
+ *  shared folder's guest names it; `guest`: theirs, without what the page kept (its storage and data are the user's). */
+export type Runtime = { outside?: boolean; data?: ArtifactData; version?: number; name?: string; sample?: boolean; sampleAllowed?: boolean; shown?: string; guest?: boolean }
 
 /** The artifact's HTML with the bridge first in its <head> and CDN links pointed at the cache. An `outside` page runs
  *  the same way, but the app answers none of its vault requests and keeps none of its storage. */
 export function page(vault: Vault, rel: string, query: Record<string, string>, rt: Runtime = {}) {
   const outside = !!rt.outside
-  const html = viaCache(readText(outside ? rel : vault.abs(rel)))
+  // (a guest's: no shadow root from its markup, where a frame would be out of guestOnly's sight, nor a link to reach out)
+  const raw = viaCache(readText(outside ? rel : vault.abs(rel)))
+  const html = rt.guest ? raw.replace(/\bshadowroot(mode)?(?=\s*=)/gi, "data-shadowroot").replace(/<link\b/gi, "<data-link") : raw
   const cfg = {
-    path: rel, dark: query.theme === "dark", scheme: query.scheme || "default", embed: query.embed === "1",
-    state: outside ? {} : stateOf(vault, rel),
+    path: rt.shown ?? rel, dark: query.theme === "dark", scheme: query.scheme || "default", embed: query.embed === "1",
+    state: outside || rt.guest ? {} : stateOf(vault, rel),
     claude: { outside, data: (!outside && rt.data) || { db: {}, storage: { shared: {}, personal: {} } }, version: rt.version ?? 0, name: rt.name ?? "",
       sample: !outside && !!rt.sample, sampleAllowed: !outside && !!rt.sampleAllowed },
   }
   const json = JSON.stringify(cfg).replace(/</g, "\\u003c")
-  const script = `<script>(${bridge.toString()})(${json}, ${parseCsv.toString()}, ${claudeRuntime.toString()}, ${queryDocs.toString()}, ${parseReply.toString()})</script>`
+  const script = (rt.guest ? `<script>(${guestOnly.toString()})()</script>` : "") + `<script>(${bridge.toString()})(${json}, ${parseCsv.toString()}, ${claudeRuntime.toString()}, ${queryDocs.toString()}, ${parseReply.toString()})</script>`
   const head = /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html)
   if (head) return html.slice(0, head.index + head[0].length) + script + html.slice(head.index + head[0].length)
   const doctype = /^\s*<!doctype[^>]*>/i.exec(html)
   return doctype ? doctype[0] + script + html.slice(doctype[0].length) : script + html
+}
+
+/** First in a shared folder's guest's page: no WebRTC (no policy of a browser's keeps it from a server), nor a frame
+ *  where a fresh one runs, nor a link that reaches out. What it calls it holds first: the page may change the rest. */
+function guestOnly() {
+  const apply = Reflect.apply, define = Object.defineProperty, own = Object.getOwnPropertyDescriptor
+  for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "RTCRtpSender", "RTCRtpReceiver", "RTCIceTransport"]) {
+    try { define(window, k, { value: undefined, writable: false, configurable: false }) } catch { /* not here */ }
+  }
+  const unsafe: [object, string][] = [[Element.prototype, "setHTMLUnsafe"], [ShadowRoot.prototype, "setHTMLUnsafe"], [Document, "parseHTMLUnsafe"], [Document.prototype, "write"], [Document.prototype, "writeln"]]
+  for (const [o, k] of unsafe) try { define(o, k, { value: undefined, writable: false, configurable: false }) } catch { /* not here */ }
+  const OUT = "iframe, frame, object, embed, link, portal, fencedframe"
+  const nodeType = own(Node.prototype, "nodeType")!.get!, added = own(MutationRecord.prototype, "addedNodes")!.get!, count = own(NodeList.prototype, "length")!.get!
+  const { matches, querySelectorAll: all, remove } = Element.prototype, attach = Element.prototype.attachShadow
+  const Observer = MutationObserver, observe = MutationObserver.prototype.observe
+  const drop = (n: Node) => {
+    if (apply(nodeType, n, []) !== 1) return
+    if (apply(matches, n, [OUT])) return void apply(remove, n, [])
+    const inner = apply(all, n, [OUT]) as NodeList
+    for (let i = apply(count, inner, []) - 1; i >= 0; i--) apply(remove, inner[i], [])
+  }
+  const watch = (root: Node) => apply(observe, new Observer((ms) => {
+    for (let i = 0; i < ms.length; i++) { const ns = apply(added, ms[i], []) as NodeList; for (let j = 0; j < apply(count, ns, []); j++) drop(ns[j]) }
+  }), [root, { childList: true, subtree: true }])
+  watch(document)
+  define(Element.prototype, "attachShadow", { value(this: Element, o: ShadowRootInit) { const r = apply(attach, this, [o]) as ShadowRoot; watch(r); return r }, writable: false, configurable: false })
 }
 
 type Cfg = { path: string; dark: boolean; scheme: string; embed: boolean; state: Record<string, string>; claude: Record<string, any> }

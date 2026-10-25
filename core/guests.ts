@@ -65,6 +65,8 @@ function liveTokens(text: string): string[] {
     else if ((t.type === "link" || t.type === "def") && !SAFE.test(String(x.href).trim())) out.push(`link:${x.href}`)
     else if (t.type === "html") out.push(`html:${String(x.raw).trim()}`)
     else if (t.type === "code" && !PLAIN.has(String(x.lang ?? "").trim().toLowerCase())) out.push(`code:${x.lang}:${x.text}`)
+    // (Dataview's inline query, `= expr`: the owner's app runs it over the whole vault)
+    else if (t.type === "codespan" && /^\s*\$?=/.test(String(x.text))) out.push(`query:${x.text}`)
   })
   return out
 }

@@ -6,6 +6,10 @@ in the app, a folder's menu: Share…. Only this machine's owner shares (not an 
   as their whole vault. read: they read it; comment: and start and answer comments (margin threads); edit: and write its
   notes (not a note's type, nor CLAUDE.md or AGENTS.md). Nothing outside the folder (search, links, embeds, other
   plugins), no agents, terminals or settings.
+- What the folder draws, they see: its HTML pages run sandboxed (scripts only, an origin of no one's, nothing to reach:
+  not the network, WebRTC, the guest's API or cookies; nothing of the app's, nor what the page kept); Kanban, Excalidraw
+  and Dataview (when on) draw for them, queries over the folder alone, bounded, no regular expressions; no dataviewjs,
+  `$=`, `= expr` of theirs, or Templater. A board changes for an edit guest only; a drawing for none.
 - In a note open in several windows (theirs, the user's), each one's typing and caret show live in the others (Companion's
   rooms); a reader sees them, and types nothing.
 - Their writes are theirs: Activity names them `<name> (guest)`, and Provenance marks their lines `guest` (`vau blame`).

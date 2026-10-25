@@ -63,6 +63,13 @@ function runtimeOf(rel: string) {
     sample: typeof plugin.service("sample") === "function", sampleAllowed: plugin.allows(sampleGrant(rel)) }
 }
 
+/** A page as a shared folder's guest gets it (plugins/core/share), at their path for it, nothing of the user's (name,
+ *  Claude, what it kept), and the wrapper framing it: the guest's gateway serves both, with its own policies. */
+plugin.provide("html:guest", (rel: string, shown: string, query: Record<string, string>) => ({
+  page: page(plugin.vault, rel, query, { guest: true, version: versionOf(plugin.vault, rel), shown }),
+  wrapper: (rawPath: string) => wrapper(rawPath, query.theme === "dark"),
+}))
+
 plugin.route("POST", "artifact/data", (req) => saveData(plugin.vault, obj(req.body)))
 plugin.route("POST", "artifact/publish", (req) => publish(plugin.vault, obj(req.body)))
 // The owner's yes to a page asking Claude (its first call asks, in the app).

@@ -13,7 +13,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   to open the folder in their browser over the vault's public address and read it, comment (margin threads, as
   themselves) or edit its notes, until it expires or you remove it. Nothing else of the vault reaches them, no agent
   works for them, and what they write is marked theirs (`vau blame`). You can start a comment on a line too (Add
-  comment, in the editor's menu): a thread between people, which no agent is told of.
+  comment, in the editor's menu): a thread between people, which no agent is told of. What the folder draws they see
+  too: its HTML pages, sandboxed with nothing to reach; its Kanban boards (theirs to change if they edit), Excalidraw
+  drawings and Dataview queries, over the folder alone.
 - A link to another app in a note (zotero://, shortcuts://, tel:) asks before it opens that app, as browsers do.
 - **Tabs move between windows as a browser's**: a tab dragged out of the window and let go clear of it goes on in a
   new window there. With the tabs in the sidebar, a new window (which has no sidebar) shows its tabs on top, so they

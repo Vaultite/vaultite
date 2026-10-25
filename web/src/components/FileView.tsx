@@ -737,7 +737,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Opened from the last text seen: the fresh read (FileView's) arrives as `initial`.
   useEffect(() => { if (initial.text !== saver.disk) void saver.check(initial) }, [initial, saver])
 
-  const changeable = !ro && !isProtected(path) && !inTrash(path) && !outside && isMd(path)
+  // (a guest who edits changes a note's properties and what its views write, checked as all they write; not its name)
+  const changeable = !ro && (!!share || !isProtected(path)) && !inTrash(path) && !outside && isMd(path)
   const ctx: FileCtx = { store, path, fm: props, get body() { return cur.current.body }, setProperty: changeable ? setProperty : undefined }
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
@@ -868,7 +869,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const size = useTextSize("note")
   useTextSizeWheel(article, note ? "note" : null)
   const zoom = note && size !== 100 ? size / 100 : 0
-  const drawing = format && !source ? format.render({ store, path, text: full(), editable: shown === "live" && !ro, place: pane ? "page" : "sheet",
+  // (a guest's writes are Markdown text only: a drawing or another format is theirs to look at)
+  const drawing = format && !source ? format.render({ store, path, text: full(), editable: shown === "live" && !ro && !share, place: pane ? "page" : "sheet",
     onChange: (text) => { if (text === full()) return; const s = splitFm(text); cur.current = s; setFm(s.fm); redraw(); changed() } }) : null
   // Aliases another file has too: [[Alias]] goes to one of them only.
   const clashes = useMemo(() => {

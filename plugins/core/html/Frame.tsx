@@ -1,7 +1,7 @@
 // An artifact in a sandboxed iframe, this side answering its bridge (reads, file list, storage, links, height, theme).
 // A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, stem, tintNames, touches, useVaultChange } from "@vaultite"
+import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange } from "@vaultite"
 
 // Every view of one artifact (here and in the app's other windows) hears the others' db and storage writes.
 type Peer = (m: Record<string, unknown>) => void
@@ -110,15 +110,18 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
         growth.current = [...growth.current.filter((t) => now - t < 1000), now]
         setH((cur) => (cur !== null && d.h > cur && growth.current.length > 6 ? cur : d.h))
       } else if (d.type === "listening") listening.current = true
-      else if (d.type === "state" && d.data && typeof d.data === "object" && !outside) {
+      else if (d.type === "state" && d.data && typeof d.data === "object" && !outside && !share) {
         fetch("api/artifact/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, data: d.data }) })
           .catch(() => { /* offline: it's kept until the next save */ })
       } else if (d.type === "open") {
-        if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) window.open(d.url, "_blank", "noopener,noreferrer")
+        // (a shared folder's page opens no address for its guest: it would carry what it read out)
+        if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) { if (!share) window.open(d.url, "_blank", "noopener,noreferrer") }
         else if (typeof d.path === "string" && d.path && !isHidden(d.path) && !outside) openFile(d.path, { newTab: !page })
       } else if (d.type === "abort") asking.current.get(d.id)?.close()
       else if (d.type === "ask") {
         if (outside) return reply(undefined, "a page from outside the vault can't read the vault")
+        // (a shared folder's page, for its guest: it asks the app nothing)
+        if (share) return reply(undefined, "a shared folder's page reads nothing of the vault", "unavailable")
         const args = (d.args ?? {}) as Record<string, unknown>
         if (d.op === "read") {
           const p = String(args.path ?? "")
@@ -193,6 +196,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   // own no-op writes don't count): it's told, or reloaded. Its own file changing reloads it.
   const self = useRef<number | null | undefined>(undefined)
   const stat = async (paths: string[]): Promise<Record<string, number | null> | null> => {
+    if (share) return null // (not a guest's to ask)
     try {
       const r = await fetch("api/artifact/stat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) })
       return await r.json()
@@ -220,7 +224,8 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   const shown = height ?? Math.max(h ?? (page ? 0 : 160), min)
   return (
     <iframe ref={frame} src={url} title={stem(path)}
-      sandbox="allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"
+      // (a shared folder's guest's: scripts only, as the server's policy says too)
+      sandbox={share ? "allow-scripts" : "allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"}
       referrerPolicy="no-referrer" loading={page ? "eager" : "lazy"}
       className={cn("block w-full border-0 bg-transparent transition-opacity duration-150", ready ? "opacity-100" : "opacity-0", className)}
       style={{ height: fill ? "100%" : shown, colorScheme: isDark() ? "dark" : "light" }} />

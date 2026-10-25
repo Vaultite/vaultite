@@ -119,6 +119,50 @@ export default async ($: VaultTest) => {
     const slow = await Promise.all(["/(x+x+)+y/", "path:Secret", "folder:Shared", "[title:/a+/]"].map((x) => get(`${a.at}/api/search?q=${encodeURIComponent(x)}`, as(a))))
     check("share: no regular expressions in a guest's search (they could hold the server), nor path: or folder:", slow.every((x) => x.status === 400), slow.map((x) => x.status))
 
+    {
+      // A folder's HTML page runs sandboxed: scripts only, its own opaque origin, no address to reach, not even this one.
+      write("Shared/page.html", "<html><head><link rel=preconnect href=https://example.com></head><body><script>fetch('/s/x/api/state')</script><div><template shadowrootmode=\"closed\"><iframe srcdoc=\"x\"></iframe></template></div></body></html>")
+      write("Secret/page.html", "<html><body>secret</body></html>")
+      // (what the page kept for the owner: theirs)
+      write(".vaultite/artifacts/Shared/page.html.json", JSON.stringify({ k: "OWNER_STATE_SECRET" }))
+      write(".vaultite/artifacts/Shared/page.html.data.json", JSON.stringify({ db: { t: "OWNER_DB_SECRET" }, storage: { shared: { s: "OWNER_SHARED_SECRET" }, personal: { apikey: "OWNER_PERSONAL_SECRET" } } }))
+      await $.vault.sync()
+      const wrap = await get(`${a.at}/v/page.html?theme=dark`, as(a)), framed = (await wrap.text()).match(/<iframe[^>]* src="([^"]+)"/)?.[1].replace(/&amp;/g, "&") ?? ""
+      // (the wrapper's frame has no cookie to send, its origin being no one's: the wrapper's key to its one page)
+      const inner = await get(`${a.at}/v/${framed}`), key = new URLSearchParams(framed.split("?")[1]).get("k") ?? ""
+      const pol = (r: Response) => String(r.headers.get("content-security-policy"))
+      const body = await inner.text()
+      check("share: a folder's page is framed, then runs with scripts only and nowhere to reach",
+        wrap.status === 200 && /^sandbox allow-scripts;/.test(pol(wrap)) && pol(wrap).includes(`frame-src http://127.0.0.1:${port}/s/${edit.id}/v/`)
+        && inner.status === 200 && /^sandbox allow-scripts;/.test(pol(inner)) && /connect-src 'none'/.test(pol(inner)) && /default-src 'none'/.test(pol(inner))
+        && !/'self'|allow-same-origin|https?:/.test(pol(inner)) && body.includes("fetch('/s/x/api/state')") && !body.includes("Shared/"), [pol(wrap), pol(inner)])
+      check("share: a folder's page comes without what it kept for the owner (its storage, its data)", !/OWNER_\w+_SECRET/.test(body), body.match(/OWNER_\w+_SECRET/g))
+      check("share: ...and with no WebRTC, nor a shadow root from its markup (a frame there would have it fresh)", body.indexOf("RTCPeerConnection") < body.indexOf("fetch('/s/x/api/state')")
+        && body.includes("data-shadowroot=\"closed\"") && !/\sshadowrootmode=/.test(body) && !/<link\b/i.test(body) && inner.headers.get("x-dns-prefetch-control") === "off")
+      check("share: ...framed only by the guest's app", /frame-ancestors 'self'/.test(pol(wrap)))
+      const [until] = key.split(".")
+      const outside = await Promise.all([get(`${a.at}/v/..%2FSecret%2Fpage.html?frame=1&k=${key}`, as(a)), get(`${a.at}/v/../Secret/page.html?theme=dark`, as(a)), get(`${a.at}/v/..%2FSecret%2Fpage.html`, as(a)),
+        get(`${a.at}/v/A.md`, as(a)), get(`${a.at}/v/page.html?theme=dark`), get(`${a.at}/v/page.html?frame=1`, as(a)), get(`${a.at}/v/page.html?frame=1&k=${until}.${"x".repeat(43)}`),
+        get(`${a.at}/v/page.html?frame=1&k=${Date.now() - 1000}.${key.split(".")[1]}`), get(`${c.at}/v/page.html?frame=1&k=${key}`)])
+      check("share: no page outside the folder, no note as a page, none without the cookie or the wrapper's key (forged, stale, another's)", key.length > 20 && outside.every((x) => x.status >= 400), outside.map((x) => x.status))
+    }
+    {
+      // Dataview's queries (a vault plugin's, when it's on): over the folder's notes alone, its paths the guest's.
+      const fake = mcp as Any, had = fake.services["dataview:within"]
+      let seen: Any = null
+      fake.services["dataview:within"] = (scope: string, only: (rel: string) => boolean) => {
+        seen = { scope, sees: ["Shared/A.md", "Secret/S.md", "Shared/link.md", "Shared/.hidden/H.md", "Shared2/X.md"].filter(only) }
+        return { query: async (q: string, p?: string) => { seen.p = p; return { result: { rows: [{ path: "Shared/A.md", q, p }] } } }, inline: (q: string) => ({ value: q }) }
+      }
+      const r = await (await get(`${a.at}/api/dataview/query?q=${encodeURIComponent('TABLE FROM "Secret"')}&path=A.md`, as(a))).json()
+      const first = { ...seen }
+      const out = await get(`${a.at}/api/dataview/query?q=x&path=../Secret/S.md`, as(a))
+      check("share: a guest's query sees only their folder's notes, by their paths", JSON.stringify(first.sees) === JSON.stringify(["Shared/A.md"])
+        && first.p === "Shared/A.md" && r.result.rows[0].path === "A.md" && r.result.rows[0].p === "A.md" && out.status >= 400, [seen, r])
+      const task = await send("POST", `${a.at}/api/dataview/task`, { path: "A.md", line: 1, raw: "x" }, as(a))
+      check("share: no task ticked through a query (it writes past the guest's checks)", task.status === 403)
+      if (had) fake.services["dataview:within"] = had; else delete fake.services["dataview:within"]
+    }
     // Deny by default: none of the app's other routes, whatever the role.
     const denied = await Promise.all([
       get(`${a.at}/api/vault`, as(a)), get(`${a.at}/api/render?path=Shared/A.md`, as(a)), get(`${a.at}/api/terminals`, as(a)), get(`${a.at}/api/people`, as(a)),
@@ -162,7 +206,7 @@ export default async ($: VaultTest) => {
       write("Shared/Dash.md", "# Dash\n\n```dataviewjs\ndv.paragraph(1)\n```\n")
       write("Shared/Ex.md", "Example:\n\n    <img src=https://example.com/x.png>\n\n![logo][1]\n\n[1]: logo.png\n")
       await $.vault.sync()
-      const live = await Promise.all(["```dataviewjs\ndv.paragraph(1)\n```", "x `$= dv.current()` y", "<% tp.file.include('[[ME]]') %>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>",
+      const live = await Promise.all(["```dataviewjs\ndv.paragraph(1)\n```", "x `$= dv.current()` y", "x `= this.file.name` y", "x ``\n= length(file.inlinks)`` y", "<% tp.file.include('[[ME]]') %>", "<script>alert(1)</script>", "<img src=x onerror=alert(1)>",
         "![pixel](https://tracker.example/p.png)", "![[https://tracker.example/p.png]]", "![a][r]\n\n[r]: https://tracker.example/p.png", "![b](\nhttps://tracker.example/p.png)",
         "![c\nd](https://tracker.example/p.png)", "![e](//tracker.example/p.png)", "[run it](vaultite://command/terminal:new)",
         // (what the app's own Markdown reads differently from a plain one: math, comments, wikilinks, highlights, callouts, footnotes)

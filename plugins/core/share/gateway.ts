@@ -17,8 +17,10 @@ export type Share = { folder: string; guest: string; role: Role; created: string
 type Guest = { id: string; share: Share }
 
 const DIST = path.join(ROOT, "web", "dist")
+/** Excalidraw's fonts, as its plugin serves them to the user's app (the app's own package). */
+const FONTS = path.join(ROOT, "node_modules", "@excalidraw", "excalidraw", "dist", "prod", "fonts")
 const BODY_MAX = 1 << 20
-const WRITES = 300, NEW_NOTES = 30, SAYS = 30, SEARCHES = 60, TYPES = 1200 // a minute, per share
+const WRITES = 300, NEW_NOTES = 30, SAYS = 30, SEARCHES = 60, TYPES = 1200, QUERIES = 60 // a minute, per share
 const NOTE_MAX = 256_000, SOCKETS = 12
 /** What an edit guest may add to a folder: notes, and bytes. */
 export const ROOM = { notes: 500, bytes: 20 << 20 }
@@ -26,8 +28,18 @@ export const ROOM = { notes: 500, bytes: 20 << 20 }
 const csp = (scripts: string[]) => `default-src 'self'; script-src 'self' 'wasm-unsafe-eval' ${scripts.join(" ")}; style-src 'self' 'unsafe-inline'; ` +
   "img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
 const ID = /^[A-Za-z0-9_-]{11}$/, TOKEN = /^[A-Za-z0-9_-]{43}$/
+/** The vault's own plugins whose views only read the folder (their queries scoped to it): drawn for guests too. */
+const VIEWS = ["kanban", "excalidraw", "dataview"]
+/** Of a vault plugin, what the guest's app draws it with. */
+const PLUGIN_FIELDS = ["id", "name", "description", "requires", "enhances", "runsOnServer", "tint", "category", "group", "icon", "replaces", "marks", "on", "loaded",
+  "pages", "blocks", "draws", "settings", "bundle", "version"]
+/** A shared folder's HTML page runs in a frame of its own: scripts, nothing else; no address to reach, not even this one. */
+const PAGE_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; " +
+  "img-src data: blob:; font-src data:; media-src data: blob:; worker-src blob:; connect-src 'none'; frame-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
+/** ...framed by a page that keeps its frame on its own address (`at`: /s/<id>/v/). */
+const wrapCsp = (at: string) => `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src ${at}; base-uri 'none'; frame-ancestors 'self'`
 /** The app's plugins a guest's app runs: reading, writing and comments; never agents, terminals or settings. */
-export const GUEST_PLUGINS = ["files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion"]
+export const GUEST_PLUGINS = ["files", "editing", "folding", "outline", "find", "properties", "tags", "page-preview", "backlinks", "search", "companion", "html", ...VIEWS]
 
 export const sha = (s: string) => crypto.createHash("sha256").update(s).digest("base64url")
 const same = (a: string, b: string) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
@@ -94,6 +106,7 @@ export class Gateway {
   shares: () => Record<string, Share>
   used: (id: string) => void
   boot = Date.now().toString(36)
+  secret = crypto.randomBytes(32)
   hits = new Map<string, { n: number; until: number }>()
   wss = new WebSocketServer({ noServer: true, maxPayload: 64 << 10 })
   sockets = new Map<WebSocket, { g: Guest; kind: "events" | "threads" }>()
@@ -122,6 +135,7 @@ export class Gateway {
       if (!ID.test(m[1])) return this.page(res, 404, "There's nothing here", "Check the link you were sent."), true
       const rest = m[2] ?? ""
       if (rest === "") return this.redirect(res, `/s/${m[1]}/`), true
+      if (rest.startsWith("/v/")) return this.artifact(req, res, m[1], rest.slice(3), url), true
       if (!rest.startsWith("/api/")) return this.file(req, res, m[1], rest.slice(1)), true
       g = this.guestOf(req, m[1])
       if (!g) return this.json(res, 401, { error: "this folder isn't shared with you any more" }), true
@@ -206,6 +220,35 @@ export class Gateway {
     this.send(res, abs, name.startsWith("assets/") ? "public, max-age=31536000, immutable" : "no-cache")
   }
 
+  /** A shared folder's HTML page (its app's frame asks): the wrapper, then the page itself (`frame=1`), sandboxed. */
+  artifact(req: IncomingMessage, res: ServerResponse, id: string, rest: string, url: URL) {
+    let shown: string
+    try { shown = decodeURIComponent(rest) } catch { return this.json(res, 400, { error: "bad address" }) }
+    // (the page itself is asked for by the sandboxed wrapper, which no cookie goes with: the wrapper's key for it instead)
+    const q = Object.fromEntries(url.searchParams), share = this.shares()[id]
+    const g = q.frame === "1" ? (share && !expired(share) && this.keyed(id, shown, q.k) ? { id, share } : null) : this.guestOf(req, id)
+    const make = this.plugin.service("html:guest")
+    if (!g || typeof make !== "function" || req.method !== "GET") return this.json(res, 404, { error: "not found" })
+    const rel = this.folderOf(g).at(shown)
+    if (!/\.html?$/i.test(rel)) return this.json(res, 404, { error: "not found" })
+    const out = make(rel, shown, q) as { page: string; wrapper: (rawPath: string) => string }
+    const at = `${this.https(req) ? "https" : "http"}://${req.headers.host}/s/${id}/v/`
+    const head = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-DNS-Prefetch-Control": "off" }
+    // (framed by the sandboxed wrapper, whose origin is no one's: only a page with the guest's cookie gets it anyway)
+    res.removeHeader("X-Frame-Options")
+    if (q.frame === "1") res.writeHead(200, { ...head, "Content-Security-Policy": PAGE_CSP }), res.end(out.page)
+    else res.writeHead(200, { ...head, "Content-Security-Policy": wrapCsp(at) }), res.end(out.wrapper(`${rest}${url.search || "?"}${url.search ? "&" : ""}k=${this.key(id, shown)}`))
+  }
+
+  /** A key to one page of one share for a few minutes (its wrapper's, for its frame). */
+  key(id: string, shown: string, until = Date.now() + 600_000) {
+    return `${until}.${crypto.createHmac("sha256", this.secret).update(`${id}\n${shown}\n${until}`).digest("base64url")}`
+  }
+  keyed(id: string, shown: string, k: unknown) {
+    const until = Number(String(k ?? "").split(".")[0])
+    return Number.isFinite(until) && until > Date.now() && same(String(k), this.key(id, shown, until))
+  }
+
   send(res: ServerResponse, abs: string, cache: string) {
     let body: Buffer
     try {
@@ -244,6 +287,24 @@ export class Gateway {
     }
     if (key === "GET config/plugin") return this.json(res, 200, Object.fromEntries(String(q.ids ?? "").split(",").filter(Boolean).slice(0, 100).map((x) => [x, {}])))
     if (method === "GET" && ["ops", "vaults", "plugins", "blocks"].includes(route)) return this.json(res, 200, route === "vaults" ? { vaults: [] } : [])
+    // The views that only read (VIEWS): their code, Excalidraw's fonts, and Dataview's queries over the folder alone.
+    const code = method === "GET" && /^plugins\/([a-z0-9-]+)\/[^/]+\/[\w.-]+\.js$/.exec(route)
+    if (code && VIEWS.includes(code[1])) {
+      const js = await this.plugin.host.api("GET", route)
+      res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "private, max-age=31536000, immutable" })
+      return res.end(String(js))
+    }
+    const font = method === "GET" && /^excalidraw\/fonts\/([\w-][\w.-]*)\/([\w-][\w.-]*\.woff2?)$/.exec(route)
+    if (font) return this.send(res, path.join(FONTS, font[1], font[2]), "public, max-age=31536000, immutable")
+    if (method === "GET" && (route === "dataview/query" || route === "dataview/inline")) {
+      if (this.limited(`query:${g.id}`, QUERIES)) return this.json(res, 429, { error: "too many queries at once: wait a moment" })
+      const within = this.plugin.service("dataview:within")
+      if (typeof within !== "function") return this.json(res, 404, { error: "not here" })
+      const run = within(`share:${f.folder}`, (rel: string) => f.see(rel) !== null)
+      const at = q.path ? f.at(q.path) : undefined
+      const out = await (route === "dataview/query" ? run.query(String(q.q ?? ""), at) : run.inline(String(q.q ?? ""), at))
+      return this.json(res, 200, theirPaths(out, f.folder))
+    }
     if ((key === "PUT file" || key === "POST file") && role === "edit") {
       if (this.limited(`write:${g.id}`, WRITES) || (method === "POST" && this.limited(`new:${g.id}`, NEW_NOTES))) return this.json(res, 429, { error: "too many changes at once: wait a moment" })
       const body = await this.body(req) as Item
@@ -289,7 +350,9 @@ export class Gateway {
       vault: { path: g.share.folder.split("/").pop(), problems: [] },
       files: f.tree(await this.plugin.host.api("GET", "files") as Parameters<Folder["tree"]>[0], (rel) => this.plugin.vault.entries.get(rel)?.body),
       config: { appearance: {}, plugins: { disabled: [], enabled: [] }, hotkeys: {}, sidebars: { left: ["files:files"], right: [], collapsed: [] } },
-      vaultPlugins: [],
+      // (what draws it, not where it came from or what the owner was told of it)
+      vaultPlugins: (await this.plugin.host.api("GET", "plugins") as Item[]).filter((p) => VIEWS.includes(p.id) && p.on && p.loaded)
+        .map((p) => ({ ...Object.fromEntries(PLUGIN_FIELDS.filter((k) => k in p).map((k) => [k, p[k]])), folder: "", problems: [], warnings: [] })),
     }
   }
 
@@ -399,6 +462,14 @@ function plainQuery(q: string) {
   const ok = (n: Item): boolean => n.t === "folder" ? false : n.t === "term" ? n.field !== "path" && !String(n.m?.label ?? "").startsWith("/")
     : n.t === "prop" ? !n.value || ok(n.value) : (n.kids ?? (n.kid ? [n.kid] : [])).every(ok)
   return ok(node as Item)
+}
+
+/** An answer with the folder's paths as the guest's: every text that starts with it. */
+function theirPaths(v: unknown, folder: string): unknown {
+  if (typeof v === "string") return v.startsWith(`${folder}/`) ? v.slice(folder.length + 1) : v
+  if (Array.isArray(v)) return v.map((x) => theirPaths(x, folder))
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, theirPaths(x, folder)]))
+  return v
 }
 
 const pick = (o: Item, keys: string[]) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]))

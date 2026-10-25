@@ -182,6 +182,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `history:text` (history)
 - `history:keep` (history): Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's review compares with it). Sync, so it runs before the write.
 - `history:changed` (history): The files followed whose text was last written at or after `since` (ms).
+- `html:guest` (html): A page as a shared folder's guest gets it (plugins/core/share), at their path for it, nothing of the user's (name, Claude, what it kept), and the wrapper framing it: the guest's gateway serves both, with its own policies.
 - `inbox:folder` (inbox): Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this plugin is on.
 - `inbox:needs` (inbox): Whether an agent's session (by its terminal, or its own session id) has a row that needs the user, unread: Terminal's list says so (its tab's dot, Terminals' first rows).
 - `inbox:state` (inbox): Terminal's stream of its terminals' states.
