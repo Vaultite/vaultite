@@ -101,6 +101,9 @@ export default async ($: VaultTest) => {
     await $.sleep(1200)
     check("cotype: where typing and the disk clash, the typing stays and is written", owner.text.toString().includes(`${line} typed`) && read("Co/N.md").includes(`${line} typed`)
       && owner.got.some((m) => m.t === "y-clash") && ada.got.some((m) => m.t === "y-clash"), read("Co/N.md"))
+    const { versions } = await (companion.service("history:versions") as Any)("Co/N.md")
+    const texts = await Promise.all(versions.map((v: Any) => (companion.service("history:text") as Any)("Co/N.md", v.t)))
+    check("cotype: ...and the file's clashing version is kept in its history", texts.some((t: Any) => String(t).includes("from disk")), versions)
   }
   {
     // Carets: two at most per window, each as y-codemirror gives one; opens and carets a window may send are counted.

@@ -2,7 +2,6 @@
 // margin comments, suggestions, edits typed in). Comments and suggestions are kept in a sidecar per note; the rest is live.
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
@@ -509,8 +508,8 @@ plugin.onUnload(() => {
 /** Notes open in windows, typed in together (rooms.ts). */
 const co = rooms(plugin)
 plugin.onChange((paths) => co.changed(paths))
-/** The user as others in a note see them: this machine's user's name. */
-const OWNER = (() => { const n = os.userInfo().username.replace(/[^\p{L}\p{N} .-]/gu, ""); return n ? n.charAt(0).toUpperCase() + n.slice(1) : "Owner" })()
+/** The user as others in a note see them (never this machine's login name). */
+const OWNER = "Owner"
 const YOU: Who = { client: "app/web", agent: null, label: "You", source: "app" }
 /** A note a window names, as the vault's path (`./a.md` is `a.md`), or null. */
 const notePath = (p: unknown) => { try { return vaultPath(p, false, plugin.vault) } catch { return null } }

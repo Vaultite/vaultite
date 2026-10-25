@@ -122,7 +122,8 @@ export function rooms(plugin: Plugin) {
     try { disk = readText(plugin.vault.abs(r.path)) } catch { return }
     if (disk === r.disk) return
     const now = r.text.toString(), merged = merge3(r.disk, now, disk)
-    if (merged === null) tell(r, null, { t: "y-clash" })
+    // (the file's version kept in its history, whatever the interval, before the typing goes over it)
+    if (merged === null) { plugin.service("history:keep")?.(r.path); tell(r, null, { t: "y-clash" }) }
     become(r, merged ?? now, "disk")
     r.disk = disk
     if (merged === null && !r.pending) r.pending = { peer: [...peers.values()].find((p) => !p.may) ?? [...peers.values()][0], timer: setTimeout(() => flush(r), WRITE_MS), since: Date.now() }
