@@ -18,12 +18,15 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string }
 /** A comment being written (Add comment): where it goes. */
 export type Draft = { path: string; line: number; find?: string }
+/** Someone else in a note: their awareness id, name and colour (a CSS value). */
+export type Person = { id: number; name: string; color: string }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 
-/** said: each agent's last says (gone from the screen or not), oldest first. */
-/** picked: the margin card the user opened (clicked, or picked from the note's history). */
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; fresh: { model: string; effort: string }; draft: Draft | null }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, fresh: { model: "", effort: "" }, draft: null }
+/** said: each agent's last says, oldest first; picked: the margin card the user opened; people: who else has each
+ *  note open with this window (cotype.ts), by path. */
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; fresh: { model: string; effort: string }; draft: Draft | null
+  people: Record<string, Person[]> }
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, fresh: { model: "", effort: "" }, draft: null, people: {} }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -70,6 +73,16 @@ export const threadTint = (n: Note) => (n.tint ? `var(--${n.tint})` : n.by === "
 export const authorOf = (n: Note) => (n.by === "user" ? (share ? "Owner" : "You") : n.by === "guest" && share?.guest === n.agent ? "You" : n.agent)
 /** Who wrote a reply, likewise. */
 export const replyAuthor = (n: Note, r: Reply) => (r.by === "user" ? (share ? "Owner" : "You") : r.by === "guest" ? (share?.guest === r.name ? "You" : r.name ?? "Guest") : n.agent)
+
+/** Who's in `path` now (cotype.ts says). */
+export const setPeople = (path: string, list: Person[]) => {
+  const { [path]: _, ...rest } = state.people
+  set({ people: list.length ? { ...rest, [path]: list } : rest })
+}
+/** Notes' rooms (cotype.ts, loaded with the editor): their messages, and taking the user to someone's caret. */
+let rooms: { heard: (m: Record<string, unknown>) => void; goTo: (path: string, id: number) => void } | null = null
+export const setRooms = (r: typeof rooms) => { rooms = r }
+export const goToPerson = (path: string, id: number) => rooms?.goTo(path, id)
 
 /** Start writing a comment there (Add comment), or stop. */
 export const startComment = (d: Draft | null) => set({ draft: d, picked: d ? "draft" : state.picked === "draft" ? null : state.picked })
@@ -149,6 +162,7 @@ function open() {
       set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
     } else if (m.t === "drop") set({ notes: state.notes.filter((x) => x.id !== m.id) })
     else if (m.t === "edit") void edit(m as unknown as EditAsk)
+    else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash") rooms?.heard(m)
     else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
   }
 }

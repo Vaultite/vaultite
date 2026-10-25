@@ -9,6 +9,7 @@ import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
 import { LEAN_PAST, textHash } from "../../../core/texthash.ts"
+import { keptLive } from "@/core/cosync"
 
 /** A conflict: `base` the text both sides started from, `lines` where they clash (the file's, 1-based), `who` the agent
  *  that wrote theirs when known, `inline` when the editor shows it in place (undefined while that's found out). */
@@ -128,7 +129,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
       s.alive = true
       const leave = () => s.flush(s.inflight?.text ?? s.disk, false)
       addEventListener("pagehide", leave)
-      const untrack = trackUnsaved(() => !o.current.readOnly && (!!timer || saving || status.kind !== "ok" || o.current.text() !== s.disk), where)
+      const untrack = trackUnsaved(() => !o.current.readOnly && !keptLive(where()) && (!!timer || saving || status.kind !== "ok" || o.current.text() !== s.disk), where)
       return () => {
         s.alive = false
         untrack()
@@ -146,6 +147,8 @@ function makeAutosave(path: string, initial: string, options: Options) {
 
     /** Typed: saved 600 ms after the last change (during a conflict, only said again). */
     changed() {
+      // (typed in together, core/cosync.ts: the server saves it; this one only once it's alone again)
+      if (keptLive(where())) return
       if (s.conflict) return tell(status)
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => s.save(), 600)
@@ -157,6 +160,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
 
     async save(force = false): Promise<void> {
       s.stopTimer()
+      if (keptLive(where())) return // (typed in together: the server saves it)
       if (s.conflict && !force) return
       if (saving) { again = true; return s.inflight?.done }
       const sent = o.current.text(), base = s.disk
@@ -212,6 +216,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
 
     /** Merge in what's on disk (`known`: just read). While a save is pending or on its way, it runs after it. */
     async check(known?: FileText) {
+      if (keptLive(where())) return
       if (saving || timer || s.conflict) { recheck = !s.conflict; return }
       recheck = false
       const before = s.disk
@@ -309,7 +314,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
     /** Send what's pending without the view (it's going); a failure is a toast holding the edits. */
     flush(base: string, say: boolean) {
       const text = o.current.text()
-      if (text === base || o.current.readOnly) return
+      if (text === base || o.current.readOnly || keptLive(where())) return
       // (kept here first: keepalive takes 64 KB at most, so a bigger save is a plain one, which a closed window may cut short)
       keepDraft(path, text, base)
       const send = async (base: string | null) => {

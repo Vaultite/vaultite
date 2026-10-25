@@ -2,11 +2,13 @@
 // margin comments, suggestions, edits typed in). Comments and suggestions are kept in a sidecar per note; the rest is live.
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
+import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
-import { liveMarkdown, localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
+import { liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { rooms } from "./rooms.ts"
 import { type Hunk, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
 
@@ -117,7 +119,9 @@ type Win = { open: string[]; focus: Target | null; at: number; was?: string }
 const windows = new Map<WebSocket, Win>()
 /** A guest's view of the threads: `see` gives their name for a vault path in their folder (else null), `at` the vault
  *  path for theirs (throws outside it); `said`: true once they have said too much this minute. */
-export type Guest = { id: string; name: string; see: (rel: string) => string | null; at: (p: string) => string; said: () => boolean
+export type Guest = { id: string; name: string; who: Who; role: "read" | "comment" | "edit"; see: (rel: string) => string | null; at: (p: string) => string; said: () => boolean
+  /** Why a change of theirs to a note can't land, and whether they're typing too fast (the share's rules). */
+  may: (rel: string, before: string, after: string) => string; slow: () => boolean
   /** When the folder was shared with them: the user's threads from before it stay the user's. */
   since: number }
 const guests = new Map<WebSocket, Guest>()
@@ -502,12 +506,23 @@ plugin.onUnload(() => {
 
 // ---------- the app's windows: /api/companion/live
 
+/** Notes open in windows, typed in together (rooms.ts). */
+const co = rooms(plugin)
+plugin.onChange((paths) => co.changed(paths))
+/** The user as others in a note see them: this machine's user's name. */
+const OWNER = (() => { const n = os.userInfo().username.replace(/[^\p{L}\p{N} .-]/gu, ""); return n ? n.charAt(0).toUpperCase() + n.slice(1) : "Owner" })()
+const YOU: Who = { client: "app/web", agent: null, label: "You", source: "app" }
+/** A note a window names, as the vault's path (`./a.md` is `a.md`), or null. */
+const notePath = (p: unknown) => { try { return vaultPath(p, false, plugin.vault) } catch { return null } }
+
 plugin.socket("companion/live", (ws, req) => {
   windows.set(ws, { open: [], focus: null, at: 0 })
+  co.add(ws, { who: YOU, name: OWNER, tint: "red", edits: true, see: (rel) => rel })
   send(ws, snapshot())
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
+    if (co.heard(ws, m, typeof m.t === "string" && (m.t.startsWith("y") || m.t === "aw") ? notePath(m.path) : null)) return
     const w = windows.get(ws)
     if (!w) return
     if (m.t === "where") {
@@ -1474,7 +1489,7 @@ function personComment(who: { by: "user" | "guest"; agent: string; share?: strin
 
 /** Only people's threads reach a guest, and only people's words in them: an agent's could tell what's outside the folder. */
 function forGuest(n: Note, g: Guest): Note | null {
-  const p = n.path && n.kind === "comment" && n.by && (n.by === "guest" || n.t >= g.since) ? g.see(n.path) : null
+  const p = g.role !== "read" && n.path && n.kind === "comment" && n.by && (n.by === "guest" || n.t >= g.since) ? g.see(n.path) : null
   if (p === null || p === undefined) return null
   const { anchor: _a, share: _s, ...rest } = n
   return { ...rest, path: p, replies: (n.replies ?? []).filter((r) => r.by !== "agent") }
@@ -1489,16 +1504,20 @@ function toGuest(ws: WebSocket, g: Guest, m: { t: string; note?: Note; id?: stri
 /** A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them. */
 plugin.provide("companion:guest", (ws: WebSocket, g: Guest) => {
   guests.set(ws, g)
+  co.add(ws, { who: g.who, name: g.name, tint: tintFor(g.name), edits: g.role === "edit", see: g.see, may: g.may, slow: g.slow })
   send(ws, { t: "state", mode: "quiet", name: "", agents: [], notes: [...notes.values()].map((n) => forGuest(n, g)).filter(Boolean), said: [] })
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
+    let rel: string | null = null
+    try { rel = typeof m.path === "string" ? g.at(m.path) : null } catch { /* not theirs */ }
+    if (co.heard(ws, m, rel)) return
+    if (g.role === "read") return // (who reads only sees: the note, its threads and who's in it)
     const n = typeof m.id === "string" ? notes.get(m.id) : undefined, theirs = n && forGuest(n, g)
     // (a guest's words draw as Markdown in the user's app: nothing in them may run or fetch)
     if ((m.t === "comment" || m.t === "answer") && (g.said() || liveMarkdown(str(m.text)))) return
     if (m.t === "comment") {
-      let rel: string
-      try { rel = g.at(str(m.path)) } catch { return }
+      if (!rel) return
       const c = personComment({ by: "guest", agent: g.name, share: g.id }, rel, m)
       if (c) tell(g.id, `${g.name} commented on ${rel.split("/").pop()!.replace(/\.md$/i, "")}`, rel)
     } else if (m.t === "answer" && theirs && m.verdict === "reply" && str(m.text).trim() && (n.replies?.length ?? 0) < MAX_REPLIES) {

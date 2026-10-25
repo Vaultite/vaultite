@@ -2,7 +2,7 @@
 // Conversations panel too.
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react"
 import { cn, type FileHead, menuBelow } from "@vaultite"
-import { type Agent, getState, liveAgents, subscribe } from "./live"
+import { type Agent, getState, goToPerson, liveAgents, subscribe } from "./live"
 import { follow } from "./Overlay"
 
 const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting" }
@@ -38,23 +38,31 @@ function useFit(on?: boolean) {
   return [ref, fit] as const
 }
 
-/** The agents around, those in `path` first, overlapping as a shared doc's faces; `big`: a phone's sizes; `fit`: no
- *  more than the parent's width holds (the rest behind +N). */
+/** Who's in `path` with this window, then the agents around (in `path` first), overlapping as a shared doc's faces;
+ *  `big`: a phone's sizes; `fit`: no more than the parent's width holds (the rest behind +N). */
 export function Faces({ path, big, fit }: { path: string; big?: boolean; fit?: boolean }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [ref, room] = useFit(fit)
-  if (s.mode === "off") return null
-  const agents = liveAgents().sort((a, b) => Number(b.path === path) - Number(a.path === path))
-  const max = Math.min(FACES, room)
+  const people = s.people[path] ?? []
+  if (s.mode === "off" && !people.length) return null
+  const agents = s.mode === "off" ? [] : liveAgents().sort((a, b) => Number(b.path === path) - Number(a.path === path))
+  const max = Math.max(1, Math.min(FACES, room) - people.length)
   const shown = agents.length > max ? agents.slice(0, max - 1) : agents, rest = agents.slice(shown.length)
   const where = (a: Agent) => `${a.name}: ${a.asks ? "needs you" : STATUS[a.state] ?? a.state}${a.path ? (a.path === path ? ", here" : `, in ${fileOf(a.path)}`) : ""}`
   const size = big ? "-my-1.5 h-11 min-w-11 md:my-0 md:h-8 md:min-w-8" : "h-7 min-w-7"
   const overlap = big ? "-ml-[26px] md:-ml-[14px]" : "-ml-[13px]"
   return (
     <div ref={ref} className="flex shrink-0 items-center" data-companion-presence>
+      {people.map((p, i) => (
+        <button key={p.id} type="button" aria-label={`Go to ${p.name}`} data-tip={`${p.name}, here`} data-person={p.name} onClick={() => goToPerson(path, p.id)}
+          className={cn("relative grid cursor-pointer place-items-center rounded-full hover:z-10", size, i > 0 && overlap)}>
+          <span className={cn("grid place-items-center rounded-full font-bold text-white ring-2 ring-background transition-transform hover:scale-110", big ? "size-6 text-[12px]" : "size-[20px] text-[10.5px]")}
+            style={{ background: p.color }}>{p.name.charAt(0).toUpperCase()}</span>
+        </button>
+      ))}
       {shown.map((a, i) => (
         <button key={a.name} type="button" aria-label={`Go to ${a.name}`} data-tip={where(a)} data-agent={a.name} data-state={a.state} onClick={() => follow(a)}
-          className={cn("relative grid cursor-pointer place-items-center rounded-full hover:z-10", size, i > 0 && overlap)}>
+          className={cn("relative grid cursor-pointer place-items-center rounded-full hover:z-10", size, (i > 0 || people.length > 0) && overlap)}>
           <span className={cn("relative grid place-items-center rounded-full font-bold text-white ring-2 ring-background transition-transform hover:scale-110", big ? "size-6 text-[12px]" : "size-[20px] text-[10.5px]",
             a.path !== path && "opacity-60")} style={{ background: `var(--${a.tint})` }}>
             {a.name.charAt(0).toUpperCase()}

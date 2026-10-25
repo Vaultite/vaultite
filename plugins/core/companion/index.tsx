@@ -94,7 +94,7 @@ export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
   background: () => <Background />,
   ambient: share ? undefined : { status: { title: "Companion", sort: 25, render: () => <Status /> } },
-  fileBar: share ? undefined : { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
+  fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   // (its key is threads.ts' PANEL)
   sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads"], flyout: { icon: ConversationsIcon, width: 320 },
     render: (ctx) => <ConversationsPanel {...ctx} /> } },

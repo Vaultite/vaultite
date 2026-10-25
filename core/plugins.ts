@@ -46,7 +46,7 @@ export { API_VERSION, APP_VERSION } from "./version.ts"
 export { frontmatterLinks, frontmatterTargets, type LinkFile, linkResolver, wikiTargets } from "./links.ts"
 export { matches as searchMatches, parse as parseSearch, type SearchDoc, SearchError } from "./searchquery.ts"
 /** A line diff (difflib's opcodes), for what changed between two texts; diffLines: the same, fast at any size. */
-export { opcodes } from "./textedit.ts"
+export { merge3, opcodes } from "./textedit.ts"
 export { diffLines } from "./linediff.ts"
 /** Whether a folder can be read, as Settings > Permissions says it (core/permissions.ts). */
 export { accessOf, type Access } from "./permissions.ts"
@@ -84,8 +84,8 @@ export { allowedPath as outsidePath, isOutside } from "./outside.ts"
 /** A safe path in the vault from what a request names, or an HTTPError: 400 for one outside it (`..`) or hidden while
  *  hidden files aren't shown, 404 (`mustExist`) for one that isn't there (core/files.ts's `clean`). */
 export { clean as vaultPath } from "./files.ts"
-/** Whether Markdown holds what draws live in the app (core/guests.ts): a guest's words never do. */
-export { liveIn as liveMarkdown } from "./guests.ts"
+/** What a shared folder's guest may write, and whether Markdown holds what draws live in the app (core/guests.ts). */
+export { guestRefusal, liveIn as liveMarkdown } from "./guests.ts"
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
 export { byUser, NOT_THE_USER, userSurface, type Op, type OpCtx, type OpDid, type OpEntry, OpError, type Param, quoted, type Schema, type Who, whoOf } from "./ops.ts"

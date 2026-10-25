@@ -11,6 +11,8 @@ export {
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
 /** A shared folder's guest (plugins/core/share), when this app is theirs: their name, role and folder; else null. */
 export { guestEdits, share, type Share } from "@/core/share"
+/** A note typed in together now (a plugin's live session): its editors' autosave stands down while the server keeps it. */
+export { keepLive, keptLive } from "@/core/cosync"
 export type { Store } from "@/core/data"
 
 /** What plugins keep in the store, declared by each in a module of its own: `declare
@@ -69,7 +71,7 @@ export { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
-export { opcodes } from "@/core/merge"
+export { merge3, opcodes } from "@/core/merge"
 export { diffLines } from "@/core/diff"
 /** Two texts' line diff, drawn as the app draws one (File history, the review of AI changes). */
 export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"

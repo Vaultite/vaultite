@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import path from "node:path"
 import type { Duplex } from "node:stream"
 import { WebSocketServer, type WebSocket } from "ws"
-import { contentType, HTTPError, OpError, parseSearch, type Plugin, ROOT, type Who, wikiTargets } from "../../../core/plugins.ts"
+import { contentType, guestRefusal, HTTPError, OpError, parseSearch, type Plugin, ROOT, type Who, wikiTargets } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export type Role = "read" | "comment" | "edit"
@@ -18,8 +18,8 @@ type Guest = { id: string; share: Share }
 
 const DIST = path.join(ROOT, "web", "dist")
 const BODY_MAX = 1 << 20
-const WRITES = 300, NEW_NOTES = 30, SAYS = 30, SEARCHES = 60 // a minute, per share
-const NOTE_MAX = 256_000
+const WRITES = 300, NEW_NOTES = 30, SAYS = 30, SEARCHES = 60, TYPES = 1200 // a minute, per share
+const NOTE_MAX = 256_000, SOCKETS = 12
 /** What an edit guest may add to a folder: notes, and bytes. */
 export const ROOM = { notes: 500, bytes: 20 << 20 }
 /** The guest's page runs only its own scripts (`scripts`: its inline ones' hashes) and loads only from this address. */
@@ -142,16 +142,18 @@ export class Gateway {
     if (!p.startsWith("/s/") || !this.ours(req)) return false
     const m = /^\/s\/([A-Za-z0-9_-]{11})\/api\/(events|companion\/live)$/.exec(p)
     const g = m && this.sameSite(req) ? this.guestOf(req, m[1]) : null
-    if (!g) { socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); return true }
+    // (a share's sockets are counted: a guest's limits are per socket, so not as many as they like)
+    if (!g || [...this.sockets.values()].filter((s) => s.g.id === g.id).length >= SOCKETS) { socket.end("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); return true }
     this.wss.handleUpgrade(req, socket, head, (ws) => {
       const kind = m![2] === "events" ? "events" : "threads"
       this.sockets.set(ws, { g, kind })
       ws.on("close", () => this.sockets.delete(ws))
       ws.on("error", () => ws.close())
       if (kind === "events") return ws.send(JSON.stringify({ type: "hello", v: this.v() }))
-      // (threads are Companion's: a guest who may comment gets theirs, in their folder, by their paths)
+      // (Companion's: threads for a guest who may comment, who's in a note and its text as typed, in their folder, by their paths)
       const threads = this.plugin.service("companion:guest"), f = this.folderOf(g)
-      if (typeof threads === "function" && g.share.role !== "read") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS) })
+      if (typeof threads === "function") threads(ws, { id: g.id, since: Date.parse(g.share.created), name: g.share.guest, who: guestWho(g.share), role: g.share.role, see: (rel: string) => f.see(rel), at: (q: string) => f.at(q), said: () => this.limited(`say:${g.id}`, SAYS),
+        may: (rel: string, before: string, after: string) => this.mayWrite(g, rel, before, after), slow: () => this.limited(`type:${g.id}`, TYPES) })
       else ws.send(JSON.stringify({ t: "state", mode: "quiet", name: "", agents: [], notes: [], said: [] }))
     })
     return true
@@ -267,6 +269,18 @@ export class Gateway {
 
   v() {
     return `${this.boot}:${this.plugin.vault.version}`
+  }
+
+  /** Why a guest's change to a note, typed live (Companion's rooms), can't land: as a write of theirs would be checked. */
+  mayWrite(g: Guest, rel: string, before: string, after: string) {
+    const cur = this.shares()[g.id]
+    if (!cur || cur.token !== g.share.token || expired(cur)) return "this folder isn't shared with you any more"
+    if (cur.role !== "edit" || new Folder(this.plugin.vault.path, g.share.folder).see(rel) === null) return "you can't change this folder"
+    if (after.length > NOTE_MAX) return "a note this long can't be written here"
+    const has = folderSize(this.plugin.vault, g.share.folder), room = cur.room ?? { notes: has.notes + ROOM.notes, bytes: has.bytes + ROOM.bytes }
+    const grows = Buffer.byteLength(after) - Buffer.byteLength(before)
+    if (grows > 0 && has.bytes + grows > room.bytes) return "this folder is full"
+    return guestRefusal(this.plugin.vault, rel, before, after)
   }
 
   /** The state the guest's app starts from: their folder's files and the defaults, nothing of the vault's own. */

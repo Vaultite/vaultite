@@ -4,6 +4,7 @@ import { closeCompletion, type Completion, type CompletionContext, completionSta
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { capitalize, keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
+import { cotype } from "./cotype"
 import { accept, answer, asksSomething, bump, canMention, type EditAsk, getState, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 import { nearest } from "./text"
 
@@ -522,5 +523,5 @@ export function companionExtension(ctx: EditorCtx): Extension {
     { key: "Tab", run: (v) => { if (chooserKey("Tab")(v)) return true; const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
     { key: "Escape", run: (v) => { if (chooserKey("Escape")(v)) return true; const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
   ]))
-  return [typed, span, sentAt, chooser, watcher(path), chips(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions(path) }])]
+  return [typed, span, sentAt, chooser, watcher(path), chips(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions(path) }]), cotype(path)]
 }

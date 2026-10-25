@@ -269,6 +269,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
 - `isWindows`: A Windows computer.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
+- `keepLive(path)`: A live session keeps `path` from now: returns how to say it stopped.
+- `keptLive(path)`: Whether a live session keeps `path` now.
 - `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
 - `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
@@ -306,6 +308,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `menuFor(items)`: For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's).
 - `MenuItem`
 - `menuShowing()`: A menu is showing.
+- `merge3`
 - `mergeTabsSeen(other)`: Another copy of these tabs (the workspace's file, from another device): where it saw a tab later, that's taken.
 - `mintedHere(id)`: Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it: a tab put back (a reload, the app reopened, another device) only attaches, and never starts…
 - `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop Browser) hands back as keydowns for `runShortcut`.
@@ -706,6 +709,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `frontmatterLinks(fm)`: The [[links]] in a file's frontmatter, with the key each is under (`project: "[[Lighthouse]]"`, a list's items, and `project: [[Lighthouse]]` unquoted too): [key, target].
 - `frontmatterTargets(fm)`: The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`).
 - `GUEST_HEADER`: Set by a machine passing a request on (Machines) for someone who isn't its owner: it only takes rights away.
+- `guestRefusal(vault, rel, before, after)`: Why a guest may not write `after` at `rel` (over `before`, null for a new note), or "".
 - `Handler`
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).
@@ -728,6 +732,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `match(plugins, method, parts)`: The handler for a request path (parts under /api/), the wildcard values and the route's options.
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.
+- `merge3(base, mine, actual, fuzzy?)`: Apply base -> mine onto `actual`, or null when a changed line was edited there too (a conflict).
 - `noDesktop()`
 - `NOT_THE_USER`: Why a caller may not answer for the user, as its refusal says.
 - `OpCall`: An op being run, as plugin.around sees it: `plugin` is the op's (null: the core's).
