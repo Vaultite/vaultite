@@ -1,8 +1,8 @@
-// The browser's tabs for their owner in the web app (no Electron there): watched live (electron/browser/live.ts), tapped
-// and typed in, agents paused, an ask done. Owner only, and routes, never ops: no agent drives a page this way.
+// The browser's tabs for their owner, watched live (electron/browser/live.ts), tapped and typed in, agents paused, an ask
+// done; `3@m1` is another machine's, asked there. Owner only, and routes, never ops: no agent drives a page this way.
 import type { IncomingMessage } from "node:http"
 import type { RawData, WebSocket } from "ws"
-import { HTTPError, inDesktop, type Plugin, type Request } from "../../../core/plugins.ts"
+import { HTTPError, inDesktop, MACHINE_CLIENT, machineSocket, pipeSockets, splitMachine, type Machine, type Plugin } from "../../../core/plugins.ts"
 import type { LiveStep, LiveTab } from "./livetabs.ts"
 
 const RENEW_MS = 10_000
@@ -15,25 +15,55 @@ export function liveView(plugin: Plugin) {
   const desktop = async <T>(name: string, ...args: unknown[]) => {
     try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new HTTPError(409, (e as Error).message) }
   }
-  const tabOf = (req: Request) => {
-    const n = Number(req.arg(0))
-    if (!Number.isInteger(n) || n <= 0) throw new HTTPError(400, "a tab is its number")
-    return n
+  const selfId = () => plugin.ask<string | null>("machines:self", null)
+  /** "3" or "3@m1": the tab, and the other machine whose browser has it (null: this server's, its own id too). */
+  const tabOf = async (raw: string): Promise<[number, Machine | null]> => {
+    const [n, id] = splitMachine(raw)
+    if (!/^\d+$/.test(n) || !Number(n)) throw new HTTPError(400, "a tab is its number")
+    if (!id || id === await selfId()) return [Number(n), null]
+    const m = await plugin.ask<Machine | null>("machines:machine", null, id)
+    if (!m) throw new HTTPError(404, `no machine '${id}' (Machines)`)
+    if (!m.online) throw new HTTPError(502, `${m.label} doesn't answer`)
+    return [Number(n), m]
+  }
+  /** The same route on machine `m`. */
+  const there = async <T>(m: Machine, method: string, route: string, body?: unknown, ms = 10_000): Promise<T> => {
+    let r: Response
+    try {
+      r = await fetch(`${m.url}/api/${route}`, { method, headers: { ...MACHINE_CLIENT, ...(body ? { "Content-Type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(ms) })
+    } catch { throw new HTTPError(502, `${m.label} doesn't answer`) }
+    const answer = await r.json().catch(() => ({})) as { error?: string }
+    if (!r.ok) throw new HTTPError(r.status, String(answer.error || `${m.label} answered ${r.status}`))
+    return answer as T
   }
 
+  // This server's browser's tabs and the other machines' (each named); `local`: only its own, what another machine asks.
   plugin.route("GET", "web-viewer/tabs", async (req) => {
     await plugin.ownerOnly(req, what)
-    return { tabs: await desktop<LiveTab[]>("agent:live:tabs") }
+    const ms = await plugin.ask<Machine[]>("machines", [])
+    const self = ms.find((m) => m.self) ?? null
+    const own = (tabs: LiveTab[]) => tabs.map((t) => ({ ...t, ...(self ? { machine: self.id, machineLabel: self.label } : {}) }))
+    if (req.query.local) return { tabs: inDesktop() ? own(await desktop<LiveTab[]>("agent:live:tabs")) : [] }
+    const others = ms.filter((m) => !m.self && m.online && m.desktop && m.plugins?.includes(plugin.id))
+    const theirs = await Promise.all(others.map((m) => there<{ tabs: LiveTab[] }>(m, "GET", "web-viewer/tabs?local=1", undefined, 4000)
+      .then((r) => r.tabs.map((t) => ({ ...t, machine: m.id, machineLabel: m.label, appTab: "" })), () => [])))
+    // (with no browser of its own and no other machine's, plugin.desktop's: an always-on machine's, or why there's none)
+    const mine = inDesktop() || !others.length ? own(await desktop<LiveTab[]>("agent:live:tabs")) : []
+    return { tabs: [...mine, ...theirs.flat()], self: self?.id ?? null }
   }, { lock: false, sync: false })
 
   plugin.route("POST", "web-viewer/tabs/*/pause", async (req) => {
     await plugin.ownerOnly(req, what)
-    return desktop("agent:live:pause", tabOf(req), req.body?.on !== false)
+    const [tab, m] = await tabOf(req.arg(0))
+    if (m) return there(m, "POST", `web-viewer/tabs/${tab}/pause`, { on: req.body?.on !== false })
+    return desktop("agent:live:pause", tab, req.body?.on !== false)
   }, { lock: false, sync: false })
 
   plugin.route("POST", "web-viewer/tabs/*/done", async (req) => {
     await plugin.ownerOnly(req, what)
-    const tab = tabOf(req)
+    const [tab, m] = await tabOf(req.arg(0))
+    if (m) return there(m, "POST", `web-viewer/tabs/${tab}/done`, {})
     const r = await desktop("agent:live:done", tab)
     await plugin.ask("inbox:drop", null, "browser", `help-${tab}`)
     return r
@@ -42,7 +72,9 @@ export function liveView(plugin: Plugin) {
   // What agents did in the tab since it opened: Activity's events of the browser's ops that name it.
   plugin.route("GET", "web-viewer/tabs/*/steps", async (req) => {
     await plugin.ownerOnly(req, what)
-    const tab = tabOf(req), since = Number(req.query.since) || Date.now() - 86400_000
+    const [tab, m] = await tabOf(req.arg(0))
+    const since = Number(req.query.since) || Date.now() - 86400_000
+    if (m) return there(m, "GET", `web-viewer/tabs/${tab}/steps?since=${since}`)
     if (plugin.vault.switchedOff().has("activity")) return { steps: [], kept: false }
     type Event = { t: number; last?: number; actor: { kind: string; name: string }; action: string; text: string; route?: string }
     const got = await plugin.host.api("GET", `activity?since=${since}&limit=500`).catch(() => null) as { events?: Event[] } | null
@@ -83,7 +115,14 @@ export function liveView(plugin: Plugin) {
   }
 
   plugin.socket("web-viewer/live/*", async (ws, _req, { wild }) => {
-    const tab = Number(wild[0])
+    const [tab, m] = await tabOf(wild[0]).catch(() => [0, null] as const)
+    // (another machine's: joined to its same socket, which sends the frames and takes the input)
+    if (m) {
+      return pipeSockets(ws, machineSocket(m, `web-viewer/live/${tab}`), () => {
+        json(ws, { t: "error", text: `${m.label} doesn't answer` })
+        ws.close(1011, "unreachable")
+      })
+    }
     watchers.set(tab, (watchers.get(tab) ?? new Set()).add(ws))
     renew ??= setInterval(() => { for (const t of watchers.keys()) void desktop("agent:live:watch", t).catch(() => {}) }, RENEW_MS)
     ws.on("close", () => leave(tab, ws))
@@ -100,8 +139,8 @@ export function liveView(plugin: Plugin) {
     accept: async (req: IncomingMessage, { wild }) => {
       const why = await plugin.refusal(req, what)
       if (why) throw new HTTPError(403, why)
-      if (!/^\d+$/.test(wild[0] ?? "")) throw new HTTPError(400, "a tab is its number")
-      if (!inDesktop()) throw new HTTPError(409, "the live view needs this vault's server to be the desktop app's")
+      const [, m] = await tabOf(wild[0] ?? "")
+      if (!m && !inDesktop()) throw new HTTPError(409, "the live view needs this vault's server to be the desktop app's")
     },
   })
 

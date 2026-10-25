@@ -233,7 +233,7 @@ function windowsProcesses() {
 }
 
 /** One of the vault's machines, as the Machines plugin's services ("machines", "machines:machine") answer it. */
-export type Machine = { id: string; label: string; url: string; online: boolean; self: boolean; plugins?: string[]; vault?: string }
+export type Machine = { id: string; label: string; url: string; online: boolean; self: boolean; plugins?: string[]; vault?: string; desktop?: boolean }
 /** How this server says who it is when it asks another machine (Activity shows it). */
 export const MACHINE_CLIENT = { "X-Vaultite-Client": `machine/${os.hostname().replace(/\.local$/, "")}` }
 /** "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""]. */

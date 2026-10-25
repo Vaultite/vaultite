@@ -234,8 +234,8 @@ export default definePlugin({
     },
     "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <ReplaysView /> },
     "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <AgentPasskeys /> },
-    // (from the web app: the desktop app's tabs, one watched live by its number)
-    "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(Number(arg)) || "Browser tab" : "Browser tabs"), argState: true, full: true,
+    // (every machine's browser tabs, one watched live: `3`, or `3@m1` in another machine's browser)
+    "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(arg) || "Browser tab" : "Browser tabs"), argState: true, full: true,
       render: ({ arg, setArg }) => <LiveView arg={arg} setArg={setArg} /> },
     // (named web-pages from when it listed open pages too: kept, as sidebars and tabs name it)
     "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
@@ -256,7 +256,7 @@ export default definePlugin({
   },
   commands: [
     { id: "web:open", name: "Open web page…", desktop: true, when: () => !!webPages, run: () => askAddress() },
-    { id: "web:live", name: "Show browser tabs", when: () => !webPages, icon: MonitorPlay, run: () => openView("web-live", { newTab: !isViewOpen("view:web-live") }) },
+    { id: "web:live", name: "Show browser tabs", icon: MonitorPlay, run: () => openView("web-live", { newTab: !isViewOpen("view:web-live") }) },
     { id: "web:agent-runs", name: "Show agents in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
       run: () => openView("agent-runs", { newTab: !isViewOpen("view:agent-runs") }) },
     // (Windows sets the default browser only in its Settings, among browsers it knows)

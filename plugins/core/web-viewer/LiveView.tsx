@@ -1,24 +1,27 @@
-// The browser's tabs from the web app, where there's no Electron (liveroutes.ts on the server, electron/browser/live.ts in
-// the desktop app): whose each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done.
+// The browser's tabs, every machine's (liveroutes.ts on the server, electron/browser/live.ts in the desktop app): whose
+// each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closeTab, cn, dateText, errorText, get, openInSplit, post, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, usePaneTopBar, viewsChanged, webPages } from "@vaultite"
+import { Button, closeTab, cn, dateText, errorText, get, onMachine, openInSplit, post, selectTab, SidebarHeading, SidebarRow, splitMachine, useChosen, usePane, usePaneTopBar, viewsChanged, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
-import type { LiveStep, LiveTab } from "./livetabs"
+import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
 
-const titles = new Map<number, string>()
-/** A watched tab's title, for its tab. */
-export const liveTitle = (tab: number) => titles.get(tab)
+const titles = new Map<string, string>()
+/** A watched tab's title, for its tab ("3@m1"). */
+export const liveTitle = (id: string) => titles.get(id)
+const idOf = (t: Pick<LiveTab, "tab" | "machine">) => onMachine(String(t.tab), t.machine)
+/** Tab `tab` on `machine` in the list ("": the answering server's). */
+const find = (r: LiveTabs, tab: number, machine: string) => r.tabs.find((x) => x.tab === tab && (x.machine ?? "") === (machine || r.self || ""))
 
 /** Show a desktop page's tab: its own, or one made anew beside the user's work when its tab is gone (the page went on
  *  through a restart of the window), which the page comes back to. */
 export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
   if (!selectTab(t.appTab)) openInSplit(`view:web/${argOf(t.url, t.container)}`, "right", true, t.appTab)
 }
-function keepTitle(tab: number, title: string) {
-  if (!title || titles.get(tab) === title) return
-  titles.set(tab, title)
+function keepTitle(id: string, title: string) {
+  if (!title || titles.get(id) === title) return
+  titles.set(id, title)
   viewsChanged()
 }
 
@@ -43,11 +46,11 @@ function useTabs(on: boolean) {
   useEffect(() => {
     if (!on) return
     let stop = false
-    const read = () => void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => {
+    const read = () => void get<LiveTabs>("web-viewer/tabs").then((r) => {
       if (stop) return
       setTabs(r.tabs)
       setError("")
-      for (const t of r.tabs) keepTitle(t.tab, t.title)
+      for (const t of r.tabs) keepTitle(idOf(t), t.title)
     }, (e) => { if (!stop) setError(errorText(e, "Couldn't reach the desktop app's browser")) })
     read()
     const timer = setInterval(read, 2000)
@@ -57,8 +60,9 @@ function useTabs(on: boolean) {
 }
 
 export function LiveView({ arg, setArg }: { arg: string; setArg: (arg: string) => void }) {
-  const tab = Number(arg)
-  return tab > 0 ? <Watch tab={tab} back={() => setArg("")} /> : <Tabs open={(t) => setArg(String(t))} />
+  const [n, machine] = splitMachine(arg)
+  const tab = Number(n)
+  return tab > 0 ? <Watch key={arg} tab={tab} machine={machine} back={() => setArg("")} /> : <Tabs open={(t) => setArg(idOf(t))} />
 }
 
 function Container({ id }: { id: string | null }) {
@@ -71,23 +75,26 @@ function Container({ id }: { id: string | null }) {
   )
 }
 
-function Tabs({ open }: { open: (tab: number) => void }) {
+function Tabs({ open }: { open: (t: LiveTab) => void }) {
   const { hidden } = usePane()
   const onScreen = useOnScreen()
   const { tabs, error } = useTabs(!hidden && onScreen)
   const asking = (tabs ?? []).filter((t) => t.asking)
   const agents = (tabs ?? []).filter((t) => !t.asking && t.by)
   const yours = (tabs ?? []).filter((t) => !t.asking && !t.by)
+  // (each tab's machine named once there's more than one)
+  const machines = new Set((tabs ?? []).map((t) => t.machine ?? "")).size > 1
   const rows = (list: LiveTab[]) => (
     <div className="flex flex-col gap-px" data-size-up>
       {list.map((t) => (
-        <SidebarRow key={t.tab} icon={t.by ? Bot : Globe} tint={t.by ? "var(--purple)" : undefined} badge={t.asking ? "ask" : undefined} open
-          onClick={() => open(t.tab)} data-web-live-tab={t.tab} tip={null}
+        <SidebarRow key={idOf(t)} icon={t.by ? Bot : Globe} tint={t.by ? "var(--purple)" : undefined} badge={t.asking ? "ask" : undefined} open
+          onClick={() => open(t)} data-web-live-tab={idOf(t)} tip={null}
           label={<span className="flex min-w-0 items-baseline gap-1.5"><span className="min-w-0 shrink truncate">{t.title || hostOf(t.url)}</span>
             <span className="min-w-0 shrink-[2] truncate text-[12px] text-muted-foreground">{t.asking ?? (t.by ? whose(t) : hostOf(t.url))}</span></span>}>
           <span className="mr-1 flex shrink-0 items-center gap-2">
             {t.paused && <span className="text-[12px] text-muted-foreground">Paused</span>}
             <Container id={t.container} />
+            {machines && t.machineLabel && <span className="shrink-0 text-[12px] text-muted-foreground" data-web-live-machine>{t.machineLabel}</span>}
           </span>
         </SidebarRow>
       ))}
@@ -96,9 +103,9 @@ function Tabs({ open }: { open: (tab: number) => void }) {
   return (
     <div className="h-full overflow-y-auto overscroll-contain"><div className="mx-auto max-w-[760px] px-4 pt-4 pb-10" data-web-live-list>
       <h1 className="mb-1 text-[20px] font-semibold">Browser tabs</h1>
-      <p className="mb-4 text-[15px] text-muted-foreground md:text-[13px]">The web pages open in the desktop app. Open one to watch it, tap and type in it, or stop the agent working there.</p>
+      <p className="mb-4 text-[15px] text-muted-foreground md:text-[13px]">The web pages open in your desktop apps. Open one to watch it, tap and type in it, or stop the agent working there.</p>
       {error ? <p className="text-[15px] text-muted-foreground md:text-[13px]">{error}</p>
-        : tabs && !tabs.length ? <p className="text-[15px] text-tertiary md:text-[13px]">No web pages are open in the desktop app.</p> : null}
+        : tabs && !tabs.length ? <p className="text-[15px] text-tertiary md:text-[13px]">No web pages are open in your desktop apps.</p> : null}
       {asking.length > 0 && <section className="mb-4"><SidebarHeading title="Needs you" open />{rows(asking)}</section>}
       {agents.length > 0 && <section className="mb-4"><SidebarHeading title="Agents" open />{rows(agents)}</section>}
       {yours.length > 0 && <section className="mb-4"><SidebarHeading title="Yours" open />{rows(yours)}</section>}
@@ -112,7 +119,8 @@ const BUTTON = ["left", "middle", "right"]
 const mods = (e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) =>
   (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0)
 
-function Watch({ tab, back }: { tab: number; back: () => void }) {
+function Watch({ tab, machine, back }: { tab: number; machine: string; back: () => void }) {
+  const id = onMachine(String(tab), machine)
   const { hidden, tab: own } = usePane()
   const onScreen = useOnScreen()
   const [info, setInfo] = useState<State>({ tab })
@@ -128,21 +136,21 @@ function Watch({ tab, back }: { tab: number; back: () => void }) {
   usePaneTopBar(bar)
   const live = !hidden && onScreen
 
-  // In the desktop app the tab itself is there: shown instead (an Inbox item's link opens this).
+  // In the desktop app whose tab it is, the tab itself is there: shown instead (an Inbox item's link opens this).
   useEffect(() => {
     if (!webPages?.engine || !own) return
-    void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => {
-      const t = r.tabs.find((x) => x.tab === tab)
+    void get<LiveTabs>("web-viewer/tabs").then((r) => {
+      const t = find(r, tab, machine)
       if (t?.appTab) { showAppTab(t); closeTab(own, true) }
     }, () => {})
-  }, [tab, own])
+  }, [tab, machine, own])
 
   useEffect(() => {
     if (!live) return
     let stop = false, retry = 0, timer = 0
     const connect = () => {
       if (stop) return
-      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/web-viewer/live/${tab}`)
+      const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/web-viewer/live/${id}`)
       ws.binaryType = "blob"
       sock.current = ws
       let ended = false
@@ -161,7 +169,7 @@ function Watch({ tab, back }: { tab: number; back: () => void }) {
         }
         let d: { t?: string; text?: string; fatal?: boolean } & State
         try { d = JSON.parse(m.data) } catch { return }
-        if (d.t === "state") { setInfo((i) => ({ ...i, ...d })); if (d.title) keepTitle(tab, d.title) }
+        if (d.t === "state") { setInfo((i) => ({ ...i, ...d })); if (d.title) keepTitle(id, d.title) }
         else if (d.t === "gone") { ended = true; setStatus("gone") }
         else if (d.t === "error" && d.fatal) { ended = true; setError(d.text ?? ""); setStatus(/closed/.test(d.text ?? "") ? "gone" : "error") }
         else if (d.t === "error") setError(d.text ?? "")
@@ -174,27 +182,27 @@ function Watch({ tab, back }: { tab: number; back: () => void }) {
       }
     }
     // (asked over HTTP first: a refused socket says nothing of why)
-    void get<{ tabs: LiveTab[] }>("web-viewer/tabs").then((r) => {
+    void get<LiveTabs>("web-viewer/tabs").then((r) => {
       if (stop) return
-      const t = r.tabs.find((x) => x.tab === tab)
+      const t = find(r, tab, machine)
       if (!t) { setStatus("gone"); return }
       setInfo((i) => ({ ...t, ...i, ...t }))
-      keepTitle(tab, t.title)
+      keepTitle(id, t.title)
       connect()
     }, (e) => { if (!stop) { setError(errorText(e, "Couldn't reach the desktop app's browser")); setStatus("error") } })
     return () => { stop = true; clearTimeout(timer); sock.current?.close(); sock.current = null }
-  }, [tab, live])
+  }, [tab, machine, id, live])
 
   // What agents did here since it opened, from Activity.
   useEffect(() => {
     if (!live) return
     let stop = false
-    const read = () => void get<{ steps: LiveStep[]; kept: boolean }>(`web-viewer/tabs/${tab}/steps${info.opened ? `?since=${info.opened}` : ""}`)
+    const read = () => void get<{ steps: LiveStep[]; kept: boolean }>(`web-viewer/tabs/${id}/steps${info.opened ? `?since=${info.opened}` : ""}`)
       .then((r) => { if (!stop) { setSteps(r.steps); setKept(r.kept) } }, () => {})
     read()
     const timer = setInterval(read, 3000)
     return () => { stop = true; clearInterval(timer) }
-  }, [tab, live, info.opened])
+  }, [id, live, info.opened])
 
   useEffect(() => () => { const u = img.current?.dataset.url; if (u) URL.revokeObjectURL(u) }, [])
 
@@ -278,13 +286,13 @@ function Watch({ tab, back }: { tab: number; back: () => void }) {
   }
 
   const [paused, choosePaused] = useChosen(!!info.paused)
-  const pause = () => choosePaused(!paused, () => post(`web-viewer/tabs/${tab}/pause`, { on: !paused }), paused ? "Couldn't let agents go on" : "Couldn't stop the agents")
+  const pause = () => choosePaused(!paused, () => post(`web-viewer/tabs/${id}/pause`, { on: !paused }), paused ? "Couldn't let agents go on" : "Couldn't stop the agents")
   const [asking, chooseAsking] = useChosen(info.asking ?? null)
-  const done = () => chooseAsking(null, () => post(`web-viewer/tabs/${tab}/done`, {}), "Couldn't tell the agent")
+  const done = () => chooseAsking(null, () => post(`web-viewer/tabs/${id}/done`, {}), "Couldn't tell the agent")
 
   const shown = status === "gone" ? "This tab was closed in the desktop app." : status === "error" ? error || "Couldn't show this tab." : !framed ? "Connecting…" : ""
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-web-live={tab} data-web-live-status={status}>
+    <div className="@container flex h-full min-h-0 flex-col" data-web-live={id} data-web-live-status={status}>
       <div ref={bar} className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b-[0.5px] border-border px-2 py-1">
         <button type="button" onClick={back} className="flex h-11 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-2 text-[15px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:h-7 md:text-[13px]">
           <ChevronLeft className="size-4" strokeWidth={2} />Tabs

@@ -204,6 +204,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `machines:vault` (machines)
 - `machines:ids` (machines)
 - `machines:desktop` (machines): What plugin.desktop does on a server with no desktop app attached.
+- `machines:browser` (machines): The machine whose browser this server's agents use (its tabs' numbers are that browser's): this one, or null.
 - `machines:fs` (machines)
 - `mcp:<…>` (tool, app-host, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)

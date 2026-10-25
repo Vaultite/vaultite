@@ -410,8 +410,10 @@ they did it (--text, --url). Never ask for their password: they type it themselv
   args: ["tab", "reason"],
   run: async (p, ctx) => {
     const r = await ask<Page>("agent:help", p.tab, p.reason, by(ctx, p))
+    // (the live view's tab names whose browser it's in, so the Inbox on any machine opens that one)
+    const on = await plugin.ask<string | null>("machines:browser", null)
     await plugin.ask("inbox:event", null, { source: "browser", kind: "waiting", key: `help-${p.tab}`, title: `${ctx.who.label} needs you in the browser`,
-      body: `${String(p.reason).slice(0, 300)} (${r.title || r.url})`, link: `view:web-live/${r.tab}` })
+      body: `${String(p.reason).slice(0, 300)} (${r.title || r.url})`, link: `view:web-live/${r.tab}${on ? `@${on}` : ""}` })
     return r
   },
   text: (r: Page) => `Asked the user in tab ${r.tab} (its bar, and their Inbox). Wait for their Done: browser wait ${r.tab} --helped`,

@@ -166,10 +166,15 @@ plugin.route("GET", "machines/self", () => self())
 // --- the browser of an always-on machine (plugin.desktop on a server with none attached): a laptop's app answers only
 // its own server's agents
 
-/** Ask the browser engine of the first listed always-on machine with this vault and a desktop app attached. */
+/** The first listed always-on machine with this vault and a desktop app attached: whose browser this server's agents use. */
+async function browserThere(all: Machine[]) {
+  const own = vaultId()
+  return all.find((x) => !x.self && !x.via && x.online && x.desktop && x.standalone && (!own || x.vault === own)) ?? null
+}
+/** Ask that machine's browser engine. */
 async function desktopThere(name: string, args: unknown[]) {
   const own = vaultId(), all = await machines()
-  const m = all.find((x) => !x.self && !x.via && x.online && x.desktop && x.standalone && (!own || x.vault === own))
+  const m = await browserThere(all)
   if (!m) {
     const others = all.filter((x) => !x.self && !x.via)
     const why = others.map((x) => `${x.label} ${!x.online ? `(${x.error ?? "offline"})` : own && x.vault !== own ? "(another vault)"
@@ -187,6 +192,8 @@ async function desktopThere(name: string, args: unknown[]) {
 }
 /** What plugin.desktop does on a server with no desktop app attached. */
 plugin.provide("machines:desktop", desktopThere)
+/** The machine whose browser this server's agents use (its tabs' numbers are that browser's): this one, or null. */
+plugin.provide("machines:browser", async () => (inDesktop() ? selfId() : (await browserThere(await machines()))?.id ?? null))
 
 plugin.route("POST", "machines/desktop", async (req) => {
   await plugin.ownerOnly(req, "The desktop app's browser")

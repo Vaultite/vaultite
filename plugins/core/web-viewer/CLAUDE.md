@@ -23,6 +23,7 @@
 - Extensions (electron/browser/extensions.ts) are this Mac's, in userData: each is code with every site's logins, so a
   synced vault setting never chooses one (plugins rule 4). Their bar buttons, popups and the Extensions tab:
   `Extensions.tsx`; the made-up one QA uses: tools/fixtures/web-extension (web/qa/extensions.mjs).
-- Its tabs from the web app (no Electron there: a phone, the always-on server) are the live view: LiveView.tsx, its
-  routes liveroutes.ts, the engine's electron/browser/live.ts. Owner only and never ops, so no agent drives input that
-  way; frames reach the server unasked as desktop events (core/desktopapp.ts onDesktopEvent), only while someone watches.
+- Its tabs from the web app (no Electron there: a phone, the always-on server) or another machine are the live view:
+  LiveView.tsx, its routes liveroutes.ts, the engine's electron/browser/live.ts. A tab is `3@m1` in another machine's
+  browser, its routes and socket joined there. Owner only and never ops, so no agent drives input that way; frames reach
+  the server unasked as desktop events (core/desktopapp.ts onDesktopEvent), only while someone watches.
