@@ -36,6 +36,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Type in a note together**: with a note open in more than one window (your phone and your Mac, or a guest of a
   shared folder), what each types shows in the others as it's typed, each one's caret and selection named and coloured,
   their faces at the top. The note is saved a person at a time, so each one's lines stay theirs; alone, it saves as ever.
+  A shared folder's notes opened on another of your Macs are typed in on the sharing one, live with its guests, without
+  waiting for iCloud.
 - **Share a folder**: a folder's menu has Share…, for one person at a time (`vau share create`): a link of their own,
   to open the folder in their browser over the vault's public address and read it, comment (margin threads, as
   themselves) or edit its notes, until it expires or you remove it. Nothing else of the vault reaches them, no agent

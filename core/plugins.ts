@@ -242,9 +242,9 @@ export const splitMachine = (full: string): [string, string] => {
   return at < 0 ? [full, ""] : [full.slice(0, at), full.slice(at + 1)]
 }
 /** A socket to `path` (under /api/) on machine `m`. */
-export function machineSocket(m: Machine, path: string, query: Record<string, string> = {}) {
+export function machineSocket(m: Machine, path: string, query: Record<string, string> = {}, opts: { handshakeTimeout?: number } = {}) {
   const qs = new URLSearchParams(query).toString()
-  return new WebSocket(`${m.url.replace(/^http/, "ws")}/api/${path}${qs ? `?${qs}` : ""}`, { headers: MACHINE_CLIENT })
+  return new WebSocket(`${m.url.replace(/^http/, "ws")}/api/${path}${qs ? `?${qs}` : ""}`, { headers: MACHINE_CLIENT, ...opts })
 }
 const bytes = (data: RawData) => (Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data))
 /** A close code a socket may send on (1005, 1006 and 1015 are only ever reported). */

@@ -8,6 +8,7 @@ import { type AgentMeter, type AgentModels, agentIn, agentName, findBin, KNOWN_A
 import { liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
+import { bridges } from "./bridge.ts"
 import { rooms } from "./rooms.ts"
 import { type Hunk, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
@@ -561,14 +562,33 @@ const YOU: Who = { client: "app/web", agent: null, label: "You", source: "app" }
 /** A note a window names, as the vault's path (`./a.md` is `a.md`), or null. */
 const notePath = (p: unknown) => { try { return vaultPath(p, false, plugin.vault) } catch { return null } }
 
-plugin.socket("companion/live", (ws, req) => {
-  windows.set(ws, { open: [], focus: null, at: 0 })
+/** Notes another machine of the vault shares typed in there, with its guests (bridge.ts). */
+const there = bridges(plugin, (ws, m, path) => void co.heard(ws, m, path))
+plugin.onUnload(() => there.stop())
+const roomMessage = (m: Record<string, unknown>) => typeof m.t === "string" && (m.t.startsWith("y") || m.t === "aw")
+
+plugin.socket("companion/live", (ws, req, { query }) => {
   co.add(ws, { who: YOU, name: OWNER, tint: "red", edits: true, see: (rel) => rel })
+  // (another machine's server, for its windows: only the rooms, and never sent on again)
+  if (query.rooms === "1") {
+    ws.on("message", (data: RawData) => {
+      let m: Record<string, unknown>
+      try { m = JSON.parse(String(data)) } catch { return }
+      if (roomMessage(m)) co.heard(ws, m, notePath(m.path))
+    })
+    return
+  }
+  windows.set(ws, { open: [], focus: null, at: 0 })
+  there.add(ws)
   send(ws, snapshot())
   ws.on("message", (data: RawData) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(data)) } catch { return }
-    if (co.heard(ws, m, typeof m.t === "string" && (m.t.startsWith("y") || m.t === "aw") ? notePath(m.path) : null)) return
+    if (roomMessage(m)) {
+      const path = notePath(m.path)
+      if (path && /\.md$/i.test(path) && there.heard(ws, m, path)) return
+      if (co.heard(ws, m, path)) return
+    }
     const w = windows.get(ws)
     if (!w) return
     if (m.t === "where") {

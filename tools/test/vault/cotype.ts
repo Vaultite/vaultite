@@ -294,6 +294,138 @@ export default async ($: VaultTest) => {
       && read("Co/P.md").includes("Owner ") && cy.got.some((m) => m.t === "y-reject" && m.why === "it couldn't be saved"), [read("Co/P.md"), me.text.toString()])
     for (const w of [me, cy]) w.close()
   }
+  {
+    // A note in a folder another machine of the vault shares (bridge.ts): this machine's windows type in that machine's
+    // room, with its guests, through a socket per window; that machine writes it, this one never does meanwhile.
+    const { EventEmitter } = await import("node:events")
+    const { bridges } = await import("../../../plugins/core/companion/bridge.ts")
+    const HOST = fs.mkdtempSync(path.join(VAULT, "..", "host-")), hostWrites: Any[] = []
+    fs.mkdirSync(path.join(HOST, "Shared"))
+    fs.writeFileSync(path.join(HOST, "Shared/S.md"), "# S\n\nhost line\n")
+    write("Shared/S.md", "# S\n\nhost line\n")
+    await $.vault.sync()
+    const hostPlugin = { vault: { abs: (p: string) => path.join(HOST, p) }, service: () => undefined,
+      host: { api: async (_m: string, _r: string, b: Any, who: Any) => { hostWrites.push({ who, text: b.text }); fs.writeFileSync(path.join(HOST, b.path), b.text); return { text: b.text } } } } as Any
+    const hostCo = rooms(hostPlugin)
+    /** A socket's two ends: what one sends, the other hears. */
+    const pair = () => {
+      const a = new EventEmitter() as Any, b = new EventEmitter() as Any
+      for (const [me, other] of [[a, b], [b, a]]) Object.assign(me, { readyState: 1, OPEN: 1, CONNECTING: 0, send: (t: string) => { if (me.readyState === 1) other.emit("message", t) },
+        close: () => { if (me.readyState !== 1) return; a.readyState = b.readyState = 3; a.emit("close"); b.emit("close") }, terminate: () => me.close(), ping: () => {} })
+      return [a, b]
+    }
+    let ups = 0
+    const upstreams: Any[] = []
+    const connect = () => {
+      const [mine, theirs] = pair()
+      ups++
+      upstreams.push(mine)
+      hostCo.add(theirs, { who: you, name: "Owner", tint: "red", edits: true, see: (r: string) => r })
+      theirs.on("message", (t: string) => { const m = JSON.parse(t); hostCo.heard(theirs, m, m.path) })
+      return mine
+    }
+    let shared = ["Shared"]
+    const localCalls: Any[] = []
+    const m1 = { id: "m1", label: "M1", url: "http://m1", online: true, self: false }
+    const there = bridges(companion, (ws, m, p) => { localCalls.push([m.t, p]); co.heard(ws, m, p) }, { hosts: async () => shared.length ? [{ m: m1, folders: shared }] : [], connect, downMs: 50 })
+    await there.refresh()
+    /** A window of this machine's app, as cotype.ts: what it types goes out, through the bridge first. */
+    function here() {
+      const got: Any[] = [], [ws] = pair()
+      const say = (m: Any) => { if (!there.heard(ws, m, m.path)) co.heard(ws, m, m.path) }
+      const w = { ws, got, say } as Any
+      // (a fresh doc for each state sent, as the app's)
+      const fresh = () => {
+        w.doc = new Y.Doc(); w.aw = new Awareness(w.doc); w.text = w.doc.getText("md")
+        w.doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "server") say({ t: "y", path: "Shared/S.md", u: toBase64(u) }) })
+      }
+      fresh()
+      ws.send = (t: string) => { const m = JSON.parse(t); got.push(m); if (m.t === "y-state") fresh(); if ((m.t === "y-state" || m.t === "y") && m.u) Y.applyUpdate(w.doc, fromBase64(m.u), "server") }
+      co.add(ws, { who: you, name: "Owner", tint: "red", edits: true, see: (r: string) => r })
+      there.add(ws)
+      return w as { ws: Any; got: Any[]; say: (m: Any) => void; doc: Y.Doc; aw: Awareness; text: Y.Text }
+    }
+    const me = here()
+    me.say({ t: "y-open", path: "Shared/S.md" })
+    const eve = (() => {
+      const got: Any[] = [], [ws] = pair(), doc = new Y.Doc(), aw = new Awareness(doc)
+      ws.send = (t: string) => { const m = JSON.parse(t); got.push(m); if ((m.t === "y-state" || m.t === "y") && m.u) Y.applyUpdate(doc, fromBase64(m.u), "server") }
+      doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "server") hostCo.heard(ws, { t: "y", path: "Shared/S.md", u: toBase64(u) }, "Shared/S.md") })
+      hostCo.add(ws, { who: { ...guestWho, agent: "Eve" }, name: "Eve", tint: "blue", edits: true, see: (r: string) => r, may: () => "" })
+      hostCo.heard(ws, { t: "y-open", path: "Shared/S.md" }, "Shared/S.md")
+      return { ws, got, doc, aw, text: doc.getText("md") }
+    })()
+    await $.sleep(100)
+    const state = me.got.find((m) => m.t === "y-state")
+    check("bridge: a note another machine shares opens in its room, said to be there", state?.remote === true && me.text.toString() === "# S\n\nhost line\n" && ups === 1, me.got.map((m) => m.t))
+    check("bridge: ...not in this machine's", !co.list().some((r: Any) => r.path === "Shared/S.md") && hostCo.list().find((r: Any) => r.path === "Shared/S.md")?.peers === 2)
+
+    me.text.insert(me.text.length, "typed on this machine\n")
+    await $.sleep(100)
+    eve.text.insert(eve.text.length, "typed by the guest\n")
+    await $.sleep(1200)
+    const hostText = fs.readFileSync(path.join(HOST, "Shared/S.md"), "utf8")
+    check("bridge: typed both ways, and written there", hostText.includes("typed on this machine") && hostText.includes("typed by the guest") && me.text.toString() === eve.text.toString(), [hostText, me.text.toString()])
+    check("bridge: each one's lines written as theirs: this machine's as the user's", hostWrites.some((w) => w.who.client === "app/web" && w.text.includes("typed on this machine") && !w.text.includes("typed by the guest"))
+      && hostWrites.some((w) => w.who.agent === "Eve" && w.text.includes("typed by the guest")), hostWrites.map((w) => [w.who.label, w.text]))
+    check("bridge: this machine never writes it meanwhile", read("Shared/S.md") === "# S\n\nhost line\n")
+
+    me.aw.setLocalState({ user: { name: "x" }, cursor: null })
+    me.say({ t: "aw", path: "Shared/S.md", u: toBase64(encodeAwarenessUpdate(me.aw, [me.doc.clientID])) })
+    eve.aw.setLocalState({ user: { name: "x" }, cursor: null })
+    hostCo.heard(eve.ws, { t: "aw", path: "Shared/S.md", u: toBase64(encodeAwarenessUpdate(eve.aw, [eve.doc.clientID])) }, "Shared/S.md")
+    await $.sleep(50)
+    const names = (got: Any[]) => { const a = new Awareness(new Y.Doc()); for (const m of got.filter((x) => x.t === "aw")) applyAwarenessUpdate(a, fromBase64(m.u), "server"); return [...a.getStates().values()].map((x: Any) => x.user?.name) }
+    check("bridge: carets both ways, named there", names(eve.got).includes("Owner") && names(me.got).includes("Eve"), [names(eve.got), names(me.got)])
+
+    // Closed and opened again; no longer shared there, shared again.
+    const before = me.got.length
+    me.say({ t: "y-close", path: "Shared/S.md" })
+    await $.sleep(50)
+    check("bridge: closed here, it leaves there", hostCo.list().find((r: Any) => r.path === "Shared/S.md")?.peers === 1 && me.got.length === before)
+    me.say({ t: "y-open", path: "Shared/S.md" })
+    await $.sleep(100)
+    check("bridge: opened again, there again", me.got.slice(before).some((m) => m.t === "y-state" && m.remote) && ups === 2)
+
+    shared = []
+    const n = me.got.length
+    await there.refresh()
+    check("bridge: a folder no longer shared there comes back here", me.got.slice(n).some((m) => m.t === "y-gone" && m.path === "Shared/S.md"), me.got.slice(n).map((m) => m.t))
+    me.say({ t: "y-open", path: "Shared/S.md" })
+    await $.sleep(100)
+    check("bridge: ...opened in this machine's room", co.list().some((r: Any) => r.path === "Shared/S.md") && me.got.slice(n).some((m) => m.t === "y-state" && !m.remote))
+
+    shared = ["Shared"]
+    const k = me.got.length
+    await there.refresh()
+    await $.sleep(100)
+    check("bridge: shared again, it moves there (out of this machine's room)", me.got.slice(k).some((m) => m.t === "y-state" && m.remote) && !co.list().some((r: Any) => r.path === "Shared/S.md"), me.got.slice(k).map((m) => m.t))
+
+    // The connection dropping: said gone, opened here meanwhile (that machine let be a while), there again after.
+    const j = me.got.length
+    upstreams.at(-1)!.close()
+    await $.sleep(20)
+    check("bridge: a dropped connection is said, and the note's typed in here meanwhile", me.got.slice(j).some((m) => m.t === "y-gone") && hostCo.list().find((r: Any) => r.path === "Shared/S.md")?.peers === 1)
+    me.say({ t: "y-open", path: "Shared/S.md" })
+    await $.sleep(20)
+    check("bridge: ...here", co.list().some((r: Any) => r.path === "Shared/S.md") && !me.got.slice(j).some((m) => m.t === "y-state" && m.remote))
+    eve.text.insert(0, "while it was away\n")
+    await $.sleep(400)
+    await there.refresh()
+    await $.sleep(100)
+    check("bridge: back, there again with what was typed there meanwhile", me.got.slice(j).some((m) => m.t === "y-state" && m.remote) && me.text.toString().startsWith("while it was away")
+      && !co.list().some((r: Any) => r.path === "Shared/S.md"), me.text.toString())
+    me.text.insert(me.text.length, "after it came back\n")
+    await $.sleep(1000)
+    check("bridge: ...and typed there", fs.readFileSync(path.join(HOST, "Shared/S.md"), "utf8").includes("after it came back") && read("Shared/S.md") === "# S\n\nhost line\n")
+    eve.ws.close()
+    me.ws.close()
+    await $.sleep(100)
+    check("bridge: a window gone leaves the room there", !hostCo.list().some((r: Any) => r.path === "Shared/S.md" && r.peers > 0))
+    there.stop()
+    fs.rmSync(HOST, { recursive: true, force: true })
+    fs.rmSync(path.join(VAULT, "Shared"), { recursive: true, force: true })
+  }
   for (const w of [owner, ada, rex]) w.close()
   await $.sleep(100)
   check("cotype: the note's room goes with its last window", !co.list().some((r: Any) => r.path === "Co/N.md"))

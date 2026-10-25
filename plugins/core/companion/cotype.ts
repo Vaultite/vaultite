@@ -17,7 +17,10 @@ type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; views: Set<
   /** Saving alone even with others (the server says: a guest in a note too long to type in together). */
   alone: boolean
   /** Saved alone, just before asking for the doc: the text then, so what's typed till it comes isn't lost. */
-  settled: string | null }
+  settled: string | null
+  /** Typed in on another machine's rooms, which writes it (its guests are there: bridge.ts): bound even alone, and the
+   *  text as that machine last sent it (`synced`), what's typed here since goes back in if it goes and comes back. */
+  remote: boolean; synced: string | null }
 const rooms = new Map<string, Room>()
 const slot = new Compartment()
 /** What the others typed comes in as the server's: not this window's to save, nor to undo. */
@@ -29,7 +32,9 @@ function fresh(r: Room) {
   r.doc?.destroy()
   const doc = new Y.Doc(), aw = new Awareness(doc)
   Object.assign(r, { doc, text: doc.getText("md"), aw })
-  doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "server" && r.bound) say({ t: "y", path: r.path, u: toBase64(u) }) })
+  doc.on("update", (u: Uint8Array, origin: unknown) => {
+    if (origin === "server") { if (r.remote) r.synced = r.text.toString() } else if (r.bound) say({ t: "y", path: r.path, u: toBase64(u) })
+  })
   aw.on("update", ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
     if (origin === "local" && r.bound) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(aw, [...added, ...updated, ...removed])) })
     tellPeople(r)
@@ -37,7 +42,7 @@ function fresh(r: Room) {
 }
 
 function open(path: string): Room {
-  const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, settled: null, alone: false } as unknown as Room
+  const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
   fresh(r)
   rooms.set(path, r)
   if (getState().connected) say({ t: "y-open", path })
@@ -88,13 +93,21 @@ function unbind(r: Room, how: "alone" | "going" | "again" = "alone") {
   else { release(); if (how === "alone") void settleFile(r.path) }
 }
 
+/** Off another machine's rooms: what it last sent is where typing here goes back in from, when it's back. */
+function away(r: Room) {
+  if (r.remote && r.bound) r.settled = r.synced ?? r.text.toString()
+  r.remote = false
+  r.ready = false
+  r.others = 0
+}
+
 /** Someone else came: what was typed here alone is saved first, then the doc as the server has it is typed into. */
 async function together(r: Room) {
   if (r.bound || r.joining) return
   r.joining = true
   try { await settleFile(r.path) } finally { r.joining = false }
   r.settled = [...r.views].find((v) => v.dom.isConnected)?.state.doc.toString() ?? null
-  if (rooms.get(r.path) === r && r.others > 0 && getState().connected) say({ t: "y-open", path: r.path })
+  if (rooms.get(r.path) === r && (r.others > 0 || r.remote) && getState().connected) say({ t: "y-open", path: r.path })
 }
 
 function close(r: Room) {
@@ -111,18 +124,24 @@ function heard(m: Record<string, unknown>) {
   if (!r) return
   if (m.t === "y-state" && typeof m.u === "string") {
     unbind(r, "again")
+    r.remote = m.remote === true
     fresh(r)
     Y.applyUpdate(r.doc, fromBase64(m.u), "server")
     if (typeof m.aw === "string") applyAwarenessUpdate(r.aw, fromBase64(m.aw), "server")
     r.ready = true
     r.others = Number(m.others) || 0
     r.alone = m.alone === true
-    // (with others: once what was typed here alone is saved, and asked for again)
-    if (r.others > 0 && !r.alone) { if (r.settled !== null) bind(r); else void together(r) }
+    // (with others, or on another machine: once what was typed here alone is saved, and asked for again)
+    if ((r.others > 0 || r.remote) && !r.alone) { if (r.settled !== null) bind(r); else void together(r) }
   } else if (m.t === "y-peers") {
     r.others = Number(m.others) || 0
-    if (r.others === 0) unbind(r)
+    if (r.others === 0) { if (!r.remote) unbind(r) }
     else if (!r.bound && !r.alone) void together(r)
+  } else if (m.t === "y-gone") {
+    // (that machine went, or stopped sharing it: saved here again, and asked for here)
+    away(r)
+    unbind(r)
+    if (getState().connected) say({ t: "y-open", path: r.path })
   } else if (m.t === "y" && typeof m.u === "string") Y.applyUpdate(r.doc, fromBase64(m.u), "server")
   else if (m.t === "aw" && typeof m.u === "string") applyAwarenessUpdate(r.aw, fromBase64(m.u), "server")
   else if (m.t === "y-clash") notify(m.kept === "file" ? "Someone changed the same lines on disk as you typed: theirs stayed" : "Someone changed the same lines on disk as you typed: yours stayed, theirs is in the note's history", { id: "cotype-clash" })
@@ -152,7 +171,7 @@ subscribe(() => {
   if (now === was) return
   was = now
   for (const r of rooms.values()) {
-    if (!now) { unbind(r); r.ready = false; r.others = 0 } else say({ t: "y-open", path: r.path })
+    if (!now) { away(r); unbind(r) } else say({ t: "y-open", path: r.path })
   }
 })
 

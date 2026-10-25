@@ -171,7 +171,7 @@ function open() {
       set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
     } else if (m.t === "drop") set({ notes: state.notes.filter((x) => x.id !== m.id) })
     else if (m.t === "edit") void edit(m as unknown as EditAsk)
-    else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash") rooms?.heard(m)
+    else if (m.t === "y-state" || m.t === "y" || m.t === "aw" || m.t === "y-reject" || m.t === "y-peers" || m.t === "y-clash" || m.t === "y-gone") rooms?.heard(m)
     else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
   }
 }

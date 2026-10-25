@@ -737,7 +737,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `localTime(t)`
 - `Machine`: One of the vault's machines, as the Machines plugin's services ("machines", "machines:machine") answer it.
 - `MACHINE_CLIENT`: How this server says who it is when it asks another machine (Activity shows it).
-- `machineSocket(m, path, query?)`: A socket to `path` (under /api/) on machine `m`.
+- `machineSocket(m, path, query?, opts?)`: A socket to `path` (under /api/) on machine `m`.
 - `match(plugins, method, parts)`: The handler for a request path (parts under /api/), the wildcard values and the route's options.
 - `matchServed(plugins, prefix)`: The plugin serving an address outside /api/ (plugin.serve) by its first segment, among `plugins` (the ones on).
 - `matchSocket(plugins, parts)`: The plugin and socket for a WebSocket request path (parts under /api/), and the wildcard values.

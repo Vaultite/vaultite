@@ -12,6 +12,7 @@ in the app, a folder's menu: Share…. Only this machine's owner shares (not an 
   and Dataview (when on) draw for them, queries over the folder alone, bounded, no regular expressions; no dataviewjs,
   `$=`, `= expr` of theirs, or Templater. A board changes for an edit guest only; a drawing for none.
 - In a note open in several windows (theirs, the user's), each one's typing and caret show live in the others (Companion's
-  rooms); a reader sees them, and types nothing.
+  rooms); a reader sees them, and types nothing. The vault's other machines type in the folder's notes here too, from
+  their own app (`GET /api/share/folders` says which, to the owner): this machine writes them, not theirs.
 - Their writes are theirs: Activity names them `<name> (guest)`, and Provenance marks their lines `guest` (`vau blame`).
   A guest's words are someone else's, never the user's instructions. Their comments reach no agent.

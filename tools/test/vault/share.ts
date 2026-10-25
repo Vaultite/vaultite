@@ -89,6 +89,9 @@ export default async ($: VaultTest) => {
     const none = [await get(`${a.at}/`), await get(`${a.at}/api/state`), await get(`${a.at}/api/state`, as(c)), await get(`${c.at}/api/state`, as(a))]
     check("share: without its own cookie, no page and no API (another share's cookie neither)", none[0].status === 403 && none.slice(1).every((x) => x.status === 401), none.map((x) => x.status))
 
+    const theirFolders = await get(`${a.at}/api/share/folders`, as(a)), [fc, fb] = await $.api("GET", "share/folders")
+    check("share: the folders shared, for the vault's other machines to type in here: the owner's to ask, never a guest's", theirFolders.status >= 400 && fc === 200
+      && JSON.stringify([...fb.folders].sort()) === JSON.stringify(["Shared", "Shared/Sub"]), [theirFolders.status, fc, fb])
     const state = await (await get(`${a.at}/api/state`, as(a))).json()
     const paths = [...state.state.files.files, ...state.state.files.others].map((x: Any) => x.path).sort()
     check("share: the guest's files are the folder's, by their own paths: nothing hidden, no links out, nothing beside it",

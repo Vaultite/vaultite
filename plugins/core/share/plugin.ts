@@ -32,6 +32,13 @@ plugin.provide("share:public", (req, res) => gateway.handle(req, res))
 plugin.provide("share:upgrade", (req, socket, head) => gateway.upgrade(req, socket, head))
 plugin.provide("share:gateway", () => gateway)
 plugin.onChange((paths) => gateway.changed(paths))
+const sharedFolders = () => [...new Set(Object.values(shares()).filter((s) => !expired(s)).map((s) => s.folder))]
+/** The folders shared now (not expired): the vault's other machines type in their notes here, with the guests. */
+plugin.provide("share:folders", sharedFolders)
+plugin.route("GET", "share/folders", async (req) => {
+  await plugin.ownerOnly(req, "The shared folders")
+  return { folders: sharedFolders() }
+}, { lock: false, sync: false })
 // Sockets of shares revoked or expired since they opened close; the rest are kept alive through the tunnel.
 const pinger = setInterval(() => {
   for (const [ws, { g }] of gateway.sockets) {
