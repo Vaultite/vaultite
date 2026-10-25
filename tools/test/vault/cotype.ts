@@ -16,11 +16,11 @@ export default async ($: VaultTest) => {
   await $.vault.sync()
 
   /** A window: its socket (what it was sent) and its own copy of the note. */
-  function win(name: string, peer: Any) {
+  function win(name: string, peer: Any, note = "Co/N.md") {
     const got: Any[] = [], on: Record<string, () => void> = {}
     const ws = { readyState: 1, OPEN: 1, send: (t: string) => { const m = JSON.parse(t); got.push(m); if (m.t === "y-state" || m.t === "y") Y.applyUpdate(doc, fromBase64(m.u), "server") }, on: (e: string, fn: () => void) => { on[e] = fn } } as Any
     const doc = new Y.Doc(), aw = new Awareness(doc)
-    doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "server") co.heard(ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md") })
+    doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "server") co.heard(ws, { t: "y", path: note, u: toBase64(u) }, note) })
     co.add(ws, { name, tint: "blue", edits: true, see: (r: string) => r, ...peer })
     return { ws, got, doc, aw, text: doc.getText("md"), close: () => on.close?.() }
   }
@@ -41,12 +41,12 @@ export default async ($: VaultTest) => {
   const blame = (await $.app.callOp("provenance.blame", { path: "Co/N.md" })).result as Any
   check("cotype: written a person at a time, so a guest's line is theirs", blame.runs.some((r: Any) => r.by === "Ada" && r.guest && r.text.includes("(Ada)")) && !blame.runs.some((r: Any) => r.text.includes("owner's line")), blame.runs)
 
-  const before = read("Co/N.md")
+  const before = read("Co/N.md"), heardRex = rex.got.length
   ada.text.insert(0, "![x](https://example.com/p.png)\n")
-  rex.text.insert(0, "REX\n")
+  for (let i = 0; i < 5; i++) rex.text.insert(0, "REX\n")
   await $.sleep(800)
-  check("cotype: a guest's change the share's rules refuse, or a reader's, doesn't land (and is said back)", read("Co/N.md") === before && !owner.text.toString().includes("example.com") && !owner.text.toString().includes("REX")
-    && ada.got.some((m) => m.t === "y-reject" && m.why === "no images") && rex.got.some((m) => m.t === "y-reject"), owner.text.toString())
+  check("cotype: a guest's change the share's rules refuse, or a reader's, doesn't land", read("Co/N.md") === before && !owner.text.toString().includes("example.com") && !owner.text.toString().includes("REX"), owner.text.toString())
+  check("cotype: ...the guest's is said back, and a reader isn't sent the note for each", ada.got.some((m) => m.t === "y-reject" && m.why === "no images") && !rex.got.slice(heardRex).some((m) => m.t === "y-reject" || m.t === "y-state"), rex.got.slice(heardRex).map((m) => m.t))
 
   fs.writeFileSync(path.join(VAULT, "Co/N.md"), read("Co/N.md") + "an agent's line\n")
   co.changed(["Co/N.md"])
@@ -141,6 +141,46 @@ export default async ($: VaultTest) => {
     co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.encodeStateAsUpdate(twin, sv)) }, "Co/N.md")
     await $.sleep(400)
     check("cotype: nor writes under another window's Yjs id", ada.got.slice(k).some((m) => m.t === "y-reject") && !owner.text.toString().includes("as the owner"), [ada.got.slice(k).map((m) => m.t), owner.text.toString().slice(0, 40)])
+    // (nor under one whose window hasn't typed yet, only shown its caret)
+    const lu = win("Lucas", { who: you })
+    co.heard(lu.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
+    await $.sleep(100)
+    lu.aw.setLocalState({ cursor: null })
+    co.heard(lu.ws, { t: "aw", path: "Co/N.md", u: toBase64(encodeAwarenessUpdate(lu.aw, [lu.doc.clientID])) }, "Co/N.md")
+    const early = new Y.Doc()
+    Y.applyUpdate(early, Y.encodeStateAsUpdate(owner.doc))
+    early.clientID = lu.doc.clientID
+    const esv = Y.encodeStateVector(early)
+    early.getText("md").insert(0, "before them ")
+    const j = ada.got.length
+    co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.encodeStateAsUpdate(early, esv)) }, "Co/N.md")
+    await $.sleep(400)
+    check("cotype: nor under the Yjs id of a window that has only shown its caret", ada.got.slice(j).some((m) => m.t === "y-reject") && !owner.text.toString().includes("before them"))
+    const as = new Awareness(new Y.Doc())
+    as.clientID = owner.doc.clientID
+    as.setLocalState({ cursor: null })
+    const ivy = win("Ivy", { who: { ...guestWho, agent: "Ivy" }, may: () => "" })
+    co.heard(ivy.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
+    await $.sleep(100)
+    const h = lu.got.length
+    co.heard(ivy.ws, { t: "aw", path: "Co/N.md", u: toBase64(encodeAwarenessUpdate(as, [owner.doc.clientID])) }, "Co/N.md")
+    ivy.aw.setLocalState({ cursor: null })
+    co.heard(ivy.ws, { t: "aw", path: "Co/N.md", u: toBase64(encodeAwarenessUpdate(ivy.aw, [ivy.doc.clientID])) }, "Co/N.md")
+    const shown = lu.got.slice(h).filter((m) => m.t === "aw").length
+    check("cotype: nor shows a caret under the id another window types under (its own, yes)", shown === 1, shown)
+    ivy.close()
+    lu.close()
+  }
+  {
+    // Sent the note back for a change that didn't land only so often (it can be a big one).
+    const eve = win("Eve", { who: { ...guestWho, agent: "Eve" }, may: () => "" })
+    co.heard(eve.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
+    await $.sleep(100)
+    const k = eve.got.length, big = "A".repeat(400_001)
+    for (let i = 0; i < 40; i++) co.heard(eve.ws, { t: "y", path: "Co/N.md", u: big }, "Co/N.md")
+    const states = eve.got.slice(k).filter((m) => m.t === "y-state").length
+    check("cotype: a window is sent the note back so often a minute", states > 0 && states <= 30, states)
+    eve.close()
   }
   {
     // Many Yjs ids at one spot (Yjs would take long to place them): refused before they're placed.
@@ -169,6 +209,34 @@ export default async ($: VaultTest) => {
     co.changed(["Co/N.md"])
     await $.sleep(300)
     check("cotype: ...so an emoji changed on disk comes in as itself", owner.text.toString().includes("mood 😁 ok") && !owner.text.toString().includes("\uFFFD"), owner.text.toString())
+  }
+  {
+    // Only guests in a note when the disk clashes with their typing: theirs stays only if they could have written it
+    // over the file's version (here, the owner took out a line the guest may not add).
+    write("Co/G.md", "a line\nSECRET\n")
+    await $.vault.sync()
+    const may = (_rel: string, b: string, after: string) => (after.includes("SECRET") && !b.includes("SECRET") ? "no secrets" : "")
+    const gina = win("Gina", { who: { ...guestWho, agent: "Gina" }, may }, "Co/G.md")
+    co.heard(gina.ws, { t: "y-open", path: "Co/G.md" }, "Co/G.md")
+    await $.sleep(100)
+    gina.text.insert(6, " typed")
+    await $.sleep(300)
+    fs.writeFileSync(path.join(VAULT, "Co/G.md"), "a line from disk\n")
+    co.changed(["Co/G.md"])
+    await $.sleep(900)
+    check("cotype: guests alone don't write over a clashing file what they couldn't write", read("Co/G.md") === "a line from disk\n" && gina.text.toString() === "a line from disk\n"
+      && gina.got.some((m) => m.t === "y-clash" && m.kept === "file"), [read("Co/G.md"), gina.text.toString()])
+    gina.close()
+    // A guest in a note too long to type in together is refused before their change is tried.
+    write("Co/L.md", "x".repeat(70_000) + "\n")
+    await $.vault.sync()
+    const lena = win("Lena", { who: { ...guestWho, agent: "Lena" }, may: () => "" }, "Co/L.md")
+    co.heard(lena.ws, { t: "y-open", path: "Co/L.md" }, "Co/L.md")
+    await $.sleep(100)
+    lena.text.insert(0, "hi")
+    await $.sleep(400)
+    check("cotype: a guest's change in a note too long to type in together is refused", lena.got.some((m) => m.t === "y-reject" && /too long/.test(m.why)) && !read("Co/L.md").startsWith("hi"))
+    lena.close()
   }
   for (const w of [owner, ada, rex]) w.close()
   await $.sleep(100)

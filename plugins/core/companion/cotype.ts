@@ -125,9 +125,8 @@ function heard(m: Record<string, unknown>) {
     else if (!r.bound && !r.alone) void together(r)
   } else if (m.t === "y" && typeof m.u === "string") Y.applyUpdate(r.doc, fromBase64(m.u), "server")
   else if (m.t === "aw" && typeof m.u === "string") applyAwarenessUpdate(r.aw, fromBase64(m.u), "server")
-  else if (m.t === "y-clash") notify("Someone changed the same lines on disk as you typed: yours stayed, theirs is in the note's history", { id: "cotype-clash" })
+  else if (m.t === "y-clash") notify(m.kept === "file" ? "Someone changed the same lines on disk as you typed: theirs stayed" : "Someone changed the same lines on disk as you typed: yours stayed, theirs is in the note's history", { id: "cotype-clash" })
   else if (m.t === "y-reject") {
-    // (what was typed here didn't land: the note as the others have it, again)
     // (what was typed here didn't land: the server sends the note as it is, nothing here to keep)
     if (typeof m.why === "string" && m.why) notify(`That change wasn't kept: ${m.why}`, { kind: "error", id: "cotype-reject" })
     r.settled = [...r.views].find((v) => v.dom.isConnected)?.state.doc.toString() ?? ""

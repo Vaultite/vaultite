@@ -19,7 +19,9 @@ type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; peers: Map<
   pending: { peer: Peer; timer: ReturnType<typeof setTimeout>; since: number } | null; turn: Promise<void>
   queued: Map<WebSocket, { updates: Uint8Array[]; timer: ReturnType<typeof setTimeout> }>
   /** Each Yjs client id's window, as first seen: no window writes under another's. */
-  clients: Map<number, WebSocket> }
+  clients: Map<number, WebSocket>
+  /** Typed in by guests too much to check their changes on a copy any more (see check). */
+  worn: boolean }
 
 const WRITE_MS = 400, WRITE_MAX_MS = 1500, MAX_UPDATE = 400_000, CHECK_MS = 250
 /** A guest's changes checked together hold at most this many pieces, under one or two Yjs ids (a window's own, and the
@@ -27,10 +29,12 @@ const WRITE_MS = 400, WRITE_MAX_MS = 1500, MAX_UPDATE = 400_000, CHECK_MS = 250
 const MAX_STRUCTS = 500, MAX_IDS = 2, IDS_PER_WINDOW = 32
 /** The longest note a guest types into with others (their changes are checked whole, a few times a second). */
 const GUEST_LIVE_MAX = 64_000
-/** What a window may send a minute (opens, carets), and how much may wait unsent to it before it's let go. */
-const OPENS = 30, CARETS = 1200, BACKLOG = 32 << 20
+/** What a window may send a minute (opens, carets), how often it's sent the note back for a change that didn't land, and
+ *  how much may wait unsent to it before it's let go. */
+const OPENS = 30, CARETS = 1200, REFUSALS = 30, BACKLOG = 32 << 20
 /** The biggest note typed in together (its whole text goes to each window that joins). */
 const ROOM_MAX = 2 << 20
+const WORN = "this note has been typed in too much to go on together: reopen it"
 const send = (ws: WebSocket, m: object) => {
   if (ws.readyState !== ws.OPEN) return
   if (ws.bufferedAmount > BACKLOG) return void ws.close() // (a window that doesn't read: not kept in memory)
@@ -123,10 +127,14 @@ export function rooms(plugin: Plugin) {
     if (disk === r.disk) return
     const now = r.text.toString(), merged = merge3(r.disk, now, disk)
     // (the file's version kept in its history, whatever the interval, before the typing goes over it)
-    if (merged === null) { plugin.service("history:keep")?.(r.path); tell(r, null, { t: "y-clash" }) }
-    become(r, merged ?? now, "disk")
+    const here = [...r.peers.keys()].map((ws) => peers.get(ws)).filter((p) => !!p), by = r.pending?.peer ?? here.find((p) => !p.may) ?? here[0]
+    // (only guests in it: their typing stays only if they could have written it over the file's version)
+    const kept = merged !== null || (by && !by.may?.(r.path, disk, now))
+    if (merged === null && kept) plugin.service("history:keep")?.(r.path)
+    if (merged === null) tell(r, null, { t: "y-clash", kept: kept ? "typed" : "file" })
+    become(r, merged ?? (kept ? now : disk), "disk")
     r.disk = disk
-    if (merged === null && !r.pending) r.pending = { peer: [...peers.values()].find((p) => !p.may) ?? [...peers.values()][0], timer: setTimeout(() => flush(r), WRITE_MS), since: Date.now() }
+    if (merged === null && kept && !r.pending) r.pending = { peer: by!, timer: setTimeout(() => flush(r), WRITE_MS), since: Date.now() }
   }
   const reread = (r: Room) => inTurn(r, async () => rereadNow(r))
 
@@ -142,7 +150,7 @@ export function rooms(plugin: Plugin) {
     if (text.length > ROOM_MAX) return null
     const doc = new Y.Doc({ gc: true }), aw = new Awareness(doc)
     aw.setLocalState(null) // (the server is no one)
-    r = { path, doc, text: doc.getText("md"), aw, peers: new Map(), disk: text, pending: null, turn: Promise.resolve(), queued: new Map(), clients: new Map() }
+    r = { path, doc, text: doc.getText("md"), aw, peers: new Map(), disk: text, pending: null, turn: Promise.resolve(), queued: new Map(), clients: new Map(), worn: false }
     r.text.insert(0, text)
     const room = r
     doc.on("update", (u: Uint8Array, origin: unknown) => tell(room, origin === "disk" ? null : origin as WebSocket, { t: "y", u: toBase64(u) }))
@@ -168,6 +176,13 @@ export function rooms(plugin: Plugin) {
     void r.turn.then(() => { if (!r.peers.size && all.get(path) === r) { all.delete(path); r.aw.destroy(); r.doc.destroy() } })
   }
 
+  /** A change of `ws`'s didn't land: said back, with the note as it is to type on from there (so often a minute). */
+  function refuse(r: Room, ws: WebSocket, peer: Peer, why = "") {
+    if (over(ws, "refused", REFUSALS)) return
+    send(ws, { t: "y-reject", path: peer.see(r.path) ?? undefined, why })
+    sendState(r, ws, peer)
+  }
+
   /** The doc to a window, as it is; `alone`: a guest who can't type in it with others (too long) saves by themselves. */
   function sendState(r: Room, ws: WebSocket, peer: Peer) {
     const p = peer.see(r.path)
@@ -186,7 +201,7 @@ export function rooms(plugin: Plugin) {
     for (let i = 0; i < n; i++) {
       const id = decoding.readVarUint(d), clock = decoding.readVarUint(d), json = decoding.readVarString(d)
       if (json.length > 4000) return null
-      for (const [other, ids] of r.peers) if (other !== ws && ids.has(id)) return null
+      if (taken(r, ws, id)) return null
       let state: Record<string, unknown> | null = null
       try { state = JSON.parse(json) } catch { return null }
       if (!mine.has(id) && mine.size >= 2 && state) return null
@@ -200,10 +215,12 @@ export function rooms(plugin: Plugin) {
     return encoding.toUint8Array(e)
   }
 
+  /** Whether a Yjs client id is another window's: one of its changes landed under it, or its caret goes by it. */
+  const taken = (r: Room, ws: WebSocket, id: number) =>
+    id === r.doc.clientID || (r.clients.get(id) ?? ws) !== ws || [...r.peers].some(([other, ids]) => other !== ws && ids.has(id))
   /** Whether `u` writes only under `ws`'s own Yjs client ids (theirs once one of their changes lands: land). */
   function ownClients(r: Room, ws: WebSocket, u: Uint8Array) {
-    const ids = new Set(Y.decodeUpdate(u).structs.map((s) => s.id.client))
-    return [...ids].every((id) => id !== r.doc.clientID && (r.clients.get(id) ?? ws) === ws)
+    return !Y.decodeUpdate(u).structs.some((s) => taken(r, ws, s.id.client))
   }
   /** Whether the note's text holds only text: no embeds, formats or nested types, which no editor shows. */
   const onlyText = (t: Y.Text) => {
@@ -231,9 +248,10 @@ export function rooms(plugin: Plugin) {
     const q = r.queued.get(ws)
     r.queued.delete(ws)
     if (!q || !r.peers.has(ws)) return
-    const p = peer.see(r.path) ?? undefined
-    // (refused, the window gets the note as it is, to type on from there)
-    const no = (why = "") => { send(ws, { t: "y-reject", path: p, why }); sendState(r, ws, peer) }
+    const no = (why = "") => refuse(r, ws, peer, why)
+    // (before the copy, which costs as much as the doc)
+    if (r.text.length > GUEST_LIVE_MAX) return no("this note is too long to type in together")
+    if (r.worn) return no(WORN)
     const u = Y.mergeUpdates(q.updates), copy = new Y.Doc()
     try {
       const { structs } = Y.decodeUpdate(u), ids = new Set(structs.map((s) => s.id.client))
@@ -242,7 +260,7 @@ export function rooms(plugin: Plugin) {
       Y.applyUpdate(copy, Y.encodeStateAsUpdate(r.doc))
       Y.applyUpdate(copy, u)
       if (copy.store.pendingStructs || copy.store.pendingDs || [...copy.share.keys()].some((k) => k !== "md") || !onlyText(copy.getText("md"))) return no()
-      if (Y.encodeStateAsUpdate(copy).length > 4 * GUEST_LIVE_MAX + 256_000) return no("this note has been typed in too much to go on together: reopen it")
+      if (Y.encodeStateAsUpdate(copy).length > 4 * GUEST_LIVE_MAX + 256_000) return r.worn = true, no(WORN)
       const before = r.text.toString(), after = copy.getText("md").toString()
       const why = after === before ? "" : after.length > GUEST_LIVE_MAX ? "this note is too long to type in together" : peer.may!(r.path, before, after)
       if (why) return no(why)
@@ -290,7 +308,8 @@ export function rooms(plugin: Plugin) {
         applyAwarenessUpdate(r.aw, u, ws)
         tell(r, ws, { t: "aw", u: toBase64(u) })
       } else if (m.t === "y" && typeof m.u === "string") {
-        if (!peer.edits || m.u.length > MAX_UPDATE || peer.slow?.()) return send(ws, { t: "y-reject", path: p }), sendState(r, ws, peer), true
+        if (!peer.edits) return true // (a reader's editor doesn't type: nothing to say back)
+        if (m.u.length > MAX_UPDATE || peer.slow?.()) return refuse(r, ws, peer), true
         let u: Uint8Array
         try { u = fromBase64(m.u) } catch { return true }
         if (!peer.may) {
