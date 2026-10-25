@@ -38,6 +38,12 @@ const server = http.createServer((req, res) => {
     return res.end(`<!doctype html><title>Menu</title><h1>Menu</h1><button id="save">Save</button><div id="out"></div>
 <script>save.onclick = () => setTimeout(() => { out.innerHTML = '<p role="status">Saved</p><button>Close</button>' }, 200)</script>`)
   }
+  if (u.pathname === "/keeper") {
+    // (what a site keeps as its tab closes: Discord puts its sign-in back in localStorage on beforeunload)
+    return res.end(`<!doctype html><title>Keeper</title><p id="kept"></p>
+<script>kept.textContent = "kept " + (localStorage.getItem("kept") ?? "nothing")
+addEventListener("beforeunload", () => localStorage.setItem("kept", ${JSON.stringify(u.searchParams.get("v") ?? "")}))</script>`)
+  }
   if (u.pathname === "/hello") {
     return res.end(`<!doctype html><title>Hello</title><h1 id="out">Hello ${u.searchParams.get("name")}${u.searchParams.get("news") ? ", subscribed" : ""}, ${u.searchParams.get("size")}</h1>`)
   }
@@ -184,6 +190,20 @@ await win.locator("[data-web-replays] input[type=search]").fill("made-up menu")
 check("… runs searched by summary", await until(async () => (await win.locator("[data-web-replay]").count()) === 1, 5000), await win.locator("[data-web-replay]").count())
 await op("close", { tab: t3 })
 
+// ---------- a closed tab's page unloads, as in a browser ----------
+const kept = async (v) => {
+  const t = (await op("open", { url: `${SITE}/keeper?v=${v}` })).tab
+  await until(async () => /kept/.test((await op("read", { tab: t }))?.text ?? ""), 5000)
+  return { t, text: ((await op("read", { tab: t }))?.text ?? "").trim() }
+}
+const k1 = await kept("first")
+await op("close", { tab: k1.t })
+const k2 = await kept("second")
+check("a closed tab's page ran its beforeunload first (a site keeps its sign-in there)", /kept first/.test(k2.text), k2.text)
+await op("close", { tab: k2.t })
+const k3 = await kept("at quit")
+check("… what it kept as it closed is there", /kept second/.test(k3.text), k3.text)
+
 // ---------- as Claude Code over MCP (vau mcp, on stdio) ----------
 /** An MCP client on stdio, as Claude Code runs `vau mcp`: its JSON-RPC calls, and a tool's result. */
 function stdio(url) {
@@ -285,6 +305,22 @@ const held = (await fetch(`${origin}/api/ops/errors.list`, { method: "POST", hea
 check("agents' calls never held the vault's writes", !held.some((g) => /vault: held/.test(g.message)), held.map((g) => g.message))
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()
+// (quitting unloads the pages too: opened again, the page that was open finds what it kept)
+const relaunched = await _electron.launch({
+  executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
+  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
+})
+const win2 = await relaunched.firstWindow()
+await win2.waitForSelector("[role=tree]", { timeout: 60000 })
+await wait(2000)
+const origin2 = new URL(win2.url()).origin
+const op2 = async (id, params) => { const j = await (await fetch(`${origin2}/api/ops/web-viewer.${id}`, { method: "POST",
+  headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) })).json(); return j.result ?? j }
+const t4 = (await op2("open", { url: `${SITE}/keeper?v=again` })).tab
+let afterQuit = ""
+await until(async () => /kept/.test(afterQuit = ((await op2("read", { tab: t4 }))?.text ?? "").trim()), 5000)
+check("quitting the app unloads its pages first: opened again, the page finds what it kept", /kept at quit/.test(afterQuit), afterQuit)
+await relaunched.close()
 server.close()
 fs.rmSync(TMP, { recursive: true, force: true })
 await done()

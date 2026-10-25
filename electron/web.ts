@@ -512,8 +512,22 @@ function end(p: Page) {
   fromPlayer(p)
   pagesChanged(p.win)
   if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view)
-  if (!p.view.webContents.isDestroyed()) p.view.webContents.close()
+  void unload(p.view.webContents)
 }
+
+/** Close a page as a browser closes a tab: its beforeunload and unload run first (sites save state there, Discord its
+ *  sign-in), never asking to stay; 3 s at most. Resolves once it's gone. */
+function unload(wc: WebContents) {
+  if (wc.isDestroyed()) return Promise.resolve()
+  const gone = new Promise<void>((done) => wc.once("destroyed", () => done()))
+  wc.once("will-prevent-unload", (e) => e.preventDefault())
+  wc.close({ waitForBeforeUnload: true })
+  const hard = setTimeout(() => { if (!wc.isDestroyed()) wc.close() }, 3000)
+  return gone.finally(() => clearTimeout(hard))
+}
+
+/** Before the app quits: every page unloaded, as its tab's close would. */
+export const unloadPages = () => Promise.all([...pages.values()].map((p) => unload(p.view.webContents))).then(() => {})
 
 /** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
  *  one in a player is on screen, whatever its tab, and an agent's is never let go (browser/agent.ts). */

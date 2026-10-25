@@ -8,7 +8,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
-import { revive, webHandlers, webWindow } from "./web.ts"
+import { revive, unloadPages, webHandlers, webWindow } from "./web.ts"
 import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
@@ -1304,8 +1304,12 @@ function restartToUpdate() {
 /** `quit` once the toast had a beat to draw and the browser's cookies are written (Chromium writes them in batches;
  *  session cookies are the engine's to keep, browser/sessioncookies.ts). */
 function afterFlush(quit: () => void) {
-  void Promise.all([engineFlush(), new Promise((done) => setTimeout(done, 150))]).then(quit, quit)
+  void Promise.all([unloadOnce().then(() => engineFlush()), new Promise((done) => setTimeout(done, 150))]).then(quit, quit)
 }
+/** Web pages unloaded before quitting, as closing their tabs would (sites save their sign-ins then): once, by whichever
+ *  quit comes first. */
+let unloaded = false
+const unloadOnce = () => (unloaded ? Promise.resolve() : unloadPages().finally(() => { unloaded = true }))
 
 /** electron-updater, once a release build first checks. */
 let releases: AppUpdater | null = null
@@ -1588,7 +1592,12 @@ app.on("second-instance", (_e, argv, cwd) => {
   }
 })
 
-app.on("before-quit", () => { quitting = true })
+app.on("before-quit", (e) => {
+  quitting = true
+  if (unloaded) return
+  e.preventDefault()
+  void unloadOnce().finally(() => app.quit())
+})
 app.on("will-quit", () => { for (const w of wins.values()) { w.server?.kill(); w.link?.stop() } stopChecking(); stopApps() })
 /** The launch's windows are open (or failed): from then on, closing the last window quits off a Mac. */
 let launched = false
