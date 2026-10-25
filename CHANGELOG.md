@@ -30,8 +30,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   like the other characters a name can't have, as in Obsidian; moving is dragging or Move to. Creating from a path
   (Folder/Note in the switcher, a [[Folder/Note]] link) still makes the folders.
 - A link to another app in a note (zotero://, shortcuts://, tel:) asks before it opens that app, as browsers do.
-- Closing a browser tab, or quitting the app, lets its page finish first as a browser does, so sites that save your
-  sign-in as you leave (Discord) no longer sign you out.
+- **Discord stays signed in** in the browser: a page's window is its tab's (the app's sidebars looked like DevTools
+  open, so Discord kept its sign-in only in memory), and closing a tab or quitting the app lets its page finish first,
+  as a browser does.
 - **Tabs move between windows as a browser's**: a tab dragged out of the window and let go clear of it goes on in a
   new window there. With the tabs in the sidebar, a new window (which has no sidebar) shows its tabs on top, so they
   can be switched, right-clicked and moved back; and right-clicking the top of a pane has the menu of the tab it shows

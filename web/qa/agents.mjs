@@ -44,6 +44,9 @@ const server = http.createServer((req, res) => {
 <script>kept.textContent = "kept " + (localStorage.getItem("kept") ?? "nothing")
 addEventListener("beforeunload", () => localStorage.setItem("kept", ${JSON.stringify(u.searchParams.get("v") ?? "")}))</script>`)
   }
+  if (u.pathname === "/size") {
+    return res.end(`<!doctype html><title>Size</title><p id="out"></p><script>out.textContent = "wider by " + (outerWidth - innerWidth) + ", taller by " + (outerHeight - innerHeight)</script>`)
+  }
   if (u.pathname === "/hello") {
     return res.end(`<!doctype html><title>Hello</title><h1 id="out">Hello ${u.searchParams.get("name")}${u.searchParams.get("news") ? ", subscribed" : ""}, ${u.searchParams.get("size")}</h1>`)
   }
@@ -189,6 +192,14 @@ await win.locator(`[data-web-live="${t3}"] [data-web-live-pause="resume"]`).clic
 await win.locator("[data-web-replays] input[type=search]").fill("made-up menu")
 check("… runs searched by summary", await until(async () => (await win.locator("[data-web-replay]").count()) === 1, 5000), await win.locator("[data-web-replay]").count())
 await op("close", { tab: t3 })
+
+// ---------- a page's window is its tab's, as in a browser (not the app's, sidebars and all) ----------
+const sized = (await op("open", { url: `${SITE}/size` })).tab
+let size = ""
+await until(async () => /wider/.test(size = ((await op("read", { tab: sized }))?.text ?? "").trim()), 5000)
+const [wider, taller] = (size.match(/-?\d+/g) ?? []).map(Number)
+check("a page's window is its tab's: no wider, and taller by a browser's bar (sites take more for DevTools open)", wider === 0 && taller > 0 && taller < 160, size)
+await op("close", { tab: sized })
 
 // ---------- a closed tab's page unloads, as in a browser ----------
 const kept = async (v) => {
