@@ -126,8 +126,8 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
   )
 })
 
-/** Rename a file to what was typed ("/" moves it into folders; characters names can't have are refused, as Obsidian
- *  does). False if it stayed as it was. */
+/** Rename a file to what was typed (characters names can't have, "/" too, are refused, as Obsidian does). False if it
+ *  stayed as it was. */
 async function rename(path: string, typed: string, settle: () => Promise<void>, undo = true, after?: { mode: Mode; write: boolean }) {
   if (!nameable(typed)) return false
   const next = cleanName(typed)

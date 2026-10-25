@@ -71,10 +71,10 @@ const UNNAMEABLE = /[*"\\<>:|?#^[\]]/g
 export const cleanName = (typed: string) => typed.split("/").map((p) => p.replaceAll(":", " -").replace(UNNAMEABLE, " ").replace(/\s+/g, " ")
   .replace(/[\s.]+$/, "").trim()).filter((p) => p && p !== "." && p !== "..")
   .map((p) => (/^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i.test(p) ? `${p}_` : p)).join("/")
-/** Whether a file can have the name typed; if not, a toast says which characters it can't (a rename refuses them, as
- *  Obsidian does). */
+/** Whether a file or folder can be renamed to what was typed; if not, a toast says which characters it can't have, as
+ *  Obsidian's does. "/" too: a rename never moves (that's drag or Move to). */
 export function nameable(typed: string) {
-  const bad = [...new Set(typed.match(UNNAMEABLE) ?? [])]
+  const bad = [...new Set(typed.match(/[/*"\\<>:|?#^[\]]/g) ?? [])]
   if (bad.length) notice(`A file name can't have ${bad.join(" ")}`, { kind: "error", id: "bad-name" })
   return !bad.length
 }

@@ -16,6 +16,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   comment, in the editor's menu): a thread between people, which no agent is told of. What the folder draws they see
   too: its HTML pages, sandboxed with nothing to reach; its Kanban boards (theirs to change if they edit), Excalidraw
   drawings and Dataview queries, over the folder alone.
+- **Renaming never moves**: a "/" in a file's or folder's new name (its title, the path bar, the file tree) is refused
+  like the other characters a name can't have, as in Obsidian; moving is dragging or Move to. Creating from a path
+  (Folder/Note in the switcher, a [[Folder/Note]] link) still makes the folders.
 - A link to another app in a note (zotero://, shortcuts://, tel:) asks before it opens that app, as browsers do.
 - **Tabs move between windows as a browser's**: a tab dragged out of the window and let go clear of it goes on in a
   new window there. With the tabs in the sidebar, a new window (which has no sidebar) shows its tabs on top, so they

@@ -1,7 +1,7 @@
 // Nothing typed or pasted is lost: edits a closed window didn't get saved come back (Restore), JSON saves as typed
 // with a note while it doesn't parse, a paste with text puts the text in (not a picture of it), a [[link]] with
 // characters a name can't have makes a note that it then finds, "/" in a link makes folders, and a rename to such a
-// name is refused saying why. WRITES a "Qa safe" folder: throwaway server only.
+// name (or with "/") is refused saying why. WRITES a "Qa safe" folder: throwaway server only.
 //   node web/qa/savesafe.mjs <base url> <vault path>
 import { chmodSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { palette, qa, until, wait } from "./lib/qa.mjs"
@@ -110,6 +110,7 @@ const title = page.locator("textarea[aria-label='File name']")
 await title.fill("Rename: me"); await title.press("Enter")
 check("rename: refused, saying why", await until(async () => existsSync(`${VAULT}/Qa safe/Rename me.md`) && await page.locator("text=A file name can't have :").count() > 0))
 await title.fill("Moved/Rename me"); await title.press("Enter")
-check("rename: \"/\" moves it into a folder", await until(() => existsSync(`${VAULT}/Qa safe/Moved/Rename me.md`)), readdirSync(`${VAULT}/Qa safe`, { recursive: true }))
+check("rename: \"/\" refused too, not a move", await until(async () => await page.locator("text=A file name can't have /").count() > 0) &&
+  existsSync(`${VAULT}/Qa safe/Rename me.md`) && !existsSync(`${VAULT}/Qa safe/Moved`), readdirSync(`${VAULT}/Qa safe`, { recursive: true }))
 
 await done()
