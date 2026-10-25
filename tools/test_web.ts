@@ -73,7 +73,14 @@ process.env.VAULTITE_VAULT = VAULT
 process.env.VAULTITE_LOCAL = path.join(tmp, "local")
 const { loadFm } = await import("../core/frontmatter.ts")
 {
-  const { mapLinks, relativePath, resolvePath } = await import("../core/links.ts")
+  const { linksIn, mapLinks, relativePath, resolvePath } = await import("../core/links.ts")
+  {
+    const line = "See [[Alice Park|Alice]], [the site](https://a.b/c) and <https://x.y>, ![[pic.png]] #plan https://z.w/p"
+    const got = linksIn(line, 10).map((l) => ({ ...l, target: line.slice(l.target[0] - 10, l.target[1] - 10), text: l.text && line.slice(l.text[0] - 10, l.text[1] - 10) }))
+    check("links: linksIn finds each kind of link, with where its target and text are written", JSON.stringify(got.map(({ wiki, url, tag, target, text, embed }) => [wiki ?? url ?? tag, target, text ?? null, !!embed])) ===
+      JSON.stringify([["Alice Park", "Alice Park", "Alice", false], ["https://a.b/c", "https://a.b/c", "the site", false], ["https://x.y", "https://x.y", null, false], ["pic.png", "pic.png", null, true], ["plan", "plan", null, false], ["https://z.w/p", "https://z.w/p", null, false]]))
+    check("links: linksIn spans start at the line's offset", linksIn("[[a]]", 7)[0].from === 7 && linksIn("[[a]]", 7)[0].to === 12)
+  }
   const to = (t: string) => (t === "a" ? "b c" : t === "x/a.png" ? "y/a (1).png" : null)
   check("links: mapLinks keeps headings, aliases, table pipes, anchors and titles; skips URLs and code",
     mapLinks('[[a#H|t]] |[[a\\|t]]| [l](x/a.png "T") [m](<x/a.png#p>) [u](https://a) `[[a]]`', to) ===

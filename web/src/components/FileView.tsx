@@ -13,6 +13,7 @@ import { fmtAgo, type Store } from "@/core/data"
 import { isOutside } from "@/core/desktop"
 import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
+import { openLinkMenu } from "@/components/LinkMenu"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
 import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop } from "@/core/platform"
@@ -777,6 +778,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     renderEmbed: (target, height, el, edit) => drawEmbed(store, target, height, el, path, edit),
     renderMarkdown: (md) => renderMarkdown(md, { resolves: resolve, asset: (name) => assetUrl(store, name, path) }),
     follow: (link, newTab) => followLink(store, link, newTab, path),
+    linkMenu: (link, at, text) => openLinkMenu(link, at, { from: path, text }),
     version,
     place: path,
     renderGrid: editGrid ? (cards, el, edit) => island((c) => editGrid(c, edit, pageRef.current!), cards, el) : undefined,

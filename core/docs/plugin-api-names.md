@@ -157,6 +157,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dow(s)`
 - `DragItem`
 - `dragTab(e, tab, opts?)`: Press on a tab: it drags, or (one of several selected) they all do.
+- `drawnLink(el)`: The link drawn at `el` in rendered Markdown (a note's, a sheet's) and its text, or null.
 - `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
 - `dropTab(item, d)`: Drop `item` there: a pane or a tab moves, a file opens in a new tab (or its tab in that bar moves there).
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
@@ -283,7 +284,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `KV({ label, children })`: A label and its value, in a Group.
 - `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
+- `Link`: A link as drawn Markdown names it: a [[link]]'s target, a Markdown link's address, or a #tag.
+- `LinkEdit`: What changes a link where it's written (an editor's): its target selected to type over, or the link taken out leaving its text.
+- `linkItems(link, opts?)`: The menu for a link (`from`: the file it's in; `text`: what it shows; `edit`: where it can be changed).
 - `linkPlace(s, link, from?)`: Where a link in drawn Markdown goes, without going: a file (and the heading or block in it), a plugin's detail, or a web address; null for what isn't a place (a #tag, a command, another app's…
+- `linksIn(text, offset?)`: The links in a line (`offset`: where it starts): [[wiki]], ![[embed]], [text](url), <url>, a bare URL, a #tag.
+- `LinkSpan`: A link in a line of Markdown: its span, where its target is written (`target`) and its text (`text`: a [[link|alias]]'s alias, a [text](url)'s text); `embed`: an ![[embed]] or ![image](url).
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
 - `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.
 - `List({ children })`
@@ -361,6 +367,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openInSet(to, name)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying; no such group: beside the focused pane, in a new one of that name.
 - `openInSplit(to, side?, focusIt?, tabId?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
+- `openLinkMenu(link, at, opts?)`
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
 - `openNewTab({ pane, set, at }?)`: A new tab in the focused pane (or `pane`'s; or at the end of tab group `set`, a phone's open one): a blank one, or newtab.json's `opens`.

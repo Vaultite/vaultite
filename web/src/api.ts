@@ -131,7 +131,11 @@ export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, op
 export { onVaultChange, touches, useVaultChange } from "@/core/live"
 export { DEVICE } from "@/core/device"
 export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
-export { backlinks, followLink, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Target } from "@/core/links"
+export { backlinks, drawnLink, followLink, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type Target } from "@/core/links"
+/** The links in a line of Markdown, with where each one's target and text are written (core/links.ts, shared with the server). */
+export { linksIn, type LinkSpan } from "../../core/links.ts"
+/** A link's right-click menu, the same wherever one is drawn: open it, copy it, and (`edit`) change it where it's written. */
+export { linkItems, openLinkMenu, type LinkEdit } from "@/components/LinkMenu"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
 export { openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, keysInEditor, selectAllIn, selectedText, type OpenEditor } from "@/core/editors"

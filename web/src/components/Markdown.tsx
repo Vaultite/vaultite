@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, type MouseEvent } from "react"
 import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
-import { followLink, resolver } from "@/core/links"
+import { Copy } from "lucide-react"
+import { keyHint } from "@/core/commands"
+import { drawnLink, followLink, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
 import { dropMermaid, hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
 import { isReadOnly, readFile } from "@/core/files"
@@ -12,6 +14,9 @@ import { notifyError } from "@/core/notify"
 import { assetPath, openEmbedMenu } from "@/components/EmbedMenu"
 import { rawUrl } from "@/components/FileViewers"
 import { EmbedView } from "@/components/NoteEmbed"
+import { openMenu, type MenuItem } from "@/components/ContextMenu"
+import { copyText, grouped } from "@/components/FileActions"
+import { linkItems } from "@/components/LinkMenu"
 import { cn } from "@/lib/utils"
 
 /** What Markdown from `from` needs of the vault: its links resolved as written there, its images' addresses. */
@@ -75,15 +80,25 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     // ⌘-click or a middle-click: a new tab, as in the editor.
     followLink(s, a.dataset.tag ? { tag: a.dataset.tag } : a.dataset.url ? { url: a.dataset.url } : { wiki: a.dataset.wiki }, e.metaKey || e.ctrlKey || e.button === 1, from)
   }
-  // An image in the text: its menu, as in a note (a `![[x]]` drawn in its place answers with its own first).
+  // An image in the text: its menu, as in a note (a `![[x]]` drawn in its place answers with its own first); a link:
+  // its menu; text selected in it: Copy, under a link's items.
   const menu = (e: MouseEvent) => {
-    const img = (e.target as Element).closest("img")
-    if (!img || !s || e.defaultPrevented) return
+    if (!s || e.defaultPrevented) return
+    const img = (e.target as Element).closest("img"), at = { x: e.clientX, y: e.clientY }
+    if (img) {
+      e.preventDefault(); e.stopPropagation()
+      const src = img.getAttribute("src") ?? ""
+      let target = src
+      try { target = new URL(src, document.baseURI).searchParams.get("path") ?? src } catch { /* as written */ }
+      openEmbedMenu(s, target, at, null, from)
+      return
+    }
+    const l = drawnLink(e.target), sel = getSelection(), text = sel && !sel.isCollapsed && ref.current?.contains(sel.anchorNode) ? sel.toString() : ""
+    const copy: MenuItem[] = text.trim() ? [{ label: "Copy", icon: Copy, hint: keyHint("Mod+C"), run: () => { copyText(text).catch((err) => notifyError(err)) } }] : []
+    const items = grouped([l ? linkItems(l.link, { from, text: l.text }) : [], copy])
+    if (!items.length) return
     e.preventDefault(); e.stopPropagation()
-    const src = img.getAttribute("src") ?? ""
-    let target = src
-    try { target = new URL(src, document.baseURI).searchParams.get("path") ?? src } catch { /* as written */ }
-    openEmbedMenu(s, target, { x: e.clientX, y: e.clientY }, null, from)
+    openMenu(at, items)
   }
   const Tag = inline ? "span" : "div"
   return (

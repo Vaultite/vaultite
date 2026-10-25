@@ -3,7 +3,7 @@
 import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state"
 import { EditorView, ViewPlugin, drawSelection } from "@codemirror/view"
 import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirror/language"
-import { beginKeys, followLink, getStore, isMac, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
+import { beginKeys, followLink, getStore, isMac, linksIn, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
 import { EX } from "./ex"
 import { applyVimrc, editorOpen } from "./vimrc"
 import { deviceOn, leaderOn, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
@@ -29,20 +29,6 @@ const viewOf = (cm: CM) => cm.cm6
 const paths = new WeakMap<EditorView, string | undefined>()
 
 // ---------- links and headings ----------
-/** Links in a line: [[wiki]], ![[embed]], [text](url), <url>, a bare URL, a #tag: their spans and what they go to. */
-type Link = { from: number; to: number; wiki?: string; url?: string; tag?: string }
-const LINK = /!?\[\[([^\]\n]+?)\]\]|!?\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s)>\]]+)|(?<=^|\s)#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu
-function linksIn(text: string, offset: number): Link[] {
-  const out: Link[] = []
-  for (const m of text.matchAll(LINK)) {
-    const from = offset + m.index!, to = from + m[0].length
-    if (m[1] !== undefined) out.push({ from, to, wiki: m[1].split("|")[0] })
-    else if (m[2] !== undefined) { let url = m[2]; try { url = decodeURI(url) } catch { /* as written */ } out.push({ from, to, url }) }
-    else if (m[3] ?? m[4]) out.push({ from, to, url: m[3] ?? m[4] })
-    else if (m[5]) out.push({ from, to, tag: m[5] })
-  }
-  return out
-}
 /** The link under the cursor, else the first one after it on its line. */
 function linkAtCursor(view: EditorView) {
   const pos = view.state.selection.main.head

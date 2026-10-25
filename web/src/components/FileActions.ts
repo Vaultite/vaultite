@@ -39,7 +39,8 @@ export async function copyText(text: string) {
   if (!ok) throw new Error("Couldn't copy to the clipboard")
 }
 
-const copied = (text: string, what: string) => copyText(text).then(() => { notify(`Copied the ${what}`, { id: "copied" }) }, (e) => notifyError(e))
+/** Put text on the clipboard and say what was copied ("Copied the link"). */
+export const copied = (text: string, what: string) => copyText(text).then(() => { notify(`Copied the ${what}`, { id: "copied" }) }, (e) => notifyError(e))
 /** Copy a file's path in the vault ("People/Alice Park.md"). */
 export const copyPath = (path: string) => copied(path, "path")
 /** Copy a [[link]] to a file. */

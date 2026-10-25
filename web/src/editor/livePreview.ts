@@ -21,6 +21,7 @@ import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
 import { commentSpans, highlightClass, highlightColor, highlightSpans, paragraphAt, unquoted, type HighlightColor } from "@/core/highlights"
 import { highlightItems } from "@/core/highlightMenu"
+import { drawnLink, type Link } from "@/core/links"
 import { openMenu } from "@/components/ContextMenu"
 import type { ReadingBlock, ReadingDrawn } from "@/core/define"
 import type { ReadBlock } from "@/core/plugins"
@@ -54,6 +55,8 @@ export type PreviewConfig = {
   renderEmbed: (target: string, height: number | undefined, el: HTMLElement, edit: () => EmbedEdit | null) => Drawn | false
   /** Markdown as HTML (a table, a callout, <details>; [[links]] in it as `data-wiki` elements): core/markdown.ts. */
   renderMarkdown: (md: string) => string
+  /** A link right-clicked inside a drawn block (a table, a callout): its menu. */
+  linkMenu?: (link: Link, at: { x: number; y: number }, text: string) => void
   /** Follow a [[link]] (or a #tag) clicked inside a drawn block (a table). */
   follow: (link: { wiki?: string; tag?: string }, newTab: boolean) => void
   /** Bumps when what the sections show changes (the store reloaded), so they draw again. */
@@ -473,6 +476,13 @@ class Block extends WidgetType {
     el.addEventListener("mousedown", (e) => { if (pressed(view, el, e) && !this.view) bar.edit.source!() })
     // (a link's press followed it: its click mustn't again, nor go to its address)
     el.addEventListener("click", (e) => { const w = (e.target as Element).closest("[data-wiki], [data-tag]"); if (w && !w.closest("[data-embed]")) e.preventDefault() })
+    // (a view's links are its own: what it draws has its menus)
+    if (!this.view) el.addEventListener("contextmenu", (e) => {
+      const l = drawnLink(e.target), menu = view.state.facet(previewConfig).linkMenu
+      if (!l || !menu || e.defaultPrevented || l.el.closest("[data-embed]")) return
+      e.preventDefault()
+      menu(l.link, { x: e.clientX, y: e.clientY }, l.text)
+    })
     return el
   }
   updateDOM(el: HTMLElement) {
@@ -879,7 +889,8 @@ function inline(view: EditorView): DecorationSet {
             if (!url && p?.name === "Paragraph" && p.from === n.from && p.parent?.name === "Blockquote" && CALLOUT.test(state.sliceDoc(n.from, state.doc.lineAt(n.from).to))) return false
             const href = url ? state.sliceDoc(url.from, url.to) : ""
             if (!live || touched(state, n.from, n.to) || marks.length < 2) {
-              if (href) out.push(mark("cm-link-raw").range(n.from, n.to))
+              // (its address on it too: ⌘-click follows it and right-click finds it, as on the drawn link)
+              if (href) out.push(mark("cm-link-raw", { "data-url": href }).range(n.from, n.to))
               return false
             }
             const open = marks[0], close = marks[1]

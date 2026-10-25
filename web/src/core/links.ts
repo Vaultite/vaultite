@@ -152,6 +152,19 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
     onPick: (c) => { if (c.to) open(c.to); else void create() } })
 }
 
+/** A link as drawn Markdown names it: a [[link]]'s target, a Markdown link's address, or a #tag. */
+export type Link = { wiki?: string; url?: string; tag?: string }
+
+/** The link drawn at `el` in rendered Markdown (a note's, a sheet's) and its text, or null. An `<a href>` counts only
+ *  with a scheme: a footnote's `#fn1` goes nowhere else. */
+export function drawnLink(el: EventTarget | null): { link: Link; text: string; el: HTMLElement } | null {
+  const a = el instanceof Element ? el.closest<HTMLElement>("[data-wiki], [data-url], [data-tag], a[href]") : null
+  if (!a) return null
+  const { wiki, url, tag } = a.dataset, href = a.getAttribute("href") ?? ""
+  const link = tag ? { tag } : wiki !== undefined ? { wiki } : url ? { url } : /^[a-z][a-z0-9+.-]*:/i.test(href) ? { url: href } : null
+  return link && { link, text: a.textContent?.trim() ?? "", el: a }
+}
+
 /** Where a link in drawn Markdown goes, without going: a file (and the heading or block in it), a plugin's detail, or a
  *  web address; null for what isn't a place (a #tag, a command, another app's link, a note that isn't there). */
 export function linkPlace(s: Store, link: { wiki?: string; url?: string }, from?: string): { file?: string; anchor?: string; detail?: string; url?: string } | null {

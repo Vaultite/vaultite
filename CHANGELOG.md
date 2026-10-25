@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A link's own menu**: right-clicking a link in a note (reading or editing), a table, a callout or a timeline offers
+  Open link or Open in new tab (and to the right), Copy link, Copy link text, Copy email address for a mailto:, the
+  file's actions for a [[link]], and Edit link and Remove link while editing. Drawn Markdown's selected text has Copy.
 - **Another machine's browser, live**: an agent's ask in the always-on Mac's browser opens that tab from the Inbox on
   any Mac or phone, to sign in, solve the check and press Done there; Show browser tabs lists every machine's tabs.
 - **Unsent replies stay drafts until sent**: a reply typed in an inbox session or a report and not sent shows Draft,

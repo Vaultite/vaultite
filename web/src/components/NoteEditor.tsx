@@ -9,6 +9,7 @@ import { gone, isReadOnly, joinFm, readFile, splitFm, stem, type FileText } from
 import { readProps } from "@/core/frontmatter"
 import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
+import { openLinkMenu } from "@/components/LinkMenu"
 import { renderMarkdown } from "@/core/markdown"
 import { notify } from "@/core/notify"
 import { timelineKinds, usePluginsVersion } from "@/core/plugins"
@@ -102,6 +103,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
     renderEmbed: (target, height, el, edit) => drawEmbed(store, target, height, el, from, edit),
     renderMarkdown: (md) => renderMarkdown(md, { resolves: resolve, asset: (name) => assetUrl(store, name, from) }),
     follow: (link, newTab) => followLink(store, link, newTab, from),
+    linkMenu: (link, at, text) => openLinkMenu(link, at, { from, text }),
     version,
   }), [editable, resolve, store, disabled, version, from, ctx, sections])
   // Gone (ended with Escape, say): a blur as the editor is taken off the page isn't the user leaving it. (Layout

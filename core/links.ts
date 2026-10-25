@@ -139,6 +139,25 @@ export function linkResolver(files: LinkFile[], opts?: { twins?: boolean }): Res
 
 const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g
 
+/** A link in a line of Markdown: its span, where its target is written (`target`) and its text (`text`: a
+ *  [[link|alias]]'s alias, a [text](url)'s text); `embed`: an ![[embed]] or ![image](url). */
+export type LinkSpan = { wiki?: string; url?: string; tag?: string; from: number; to: number; target: [number, number]; text?: [number, number]; embed?: boolean }
+const LINE_LINK = /(!?)\[\[([^\]\n|]+?)(?:\|([^\]\n]*))?\]\]|(!?)\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|(https?:\/\/[^\s)>\]]+)|(?<=^|\s)#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/dgu
+
+/** The links in a line (`offset`: where it starts): [[wiki]], ![[embed]], [text](url), <url>, a bare URL, a #tag. */
+export function linksIn(text: string, offset = 0): LinkSpan[] {
+  const out: LinkSpan[] = []
+  for (const m of text.matchAll(LINE_LINK)) {
+    const at = (i: number): [number, number] => [offset + m.indices![i]![0], offset + m.indices![i]![1]]
+    const from = offset + m.index, to = from + m[0].length
+    if (m[2] !== undefined) out.push({ from, to, wiki: m[2], target: at(2), ...(m[3] !== undefined ? { text: at(3) } : {}), ...(m[1] ? { embed: true } : {}) })
+    else if (m[6] !== undefined) out.push({ from, to, url: m[6], target: at(6), text: at(5), ...(m[4] ? { embed: true } : {}) })
+    else if (m[7] ?? m[8]) { const i = m[7] ? 7 : 8; out.push({ from, to, url: m[i], target: at(i) }) }
+    else if (m[9]) out.push({ from, to, tag: m[9], target: at(9) })
+  }
+  return out
+}
+
 /** `text` with each link's target (outside code) passed through `to`: a wikilink's or embed's target, or a Markdown
  *  link's path (decoded, without its #anchor; md: true). `to` gives the new target, or null to leave the link. */
 export function mapLinks(text: string, to: (target: string, md: boolean) => string | null): string {

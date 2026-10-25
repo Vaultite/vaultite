@@ -1,5 +1,5 @@
-// The editor's right-click menu: spelling (the desktop app), links, Format ▸, Paragraph ▸ and Insert ▸
-// (the editing commands, with their keys), the clipboard, then searching for what's selected. Loaded with the editor.
+// The editor's right-click menu: spelling (the desktop app), the link clicked (or Add link), Format ▸, Paragraph ▸ and
+// Insert ▸ (the editing commands, with their keys), the clipboard, then searching for what's selected. Loaded with the editor.
 import { EditorSelection } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
 import {
@@ -8,7 +8,10 @@ import {
   Pilcrow, Quote, RemoveFormatting, Scissors, Search, Sigma, SquareCode, SquareSigma, Strikethrough, Table, TextCursorInput,
   TextSelect, type LucideIcon,
 } from "lucide-react"
-import { copyText, editorMenuItems, grouped, highlightItems, keyHint, keysOf, lookUp, notifyError, offeredCommand, openMenu, selectAllIn, selectedText, spelling, type MenuItem } from "@vaultite"
+import {
+  copyText, drawnLink, editorMenuItems, editorOf, grouped, highlightItems, keyHint, keysOf, linkItems, linksIn, lookUp, notifyError, offeredCommand, openMenu,
+  selectAllIn, selectedText, spelling, type Link as Linked, type LinkEdit, type LinkSpan, type MenuItem,
+} from "@vaultite"
 
 type Entry = [id: string, label: string, icon: LucideIcon]
 const FORMAT: (Entry | null)[] = [
@@ -45,17 +48,47 @@ const submenu = (view: EditorView, label: string, icon: LucideIcon, list: (Entry
 
 type Spelled = { word: string; suggestions: string[] }
 
-/** The menu for a right-click at `at` (`spelled`: what the desktop app's spell checker said of the word there). */
-function menuItems(view: EditorView, at: { x: number; y: number }, spelled: Spelled | null): MenuItem[] {
+/** The link right-clicked (`target`: the element under the pointer): what it goes to as drawn, where it's written. */
+function linkAt(view: EditorView, target: EventTarget | null): { link: Linked; text: string; span: LinkSpan | null } | null {
+  const drawn = drawnLink(target)
+  if (!drawn || !view.contentDOM.contains(drawn.el)) return null
+  let pos: number
+  try { pos = view.posAtDOM(drawn.el) } catch { return { ...drawn, span: null } }
+  const line = view.state.doc.lineAt(pos)
+  return { ...drawn, span: linksIn(line.text, line.from).find((l) => !l.embed && l.from <= pos && pos <= l.to) ?? null }
+}
+
+/** Editing a link where it's written: its target selected to type over; taken out, its text (or alias) left. */
+function linkEdit(view: EditorView, span: LinkSpan): LinkEdit {
+  const [a, b] = span.target, doc = view.state.doc
+  const shown = span.text ? doc.sliceString(...span.text) : doc.sliceString(a, b)
+  // (the note changed while the menu showed: the link may be elsewhere now)
+  const same = () => view.state.doc === doc
+  return {
+    edit: () => { if (!same()) return; view.focus(); view.dispatch({ selection: EditorSelection.range(a, b), scrollIntoView: true, userEvent: "select" }) },
+    // (a bare address is only its text already)
+    unlink: span.from === a && span.to === b ? undefined : () => {
+      if (same()) view.dispatch({ changes: { from: span.from, to: span.to, insert: shown }, selection: { anchor: span.from + shown.length }, userEvent: "delete.unlink" })
+    },
+  }
+}
+
+/** The menu for a right-click at `at` on `target` (`spelled`: what the desktop app's spell checker said of the word there). */
+function menuItems(view: EditorView, at: { x: number; y: number }, target: EventTarget | null, spelled: Spelled | null): MenuItem[] {
   const editable = view.state.facet(EditorView.editable)
   const pos = view.posAtCoords(at)
-  // Outside what's selected, the cursor goes where the click was (a paste goes there), as in Obsidian.
-  if (editable && pos !== null && !view.state.selection.ranges.some((r) => r.from <= pos && pos <= r.to)) view.dispatch({ selection: EditorSelection.cursor(pos) })
+  const link = linkAt(view, target)
+  // Outside what's selected, the cursor goes where the click was (a paste goes there), as in Obsidian; not onto a link,
+  // which would show as its Markdown under the menu.
+  if (editable && pos !== null && !link && !view.state.selection.ranges.some((r) => r.from <= pos && pos <= r.to)) view.dispatch({ selection: EditorSelection.cursor(pos) })
   const text = selectedText({ view })
   const short = text.replace(/\s+/g, " ").trim().replace(/^(.{24}).+$/, "$1…")
+  const edit = link?.span && editable && !link.link.tag ? linkEdit(view, link.span) : null
   return grouped([
     editable && pos !== null && spelled?.word ? spellItems(view, spelled, pos) : [],
-    [...command(view, ["editor:insert-wikilink", "Add link", Link]), ...command(view, ["editor:insert-link", "Add external link", Link2])],
+    // A link: its own menu (open it, copy it, change it), as a browser's has; else ways to add one.
+    link ? linkItems(link.link, { from: editorOf(view)?.path, text: link.text, edit })
+      : [...command(view, ["editor:insert-wikilink", "Add link", Link]), ...command(view, ["editor:insert-link", "Add external link", Link2])],
     [...submenu(view, "Format", Bold, FORMAT), ...submenu(view, "Paragraph", Pilcrow, PARAGRAPH), ...submenu(view, "Insert", TextCursorInput, editable ? INSERT : [])],
     editorMenuItems(view),
     [
@@ -131,8 +164,8 @@ export const editorMenu = EditorView.domEventHandlers({
     const at = { x: e.clientX, y: e.clientY }
     // The desktop app's spell checker answers once the event has gone on to the system (Electron draws no menu of its
     // own): the menu waits for it.
-    if (spelling && editable) { void spelling.at().then((s) => openMenu(at, menuItems(view, at, s))); return false }
-    const items = menuItems(view, at, null)
+    if (spelling && editable) { void spelling.at().then((s) => openMenu(at, menuItems(view, at, e.target, s))); return false }
+    const items = menuItems(view, at, e.target, null)
     if (!items.length) return false
     e.preventDefault()
     openMenu(at, items)
