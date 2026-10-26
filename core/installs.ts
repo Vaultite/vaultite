@@ -206,10 +206,11 @@ async function unpack(src: Source, to: string): Promise<string> {
   const got = crypto.createHash("sha256").update(buf).digest("hex")
   if (got !== sha256) throw new OpError(`${shown} isn't the file its #sha256 names (it's ${got}): not installed`, 422)
   let entries: Map<string, () => Buffer>
-  try { entries = unzip(buf) } catch (e) { throw new OpError(`${shown} isn't a zip that can be read: ${(e as Error).message}`, 422) }
+  try { entries = unzip(buf, UNZIPPED_MAX) } catch (e) { throw new OpError(`${shown} isn't a zip that can be read: ${(e as Error).message}`, 422) }
   if (entries.size > ENTRIES_MAX) throw new OpError(`${shown} has over ${ENTRIES_MAX} files`, 422)
   const names = [...entries.keys()]
-  const bad = names.find((n) => n.startsWith("/") || n.includes("\\") || n.split("/").some((p) => p === ".." || p === "."))
+  // (and a name Windows writes as another file: a trailing dot or space, a drive's or a stream's colon)
+  const bad = names.find((n) => n.startsWith("/") || n.includes("\\") || n.split("/").some((p) => p === ".." || p === "." || /[. ]$|[:<>"|?*\x00-\x1f]/.test(p)))
   if (bad) throw new OpError(`${shown} has a file outside its folder: ${bad}`, 422)
   const tops = new Set(names.map((n) => n.split("/")[0]))
   const strip = !entries.has("manifest.json") && tops.size === 1 && entries.has(`${[...tops][0]}/manifest.json`) ? `${[...tops][0]}/` : ""

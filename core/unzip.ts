@@ -4,9 +4,12 @@ import zlib from "node:zlib"
 
 const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50
 
-/** The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read. Throws when it
- *  isn't a zip. */
-export function unzip(buf: Buffer): Map<string, () => Buffer> {
+/** The most an entry inflates to (`max`): a zip of a few KB can unpack to gigabytes, held in memory. */
+const ENTRY_MAX = 256 << 20
+
+/** The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read (one past `max`
+ *  bytes throws). Throws when it isn't a zip. */
+export function unzip(buf: Buffer, max = ENTRY_MAX): Map<string, () => Buffer> {
   let end = -1
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) {
     if (buf.readUInt32LE(i) === EOCD) { end = i; break }
@@ -26,8 +29,13 @@ export function unzip(buf: Buffer): Map<string, () => Buffer> {
       if (buf.readUInt32LE(local) !== LOC) throw new Error(`a broken zip entry: ${name}`)
       const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28)
       const data = buf.subarray(start, start + packed)
-      if (method === 0) return data
-      if (method === 8) return zlib.inflateRawSync(data)
+      if (method === 0) { if (data.length > max) throw new Error(`a zip entry over ${max >> 20} MB: ${name}`); return data }
+      if (method === 8) {
+        try { return zlib.inflateRawSync(data, { maxOutputLength: max }) } catch (e) {
+          if (e instanceof RangeError || (e as { code?: string }).code === "ERR_BUFFER_TOO_LARGE") throw new Error(`a zip entry over ${max >> 20} MB: ${name}`)
+          throw e
+        }
+      }
       throw new Error(`a zip entry packed in a way this can't read (${method}): ${name}`)
     })
   }

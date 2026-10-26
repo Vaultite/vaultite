@@ -810,7 +810,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `typeNotes(types, fm)`: What's wrong with a file's properties for the vault's types: one quiet note per key ("`due` is a date...").
 - `typeOf(types, key)`: The type of `key`: declared (exactly, else in any case), else implied, else null (the value's own).
 - `typeProblem(type, v)`: Why a value isn't a `type` (a short phrase after its key), or null when it is or it's empty.
-- `unzip(buf)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read.
+- `unzip(buf, max?)`: The entries of the zip in `buf`, by name (folders left out); each one's bytes, inflated when read (one past `max` bytes throws).
 - `userSurface(w)`: Who may answer for the user (approve or deny a permission: a gate, a terminal's question): the app, their phone's and watch's notifications, or a machine passing one on; never vau, since a…
 - `VAULT_PATH`
 - `vaultHere(vaultPath)`: A vault on this machine: its real path and key (that path's hash), under which what's kept here for it goes (<LOCAL>/<what>/<key>).

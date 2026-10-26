@@ -67,6 +67,7 @@ export default async ($: VaultTest) => {
     // From a zip at an address pinned by its hash: a made-up server on this machine (http is allowed only to loopback).
     {
       const http = await import("node:http"), crypto = await import("node:crypto"), zlib = await import("node:zlib")
+      const { unzip } = await import("../../../core/unzip.ts")
       const zipOf = (files: Record<string, string>) => {
         const local: Buffer[] = [], central: Buffer[] = []
         let at = 0
@@ -86,7 +87,9 @@ export default async ($: VaultTest) => {
       const MOORING = { "mooring/manifest.json": manifest({ id: "mooring", name: "Mooring", version: "0.3.0", repo: "alicepark/mooring" }),
         "mooring/plugin.ts": PLUGIN_TS.replaceAll("harbor", "mooring"), "mooring/AGENTS.md": "## Mooring\n" }
       const zips: Record<string, Buffer> = { "/mooring.zip": zipOf(MOORING), "/flat.zip": zipOf({ "manifest.json": manifest({ id: "flat", version: "1.0.0" }) }),
-        "/escape.zip": zipOf({ "manifest.json": manifest({ id: "escape" }), "../outside.txt": "x" }) }
+        "/escape.zip": zipOf({ "manifest.json": manifest({ id: "escape" }), "../outside.txt": "x" }),
+        "/windows.zip": zipOf({ "manifest.json": manifest({ id: "windows" }), "pages/Plan.md.": "x", "c:x.ts": "y" }) }
+      check("unzip: an entry inflating past its cap is refused, not held in memory", (() => { try { unzip(zipOf({ "big.txt": "x".repeat(100_000) }), 1000).get("big.txt")!(); return false } catch { return true } })())
       const asked: string[] = []
       const server = http.createServer((req, res) => {
         asked.push(req.url!)
@@ -111,6 +114,8 @@ export default async ($: VaultTest) => {
       check("install from a zip: the plugin at the zip's top", zc === 200 && zo.id === "flat", [zc, zo])
       ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/escape.zip#sha256=${sha("/escape.zip")}` })
       check("install from a zip: a file outside its folder is refused", zc === 422 && /outside its folder/.test(zo.error) && !exists(".vaultite/plugins/escape"), [zc, zo])
+      ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/windows.zip#sha256=${sha("/windows.zip")}` })
+      check("install from a zip: a name Windows reads as another file (a trailing dot or space, a drive's colon) is refused", zc === 422 && !exists(".vaultite/plugins/windows"), [zc, zo])
       ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/flat.zip` })
       check("install from a zip: without its hash it's refused", zc === 400 && /#sha256=/.test(zo.error), [zc, zo])
       ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `http://example.com/x.zip#sha256=${"a".repeat(64)}` })
