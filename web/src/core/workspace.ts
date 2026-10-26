@@ -1,11 +1,10 @@
 // The tabs on screen: groups of tabs, in a tree of splits (core/layout.ts, core/splits.ts), each tab
 // with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
-import { backDetail, route } from "@/core/nav"
+import { backDetail, hashChanged, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
 import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
 import { signal } from "@/core/signal"
 
-const notify = () => dispatchEvent(new HashChangeEvent("hashchange"))
 const enc = encodeURIComponent
 /** This window is a pop-out (`?popout=<id>`: a tab moved or opened out of the main window, popOut):
  *  its own tabs, kept for the window (sessionStorage), no sidebars. */
@@ -172,10 +171,10 @@ const entry = () => history.state as Entry
 /** The address shows `to` (a new history entry with `push`). */
 export function show(to: string, push: boolean) {
   const h = `#${hashOf(to)}`
-  if (location.hash === h) { stamp(); return notify() }
+  if (location.hash === h) { stamp(); return hashChanged() }
   const st = { tab: activeTab().id }
   if (push) history.pushState(st, "", h); else history.replaceState(st, "", h)
-  notify()
+  hashChanged()
 }
 /** Mark the entry on screen as the active tab's place, if nothing said whose it is (a link followed, a sheet closed). */
 function stamp() {
@@ -408,7 +407,7 @@ function showActiveUnder() {
   const to = activeTab().to, { tab, detail } = route()
   if (!detail) return showActive()
   if (tab !== hashOf(to)) history.replaceState(history.state, "", `#${hashOf(to)}/${detail}`)
-  notify()
+  hashChanged()
 }
 
 /** A group left with `tabs` (none: it closes, and the tree closes up around it). A pop-out whose last tab closed closes. */
@@ -666,7 +665,7 @@ export function retarget(from: string, to: string) {
   set(next)
   const cur = activeTab()
   if (isFile(cur.to)) history.replaceState(history.state, "", `#${hashOf(cur.to)}`)
-  notify()
+  hashChanged()
 }
 
 const showing = (path: string) => (to: string) => isFile(to) && (to.slice(5) === path || to.slice(5).startsWith(`${path}/`))

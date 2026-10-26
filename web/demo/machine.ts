@@ -1,3 +1,5 @@
+import { isObj } from "../../core/values.ts"
+
 declare const __DEMO_OFFICIAL__: { id: string; machine: boolean }[] | undefined
 /** Vaultite's own plugins the demo builds in as the app's (vite.demo.config.ts), and whether each needs a machine. */
 export const OFFICIAL = typeof __DEMO_OFFICIAL__ === "undefined" ? [] : __DEMO_OFFICIAL__
@@ -15,7 +17,7 @@ export const SHOWN = ["claude-code", "codex", "cursor", "opencode", "openclaw", 
 export const OFF = MACHINE.filter((id) => !SHOWN.includes(id))
 
 export type PluginsJson = { disabled?: string[]; enabled?: string[]; install?: Record<string, { name?: string; source?: string }> }
-export const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)
+export { isObj }
 
 /** What needs a machine stays off (but what's SHOWN): in the sandbox's setup, and in every bundle the visitor applies. */
 export function machineOff(cfg: PluginsJson) {

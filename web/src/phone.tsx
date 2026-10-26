@@ -6,14 +6,10 @@ import { AudioLines, ChevronLeft, Clapperboard, Ellipsis, LoaderCircle, Server a
 import "./index.css"
 import { ContextMenus, menuBelow } from "@/components/ContextMenu"
 import { phoneApp, type PhoneDownload, type Server } from "@/core/phoneapp"
-import { cn } from "@/lib/utils"
+import { cn, followSystemTheme } from "@/lib/utils"
 import { plainText } from "../../core/plainerror.ts"
 
-// Light or dark like the system (the vaults' own settings are theirs).
-const dark = matchMedia("(prefers-color-scheme: dark)")
-const theme = () => document.documentElement.classList.toggle("dark", dark.matches)
-theme()
-dark.addEventListener("change", theme)
+followSystemTheme()
 
 /** What was typed, as a server's address: https unless it says, no path. Null when it isn't one. */
 function serverUrl(typed: string): string | null {

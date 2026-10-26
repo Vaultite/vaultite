@@ -11,12 +11,12 @@ import { onVaultChange, touches } from "@/core/live"
 import { cell } from "@/core/signal"
 import { capitalize } from "@/lib/utils"
 import type { SettingDecl } from "../../../core/blocks.ts"
+import { isObj } from "../../../core/values.ts"
 
 /** Where a plugin's settings are kept. */
 export const settingsFile = (id: string) => `.vaultite/plugins/${id}/data.json`
 type Data = Record<string, unknown>
 const EMPTY = {}
-const isMap = (v: unknown): v is Data => !!v && typeof v === "object" && !Array.isArray(v)
 // (a var: plugins call pluginSettings as their modules load, maybe before this module has run)
 // eslint-disable-next-line no-var
 var kept: Map<string, ReturnType<typeof keep>> | undefined
@@ -40,7 +40,7 @@ function readSoon(id: string) {
 function keep(id: string) {
   const value = cell<Data | null>(null)
   let reading: Promise<void> | null = null
-  const got = (d: unknown) => value.set(isMap(d) ? d : {}), failed = () => { if (!value.get()) value.set({}) }
+  const got = (d: unknown) => value.set(isObj<Data>(d) ? d : {}), failed = () => { if (!value.get()) value.set({}) }
   const read = () => readSoon(id).then(got, failed)
   const start = () => {
     if (reading) return

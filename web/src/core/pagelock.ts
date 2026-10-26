@@ -1,9 +1,8 @@
 // The page held still under overlays (counted, since they stack), by a touch guard rather than a fixed body: on iOS a
 // fixed body made WebKit hit-test overlays' scrollers in the wrong place. `--vvh`/`--vvtop` let overlays end above the keyboard.
 import { useLayoutEffect } from "react"
+import { keyboardUp } from "@/components/KeyBar"
 
-/** Whether the keyboard (or anything else) covers part of the screen: the visual viewport is shorter than the page's. */
-const keyboardUp = () => !!visualViewport && innerHeight - visualViewport.height > 80
 
 function trackViewport() {
   const vv = visualViewport

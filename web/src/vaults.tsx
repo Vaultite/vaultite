@@ -7,12 +7,9 @@ import { Tooltips } from "@/components/Tooltip"
 import { ContextMenus } from "@/components/ContextMenu"
 import { VaultManager, webVaults, type VaultBackend } from "@/components/VaultManager"
 import { desktop } from "@/core/desktop"
+import { followSystemTheme } from "@/lib/utils"
 
-// Light or dark like the system (the vaults' own settings are theirs).
-const dark = matchMedia("(prefers-color-scheme: dark)")
-const theme = () => document.documentElement.classList.toggle("dark", dark.matches)
-theme()
-dark.addEventListener("change", theme)
+followSystemTheme()
 
 const app = desktop
 const backend: VaultBackend = app ? {

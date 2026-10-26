@@ -4,6 +4,13 @@ export const capitalize = (s: string | undefined) => (s ? s.charAt(0).toUpperCas
 /** A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s). */
 export const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`
 export const isDark = () => document.documentElement.classList.contains("dark")
+/** Light or dark like the system: the pages before a vault (its own settings are its). */
+export function followSystemTheme() {
+  const dark = matchMedia("(prefers-color-scheme: dark)")
+  const theme = () => document.documentElement.classList.toggle("dark", dark.matches)
+  theme()
+  dark.addEventListener("change", theme)
+}
 
 /** A length in Tailwind's spacing unit, so it follows density like `h-6.5`: `space(6.5)` is 26px in compact. Text,
  *  px icons, hairlines and radii stay px. */

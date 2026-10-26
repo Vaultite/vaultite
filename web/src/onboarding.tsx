@@ -3,12 +3,9 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
 import { Onboarding, type SetupApi } from "@/components/Onboarding"
+import { followSystemTheme } from "@/lib/utils"
 
-// Light or dark like the system (a vault's own settings are its).
-const dark = matchMedia("(prefers-color-scheme: dark)")
-const theme = () => document.documentElement.classList.toggle("dark", dark.matches)
-theme()
-dark.addEventListener("change", theme)
+followSystemTheme()
 
 const setup = (window as { vaultite?: { onboarding?: SetupApi } }).vaultite?.onboarding
 

@@ -28,9 +28,9 @@ export const setFileOpener = (fn: (path: string) => void) => { fileOpener = fn }
 // back/forward would fight that, and tab changes scroll to the top anyway.
 if ("scrollRestoration" in history) history.scrollRestoration = "manual"
 
-const notify = () => dispatchEvent(new HashChangeEvent("hashchange"))
+export const hashChanged = () => dispatchEvent(new HashChangeEvent("hashchange"))
 /** Change the address in place (no history entry, the entry's `state` given) and tell the app. */
-export function replaceHash(to: string, state: unknown = null) { history.replaceState(state, "", to.startsWith("#") ? to : `#${to}`); notify() }
+export function replaceHash(to: string, state: unknown = null) { history.replaceState(state, "", to.startsWith("#") ? to : `#${to}`); hashChanged() }
 
 export function openDetail(path: string) {
   const file = redirect?.(path)
@@ -38,7 +38,7 @@ export function openDetail(path: string) {
   const { tab, detail, depth } = route()
   if (detail === path) return
   history.pushState({ sheet: depth + 1, prev: detail }, "", `#${tab}/${path}`)
-  notify()
+  hashChanged()
 }
 
 /** One sheet back (the Back button in a stacked sheet). */
