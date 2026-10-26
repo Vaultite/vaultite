@@ -153,7 +153,8 @@ await section("update", async () => {
 await section("set up", async () => {
   if (!exe) throw new Error("not installed")
   spawnSync("taskkill", ["/IM", `${NAME}.exe`, "/T", "/F"], { stdio: "ignore" })
-  await sleep(2000)
+  // (one still exiting holds the single-instance lock, and the new launch quits into it)
+  await waitFor(() => (ps(`Get-Process -Name '${NAME}' -ErrorAction SilentlyContinue | % { $_.Id }`) ? null : true), 30_000)
   const userData = path.join(tmp, "userData-new"), home = path.join(tmp, "home"), debug = await freePort()
   fs.mkdirSync(path.join(home, "Documents"), { recursive: true })
   app = spawn(exe, [], { env: { ...process.env, VAULTITE_USER_DATA: userData, VAULTITE_SETUP_HOME: home, VAULTITE_DEBUG_PORT: String(debug) }, stdio: "ignore" })
