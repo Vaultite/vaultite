@@ -2,7 +2,7 @@
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
-import { check, sleep, tempDir, type Any } from "../lib.ts"
+import { check, sleep, stopTerminals, tempDir, type Any } from "../lib.ts"
 
 export type { Any }
 export type VaultTest = Awaited<ReturnType<typeof vaultHarness>>
@@ -14,6 +14,10 @@ const fixtureNow = () => { const d = new Date(); d.setHours(2, 0, 0, 0); return 
 
 /** The test vault (made up, or a copy of `from`), the agents' made-up homes in the environment, then the app. */
 export async function vaultHarness(from?: string) {
+  // An app serving no port: its shells' keeper and tmux server are this process's own (terminal's backendName), never a
+  // live server's on this machine, and ended with it (before its temp folder goes).
+  delete process.env.PORT
+  process.on("exit", () => stopTerminals(`x${process.pid}`))
   const tmp = tempDir("vaultite-test-")
   const VAULT = path.join(tmp, "vault")
   if (from) fs.cpSync(from, VAULT, { recursive: true })
@@ -55,6 +59,8 @@ export async function vaultHarness(from?: string) {
   const { Text } = await import("../../../core/plugins.ts")
   const { publicOf } = await import("../../../core/vault.ts")
   const app = await open(VAULT, { start: false })
+  const kept = app.plugins.find((p) => p.id === "terminal")?.exports.kept as { files: string } | undefined
+  if (kept) process.on("exit", () => fs.rmSync(`${kept.files}.log`, { force: true }))
   const vault = app.vault
   /** The Vaultite plugins on in the test vault (above): a test that writes plugins.json keeps them on. */
   const ON: string[] = vault.config("plugins").enabled ?? []

@@ -2,8 +2,9 @@
 
 - Shells outlive the server: the keeper (`ptyd.ts`, a detached process with a headless xterm per screen, giving a
   returning page a snapshot), else tmux (`tmux -L vaultite-<port>`), else another plugin's `terminal:backend`, else the
-  server's own children. Names follow the port, so a QA server's shells stay out of the live list. Under a systemd
-  unit the keeper and tmux need their own scope, or a restart kills them.
+  server's own children. Names follow the port (backendName), so a QA server's shells stay out of the live list, and an
+  app serving no port (a test's, `npm run check`'s) never reaches them. Under a systemd unit the keeper and tmux need
+  their own scope, or a restart kills them.
 - One shell has one size, the last device's; a view used again that doesn't match sends its own.
 - A terminal's state (the list's `state`, the service "inbox:state") comes from OSC 7501 (`osc7501.ts`) when its
   program speaks it, else its agent's hooks, else a question its agent declares seen on its screen. Its agent's own

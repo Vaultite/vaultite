@@ -57,9 +57,8 @@ process.exit(0)`
       [made, listed, screen.slice(-800), keeper.socket])
   }
 
-  // Terminals as the app starts them: vau first on Path in PowerShell and cmd, and a WSL distro's (if there is one). Only
-  // on CI: the test app's keeper is the default port's, a live server's on a machine that has one.
-  if (!process.env.CI) return skip("windows: the app's terminals", "only on CI (they'd share a live server's keeper)")
+  // Terminals as the app starts them: vau first on Path in PowerShell and cmd, and a WSL distro's (if there is one). The
+  // test app's keeper is its own (backendName), not a live server's.
   const term = (await import("../../../plugins/core/terminal/plugin.ts")).plugin
   // The agents' hooks POST to the server's address: a listener there, passing each to this in-process app.
   const { createServer } = await import("node:http")
@@ -185,9 +184,6 @@ setTimeout(() => process.exit(0), 120000)
     term.patchSettings({ shell: null })
     listener.close()
     if (portWas === undefined) delete process.env.PORT; else process.env.PORT = portWas
-    const { runtimeDir } = await import("../../../core/runtime.ts")
-    for (const f of fs.readdirSync(runtimeDir()).filter((n) => /^vaultite-ptyd\d-vaultite.*\.sock$/.test(n.replace(/\.pid$/, "")) && n.endsWith(".pid"))) {
-      stopKeeper(path.join(runtimeDir(), f.replace(/\.pid$/, "")))
-    }
+    stopKeeper(term.exports.kept.files)
   }
 }

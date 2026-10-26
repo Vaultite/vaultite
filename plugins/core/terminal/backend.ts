@@ -472,7 +472,11 @@ const connectTo = (socket: string) => new Promise<Wire>((ok, fail) => {
  *  older one then stay where they are until it has none: plugin.ts reads only the current one). */
 const PROTOCOL = 1
 
-/** The keeper at `name` (the tmux socket's naming: vaultite, or vaultite-<port> for a server on another port). */
+/** The keeper's and tmux server's name for a server on `port`: `vaultite` on 8793, else `vaultite-<port>` (a QA one's); an
+ *  app serving nothing (port 0: a test's, npm run check's) its own, never reaching a live server's shells. */
+export const backendName = (port: number, pid = process.pid) => (port === 8793 ? "vaultite" : `vaultite-${port || `x${pid}`}`)
+
+/** The keeper at `name` (backendName, as the tmux server is named). */
 export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string; files: string; access(dir: string): Promise<Access | null> } {
   // Its .log and .pid beside `files`; the socket is that path, or on Windows a named pipe of this user's.
   const files = path.join(runtimeDir(), `vaultite-ptyd${PROTOCOL}-${name}.sock`)

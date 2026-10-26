@@ -216,6 +216,17 @@ export default async ($: VaultTest) => {
     fs.rmSync(home, { recursive: true, force: true })
   }
 
+  // Whose shells: a server's keeper and tmux server go by its port; an app that serves none (this test's, npm run
+  // check's) has its own, so a test never lists, ends or drops the spare shells of a live server on the machine.
+  {
+    const { backendName } = await import("../../../plugins/core/terminal/backend.ts")
+    const kept = $.app.plugins.find((p) => p.id === "terminal")!.exports.kept as { name: string; socket: string }
+    check("terminal: the default port's keeper is vaultite, another port's its own, an app serving none this process's",
+      backendName(8793) === "vaultite" && backendName(30123) === "vaultite-30123" && backendName(0, 42) === "vaultite-x42", [backendName(8793), backendName(30123), backendName(0, 42)])
+    check("terminal: this test's app keeps its shells apart from a live server's", kept.name === `vaultite-x${process.pid}` &&
+      kept.socket.includes(`-vaultite-x${process.pid}`), kept)
+  }
+
   // The keeper lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper running for
   // days took the machine's ptys, and new terminals and tmux failed). (Windows: windows-terminal.ts.)
   if (process.platform !== "win32") {

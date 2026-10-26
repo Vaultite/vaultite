@@ -11,7 +11,7 @@ import {
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
-  asPaste, launch, limits, loadPty, mirrored, plain, plainBackend, psQuote, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, wslPath,
+  asPaste, backendName, launch, limits, loadPty, mirrored, plain, plainBackend, psQuote, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, wslPath,
   type AgentRun, type Backend, type Link, type Listed as Shell,
 } from "./backend.ts"
 import { defaultShell, gitBash, kindOf, progName, shellsHere, type ShellKind } from "./shells.ts"
@@ -109,10 +109,8 @@ const shell = () => defaultShell(String(plugin.settings().shell ?? ""))
 /** Its program's name inside a ready shell's key: a ready shell of another kind can't run an agent's line. */
 const sameShell = (sh: string) => (kindOf(sh) === "cmd" ? null : sh)
 
-// --- the backends (backend.ts). Names follow the port: a server on another port than the default 8793, like a
-// throwaway one for QA, gets `vaultite-<port>`, so its shells never show in the real one's list.
-const PORT = Number(process.env.PORT || 8793)
-const named = (app: string) => (PORT === 8793 ? app : `${app}-${PORT}`)
+// --- the backends (backend.ts), named by the port this process serves on (server.ts sets PORT): backendName.
+const NAME = backendName(Number(process.env.PORT) || 0)
 const TMP = path.join(runtimeDir(), "vaultite-terminal")
 const UPLOADS = path.join(TMP, "uploads")
 const STATES = path.join(TMP, "states")
@@ -121,8 +119,8 @@ const STATES = path.join(TMP, "states")
 const UPLOADS_KEPT = 30 * 86_400_000
 const SPARE = "vauspare-" // a shell kept ready (below)
 
-const keeper = ptydBackend(named("vaultite"), { daemon: path.join(plugin.dir, "ptyd.ts"), log: console.error })
-const tmuxShells = tmuxBackend(named("vaultite"), { conf: path.join(plugin.dir, "tmux.conf"), env })
+const keeper = ptydBackend(NAME, { daemon: path.join(plugin.dir, "ptyd.ts"), log: console.error })
+const tmuxShells = tmuxBackend(NAME, { conf: path.join(plugin.dir, "tmux.conf"), env })
 const fallback = plainBackend()
 /** Another plugin's backend, while it's on (the service "terminal:backend": herdr's), or null. */
 function pluginBackend(): Backend | null {
@@ -131,6 +129,8 @@ function pluginBackend(): Backend | null {
 }
 /** What a plugin's backend may use (it implements Backend, backend.ts, through plugin.peer("terminal").exports): */
 plugin.exports.backendKit = { launch, loadPty, ptyLink, mirrored, runScript, shellArgs, plain }
+/** Where this server keeps its shells: the keeper's socket (or pipe) and the tmux server's name. */
+plugin.exports.kept = { name: NAME, socket: keeper.socket, files: keeper.files }
 /** Every backend, in the order a session's id is looked for. */
 const backends = (): Backend[] => [keeper, ...(tmuxShells ? [tmuxShells] : []), fallback, ...[pluginBackend()].filter((b): b is Backend => !!b)]
 

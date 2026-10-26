@@ -11,7 +11,7 @@ import { loadPty, ptyLink, shellArgs, type Backend, type Link } from "./backend.
 export const TMUX = process.platform === "win32" ? "" : ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].find((p) => fs.existsSync(p)) ?? ""
 const PREFIX = "vau-" // tmux session names: vau-<id>
 
-/** `name`: vaultite, or vaultite-<port>. */
+/** `name`: backendName (backend.ts). */
 export function tmuxBackend(name: string, o: { conf: string; env: () => Record<string, string> }): Backend | null {
   if (!TMUX) return null
   const SOCKET = name

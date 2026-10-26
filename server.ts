@@ -56,6 +56,7 @@ const DIST = path.join(ROOT, "web", "dist") // built web app (npm run build)
 const ASSETS = path.join(DIST, "assets") // Vite names every file here by its content's hash
 const HOST = process.env.HOST || "127.0.0.1"
 const PORT = Number(process.env.PORT || 8793)
+process.env.PORT = String(PORT) // (what the plugins' names go by: Terminal's keeper; unset, an app serves nothing)
 const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 
 // The server answers while it reads the vault, so the web app's files load meanwhile; what needs the vault waits for
