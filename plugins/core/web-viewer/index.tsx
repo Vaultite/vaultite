@@ -1,6 +1,6 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
-import { lazy, Suspense, useEffect } from "react"
+import { lazy, memo, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
 import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, isWindows, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
@@ -95,12 +95,12 @@ function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
   })
 }
 
-/** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events. */
-function Background() {
-  return <><Events /><AgentsCard /></>
-}
+/** The agents' card, not drawn again with Background (each store change): it listens to what it shows itself. */
+const Card = memo(AgentsCard)
 
-function Events() {
+/** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events; the agents'
+ *  card. */
+function Background() {
   useEffect(() => void settings.ready(), [])
   useEffect(() => { if (hasExtensions()) extensionsChanged() }, [])
   useEffect(watchShields, [])
@@ -174,7 +174,7 @@ function Events() {
       else notify(`Couldn't download ${m.name}`, { kind: "error" })
     }
   }), [])
-  return null
+  return <Card />
 }
 
 function Preview() {

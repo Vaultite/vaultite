@@ -47,7 +47,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   by dragging, always-open ones first until you do.
 - **Your other Macs' logins in Sites**: the Sites tab lists who's signed in where in each other Mac's browser (Machines),
   under On M1 and the like, and copies a login there: drag a site onto one of its cards, or Copy to. The login is sealed
-  for that Mac's app on the way, so the servers passing it on never read a cookie.
+  for that Mac's app on the way, so the servers passing it on never read a cookie. On a Linux with no keyring, its key
+  is held only till the app quits.
 - **Names pick the agent**: @opus in a note starts a companion on Opus, @opus-review another; @haiku, @fable, @sonnet
   likewise, @codex Codex on GPT-6.1 Sol at medium (@sol, @astra, @luna its other models), @opencode OpenCode, which
   now runs the model it's given (`opencode/deepseek-v4.1-flash-free`) and shows its permission asks by its cursor. An

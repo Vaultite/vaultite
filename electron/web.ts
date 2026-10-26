@@ -1149,11 +1149,12 @@ async function moveLogins(from: string, to: string, names: string[], copy: boole
 const SEALED_MS = 5 * 60_000
 const taken = new Map<string, number>()
 
-/** This app's key pair for sealed logins, made once and kept encrypted with the Keychain's key (userData). */
+/** This app's key pair for sealed logins, made once and kept encrypted with the keyring's key (userData). With no keyring
+ *  (a Linux without a Secret Service), held only till the app quits, as agents' logins are (browser/logins.ts). */
 let sealKeys: { pub: string; priv: string } | null = null
 function keysForSealing() {
   if (sealKeys) return sealKeys
-  if (!safeStorage.isEncryptionAvailable()) throw new Error("this Mac's Keychain can't keep the key for copied logins")
+  if (!safeStorage.isEncryptionAvailable()) return (sealKeys = newKeys())
   const file = path.join(app.getPath("userData"), "Login Key.vaultite")
   try { sealKeys = JSON.parse(safeStorage.decryptString(fs.readFileSync(file))) as { pub: string; priv: string } }
   catch {
