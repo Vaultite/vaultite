@@ -9,6 +9,7 @@ import { freePort, record, sleep, stopTerminals, testServer } from "./test/lib.t
 import { slot } from "./qa_slots.ts"
 import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
+import { ANCHOR } from "../core/sandbox.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
@@ -17,6 +18,9 @@ const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, ".
  *  build (the demo's: CI's demo job runs it, and named here it's built first). */
 const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "inboxmachines", "termhost", "demo", "bundle-shots"])
 const TIMEOUT = 8 * 60_000
+/** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
+ *  sandbox dated to today has that day's logs. */
+const UNDATED = new Set(["counts"])
 
 const argv = process.argv.slice(2)
 if (argv.includes("--lint")) process.exit(lint())
@@ -120,7 +124,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
   const vault = path.join(tmp, "vault"), out = path.join(tmp, "out"), claude = path.join(tmp, "claude")
   fs.mkdirSync(out)
   fs.cpSync(path.join(ROOT, "tools/fixtures/claude"), claude, { recursive: true })
-  const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", vault], { encoding: "utf8" })
+  const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", vault, ...(UNDATED.has(name) ? ["--today", ANCHOR] : [])], { encoding: "utf8" })
   if (made.status !== 0) return { ok: false, ms: 0, out: made.stderr || made.stdout }
   // (plugins' writes on their own answered "not now": no "wants to write" dialog over the page, nothing written)
   fs.writeFileSync(path.join(vault, ".vaultite/grants.json"), JSON.stringify(Object.fromEntries(fs.readdirSync(path.join(ROOT, "plugins/core")).flatMap((id) => {
