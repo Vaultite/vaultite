@@ -39,6 +39,8 @@ function Box({ close }: { close: () => void }) {
   const machine = saved.machine ?? fallback.machine
   const profile = saved.profile ?? fallback.profile
   const others = otherMachines(machines, "terminal")
+  // The ones that could run it but are away: listed, greyed, so the chip and its choices don't come and go with them.
+  const away = (machines ?? []).filter((m) => !m.self && !m.online && !m.readOnly && (!m.plugins?.length || m.plugins.includes("terminal")))
   const machineLabel = (machine ? machines?.find((m) => m.id === machine)?.label ?? machine : machines?.find((m) => m.self)?.label) ?? "This machine"
   const accounts = useAccounts(agent, machine)
   const account = accounts.length > 1 ? accounts.find((x) => x.id === profile) ?? accounts[0] : null
@@ -63,7 +65,9 @@ function Box({ close }: { close: () => void }) {
     setSending(true)
     try {
       // Nothing picked here: the workspace's default, which gives way to this machine when that one's away.
-      const at = saved.machine === undefined ? await resolvePlace(agent.name, { profile: saved.profile }) : { machine, profile, instead: "" }
+      // A machine picked here that's away now: this one, said in the toast.
+      const at = saved.machine === undefined ? await resolvePlace(agent.name, { profile: saved.profile })
+        : machine && away.some((m) => m.id === machine) ? { machine: "", profile, instead: `${machineLabel} is offline` } : { machine, profile, instead: "" }
       const r = await op<{ id: string; title: string }>("terminal.ask", { prompt, agent: agent.name, ...(at.profile ? { account: at.profile } : {}),
         ...(at.machine ? { machine: at.machine } : {}) })
       keepDraft("")
@@ -98,6 +102,7 @@ function Box({ close }: { close: () => void }) {
   const whereMenu = (): MenuItem[] => [
     { label: machines?.find((m) => m.self)?.label ?? "This machine", icon: Server, checked: !machine, run: () => save({ ...saved, machine: "" }) },
     ...others.map((m) => ({ label: m.label, icon: Server, checked: m.id === machine, run: () => save({ ...saved, machine: m.id }) })),
+    ...away.map((m) => ({ label: m.label, icon: Server, disabled: true, hint: "Offline", run: () => {} })),
   ]
 
   const Icon = agent?.icon
@@ -112,7 +117,7 @@ function Box({ close }: { close: () => void }) {
             {Icon && <Icon className="size-4 shrink-0" style={{ color: agent?.tint }} />}
             <span className="truncate">{agent ? [agent.label, account?.label].filter(Boolean).join(" · ") : "No agent"}</span>
           </Chip>
-          {(others.length > 0 || machine) && (
+          {(others.length > 0 || away.length > 0 || machine) && (
             <Chip onClick={(e) => void menuUnder(e, whereMenu)} label="Machine">
               <Server className="size-4 shrink-0 text-muted-foreground" />
               <span className="truncate">{machineLabel}</span>
