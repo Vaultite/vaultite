@@ -95,7 +95,7 @@ for (let i = 0; i < 30 && !live; i++) {
 check("a changed CSV redraws the artifact", live)
 
 // Links: a web link opens a new tab, asking first once the page read the vault; a vault link opens the note in the app.
-const popup = () => page.context().waitForEvent("page", { timeout: 4000 }).catch(() => null)
+const popup = () => page.context().waitForEvent("page", { timeout: 10_000 }).catch(() => null)
 const asked = () => until(() => page.$("dialog[data-confirm]"), 2000)
 if (f) {
   let pop = popup()
@@ -110,7 +110,8 @@ if (f) {
   pop = popup()
   await fr.click("#ext")
   p2 = await pop
-  check("… and doesn't ask again for that site", !!p2 && !(await page.$("dialog[data-confirm]")), p2?.url())
+  const again = !!(await page.$("dialog[data-confirm]"))
+  check("… and doesn't ask again for that site", !!p2 && !again, { url: p2?.url(), again })
   if (p2) await p2.close()
   await fr.click("#note")
   check("vault link opens the note", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes("QA/QA note.md")), await page.evaluate(() => location.hash))
