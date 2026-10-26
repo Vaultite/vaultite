@@ -54,6 +54,15 @@ export default async ($: VaultTest) => {
       check("machines: only addresses on the tailnet (or this machine's)", ["https://studio.tail1234.ts.net:8447", "http://100.101.2.3:8793", "http://127.0.0.1:8794", "http://[fd7a:115c:a1e0::1]:8793"].every(onTailnet) &&
         !["https://evil.example.com", "http://192.168.1.5", "http://100.200.1.1", "https://ts.net.evil.example", "https://a@studio.tail1234.ts.net", "file:///etc"].some(onTailnet))
     }
+    {
+      const owner = { headers: { host: "127.0.0.1:8793" }, socket: { remoteAddress: "127.0.0.1" } } as Any
+      const conf = app.vault.config("plugins")
+      await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "machines") })
+      const off = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {}, owner), inside = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {})
+      await api("PUT", "config/plugins", conf)
+      const on = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {}, owner)
+      check("plugins: an off plugin's routes answer no request from outside, the app's own calls still", off.status === 404 && inside.status === 200 && on.status === 200, [off.status, inside.status, on.status])
+    }
     ;[c, body] = await api("GET", "machines/box/nothing")
     check("machines: its errors come back as they are", c === 404 && body.error === "no such thing", [c, body])
     ;[c] = await api("GET", "machines/nope/state")
