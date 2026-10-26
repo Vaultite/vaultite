@@ -1,6 +1,7 @@
 // A file iCloud is slow to give never holds the server: FIFOs stand in for them (a read waits until written), and the
 // server still answers and reads the rest of the vault. `node tools/test_stall.ts` (npm test)
 import { execFileSync, spawnSync } from "node:child_process"
+import { once } from "node:events"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -80,24 +81,27 @@ try {
   const slow = await get("file?path=Notes/Slow.md")
   check("and opens", slow.status === 200 && slow.body.text.includes("Arrived."), slow)
 } finally {
-  server.kill("SIGKILL")
+  // (reaped before the next server: a killed one not yet waited for still holds the vault's claim, so that one wouldn't start)
+  if (server.exitCode === null && server.signalCode === null) { server.kill("SIGKILL"); await once(server, "exit") }
 }
 
 // A test's server never outlives its test (six on FIFO vaults like this one once ran for days): killed as the test
 // exits, and ending itself when the test died unseen (SIGKILL), whatever holds its main thread.
-const runner = (end: string) => `import { testServer } from ${JSON.stringify(new URL("./test/lib.ts", import.meta.url).href)}
+const runner = (end: string) => `import { writeSync } from "node:fs"
+import { testServer } from ${JSON.stringify(new URL("./test/lib.ts", import.meta.url).href)}
 const s = testServer({ env: { ...process.env, VAULTITE_VAULT: ${JSON.stringify(VAULT)}, VAULTITE_LOCAL: ${JSON.stringify(path.join(tmp, "local2"))}, PORT: process.argv[1], HOST: "127.0.0.1", VAULTITE_DESKTOP: "" }, stdio: "ignore" })
-console.log(s.pid)
-for (let i = 0; i < 200; i++) { try { if ((await fetch("http://127.0.0.1:" + process.argv[1] + "/api/loading")).ok) break } catch {} await new Promise((r) => setTimeout(r, 100)) }
+let up = false
+for (let i = 0; i < 200 && !up; i++) { try { up = (await fetch("http://127.0.0.1:" + process.argv[1] + "/api/loading")).ok } catch {} if (!up) await new Promise((r) => setTimeout(r, 100)) }
+writeSync(1, s.pid + " " + up + "\\n")
 ${end}`
 const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
 for (const [how, end] of [["exits", "process.exit(0)"], ["is killed", "process.kill(process.pid, 'SIGKILL')"]]) {
   const p = await freePort()
-  const pid = Number(spawnSync(process.execPath, ["--input-type=module", "-e", runner(end), String(p)], { encoding: "utf8", timeout: 30_000 }).stdout.trim())
+  const [pid, up] = spawnSync(process.execPath, ["--input-type=module", "-e", runner(end), String(p)], { encoding: "utf8", timeout: 30_000 }).stdout.trim().split(" ")
   let gone = false
-  for (let i = 0; i < 50 && !(gone = !alive(pid)); i++) await sleep(100)
-  check(`a test's server ends when its test ${how}`, pid > 0 && gone, pid)
-  if (!gone) try { process.kill(pid, "SIGKILL") } catch { /* gone */ }
+  for (let i = 0; i < 50 && Number(pid) > 0 && !(gone = !alive(Number(pid))); i++) await sleep(100)
+  check(`a test's server ends when its test ${how}`, Number(pid) > 0 && up === "true" && gone, [pid, up])
+  if (!gone && Number(pid) > 0) try { process.kill(Number(pid), "SIGKILL") } catch { /* gone */ }
 }
 if (results.some((r) => r.status === "FAIL")) console.log(log.slice(-3000))
 fs.rmSync(tmp, { recursive: true, force: true })
