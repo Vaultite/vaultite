@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).
 - **Agents browse out of your way**: a page an agent opens no longer joins your tabs. A card in the window's corner
   (dragged to any corner, like the mini player) shows it live, the agent's pointer moving to what it clicks; Open as tab
   brings the same page into your tabs, and the agent chip in its bar sends it back. An agent asking you opens its page

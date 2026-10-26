@@ -81,6 +81,11 @@ export const ACCOUNTS: Record<string, Rule> = {
     const slug = decodeURIComponent(/linkedin\.com\/in\/([^/?#]+)/.exec(url)?.[1] ?? "")
     return slug && slug !== "me" && /^[\p{L}\p{N}_-]{3,100}$/u.test(slug) ? slug : null
   } },
+  // (slack.com's settings take you to your last workspace's, whose page says your email there)
+  "slack.com": { url: "https://slack.com/account/settings", text: true, read: (b) => {
+    const email = /Your email address is <strong>([^<\s]{3,200})<\/strong>/.exec(String(b))?.[1]
+    return email && /^[^@]+@[^@]+$/.test(email) ? email : null
+  } },
   "whatsapp.com": { look: { code: WHATSAPP_LOOK, read: (v) => looked(v, (o) => phoneOf(nonempty(o.phone))) } },
   "cloudflare.com": { url: "https://dash.cloudflare.com/api/v4/user", headers: { "x-cross-site-security": "dash" }, signed: "vses2", read: (b) => at(b, "result.email") },
   "cursor.com": { url: "https://cursor.com/api/auth/me", signed: "WorkosCursorSessionToken", read: (b) => ({ account: at(b, "email"), avatar: at(b, "picture") }) },

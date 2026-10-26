@@ -1754,6 +1754,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("accounts: Wikipedia's user, none for an IP address signed out",
     await name("wikipedia.org", { query: { userinfo: { id: 12, name: "Alice Park" } } }) === "Alice Park" && await name("wikipedia.org", { query: { userinfo: { id: 0, name: "192.0.2.1", anon: "" } } }) === null)
   check("accounts: Perplexity's email", await name("perplexity.ai", { user: { email: "alice@example.com" } }) === "alice@example.com" && await name("perplexity.ai", {}) === null)
+  check("accounts: Slack's email from its workspace's settings page, none at its sign-in page",
+    await name("slack.com", '<h2>Email Address</h2><p class="no_bottom_margin">Your email address is <strong>alice@example.com</strong></p>') === "alice@example.com" &&
+    await name("slack.com", "<html><title>Sign in to Slack | Slack</title></html>") === null)
   check("accounts: WhatsApp's number off its open app, signed in unnamed without it, out at its QR code",
     JSON.stringify(look("whatsapp.com", { phone: '"5511987654321:12@c.us"' })) === '{"account":"+5511987654321"}' && JSON.stringify(look("whatsapp.com", { phone: "" })) === '{"account":""}' &&
     look("whatsapp.com", { out: true }) === false && sa.phoneOf("12@c.us") === "")
