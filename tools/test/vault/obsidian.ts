@@ -48,8 +48,7 @@ export default async ($: VaultTest) => {
     check("plugin.editLine: a small edit of one line, 409 once it changed", read("Tagged/Lines.md") === "---\r\na: 1\r\n---\r\n- [x] one\r\n- [ ] one again\r\n- [ ] two\r\n" && stale === 409, [read("Tagged/Lines.md"), stale])
     const [bc] = await api("POST", "ops/tag.rename", { from: "work", to: "123" })
     check("tag rename: a name that isn't a tag is refused", bc === 400 || bc === 422, bc)
-    fs.rmSync(path.join(VAULT, "Tagged"), { recursive: true })
-    await app.vault.sync()
+    await $.removeFolder("Tagged")
   }
   let [, s] = await api("GET", "state")
   const hadObsidian = s.obsidian

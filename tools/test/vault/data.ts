@@ -3,7 +3,7 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, check, exists, read, sleep, vault, write } = $
+  const { VAULT, api, check, exists, read, vault, write } = $
   // People: API -> file
   let code: number
   let p: Any
@@ -74,7 +74,7 @@ export default async ($: VaultTest) => {
   // Notes: upsert by id, updated bumps only on content
   const n1 = (await api("POST", "notes", { ext_id: "idea-test", title: "Test: idea", body: "Hello [[Alice Park]]", kind: "idea", status: "seed" }))[1]
   check("note file name drops the colon", n1.id === "Notes/Test - idea" && read("Notes/Test - idea.md").includes("aliases: ['Test: idea']"), n1)
-  await sleep(1100)
+  await $.nextSecond()
   const n2 = (await api("POST", "notes", { ext_id: "idea-test", title: "Test: idea", body: "Hello [[Alice Park]]", kind: "idea", status: "seed" }))[1]
   check("re-posting the same note is a no-op", n2.updated_at === n1.updated_at, [n1.updated_at, n2.updated_at])
   const n3 = (await api("PUT", "notes/idea-test", { status: "seed" }))[1]

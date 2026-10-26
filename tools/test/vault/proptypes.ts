@@ -56,7 +56,7 @@ export default async ($: VaultTest) => {
     check("property.type: the last one gone, so is the file", !exists(".vaultite/types.json"))
     fs.rmSync(path.join(VAULT, ".obsidian/types.json"), { force: true })
     fs.rmSync(path.join(VAULT, ".vaultite/types.json"), { force: true })
-    fs.rmSync(path.join(VAULT, "Types test"), { recursive: true, force: true })
+    await $.removeFolder("Types test")
   }
 
   // `this` in database views: the note a view is drawn in, or the one embedding it (the nearest), alike in the block's
@@ -91,6 +91,6 @@ export default async ($: VaultTest) => {
     check("this: /api/query's this, as the app asks for an embedded fence", code === 200 && r.groups[0].rows.map((x: Any) => x.title).join() === "Note", r)
     ;[code, r] = await api("POST", "ops/query.run", { where: "status = this.status", from: ["This test/"], this: "Beacon" })
     check("query.run: this (the note itself not listed)", code === 200 && r.groups[0].rows.map((x: Any) => x.title).join() === "Other", r)
-    fs.rmSync(path.join(VAULT, "This test"), { recursive: true, force: true })
+    await $.removeFolder("This test")
   }
 }

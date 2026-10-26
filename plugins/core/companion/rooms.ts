@@ -341,5 +341,16 @@ export function rooms(plugin: Plugin) {
 
     /** Notes open now and who's in each (tests, status). */
     list: () => [...all.values()].map((r) => ({ path: r.path, peers: r.peers.size, text: r.text.toString() })),
+
+    /** Until no room has a write or a guest's check waiting, nor anything in turn (tests: what's done, not a guessed wait). */
+    async settled() {
+      for (;;) {
+        const rs = [...all.values()], turns = rs.map((r) => r.turn)
+        await Promise.all(turns)
+        const now = [...all.values()]
+        if (now.length === rs.length && now.every((r, i) => r === rs[i] && r.turn === turns[i] && !r.pending && !r.queued.size)) return
+        await new Promise((ok) => setTimeout(ok, 10))
+      }
+    },
   }
 }

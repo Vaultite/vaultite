@@ -48,7 +48,7 @@ export default async ($: VaultTest) => {
       evicted: (abs: string) => away.has(at(abs)),
       download: (p: string, done: (e: Error | null) => void) => { asked.push(at(p)); setTimeout(() => { away.delete(at(p)); done(null) }, away.get(at(p)) ?? 0) },
     })
-    const evict = (rel: string, ms = 300) => away.set(path.join(VAULT, rel), ms)
+    const evict = (rel: string, ms = 100) => away.set(path.join(VAULT, rel), ms) // (down before the read tries again)
     try {
       write("Notes/Phone.md", "---\ntype: note\n---\n\nWritten on the phone.\n")
       evict("Notes/Phone.md")

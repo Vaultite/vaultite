@@ -134,7 +134,7 @@ export default async ($: VaultTest) => {
   ;[, graph] = await api("GET", "graph")
   check("type: the graph colours by the file's type", gnode("People/No Type.md")?.type === null && gnode("People/A Note.md")?.type === "note", gnode("People/A Note.md"))
   for (const f of ["People/Wrong Type.md", "People/Odd Type.md", "People/A Note.md"]) fs.rmSync(path.join(VAULT, f))
-  fs.rmSync(path.join(VAULT, "Elsewhere"), { recursive: true })
+  await $.removeFolder("Elsewhere")
 
   // ---------- Folders are the user's (core/vault.ts kindFor and home): kinds by type, new files where their kind's are ----------
   {
@@ -166,7 +166,7 @@ export default async ($: VaultTest) => {
     check("folders: homeFolder prefers folders named like the kind's", homeFolder(["Clippings/a.md", "Clippings/b.md", "Personal/Notes/c.md"], "Notes") === "Personal/Notes" &&
       homeFolder(["Personal/Logs/Gym/a.md", "Personal/Logs/Gym/b.md", "Logs/Sleep/c.md"], "Logs", true) === "Personal/Logs/Gym" &&
       homeFolder(["Friends/a.md", "Friends/b.md", "c.md"], "People") === "Friends" && homeFolder([], "People") === null)
-    for (const d of ["Personal", "Archive"]) fs.rmSync(path.join(VAULT, d), { recursive: true })
+    for (const d of ["Personal", "Archive"]) await $.removeFolder(d)
     fs.rmSync(path.join(VAULT, "Templates/A person.md"))
   }
 

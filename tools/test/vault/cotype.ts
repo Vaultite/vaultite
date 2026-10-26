@@ -4,6 +4,7 @@ import { fromBase64, toBase64 } from "lib0/buffer"
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate } from "y-protocols/awareness"
 import * as Y from "yjs"
 import type { Any, VaultTest } from "./harness.ts"
+import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   // Typing together (plugins/core/companion/rooms.ts): a Y.Doc per open note, written back a person at a time.
@@ -29,13 +30,13 @@ export default async ($: VaultTest) => {
   const ada = win("Ada", { who: guestWho, may: (_rel: string, _b: string, after: string) => (after.includes("![") ? "no images" : "") })
   const rex = win("Rex", { who: { ...guestWho, agent: "Rex" }, edits: false })
   for (const w of [owner, ada, rex]) co.heard(w.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
-  await $.sleep(100)
+  await co.settled()
   check("cotype: each window hears how many others are in the note", owner.got.filter((m) => m.t === "y-peers").at(-1)?.others === 2)
   check("cotype: each window gets the note as the file has it", [owner, ada, rex].every((w) => w.text.toString() === "# N\n\nfirst line\n"))
 
   owner.text.insert(owner.text.length, "owner's line\n")
   ada.text.insert(owner.text.toString().indexOf("first line") + 10, " (Ada)")
-  await $.sleep(1200)
+  await co.settled()
   const disk = read("Co/N.md")
   check("cotype: what each types reaches the others and the file", disk.includes("owner's line") && disk.includes("first line (Ada)") && rex.text.toString() === owner.text.toString() && ada.text.toString() === owner.text.toString(), [disk, rex.text.toString()])
   const blame = (await $.app.callOp("provenance.blame", { path: "Co/N.md" })).result as Any
@@ -44,13 +45,13 @@ export default async ($: VaultTest) => {
   const before = read("Co/N.md"), heardRex = rex.got.length
   ada.text.insert(0, "![x](https://example.com/p.png)\n")
   for (let i = 0; i < 5; i++) rex.text.insert(0, "REX\n")
-  await $.sleep(800)
+  await co.settled()
   check("cotype: a guest's change the share's rules refuse, or a reader's, doesn't land", read("Co/N.md") === before && !owner.text.toString().includes("example.com") && !owner.text.toString().includes("REX"), owner.text.toString())
   check("cotype: ...the guest's is said back, and a reader isn't sent the note for each", ada.got.some((m) => m.t === "y-reject" && m.why === "no images") && !rex.got.slice(heardRex).some((m) => m.t === "y-reject" || m.t === "y-state"), rex.got.slice(heardRex).map((m) => m.t))
 
   fs.writeFileSync(path.join(VAULT, "Co/N.md"), read("Co/N.md") + "an agent's line\n")
   co.changed(["Co/N.md"])
-  await $.sleep(300)
+  await co.settled()
   check("cotype: what changes on disk comes into the open note, for everyone", owner.text.toString().includes("an agent's line") && rex.text.toString().includes("an agent's line"))
 
   // Who's where: each one's caret, named and coloured by the server, never as someone else.
@@ -86,9 +87,9 @@ export default async ($: VaultTest) => {
     const jsv = Y.encodeStateVector(junk)
     junk.getMap("junk").set("k", "v".repeat(1000))
     co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.encodeStateAsUpdate(junk, jsv)) }, "Co/N.md")
-    await $.sleep(400)
+    await co.settled()
     owner.text.insert(0, "y")
-    await $.sleep(1000)
+    await co.settled()
     check("cotype: a guest's change waiting on another's next, or beside the note's text, is refused, and stays out", !read("Co/N.md").includes("example.com") && !owner.text.toString().includes("example.com")
       && ada.got.slice(n).filter((m) => m.t === "y-reject").length >= 1, read("Co/N.md"))
   }
@@ -98,7 +99,7 @@ export default async ($: VaultTest) => {
     owner.text.insert(owner.text.toString().indexOf(line) + line.length, " typed")
     fs.writeFileSync(path.join(VAULT, "Co/N.md"), read("Co/N.md").replace(line, `${line} from disk`))
     co.changed(["Co/N.md"])
-    await $.sleep(1200)
+    await co.settled()
     check("cotype: where typing and the disk clash, the typing stays and is written", owner.text.toString().includes(`${line} typed`) && read("Co/N.md").includes(`${line} typed`)
       && owner.got.some((m) => m.t === "y-clash") && ada.got.some((m) => m.t === "y-clash"), read("Co/N.md"))
     const { versions } = await (companion.service("history:versions") as Any)("Co/N.md")
@@ -123,14 +124,14 @@ export default async ($: VaultTest) => {
     check("cotype: a caret that isn't one is passed on as none", (seen2.getStates().get(ada.doc.clientID) as Any)?.cursor === null, owner.got.slice(m))
     const k = ada.got.length
     for (let i = 0; i < 40; i++) co.heard(ada.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
-    await $.sleep(200)
+    await co.settled()
     check("cotype: a window opens a note again only so often", ada.got.slice(k).filter((x) => x.t === "y-state").length <= 30)
   }
   {
     // Only text in the note's text: an embed (which no editor shows) is refused, and so are another window's Yjs ids.
     const n = ada.got.length
     ada.text.insertEmbed(2, { big: "x".repeat(1000) })
-    await $.sleep(400)
+    await co.settled()
     check("cotype: a guest's embed in the text is refused", ada.got.slice(n).some((m) => m.t === "y-reject") && !owner.text.toDelta().some((d: Any) => typeof d.insert !== "string"))
     const twin = new Y.Doc()
     Y.applyUpdate(twin, Y.encodeStateAsUpdate(owner.doc))
@@ -139,12 +140,12 @@ export default async ($: VaultTest) => {
     twin.getText("md").insert(0, "as the owner ")
     const k = ada.got.length
     co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.encodeStateAsUpdate(twin, sv)) }, "Co/N.md")
-    await $.sleep(400)
+    await co.settled()
     check("cotype: nor writes under another window's Yjs id", ada.got.slice(k).some((m) => m.t === "y-reject") && !owner.text.toString().includes("as the owner"), [ada.got.slice(k).map((m) => m.t), owner.text.toString().slice(0, 40)])
     // (nor under one whose window hasn't typed yet, only shown its caret)
     const lu = win("Lucas", { who: you })
     co.heard(lu.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
-    await $.sleep(100)
+    await co.settled()
     lu.aw.setLocalState({ cursor: null })
     co.heard(lu.ws, { t: "aw", path: "Co/N.md", u: toBase64(encodeAwarenessUpdate(lu.aw, [lu.doc.clientID])) }, "Co/N.md")
     const early = new Y.Doc()
@@ -154,14 +155,14 @@ export default async ($: VaultTest) => {
     early.getText("md").insert(0, "before them ")
     const j = ada.got.length
     co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.encodeStateAsUpdate(early, esv)) }, "Co/N.md")
-    await $.sleep(400)
+    await co.settled()
     check("cotype: nor under the Yjs id of a window that has only shown its caret", ada.got.slice(j).some((m) => m.t === "y-reject") && !owner.text.toString().includes("before them"))
     const as = new Awareness(new Y.Doc())
     as.clientID = owner.doc.clientID
     as.setLocalState({ cursor: null })
     const ivy = win("Ivy", { who: { ...guestWho, agent: "Ivy" }, may: () => "" })
     co.heard(ivy.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
-    await $.sleep(100)
+    await co.settled()
     const h = lu.got.length
     co.heard(ivy.ws, { t: "aw", path: "Co/N.md", u: toBase64(encodeAwarenessUpdate(as, [owner.doc.clientID])) }, "Co/N.md")
     ivy.aw.setLocalState({ cursor: null })
@@ -175,7 +176,7 @@ export default async ($: VaultTest) => {
     // Sent the note back for a change that didn't land only so often (it can be a big one).
     const eve = win("Eve", { who: { ...guestWho, agent: "Eve" }, may: () => "" })
     co.heard(eve.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
-    await $.sleep(100)
+    await co.settled()
     const k = eve.got.length, big = "A".repeat(400_001)
     for (let i = 0; i < 40; i++) co.heard(eve.ws, { t: "y", path: "Co/N.md", u: big }, "Co/N.md")
     const states = eve.got.slice(k).filter((m) => m.t === "y-state").length
@@ -194,7 +195,7 @@ export default async ($: VaultTest) => {
     }
     const k = ada.got.length, t0 = performance.now()
     co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.mergeUpdates(parts)) }, "Co/N.md")
-    await $.sleep(400)
+    await co.settled()
     check("cotype: a guest's change under many Yjs ids is refused", ada.got.slice(k).some((m) => m.t === "y-reject") && !owner.text.toString().includes("zz") && performance.now() - t0 < 2000)
   }
   {
@@ -204,10 +205,10 @@ export default async ($: VaultTest) => {
     check("cotype: a change is never cut inside a character", a === 5 && b === 3, [a, b])
     fs.writeFileSync(path.join(VAULT, "Co/N.md"), read("Co/N.md") + "mood 😀 ok\n")
     co.changed(["Co/N.md"])
-    await $.sleep(300)
+    await co.settled()
     fs.writeFileSync(path.join(VAULT, "Co/N.md"), read("Co/N.md").replace("😀", "😁"))
     co.changed(["Co/N.md"])
-    await $.sleep(300)
+    await co.settled()
     check("cotype: ...so an emoji changed on disk comes in as itself", owner.text.toString().includes("mood 😁 ok") && !owner.text.toString().includes("\uFFFD"), owner.text.toString())
   }
   {
@@ -218,12 +219,12 @@ export default async ($: VaultTest) => {
     const may = (_rel: string, b: string, after: string) => (after.includes("SECRET") && !b.includes("SECRET") ? "no secrets" : "")
     const gina = win("Gina", { who: { ...guestWho, agent: "Gina" }, may }, "Co/G.md")
     co.heard(gina.ws, { t: "y-open", path: "Co/G.md" }, "Co/G.md")
-    await $.sleep(100)
+    await co.settled()
     gina.text.insert(6, " typed")
-    await $.sleep(300)
+    await waitFor(() => co.list().find((r) => r.path === "Co/G.md")?.text.includes(" typed"), 5000, 10) // (in the doc, not written yet)
     fs.writeFileSync(path.join(VAULT, "Co/G.md"), "a line from disk\n")
     co.changed(["Co/G.md"])
-    await $.sleep(900)
+    await co.settled()
     check("cotype: guests alone don't write over a clashing file what they couldn't write", read("Co/G.md") === "a line from disk\n" && gina.text.toString() === "a line from disk\n"
       && gina.got.some((m) => m.t === "y-clash" && m.kept === "file"), [read("Co/G.md"), gina.text.toString()])
     gina.close()
@@ -232,9 +233,9 @@ export default async ($: VaultTest) => {
     await $.vault.sync()
     const lena = win("Lena", { who: { ...guestWho, agent: "Lena" }, may: () => "" }, "Co/L.md")
     co.heard(lena.ws, { t: "y-open", path: "Co/L.md" }, "Co/L.md")
-    await $.sleep(100)
+    await co.settled()
     lena.text.insert(0, "hi")
-    await $.sleep(400)
+    await co.settled()
     check("cotype: a guest's change in a note too long to type in together is refused", lena.got.some((m) => m.t === "y-reject" && /too long/.test(m.why)) && !read("Co/L.md").startsWith("hi"))
     lena.close()
   }
@@ -243,7 +244,7 @@ export default async ($: VaultTest) => {
     // aren't Yjs updates are refused, not thrown where nothing catches them.
     const kit = win("Kit", { who: { ...guestWho, agent: "Kit" }, may: () => "" })
     co.heard(kit.ws, { t: "y-open", path: "Co/N.md" }, "Co/N.md")
-    await $.sleep(100)
+    await co.settled()
     const d = new Y.Doc(), many: Uint8Array[] = []
     Y.applyUpdate(d, Y.encodeStateAsUpdate(owner.doc))
     d.on("update", (u: Uint8Array) => many.push(u))
@@ -258,7 +259,7 @@ export default async ($: VaultTest) => {
     const capped = kit.got.slice(k).filter((m) => m.t === "y-reject").length, ms = performance.now() - t0
     co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(new Uint8Array([1, 2, 3, 250, 250])) }, "Co/N.md")
     co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(new Uint8Array([9, 9, 9, 9])) }, "Co/N.md")
-    await $.sleep(400)
+    await co.settled()
     check("cotype: a guest's waiting changes stop at so many, or so many bytes, refused as they come", capped >= 2 && ms < 1000 && !owner.text.toString().includes("qqq") && !owner.text.toString().includes("www"), [capped, ms])
     check("cotype: ...and what isn't an update is refused", kit.got.slice(k).filter((m) => m.t === "y-reject").length > capped)
     kit.close()
@@ -270,14 +271,14 @@ export default async ($: VaultTest) => {
     await $.vault.sync()
     const me = win("Lucas", { who: you }, "Co/P.md"), bea = win("Bea", { who: { ...guestWho, agent: "Bea" }, may: () => "" }, "Co/P.md")
     for (const w of [me, bea]) co.heard(w.ws, { t: "y-open", path: "Co/P.md" }, "Co/P.md")
-    await $.sleep(100)
+    await co.settled()
     let onDisk: string | null = null
     const sent = me.ws.send
     me.ws.send = (t: string) => { const m = JSON.parse(t); if (m.t === "y-peers" && m.others === 0) onDisk ??= read("Co/P.md"); sent(t) }
     bea.text.insert(bea.text.length, "Bea's words\n")
     await $.sleep(50)
     bea.close()
-    await $.sleep(800)
+    await co.settled()
     const blame = (await $.app.callOp("provenance.blame", { path: "Co/P.md" })).result as Any
     check("cotype: a guest who leaves right after typing has it written as theirs before the owner's window is alone", String(onDisk).includes("Bea's words")
       && blame.runs.some((r: Any) => r.by === "Bea" && r.guest && r.text.includes("Bea's words")), [onDisk, blame.runs])
@@ -285,11 +286,11 @@ export default async ($: VaultTest) => {
     // them, so the owner's next save doesn't write it as the user's.
     const cy = win("Cy", { who: { ...guestWho, agent: "Cy" }, may: () => "" }, "Co/P.md")
     co.heard(cy.ws, { t: "y-open", path: "Co/P.md" }, "Co/P.md")
-    await $.sleep(100)
+    await co.settled()
     cy.text.insert(cy.text.length, "<script>alert(1)</script>\n")
-    await $.sleep(1200)
+    await co.settled()
     me.text.insert(0, "Owner ")
-    await $.sleep(1000)
+    await co.settled()
     check("cotype: a guest's change the file won't take goes from the doc and is said back, never saved as the owner's", !me.text.toString().includes("<script>") && !read("Co/P.md").includes("<script>")
       && read("Co/P.md").includes("Owner ") && cy.got.some((m) => m.t === "y-reject" && m.why === "it couldn't be saved"), [read("Co/P.md"), me.text.toString()])
     for (const w of [me, cy]) w.close()
@@ -306,7 +307,7 @@ export default async ($: VaultTest) => {
     await $.vault.sync()
     const hostPlugin = { vault: { abs: (p: string) => path.join(HOST, p) }, service: () => undefined,
       host: { api: async (_m: string, _r: string, b: Any, who: Any) => { hostWrites.push({ who, text: b.text }); fs.writeFileSync(path.join(HOST, b.path), b.text); return { text: b.text } } } } as Any
-    const hostCo = rooms(hostPlugin)
+    const hostCo = rooms(hostPlugin), both = () => Promise.all([co.settled(), hostCo.settled()])
     /** A socket's two ends: what one sends, the other hears. */
     const pair = () => {
       const a = new EventEmitter() as Any, b = new EventEmitter() as Any
@@ -355,15 +356,15 @@ export default async ($: VaultTest) => {
       hostCo.heard(ws, { t: "y-open", path: "Shared/S.md" }, "Shared/S.md")
       return { ws, got, doc, aw, text: doc.getText("md") }
     })()
-    await $.sleep(100)
+    await both()
     const state = me.got.find((m) => m.t === "y-state")
     check("bridge: a note another machine shares opens in its room, said to be there", state?.remote === true && me.text.toString() === "# S\n\nhost line\n" && ups === 1, me.got.map((m) => m.t))
     check("bridge: ...not in this machine's", !co.list().some((r: Any) => r.path === "Shared/S.md") && hostCo.list().find((r: Any) => r.path === "Shared/S.md")?.peers === 2)
 
     me.text.insert(me.text.length, "typed on this machine\n")
-    await $.sleep(100)
+    await both()
     eve.text.insert(eve.text.length, "typed by the guest\n")
-    await $.sleep(1200)
+    await both()
     const hostText = fs.readFileSync(path.join(HOST, "Shared/S.md"), "utf8")
     check("bridge: typed both ways, and written there", hostText.includes("typed on this machine") && hostText.includes("typed by the guest") && me.text.toString() === eve.text.toString(), [hostText, me.text.toString()])
     check("bridge: each one's lines written as theirs: this machine's as the user's", hostWrites.some((w) => w.who.client === "app/web" && w.text.includes("typed on this machine") && !w.text.includes("typed by the guest"))
@@ -374,17 +375,17 @@ export default async ($: VaultTest) => {
     me.say({ t: "aw", path: "Shared/S.md", u: toBase64(encodeAwarenessUpdate(me.aw, [me.doc.clientID])) })
     eve.aw.setLocalState({ user: { name: "x" }, cursor: null })
     hostCo.heard(eve.ws, { t: "aw", path: "Shared/S.md", u: toBase64(encodeAwarenessUpdate(eve.aw, [eve.doc.clientID])) }, "Shared/S.md")
-    await $.sleep(50)
+    await both()
     const names = (got: Any[]) => { const a = new Awareness(new Y.Doc()); for (const m of got.filter((x) => x.t === "aw")) applyAwarenessUpdate(a, fromBase64(m.u), "server"); return [...a.getStates().values()].map((x: Any) => x.user?.name) }
     check("bridge: carets both ways, named there", names(eve.got).includes("Owner") && names(me.got).includes("Eve"), [names(eve.got), names(me.got)])
 
     // Closed and opened again; no longer shared there, shared again.
     const before = me.got.length
     me.say({ t: "y-close", path: "Shared/S.md" })
-    await $.sleep(50)
+    await both()
     check("bridge: closed here, it leaves there", hostCo.list().find((r: Any) => r.path === "Shared/S.md")?.peers === 1 && me.got.length === before)
     me.say({ t: "y-open", path: "Shared/S.md" })
-    await $.sleep(100)
+    await both()
     check("bridge: opened again, there again", me.got.slice(before).some((m) => m.t === "y-state" && m.remote) && ups === 2)
 
     shared = []
@@ -392,42 +393,42 @@ export default async ($: VaultTest) => {
     await there.refresh()
     check("bridge: a folder no longer shared there comes back here", me.got.slice(n).some((m) => m.t === "y-gone" && m.path === "Shared/S.md"), me.got.slice(n).map((m) => m.t))
     me.say({ t: "y-open", path: "Shared/S.md" })
-    await $.sleep(100)
+    await both()
     check("bridge: ...opened in this machine's room", co.list().some((r: Any) => r.path === "Shared/S.md") && me.got.slice(n).some((m) => m.t === "y-state" && !m.remote))
 
     shared = ["Shared"]
     const k = me.got.length
     await there.refresh()
-    await $.sleep(100)
+    await both()
     check("bridge: shared again, it moves there (out of this machine's room)", me.got.slice(k).some((m) => m.t === "y-state" && m.remote) && !co.list().some((r: Any) => r.path === "Shared/S.md"), me.got.slice(k).map((m) => m.t))
 
     // The connection dropping: said gone, opened here meanwhile (that machine let be a while), there again after.
     const j = me.got.length
     upstreams.at(-1)!.close()
-    await $.sleep(20)
+    await both()
     check("bridge: a dropped connection is said, and the note's typed in here meanwhile", me.got.slice(j).some((m) => m.t === "y-gone") && hostCo.list().find((r: Any) => r.path === "Shared/S.md")?.peers === 1)
     me.say({ t: "y-open", path: "Shared/S.md" })
-    await $.sleep(20)
+    await both()
     check("bridge: ...here", co.list().some((r: Any) => r.path === "Shared/S.md") && !me.got.slice(j).some((m) => m.t === "y-state" && m.remote))
     eve.text.insert(0, "while it was away\n")
-    await $.sleep(400)
+    await Promise.all([both(), $.sleep(60)]) // (past downMs: that machine tried again)
     await there.refresh()
-    await $.sleep(100)
+    await both()
     check("bridge: back, there again with what was typed there meanwhile", me.got.slice(j).some((m) => m.t === "y-state" && m.remote) && me.text.toString().startsWith("while it was away")
       && !co.list().some((r: Any) => r.path === "Shared/S.md"), me.text.toString())
     me.text.insert(me.text.length, "after it came back\n")
-    await $.sleep(1000)
+    await both()
     check("bridge: ...and typed there", fs.readFileSync(path.join(HOST, "Shared/S.md"), "utf8").includes("after it came back") && read("Shared/S.md") === "# S\n\nhost line\n")
     eve.ws.close()
     me.ws.close()
-    await $.sleep(100)
+    await both()
     check("bridge: a window gone leaves the room there", !hostCo.list().some((r: Any) => r.path === "Shared/S.md" && r.peers > 0))
     there.stop()
     fs.rmSync(HOST, { recursive: true, force: true })
     fs.rmSync(path.join(VAULT, "Shared"), { recursive: true, force: true })
   }
   for (const w of [owner, ada, rex]) w.close()
-  await $.sleep(100)
+  await co.settled()
   check("cotype: the note's room goes with its last window", !co.list().some((r: Any) => r.path === "Co/N.md"))
   fs.rmSync(path.join(VAULT, "Co"), { recursive: true, force: true })
   await $.vault.sync()

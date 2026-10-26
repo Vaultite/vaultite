@@ -132,7 +132,7 @@ export default async ($: VaultTest) => {
   const DATED = "Rev/Dated.md"
   await heard("PUT", "file", { path: DATED, text: "# Dated\n\nLine one.\n" })
   const made = read(DATED)
-  await sleep(1100) // (so the edit's updated is another second's)
+  await $.nextSecond() // (so the edit's updated is another second's)
   await call("file.edit", { path: DATED, old: "Line one.", new: "Line one, edited.\nLine two." }, chatgpt)
   f = await pending(DATED)
   d = await detail(DATED)

@@ -106,6 +106,18 @@ export async function vaultHarness(from?: string) {
     fs.utimesSync(p, t, t)
   }
 
+  /** Until the clock's next second (what's dated to the second, written now, is another second's than before). */
+  const nextSecond = () => sleep(1005 - (Date.now() % 1000))
+
+  /** A test's top-level folder taken away so the vault lets go of it now: its files first, as files deleted (a folder
+   *  vanishing whole is kept a few seconds, which a later area would wait on: settled). */
+  async function removeFolder(rel: string) {
+    const p = path.join(VAULT, rel)
+    for (const n of fs.readdirSync(p)) fs.rmSync(path.join(p, n), { recursive: true, force: true })
+    await vault.sync()
+    fs.rmSync(p, { recursive: true, force: true })
+  }
+
   /** Until no deleted folder's files are still indexed: the vault lets go of them a few seconds after (Vault.walk),
    *  which must not land in the middle of the next area. */
   async function settled() {
@@ -118,7 +130,7 @@ export async function vaultHarness(from?: string) {
 
   return {
     tmp, VAULT, TOOLS, app, vault, ON, open, merge3, Text, publicOf, check, sleep, run, api, sentBy, read, exists, write,
-    WS_DIR, readWs, writeWs, clearWs, fixtureNow, settled,
+    WS_DIR, readWs, writeWs, clearWs, fixtureNow, settled, removeFolder, nextSecond,
     CLAUDE_DIR, CODEX_DIR,
     /** What an area leaves for the ones after it (tools/test/vault/index.ts says which need which). */
     vars: {} as Record<string, Any>,
