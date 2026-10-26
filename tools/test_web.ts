@@ -2019,6 +2019,25 @@ await section("agent logins", async () => {
   check("agent logins: an answer's every string is scrubbed, a picture's bytes left whole", answer.title === "Code •••" && answer.lines[0] === "a •••" && answer.png === "iVBORw0K482913AAAA" && answer.tab === 3, answer)
 })
 
+// ---------- Browser: a login sealed for another Mac's app (electron/browser/sealed.ts) ----------
+await section("sealed logins", async () => {
+  const sl = await import("../electron/browser/sealed.ts")
+  const m1 = sl.newKeys(), m4 = sl.newKeys()
+  const login = { names: ["example.com"], cookies: [{ name: "session", value: "s3cret", domain: ".example.com", path: "/" }], at: 1 }
+  const box = sl.seal(m1.pub, login, "vaultite login for c-agents")
+  check("sealed: what the servers pass on holds no cookie", !box.includes("s3cret") && !box.includes("session"))
+  const opened = sl.open(m1, box, "vaultite login for c-agents")
+  check("sealed: the app it's for opens it as it was", JSON.stringify(opened.data) === JSON.stringify(login) && opened.from.length > 20, opened)
+  const fails = (f: () => unknown) => { try { f(); return false } catch { return true } }
+  check("sealed: another app's key doesn't open it", fails(() => sl.open(m4, box, "vaultite login for c-agents")))
+  check("sealed: it doesn't open for another set of logins", fails(() => sl.open(m1, box, "vaultite login for c-work")))
+  const b = JSON.parse(box), ct = Buffer.from(b.ct, "base64url")
+  ct[0] ^= 1
+  check("sealed: a box changed on the way doesn't open", fails(() => sl.open(m1, JSON.stringify({ ...b, ct: ct.toString("base64url") }), "vaultite login for c-agents")))
+  check("sealed: each box has a key of its own", JSON.parse(sl.seal(m1.pub, login, "x")).from !== b.from)
+  check("sealed: what isn't a box, or a key, is refused", fails(() => sl.open(m1, "{}", "x")) && fails(() => sl.open(m1, "not json", "x")) && fails(() => sl.seal("nope", login, "x")))
+})
+
 // ---------- Browser: the user's passkeys approving agents' logins (electron/browser/presence.ts) ----------
 // A made-up authenticator here (a P-256 key, as a phone's passkey has), WebAuthn's bytes built by hand.
 await section("login approvals", async () => {

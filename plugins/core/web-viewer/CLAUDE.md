@@ -30,3 +30,7 @@
   LiveView.tsx, its routes liveroutes.ts, the engine's electron/browser/live.ts. A tab is `3@m1` in another machine's
   browser, its routes and socket joined there. Owner only and never ops, so no agent drives input that way; frames reach
   the server unasked as desktop events (core/desktopapp.ts onDesktopEvent), only while someone watches.
+- Other machines' logins (machinelogins.ts, Sites' "On M1"): names travel, cookies never through a server. A login
+  leaves only from the user's act in this window (`web:seal`, never a server call), sealed for the other app's key
+  (electron/browser/sealed.ts); that app takes it as `remote:take`, which adds a login and reads none. Never add a
+  `remote:` call that answers a cookie or signs out: anything on the tailnet that reaches a server could ask it.

@@ -46,8 +46,11 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   container a card in its colour with its options (dragged by its name to reorder containers everywhere), and a filter by site or account.
   A signed-in row dragged onto another card moves its login there (⌥: copies it), as its menu's Move to and Copy to
   do: its cookies go there (a site keeping its login in storage instead stays put), its always-open rule follows, Undo
-  takes it back; the user's own act, never an op. Deleting a container signed in somewhere offers to move its logins
-  first. Accounts and always-open sites keep the order they're dragged into (`siteOrder`, by profile), else
+  takes it back; the user's own act, never an op. Under them, "On M1" and the like: each other machine's browser
+  (Machines, with this vault) and who's signed in where there, its rows only opening the site here. A login dragged
+  onto one of its cards, or Copy to's, is copied there (only copied: nothing here signs it out there), sealed in this
+  app for that app's key, so the servers passing it on never read a cookie, and checked there as here. Deleting a
+  container signed in somewhere offers to move its logins first. Accounts and always-open sites keep the order they're dragged into (`siteOrder`, by profile), else
   always-open first, then A to Z. The address bar's container menu names who's signed in
   to the page's site in each container. The Browser's settings have the same for every set of logins, under Sites and logins.
 - Icons: a site's is its home page's or its /favicon.ico; a page with one of its own under a path (Maps on google.com)

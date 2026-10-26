@@ -78,16 +78,34 @@ const one = serve(port)
   check("… and the browser op says why", /protocol 0, this server 1/.test(JSON.stringify(said.body)), said.body)
 
   const app = socket(port, { "x-vaultite-host-key": c.key })
+  const calls: any[] = []
   await app.status
   app.ws.send(JSON.stringify({ type: "hello", protocol: 1 }))
   app.ws.on("message", (d) => {
     const m = JSON.parse(String(d))
-    if (m.type === "desktop:call") app.ws.send(JSON.stringify({ type: "desktop:reply", rid: m.rid, value: m.name === "agent:tabs" ? [{ tab: 7, url: "https://example.com/", title: "Example", access: "act", container: "Agents" }] : null }))
+    if (m.type !== "desktop:call") return
+    calls.push(m)
+    const value = m.name === "agent:tabs" ? [{ tab: 7, url: "https://example.com/", title: "Example", access: "act", container: "Agents" }]
+      : m.name === "remote:sites" ? { "c-agents": [{ site: "example.com", signed: true, account: "alice.park" }] }
+      : m.name === "remote:key" ? { key: "made-up" } : m.name === "remote:take" ? { ok: true } : null
+    app.ws.send(JSON.stringify({ type: "desktop:reply", rid: m.rid, value }))
   })
   await sleep(300)
   check("attach: welcomed", app.heard.some((m) => m.type === "welcome" && m.protocol === 1), app.heard)
   const tabs = await op(port, "web-viewer.tabs")
   check("attached: the server's browser calls reach the app", tabs.status === 200 && JSON.stringify(tabs.body).includes("Example"), tabs)
+  const call = (p: string, body?: unknown) => fetch(`http://127.0.0.1:${port}/api/${p}`, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {})
+    .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) as any }))
+  const sets = await call("web-viewer/logins?local=1&profiles=,c-agents")
+  check("logins: another machine asking hears who's signed in where in this browser (names only)", sets.status === 200 && sets.body?.sets?.["c-agents"]?.[0]?.account === "alice.park"
+    && JSON.stringify(calls.find((x) => x.name === "remote:sites")?.args) === JSON.stringify([["", "c-agents"]]), [sets, calls])
+  const key = await call("web-viewer/logins/key")
+  const took = await call("web-viewer/logins/take", { to: "c-agents", sealed: "{\"v\":1}" })
+  check("logins: a sealed login reaches the app as it came, for the set of logins named", key.body?.key === "made-up" && took.body?.ok === true
+    && JSON.stringify(calls.find((x) => x.name === "remote:take")?.args) === JSON.stringify(["c-agents", "{\"v\":1}"]), [key, took])
+  const bad = await call("web-viewer/logins/take", { to: "../x", sealed: "{}" })
+  const foreign = await fetch(`http://127.0.0.1:${port}/api/web-viewer/logins/key`, { headers: { Origin: "http://attacker.example" } })
+  check("logins: a bad set of logins, or another site's page, is refused", bad.status === 400 && foreign.status === 403, [bad.status, foreign.status])
   const self = await fetch(`http://127.0.0.1:${port}/api/machines/self`).then((r) => r.json()) as any
   check("attached: Machines says this always-on server has a browser", self.desktop === true && self.standalone === true, self)
 

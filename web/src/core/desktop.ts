@@ -157,6 +157,9 @@ export type WebPages = {
   /** Move a login (its sites' cookies) to another profile, or copy it (`copy`): not ok when the site there names nobody
    *  after (it keeps its login elsewhere), then left as it was. Older builds don't have it. */
   move?: (from: string, to: string, sites: string[], copy: boolean) => Promise<{ ok: boolean; account?: string }>
+  /** A login (its sites' cookies) sealed for another Mac's app, by its key, for its profile `to`: only that app opens it
+   *  (Machines; the servers pass it on). Older builds don't have it. */
+  seal?: (from: string, sites: string[], to: string, key: string) => Promise<string>
   /** Claude Code on the web's sessions in the profiles named, read with their logins once `read` (the user's yes), told
    *  from now on as `cloud` events, news as `session` ones. Older builds take nothing and answer the sessions. */
   cloud?: (want: { profiles: string[]; read: boolean; hidden: string[] }) => Promise<CloudState | CloudSession[]>

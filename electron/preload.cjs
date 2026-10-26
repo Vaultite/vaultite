@@ -123,6 +123,7 @@ contextBridge.exposeInMainWorld("vaultite", {
     sites: call("web:sites"),
     forget: call("web:forget"),
     move: call("web:move"),
+    seal: call("web:seal"),
     cloud: call("web:cloud"),
     raise: call("web:raise"),
     look: call("web:look"),

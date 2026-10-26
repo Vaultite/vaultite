@@ -10,11 +10,14 @@ import { addRule, BLOCKED, makeRule, readRules, removeRule } from "./elements.ts
 import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitestyles.ts"
 import { liveView } from "./liveroutes.ts"
 import { approvals } from "./approvals.ts"
+import { machineLogins } from "./machinelogins.ts"
 
 export const plugin = new Plugin(import.meta.url)
-// (the owner watching and driving tabs from the web app, and approving agents' logins with a passkey: routes, not ops)
+// (the owner watching and driving tabs from the web app, approving agents' logins with a passkey, and other machines'
+// logins: routes, not ops)
 liveView(plugin)
 approvals(plugin)
+machineLogins(plugin)
 
 type Tab = { tab: number; url: string; title: string; container: string | null; access: "none" | "read" | "act"; shown: boolean
   by: string | null; mine: boolean; summary?: string; paused?: boolean; asking?: string }

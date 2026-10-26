@@ -1,6 +1,6 @@
 // Each set of logins' sites as last listed (Sites asks the desktop app, electron/web.ts), so the container menu can
-// name who's signed in to a page's site in each container without waiting.
-import { cell, webPages, type WebSite } from "@vaultite"
+// name who's signed in to a page's site in each container without waiting; other machines' asked through the server.
+import { cell, get, webPages, type WebSite } from "@vaultite"
 
 /** By profile (a workspace's logins, or a container's: "c-work"). */
 export const listed = cell(new Map<string, WebSite[]>())
@@ -16,4 +16,15 @@ export function askSites(profs: string[]) {
 export function accountIn(prof: string, site: string) {
   const s = listed.get().get(prof)?.find((x) => x.site === site || x.with?.includes(site))
   return s?.account ? (s.more?.length ? `${s.account} +${s.more.length}` : s.account) : s?.signed ? "Signed in" : ""
+}
+
+/** Another machine's browser's sets of logins with sites (machinelogins.ts), by profile. */
+export type MachineSets = { machine: string; label: string; sets: Record<string, WebSite[]> }
+/** The other machines' as last listed (null: not yet). */
+export const elsewhere = cell<MachineSets[] | null>(null)
+
+/** List the other machines' sets of logins among `profs` again. */
+export function askElsewhere(profs: string[]) {
+  return get<{ machines: MachineSets[] }>(`web-viewer/logins?profiles=${encodeURIComponent(profs.join(","))}`)
+    .then((r) => elsewhere.set(r.machines), () => {})
 }

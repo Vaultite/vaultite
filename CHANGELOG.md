@@ -27,6 +27,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   it would replace another account there or let agents use it, and a site that keeps its login outside cookies stays
   where it was. Deleting a container signed in somewhere offers to move its logins first. A container's sites reorder
   by dragging, always-open ones first until you do.
+- **Your other Macs' logins in Sites**: the Sites tab lists who's signed in where in each other Mac's browser (Machines),
+  under On M1 and the like, and copies a login there: drag a site onto one of its cards, or Copy to. The login is sealed
+  for that Mac's app on the way, so the servers passing it on never read a cookie.
 - **Names pick the agent**: @opus in a note starts a companion on Opus, @opus-review another; @haiku, @fable, @sonnet
   likewise, @codex Codex on GPT-6.1 Sol at medium (@sol, @astra, @luna its other models), @opencode OpenCode, which
   now runs the model it's given (`opencode/deepseek-v4.1-flash-free`) and shows its permission asks by its cursor. An

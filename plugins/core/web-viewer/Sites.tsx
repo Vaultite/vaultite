@@ -8,11 +8,11 @@ import {
   type MenuItem, type SidebarCtx, type WebSite,
 } from "@vaultite"
 import type { LucideIcon, LucideProps } from "lucide-react"
-import { askSites, keep, listed } from "./accounts"
+import { askSites, elsewhere, keep, listed, type MachineSets } from "./accounts"
 import { SiteIcon, siteIcon } from "./icons"
 import { colorOf, containersOf, moveContainer, setSiteRule, useContainers, type Container } from "./containers"
 import { agentsSay, canLockNow, containerItems, newContainer, useCanLock } from "./ContainerButton"
-import { allLogins, andList, isIn, loginsOf, moveLogin, NEUTRAL, ownLogins, setOrder, signingOut, sitesOf, type Logins } from "./loginsets"
+import { allLogins, allLoginsOn, andList, isIn, loginsOf, loginsOn, moveLogin, nameOf, NEUTRAL, ownLogins, refreshElsewhere, setOrder, signingOut, sitesIn, sitesOf, type Logins } from "./loginsets"
 import { settings } from "./state"
 
 /** Show every set of logins and their containers' options: the Sites tab. */
@@ -142,9 +142,10 @@ const FEW = 3
 const matches = (s: WebSite, q: string) => sitesOf(s).some((x) => x.includes(q)) || whoText(s).toLowerCase().includes(q)
 
 /** A set of logins' sites as rows: accounts and always-open sites in the order dragged into (else pinned, then A to Z),
- *  then the rest and trackers, folded past a few. A row drags onto another set's card to move there. `filter`: matches. */
+ *  then the rest and trackers, folded past a few; dragged onto another card to move there (another machine's: only shown). */
 function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; data: Listed; openPage?: Open; filter?: string }) {
-  const { sites, others, leaving, refresh } = data
+  const { sites, leaving, refresh } = data, there = !!l.machine
+  const others = there ? [] : data.others
   const containers = useContainers()
   const c = l.container ? containers.find((x) => x.id === l.container) : undefined
   const [unfolded, unfold] = useState(false)
@@ -166,16 +167,24 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   const shown = !folds || unfolded
   const signedIn = (s: WebSite) => !!sites?.some((x) => x.site === s.site)
   const box = useRef<HTMLDivElement>(null)
-  useSlide(box, useSiteOrder(box, l.prof, q ? [] : top.map((s) => s.site)), "y")
+  useSlide(box, useSiteOrder(box, l.prof, q || there ? [] : top.map((s) => s.site)), "y")
   const lifted = useDrag((d) => (d?.item.site?.logins === l.prof ? d.item.site.site : null))
-  const elsewhere = (copy: boolean) => (s: WebSite): MenuItem[] => allLogins().filter((o) => o.prof !== l.prof)
-    .map((o) => ({ label: o.name, icon: dotIcon(o.color), run: () => void moveLogin(l, o, s, copy) }))
-  const menu = (s: WebSite): MenuItem[] => [
+  const machines = elsewhere.use()
+  const to = (o: Logins, copy: boolean) => (s: WebSite): MenuItem => ({ label: o.name, icon: dotIcon(o.color), run: () => void moveLogin(l, o, s, copy) })
+  const targets = (copy: boolean) => (s: WebSite): MenuItem[] => [
+    ...allLogins().filter((o) => o.prof !== l.prof).map((o) => to(o, copy)(s)),
+    // (another machine's take a copy: sealed for its app, never signed out there from here)
+    ...(copy && webPages?.seal ? (machines ?? []).flatMap((m) => [
+      { label: m.label, caption: true, sep: true, run: () => {} },
+      ...allLogins().map((o) => to(loginsOn({ id: m.machine, label: m.label }, o), true)(s)),
+    ]) : []),
+  ]
+  const menu = (s: WebSite): MenuItem[] => there ? [{ label: `Open ${s.site}`, icon: Globe, run: () => open(`https://${s.site}/`) }] : [
     { label: `Open ${s.site}`, icon: Globe, run: () => open(`https://${s.site}/`) },
     ...(c ? [{ label: `Always open in ${c.name}`, icon: Pin, checked: always.includes(s.site), run: () => void setSiteRule(s.site, always.includes(s.site) ? null : c.id) }] : []),
     ...(signedIn(s) && webPages?.move ? [
-      { label: "Move to", icon: ArrowRightLeft, sep: true, run: () => {}, items: elsewhere(false)(s) },
-      { label: "Copy to", icon: Copy, run: () => {}, items: elsewhere(true)(s) },
+      { label: "Move to", icon: ArrowRightLeft, sep: true, run: () => {}, items: targets(false)(s) },
+      { label: "Copy to", icon: Copy, run: () => {}, items: targets(true)(s) },
     ] : []),
     ...(signedIn(s) ? [{ label: "Sign out", icon: LogOut, danger: true, sep: true, run: () => void signOut(l, s, refresh) }] : []),
   ]
@@ -183,14 +192,14 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
     <SidebarRow key={s.site} icon={isIn(s) ? accountIcon(s.site, s.avatar) : siteIcon(`https://${s.site}/`)} label={<SiteLabel s={s} />} open
       tip={[andList(sitesOf(s)), whoText(s), pinned(s) && c ? `always opens in ${c.name}` : ""].filter(Boolean).join(": ")}
       data-web-site={s.site} data-web-account={isIn(s) ? "" : undefined} data-leaving={pinned(s) ? undefined : leaving(s.site)} onClick={() => open(`https://${s.site}/`)} more
-      swipe={() => signedIn(s) ? [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(l, s, refresh) }] : []}
+      swipe={() => signedIn(s) && !there ? [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(l, s, refresh) }] : []}
       onContextMenu={menuFor(() => menu(s))}>
       {pinned(s) && <Pin aria-hidden data-web-always="" className="mr-1 size-3 shrink-0 text-tertiary group-hover/row:hidden" strokeWidth={2} />}
       {!isIn(s) && !pinned(s) && s.last ? <span className="mr-1 shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{fmtAgo(s.last, { short: true })}</span> : null}
     </SidebarRow>
   )
   // (only what has cookies here goes elsewhere: a site only pinned has nothing to move, but takes its place in the order)
-  const draggable = (s: WebSite) => (
+  const draggable = (s: WebSite) => there ? <div key={s.site}>{row(s)}</div> : (
     <div key={s.site} data-slide={s.site} className={lifted === s.site ? "opacity-40" : undefined}
       onPointerDown={(e) => startDrag(e, { from: "site", site: { logins: l.prof, site: s.site }, label: s.account ? `${s.site} · ${s.account}` : s.site })}>
       {row(s)}
@@ -329,28 +338,39 @@ export function SitesPanel({ open, openPage }: Pick<SidebarCtx, "open"> & { open
  *  accounts, and its options on hover and right-click. A container's is where it's dragged to another place. */
 function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: string }) {
   const can = useCanLock()
-  const items = () => (c ? containerItems(c, can) : [])
+  // (another machine's container is changed here too, in its own card: the vault's)
+  const own = l.machine ? undefined : c
+  const items = () => (own ? containerItems(own, can) : [])
   const agents = c ? agentsSay(c) : ""
   return (
-    <div onContextMenu={c ? menuFor(items) : undefined} data-web-logins-heading={l.container ?? l.prof}
-      onPointerDown={c ? (e) => startDrag(e, { from: "container", container: c.id, label: c.name }) : undefined}
-      className={`group/head mb-1 flex h-8 items-center gap-2 pr-0.5 pl-1.5 select-none ${c ? "cursor-grab" : ""}`}>
+    <div onContextMenu={own ? menuFor(items) : undefined} data-web-logins-heading={l.container ?? l.prof}
+      onPointerDown={own ? (e) => startDrag(e, { from: "container", container: own.id, label: own.name }) : undefined}
+      className={`group/head mb-1 flex h-8 items-center gap-2 pr-0.5 pl-1.5 select-none ${own ? "cursor-grab" : ""}`}>
       <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
       <span className="min-w-0 truncate text-[14px] font-semibold" data-web-logins-name="">{l.name}</span>
       {c?.lock && <Fingerprint aria-label="Locked with Touch ID" data-tip="Locked with Touch ID" className="size-3.5 shrink-0 text-tertiary" strokeWidth={2} />}
       {agents && <Bot aria-label={agents} data-tip={agents} className="size-3.5 shrink-0 text-tertiary" strokeWidth={2} />}
       <span className="min-w-0 flex-1 truncate text-right text-[12px] text-tertiary">{count}</span>
-      {c && <span data-no-drag="" className="md:opacity-0 md:group-hover/head:opacity-100 md:group-focus-within/head:opacity-100">
-        <HeadingButton icon={Ellipsis} label={`Options for ${c.name}`} tip="Options" onClick={(e) => menuBelow(e, items())} />
+      {own && <span data-no-drag="" className="md:opacity-0 md:group-hover/head:opacity-100 md:group-focus-within/head:opacity-100">
+        <HeadingButton icon={Ellipsis} label={`Options for ${own.name}`} tip="Options" onClick={(e) => menuBelow(e, items())} />
       </span>}
     </div>
   )
 }
 
 /** A set of logins in the Sites tab, a card in its colour: its heading and its sites; nothing while a filter matches none. */
-function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; openPage: Open; filter: string }) {
-  const data = useSites(l.prof)
-  const lifted = useDrag((d) => d?.item.container) === c?.id && !!c
+function LoginsSection(props: { l: Logins; c?: Container; openPage: Open; filter: string }) {
+  return <LoginsCard {...props} data={useSites(props.l.prof)} />
+}
+
+/** Another machine's set of logins, as last listed there. */
+function MachineSection(props: { l: Logins; c?: Container; openPage: Open; filter: string }) {
+  const sites = elsewhere.use(() => sitesIn(props.l) ?? null)
+  return <LoginsCard {...props} data={{ sites: sites?.filter((s) => !s.other) ?? null, others: [], leaving: () => undefined, refresh: () => void refreshElsewhere() }} />
+}
+
+function LoginsCard({ l, c, data, openPage, filter }: { l: Logins; c?: Container; data: Listed; openPage: Open; filter: string }) {
+  const lifted = useDrag((d) => d?.item.container) === c?.id && !!c && !l.machine
   const card = useRef<HTMLElement>(null)
   const taking = useLoginDrop(card, l)
   const q = filter.trim().toLowerCase()
@@ -359,7 +379,7 @@ function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; o
   const count = accounts ? plural(accounts, "account") : ""
   return (
     // (a card in its colour, faint, so every row reads as inside it)
-    <section ref={card} data-web-logins-section={l.container ?? l.prof} data-slide={c?.id} data-web-logins-taking={taking ? (taking.copy ? "copy" : "move") : undefined}
+    <section ref={card} data-web-logins-section={l.container ?? l.prof} data-web-machine={l.machine?.id} data-slide={l.machine ? undefined : c?.id} data-web-logins-taking={taking ? (taking.copy ? "copy" : "move") : undefined}
       className={`rounded-[12px] border px-1.5 pt-1 pb-1.5 transition-[background-color,border-color] ${lifted ? "opacity-40" : ""}`}
       style={{ background: `color-mix(in srgb, ${l.color} ${taking ? 14 : 6}%, transparent)`, borderColor: `color-mix(in srgb, ${l.color} ${taking ? 60 : 20}%, transparent)` }}>
       <LoginsHeading l={l} c={c} count={count} />
@@ -382,14 +402,15 @@ function useCopyKey() {
 /** A set of logins' card takes a site's login dragged from another set's (one it has cookies in): moved here, or copied
  *  with ⌥. What a drop would do (null: nothing). */
 function useLoginDrop(card: React.RefObject<HTMLElement | null>, l: Logins) {
-  const id = `web-viewer:logins:${l.prof}`
-  const verb = (copy: boolean) => `${copy ? "Copy" : "Move"} to ${l.name}`
+  const id = `web-viewer:logins:${l.prof}${l.machine ? `@${l.machine.id}` : ""}`
+  const verb = (copy: boolean) => `${copy ? "Copy" : "Move"} to ${nameOf(l)}`
   useDropTarget<{ copy: boolean }>(id, (item, x, y) => {
     const from = item.site, el = card.current
-    if (!from || from.logins === l.prof || !el || !webPages?.move) return null
+    if (!from || (from.logins === l.prof && !l.machine) || !el || !(l.machine ? webPages?.seal : webPages?.move)) return null
     if (!listed.get().get(from.logins)?.some((s) => s.site === from.site && !s.other)) return null
     const b = el.getBoundingClientRect()
-    return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom ? { copy: copying } : null
+    // (another machine's set only takes a copy)
+    return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom ? { copy: copying || !!l.machine } : null
   }, (item, h) => {
     const from = allLogins().find((o) => o.prof === item.site!.logins)
     const s = listed.get().get(item.site!.logins)?.find((x) => x.site === item.site!.site)
@@ -425,6 +446,7 @@ export function SitesView({ openPage }: { openPage: Open }) {
   const box = useRef<HTMLDivElement>(null)
   useSlide(box, useContainerDrop(box), "y")
   useCopyKey()
+  const machines = useMachines()
   if (!webPages?.sites) return <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10"><SitesPanel open openPage={openPage} /></div>
   return (
     <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10" data-web-sites-view>
@@ -435,7 +457,36 @@ export function SitesView({ openPage }: { openPage: Open }) {
       <div ref={box} data-size-up="" data-web-logins-list="" className="relative mt-2 flex flex-col gap-3">
         {all.map((l) => <LoginsSection key={l.prof} l={l} c={containers.find((x) => x.id === l.container)} openPage={openPage} filter={q} />)}
       </div>
+      {machines.map((m) => <MachineLogins key={m.machine} m={m} openPage={openPage} filter={q} />)}
     </div>
+  )
+}
+
+/** How often the Sites tab lists the other machines' logins again while it's open. */
+const ELSEWHERE_MS = 30_000
+
+/** The other machines' browsers with sets of logins, listed again while the Sites tab shows. */
+function useMachines() {
+  useWorkspaceVersion()
+  const machines = elsewhere.use()
+  useEffect(() => {
+    void refreshElsewhere()
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void refreshElsewhere() }, ELSEWHERE_MS)
+    return () => window.clearInterval(t)
+  }, [])
+  return (machines ?? []).filter((m) => Object.keys(m.sets).length)
+}
+
+/** Another machine's sets of logins with sites, under its name: what's signed in there, and where a login is copied. */
+function MachineLogins({ m, openPage, filter }: { m: MachineSets; openPage: Open; filter: string }) {
+  const containers = useContainers()
+  const sets = allLoginsOn({ id: m.machine, label: m.label }).filter((l) => m.sets[l.prof])
+  return (
+    <Section title={`On ${m.label}`} className="mt-6">
+      <div data-size-up="" data-web-machine-logins={m.machine} className="flex flex-col gap-3">
+        {sets.map((l) => <MachineSection key={l.prof} l={l} c={containers.find((x) => x.id === l.container)} openPage={openPage} filter={filter} />)}
+      </div>
+    </Section>
   )
 }
 

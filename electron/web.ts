@@ -1,10 +1,11 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { allPages, cdp, engineCall, engineLoaded, engineOpens, mayOpen, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
+import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
+import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned, type Playback } from "./webpages.ts"
@@ -892,6 +893,7 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "web:forget": async (_win, profile, site) => forgetSite(profileOf(profile), str(site).toLowerCase()),
   "web:move": (_win, from, to, sites, copy) => moveLogins(profileOf(from), profileOf(to),
     (Array.isArray(sites) ? sites : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20), copy === true),
+  "web:seal": (_win, from, sites, to, key) => sealLogin(profileOf(from), sitesList(sites), profileOf(to), str(key)),
   // Claude Code on the web's sessions in the profiles the app names: the window is told them from now on, as they
   // change (`cloud`) and their news. Asked again with what changed (a workspace, the user's yes, an account hidden).
   "web:cloud": (win, want) => {
@@ -1081,37 +1083,131 @@ async function dropCookies(s: Session, names: string[]) {
   }
 }
 
-/** Move (or copy) a login to another profile: its sites' cookies, replacing any there; taken back when the site then names
- *  nobody where it named someone (its login kept in storage), and the source signs out only once it's in. */
-async function moveLogins(from: string, to: string, names: string[], copy: boolean): Promise<{ ok: boolean; account?: string }> {
-  if (from === to || !names.length) throw new Error("nothing to move")
-  if (!mayOpen(from) || !mayOpen(to)) throw new Error("this container is locked")
-  const [src, dst] = await Promise.all([readySession(from), readySession(to)])
-  const of = (all: Electron.Cookie[]) => all.filter((c) => names.includes(siteOf(c.domain ?? "")))
-  const moving = of(await src.cookies.get({})), had = of(await dst.cookies.get({}))
-  if (!moving.length) throw new Error("no cookies to move")
-  const main = names[0], how = ACCOUNTS[main]
+/** A login as it leaves a profile: its sites' cookies, who its site said it was (to check it there), what it was named
+ *  as here and which of its sites were opened here. */
+type Leaving = { names: string[]; cookies: Electron.Cookie[]; account: string | null; known: Record<string, { login: string; who: Who }>; visited: string[] }
+
+async function loginOut(from: string, names: string[]): Promise<Leaving> {
+  if (!names.length) throw new Error("nothing to move")
+  if (!mayOpen(from)) throw new Error("this container is locked")
+  const src = await readySession(from)
+  const cookies = (await src.cookies.get({})).filter((c) => names.includes(siteOf(c.domain ?? "")))
+  if (!cookies.length) throw new Error("no cookies to move")
+  const how = ACCOUNTS[names[0]]
   const before = (how?.url ? await askWho(src, how, undefined).catch(() => null) : null) || null
+  const known: Leaving["known"] = {}
+  for (const n of names) { const k = loadKnown()[from]?.[n]; if (k) known[n] = { login: k.login, who: k.who } }
+  return { names, cookies, account: before?.account ?? null, known, visited: names.filter((n) => visitedOf(from).has(n)) }
+}
+
+/** A login into a profile: its sites' cookies, replacing any there; taken back when the site then names nobody, or
+ *  someone else, where it named someone (its login kept in storage). */
+async function loginIn(to: string, l: Leaving): Promise<{ ok: boolean; account?: string }> {
+  if (!mayOpen(to)) throw new Error("this container is locked")
+  const { names } = l, dst = await readySession(to)
+  const had = (await dst.cookies.get({})).filter((c) => names.includes(siteOf(c.domain ?? "")))
+  const how = ACCOUNTS[names[0]]
   await dropCookies(dst, names)
-  if (await setCookies(dst, moving) > moving.length / 2) { await dropCookies(dst, names); await setCookies(dst, had); throw new Error("couldn't set its cookies") }
-  if (before && how) {
+  if (await setCookies(dst, l.cookies) > l.cookies.length / 2) { await dropCookies(dst, names); await setCookies(dst, had); throw new Error("couldn't set its cookies") }
+  if (l.account && how) {
     const after = await askWho(dst, how, undefined).catch(() => null)
-    if (!after || after.account !== before.account) {
+    if (!after || after.account !== l.account) {
       await dropCookies(dst, names)
       await setCookies(dst, had)
-      return { ok: false, account: before.account }
+      return { ok: false, account: l.account }
     }
   }
-  // Named there at once, as it was here; not a tracker there, since it was opened here.
+  // Named there at once, as it was where it came from; not a tracker there, since it was opened there.
   for (const n of names) {
     accounts.delete(`${to} ${n}`)
-    const kept = loadKnown()[from]?.[n]
-    if (kept) keepKnown(to, n, kept.login, kept.who)
+    const k = l.known[n]
+    if (k) keepKnown(to, n, k.login, k.who)
   }
-  addVisited(to, names.filter((n) => visitedOf(from).has(n)).concat(main))
+  addVisited(to, l.visited.concat(names[0]))
   for (const n of names) reloadSite(to, n)
-  if (!copy) for (const n of names) await forgetSite(from, n)
-  return { ok: true, account: before?.account }
+  return { ok: true, account: l.account ?? undefined }
+}
+
+/** Move (or copy) a login to another profile; the source signs out only once it's in. */
+async function moveLogins(from: string, to: string, names: string[], copy: boolean): Promise<{ ok: boolean; account?: string }> {
+  if (from === to) throw new Error("nothing to move")
+  if (!mayOpen(to)) throw new Error("this container is locked")
+  const r = await loginIn(to, await loginOut(from, names))
+  if (r.ok && !copy) for (const n of names) await forgetSite(from, n)
+  return r
+}
+
+// ---------- another Mac's logins (Machines): who's signed in where, and a login copied there ----------
+
+// A login leaves only sealed for the other app (browser/sealed.ts), on the user's act in this window; taking one in
+// (remote:take) the server may ask: like an agent signing in, it adds a login of the sites named and reads none.
+
+/** How long a sealed login may take to arrive, and the boxes taken lately (none is taken twice). */
+const SEALED_MS = 5 * 60_000
+const taken = new Map<string, number>()
+
+/** This app's key pair for sealed logins, made once and kept encrypted with the Keychain's key (userData). */
+let sealKeys: { pub: string; priv: string } | null = null
+function keysForSealing() {
+  if (sealKeys) return sealKeys
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("this Mac's Keychain can't keep the key for copied logins")
+  const file = path.join(app.getPath("userData"), "Login Key.vaultite")
+  try { sealKeys = JSON.parse(safeStorage.decryptString(fs.readFileSync(file))) as { pub: string; priv: string } }
+  catch {
+    sealKeys = newKeys()
+    fs.writeFileSync(file, safeStorage.encryptString(JSON.stringify(sealKeys)), { mode: 0o600 })
+  }
+  return sealKeys
+}
+
+const SAME_SITE = new Set(["unspecified", "no_restriction", "lax", "strict"])
+/** A sealed login's cookies, each of one of its sites, as cookies.get gives them: anything else is left out. */
+function cookiesOf(list: unknown, names: string[]): Electron.Cookie[] {
+  const ok = (c: Record<string, unknown>) => typeof c.name === "string" && typeof c.value === "string" && typeof c.domain === "string"
+    && /^\.?[\w.-]+$/.test(c.domain) && names.includes(siteOf(c.domain)) && typeof c.path === "string" && c.path.startsWith("/")
+    && SAME_SITE.has(String(c.sameSite)) && (c.expirationDate === undefined || typeof c.expirationDate === "number")
+  return (Array.isArray(list) ? list : []).filter((c): c is Record<string, unknown> => !!c && typeof c === "object" && ok(c)).slice(0, 500)
+    .map((c) => ({ name: c.name as string, value: c.value as string, domain: c.domain as string, path: c.path as string, hostOnly: c.hostOnly === true,
+      secure: c.secure === true, httpOnly: c.httpOnly === true, session: c.session === true, sameSite: c.sameSite as Electron.Cookie["sameSite"],
+      ...(typeof c.expirationDate === "number" ? { expirationDate: c.expirationDate } : {}) }))
+}
+const sitesList = (v: unknown) => (Array.isArray(v) ? v : []).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()).slice(0, 20)
+const sealedFor = (to: string) => `vaultite login for ${to}`
+
+handle("remote:key", () => ({ key: keysForSealing().pub }))
+// Who's signed in where, in the profiles asked (a locked container's left out): names only, as the Sites tab shows them.
+handle("remote:sites", async (_win, profiles) => {
+  const out: Record<string, WebSite[]> = {}
+  for (const p of new Set((Array.isArray(profiles) ? profiles : []).slice(0, 50).map(profileOf))) {
+    if (!mayOpen(p)) continue
+    const sites = (await sitesOf(p)).filter((s) => !s.other) // (trackers stay this Mac's business)
+    if (sites.length) out[p] = sites
+  }
+  return out
+})
+handle("remote:take", async (_win, to, sealed) => {
+  const prof = profileOf(to)
+  const { data, from } = openSealed(keysForSealing(), str(sealed).slice(0, 4 << 20), sealedFor(prof))
+  const d = (data && typeof data === "object" ? data : {}) as Record<string, unknown>
+  const now = Date.now()
+  for (const [k, at] of taken) if (now - at > SEALED_MS) taken.delete(k)
+  if (typeof d.at !== "number" || Math.abs(now - d.at) > SEALED_MS) throw new Error("the login took too long to come: copy it again")
+  if (taken.has(from)) throw new Error("that login was copied here already")
+  taken.set(from, now)
+  const names = sitesList(d.names)
+  const cookies = cookiesOf(d.cookies, names)
+  if (!names.length || !cookies.length) throw new Error("no cookies to move")
+  const known: Leaving["known"] = {}
+  for (const [n, k] of Object.entries(d.known && typeof d.known === "object" ? d.known as Record<string, { login?: unknown; who?: Who }> : {})) {
+    if (names.includes(n) && typeof k?.login === "string" && typeof k.who?.account === "string") known[n] = { login: k.login, who: k.who }
+  }
+  return loginIn(prof, { names, cookies, account: typeof d.account === "string" ? d.account : null, known, visited: sitesList(d.visited).filter((n) => names.includes(n)) })
+})
+
+/** A login sealed for another Mac's app (`key`, its remote:key), for its profile `to`: the user's act in this window. */
+async function sealLogin(from: string, names: string[], to: string, key: string) {
+  const l = await loginOut(from, names)
+  return seal(key, { ...l, at: Date.now() }, sealedFor(to))
 }
 
 /** The sites a page was opened at, by profile (this Mac's, in userData: never the vault). */

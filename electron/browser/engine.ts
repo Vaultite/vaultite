@@ -215,10 +215,10 @@ export async function engineCall(win: EngineWindow, name: unknown, args: unknown
   if (!fn) throw new Error(`no browser feature answers ${String(name)}`)
   return fn(win, ...args)
 }
-/** What the vault's server may ask (its agents' calls, core/desktopapp.ts): only the `agent:` names, never the app's own
- *  (unlocking a container, its access, clearing logins). */
+/** What the vault's server may ask: agents' calls (`agent:`) and other Macs' (`remote:`, who's signed in, a sealed login
+ *  in), never the app's own (unlocking a container, its access, clearing logins) nor a cookie out. */
 export function serverCall(win: EngineWindow | undefined, name: unknown, args: unknown[]) {
-  if (typeof name !== "string" || !name.startsWith("agent:")) throw new Error(`the server can't ask ${String(name)}`)
+  if (typeof name !== "string" || !/^(agent|remote):/.test(name)) throw new Error(`the server can't ask ${String(name)}`)
   if (!win || win.isDestroyed()) throw new Error("the vault's window isn't open")
   return engineCall(win, name, args)
 }
