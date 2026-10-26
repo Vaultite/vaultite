@@ -18,7 +18,8 @@ Vaultite has **no accounts and no login**: whoever can reach the server can read
   made public by a tunnel of your own (`mcp.public` in `data/config.json`) or by Vaultite Cloud's relay, which reaches
   only that listener, never the app's port. Each connection signs in with a code you type in Connections, where you can
   make it read only or end it. It never gets what only the owner may run (terminals, the screen), and what can run code
-  on the machine (turning on or allowing a plugin, writing under `.vaultite/`, settings) waits for your yes in the Inbox.
+  on the machine (turning on or allowing a plugin, writing a hidden file or folder: `.vaultite/`, an agent's `.claude/`;
+  settings) waits for your yes in the Inbox.
 - Vaultite Connect shows the app to its owner, signed in to Vaultite Cloud, at their handle's address. Without owner
   tools (Connections) it refuses what runs code: terminals, plugins, settings, palette commands, and writing
   `plugins.json` or `.vaultite/AGENTS.md`.

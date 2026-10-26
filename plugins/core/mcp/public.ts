@@ -6,6 +6,7 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
 import { type OpEntry, whoOf } from "../../../core/ops.ts"
 import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
+import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
 import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
 import type { Item } from "../../../core/vault.ts"
@@ -35,6 +36,14 @@ const APP_FILES = /^\.vaultite(\/|$)/i
 /** A value as the vault path it would name, read as core/files.ts clean() reads one ("./.Vaultite\\x" is .vaultite/x on
  *  a Mac's disk), and every string a param holds, nested ones and keys too. */
 const asPath = (v: string) => v.replaceAll("\\", "/").trim().split("/").filter((x) => x !== "" && x !== ".").join("/")
+/** A value naming a hidden file or folder anywhere in it (.claude/settings.json, Notes/.git/hooks): where agents' and
+ *  other apps' settings live, which run code. Words that only start with a dot (".NET notes") aren't; the archive isn't. */
+const hiddenPath = (v: string) => {
+  if (/[\r\n]/.test(v)) return false
+  const parts = asPath(v).split("/")
+  return parts.some((p, i) => p.startsWith(".") && !p.startsWith("..") && p.length > 1 && p.toLowerCase() !== ARCHIVE_DIR && !(i === 0 && p === ".trash")
+    && (i < parts.length - 1 || !/\s/.test(p)))
+}
 const stringsIn = (v: unknown, depth = 0): string[] => typeof v === "string" ? [v]
   : !v || typeof v !== "object" || depth > 5 ? [] : Object.entries(v).flatMap(([k, x]) => [...(Array.isArray(v) ? [] : [k]), ...stringsIn(x, depth + 1)])
 
@@ -53,6 +62,8 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
   if (GATED[id]) return GATED[id]
   const app = kind !== "read" && stringsIn(params).map(asPath).find((v) => APP_FILES.test(v) && !code(v))
   if (app) return `write ${app} (the app's settings and plugins)`
+  const hidden = kind !== "read" && stringsIn(params).find((v) => hiddenPath(v) && !APP_FILES.test(asPath(v)))
+  if (hidden) return `write ${asPath(hidden)}, a hidden file (agents' and apps' settings, which can run code, live in them)`
   if (id === "clipper.save" && typeof params.url === "string") {
     let host = ""
     try { host = new URL(params.url).hostname } catch { /* not an address: the op says so */ }
@@ -819,4 +830,4 @@ const CHECK = svg(`<path d="M20 6 9 17l-5-5"/>`)
 
 /** What the public server's instructions add: what waits for the user's yes here, or that the app only reads. */
 const READ_ONLY = "You have read-only access to this vault: the tools only read. The user can give you write access in Vaultite's Connections."
-const WAITS = `What can run code on the user's machine (turning a plugin on or allowing it, writing under .vaultite/ except a vault plugin's code, bundles, settings, palette commands, dispatch.run: a coding agent given a note to work on) waits for their yes on their phone: if a tool says it's waiting, tell them, and call it again with the same arguments once they approve.`
+const WAITS = `What can run code on the user's machine (turning a plugin on or allowing it, writing a hidden file or folder: .vaultite/ except a vault plugin's code, .claude/, .codex/..., bundles, settings, palette commands, dispatch.run: a coding agent given a note to work on) waits for their yes on their phone: if a tool says it's waiting, tell them, and call it again with the same arguments once they approve.`

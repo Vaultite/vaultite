@@ -64,6 +64,12 @@ export default async ($: VaultTest) => {
       ["./.vaultite/AGENTS.md", "\\.vaultite\\plugins.json", ".VAULTITE/AGENTS.md", " //./.vaultite/plugins.json"].every((f) => gateOf("file.write", "write", { path: f }, code) !== "")
         && gateOf("file.edit", "write", { edits: [{ path: "./.vaultite/AGENTS.md" }] }, code) !== "" && gateOf("file.write", "write", { files: { "./.vaultite/x.json": "{}" } }, code) !== ""
         && gateOf("file.write", "write", { path: "./.vaultite/plugins/lighthouse/plugin.ts" }, code) === "")
+    check("trust: any hidden file or folder waits too, anywhere in its path (agents' settings: .claude/settings.json hooks run)",
+      [".claude/settings.json", "Projects/Beacon/.codex/config.toml", "./.vscode\\tasks.json", ".env", "Notes/.git/hooks/pre-commit", ".my config/x.md"].every((f) => gateOf("file.write", "write", { path: f }, code) !== "")
+        && gateOf("file.write", "write", { files: { "Notes/.cursor/rules.md": "x" } }, code) !== "" && gateOf("file.move", "write", { from: "Notes/a.md", to: ".claude/agents/a.md" }, code) !== "")
+    check("trust: words that only start with a dot don't, nor the archive, nor a read",
+      ["Notes/A.md", ".NET notes", "...and then", ".archive/Old.md", "Notes/v1.2 plan.md"].every((f) => gateOf("file.write", "write", { path: "Notes/x.md", text: f, title: f }, code) === "" ) &&
+        gateOf("file.write", "write", { path: ".archive/Old.md" }, code) === "" && gateOf("file.read", "read", { path: ".claude/settings.json" }, code) === "")
     const [hc] = await api("POST", "ops/plugin.allow", { id: "lighthouse", hash: "0000" })
     check("trust: allowing files other than the ones shown is refused", hc === 409 && !(await vplugin()).loaded, hc)
   }
