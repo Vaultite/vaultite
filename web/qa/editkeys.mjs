@@ -1,8 +1,5 @@
-// The editing keys and commands (plugins/core/editing, Templates' Insert current date): ⌘L makes a task and
-// ticks it, ⌘B / ⌘I / highlight toggle on the selection or the word at the cursor, ⌘K makes a Markdown link (not the
-// quick switcher: that's ⌘O), ⌘D deletes the line, headings, lists, a block put in, the date typed, and ⌘G opens the
-// graph from inside the editor (the app's keys win over the editor's); Google Docs' marks, headings and lists, ⌥↑ / ⌥↓,
-// and from a file tree row F2, ⌘D (the file, not the note) and ?. WRITES a note: throwaway only.
+// The editing keys and commands (plugins/core/editing): the app's keys win over the editor's, file tree row keys too.
+// WRITES a note: throwaway only.
 //   node web/qa/editkeys.mjs <base url> <vault path>
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
 import path from "node:path"

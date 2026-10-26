@@ -1,11 +1,5 @@
-// Plugins' settings (components/PluginSettings.tsx) and the shorter Settings page: Settings has Your setup on top (it
-// goes to Setup's page, where Bundles and Plugins are), the app's own rows and, under Features, the
-// app's own (`alwaysOn`) plugins that have settings; its search finds every plugin's settings, in the menu's place, the
-// arrows lighting one and Enter going there, and Setup's tabs; on Setup's Plugins tab a
-// gear (on plugins that are on and have settings) opens the sheet; generated forms write only the key changed; custom
-// panels (Pinned, File explorer), after the options; a data.json-only plugin (Logs); a vault plugin's declared
-// settings; every way to open a sheet; 390px, its rows a size up. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
-// (put back / removed): throwaway server only.
+// Plugins' settings sheets (components/PluginSettings.tsx) and the Settings page's search, every way to open a sheet,
+// 390px. Writes plugins.json, several plugins' settings and a vault plugin (put back / removed): throwaway server only.
 //   node web/qa/pluginsettings.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

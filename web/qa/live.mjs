@@ -1,12 +1,5 @@
-// Live updates: files changed on disk behind the app's back (as Claude or another editor would) show up without a
-// reload, within about a second: the file tree (new, renamed, deleted), an open editor (and typing while a change
-// arrives: both kept; a change in two places around the cursor leaves it where it was; lines added above what's being
-// read don't move it; moved through the API while typing: the tab follows and the typing is saved there; renamed on
-// disk: the unsaved edits are offered back), a dashboard (its text, a block drawn from the store, a table embed), an artifact (its data, and
-// its own file) and a file deleted while open. Also that the page never reloaded, the socket reconnects, and the store
-// (refreshed by patches) is the server's state after all that.
-// WRITES to the vault (everything under "Qa live/", plus Dashboards/Qa live.md and People/Qa Livesey.md, removed at
-// the end): throwaway server only.
+// Files changed on disk behind the app's back show up within a second, no reload: tree, editors (typing kept), dashboards.
+// WRITES "Qa live/", Dashboards/Qa live.md, People/Qa Livesey.md (removed after): throwaway server only.
 //   node web/qa/live.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
@@ -167,8 +160,7 @@ write("Qa live/Note.md", "Back again.\n")
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Qa live/Note.md"); await wait(1500)
 
 // ---------- the socket ----------
-// Closed under it (like a phone waking up, or the server restarting), with a change made while it's down: it
-// reconnects, and the change it missed still arrives (the server's version differs, so everything is checked).
+// Closed under it (a phone waking, the server restarting) with a change made meanwhile: it reconnects and gets it.
 await page.evaluate(() => window.__qaSockets.at(-1).close())
 write("Qa live/Note.md", "Back again.\n\nWhile the socket was down.\n")
 out.ms.missed = await until(async () => (await content()).includes("While the socket was down."), 6000)
@@ -180,8 +172,7 @@ out.ms.afterSocket = await until(async () => (await content()).includes("After t
 check("and is live again", out.ms.afterSocket !== null)
 
 // ---------- the store ----------
-// It follows by patches (GET /api/state?since=<v>): after all of the above it's the server's state, key by key, and an
-// optimistic change the server never made (a write that failed) is gone after the next refresh.
+// It follows by patches: after all of the above it's the server's state, and a failed optimistic change is gone.
 const store = () => page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].getStore())
 const serverStore = async () => { const { config: _c, vaultPlugins: _v, appearance: _a, ...s } = await (await fetch(new URL("api/state", B))).json(); return s }
 await wait(1500)

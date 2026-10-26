@@ -1,13 +1,5 @@
-// Sidebar panels as tabs, and terminal tabs named like the Terminals panel's rows. Opens Files, Terminals, Pinned pages
-// and Search as tabs from the palette (view:files, view:terminals, view:pages, view:search/<query>; the places terminals open
-// at, each with its icon; "new terminal" finding Open terminal); drags panels'
-// headings onto a pane's middle, an edge and a tab bar (a tab opens; the same panel again into a pane that has it only
-// shows it; the panel stays in the sidebar); "Open Terminals in a tab" in a heading's right-click menu; the search tab keeps its
-// query in its address and across a switch and a reload; a terminal whose process is `claude` (a stand-in: a tiny sleeping program under
-// that name) shows its pane title, its colour and its working/waiting dot on its tab, live, like its sidebar row; phones at 390px
-// draw each view (screenshots); the wheel over rows of every panel as a tab scrolls its pane (no wheel trap inside it:
-// a scroller with overscroll containment and nothing to scroll). Writes plugins.json (Workspaces off) and sidebars.json (put back), runs a shell:
-// throwaway server only.
+// Sidebar panels as tabs (from the palette and dragged), and terminal tabs drawn like the Terminals panel's rows.
+// Writes plugins.json and sidebars.json (put back) and runs a shell: throwaway server only.
 //   node web/qa/paneltabs.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -196,9 +188,7 @@ try {
   await palette("Close current tab") // ends that shell
 
   // ---- the wheel over a panel's rows in a tab scrolls its pane ----
-  // A wheel trap: a box that is a scroller (overflow auto) with overscroll containment but nothing to scroll (as tall as
-  // what it holds). Chrome ends the wheel's scroll chain there, so over its rows the pane didn't scroll (the Files tab's
-  // tree did that). None may be inside a pane; and for real, in a short window, the wheel over rows scrolls the pane.
+  // A wheel trap: a scroller with overscroll containment and nothing to scroll ends Chrome's scroll chain there.
   const traps = (sel) => page.evaluate((sel) => {
     const pane = document.querySelector(`main ${sel}`)?.closest("[data-pane]")
     if (!pane) return null

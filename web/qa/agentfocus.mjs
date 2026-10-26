@@ -1,6 +1,5 @@
-// Agents never take the user's focus: a terminal an agent opens goes in a tab behind the one on screen, with a toast
-// "Claude Code started a session" whose Show opens it; the user's own `vau terminal open` still shows its tab. On a
-// computer and a phone. Writes workspaces (the tabs) and starts shells: throwaway server only.
+// Agents never take the user's focus: an agent's terminal opens behind, with a toast; `vau terminal open` still shows
+// it. Computer and phone. Writes workspaces and starts shells: throwaway server only.
 //   node web/qa/agentfocus.mjs <base url>
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)

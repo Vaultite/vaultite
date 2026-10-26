@@ -1,9 +1,5 @@
-// The Tabs panel's other devices (plugins/core/tabs). Two devices (browser contexts: a desktop one and a phone one with
-// an iPhone's user agent), each with the Tabs panel: what one has open shows under the other's tabs, named by its
-// browser, and not under its own (the phone's first tab is the vault's start page); a click there opens it on this device; a tab closed there goes from the other's list;
-// the Tabs heading's right-click hides and shows other devices' tabs; the phone, open, shows as open: a tab closed on it
-// from the desktop closes there, one moved opens here; renamed, it keeps the name; Devices lists both; closed, it's no
-// longer open; "Forget this device" takes it away. Writes sidebars.json (put back) and the devices' files: throwaway server only.
+// The Tabs panel's other devices (plugins/core/tabs), a desktop and a phone context: each's tabs, opened, closed and
+// forgotten from the other. Writes sidebars.json (put back) and the devices' files: throwaway server only.
 //   node web/qa/devicetabs.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

@@ -1,6 +1,5 @@
 // The finders' kept query (components/Palette.tsx, useFinderQuery): what's typed in ⌘O or ⌘P and left without picking
-// shows in the next one opened. The other shortcut pressed over it goes on as typed (caret at its end); reopened after
-// leaving, it's selected, so typing replaces it; a pick forgets it, and so do two minutes. Writes nothing.
+// shows in the next one opened, until a pick or two minutes. Writes nothing.
 //   node web/qa/finderquery.mjs <base url>
 import { qa, until, wait } from "./lib/qa.mjs"
 

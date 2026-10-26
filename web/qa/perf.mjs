@@ -1,41 +1,7 @@
-// Web app benchmark: how fast the app loads and answers, on a desktop and on a phone, in times and in counts (requests,
-// bytes, React commits, components rendered) so a change can be compared with the build before it.
+// Web app benchmark: load and interaction times and counts (requests, bytes, React commits), desktop and phone, medians
+// over runs. Several base URLs alternate runs; compare counts and CPU time over wall-clock. Writes: throwaway only.
 //   node web/qa/perf.mjs <base url> [<another base url>...] [--runs 3] [--only desktop|phone] [--no-interactions]
 //                        [--out result.json] [--compare before.json] [--census]
-// With several base URLs (the build before a change on one server, after it on another), runs alternate between them
-// (A, B, A, B...), so both see the same machine, and the table compares each with the first; --compare compares with
-// an earlier result's first server instead.
-// Profiles: desktop (1440x900, no throttling) and phone (390x844, touch, CPU 4x slower, ~40 ms RTT and 20 Mbps: an
-// iPhone over Tailscale; its requests carry a proxy's header, so the server compresses and gives ETags as it does there). Each run is a new browser context: a cold load (empty cache and localStorage), then a warm
-// load (the same context reloaded), then the interactions, each measured from its input event to the next frame after
-// what it waits for is on screen:
-//   pages      switching pinned pages (the sidebar's rows on desktop, the drawer's on phones, opened before the timed
-//              press): two dashboards (Health and
-//              Learning when they're there), then back
-//              (jumps: the layout shifts it made, input or not: a page that grows as its blocks' data comes in)
-//   open note  a note opened in the editor (live preview), until its lines are drawn
-//   typing     50 characters typed at its end: per keystroke latency (keydown to the next frame) and React commits and
-//              components rendered per keystroke; then what the autosave and the live refresh after it cost
-//   typingLive typing again while another file changes behind the app's back: the keystrokes' latency meanwhile
-//   switcher   the quick switcher (Mod+O) opened, then a query typed into it
-//   person     People, then a person opened from it (in a tab beside it, on phones too)
-//   live       a file changed behind the app's back (as Claude would): what the app refetches and redraws
-//   liveSetting  the same for a plugin's settings (.vaultite/plugins/graph/data.json), the kind of hidden file devices
-//              and the app itself write often
-//   liveNote, livePerson, liveWorkspaces  the same for a note's text edited, a line added to a person's timeline, and
-//              the workspace the page is on (made with Ctrl+1) renamed: Workspaces' file, written on every tab change
-//              (live steps also count the API's bytes once decoded, and the time parsing the state it was sent takes on
-//              that page: stateParseMs)
-// Load metrics: TTFB, FCP, LCP, ready (the first page's heading and its dashboard grid drawn), complete (the last DOM
-// change before the page went quiet), long tasks and total blocking time (FCP to complete), CLS, requests (by type,
-// API vs assets, and on the wire bytes; those done before ready), decoded JS (all, and before ready) and CSS, JS heap, script/layout/style time (Chrome's Performance
-// metrics) and React commits (a stand-in React DevTools hook counts commits and the components each one rendered; with
-// --census the busiest components per step are listed too).
-// Every number is the median over the runs. Timings on a busy machine are noisy: compare servers in one run (above),
-// and lean on the counts and on CPU time (scriptMs, taskMs) more than on wall-clock times.
-// WRITES to the vault: types into the first note in Notes/, writes "Perf live <time>.md" and "Perf typing <time>.md" at
-// the top of the vault (left there), changes the Graph plugin's colouring (then puts it back), adds a line to that note
-// and to a person's timeline, and makes workspace 1: throwaway server only.
 import fs from "node:fs"
 import { launch, wait, workspaceKey } from "./lib/qa.mjs"
 
@@ -57,9 +23,7 @@ const PROFILES = {
 }
 
 // ---------- in the page, before the app's scripts ----------
-// Commits and components rendered, through a stand-in for React DevTools' global hook (React calls it after every
-// commit). A component rendered in a commit is one whose fiber has React's PerformedWork flag; subtrees React bailed
-// out of (the child pointer unchanged) aren't walked, so counting costs about what the commit did.
+// Commits counted through a stand-in for React DevTools' hook; bailed-out subtrees aren't walked, so it costs little.
 const INIT = `(() => {
   const P = window.__perf = { commits: 0, rendered: 0, byName: {}, census: ${CENSUS}, cls: 0, lcp: 0, longtasks: [], lastMutation: 0, keys: [] }
   const COMP = new Set([0, 1, 11, 14, 15]) // function, class, forwardRef, memo, simple memo

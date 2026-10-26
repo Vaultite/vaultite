@@ -1,8 +1,5 @@
-// The command palette's plugin rows (components/CommandPalette.tsx): a plugin that's off, its name typed, is offered
-// after the commands to turn on, with what it needs (People map brings People), and says so with Undo; a plugin
-// that's on is offered to turn off only after "turn off" or "disable"; "turn on" alone lists the ones that are off;
-// a vault plugin too (turned on there, it's allowed here, as its switch does); one letter offers none. WRITES plugins.json (put back) and a vault
-// plugin (.vaultite/plugins/qa-lamp, removed): throwaway server only.
+// The palette's plugin rows (components/CommandPalette.tsx): turning plugins on and off, vault plugins too. Writes
+// plugins.json (put back) and a vault plugin (.vaultite/plugins/qa-lamp, removed): throwaway server only.
 //   node web/qa/paletteplugins.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { SHOTS, apiAt, qa, wait } from "./lib/qa.mjs"

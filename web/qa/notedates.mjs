@@ -1,7 +1,5 @@
-// Note dates (plugins/core/note-dates): a new note gets created and updated, Properties shows them as dates, and typing
-// moves updated in the save itself: the editor takes it without a conflict or the cursor moving. A save whose answer
-// was lost, which the server dated, isn't a conflict with itself (core/autosave.ts).
-// WRITES to the vault (Qa dates/, removed at the end): throwaway server only.
+// Note dates (plugins/core/note-dates): set on new notes, moved in the save itself with no conflict, and a lost save's
+// answer isn't a conflict with itself (core/autosave.ts). WRITES Qa dates/ (removed after): throwaway server only.
 //   node web/qa/notedates.mjs <base url> <vault path>
 import { readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

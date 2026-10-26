@@ -1,7 +1,5 @@
-// Reopen closed tab (⌘⇧T in the desktop app; the command palette on the web: core/workspace.ts reopenTab): the tab
-// closed last comes back where it was, with its history; several in a row come back in order; Close other tabs is
-// undone tab by tab; a blank tab left by closing the last one makes way; a deleted file's tab isn't reopened; the
-// command is hidden with nothing to reopen. WRITES (deletes a note): throwaway only.
+// Reopen closed tab (core/workspace.ts reopenTab): where it was, with its history, in order; not a deleted file's.
+// Writes (deletes a note): throwaway only.
 //   node web/qa/reopentab.mjs <base url> <vault path>
 import { readdirSync, rmSync } from "node:fs"
 import path from "node:path"

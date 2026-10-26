@@ -1,10 +1,5 @@
-// Pages are files: a page's file address opens its dashboard, the sidebar lists the pinned files, right-click hides and
-// shows them (the menu stays open), dashboards open in reading as a grid and ⌘E edits them, on a phone the drawer
-// lists them (the sidebar's panel) and a new tab shows them as tiles, Pinned's settings list them, Show pinned pages as
-// Tiles draws the open sidebar's as a grid (the drawer keeps its list), chosen from the palette or the panel's menu,
-// and /api/render reads a dashboard as text.
-// Screenshots in /tmp/vaultite-pages/.
-// WRITES .vaultite/pages.json and Pinned's data.json (and puts them back): throwaway server only.
+// Pages are files: pinned in the sidebar, dashboards read as a grid and edited with ⌘E, the phone's drawer and tiles,
+// and /api/render. Shots in /tmp/vaultite-pages/. Writes pages.json and Pinned's data.json (put back): throwaway only.
 //   node web/qa/pages.mjs <base url>
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"

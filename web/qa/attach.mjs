@@ -1,7 +1,5 @@
-// The desktop app on a vault a server on this Mac already serves (an always-on one, core/serving.ts): its window
-// attaches to that server rather than starting one (electron/host.ts), agents' tabs open in it through that server, they
-// outlast the server's restart (it attaches again), and a server on another machine is answered by it (Machines).
-// WRITES: the throwaway vault only.
+// The desktop app on a vault an always-on server here serves (core/serving.ts): its window attaches (electron/host.ts),
+// through restarts, and answers for another machine's server. WRITES: the throwaway vault only.
 //   node web/qa/attach.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

@@ -1,10 +1,5 @@
-// Terminal speed: how long a terminal takes from the key or click to its first screen, for a new shell, a new Claude
-// Code, and a terminal's tab picked again in the Terminals panel (a new xterm.js, a new socket, the replay). Each row
-// splits it up, in ms since the input: xterm (the view is mounted), text (something is drawn), ws (the socket made),
-// open, attached (the server said so), firstData (the shell's first bytes); total is when what it waits for is drawn.
-// Starts shells and Claude Code on the server's machine: throwaway server only, and end its tmux server after
-// (tmux -L vaultite-<port> kill-server). Compare two builds by running it on each, alternately: the machine's load
-// moves these numbers a lot.
+// Terminal speed: input to first screen for a new shell, a new Claude Code and a tab picked again, split by stage. Starts
+// shells: throwaway server only, then tmux -L vaultite-<port> kill-server. Compare builds alternately: load is noisy.
 //   node web/qa/termperf.mjs <base url> [runs]
 import { qa, wait } from "./lib/qa.mjs"
 const { args: [B, RUNS = "3"], browser } = await qa(import.meta.url)

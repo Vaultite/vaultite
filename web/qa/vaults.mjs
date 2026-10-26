@@ -1,6 +1,5 @@
-// The web's Manage vaults (the sheet) and a drop from the computer on the file tree (uploads). Switches the server's
-// vault to a new one made in a temporary folder in the home folder, then back, and drops a file in Notes: WRITES,
-// throwaway server only (started with its own VAULTITE_LOCAL).
+// The web's Manage vaults and a drop from the computer on the file tree. Switches the server's vault to a temporary
+// one and back: WRITES, throwaway server only (with its own VAULTITE_LOCAL).
 //   node web/qa/vaults.mjs <base url> [out dir]
 import fs from "node:fs"
 import os from "node:os"

@@ -1,9 +1,5 @@
-// Property types and `this` in database views: a "Qa types" folder with a note whose properties get a vault-wide type
-// from the icon before a key (only .vaultite/types.json's key changes, the input becomes a date picker, a value that
-// isn't a number gets its quiet note), and a note with a ```base fence (`file.hasLink(this.file)`) embedded in another, which
-// lists what links to the note embedding it. Desktop and 390px. Screenshots in the third argument (or
-// /tmp/vaultite-proptypes/).
-// WRITES a "Qa types" folder and .vaultite/types.json (both removed after): throwaway server only.
+// Property types and `this` in database views, desktop and 390px (shots: the third argument or /tmp/vaultite-proptypes/).
+// Writes Qa types/ and .vaultite/types.json (both removed after): throwaway server only.
 //   node web/qa/proptypes.mjs <base url> <vault path> [screenshots dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa } from "./lib/qa.mjs"

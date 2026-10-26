@@ -1,9 +1,5 @@
-// Clicks into a cross-site frame (a captcha's checkbox, "Sign in with Google"), which Chromium runs in a process of its
-// own, in the desktop app's (Electron) browser: the page's view hears the Mac's clicks itself, but while the window's
-// page is raised over it letting the pointer through (a toast or a tooltip over the page), the window passes them on.
-// Those must reach the frame under the pointer as the Mac's would, not only the page's own document. A made-up site
-// this script serves on 127.0.0.1 holds a frame from localhost (another site).
-// WRITES: the throwaway vault only.
+// Clicks into a cross-site frame (a captcha, "Sign in with Google") in the desktop app's Browser reach it even while the
+// window's page is raised over it (Chromium runs such frames in a process of their own). WRITES: throwaway vault.
 //   node web/qa/frameclicks.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

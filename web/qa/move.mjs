@@ -1,9 +1,5 @@
-// Moving files and folders in the tree: drag a folder into another (the folder you'd drop into is
-// highlighted as a whole), back out to the top level (empty space, or a top-level file: the whole tree highlights), a
-// folder into itself or a file into its own folder (refused: nothing highlights, nothing moves), a closed folder
-// opening while you hold a drag over it, the tree scrolling near its edge, and Move file to… (the folder picker, "/" for
-// the top level, Shift+Enter makes a folder). Pins follow moves made in the app and through the API. On phones: Move to…
-// from the … menu. WRITES (makes, moves and trashes "Qa ..." folders): throwaway server only.
+// Moving files and folders in the tree by drag (refused into itself) and with Move file to…; pins follow; phones too.
+// WRITES (makes, moves and trashes "Qa ..." folders): throwaway server only.
 //   node web/qa/move.mjs <base url> [out dir]
 import { SHOTS, apiAt, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

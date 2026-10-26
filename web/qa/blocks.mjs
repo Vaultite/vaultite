@@ -1,10 +1,5 @@
-// The block contract (core/blocks.ts): a block's options against its plugin's declaration. A note whose blocks have
-// an unknown option, a wrong value and a required one left out: reading draws them clean, live preview adds a quiet
-// line under each ("Unknown option titel (did you mean title?)"); a fixed option makes its line go. In source mode,
-// typing in a block's fence suggests the options it doesn't have yet (with what each takes) and an enum's values,
-// and a pick goes in as `key: value`. The slash menu's block comes with its required options. The Plugins page
-// labels the app's own tier Built-in, with a line at the bottom saying what isn't a plugin.
-// WRITES to the vault: throwaway server only.
+// The block contract (core/blocks.ts): options checked against the plugin's declaration, quiet lines in live preview,
+// suggestions in source mode. WRITES to the vault: throwaway server only.
 //   node web/qa/blocks.mjs <base url> <vault path> [out dir]
 import { readFileSync } from "node:fs"
 import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"

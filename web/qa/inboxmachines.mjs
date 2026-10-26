@@ -1,7 +1,5 @@
-// The Inbox across machines: two throwaway servers that list each other (.vaultite/plugins/machines/data.json in each
-// vault), the app on the follower (a Mac's desktop app), the sessions on the owner (the M1). A session there that asks
-// permission toasts here and its sheet's Approve presses its keys there; one that answers toasts here and the reply is
-// typed into its terminal there; both on a phone too. Starts a shell on the owner: throwaway servers only.
+// The Inbox across two throwaway servers that list each other: a session on the owner that asks or answers toasts on the
+// follower, and its Approve or reply reaches its terminal, on a phone too. Starts a shell: throwaway servers only.
 //   node web/qa/inboxmachines.mjs <follower base url> <owner's id> <owner base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"

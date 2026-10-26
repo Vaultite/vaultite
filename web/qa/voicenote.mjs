@@ -1,8 +1,5 @@
-// Recording from the palette (plugins/core/audio-recorder, Chrome's fake microphone; a fake transcriber in the server's
-// data/config.json): "Start recording audio" with no note open makes a new note with the recording, labelled as the
-// user's (origin: human); "Record a voice note for your inbox" shows the bar as a voice note, and Stop sends it to the
-// inbox as the iPhone's widget does (Inbox's inbox.voice: from Computer, origin: human), saying so once. Screenshots
-// desktop and 390px. WRITES notes, Attachments/, Inbox/ files and <local dir>/config.json (put back): throwaway only.
+// Recording from the palette (Chrome's fake microphone, a fake transcriber): a new note, and a voice note to the inbox.
+// WRITES notes, Attachments/, Inbox/ and <local dir>/config.json (put back): throwaway only.
 //   node web/qa/voicenote.mjs <base url> <vault path> <server's VAULTITE_LOCAL> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

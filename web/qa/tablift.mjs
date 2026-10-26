@@ -1,7 +1,5 @@
-// The phone's tab list, a card lifted and moved (components/TabSwitcher.tsx): the others make room as it passes, and
-// never flicker back and forth (a card gliding away under the finger mustn't count as under it), in every direction;
-// rested on another it makes a tab group (core/tabsets.ts), dropped on a group's card it joins, on + in it it leaves.
-// Writes only this browser's tabs (localStorage), so any server; nothing in the vault.
+// The phone's tab list, a card lifted and moved (components/TabSwitcher.tsx): the others make room without flicker, and
+// it makes, joins or leaves a tab group. Writes only this browser's localStorage, so any server.
 //   node web/qa/tablift.mjs <base url>
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

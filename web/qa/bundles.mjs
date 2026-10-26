@@ -1,11 +1,6 @@
-// Bundles (core/bundles.ts, pages/Bundles.tsx): a new vault starts from Standard with no offer; an older vault still
-// offered them opens on them (Standard picked, a line to import one), and skipping starts from Standard. The page's
-// cards and previews, Apply (each built-in: the files as previewed, its guide or first page, Undo), "Restore previous setup",
-// Save current setup, Share, and Import (the sheet, a file, pasted or dropped on the page: its preview, then Add or
-// Apply), and 390px. Screenshots.
-// WRITES the vault's settings and bundles: throwaway servers only.
+// Bundles (core/bundles.ts, pages/Bundles.tsx): a new vault's start, Apply and Restore, Save, Share, Import. The fresh
+// server serves a folder the app never opened. WRITES settings and bundles: throwaway servers only.
 //   node web/qa/bundles.mjs <base url> <vault path> <fresh base url> <fresh vault path> [out dir]
-// (the fresh server serves a folder the app had never opened: no .vaultite/ before it started)
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 

@@ -1,8 +1,5 @@
-// Undo around a note's text (FileView's editAround, the editor's history): a property removed with its ×, its value
-// changed, its key renamed, one added, a header chip's label and a palette command on the open file each come back
-// with ⌘Z (the keyboard beside the text, not in it) and go again with ⇧⌘Z, in one history with the typing; the file on
-// disk follows. ⌘Z in a property's field stays the field's own. Screenshots desktop and 390px. WRITES a
-// "Qa undo" folder: throwaway server only.
+// Undo around a note's text (FileView's editAround): property edits, a header chip and a palette command undone with
+// ⌘Z beside the text, in one history with the typing. WRITES "Qa undo/": throwaway server only.
 //   node web/qa/undo.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

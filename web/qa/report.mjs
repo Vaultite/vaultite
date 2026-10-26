@@ -1,10 +1,5 @@
-// An agent's report (inbox.report) and the reply from it (inbox.reply), in a real browser:
-// - a report from a terminal, with a screenshot: its file shows the summary, the open questions and the screenshot;
-//   the reply box at its end says who it answers;
-// - a reply typed there (⌘↩) shows at once, goes into the agent's terminal, is kept in the report, and the report is
-//   done (moved into Inbox/.archive/) and stays open where it was read; on a phone (390px) the box is full width with 44px buttons.
-// Screenshots in the out dir. WRITES Inbox/, Attachments/ and starts a shell: throwaway server only (then
-// `tmux -L vaultite-<port> kill-server`).
+// An agent's report (inbox.report) and the reply from it (inbox.reply) into its terminal, desktop and 390px. Writes
+// Inbox/, Attachments/ and starts a shell: throwaway server only (then `tmux -L vaultite-<port> kill-server`).
 //   node web/qa/report.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync } from "node:fs"

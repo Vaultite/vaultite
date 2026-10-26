@@ -1,8 +1,5 @@
-// The Errors plugin end to end: the app's errors reach the server (an uncaught error, a rejection, one kept from before
-// the app started), an older build's chunk that's gone reloads the page into the new build once (and only once a
-// minute), the view lists and opens them, and the server's log lines are dated. Serves web/dist from a throwaway
-// server on a fresh sandbox vault (or uses <base url>, then the log isn't checked).
-// WRITES: only the throwaway vault (with <base url>: that server's error record, which it clears at the end).
+// The Errors plugin end to end: the app's errors reach the server, a vanished chunk reloads once into the new build,
+// the view lists them. WRITES only its own throwaway vault (with <base url>: that server's error record, then cleared).
 //   node web/qa/errors.mjs [<base url>] [--shots <dir>]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"

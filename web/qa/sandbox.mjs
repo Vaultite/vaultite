@@ -1,7 +1,5 @@
-// The sandbox in the desktop app (electron/sandbox.ts): opened from a vault window (the palette's command calls
-// window.vaultite.openSandbox), it's made in userData/Sandbox and opens in its own window on the tour; opened again
-// while that window is open it's only brought forward (nothing remade); closed and opened again it's made afresh, on
-// a new port (fresh tabs). Manage vaults lists it as the sandbox. WRITES: a throwaway userData and vault only.
+// The sandbox in the desktop app (electron/sandbox.ts): made in userData/Sandbox, brought forward while open, made
+// afresh once closed. Writes a throwaway userData and vault only.
 //   node web/qa/sandbox.mjs <vault copy> [packaged app binary]
 import { _electron } from "playwright-core"
 import fs from "node:fs"

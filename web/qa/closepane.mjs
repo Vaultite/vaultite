@@ -1,8 +1,5 @@
-// Close pane (core/workspace.ts closePane), with the tab bar and pane titles off (appearance `tabBar`, `paneTitles`):
-// Close current tab on a pinned tab leaves it open and says why; the thin strip's X (on hover) closes the pane, pinned
-// tabs too, and Reopen closed tab brings it back whole, where it sat (its size, tabs, pin, shown tab); the strip's menu,
-// the palette's Close pane and ⌥⇧⌘W do the same; the only pane has neither. With titles on, the title row has the X too.
-// WRITES the vault's appearance.json (put back): throwaway server only.
+// Close pane (core/workspace.ts closePane) with tab bars and pane titles off, and Reopen closed tab bringing it back
+// whole. WRITES the vault's appearance.json (put back): throwaway server only.
 //   node web/qa/closepane.mjs <base url> <vault path>
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

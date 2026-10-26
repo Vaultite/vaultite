@@ -1,7 +1,5 @@
-// Pinned tabs and tabs by number (core/workspace.ts togglePinTab, selectTabAt): a pinned tab shows a
-// pin where its X goes; what's opened from it (the quick switcher, a link) opens in a tab beside it; Close current tab
-// and Close all other tabs leave it open; its menu unpins it. Go to tab #n and Go to last tab (⌘1–⌘9 in the desktop
-// app). WRITES nothing.
+// Pinned tabs and tabs by number (core/workspace.ts togglePinTab, selectTabAt): what a pinned tab opens goes beside it,
+// closing others leaves it, Go to tab #n. WRITES nothing.
 //   node web/qa/tabpin.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"

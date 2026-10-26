@@ -1,7 +1,5 @@
-// Artifacts and tables: an .html file opens sandboxed and reads the vault through the bridge, a .csv opens as a table,
-// both show inside other files (![[...]]), the theme follows the app, localStorage is kept in the vault, a changed CSV
-// redraws the artifact, and the sandbox holds (no network, no reach into the app). WRITES fixtures (QA/ in the vault):
-// throwaway server only.
+// Artifacts (.html, sandboxed, reading the vault through the bridge) and .csv tables, alone and embedded.
+// WRITES fixtures (QA/ in the vault): throwaway server only.
 //   node web/qa/artifacts.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

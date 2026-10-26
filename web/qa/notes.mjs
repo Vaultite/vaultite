@@ -1,8 +1,6 @@
-// Notes as files: a note read on a phone (390px) and on a desktop, in a tab on both, light and dark, with screenshots;
-// its [[links]] followed: to the other note and to the person, and Back returns to the note. No sideways overflow on
-// the phone; the note's sheet address (#<tab>/file/<path>) opens the note on a phone (in a sheet).
+// Notes as files on a phone and a desktop: read, [[links]] followed and Back, the sheet address. Needs a note that links
+// to a note and a person (subjects.mjs).
 // Read-only (no writes to the vault):  node web/qa/notes.mjs <base url> [out dir]
-// Needs a note that links to another note and to a person (found in the vault by subjects.mjs: "take" links to "idea").
 import { SHOTS, qa, until } from "./lib/qa.mjs"
 import { subjects } from "./subjects.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

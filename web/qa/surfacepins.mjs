@@ -1,6 +1,4 @@
-// Views pinned (plugins/core/pages): Pin in a view tab's menu pins it as its target (Inbox: view:inbox), a search tab as
-// its search; a web page pinned by its address (vau pin <address> --label) shows under its name and opens in a web tab,
-// hidden while the Browser is off; Pinned's menu (More ▸) offers the plugins' main views, one click to pin.
+// Views pinned (plugins/core/pages): a view tab, a search, a web page by its address, Pinned's menu of main views.
 // WRITES pages.json and turns plugins on and off (puts them back): throwaway server only.
 //   node web/qa/surfacepins.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"

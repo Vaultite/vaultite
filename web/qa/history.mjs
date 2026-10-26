@@ -1,10 +1,5 @@
-// The Browser's history, address bar and import in the desktop app (Electron), end to end on a throwaway vault,
-// against made-up sites this script serves (lighthouse.test, harbor.test: 127.0.0.1): visits kept (a link's, a typed
-// one's), a new web tab's address with the sites visited most, typing completing inline to a site with the list of
-// suggestions over the live page (the window raised over it), Esc, Enter, ⇧⌦ removing a history row; the History tab (search,
-// several removed, Undo, Clear browsing history); ⌘Y; ⌘D; Import from Brave from tools/fixtures/browsers (visits once,
-// bookmarks into Bookmarks.md, suggested in the address bar).
-// WRITES: the throwaway vault only.
+// The desktop app Browser's history, address bar and import from Brave (tools/fixtures/browsers), against made-up sites
+// it serves on 127.0.0.1 (lighthouse.test, harbor.test). WRITES: the throwaway vault only.
 //   node web/qa/history.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

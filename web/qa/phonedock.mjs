@@ -1,6 +1,5 @@
-// The phone drawer's dock at iPhone size: the Buttons panel's heading held, Put in the dock; its buttons are icons above
-// the vault's row, out of the stack; one held shows its name and menu, dragged it moves, tapped it runs; Take out of the
-// dock puts the panel back. WRITES .vaultite/sidebars.json and newtab.json: throwaway only.
+// The phone drawer's dock: a panel put in it, its buttons held, dragged and tapped, then taken out. Writes
+// .vaultite/sidebars.json and newtab.json: throwaway only.
 //   node web/qa/phonedock.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

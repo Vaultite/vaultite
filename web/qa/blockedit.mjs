@@ -1,7 +1,5 @@
-// Blocks in live preview are views (livePreview.ts Block, components/Blocks.tsx): a click on a ```block-person keeps it
-// drawn, its bar's </> shows its Markdown with Done under it, a right-click there opens the block's menu; its fields
-// change in place (kit's Editable); Options is a form that writes its fence; an empty block still draws; an alias
-// another file has says so. WRITES to the vault: throwaway server only.
+// Blocks in live preview are views (livePreview.ts Block, components/Blocks.tsx): a click keeps one drawn, </> shows
+// its Markdown, Options writes its fence. WRITES to the vault: throwaway server only.
 //   node web/qa/blockedit.mjs <base url> [out dir]
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)

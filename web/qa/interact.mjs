@@ -1,11 +1,5 @@
-// Interaction consistency (desktop, 1440x900): things that should behave the same everywhere do. "Open … in a tab"
-// commands show the tab a view has instead of opening another (and "in right split" too); the keyboard goes back to
-// the editor when the command palette, the quick switcher, a menu or the workspace list closes, and into the new
-// pane's editor after Split right or Focus on the pane to the left; the workspace list takes arrow keys; a file
-// dropped on a bar that has it moves its tab; a terminal dragged from the Terminals panel opens where it's dropped; a
-// tab's menu lists a file's items in the tree menu's order; Go to next/previous tab; Move current tab to workspace 3.
-// Runs a shell (ended) and WRITES a "Qa interact" folder, tabs and workspaces 1 and 3 (all removed at the end):
-// throwaway server only.
+// Interaction consistency (desktop): what should behave the same everywhere does (tabs reused, focus returned, drops,
+// menus' order). Runs a shell, WRITES "Qa interact", tabs and workspaces 1 and 3 (removed after): throwaway server only.
 //   node web/qa/interact.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -14,9 +8,8 @@ import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/interact-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
-// What it uses, whatever the vault turned off or hid (the sandbox starts calm: da5190b): Workspaces for the workspace
-// list and Move to workspace, the Terminals panel for dragging a terminal's row. Told through vau, to the served vault
-// (not the one this shell's VAULTITE_VAULT may name: in a Vaultite terminal, the user's).
+// What it uses, whatever the vault turned off (the sandbox starts calm), told through vau to the served vault, not the
+// one VAULTITE_VAULT may name (in a Vaultite terminal, the user's).
 const vaultPath = (await (await fetch(new URL("api/vault", B))).json()).path
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a],
   { encoding: "utf8", env: { ...process.env, VAULTITE_URL: B, VAULTITE_VAULT: vaultPath } })

@@ -1,7 +1,5 @@
-// A link's right-click menu (components/LinkMenu.ts, plugins/core/editing/menu.ts): in reading view a web link offers
-// Open link, Copy link and Copy link text, a [[link]] Open in new tab, Copy link and More file actions, a missing one
-// Create note, a mailto: Copy email address, a #tag its files, a link in a table the same; while editing, Edit link
-// selects its target and Remove link leaves its text. WRITES a "Qa link menu" folder: throwaway server only.
+// A link's right-click menu (components/LinkMenu.ts, plugins/core/editing/menu.ts), by kind of link, in reading and
+// while editing. WRITES a "Qa link menu" folder: throwaway server only.
 //   node web/qa/linkmenu.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

@@ -1,9 +1,5 @@
-// The desktop app (Electron) loads a vault window's page again when its process dies (electron/web.ts `revive`): the
-// renderer is killed (SIGKILL, by its own pid, like a stray `pkill` or the Mac short of memory) twice, and each time
-// the window must draw the app again in a new renderer, not stay gray. Its server killed: a new one on its port, the
-// app drawn, no error box. A page in a loop: the Wait / Reload box, whose Reload draws it again. One that keeps
-// crashing: the Reload / Close window box, never a gray window. (The boxes are answered by stand-ins.)
-// WRITES: the throwaway vault only.
+// The desktop app draws a vault window again when its renderer or server dies (electron/web.ts `revive`), never a gray
+// window; its boxes answered by stand-ins. Writes the throwaway vault only.
 //   node web/qa/revive.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

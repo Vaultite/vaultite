@@ -1,9 +1,5 @@
-// A table in live preview, edited cell by cell (editor/tables.ts): a click opens a cell, a click on another moves to it
-// with the table still drawn (not its Markdown), its columns staying put while it's edited, even with Markdown wider
-// than its text; leaving it lets them settle, the typing in the file. /table draws the grid at once, the cursor in its
-// first cell; + adds a row or a column; a column's grip opens its menu (Sort), a row's drags it elsewhere; cells dragged
-// across are copied as tab-separated text and HTML; tab-separated cells pasted into a cell fill the table, and into the
-// text make a table. Light, dark and phone-width screenshots. WRITES a "Qa tablecells" folder: throwaway only.
+// A table in live preview edited cell by cell (editor/tables.ts): the grid stays drawn and its columns put, /table, rows
+// and columns added, sorted, dragged, copied and pasted. WRITES "Qa tablecells/": throwaway only.
 //   node web/qa/tablecells.mjs <base url> [out dir]
 import { SHOTS, command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

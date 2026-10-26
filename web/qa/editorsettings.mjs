@@ -1,8 +1,5 @@
-// The editor as Obsidian's: live preview shows only the Markdown of the element under the cursor (bold, a link, code, a
-// [[link]]; a heading's or quote's whole line; a bullet or checkbox only when selected), Settings > Editor (spellcheck,
-// indent, auto-pair, readable line length, Properties in document: .vaultite/editor.json, defaults never written), an
-// alias put in as [[File|Alias]], and ⌘E switching only the tab in front. WRITES a "Qa editor" folder and editor.json:
-// throwaway server only.
+// The editor as Obsidian's: live preview's Markdown under the cursor only, Settings > Editor (editor.json, defaults
+// never written), aliases, ⌘E. WRITES a "Qa editor" folder and editor.json: throwaway server only.
 //   node web/qa/editorsettings.mjs <base url> <vault path>
 import { existsSync, readFileSync, rmSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

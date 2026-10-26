@@ -1,7 +1,5 @@
-// How instant the core interactions feel, on desktop (1440x900): each timed from its input event to the next frame after
-// its result is drawn, with what it cost (React commits and components rendered, through a stand-in for React DevTools'
-// hook; script, layout and style time from CDP's Performance.getMetrics; long tasks). Times on a shared machine are
-// noisy and headless Chrome paints about every 16-40 ms whatever the page does: lean on the counts and CPU time.
+// How instant the core interactions feel: input event to the next frame, with what each cost (React commits, CPU). Times
+// are noisy, so lean on counts and CPU time. WRITES "Latency" notes, workspace 1's tabs, vault plugins: throwaway only.
 //   load      a cold load and a warm one: to the first file's text drawn, and app.load's parts (core/spans.ts)
 //   typing    keys typed in the middle of a long note (~3000 lines): keydown to the next frame, CPU per key
 //   open      a file clicked in the file explorer, to its text drawn: files never opened, then ones opened before
@@ -9,11 +7,8 @@
 //   panes     a click into the other pane of a split, to its editor focused
 //   palette   the command palette (Mod+P) opened, then a query typed; the quick switcher (Mod+O) the same
 //   sidebar   the left sidebar hidden and shown (Mod+\)
-// --only load: just the loads. --phone: 390x844, touch, CPU 4x slower: load, typing and the quick switcher. --profile <step> saves that step's CPU
-// profile (Chrome DevTools opens it) and lists the functions that took the most. --runs N (default 3): medians of N.
-// With a vault path, it first adds 20 made-up vault plugins there (~550 KB of bundles, as a big vault has), turned on
-// and allowed, so the load waits for bundles as a real one does; they stay (run it again without the path).
-// WRITES: a "Latency" folder of notes (600 in its Many folder), workspace 1's tabs (one tab at each run's start, then splits), and with a vault path its plugins: throwaway server only.
+// With a vault path it first adds 20 made-up vault plugins there (left there), so the load waits for bundles as a big
+// vault's does. --phone: 390x844, touch, CPU 4x slower; --profile <step> saves that step's CPU profile.
 //   node web/qa/latency.mjs <base url> [vault path] [--runs 3] [--only load] [--phone] [--profile <step>] [--out r.json] [--compare r.json]
 import fs from "node:fs"
 import path from "node:path"

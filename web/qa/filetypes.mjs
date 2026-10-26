@@ -1,9 +1,5 @@
-// Every kind of file opens: code in the editor (highlighted, line numbers, typing saves a small edit), an image (fit,
-// click for its real size), a PDF (the browser's viewer; phones a card), audio, a Jupyter notebook (read, and its JSON
-// in source mode), a Keynote deck and a binary file as a card (Download; "Open in default app" only in the desktop app),
-// a big log read-only, a PDF embedded in a note, the tree's icons, the quick switcher, rename and delete from the tree,
-// range requests, and the phone sheet at 390 and 320px. WRITES to the vault (it makes a "Qa files" folder): throwaway
-// server only.
+// Every kind of file opens (code, images, PDFs, audio, notebooks, decks, binaries, a big log), on a desktop and a phone.
+// WRITES a "Qa files" folder: throwaway server only.
 //   node web/qa/filetypes.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import zlib from "node:zlib"

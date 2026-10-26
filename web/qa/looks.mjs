@@ -1,6 +1,4 @@
-// The look end to end: Change colour scheme in the palette shows the whole app in the selected scheme as the selection
-// moves (saved only on Enter, Esc goes back); a new tab draws the page newtab.json names, and Show sections on new tabs
-// takes it back.
+// The look: Change colour scheme previews as the selection moves (saved on Enter), and newtab.json's page on a new tab.
 // WRITES appearance.json and newtab.json: throwaway only.
 //   node web/qa/looks.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

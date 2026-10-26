@@ -1,8 +1,5 @@
-// A huge folder open in the file tree (components/FileTree.ts, core/virtual.ts): only the rows near the screen are
-// drawn, yet the tree is its whole height and scrolls true; End, ↑ and ← reach rows far off (the last file, the folder
-// thousands of rows up), ⇧-click selects a run past what's drawn, F2 renames a row far down, revealing a file scrolls to
-// it, and typing in a note (with its saves) redraws no row of the tree. WRITES "Qa big" (3000 notes) and files.json
-// and sidebars.json (put back): throwaway server only.
+// A huge folder in the file tree (components/FileTree.tsx, core/virtual.ts): only rows near the screen drawn, keys and
+// selection past them. WRITES "Qa big" (3000 notes), files.json and sidebars.json (put back): throwaway server only.
 //   node web/qa/bigtree.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
 import path from "node:path"

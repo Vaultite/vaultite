@@ -1,6 +1,5 @@
-// A tab drawn again after a pane stopped drawing it (it keeps only its last five: components/Workspace.tsx) is as it
-// was left (editor/kept.ts): ⌘Z undoes what was typed before, ⇧⌘Z redoes it, the selection is where it was, and a
-// change made on disk meanwhile is in without being undone. WRITES (notes of its own): throwaway server only.
+// A tab drawn again after its pane stopped drawing it (components/Workspace.tsx keeps five) is as left (editor/kept.ts):
+// undo, redo, selection, and a change made on disk meanwhile. WRITES notes of its own: throwaway server only.
 //   node web/qa/keptedits.mjs <base url> <vault path>
 import { readFileSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

@@ -1,7 +1,5 @@
-// The app as the computer it runs on expects (core/platform.ts): keys drawn as ⌘O on a Mac and Ctrl+O elsewhere in
-// tooltips, keycaps and the palette; Linux's defaults (back on Alt+←, workspaces on Alt+n, Ctrl+Shift+C/V in the
-// terminal); Reveal in Finder or Show in folder; a middle click on a link that doesn't paste. Chrome takes the server's
-// computer's platform. Runs a shell and switches workspaces: throwaway server only.
+// The app as its computer expects (core/platform.ts): ⌘O on a Mac and Ctrl+O elsewhere, Linux's default keys, Reveal in
+// Finder. Chrome takes the server's platform. Runs a shell and switches workspaces: throwaway server only.
 //   node web/qa/platform.mjs <base url>
 import { execFileSync } from "node:child_process"
 import path from "node:path"

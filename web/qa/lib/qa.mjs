@@ -8,9 +8,8 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { hold } from "../../../tools/qa_slots.ts"
 
-/** Playwright's own Chromium (`npx playwright-core install chromium`), else Google Chrome (or Chromium on Linux), else
- *  the Mac's path, which scripts check to skip; VAULTITE_CHROME picks one. Not the installed Chrome first: a headless one
- *  left running is the "Google Chrome" macOS brings forward, so opening Chrome shows no window. */
+/** Playwright's Chromium, else Google Chrome (Chromium on Linux), VAULTITE_CHROME picks one. Not the installed Chrome
+ *  first: a headless one left running is the one macOS brings forward, so opening Chrome shows no window. */
 export const CHROME = [process.env.VAULTITE_CHROME, bundled(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/snap/bin/chromium"]
   .find((p) => p && fs.existsSync(p)) ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -36,9 +35,8 @@ export async function until(fn, ms = 5000, every = 100) {
   }
 }
 
-/** The script's arguments as its head comment's usage line names them (the line tools/qa.ts reads too): exits 2
- *  with that line when a required one is missing. A base url left out comes from QA_BASE; there's no default, as on
- *  the live server a fresh browser joins its workspace and attaches to the user's terminals. */
+/** The script's arguments as its head comment's usage line names them (tools/qa.ts reads it too). No default base url
+ *  (QA_BASE gives one): on the live server a fresh browser joins its workspace and attaches to the user's terminals. */
 function args(script) {
   const file = fileURLToPath(script), name = path.basename(file, ".mjs")
   const head = fs.readFileSync(file, "utf8").split("\n").filter((l) => l.startsWith("//")).join("\n")
@@ -52,9 +50,8 @@ function args(script) {
   return argv
 }
 
-/** One run: its arguments, Chrome (launched with `chrome`'s options; `chrome: false` for none), its checks and the
- *  errors of the pages it watches, checked by done() (or earlier by noErrors(), before cleanup that could add some).
- *  `done()` ends it: exit 1 on any failure. */
+/** One run: its arguments, Chrome (`chrome: false` for none), its checks and its pages' errors; `done()` ends it, exit 1
+ *  on any failure (noErrors() checks earlier, before a cleanup that could add some). */
 export async function qa(script, { chrome = {} } = {}) {
   const argv = args(script)
   await hold()

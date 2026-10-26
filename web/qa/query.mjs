@@ -1,10 +1,5 @@
-// Database views (```base fences): Design.md's examples drawn; a "Qa query" folder of made-up people and a note with
-// bases: sorting from a heading's menu (asc, desc, removed; written in the fence), a row opens its file, double-click edits a value (one frontmatter line
-// changes on disk, the table follows), cards and list views, a bad filter says why, and at 390px the table scrolls in its
-// card without widening the page. Boards: columns in order, a card dragged to another column (one line on disk, no
-// flicker back), its … menu, phone (menu, the board scrolls in its card). Calendars: the month grid, today, prev/next,
-// an item dragged to another day, the phone's agenda. Screenshots in the scratch folder given as the third argument (or /tmp/vaultite-query/).
-// WRITES a "Qa query" folder (removed after): throwaway server only.
+// Database views (```base fences): tables, cards, lists, boards and calendars, edits writing one line, 390px (shots: the
+// third argument or /tmp/vaultite-query/). Writes Qa query/ (removed after): throwaway server only.
 //   node web/qa/query.mjs <base url> <vault path> [screenshots dir]
 import { mkdirSync, readFileSync } from "node:fs"
 import { qa } from "./lib/qa.mjs"

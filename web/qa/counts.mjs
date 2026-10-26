@@ -1,11 +1,6 @@
-// Counts that can only go down: how many components React renders per keystroke in a note (with the companion's agent
-// in it too) and in the quick switcher,
-// when the command palette opens, and when a note that isn't open changes behind the app (as Claude would write it). Counted, not timed (a stand-in for
-// React DevTools' hook, as perf.mjs's), so it's the same run after run and can fail a change: above its limit in
-// counts.json, it fails. Each limit is 5% over the best count seen (commits per key wobbled more: left out). With
-// --ratchet, a count that went down lowers its limit there (commit it), so a win stays won.
+// Counts that only go down (React renders per keystroke, palette, outside change), against counts.json's limits;
+// --ratchet lowers a limit a win beat (commit it). WRITES: types into notes: throwaway server.
 //   node web/qa/counts.mjs <base url> [--ratchet] [--census]
-// WRITES: types into a note and changes another one: throwaway server.
 import fs from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0], browser, check, done } = await qa(import.meta.url)
@@ -64,11 +59,8 @@ await page.keyboard.press("End")
 await quiet()
 
 const now = {}, why = {}
-// Typing: per keystroke, the components rendered (before the autosave: its own after a pause). Keys 200 ms
-// apart, so each one's deferred renders are done before the next (at typing speed they merge, by timing).
-// (its saves held till the keys are counted: a key late on a busy machine leaves the 600 ms pause that saves, and the
-// store's refresh after it is what elsewhere.rendered counts)
-// The fewer of two rounds: a refresh landing in one (a busy machine's late load) isn't the keys'.
+// Per keystroke, the components rendered before the autosave (held till the keys are counted), keys 200 ms apart so
+// each one's deferred renders finish; the fewer of two rounds, as a late refresh in one isn't the keys'.
 const typeCounted = async (name, typed) => {
   for (const words of [typed, typed.split("").reverse().join("")]) {
     const saves = []

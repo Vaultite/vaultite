@@ -1,13 +1,5 @@
-// Block an element in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this script
-// serves on 127.0.0.1 (Shields' lists: a small one of its own, no network): the Shields menu's Block an element… starts
-// the picker (the page's right-click Block element… too, on what was clicked); pointing outlines, a click picks the
-// element (a stable selector, not its generated class), ↑ widens it to the custom element around it, marked but still
-// shown until P previews it hidden, ↓ narrows back, Esc cancels with nothing kept; Enter keeps `127.0.0.1##<selector>` in the
-// blocked elements list and the page stays so, a reload too; the menu's Hidden on 127.0.0.1 shows one again (gone from the
-// list, shown without a reload); an agent's `web-viewer.block` hides live (a site's rule, and a generic one), unblock shows.
-// Site styles: a site's CSS file applies at once and beats the page's own, with the vault's look as variables (following
-// light and dark), a reload too; the Shields menu turns it off and on.
-// WRITES: the throwaway vault only.
+// Block an element in the desktop app, against a site and a filter list of its own on 127.0.0.1 (no network): the
+// picker, the blocked list, an agent's web-viewer.block, and site styles. WRITES: the throwaway vault only.
 //   node web/qa/elements.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

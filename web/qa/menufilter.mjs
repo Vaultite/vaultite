@@ -1,7 +1,4 @@
-// Typing in a menu (components/ContextMenu.tsx): the sidebar's Panels ▸ filtered to a hidden panel in More, ticked with
-// Enter, ⌘A selecting the query (never the page), Backspace and Escape; a long menu says it can be typed into; the
-// panels' icons beside their checks. Then Customize sidebars (pages/Sidebars.tsx): opened from the menu, a panel
-// dragged between the sidebars and down to Hidden, moved from its menu, the filter, Restore defaults and its Undo.
+// Typing in a menu (components/ContextMenu.tsx) filters it, then Customize sidebars (pages/Sidebars.tsx).
 // WRITES sidebars.json and empties the workspaces: throwaway only.
 //   node web/qa/menufilter.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"

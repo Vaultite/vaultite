@@ -1,12 +1,5 @@
-// Phones' browser-like motion (core/motion.ts): the tab list zooming out of the page as it opens (its button, or the bar
-// dragged up), a page pulled down for its actions, the list zooming into a card picked and on Done, a new tab out of its
-// +, Back and Forward sliding (Forward lit only after Back), and the edge swipes never going back or forward (they're
-// the drawers'). Each runs to its end, leaves nothing behind (no data-motion, no transform, no copy of the list) and
-// lands where it should. Frames mid-way go to the out dir.
-// Stepped through paused, the zooms keep the card's picture in its box, unstretched, and the box inside the list; Done
-// tapped while the list opens turns the page around from where it got to; a card closed at once has the rest glide on.
-// Opens files and tabs (the workspace's tabs, device-local) and sets appearance.json's pullActions, then unsets it: run it
-// against a throwaway server.
+// Phones' browser-like motion (core/motion.ts): each zoom, pull and slide runs to its end, leaves nothing behind and
+// lands where it should, paused mid-way too. Sets appearance.json's pullActions (then unsets it): throwaway server.
 //   node web/qa/tabmotion.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, wait } from "./lib/qa.mjs"

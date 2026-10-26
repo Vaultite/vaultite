@@ -1,7 +1,5 @@
-// A kind's blocks are fences in its files (core/blocks.ts withKindBlocks): a new person or log made through the API
-// (of an area with a block of its own: a made-up one, as Health's workouts are Health's) has them on top and draws them
-// there, reading and editing; a file without one draws none. WRITES to the vault (Logs' areas put back): throwaway
-// server only.
+// A kind's blocks are fences in its files (core/blocks.ts withKindBlocks): a new person or log has them on top and draws
+// them; a file without one draws none. WRITES to the vault (Logs' areas put back): throwaway server only.
 //   node web/qa/kindblocks.mjs <base url> [out dir]
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)

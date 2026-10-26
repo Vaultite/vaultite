@@ -1,9 +1,5 @@
-// Canvas: a .canvas file (JSON Canvas) as a board of cards: adding, moving (snapping), resizing, selecting, duplicating,
-// copy and paste, connecting, arrows and colours, Delete and ⌘Z, Convert to file, a note's card edited in place, a web
-// page card, files dragged from the tree, unknown keys kept, changes on disk drawn, scrolling and zooming never
-// writing, a big board drawing only what's near, `![[x.canvas]]` in a note, "New canvas", and a phone at 390px.
-// WRITES a "Qa canvas" folder and removes the workspaces' data.json for the run (put back): throwaway server only.
-// The web page card's preview needs the network (example.com).
+// Canvas (JSON Canvas boards): cards, links, drags, undo, scrolling and zooming never writing, embeds, phone. WRITES
+// "Qa canvas" (the workspaces' data.json put back): throwaway server only. The web card needs the network.
 //   node web/qa/canvas.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, utimesSync, writeFileSync } from "node:fs"
 import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
@@ -114,9 +110,8 @@ const lh = await page.locator('[data-handle="resize-w"][data-for="a"]').bounding
 await dragTo({ x: lh.x + lh.width / 2, y: lh.y + 12 }, { x: lh.x - 60, y: lh.y + 12 }) // (above the middle's connect dot)
 check("a card's left edge resizes it", await until((d) => { const a = d.nodes.find((n) => n.id === "a"); return a.width > wa + 40 && a.x < 0 }))
 
-// A box drawn on the background selects what it touches; the bar above shows Align for several.
-// From empty background below the link card and left of the group (a press on the group would move it, and beside
-// "a" it would catch the side dot of "a", resized past the group's edge just above), up into "a".
+// A box drawn on the background selects what it touches. Started below the link card and left of the group, where
+// a press would move nothing (on the group it moves it; beside "a" it catches a's side dot).
 const aC = await center(node("a")), lB = await node("l").boundingBox(), gB = await node("grp").boundingBox()
 await dragTo({ x: gB.x - 30, y: lB.y + lB.height + 30 }, aC)
 await wait(300)

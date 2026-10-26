@@ -1,11 +1,5 @@
-// The right sidebar: no room taken until a panel goes there, only its toggle in the corner. Dragging a panel's heading
-// outlines the toggle; dropped on it, the panel moves to the end of the right sidebar (`right` in sidebars.json) and
-// leaves the left one. What's fixed to
-// the window's right edge (the status bar) keeps clear of it. Its toggle folds it to an icon rail whose flyouts open
-// to its left; the panel's menu moves it back (Move to left sidebar), and with nothing left the right sidebar goes.
-// Reveal current file in file tree opens the folded right sidebar on the file. The search field (a panel that's one
-// button) drags like the others, and still searches on a click. Writes sidebars.json and empties the workspaces:
-// throwaway server only.
+// The right sidebar: no room until a panel is dropped on its toggle, its rail and flyouts, panels moved back, the status
+// bar kept clear. Writes sidebars.json and empties the workspaces: throwaway server only.
 //   node web/qa/rightsidebar.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

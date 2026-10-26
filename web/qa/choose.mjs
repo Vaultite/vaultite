@@ -1,8 +1,5 @@
-// vau choose (ui.choose, core/coreops.ts; the window's answer in components/Chooser.tsx): lines piped in show in the
-// window's palette with the prompt above them, filtered as typed; Enter answers the pick's id, Esc nothing; JSON items
-// keep their ids and details; --current starts on one; --other answers what's typed; a timeout closes the list and is
-// an error; the window closing ends the wait; no window says so. Opens the app in headless Chrome.
-// WRITES: nothing in the vault.
+// vau choose (ui.choose; the window's side in components/Chooser.tsx): the pick's id, Esc, --current, --other,
+// timeouts, a window closing or missing. Headless Chrome; WRITES nothing in the vault.
 //   node web/qa/choose.mjs <base url>
 import { spawn } from "node:child_process"
 import fs from "node:fs"

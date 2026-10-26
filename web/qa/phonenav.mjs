@@ -1,7 +1,5 @@
-// Phone navigation at iPhone size: the header (the sidebar's button, the name, the … menu), the bar (Back, search, new
-// tab, tabs, menu), the left drawer (a swipe from the edge, real touches through CDP; the button; a file opened from it
-// closes it and opens in a tab), Back, and the bar's menu. Reads only (opens tabs on this device), but run it against a
-// throwaway server anyway:
+// Phone navigation at iPhone size: the header, the bar, the left drawer (real touches through CDP), Back and the bar's
+// menu. Reads only (opens tabs on this device), but run it against a throwaway server anyway.
 //   node web/qa/phonenav.mjs <base url> [shots dir]
 import { SHOTS, fingers, qa } from "./lib/qa.mjs"
 const { args: [B, dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)

@@ -1,6 +1,5 @@
-// ⌘A selects the text the user is in, never the whole window (core/selectAll.ts, core/commands.ts' FIELD_KEYS): a
-// file's name being renamed in the tree selects only that name (not the tree's rows); the sidebar selects nothing; a
-// note in reading view, with the keyboard on its page, selects just its text. Throwaway only.
+// ⌘A selects the text the user is in, never the whole window (core/selectAll.ts, core/commands.ts' FIELD_KEYS).
+// Throwaway only.
 //   node web/qa/selectall.mjs <base url> [out dir]
 import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

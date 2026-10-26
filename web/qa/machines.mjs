@@ -1,8 +1,5 @@
-// Machines: two throwaway servers that list each other (.vaultite/plugins/machines/data.json in each vault), the app on
-// the first. The machines block and view (both listed, the first one "this one"), a shell on the second from the first
-// (typed into, answering from there: its VAULTITE_URL), the Terminals panel listing it with the machine's name, the tab
-// saying where it runs, "Choose where…" offering the other machine, and ending it from here.
-// Runs shells on this machine through both servers: throwaway servers only.
+// Machines across two throwaway servers that list each other: the block and view, a shell on the second from the first,
+// listed and ended from here. Runs shells on this machine through both: throwaway servers only.
 //   node web/qa/machines.mjs <base url> <other machine's id> <other machine's base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, terminalText, until } from "./lib/qa.mjs"

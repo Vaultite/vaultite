@@ -1,9 +1,5 @@
-// Editing: find and replace in a file (plugins/core/find: ⌘F, ⌥⌘F, the count, Enter, replace all, find
-// only while reading, matches in drawn tables, callouts and <details>, a dashboard's find), folding (plugins/core/folding: the chevron on hover, a folded heading hides its section and is
-// remembered, Fold all / Unfold all, a `#` line in code isn't a heading), page preview (plugins/core/page-preview: a
-// [[link]] previews its note on hover while reading, needs ⌘ while editing, links in it work, it closes when the pointer
-// leaves) and All properties (plugins/core/properties: the panel's counts, rename everywhere with Undo). Screenshots in
-// light and dark. WRITES a "Qa editing" folder and renames a property in it: throwaway server only.
+// Editing: find and replace (plugins/core/find), folding, page preview and All properties, light and dark.
+// WRITES a "Qa editing" folder and renames a property in it: throwaway server only.
 //   node web/qa/editing.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { SHOTS, qa, until, wait } from "./lib/qa.mjs"

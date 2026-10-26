@@ -1,8 +1,5 @@
-// Graph view: the whole vault in a tab (palette "Open graph view"), drawn fast enough with a couple of thousand files,
-// hover lighting a node, a click opening its file, search filtering it, the filters panel (files with no links), a
-// legend group hidden and shown (its settings file written), light and dark, the local graph block in a note, the
-// sidebar's Local graph panel, "Open local graph", and a phone at 390px. WRITES the graph's settings, appearance.json and sidebars.json (put back),
-// and a "Qa graph" folder: throwaway server only.
+// Graph view, fast with a couple of thousand files: the tab, its search, filters and legend, the local graph block and
+// panel, a phone. WRITES its settings, appearance.json, sidebars.json (put back) and "Qa graph": throwaway server only.
 //   node web/qa/graph.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"

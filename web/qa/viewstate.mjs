@@ -1,7 +1,5 @@
-// Where you left a place (core/viewstate.ts): a tab comes back scrolled to where it was (another tab and back, the app
-// reloaded, a phone's tab), and Properties are open in editing and reading (read-only), the same for a note and a
-// project, and stay folded on a file once folded. Switching views (reading, live preview, source; FileView's keepPlace)
-// keeps the same line at the top, on a computer and on a phone, and a dashboard the card at the top. WRITES to the vault (a long note): throwaway server only.
+// Where you left a place (core/viewstate.ts): scroll and Properties' folds coming back, and the same line on top across
+// views, on a computer and a phone. WRITES a long note: throwaway server only.
 //   node web/qa/viewstate.mjs <base url> <vault path>
 import { readFileSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -17,9 +15,8 @@ const DESIGN = await pagePath(B, "Design")
 const MINE = "Notes/Qa dashboard.md"
 writeFileSync(`${VAULT}/${MINE}`, readFileSync(`${VAULT}/${DESIGN}`, "utf8"))
 const hash = (p) => `#file/${encodeURIComponent(p)}`
-// Where the reader is: the first "Section N" heading under the top of what scrolls (a pane, or the window on a phone),
-// and how far below it. A place comes back by its line (core/viewstate.ts), so that's what's compared: the same
-// scrollTop can show another line once the editor has measured what it had only estimated.
+// Where the reader is: the first "Section N" heading under the top of what scrolls, and how far below it. Compared by
+// line, as places come back: the same scrollTop can show another line once the editor has measured.
 const headingAt = (page) => page.evaluate(() => {
   const m = document.getElementById("main-scroll")
   const top = m && /auto|scroll/.test(getComputedStyle(m).overflowY) ? m.getBoundingClientRect().top : 0

@@ -1,7 +1,5 @@
-// Stacked tabs (components/Workspace.tsx Stacked; the command and the tab menu's Stack tabs): a
-// pane's tabs side by side, each with its title on a spine; the active one in full view (scrolled to when another tab
-// is picked in the bar), and the one the keyboard and commands act on (#main-scroll); a click in another makes it the
-// active one; the setting survives a reload; Unstack puts them back. WRITES nothing.
+// Stacked tabs (components/Workspace.tsx Stacked): a pane's tabs side by side on spines, the active one in view and
+// the keyboard's, the setting kept over a reload, Unstack. WRITES nothing.
 //   node web/qa/stacked.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync } from "node:fs"
 import path from "node:path"

@@ -1,8 +1,5 @@
-// Add photo (the editing plugin): the system's picker (an image input, several at once) from the palette, Insert ▸
-// Photo in the editor's menu and /photo; each image saved in Attachments/ and embedded at the cursor on a line of its
-// own, the iPhone camera's "image.jpg" named "Pasted image <YYYYMMDDHHmmss>.jpg", nothing on cancel. On a phone it's at
-// the top of the note's … menu and lands at the note's end while reading. Files are set on the input as Playwright's file chooser.
-// WRITES a "Qa photo" folder and images in Attachments/: throwaway only.
+// Add photo (the editing plugin): from the palette, Insert ▸ Photo and /photo, saved in Attachments/ and embedded at
+// the cursor; a phone's … menu. Writes Qa photo/ and images in Attachments/: throwaway only.
 //   node web/qa/photo.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait, command } from "./lib/qa.mjs"

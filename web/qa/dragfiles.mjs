@@ -1,8 +1,5 @@
-// Dragging from the sidebar with the tabs' drops (core/drag.ts): a file from the tree onto a pane's middle (opens
-// there), an edge (a split with it), a tab bar (a tab at that place), the pinned pages (pinned there); a folder isn't
-// offered to panes; a pinned page reordered, dragged onto a pane's edge (opens, stays pinned) and out onto the tree
-// (unpinned, "Unpin" on the dragged item); a tab dropped on the pages (pinned); Escape cancels; the click that ends a
-// drag opens nothing. WRITES (a "Qa drag" folder, pins): throwaway server only.
+// Dragging from the sidebar with the tabs' drops (core/drag.ts): files and pinned pages onto panes, tab bars, pins.
+// WRITES a "Qa drag" folder and pins: throwaway server only.
 //   node web/qa/dragfiles.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, wait } from "./lib/qa.mjs"

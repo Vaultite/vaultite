@@ -1,13 +1,5 @@
-// Every UI preference in a vault file, and shells that know they're inside Vaultite:
-// - the sidebar's panels: sidebars.json written on disk reorders them live; dragging Terminals by its heading above the
-//   pages moves it (and writes sidebars.json); right-click has Panels, Move to right sidebar and Hide; the tree still
-//   grows when moved;
-// - Settings > Hotkeys: one row that opens the sheet, which lists commands, filter, record a new combination for a command (hotkeys.json gets only that
-//   line), the rebound keys run it, conflicts shown, restore default; hotkeys.json edited on disk applies live;
-// - a terminal's environment: VAULTITE, VAULTITE_URL, VAULTITE_VAULT, VAULTITE_CLIENT, the app's bin/ on PATH, and
-//   VAULTITE_REMOTE=tailscale only through Serve (an allowUsers login); "Open Claude Code" runs claude with
-//   --append-system-prompt.
-// Writes plugins.json, sidebars.json, hotkeys.json and the terminal's settings (put back after) and runs shells: throwaway server only.
+// Every UI preference in a vault file (sidebars.json, hotkeys.json, live from disk) and shells that know they're in
+// Vaultite (env, PATH). Writes settings (put back) and runs shells: throwaway server only.
 //   node web/qa/agentui.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

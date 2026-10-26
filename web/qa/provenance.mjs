@@ -1,9 +1,5 @@
-// Provenance, pinned properties and Token count: a file's `origin` label in its header and the status bar (choosing
-// writes only that key), `origin: ai` for an agent's note through the API, none for the app's (the header then shows no
-// label) and `human` once the vault labels the user's (`label_user`), images' labels
-// in files.json (an agent's upload labelled, its bytes as sent), the values from the settings sheet, pinned property chips,
-// Token count following typing, and 390px. Screenshots light and dark. WRITES files in "QA provenance/", plugins.json,
-// appearance.json, both plugins' data.json and Provenance's files.json (put back): throwaway server only.
+// Provenance (`origin` labels, from agents through the API), pinned property chips and Token count, 390px, light and
+// dark. Writes QA provenance/, plugins.json, appearance.json and the plugins' settings (put back): throwaway only.
 //   node web/qa/provenance.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

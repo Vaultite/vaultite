@@ -1,9 +1,5 @@
-// Every `![[ ]]` embed's menu (components/EmbedMenu.tsx): right-click on an audio player, a video, a PDF's header, a
-// table and an embedded note's header shows what fits its kind (no Copy image or Reset size on audio, no Open in
-// default app or Download on a note); right-click in a note's text leaves it alone; Reset size takes `|400` out,
-// Remove embed takes the line out, Open in new tab opens it, Delete file trashes it; an embed inside an embedded note
-// has no Remove embed (it isn't this note's); a finger held on a player's header on a phone opens the menu.
-// WRITES a "Qa embeds" folder: throwaway server only.
+// Every `![[ ]]` embed's menu (components/EmbedMenu.tsx) offers what fits its kind, and its items do what they say;
+// one held on a phone opens it too. WRITES a "Qa embeds" folder: throwaway server only.
 //   node web/qa/embedmenus.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, wait } from "./lib/qa.mjs"

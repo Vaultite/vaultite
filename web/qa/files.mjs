@@ -1,10 +1,6 @@
-// Files, tabs and the editor: the file tree in the sidebar, opening files in tabs, a person file (profile header and the
-// Timeline drawn as a timeline, raw lines when you click in), typing (saved to disk as a small edit), [[links]], new
-// note, and on a phone the files tab (view:files) and files opening in tabs (from the tree, People, a [[link]]). WRITES to the vault: throwaway server only.
+// Files, tabs and the editor, on a desktop and a phone; its subjects come from the vault (subjects.mjs), people it can't
+// find made (People/Qa person*.md). WRITES to the vault: throwaway server only.
 //   node web/qa/files.mjs <base url> <vault path> [out dir]   (a fresh copy of the vault each run: it renames files)
-// Its subjects come from the vault (subjects.mjs): a person with a timeline and a plain paragraph ("person"), another
-// one that also has want_to ("other"), a third person file ("third"), a note with links, a note that links to a note
-// and a person, and a note to rename. People it can't find are made (People/Qa person*.md).
 import { readFileSync } from "node:fs"
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
@@ -52,9 +48,7 @@ const out = { errs: [] }
   await page.goto(B); await wait(1500)
   await shot("start")
   out.tree = await page.locator("aside [role=tree]").count()
-  // open People, then the person
-  // By path: the tree may show a Dashboards/People.md too (the open page's folder is revealed).
-  // (each folder down to the person's: People/, or Personal/People/ in a vault organized its own way)
+  // Open People, then the person, by path (the tree may show a Dashboards/People.md too), folder by folder.
   const dirs = person.path.split("/").slice(0, -1)
   for (let i = 0; i < dirs.length; i++) {
     const next = i + 1 < dirs.length ? dirs.slice(0, i + 2).join("/") : person.path

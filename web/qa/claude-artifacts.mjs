@@ -1,7 +1,5 @@
-// claude.ai artifacts saved as .html run as is: window.claude.use() (db with onSnapshot, artifact.publish, user,
-// permissions; null for the rest), window.storage, sample's consent asked once in the app (declined: not_granted),
-// and the Artifact tool's page shape (its <title> inside <body>). QA_SAMPLE=1 also asks Claude for real (Claude Code
-// on the server's machine; a few quick calls). WRITES fixtures (QA/ in the vault): throwaway server only.
+// claude.ai artifacts saved as .html run as is (window.claude, window.storage); QA_SAMPLE=1 also asks Claude for real
+// (Claude Code on the server's machine). WRITES fixtures (QA/ in the vault): throwaway server only.
 //   node web/qa/claude-artifacts.mjs <base url> <vault path>
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

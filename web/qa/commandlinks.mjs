@@ -1,6 +1,5 @@
-// A note's vaultite://command/<id> links: one that only opens something (fromLink: the quick switcher) runs at once,
-// any other asks first, naming the command (the note may not be the user's); Cancel runs nothing, Run runs it.
-// WRITES Notes/Qa command links.md: throwaway server only.
+// A note's vaultite://command/<id> links: one that only opens something runs at once, any other asks first (the note
+// may not be the user's). WRITES Notes/Qa command links.md: throwaway server only.
 //   node web/qa/commandlinks.mjs <base url>
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, errs, watch, done } = await qa(import.meta.url)

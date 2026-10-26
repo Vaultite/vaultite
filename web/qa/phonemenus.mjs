@@ -1,5 +1,5 @@
-// Phones: a held tab card's More ▸ opens in place (Back row returns), the sheet's bar says Done, and Done on an unsaved
-// form asks first; desktop's More file actions ▸ still flies out. Chrome's touch emulation, not an iPhone. Read-only.
+// Phones: a held tab card's More ▸ opens in place, the sheet's Done asks over an unsaved form; desktop's still flies
+// out. Chrome's touch emulation, not an iPhone. Read-only.
 //   node web/qa/phonemenus.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import path from "node:path"

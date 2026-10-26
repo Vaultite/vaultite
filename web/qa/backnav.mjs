@@ -1,8 +1,5 @@
-// Back from what a page opened, and adding to a timeline. Desktop: a person opened from the People page goes in a tab
-// beside it, and Back (the bar's arrow, ⌘⌥←) closes that tab and shows People again where it was scrolled, also when
-// the person's tab was open already; Back with a sheet open closes the sheet; a folder in the path bar opens in the file
-// tree, in sight. A drawn timeline's Add writes a line (desktop and phone), and a person without a timeline gets "Add to
-// timeline" on their profile. WRITES (timeline lines, tabs): throwaway server only.
+// Back from what a page opened (a person's tab beside People, a sheet) and adding to a timeline, desktop and phone.
+// WRITES timeline lines and tabs: throwaway server only.
 //   node web/qa/backnav.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync } from "node:fs"
 import { BACK_KEY, qa, until, wait } from "./lib/qa.mjs"

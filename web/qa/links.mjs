@@ -1,11 +1,5 @@
-// The Links panel (plugins/core/backlinks) and Claude Code's sessions (plugins/core/claude-code): the panel lists a
-// file's linked mentions, unlinked mentions (Link makes one a [[link]] on disk) and outgoing links (unresolved faint),
-// follows the focused file, opens from the rail as a flyout, and opens as a tab in a split that follows the other pane. The Claude
-// page has projects and models side by side; a finished session opens its conversation in a tab (tool calls expand,
-// Resume in terminal opens `claude --resume` in a terminal tab); a session running in one of the app's terminals goes
-// to that tab. Phones at 390px: no horizontal overflow. WRITES a "Qa links" folder, plugins.json and sidebars.json (put
-// back), runs shells, and fakes a running Claude Code session in <claude dir>/sessions: a throwaway server started with
-// CLAUDE_CONFIG_DIR=<claude dir> (a copy holding tools/fixtures/claude), never the real ~/.claude.
+// The Links panel (plugins/core/backlinks) and Claude Code's sessions. WRITES "Qa links", plugins.json, sidebars.json
+// (put back), runs shells: only a throwaway server with CLAUDE_CONFIG_DIR=<claude dir> (a copy of tools/fixtures/claude).
 //   node web/qa/links.mjs <base url> <vault path> <claude dir> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

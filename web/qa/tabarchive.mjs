@@ -1,8 +1,5 @@
-// Tabs archiving themselves (plugins/core/tabs/archived.tsx, archive.ts): with Archive tabs on, unpinned tabs
-// unseen longer than it says close into Archived tabs (a toast with Undo), never the one on screen, a pinned one or a
-// terminal; the Archived tabs tab reopens one where it was and removes one (Undo); the quick switcher finds an archived
-// web page; vau tabs archived lists them (Tabs' `answers`), and an archived file renamed follows (its `onMove`). With Workspaces, the stamps are in the workspace's file, and switching tabs
-// doesn't write them (they ride along). WRITES the Tabs settings, plugins.json and the workspaces' files (put back): throwaway only.
+// Tabs archiving themselves (plugins/core/tabs/archived.tsx): unseen unpinned tabs close into Archived tabs, reopened,
+// found and renamed there. WRITES the Tabs settings, plugins.json and workspaces' files (put back): throwaway only.
 //   node web/qa/tabarchive.mjs <base url> <vault path>
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs"
 import path from "node:path"

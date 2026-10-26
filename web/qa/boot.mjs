@@ -1,14 +1,5 @@
-// Does the built app start? The smoke test `npm run app:build` runs before packaging (so the desktop app, its updates
-// included, never ships a build that can't draw), and `npm run smoke` after `npm run build`. It serves web/dist from a
-// throwaway server on a fresh sandbox vault (or uses <base url>), opens it on a desktop and a phone in Chrome, and fails
-// on any error the page throws, on index.html's "couldn't start" screen, or on nothing drawn: the first page, Plugins,
-// Settings and a note in the editor (its chunk loads then). Then the screen itself: the app's code throwing as it loads,
-// and not loading at all, must each show it (rather than a blank window). Last, a vault of the user's own (Obsidian's,
-// plain Markdown, their AGENTS.md): opening it must change none of their files and add nothing outside .vaultite/;
-// picking a setup for it as Set up Vaultite does adds only its plugins' pages, new files in Dashboards/, and its guide; and every
-// plugin on with their schedules run writes nothing (core/writegate.ts: a plugin acting on its own writes outside
-// .vaultite/ only once the user allowed it).
-// WRITES: only the throwaway vault it makes (none with <base url>, which should be a throwaway server too).
+// Does the built app start (before packaging, and `npm run smoke`): no error, no blank window on desktop and phone, and
+// a vault of the user's own gets nothing written outside .vaultite/. WRITES: only the throwaway vault it makes.
 //   node web/qa/boot.mjs [<base url>]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"

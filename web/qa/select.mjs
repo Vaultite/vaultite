@@ -1,12 +1,5 @@
-// Selecting several things (core/select.ts) and the Inbox's swipes, in a real browser:
-// - desktop: the file tree's ⌘-click (with the open file), ⇧-click (a run from the last one picked), Esc; a right-click
-//   on the selection is its menu ("2 items selected": Move to…, Pin, Delete); Pin pins both, Pinned's rows select and
-//   Unpin both; two files dragged onto a folder both move; Delete trashes both with one toast; the tab bar's ⌘-click
-//   and Close 2 tabs; ⇧↓ and ⌘A from the keyboard;
-// - a phone (390px, real touches through CDP): an Inbox result swiped on the Inbox page shows Done, and Done marks it
-//   done; in the left drawer (the Inbox panel put there) a row swiped right shows Done too; a tree row held: Select,
-//   then a tap adds another, the bar says "2 items selected" and its Actions has Delete; Done ends it.
-// WRITES Qa select/, Inbox/, pinned pages and sidebars.json (put back): throwaway server only.
+// Selecting several things (core/select.ts) on a desktop and with real touches on a phone, and the Inbox's swipes.
+// Writes Qa select/, Inbox/, pinned pages and sidebars.json (put back): throwaway server only.
 //   node web/qa/select.mjs <base url> [shots dir]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"

@@ -1,8 +1,5 @@
-// The keyboard into the text, with Vim on (FileView's useTextFocus): ⌘E from reading puts
-// the cursor in the text on the first line in sight, in normal mode (j moves it, types nothing); ⌘E back to reading
-// gives j back to the page; ⌘O opens a note with the cursor in it, where it was left in that file; ⌘E switches only
-// the pane in front; a file opened from outside (POST /api/ui, `vau open`) doesn't take the keys from a field being typed in.
-// WRITES a "Qa vimfocus" folder and plugins.json's `enabled`: throwaway only.
+// The keyboard into the text with Vim on (FileView's useTextFocus): ⌘E and ⌘O put the cursor where it should, and
+// `vau open` doesn't take the keys from a field. WRITES "Qa vimfocus/" and plugins.json's `enabled`: throwaway only.
 //   node web/qa/vimfocus.mjs <base url> [out dir]
 import { apiAt, palette, qa, SHOTS, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)

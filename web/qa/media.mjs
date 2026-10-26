@@ -1,10 +1,5 @@
-// Audio recorder, Slides and Export to PDF, in Chrome with a fake microphone (a beep; no prompt). Recording: "Start
-// recording audio" shows the bar (time, level, pause, stop), Stop saves the file as an attachment and embeds it at the
-// cursor on a line of its own, `/record` in a note does the same, and from a page that isn't a note a new note gets it;
-// with a transcriber on the server (QA_TRANSCRIBE=1: real whisper takes a while) the transcript lands under it.
-// Slides: Start presentation, the counter, keys, clicks, a swipe on a phone, Escape. Print: the note alone in light
-// colours under print media, whatever the theme, as a PDF (Chrome's page.pdf). Screenshots light and dark, desktop and
-// 390px. WRITES a "Qa media" folder and recordings in Attachments/, and turns Slides on (put back): throwaway only.
+// Audio recorder (a fake microphone; QA_TRANSCRIBE=1 for real whisper), Slides and Export to PDF, desktop and phone.
+// WRITES "Qa media", recordings in Attachments/, turns Slides on (put back): throwaway only.
 //   node web/qa/media.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
 import { SHOTS, palette, qa, until, wait, command } from "./lib/qa.mjs"

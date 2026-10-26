@@ -1,6 +1,5 @@
-// MCP Apps: each card drawn by a minimal host speaking the spec (ui/initialize with a theme, tool input and result,
-// tools/call to /api/mcp, size-changed), then the same card in a note (```block-mcp-app): drawn, sized, ticking a task.
-// The tasks and board cards only when the vault has Tasks and Kanban on. WRITES fixtures (QA/): throwaway server only.
+// MCP Apps: each card drawn by a minimal host speaking the spec, then in a note (```block-mcp-app); tasks and board only
+// with Tasks and Kanban on. WRITES fixtures (QA/): throwaway server only.
 //   node web/qa/mcp-apps.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

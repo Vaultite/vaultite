@@ -1,10 +1,5 @@
-// A finger drags and swipes (core/drag.ts' pickUp, components/SwipeRow.tsx), on a phone-sized page with touch, in the
-// left drawer: held still, a file row's menu opens and lifting leaves it; held then moved onto a folder, the menu
-// closes, the row's picture follows the finger, the folder lights up and letting go moves the file there; moved without
-// a hold (a scroll), nothing is picked up; a panel's heading held and moved puts the panel elsewhere in the drawer;
-// a row swiped right (away from the left drawer's edge) shows Move and Delete, and Delete trashes it; swiped left, the
-// drawer closes instead. In the Files tab a row swipes left. Chrome's touch emulation, not an iPhone: WebKit's own
-// scrolling and selection aren't covered. WRITES (moves and trashes sandbox files, sidebars.json): throwaway only.
+// A finger drags and swipes in the left drawer (core/drag.ts' pickUp, components/SwipeRow.tsx), in Chrome's touch
+// emulation (not WebKit's scrolling). WRITES (moves and trashes sandbox files, sidebars.json): throwaway only.
 //   node web/qa/touchdrag.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync } from "node:fs"
 import path from "node:path"

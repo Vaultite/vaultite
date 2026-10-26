@@ -1,5 +1,4 @@
-// Bug recorder end to end: on, it records typing (counted, not the letters), scrolling the user did and the app did, and
-// Report a bug saves a note with the description and the timeline. WRITES "QA recorder/" and "Bug reports/": throwaway
+// Bug recorder end to end: what it records, and Report a bug's note. Writes QA recorder/ and Bug reports/: throwaway
 // server only.
 //   node web/qa/recorder.mjs <base url>
 import { execFileSync } from "node:child_process"

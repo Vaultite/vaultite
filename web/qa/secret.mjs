@@ -1,8 +1,5 @@
-// vau secret (secret.ask, core/coreops/secret.ts; the window's answer in components/ConfirmDialog.tsx): a dialog with a
-// hidden field, Send off until something's typed; Enter sends it, printed exactly (no newline when piped); Esc fails with
-// nothing printed; --file sends a text file as is and a binary one as base64; a timeout closes the dialog. Opens the app
-// in headless Chrome. With another machine's server sharing the vault (listed in Machines), the ask shows in a window
-// open only there, and its answer comes back. WRITES: nothing in the vault.
+// vau secret (secret.ask, core/coreops/secret.ts): the dialog, what's printed, --file, the timeout, and an ask shown on
+// another machine's server sharing the vault. Writes nothing in the vault.
 //   node web/qa/secret.mjs <base url> [<other machine's base url>]
 import { spawn } from "node:child_process"
 import fs from "node:fs"

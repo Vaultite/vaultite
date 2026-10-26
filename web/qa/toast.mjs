@@ -1,8 +1,5 @@
-// Toasts (core/notify.ts, components/Toast.tsx): trashing a file from the tree says so with Undo, and Undo brings it
-// back; moving one (Move file to…) says where with Undo, and Undo moves it back; Undo after the file moved again fails
-// with an error toast; `vau notify` with a button that opens a file, and --error (a red icon); at most three stack;
-// hovering pauses them; the colours follow dark mode and a gallery scheme; desktop bottom right above the status bar,
-// phones (390px) above the bar. WRITES a "Qa toast" folder and appearance.json (put back): throwaway server only.
+// Toasts (core/notify.ts, components/Toast.tsx): Undo for trash and moves, vau notify, stacking, hover, colours and
+// placement. WRITES "Qa toast/" and appearance.json (put back): throwaway server only.
 //   node web/qa/toast.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"

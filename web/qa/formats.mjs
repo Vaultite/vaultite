@@ -1,10 +1,5 @@
-// Binary formats drawn from their bytes: a workbook (Spreadsheets: the grid, a sheet's tab, the filter), a Word
-// document (Documents: its pages in a shadow root), a PowerPoint deck (Presentations: its slides), a book (E-books:
-// the reader turns a page), an iPhone photo (HEIC, as JPEG in Chrome), each embedded in a note, and the phone sheet at
-// 390px. The files are made up: tools/fixtures/formats/make.ts's (the backend tests' own), and a HEIC made with macOS's
-// `sips` (skipped without it); or real ones from [fixtures dir] (Lease.docx, Pitch.pptx, Budget.xlsx with a Summary
-// sheet, Log.epub, Photo.heic), whose contents are then only looked at, not checked word for word. WRITES to the vault
-// (a "Qa formats" folder): throwaway server only.
+// Binary formats drawn from their bytes (a workbook, a Word document, a deck, a book, a HEIC photo), each embedded too:
+// made-up files (tools/fixtures/formats/make.ts), or real ones from [fixtures dir]. WRITES "Qa formats": throwaway only.
 //   node web/qa/formats.mjs <base url> <vault path> [fixtures dir] [out dir]
 import { execFileSync } from "node:child_process"
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs"

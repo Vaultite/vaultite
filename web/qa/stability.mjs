@@ -1,18 +1,6 @@
-// How steady the page stays: does a tab come back exactly where it was left, does a change of view (reading, live
-// preview, source) keep what was on screen, and how much does a page move while it loads. Measured, not eyeballed: a
-// probe in the page samples the pane's scroller every frame and records every layout shift (with the elements that
-// moved), so each step reports where the reader's anchor (the text at the top of the pane) ended up, how many times
-// the scroller moved by itself, and the shifts' score (CLS: 0 is perfectly steady).
+// How steady the page stays, measured per frame (the reader's anchor, the scroller's own moves, CLS): a tab coming
+// back, a change of view, a load. Read-only, but opens tabs a workspace keeps: throwaway server. --phone: 390x844.
 //   node web/qa/stability.mjs <base url> [--json out.json] [--file Dashboards/Design.md] [--note "Notes/..."] [--verbose]
-// --phone: the same on a phone (390x844, touch; the window scrolls), without the tab steps.
-// Read-only (it opens tabs, which a workspace keeps: throwaway server, or a vault where that doesn't matter).
-// Steps, on a dashboard (Design.md, two columns of blocks) and on a long note:
-//   load        the file opened in a fresh page: shifts while its blocks come in
-//   tab         scrolled to 1/3, 2/3 and the end, another tab opened and drawn, back to the first tab: where it lands
-//   view        reading -> live preview -> reading, from a place in the middle: the anchor's text should stay at the top
-//   reloaded    the page reloaded, from 60%: back where it was
-// An anchor is the first line of text under the top of the scroller (its text and offset); "drift" is how far that text
-// is from where it was, once things settle (2 s), and "moves" how many frames the scroller changed by itself.
 import { writeFileSync } from "node:fs"
 import { qa, wait } from "./lib/qa.mjs"
 const { browser } = await qa(import.meta.url)

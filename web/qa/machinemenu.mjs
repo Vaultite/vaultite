@@ -1,6 +1,5 @@
-// A machine's menu: in the Machines panel a click opens what it can run (New terminal); a right-click shows the same,
-// only the machine's (the panel's own is its heading's). In the machines view a right-click shows the same. Turns
-// Machines on and lists this server as its one machine (put back after).
+// A machine's menu, in the Machines panel (click and right-click) and the machines view. Turns Machines on and lists
+// this server as its one machine (put back after).
 //   node web/qa/machinemenu.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

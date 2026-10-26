@@ -1,8 +1,5 @@
-// The iPhone app's tab pictures (core/tabShots.ts), with a stand-in shell: `window.Capacitor` whose Shell.snapshot
-// answers a red picture (and records the rect asked for). Opening the tab list pictures the tab on screen and its card
-// shows the picture; the rect is the page between the header and the bar; a tab that has moved on (another file in it)
-// shows the drawn stand-in again; pictures outlast a reload (Cache API); a closed tab's picture goes; without the
-// shell, no picture is asked for, and a stand-in's icon and name show whole in its card. Opens files and tabs only: run it against a throwaway server.
+// The iPhone app's tab pictures (core/tabShots.ts) with a stand-in `window.Capacitor` shell: taken, shown, outlasting
+// a reload, dropped when stale or closed. Opens files and tabs only: throwaway server.
 //   node web/qa/tabshots.mjs <base url>
 import { qa, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, noErrors, done } = await qa(import.meta.url)

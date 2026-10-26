@@ -1,7 +1,5 @@
-// A file's title is one thing everywhere: a dashboard's is a note's (same size, read and edited, the file's icon before
-// it), a dashboard being read has no Properties, Show inline title off hides it, and on a phone the header's name shows
-// only once the page's own title has scrolled away (always with the inline title off). WRITES .vaultite/editor.json
-// (put back at the end) and a note in Qa page title/ (removed): throwaway server only.
+// A file's title is one thing everywhere: dashboards' and notes' alike, Show inline title off, a phone's header name.
+// Writes .vaultite/editor.json (put back) and Qa page title/ (removed): throwaway server only.
 //   node web/qa/pagetitle.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

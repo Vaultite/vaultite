@@ -1,8 +1,5 @@
-// Long lists show everything (pages/Search.tsx, SearchPalette.tsx, FileTree.tsx): the search tab's totals count every
-// file and line, more files come as it's scrolled, "N more in this file" shows them, and a line opens its file with the
-// match selected on that line; the quick switcher lists more as it's scrolled, ends with the search tab, and finds
-// text from two letters; a folder of hundreds draws as it's scrolled, every file in the end.
-// WRITES a "Qa lists" folder (removed after).
+// Long lists show everything (pages/Search.tsx, SearchPalette.tsx, FileTree.tsx): totals count all, more come as it's
+// scrolled. WRITES a "Qa lists" folder (removed after).
 //   node web/qa/lists.mjs <base url> <vault path>
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

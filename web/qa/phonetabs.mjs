@@ -1,8 +1,5 @@
-// Phone tabs through Workspaces: a phone-sized and a desktop-sized page share workspace 1's tabs. The phone's header
-// and bar at 390 and 320px, Back and Forward through a tab's history, a blank tab and its pinned tiles, the view toggle
-// (note, sheet, dashboard), the tab list's cards (groups, holds, hold-and-move, swipe-to-close), the drawer and menus,
-// search and more in the list's top line, an unused workspace made and swiped back from, and opening and closing following between the two pages.
-// WRITES a "Qa tabs" folder and the Workspaces data.json (removed after): throwaway server only.
+// Phone tabs through Workspaces: a phone-sized and a desktop-sized page sharing workspace 1's tabs, both ways. Writes
+// Qa tabs/ and the Workspaces data.json (removed after): throwaway server only.
 //   node web/qa/phonetabs.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

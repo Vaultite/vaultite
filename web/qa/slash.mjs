@@ -1,8 +1,5 @@
-// The editor's slash menu, [[Note# heading suggestions, and templates: "/" opens the menu, typing narrows it, a heading
-// and a block go in, a menu that stays shut in code and mid-word; [[Note# lists the note's headings; "New note from
-// template" with no templates offers examples, a person template makes a file in People with {{title}} filled in,
-// "Insert template" and the slash menu's template entry put a template into an open note (frontmatter keys added).
-// WRITES to the vault: throwaway server only.
+// The editor's slash menu, [[Note# heading suggestions, and templates (new note from one, inserted into a note).
+// Writes to the vault: throwaway server only.
 //   node web/qa/slash.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync } from "node:fs"
 import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"

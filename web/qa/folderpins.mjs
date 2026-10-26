@@ -1,7 +1,5 @@
-// Pinned folders and files that aren't notes (plugins/core/pages): Pin from a folder's menu in the tree; its row in
-// Pinned is its name after its folders, dimmed; closed at first, a click opens it in place (the tree's rows, a click on
-// a file opens it), kept open after a reload; Reveal in file tree and Unpin from its menu. A pinned recording shows,
-// with its extension. WRITES "Qa pins" and pages.json: throwaway server only.
+// Pinned folders and files that aren't notes (plugins/core/pages): pinned, opened in place, kept open after a reload,
+// revealed and unpinned. WRITES "Qa pins" and pages.json: throwaway server only.
 //   node web/qa/folderpins.mjs <base url> [out dir]
 import { SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

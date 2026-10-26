@@ -1,12 +1,5 @@
-// The sidebar is plugins' panels: Search, Pages (core plugins), Terminal's sessions and Files, in that order (the
-// default: their `sort`). With no sessions the Terminals panel folds itself (nothing saved). Opens a
-// terminal from the Terminals panel and finds it listed (lit while its tab is focused), turns opt-in plugins off one by
-// one (their panels go, live, without a reload; the app's own are always on), empties the sidebar but for Setup and
-// Settings, puts the panels back,
-// folds panels by their headings (and checks a drag or a heading's button doesn't), then ends the session from the
-// panel (its tab closes). In both densities, the geometry (RAIL in Sidebar.tsx): rows follow density, and the headings,
-// row icons, tree chevrons and search icon stay on one line, the rail's icons centred. Runs a shell and writes
-// .vaultite/plugins.json, sidebars.json and appearance.json: throwaway only.
+// The sidebar is plugins' panels: their order, live as plugins turn off, folding, a terminal's session, the geometry in
+// both densities. Runs a shell and writes plugins.json, sidebars.json and appearance.json: throwaway only.
 //   node web/qa/sidebar.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -125,9 +118,8 @@ try {
   check("a page's menu has no Panels", !(await page.getByRole("menuitem", { name: "Panels" }).count()))
   await page.keyboard.press("Escape")
 
-  // Click a heading: its panel folds to it (a chevron after the name), saved in sidebars.json's `collapsed`; click again,
-  // it's back.
-  // The same for a heading the sidebar draws (Pinned) and one a panel draws itself (Files, grow: it gives its height back).
+  // A heading clicked folds its panel (sidebars.json's `collapsed`), again unfolds it: one the sidebar draws (Pinned)
+  // and one a panel draws itself (Files, which gives its height back).
   const head = (k) => `aside [data-panel='${k}'] [data-panel-handle]`
   const visible = (sel) => page.$eval(sel, (e) => !!e.getClientRects().length).catch(() => false)
   const clickHead = (k) => page.click(head(k), { position: { x: 12, y: 14 } })

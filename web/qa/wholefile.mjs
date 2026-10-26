@@ -1,8 +1,5 @@
-// A note's editor holds its whole file (editor/frontmatter.ts): positions are the file's, the frontmatter hidden behind
-// Properties in live preview and reading, out of the cursor's and typing's reach (start of the document, select all,
-// Backspace at the body's top), properties edited, undone and redone, changed on disk, Find skipping it, the views
-// keeping their place, notes with no frontmatter or only frontmatter, line numbers, a phone. Screenshots in
-// <out>/wholefile-*.png. WRITES a "Qa whole" folder: throwaway server only.
+// A note's editor holds its whole file (editor/frontmatter.ts): positions are the file's, the frontmatter behind
+// Properties and out of the cursor's reach. WRITES "Qa whole/": throwaway server only.
 //   node web/qa/wholefile.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { SHOTS, qa, wait } from "./lib/qa.mjs"

@@ -1,6 +1,5 @@
-// The phone's left drawer opens at its top: with Files' auto-reveal on, it used to jump down to the open file each time
-// (a pinned page opened from the top, then the drawer again). Turn auto-reveal on in the throwaway server's vault
-// (.vaultite/files.json: {"autoReveal": true}); reads only:
+// The phone's left drawer opens at its top, even with Files' auto-reveal on (set {"autoReveal": true} in the throwaway
+// vault's .vaultite/files.json first); reads only:
 //   node web/qa/drawerscroll.mjs <base url> [shots dir]
 import { SHOTS, qa } from "./lib/qa.mjs"
 const { args: [B, dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)

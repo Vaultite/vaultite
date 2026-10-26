@@ -1,8 +1,5 @@
-// The editor's suggestion lists ([[links, ![[embeds, [[Note#headings, the slash menu): Enter, Tab and a click pick and
-// put the cursor after what went in (past the `]]` auto-pair typed, so typing on goes after the link), with auto-pair
-// on and off; Escape closes the list, changes nothing, and it stays closed while typing on in that link (Ctrl-Space
-// asks again); a canvas card's editor (Escape closes the list before ending editing) and a phone's tap do the same.
-// WRITES a "Qa suggest" folder and .vaultite/editor.json (put back): throwaway server only.
+// The editor's suggestion lists ([[links, ![[embeds, #headings, the slash menu): picking puts the cursor after what went
+// in, with auto-pair on and off; Escape. WRITES "Qa suggest/" and .vaultite/editor.json (put back): throwaway only.
 //   node web/qa/suggest.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { SHOTS, qa, wait } from "./lib/qa.mjs"

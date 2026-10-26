@@ -1,11 +1,6 @@
-// Phone layout check: every tab and some detail sheets at 390px and 320px (light/dark). Fails (exit 1) on horizontal
-// overflow, buttons on top of one another and page errors; lists text cut short by .truncate (shown, as designed:
-// only for a look) and writes screenshots and the whole report (layout.json) to web/qa/shots/. Throwaway server only:
+// Phone layout check at 390 and 320px: fails on sideways overflow, covered buttons and page errors; screenshots and
+// layout.json in web/qa/shots/. Subjects come from the server (subjects.mjs). Throwaway server only:
 //   node web/qa/layout.mjs <base url>
-// Ids are looked up from the server (subjects.mjs: nothing is named here): a note that links to another note and to a
-// person, opened as files; that person's file and a few more people (those with a timeline first); the latest
-// workout and study logs; a routine and a day it was ticked. "people-map" is People with the Map view selected (the
-// List/Map choice lives in localStorage).
 import { writeFileSync } from "node:fs"
 import { SHOTS, WEBGL, qa } from "./lib/qa.mjs"
 import { subjects } from "./subjects.mjs"
@@ -69,10 +64,8 @@ for (const width of [390, 320]) {
         }
         // text cut short by truncation (as designed: listed, not failed)
         const clipped = [...document.querySelectorAll(".truncate")].filter((e) => e.scrollWidth > e.clientWidth + 1 && seen(e)).map((e) => e.textContent.trim().slice(0, 50))
-        // Buttons that can't be tapped: one whose middle is under another control (a sheet's header actions over a
-        // line's label). Content under the fixed bars (phone bar, header) is how scrolling works, a control drawn on top
-        // of a bigger one by design (a row's More button) leaves the row's middle free, and with a sheet open only the
-        // sheet counts. Checked as loaded (scrolled to the top), where nothing should be covered.
+        // Buttons that can't be tapped: one whose middle is under another control, checked as loaded (scrolled to the
+        // top). Not the fixed bars, a control on a bigger one by design (a row's More), nor what's under an open sheet.
         const CONTROL = "button, a[href], [role=button]"
         const root = document.querySelector("dialog[open]") ?? document.body
         // (the sheet itself is fixed: only what's pinned inside it counts)

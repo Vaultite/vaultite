@@ -1,11 +1,5 @@
-// What loading surfaces do while their data comes: with the server's answers held back (--delay ms), each view is opened
-// in a fresh page, twice (the first visit, then again without the app's kept answers: lists draw as many skeleton rows
-// as last time). Each visit says
-// how far its page grew or shrank once drawn ("moved": every change of its height, added up, px; 0: what was drawn while
-// loading took the room the data did), its layout shifts (CLS) and how much was drawn busy (aria-busy) meanwhile.
-// Then the shell (the sidebars and the status bar) around a note, its right sidebar holding Links, Outline and Tags: the
-// vault's state held back till after the first paint, nothing in it may move by itself on a load after the first (the
-// app's own shift trace, core/shifts.ts). A shift there scores a few thousandths, under any CLS limit: so none at all.
+// Loading surfaces with the server's answers held back (--delay): how far each view moved once drawn, its CLS and busy
+// time; then no shift at all in the shell (sidebars, status bar) after the first load (core/shifts.ts).
 //   node web/qa/loading.mjs <base url> [--delay 600] [--views inbox,activity,connections] [--verbose]
 // WRITES sidebars.json (put back) and opens tabs, which a workspace keeps: a throwaway server.
 import { qa, wait } from "./lib/qa.mjs"

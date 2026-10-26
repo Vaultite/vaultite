@@ -1,8 +1,5 @@
-// A plugin's file menu items (the made-up vault plugin Qa stamp: "Stamp it" for every file, "Use as stamp" in More ▸
-// for images, as Dock icon's) show wherever that file's menu does: the tree, an image's own tab (the image itself), its
-// tab's More file actions, an embed in a note, an image in an embedded note's text, a canvas card, a base's result, a new
-// tab's recent file; on a phone, a finger held on the image and on its embed, and the header's … menu.
-// WRITES a "Qa plugin menus" folder and .vaultite/plugins/qa-stamp, turns it on: throwaway server only.
+// A plugin's file menu items (the made-up vault plugin Qa stamp) show wherever that file's menu does, a phone's held
+// finger too. Writes Qa plugin menus/ and .vaultite/plugins/qa-stamp, turned on: throwaway server only.
 //   node web/qa/pluginmenus.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"

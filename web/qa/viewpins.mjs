@@ -1,6 +1,4 @@
-// A coding agent's conversation pinned (view:terminal/resume-claude-<session>): the sidebar shows it under the name it
-// was pinned with (pages.json's labels) and its agent's icon; its menu opens it and unpins it (Unpin last, no file
-// items), and unpinning forgets its name. The server takes only a view that names one.
+// A coding agent's conversation pinned (view:terminal/resume-claude-<session>): its name and icon, Unpin forgetting it.
 // WRITES .vaultite/pages.json (and puts it back): throwaway server only.
 //   node web/qa/viewpins.mjs <base url>
 import { execFileSync } from "node:child_process"

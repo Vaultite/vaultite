@@ -1,7 +1,5 @@
-// Vim's keys in keyboard lists (lists.ts, over the app's web/src/core/keylist.ts): j/k/h/l/gg/G move in the file
-// tree, Ctrl+W h from the leftmost pane goes into the sidebar and Ctrl+W l comes back, Space on a row doesn't click it;
-// a canvas pans with h/j/k/l; in a terminal Ctrl+W stays the shell's and Ctrl+\ Ctrl+N leaves it. Installs the plugin;
-// WRITES plugins.json's `enabled` (Vim on, then off again): throwaway only.
+// Vim's keys in keyboard lists (lists.ts over web/src/core/keylist.ts): the tree, Ctrl+W into the sidebar, a canvas, a
+// terminal. Installs the plugin; WRITES plugins.json's `enabled` (on, then off): throwaway only.
 //   node web/qa/vimlists.mjs <base url> [out dir]
 import { apiAt, openPalette, qa, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)

@@ -1,9 +1,5 @@
-// The Mac's traffic lights in the desktop app with sidebars without rails (Zen): beside the pinned sidebar on its top
-// row; hidden with it; never shown mid-slide (they lagged it, and flashed where they sit by default), only once it has
-// slid in, on its top row; gone as it slides out; and the window puts them back as the page has them after the Mac lays
-// its title bar out again (a focus change). Every call the page makes to them is recorded; screenshots (screencapture:
-// the lights are the Mac's, not the page's; SHOW=1 brings the window in front for them) go to <out dir>. Mac only.
-// WRITES: the throwaway vault only.
+// The Mac's traffic lights in the desktop app with railless sidebars (Zen): beside the pinned sidebar, never mid-slide,
+// put back after a focus change. Mac only (screencapture; SHOW=1 brings the window forward). WRITES: throwaway vault.
 //   node web/qa/lights.mjs <vault copy> <out dir>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"

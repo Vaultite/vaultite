@@ -1,9 +1,5 @@
-// A tab that fails to draw fails alone (components/Guard.tsx): here the Setup page's chunk throws as it runs, and its
-// tab says so in its place (Try again, Close tab, its error behind Show details), with the sidebar still there and no
-// "Vaultite stopped"; Close tab closes it. A chunk that didn't load (the server away a moment: here Settings' script is
-// refused once, and the server's index.html too for a while) shows "Reconnecting to Vaultite…", then reloads once the
-// server answers, and Settings draws. The crash screen's Reload with a new tab (index.html) starts the page on a new
-// tab, the tabs it had still in its bar. Writes nothing to the vault but its tabs: a throwaway server.
+// A tab that fails to draw fails alone (components/Guard.tsx); a chunk that didn't load reconnects and reloads; the
+// crash screen's Reload with a new tab. Writes nothing but its tabs: a throwaway server.
 //   node web/qa/crashguard.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

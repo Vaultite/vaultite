@@ -1,6 +1,5 @@
-// A bundle applied while the app is open draws what a reload of it draws: the shell (sidebars, tab bars, panes, the
-// status bar) keeps nothing of the bundle before (the status bar once held another's width in Zen): Standard, Zen, Browser.
-// WRITES the vault's settings: throwaway servers only.
+// A bundle applied with the app open draws what a reload does: nothing of the one before stays (Standard, Zen,
+// Browser). WRITES the vault's settings: throwaway servers only.
 //   node web/qa/bundle-live.mjs <base url>
 import { spawnSync } from "node:child_process"
 import path from "node:path"

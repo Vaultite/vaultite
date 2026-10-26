@@ -1,8 +1,5 @@
-// Agents' states in their tabs, on a list the page is fed (the sessions socket stood in for: five Claude Code sessions
-// working, waiting on you, done with an unread Inbox row, done with nothing for you and failed, and a plain shell): the
-// Terminals panel lists the ones that need you first, in bold; each keeps Claude's logo, its state a dot on its corner
-// (breathing, yellow, blue, none, red), on the desktop's tab bar, the Tabs panel and the phone's tab list.
-// Writes workspaces (the tabs it opens): throwaway server only.
+// Agents' states in their tabs (the sessions socket stood in for): the Terminals panel's order and each tab's dot, on
+// the tab bar, the Tabs panel and the phone's tab list. Writes workspaces: throwaway server only.
 //   node web/qa/agenttabs.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"

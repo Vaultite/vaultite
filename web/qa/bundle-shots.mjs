@@ -1,7 +1,5 @@
-// The app's bundles' card pictures (bundles/<id>/preview.png, preview-dark.png): each bundle applied on a sandbox vault
-// of its own, a throwaway server on it, the app on a page showing what it's for, shot in light and dark.
-// WRITES bundles/<id>/preview*.png in this checkout (its vaults and servers are its own; PORT=<n> picks the port).
-// Fetches the plugins a bundle installs from GitHub. Re-run when a bundle's look changes (bundles/CLAUDE.md).
+// The bundles' card pictures: WRITES bundles/<id>/preview*.png in this checkout (its own vaults and servers; PORT=<n>),
+// fetching the plugins a bundle installs from GitHub. Re-run when a bundle's look changes.
 //   node web/qa/bundle-shots.mjs [<bundle id>...]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"

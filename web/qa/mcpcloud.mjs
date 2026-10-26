@@ -1,9 +1,5 @@
-// Vaultite Cloud (plugins/core/mcp/cloud.ts) against a fake relay speaking its protocol: signing in with a code (bad, 429),
-// the tunnel forwarding requests, SSE streamed chunk by chunk, cancel, ping, reconnecting, 4000 (another machine), 4001 and 401
-// (revoked), sign-out; then a server signed in from Connections (Chrome) and its ops, an app connecting through the relay
-// (OAuth addresses from the forwarded host, never a spoofed one), only the public listener reachable unsigned, and Connect:
-// the app for a request signed with the relay's key (pages, /api, its live WebSocket), owner tools refused. Own servers and
-// temp folders; WRITES only to the vault copy given.
+// Vaultite Cloud (plugins/core/mcp/cloud.ts) against a fake relay speaking its protocol: sign-in, the tunnel, Connect.
+// Its own servers and temp folders; WRITES only to the vault copy given.
 //   node web/qa/mcpcloud.mjs <vault copy>
 import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"

@@ -1,11 +1,5 @@
-// The plugin directory and this machine's yes, in the app. Plugins > Get plugins: an index that can't be read is a quiet line;
-// a made-up index (a file: the server's VAULTITE_PLUGIN_INDEX) lists by stars, New and Updated, searched, each with its
-// version and what it says it does; a row opens its sheet (what it says it does, Install, GitHub only from a small mark;
-// nothing opens the web), its own Install not; Install (after a question saying what one not Vaultite's does) fetches its
-// made-up git repository (VAULTITE_GITHUB=file://<repos>) into .vaultite/plugins/ and turns it on. A newer tag shows Update; updated, it waits on the
-// Plugins page and its sheet shows what changed, what it says it does, and Allow. One turned on by plugins.json alone
-// (a sync, a shared vault) waits too, and runs once allowed. Phone width: nothing overflows. WRITES the vault's plugins
-// and the index and repos given (throwaway server only, started with those two variables; npm run qa sets them).
+// The plugin directory and this machine's yes: a made-up index (VAULTITE_PLUGIN_INDEX) and git repos (VAULTITE_GITHUB):
+// install, update, Allow. Writes the vault's plugins, index and repos: throwaway server with both set (npm run qa does).
 //   node web/qa/pluginstore.mjs <base url> <vault path> <plugin index> <plugin repos> [out dir]
 import { execFileSync } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

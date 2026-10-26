@@ -1,9 +1,5 @@
-// The sidebars' stacks (core/sidebars.ts, sidebars.json): the default order; panels dragged by their heading (the
-// others making way, the ends, onto the right sidebar's toggle, back from a pane's view tab); scrolling per panel (the tree's
-// box, Pinned's divider and its saved height) and as one scroller (Settings); folding; the menu (a panel's own items,
-// Open in a tab, Panels, More, Move, Hide); the empty right sidebar; the rail. Makes a folder of notes (Qa stack/), many
-// pinned. WRITES those, sidebars.json, pages.json and appearance.json's sidebarScroll (put back) and empties the
-// workspaces: throwaway only.
+// The sidebars' stacks (core/sidebars.ts): order, dragging, scrolling, folding, menus, the rail. Writes Qa stack/,
+// sidebars.json, pages.json and appearance.json (put back) and empties the workspaces: throwaway only.
 //   node web/qa/sidebarstack.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -17,9 +13,8 @@ const DEFAULT = { left: ["search:search", "pages:pages", "terminal:sessions", "f
 const saved = async (side = "left") => { const s = await sbs(); return (s[side] ?? []).map((k) => k + ((s.collapsed ?? []).includes(k) ? "!" : "")).join("|") }
 
 for (const n of [1, 2, 3, 4, 5]) await fetch(new URL(`/api/workspaces/${n}`, B), { method: "DELETE" })
-// What it needs, whatever the vault holds: a long tree (a folder of 40 notes, opened) and more pinned pages than Pinned
-// has room for by default, but not more than it could show dragged all the way down (the workspaces are empty, so
-// Pinned shows pages.json's).
+// Whatever the vault holds: a long tree and more pinned pages than Pinned has room for by default (the workspaces are
+// empty, so Pinned shows pages.json's).
 const STACK = Array.from({ length: 40 }, (_, i) => `Qa stack/Note ${String(i + 1).padStart(2, "0")}.md`)
 for (const p of STACK) await fetch(new URL("/api/file", B), { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path: p, text: `A note for the sidebar's tree.\n` }) })
 const pagesAtStart = await api("config/pages")

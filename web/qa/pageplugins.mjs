@@ -1,9 +1,5 @@
-// Pinning and dashboards are plugins (Pinned: plugins/core/pages, Dashboards: plugins/core/dashboards), always on, on a
-// computer and a phone: a dashboard is a page (its title, a grid of cards), a file opened from it opens beside it while
-// a file opened from a pinned note replaces it (pinned isn't a page any more), Pin / Unpin are in the tree's menu, the
-// palette and Pinned's settings, a new device starts on the first pinned page, a phone's new tab shows them as tiles.
-// Switched off in plugins.json, both stay on. No page errors anywhere. WRITES .vaultite/plugins.json and a note in Qa
-// page plugins/ (removed at the end): throwaway server only.
+// Pinning and dashboards as always-on plugins, on a computer and a phone, staying on when switched off in plugins.json.
+// Writes .vaultite/plugins.json and Qa page plugins/ (removed after): throwaway server only.
 //   node web/qa/pageplugins.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

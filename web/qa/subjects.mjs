@@ -1,4 +1,4 @@
-// The people and notes a QA script works on, picked from the vault the server runs on, so the scripts name no one:
+// The people and notes a QA script works on, picked from the server's vault, so the scripts name no one.
 //   const v = await subjects(B)
 //   v.people        every person, with their file's text and what a script may need from it (see below)
 //   v.timeline      people whose file has a `## Timeline` with at least one entry (the first ones in the vault's order)

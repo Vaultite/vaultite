@@ -1,8 +1,5 @@
-// The Inbox (plugins/core/inbox): events (posted, an agent's session that needs you, `vau notify`) toast and count on
-// the header's button; a session's sheet (Approve and Deny, its answer, the reply); results (a file in Inbox/, one through the API) too; the Inbox view (Done with Undo, File to…, Snooze,
-// read and unread, the right-click menu); the sidebar panel (unread only; show_read); the block on a page; a phone.
-// Screenshots in the out dir. WRITES Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back) and starts a shell: throwaway
-// server only (then `tmux -L vaultite-<port> kill-server`).
+// The Inbox (plugins/core/inbox): events, a session's sheet, results, the view, the panel, the block, a phone. WRITES
+// Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back), starts a shell: throwaway server only, then kill its tmux.
 //   node web/qa/inbox.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs"
@@ -223,9 +220,8 @@ check("File to…: moved, without its inbox keys", !!filed && !/type: inbox|stat
 await wait(500)
 await shot(page, "3-after-actions")
 
-// 7b. Snooze: out of the list till its time (in the file), under Snoozed meanwhile, Unsnooze brings it back; Pick a
-// time… sets any; an event too. Its time come, it's back at once and toasts.
-// (toasts pause under the pointer and cover the rows' right end and menus: moved off, they go; menus' rows dispatched)
+// 7b. Snooze: out of the list till its time, under Snoozed meanwhile, back at once when it comes.
+// (toasts pause under the pointer and cover the rows' right end and menus: moved off, they go)
 const noToasts = async () => { await page.mouse.move(5, 5); await until(async () => (await toasts().count()) === 0, 15_000) }
 await noToasts()
 await row("A field guide to tiling").getByRole("button", { name: "Snooze" }).click()

@@ -1,9 +1,6 @@
-// The page held still under the overlays at iPhone size (core/pagelock.ts): a long note scrolled down, then the
-// search palette, the command palette from the bar's menu (one overlay handing to the next), and the left drawer, each
-// with a vertical swipe on it. While one is up the page doesn't move, and once it's gone the page is where it was.
-// WRITES a note (Notes/Qa page lock.md) to the vault: run it against a throwaway server:
+// The page held still under overlays at iPhone size (core/pagelock.ts), swiped on, and back where it was after (not
+// iOS's scroll to a focused field). Writes Notes/Qa page lock.md: throwaway server only.
 //   node web/qa/pagelock.mjs <base url> <vault path>
-// Desktop Chrome has no iOS keyboard: the scroll iOS does to show a focused field isn't reproduced, only the lock.
 import { writeFileSync, mkdirSync } from "node:fs"
 import { fingers, qa } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)

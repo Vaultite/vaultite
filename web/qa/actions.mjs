@@ -1,7 +1,5 @@
-// A file's actions (core/actions.ts) and the status bar's ambient items: a person's tree menu has Add to timeline,
-// which asks its kind and text in the palette and writes the line; ⌘. lists the open file's actions; the status bar
-// shows the inbox's new items on a page and on a blank tab, and its right-click turns one off (appearance.json's
-// `statusBar`, put back). WRITES "Qa actions" and appearance.json: throwaway server only.
+// A file's actions (core/actions.ts: Add to timeline from a person's menu, ⌘.) and the status bar's ambient items.
+// WRITES "Qa actions" and appearance.json: throwaway server only.
 //   node web/qa/actions.mjs <base url> [out dir]
 import { chromium } from "playwright-core"
 import { readFileSync } from "node:fs"

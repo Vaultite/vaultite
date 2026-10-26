@@ -1,10 +1,5 @@
-// Agent meters (plugins/core/agent-meters): a terminal running Claude Code (a stand-in program named claude, and a faked
-// session in <claude dir>/sessions with a transcript whose last request read 51k tokens 2.5 min ago, 5 min cache) shows
-// its context as a ring beside its row's name and, idle, its icon in its colour dimmed from the top as far as the cache
-// ran out; an expired cache greys it; "As a ring" draws the cache as an inner ring instead. Its row's menu copies its
-// session id (listed with Agent meters off too) and terminal id, and opens the conversation. Turns the plugin on and writes
-// its settings and the sidebars (put back), runs a shell, writes in <claude dir>: a throwaway server started with
-// CLAUDE_CONFIG_DIR=<claude dir>, never the real ~/.claude.
+// Agent meters (plugins/core/agent-meters) on a stand-in claude with a faked session: the context ring and the cache.
+// Writes settings and sidebars (put back), runs a shell: a throwaway server with CLAUDE_CONFIG_DIR=<claude dir>.
 //   node web/qa/agentmeters.mjs <base url> <vault path> <claude dir> [out dir]
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"

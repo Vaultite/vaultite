@@ -1,12 +1,5 @@
-// Vault plugins: a plugin written into the vault's .vaultite/plugins/<id>/ (the made-up Lighthouse, tools/fixtures/)
-// shows on the Plugins page as off, runs nothing until it's turned on there, then its dashboard installs and its block
-// draws (its Tailwind classes too); an edit to its files on disk unloads it until it's allowed again (its row says so,
-// its sheet names the file changed, its shortcut says why it does nothing; Allow loads it, no reload); with its edits
-// let run, editing shows at once; a file breaking the rules unloads it with the reason on the Plugins page; turned
-// off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; a chip shows one
-// category, its sections on ones first; Filter shows one category or source; a search looks in every category). Also a phone-width look at the Plugins page.
-// WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, plugins.json's `enabled`, hotkeys.json; removed at the
-// end): throwaway server only.
+// Vault plugins (the made-up Lighthouse): off until turned on, unloaded when edited until allowed again or when breaking
+// the rules; the Plugins page's categories. WRITES .vaultite/plugins/lighthouse, Keepers/, plugins.json: throwaway only.
 //   node web/qa/vaultplugins.mjs <base url> <vault path> [out dir]
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
@@ -214,9 +207,7 @@ check("phone: a Filter button, no menu", await pp.locator("[data-plugins-filter]
 check("phone: its byline says it's the vault's own", (await pp.locator('[data-plugin-by="lighthouse"]').innerText()) === "In this vault")
 const overflow = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 check("phone: nothing overflows", overflow <= 0, overflow)
-// Tapped as a thumb does: brought clear of the bottom bar first (scrolling only far enough to show it leaves the last
-// row under the bar, where nobody taps), and on its icon, where the row's button is what's under the finger (its text
-// covers the button's middle and opens the sheet itself).
+// Tapped as a thumb does: clear of the bottom bar, and on its icon (the row's text opens the sheet itself).
 await vrow.evaluate((e) => e.scrollIntoView({ block: "center" }))
 const vbox = await vrow.boundingBox()
 await vrow.tap({ position: { x: 24, y: vbox.height / 2 } })

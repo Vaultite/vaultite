@@ -1,11 +1,5 @@
-// One broken part fails alone, never the app: a vault plugin (the made-up Brittle) whose background, status bar,
-// file bar and note-top items and a view's tab title all throw leaves the app drawn (no "Vaultite stopped"), its tab
-// named after the view, and its command that fails says so in a toast. Settings of the wrong shape (plugins.json's
-// `disabled: null`, appearance.json's `snippets: "x"`) and a workspace's tab that isn't one are dropped. The crash
-// screen's Reload with vault plugins off opens the app without them (Brittle's view isn't there), saying so, until
-// Turn back on.
-// WRITES to the vault (.vaultite/plugins/brittle, plugins.json, appearance.json, the workspaces' files): throwaway
-// server only.
+// One broken part fails alone, never the app: a vault plugin whose parts throw, settings of the wrong shape, the crash
+// screen's Reload without vault plugins. Writes .vaultite/ (plugins, settings, workspaces): throwaway server only.
 //   node web/qa/resilience.mjs <base url> <vault path>
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"

@@ -1,6 +1,5 @@
-// Tooltips say only what can't be seen (web/CLAUDE.md): in the open sidebar a pinned page whose name fits shows none,
-// one cut off shows its whole name; in the rail every row shows its name. An outline heading cut off shows it whole.
-// Pins a note with a long name and writes .vaultite/plugins.json and sidebars.json: throwaway only.
+// Tooltips say only what can't be seen (web/CLAUDE.md): sidebar rows, the rail, cut-off headings. Pins a note and
+// writes .vaultite/plugins.json and sidebars.json: throwaway only.
 //   node web/qa/tooltips.mjs <base url> <vault path>
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"

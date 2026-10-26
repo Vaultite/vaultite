@@ -1,9 +1,5 @@
-// The editor's right-click menu (plugins/core/editing/menu.ts): with a selection, Add link, Format ▸,
-// Paragraph ▸, Insert ▸, the clipboard and Search for "…"; every Format, Paragraph and Insert item changes the note as
-// its command does, with the command's keys shown; Cut, Copy, Paste (a picture too), Paste as plain text and Select all work; a
-// right-click outside the selection puts the cursor there; without a selection there's no Cut, Copy or Search for;
-// reading view has only Copy, Select all and Search for; Shift+right-click and a finger held on a phone get no app
-// menu. The new commands are in the palette. WRITES a "Qa editor menu" folder: throwaway server only.
+// The editor's right-click menu (plugins/core/editing/menu.ts): each item does what its command does; no app menu on
+// Shift+right-click or a held finger. WRITES a "Qa editor menu" folder: throwaway server only.
 //   node web/qa/editormenu.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, SELECT_WORD, until, wait } from "./lib/qa.mjs"

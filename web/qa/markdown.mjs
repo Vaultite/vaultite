@@ -1,8 +1,5 @@
-// Markdown's extras in notes and pages: code fences (highlighted, a language label and a copy button that copies),
-// callouts (folded ones toggle), footnotes, $math$ and $$ blocks (KaTeX), ```mermaid diagrams (light and dark),
-// <details>; in reading, live preview (clicking one shows its Markdown; ↑ and ↓ go into a table's cells) and source mode, embeds
-// and blocks inside code fences left alone, the Design page read as a dashboard, and a phone at 390px (no sideways
-// scroll, copy always shown). WRITES a "Qa markdown" folder: throwaway only.
+// Markdown's extras (code fences, callouts, footnotes, math, mermaid, <details>) in reading, live preview and source,
+// what's inside code left alone, and a phone. WRITES a "Qa markdown" folder: throwaway only.
 //   node web/qa/markdown.mjs <base url> [out dir]
 import { SHOTS, apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"
@@ -136,10 +133,8 @@ check("Design: copy copies", (await page.evaluate(() => navigator.clipboard.read
 await tsCode.screenshot({ path: `${OUT}markdown-design-code.png` })
 await page.locator(".dash-prose").first().screenshot({ path: `${OUT}markdown-design.png` })
 
-// Live preview from the keyboard, and Markdown inside code: ↓ and ↑ go into a drawn table (a cell opens) instead
-// of over it; an embed or a block written in a code fence stays code; typing after a closing --- with no line break
-// keeps the frontmatter; a checkbox in the trash doesn't tick. The files are the user's, made as the app makes them
-// (a file an agent makes through the API gets `origin: ai`: Provenance).
+// Live preview from the keyboard, and Markdown inside code. The files are made as the app makes them (one an agent makes
+// through the API gets `origin: ai`).
 const put = (path, text) => fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
 await put("Qa markdown/Keys.md", "Top line\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```\n![[Rich]]\n```\n\n````md\n```block-books\n```\n````\n\n$$\nx^2\n$$\n\nBottom line\n")
 await page.goto(`${B}#file/${encodeURIComponent("Qa markdown/Keys.md")}`); await wait(1500)

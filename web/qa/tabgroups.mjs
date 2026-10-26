@@ -1,11 +1,5 @@
-// Tab groups and vertical tabs. A tab's menu makes a group (its editor opening under its chip: its name, typed live, and
-// a row of colours, one click each; the arrows through it as through a menu, the colours one Tab stop), another tab joins it
-// from its menu, a dragged tab joins and leaves it, its chip folds it (a count shows) and drags the whole group, a tab
-// shown in a folded group opens it; they come back after a reload and a closed tab reopens into its group. Then Show
-// tabs in the sidebar (the palette): the tab bar off, the Tabs panel first in the left sidebar with each group a row
-// over its tabs, and Show tabs on top puts it back. Agents: vau tabs (tabs.list, tabs.group). A phone's tab list shows
-// each group as a card. Screenshots light and dark. Writes the vault's appearance and sidebars (put back): throwaway
-// server only.
+// Tab groups (made, joined, folded, dragged, kept over a reload) and vertical tabs (the Tabs panel), vau tabs, a phone's
+// cards. Writes the vault's appearance and sidebars (put back): throwaway server only.
 //   node web/qa/tabgroups.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

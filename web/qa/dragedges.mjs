@@ -1,9 +1,5 @@
-// Drags at their edges (core/drag.ts' edgeScroller and pastEnd, components/Resizer.tsx): Escape puts back a canvas card
-// mid-move (plugins/core/canvas) and a sidebar mid-resize; a dashboard card held over the gap between cells still lands
-// (plugins/core/dashboards); a status bar item dragged along keeps the items past the line still
-// (components/StatusBar.tsx); a file held at the top of the Files panel isn't Pinned's; a pinned tile held near the bottom
-// of a panel too short for them scrolls it, and its menu moves one (plugins/core/pages); a wheel mid-drag moves the drop
-// with what's under the pointer; Move tab left does what a drag would. WRITES pins, Pinned's Show as: throwaway server.
+// Drags at their edges (core/drag.ts' edgeScroller and pastEnd, components/Resizer.tsx): Escape, gaps, scrolling
+// panels, the wheel mid-drag. WRITES pins and Pinned's Show as: throwaway server.
 //   node web/qa/dragedges.mjs <base url>
 import { apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url, { chrome: { ignoreDefaultArgs: ["--hide-scrollbars"] } })

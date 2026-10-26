@@ -1,12 +1,5 @@
-// Obsidian Bases (plugins/core/query: BaseView.tsx, bases.ts, expr.ts): a "Qa bases" folder of made-up books and
-// places and a .base with formulas, display names, summaries and four views (a table, cards, a kanban, a map, plus a
-// layout this app doesn't draw). The .base opens as its views (tabs; a formula's values, the summary row, the note for
-// the unknown layout), the … menu changes the file as small edits (a view's layout, a new view, a view deleted and
-// Undo: comments and unknown keys stay), a card dragged on the kanban writes its note, the map draws a pin per place.
-// A note with ```base fences and `![[Qa.base#Board]]` draws them (the embed on its view; a fence's formula column and
-// summaries). At 390px nothing scrolls sideways. Screenshots in the scratch folder given as the third
-// argument (or /tmp/vaultite-bases/), light and dark, desktop and phone.
-// WRITES a "Qa bases" folder (removed after): throwaway server only.
+// Obsidian Bases (plugins/core/query) on made-up books and places: a .base's views, small edits, kanban and map, and
+// ```base fences and embeds. WRITES a "Qa bases" folder (removed after): throwaway server only.
 //   node web/qa/bases.mjs <base url> <vault path> [screenshots dir]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { qa, until } from "./lib/qa.mjs"

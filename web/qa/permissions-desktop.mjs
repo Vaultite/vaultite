@@ -1,7 +1,5 @@
-// Settings > Permissions in the desktop app (Electron) on a Mac, on a throwaway vault: the vault folder read by the app
-// and its terminals, no signature row (only an ad hoc build has one), every permission lined up with its state, read without a single macOS prompt (no button is
-// pressed: each would ask macOS or open System Settings), and `app.permissions` answering the same. Elsewhere it's
-// skipped: the section is a Mac's only. WRITES: throwaway vault only.
+// Settings > Permissions in the desktop app on a Mac: every permission's state read without a single macOS prompt (no
+// button pressed), and `app.permissions` the same; skipped elsewhere. Writes the throwaway vault only.
 //   node web/qa/permissions-desktop.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

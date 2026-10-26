@@ -1,7 +1,5 @@
-// vau's dev tools and palette commands against an open app window (core/coreops/dev.ts, web/src/core/dev.ts): the
-// window answers dev console, dom, eval (also awaited, and from stdin) and commands; a browser can't screenshot; an
-// error is a non-zero exit on stderr; someone not the owner is refused. Opens the app in headless Chrome.
-// WRITES: nothing in the vault (the window's console is cleared).
+// vau's dev tools against an open app window (core/coreops/dev.ts, web/src/core/dev.ts), and the owner check.
+// Headless Chrome; WRITES nothing in the vault (the window's console is cleared).
 //   node web/qa/devtools.mjs <base url>
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"

@@ -1,8 +1,5 @@
-// Workspaces as desks (plugins/core/workspaces, web/src/core/scope.ts): always a current workspace, each with its own
-// pinned pages (copied from pages.json at its first change), blank new tabs, open folders and recent files, the
-// Terminals panel split by workspace, the window telling the server its workspace (`vau panels`, `vau pin`), and panel
-// heights. Runs shells and WRITES the plugin's data.json, sidebars.json,
-// pages.json and plugins.json: throwaway server only.
+// Workspaces as desks (plugins/core/workspaces, core/scope.ts): each its own pins, tabs, folders, terminals, heights.
+// Runs shells and WRITES its data.json, sidebars.json, pages.json and plugins.json: throwaway server only.
 //   node web/qa/desks.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -166,8 +163,7 @@ try {
   await until(async () => !!(await page.$("aside [data-panel='search:search']")), 6000)
 
   // ---------- heights in proportion to the sidebar ----------
-  // (Pinned with many pages and the tree's folders open, so the panels don't all fit: a panel is never drawn taller than
-  // what it draws, and with room to spare one drawn shorter takes it back, components/panelLayout.ts.)
+  // (panels that don't all fit: never taller than what they draw, and one drawn shorter takes room back)
   const pinsBefore = await fetch(new URL("/api/config/pages", B)).then((r) => r.json())
   const many = (await fetch(new URL("/api/state", B)).then((r) => r.json())).files.files.filter((f) => f.path.endsWith(".md")).slice(0, 24).map((f) => f.path)
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pinsBefore, pinned: many }) })

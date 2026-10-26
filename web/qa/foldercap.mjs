@@ -1,7 +1,5 @@
-// Long folders in the file tree: past files.json's folderLimit files (and a few more), a folder shows its first ones in
-// the sort order, its folders, then "Show N more"; that shows them all and becomes "Show less"; closing the folder
-// cuts it again; the open file and one revealed in the tree show past the cut; 0 shows every file. WRITES "Qa long" and
-// files.json (put back): throwaway server only.
+// Long folders in the file tree: past files.json's folderLimit, "Show N more" and "Show less"; the open file shows past
+// the cut. WRITES "Qa long" and files.json (put back): throwaway server only.
 //   node web/qa/foldercap.mjs <base url> [out dir]
 import { SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

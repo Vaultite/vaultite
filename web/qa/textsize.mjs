@@ -1,10 +1,5 @@
-// Text sizes (web/src/core/textsize.ts): a note's and a terminal's own size, apart from the app's zoom. Quick text size
-// is off at first (the wheel does nothing; the palette's "font size" turns it on). ⌘ + the wheel over a note steps it (110%, back down), a pinch (⌃ + small wheel deltas) too; only what's under the path bar grows (the
-// path bar and the sidebar stay), the column widens with it, and a click in the zoomed editor still lands where it
-// points; a dashboard isn't zoomed; the commands (Reset note text size) and Settings > Appearance's rows (− 100% +) do
-// the same; the size is this device's (localStorage), not the vault's. A terminal: ⌘ + the wheel makes its text bigger
-// and the shell gets fewer columns (`tput cols`). Phone width: the rows are there and a note is drawn at its size.
-// WRITES "Qa text size/", appearance's quickTextSize (put back) and runs a shell on the server's machine: throwaway server only.
+// Text sizes (web/src/core/textsize.ts): a note's and a terminal's own, apart from the app's zoom, per device.
+// WRITES "Qa text size/", appearance's quickTextSize (put back) and runs a shell: throwaway server only.
 //   node web/qa/textsize.mjs <base url> [out dir]
 import fs from "node:fs"
 import { apiAt, openPalette, qa, terminalText, until, wait } from "./lib/qa.mjs"

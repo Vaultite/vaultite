@@ -1,9 +1,5 @@
-// MCP and the Web clipper against a running server, as an MCP client sees them: connects over Streamable HTTP
-// (POST <base>api/mcp) and over stdio (bin/vau mcp, pointed at the same server), lists the tools (the operations marked
-// for MCP, the old tools no op claims yet, ops and call: plugins/core/mcp/catalog.ts) and calls each one,
-// then checks the files they wrote, that Activity names the client, and who may connect (another site's page, a
-// tailnet login that isn't the owner's, a proxy: refused). No browser. WRITES (notes, a log, a timeline line, ME.md, a
-// clipping): throwaway server only, on a copy of examples/vault (it uses its made-up people).
+// MCP and the Web clipper as an MCP client sees them, over HTTP and stdio (bin/vau mcp): every tool called, its files
+// checked, who may connect. No browser. WRITES: throwaway server only, on a copy of examples/vault (its made-up people).
 //   node web/qa/mcp.mjs <base url> <vault path>
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"

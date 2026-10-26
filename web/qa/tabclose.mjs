@@ -1,7 +1,5 @@
-// Tabs closed one after another with the mouse (components/Tabs.ts TabBar): they keep their width, so the next
-// tab's X comes under the pointer; closing the last one, the rest widen so the new last one's X does; they fill the bar
-// again once the pointer leaves it. Closed another way (a command), they fill it at once. Opens tabs only: run it
-// against a throwaway server.
+// Tabs closed one after another with the mouse (components/Tabs.tsx TabBar) keep their width, so the next X comes under
+// the pointer, and fill the bar once it leaves. Opens tabs only: throwaway server.
 //   node web/qa/tabclose.mjs <base url>
 import { command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)

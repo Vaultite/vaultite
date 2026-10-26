@@ -1,7 +1,6 @@
-// Screenshots of People (list + a profile) and Projects at phone and desktop size, plus the phone's drawer, its bar's menu,
-// its header's … menu and its tab list.
+// Screenshots of People and Projects at phone and desktop size, and the phone's drawer, menus and tab list. The person
+// defaults to the vault's first with a timeline.
 //   node web/qa/shots.mjs <base url> [out dir] [person name] [log id]
-// The person defaults to the vault's first person with a timeline (else its first person).
 import { SHOTS, qa } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
 const { args: [B, OUT = SHOTS, name, log = ""], browser, errs, watch } = await qa(import.meta.url)

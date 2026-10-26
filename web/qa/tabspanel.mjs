@@ -1,10 +1,5 @@
-// The Tabs panel and the tab bar turned off (appearance `tabBar`). With the panel in the left sidebar: it lists the
-// open tabs, the shown one marked; a click on a row shows its tab; its X closes it; its New tab row (and a double-click
-// under the list, and the tab bar's +) opens a tab at the list's end, with ⌘T still beside the shown one, as a blank
-// tab or the switcher (a phone's drawer has the row too); then with tabBar false (written to appearance.json, followed
-// live) each pane's bar shows only the tab on screen and how many it has, and the panel still switches; a split lists
-// each pane under its number; with paneTitles false too, a note's own bar is its pane's title row. Writes
-// sidebars.json, appearance.json, hotkeys.json, newtab.json and a few notes (put back): throwaway server only.
+// The Tabs panel and the tab bar turned off (appearance `tabBar`, `paneTitles`): the panel lists, switches, closes and
+// opens tabs. Writes sidebars, appearance, hotkeys, newtab and a few notes (put back): throwaway server only.
 //   node web/qa/tabspanel.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

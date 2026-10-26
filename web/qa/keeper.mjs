@@ -1,6 +1,5 @@
-// The terminal's keeper (the default backend, plugins/core/terminal/ptyd.ts) in a browser: a shell's whole history (its
-// scrollback setting's lines) comes back after a reload as the page's own scrollback (it scrolls by itself, nothing
-// redrawn). Runs a shell: throwaway server only.
+// The terminal's keeper (plugins/core/terminal/ptyd.ts): a shell's whole history comes back after a reload as the
+// page's own scrollback, nothing redrawn. Runs a shell: throwaway server only.
 //   node web/qa/keeper.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

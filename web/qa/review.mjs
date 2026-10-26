@@ -1,8 +1,5 @@
-// Review: what AIs changed, file by file. Agents' edits through the API (an MCP app named ChatGPT, Grok Bot; Claude making
-// a note) are listed newest first in view:review with who and +/−, the first unfolded to its diff; the status bar's
-// count; a changed file's header line opening its review; Keep (with Undo), Revert (the text before back), Archive for
-// a new file; one writer's list (view:review/<name>); 390px. Screenshots light and dark. WRITES files in "QA review <run>/",
-// appearance.json and Activity's settings, turns Activity on and keeps or reverts what it made: throwaway server only.
+// Review: what AIs changed, file by file (view:review): diffs, Keep, Revert, Archive, 390px, light and dark. Writes
+// QA review <run>/, appearance.json and Activity's settings: throwaway server only.
 //   node web/qa/review.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

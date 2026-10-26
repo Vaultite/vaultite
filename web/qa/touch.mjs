@@ -1,12 +1,6 @@
-// Touch interaction check at iPhone size: tap ticks, tap-on-done/long-press open the sheet, back/swipe/Done
-// close it, sheet scrolls; the header (the name stays at the top while the page scrolls), a pinned page from the
-// drawer, the bar's menu, a person from the People page and [[links]] in a note opening in tabs (a link in a sheet
-// closes the sheet first). Prints ok / FAIL per check and exits 1 on any failure. It TICKS A ROUTINE (writes a daily
-// note), so run it against a throwaway server on a copy of the vault:
+// Touch at iPhone size: sheets, the header, the drawer, menus and links opening in tabs; subjects from the vault
+// (subjects.mjs). It TICKS A ROUTINE (writes a daily note): throwaway server on a copy of the vault.
 //   node web/qa/touch.mjs <base url>   (a server on a copy: cp -R <vault> /tmp/v; VAULTITE_VAULT=/tmp/v PORT=<port> npm start)
-// Its subjects come from the vault (subjects.mjs): two routines you tick by hand, the latest workout log,
-// the first person with a timeline, and a note that links to another note and to a person. The routine grid and the
-// workout are Today's and Health's (Vaultite plugins): checked in a vault that has them, else said to be skipped.
 import { SHOTS, qa } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
 const { args: [B], browser, check, done } = await qa(import.meta.url)
@@ -153,9 +147,8 @@ out.profileHasTimeline = await page.locator("main :text('Timeline')").count()
 await shot("profile")
 await page.goBack(); await page.waitForTimeout(600)
 out.profileBack = await page.evaluate(() => location.hash)
-// 11. A note in a tab: a person wikilink opens their file in the same tab (a file replaces a file), Back returns to
-// the note, a note wikilink opens that note. Then the note as a sheet (#<tab>/file/<path>): a link in it closes the
-// sheet and opens the file in a tab. (Its links are .cm-wikilink.)
+// 11. A note in a tab: a person link replaces it in the tab, Back returns, and a link in the note as a sheet closes the
+// sheet and opens the file in a tab.
 const noteHash = `#file/${encodeURIComponent(`${v.linked.note.id}.md`)}`
 await page.goto(B + noteHash); await page.waitForTimeout(1500)
 out.noteTab = await page.evaluate(() => [location.hash, !!document.querySelector("dialog[open]")])

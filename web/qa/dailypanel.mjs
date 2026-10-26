@@ -1,8 +1,5 @@
-// The Daily note panel (plugins/core/daily-notes/Day.tsx): shown from the sidebar's More ▸, today's note edited in it
-// beside an open note and saved, ‹ › and Today stepping days, a missing day shown without making it and started from
-// it, the menu's "Open … note in a tab"; in the rail, a flyout to type in at once, kept open through the editor's
-// suggestions and Escape. WRITES today's note, makes the first missing day after it and shows the panel
-// (sidebars.json): throwaway only.
+// The Daily note panel (plugins/core/daily-notes/Day.tsx): edited beside a note, stepping days, the rail's flyout.
+// WRITES today's note, the first missing day after it and sidebars.json: throwaway only.
 //   node web/qa/dailypanel.mjs <base url> [screenshot]
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, SHOT = "/tmp/dailypanel.png"], browser, check, watch, done } = await qa(import.meta.url)

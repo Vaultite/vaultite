@@ -1,9 +1,5 @@
-// The desktop workspace's split tree: Split right / Split down from the command palette and the tab
-// menu, dragging tabs (along a bar, onto another bar, onto each edge and the middle of a pane, with the drop overlay),
-// drops that change nothing not offered, dividers (drag, double-click), panes closing up when emptied, the layout
-// coming back after a reload (and the old two-group layout migrating), focus moving between panes from the keyboard,
-// and a terminal tab moved between panes keeping its shell. WRITES (a terminal runs on the server's machine; tabs only
-// open notes): throwaway server only.
+// The desktop's split tree: splitting, tabs dragged onto bars, edges and panes, dividers, emptied panes closing, the
+// layout after a reload (the old one migrating), keyboard focus between panes. WRITES: throwaway server only.
 //   node web/qa/splits.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync } from "node:fs"
 import { openPalette, qa, terminalText, until, wait } from "./lib/qa.mjs"
@@ -192,8 +188,7 @@ check("onto another bar: there, at that place", o.line && ps.some((p) => p.tabs.
 await shot("after-bars")
 
 // ---------- the old layout (a main group and a right split) migrates ----------
-// (A device on a workspace takes its tabs: start with none, like a vault before workspaces, once this page's last change
-// of tabs is saved, so it can't make workspace 1 again.)
+// (start with no tabs, like a vault before workspaces, once this page's tabs are saved: it can't make workspace 1 again)
 await wait(1500)
 for (const n of [1,2,3,4,5]) await fetch(new URL(`/api/workspaces/${n}`, B), { method: "DELETE" }); await wait(300); await page.evaluate(() => { const p = JSON.parse(localStorage.getItem("vaultite.prefs") ?? "{}"); if (p.device) delete p.device.workspace; localStorage.setItem("vaultite.prefs", JSON.stringify(p)) })
 await page.evaluate(([a, b]) => {

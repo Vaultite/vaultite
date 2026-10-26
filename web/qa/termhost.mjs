@@ -1,10 +1,5 @@
-// Terminal tabs on two machines: two throwaway servers on ONE vault copy, each listed in its machines data.json (ids A
-// and B, loopback addresses). A terminal opened on A in workspace 1 is saved with A's id; B shows the same tab as A's
-// shell (its output, typed into from B, no shell started on B), groups it under "Other workspaces" from workspace 2,
-// says "runs on A, which isn't answering" while A is down (still no shell on B), and a tab saved the old way (no
-// machine) for a shell A runs is claimed as A's and opens A's shell from B.
-// Runs shells through both servers and stops and starts server A (a tmux session on the default socket, see below):
-// throwaway servers only.
+// Terminal tabs on two machines (two servers on one vault copy): B shows A's shell, never starting its own, also while
+// A is down. Runs shells and stops and starts server A (a tmux session): throwaway servers only.
 //   node web/qa/termhost.mjs <base A> <id A> <base B> <id B> <vault path> <tmux session running A> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, writeFileSync } from "node:fs"

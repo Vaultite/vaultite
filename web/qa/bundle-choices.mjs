@@ -1,10 +1,6 @@
-// Bundles, choosing (pages/Bundles.tsx, components/BundleTrial.tsx): a preview's ticks (leaving changes out, Save as
-// "<Name> (mine)", an install's plugin going with it), the bundle in use once the setup changes (In use · modified, Save
-// changes, Revert), trying one (the bar's Keep and Revert, after a reload too), and Browse (the directory, from a made-up
-// index and repository: Imported, Update available and its preview, a search, unreachable). Desktop and 390px, light and
-// dark. Screenshots.
-// WRITES the vault's settings and bundles, and the fixture folder: throwaway servers only, started with
-// VAULTITE_PLUGIN_INDEX=<fixture dir>/index.json VAULTITE_GITHUB=file://<fixture dir>/repos.
+// Bundles, choosing (pages/Bundles.tsx, components/BundleTrial.tsx): a preview's ticks, the one in use, trying one, and
+// Browse. WRITES settings and bundles: throwaway servers started with the fixture's env (below).
+//   VAULTITE_PLUGIN_INDEX=<fixture dir>/index.json VAULTITE_GITHUB=file://<fixture dir>/repos
 //   node web/qa/bundle-choices.mjs <base url> <vault path> <fixture dir> [out dir]
 import { execFileSync } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

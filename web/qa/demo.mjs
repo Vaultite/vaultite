@@ -1,8 +1,5 @@
-// The web demo (npm run build:demo): the app with its server in the browser. Serves web/dist-demo under /demo/ (or uses
-// <demo url>, a demo served elsewhere: not "base url", which tools/qa.ts fills with an app server's) and checks, in Chrome and WebKit, it starts, opens a note, Vaultite's own plugins' pages and search, keeps an edit across a reload,
-// refuses a plugin that needs a machine, opens on a bundle (?bundle=), that the sample's files were edited across the
-// weeks before (also once a reload brings them back from IndexedDB), and that Reset brings the sample back.
-// WRITES: only the browser profile it makes.
+// The web demo (npm run build:demo) in Chrome and WebKit, served under /demo/ or at <demo url> (not "base url", which
+// tools/qa.ts fills with an app server's). WRITES: only the browser profile it makes.
 //   node web/qa/demo.mjs [<demo url>]
 import fs from "node:fs"
 import http from "node:http"

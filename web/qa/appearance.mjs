@@ -1,12 +1,5 @@
-// Appearance settings: its order (theme, colour scheme, density, file icons, sidebars, fonts, text sizes, CSS snippets), Settings' three scheme
-// tiles (Gruvbox, the default; the one in use or Classic; More…), the colour scheme gallery (the sheet of More… and of "Change
-// colour scheme": one grid, every built-in scheme and the vault's Obsidian themes, a tile each), the Fonts row (folded at first, saying what's set; a click unfolds the three pickers), every colour
-// scheme (built in, and the vault's Obsidian themes) in light and dark, and that no
-// scheme or mode moves anything (the boxes of the page's key elements are measured on Settings, Today and a note, at
-// desktop width and 390px, and must match Classic's (`default`, index.css's own tokens) in light), density, the font pickers (search, each font drawn in
-// itself, Enter applies, a name typed that isn't listed, back to the default), CSS snippets (inside Appearance) turned on
-// and edited on disk (live, no reload), and no font size setting. Screenshots at desktop width and 390px, light and dark.
-// WRITES .vaultite/appearance.json, a snippet and the workspaces' data.json (put back): throwaway server only.
+// Appearance settings: every colour scheme in light and dark moves nothing, density, fonts and CSS snippets (live).
+// WRITES appearance.json, a snippet and the workspaces' data.json (put back): throwaway server only.
 //   node web/qa/appearance.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
 import path from "node:path"
@@ -105,9 +98,8 @@ for (const scheme of ids) {
   }
 }
 
-// No scheme or mode moves anything: a scheme only recolours. The boxes of the key elements (every control, heading,
-// row, tab, section and bar) must be where Default puts them in light, on each page; the scheme and mode change live,
-// so a switch that reflows (a line appearing, a border, a font) is caught as well as a scheme that loads differently.
+// A scheme only recolours: the key elements' boxes must be where Default puts them in light, schemes switched live so
+// a switch that reflows is caught too.
 const KEY = "aside, nav, main, section, header, h1, h2, h3, button, a, input, [role=switch], [role=radio], [role=tab], [role=treeitem], [role=tablist], [data-titlebar], #main-scroll, [data-panel-handle], label, kbd"
 const boxes = (page) => page.evaluate((KEY) => [...document.querySelectorAll(KEY)].filter((el) => el.getClientRects().length).map((el) => {
   const b = el.getBoundingClientRect()
@@ -163,9 +155,7 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, true]]) {
   await page.close()
 }
 
-// The font pickers: the button shows the font in itself; the palette lists this device's fonts, each drawn in its own
-// font, the default first; typing filters; Enter applies at once; a name that isn't listed can be used; the default
-// row puts it back. An old fontSize key is ignored.
+// The font pickers. An old fontSize key is ignored.
 await set({ fontSize: 22 })
 {
   const page = await open(1440, false, "settings")

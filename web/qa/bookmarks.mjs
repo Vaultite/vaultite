@@ -1,6 +1,4 @@
-// Pinned headings and searches (bookmarks; plugins/core/pages): Pin current heading to the sidebar (the
-// heading the cursor is under) and Pin current search to the sidebar, each a row in Pinned with its own icon; a click
-// opens the note at its heading, or the search; they follow a rename of their note; Unpin from their menu.
+// Pinned headings and searches (plugins/core/pages): opened, following a rename, unpinned.
 // WRITES a note and pages.json: throwaway only.
 //   node web/qa/bookmarks.mjs <base url> <vault path>
 import { readFileSync, writeFileSync } from "node:fs"

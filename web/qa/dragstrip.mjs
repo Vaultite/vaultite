@@ -1,10 +1,5 @@
-// The desktop app's drag strip (index.css: the sidebar's header and the top tab bars drag the window): nothing that
-// takes clicks may sit in it without saying no-drag, or the window swallows the click (a menu opened from the header,
-// whose first item is in the strip; the workspace list beside the rail; a backdrop; the sidebar's edge). Checks it by
-// the computed app-region of everything clickable in the top 40px, over each drag element, with menus, the workspace
-// list, the palette and the rail open. In Chrome with data-electron set (the CSS keys on it; the preload sets it in the
-// app). Turns Workspaces on for its run (the switcher is in the strip), putting plugins.json back after: throwaway
-// server only.
+// The desktop app's drag strip (index.css): nothing clickable in the top 40px without no-drag, or the window swallows
+// the click; in Chrome with data-electron set. Turns Workspaces on (plugins.json put back): throwaway server only.
 //   node web/qa/dragstrip.mjs <base url>
 import { execFileSync } from "node:child_process"
 import path from "node:path"

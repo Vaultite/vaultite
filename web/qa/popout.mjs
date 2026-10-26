@@ -1,11 +1,5 @@
-// Pop-out windows (core/workspace.ts popOut, POPOUT): Move current tab to new window takes the tab out
-// of this window into one of its own, with its history; that window has no sidebars and tabs of its own (this one's
-// are left as they are); Open current tab in new window leaves it here too; closing a pop-out's last tab closes it.
-// Back: a pop-out tab's Move to main window, and a tab dragged out of the pop-out and let go over the main window (into
-// the pane or bar under the pointer), each closing the emptied pop-out. A tab bar's empty space: Stack tabs, Hide tab bar.
-// A tab dragged out of the main window and let go clear of it goes on in a new window. With the tabs in the sidebar:
-// the top of a pane has the tab on screen's menu, and a pop-out (no sidebar) draws its tabs on top.
-// WRITES the vault's appearance.json and sidebars.json (the tab bar hidden, the tabs in the sidebar, then back on top).
+// Pop-out windows (core/workspace.ts popOut): tabs moved out and back, dragged between windows, with the tabs in the
+// sidebar too. Writes appearance.json and sidebars.json (then back).
 //   node web/qa/popout.mjs <base url> <vault path>
 import { readdirSync } from "node:fs"
 import path from "node:path"

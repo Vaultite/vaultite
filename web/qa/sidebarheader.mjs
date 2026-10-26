@@ -1,5 +1,5 @@
-// The left sidebar's header items (Workspaces' numbers, the Inbox button): right-click the header, Header ▸ ticks
-// which show (appearance.json `sidebarHeader`). WRITES appearance.json (put back): throwaway server only.
+// The left sidebar's header items, picked from its right-click Header ▸ (appearance.json `sidebarHeader`). Writes
+// appearance.json (put back): throwaway server only.
 //   node web/qa/sidebarheader.mjs <base url>
 import { apiAt, qa, until } from "./lib/qa.mjs"
 

@@ -1,6 +1,5 @@
-// The note plugins (plugins/core/note-composer, random-note, unique-note): Extract current selection to a new
-// note and to one that's there (a link left in its place), Merge current file with another file (Undo puts both
-// back), Open random note, Create new unique note (named by the minute). WRITES notes: throwaway only.
+// The note plugins (note-composer, random-note, unique-note): extract, merge (Undo), random, unique.
+// WRITES notes: throwaway only.
 //   node web/qa/composer.mjs <base url> <vault path>
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"

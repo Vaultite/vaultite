@@ -1,8 +1,5 @@
-// Sheets and files at iPhone 15 size (393x852 @3x, touch, Safari's user agent), by real taps: files open in tabs
-// (from People, the tree, [[links]] and the map) and Back returns to the place and its scroll; a sheet (a colleague, a
-// routine's day, a deep link) fits, locks the page and gives its scroll back, closes by Close, Done and its
-// header's drag, and a [[link]] in it closes it; the map under a sheet stays; nothing wider than the screen. Needs a
-// note that links to another note and to a person (subjects.mjs). Only taps, but it empties workspace 1 each pass:
+// Sheets and files at iPhone 15 size by real taps: tabs, Back to the place and its scroll, sheets that fit and lock the
+// page (subjects.mjs finds the notes). Only taps, but it empties workspace 1 each pass.
 //   node web/qa/sheets.mjs <base url> [out dir]
 import { SHOTS, WEBGL, qa } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"

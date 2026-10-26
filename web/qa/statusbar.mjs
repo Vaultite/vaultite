@@ -1,8 +1,5 @@
-// The desktop status bar beside the left sidebar: it never reaches it (what doesn't fit goes to the tray behind its
-// more button) nor wraps, holds last load's widths only while loading, and its ambient items drag along it, onto the more button (tucked: appearance.json's
-// `statusBarMore`) and back out of the tray. Every item hides (right-click, the palette), the file's too: with none, the
-// bar is a faint corner whose right-click brings them back. WRITES appearance.json (put back) and a made-up vault plugin with a long
-// item, .vaultite/plugins/qa-long (removed): throwaway server only.
+// The desktop status bar never reaches the left sidebar nor wraps (the rest goes to its tray), and its items drag and
+// hide. WRITES appearance.json (put back) and .vaultite/plugins/qa-long (removed): throwaway server only.
 //   node web/qa/statusbar.mjs <base url> <vault path>
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

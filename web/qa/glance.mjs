@@ -1,7 +1,5 @@
-// Glance (plugins/core/glance) on a computer: ⌥-click a [[link]] in a note and it opens over the page in a wide sheet
-// (most of the window), the note still the tab's; Escape, a click outside and Close shut it; Open in tab makes it a new
-// tab of the pane, Open to the side a split; ⌥-click a file in the tree glances too; a plain click still follows the
-// link. Turns Glance on (put back after) and opens notes of Notes/ in tabs: throwaway server only.
+// Glance (plugins/core/glance): ⌥-click a [[link]] or a tree file and it opens over the page, shut or opened as a tab or
+// split from there. Turns Glance on (put back) and opens notes in tabs: throwaway server only.
 //   node web/qa/glance.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

@@ -1,9 +1,5 @@
-// A finger held still is the right-click on touch (components/ContextMenu.tsx, watchHolds), on a phone-sized page with
-// touch: held on a blank tab's button its menu opens (once), nothing is selected till the finger lifts, and lifting it
-// doesn't press the button; held and moved (a scroll) or lifted early, nothing; held on a note's text, no menu (the
-// system's selection stays); held on a tab card in the tab list, its menu (and the card is picked up). Chrome's touch
-// emulation, not an iPhone: WebKit's own hold (selection, a link's preview) isn't covered.
-// WRITES .vaultite/newtab.json: throwaway only.
+// A finger held still is the right-click (components/ContextMenu.tsx, watchHolds), in Chrome's touch emulation: WebKit's
+// own hold (selection, a link's preview) isn't covered. WRITES .vaultite/newtab.json: throwaway only.
 //   node web/qa/hold.mjs <base url> <vault path> [out dir]
 import { mkdirSync, rmSync } from "node:fs"
 import path from "node:path"

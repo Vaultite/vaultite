@@ -1,7 +1,5 @@
-// The `vau` CLI driving open app windows (bin/vau, POST /api/ui): `vau open` opens a file in the window the user was
-// in last (two windows open: only that one acts), `--split down` opens it in a new pane below, `--new-tab` keeps the
-// current tab, a view opens too, `vau command` runs a palette command, and with no window open it says so.
-// Writes a note (Notes/Vau open test.md): throwaway server only.
+// `vau` driving open app windows (POST /api/ui): open, --split down, --new-tab, command, and no window open.
+// Writes Notes/Vau open test.md: throwaway server only.
 //   node web/qa/vau.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"

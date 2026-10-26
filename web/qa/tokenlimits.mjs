@@ -1,8 +1,5 @@
-// Token count's limits: the status bar's count is amber near the file's limit and red over it (a CLAUDE.md by what it
-// loads with its @imports), its tooltip saying the limit and the load; files over their limit are marked in the file
-// tree; the Agent context tab lists them and the load chains, and a row opens its file; the op says the same as text.
-// Typing past the limit turns the count red before saving. Screenshots of the status bar, the tree and the tab, light
-// and dark. WRITES "QA tokens/" and appearance.json (put back): throwaway server only.
+// Token count's limits: amber and red in the status bar, marks in the tree, the Agent context tab, the op, typing past
+// it. WRITES "QA tokens/" and appearance.json (put back): throwaway server only.
 //   node web/qa/tokenlimits.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"

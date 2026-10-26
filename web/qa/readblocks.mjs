@@ -1,8 +1,5 @@
-// Plugins drawing a note's blocks while it's read (`reading`, another app's post-processors): with none on, reading is
-// the editor's own drawing; the made-up vault plugin Qa ruby asks about every block (its lines, the frontmatter's) and
-// changes only those that say "ruby", which then draw as it made them (a link in one followed once, its task ticking the
-// file); live preview shows the source and lets go of what it made.
-// WRITES a "Qa reading" folder and .vaultite/plugins/qa-ruby, turns it on: throwaway server only.
+// Plugins drawing a note's blocks while it's read (`reading`), with the made-up vault plugin Qa ruby. Writes
+// Qa reading/ and .vaultite/plugins/qa-ruby, turned on: throwaway server only.
 //   node web/qa/readblocks.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"

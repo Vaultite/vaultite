@@ -1,10 +1,5 @@
-// An Obsidian vault in the app: note embeds (a section, a block, one that embeds itself), heading and block links that
-// scroll there, [[#Heading]] in the same file, #tags (styled, clickable, the Tags panel, a tag's sheet, renamed), its
-// plugins' stand-ins (its Settings section), the Outline
-// panel (click to go, the current heading lit; shown for the run: it's hidden until shown, like Tags), ==highlights==, %%comments%% and ^block ids hidden when reading,
-// ![[image.png|120]], [[photo.png]] finding the attachment, .obsidian/app.json (new notes' folder, a pasted or dropped image's
-// folder), the Design page, and a phone at 390px. WRITES a "Qa obsidian" folder, the vault's .obsidian/app.json and
-// .vaultite/plugins.json and sidebars.json (put back): throwaway only.
+// An Obsidian vault in the app: embeds, heading and block links, #tags, the Outline, highlights and comments, images,
+// .obsidian/app.json and a phone. Writes Qa obsidian/, .obsidian/app.json and settings (put back): throwaway only.
 //   node web/qa/obsidian.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
 import path from "node:path"

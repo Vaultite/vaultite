@@ -1,8 +1,5 @@
-// The Vim plugin outside the editor (app.tsx): in a note's reading view j/k, gg/G scroll the pane, ]] goes to the next
-// heading, f puts hints on links and typing one opens it, / finds (in a drawn table too, above the status bar) and n
-// goes to the next match, : runs :e <name> and :q, ? opens the keys sheet (and closes it), i edits where you were
-// reading (the cursor in sight), and j still types in a text field. WRITES a "Qa vimapp" folder and plugins.json's
-// `enabled`: throwaway only.
+// The Vim plugin outside the editor: reading view's j/k, ]], link hints, /, :e, ?, i; j still types in a field.
+// WRITES "Qa vimapp/" and plugins.json's `enabled`: throwaway only.
 //   node web/qa/vimapp.mjs <base url> [out dir]
 import { apiAt, qa, SHOTS, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)

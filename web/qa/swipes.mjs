@@ -1,11 +1,5 @@
-// A phone's swipes (components/SwipeRow.tsx), with real touches through CDP at 390px:
-// - the drawer: a panel's heading swiped right shows its hover buttons (Files: sort opens its menu; Buttons: Add a
-//   button); a pinned page swiped shows Unpin, which unpins it; the Buttons panel lists the new tab's buttons;
-// - an Inbox row swiped open, redrawn by a live change, then Done: it's marked done (a redraw used to close it first);
-// - the new tab: the Buttons heading and an Inbox section's row swipe there too;
-// - Done on a slow server: the row goes at once, its note's open tab closes, Undo opens it again; a failed one comes back;
-// - a computer: the headings' buttons are where they were (no swipe).
-// WRITES sidebars.json, newtab.json, pages.json (put back) and the Inbox: throwaway server only.
+// A phone's swipes (components/SwipeRow.tsx) with real touches at 390px: the drawer's headings and pins, Inbox rows,
+// the new tab; a computer keeps its buttons. WRITES sidebars, newtab, pages.json (put back), the Inbox: throwaway.
 //   node web/qa/swipes.mjs <base url> [shots dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

@@ -1,7 +1,5 @@
-// Line numbers (appearance.json `lineNumbers`) on every editor that has them: a note in live preview and source mode,
-// and a code file, at desktop width, a narrow window and a phone. Each number is drawn, on its line's first row's baseline,
-// and clear of the text and of the folding chevrons. WRITES the vault (a "Qa numbers" folder, appearance): throwaway
-// server only.
+// Line numbers (appearance.json `lineNumbers`) in every editor that has them, at three widths: each on its line's first
+// row, clear of the text and the fold chevrons. WRITES "Qa numbers" and appearance: throwaway server only.
 //   node web/qa/linenumbers.mjs <base url> <vault path> [out dir]
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { SHOTS, apiAt, qa } from "./lib/qa.mjs"

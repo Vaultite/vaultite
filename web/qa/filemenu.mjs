@@ -1,12 +1,5 @@
-// The file menus (tree, tab, phone …) and what they do: their groups (Archive right above Delete; Open local graph, Open version
-// history and the other less used items in More ▸; split rows: Open to the right in Open in new tab ▸, other kinds of
-// new file in New note ▸, Change icon in Rename ▸), Duplicate (a copy next to it, a note with its own id once edited), Copy path
-// (a click copies from the vault folder; its submenu by hover, chevron and the keyboard: from the vault folder, from the
-// system root, a [[link]]), Reveal in Finder
-// listed on this machine, Delete to the trash at once with Undo in a toast (no browser dialog anywhere), Delete permanently
-// and Empty trash through the app's confirm dialog (Escape cancels, the button and Enter confirm), and File history:
-// the version history view, a version compared and restored. Phones at 390px: the … menu, the history view, the toast
-// above the phone's bar, the dialog. WRITES a "Qa menu" folder and Notes/Qa dup*.md, empties the trash: throwaway only.
+// The file menus (tree, tab, phone) and what each item does, with no browser dialog anywhere, on a desktop and a phone.
+// WRITES a "Qa menu" folder and Notes/Qa dup*.md, empties the trash: throwaway only.
 //   node web/qa/filemenu.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync } from "node:fs"
 import { REVEAL, SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"

@@ -1,7 +1,5 @@
-// Player: a time in a note plays its video from there and is lit; going to another file keeps it playing in the mini
-// player (the picture in it), where it stopped is kept on the server; the queue lists it with its time left and plays
-// an episode from its row; captions and speed. Desktop and 390px. Needs ffmpeg for its media. WRITES "Qa player" and
-// files in Attachments/: throwaway only.
+// Player: a time in a note plays its video from there, the mini player, the queue, captions and speed, desktop and
+// 390px. Needs ffmpeg. Writes Qa player/ and files in Attachments/: throwaway only.
 //   node web/qa/player.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"

@@ -1,10 +1,5 @@
-// Where a block's data comes from (components/BlockSource.tsx, GET /api/blocks/sources): a note with a graph block
-// linking two notes of its own, read in reading view. Right-clicking the block opens its menu: what it is, the files it
-// shows (a click opens one), Options (its form) and "Edit source" (into editing, the cursor on its fence's first
-// option). The API answers the same for an agent, with the fence's line. On a phone, a held finger opens the menu.
-// "Edit source" keeps the block's place: on a dashboard with many blocks above it (drawn anew in editing, at sizes
-// not known yet), its Markdown shows where it was drawn, and Done draws it back there; on a desktop and a phone.
-// WRITES to the vault: throwaway server only.
+// Where a block's data comes from (components/BlockSource.tsx, GET /api/blocks/sources), and "Edit source" keeping the
+// block's place, on a desktop and a phone. WRITES to the vault: throwaway server only.
 //   node web/qa/blocksource.mjs <base url> [out dir]
 import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

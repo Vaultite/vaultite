@@ -1,9 +1,5 @@
-// Scrollers as stacking contexts (index.css): on a phone (both drawers, a few pages, a sheet) and a desktop window, every
-// element that scrolls must be a stacking context, or what's positioned inside it is drawn by iOS WebKit above its
-// scroll indicator (the sidebar's sticky headings chopped it). Fails (exit 1) on a scroller with a positioned
-// descendant that isn't one; lists `fixed` elements inside a scroller (stacked within it now: check they still sit
-// on top). Also fails on what a pane that doesn't scroll (a full page) cuts off with nothing inside to scroll it: a
-// page's scroller grown to its content's height instead of the pane's (Plugins lost its scroll so). Reads only (opens tabs on this device), but run it against a throwaway server:
+// Every scroller must be a stacking context (index.css), or iOS WebKit draws what's positioned in it over its scroll
+// indicator; also fails on a pane cut off with nothing to scroll it. Reads only, but run it on a throwaway server.
 //   node web/qa/scrollers.mjs <base>   (or QA_BASE)
 import { chromium } from "playwright-core"
 import { pageHash } from "./subjects.mjs"

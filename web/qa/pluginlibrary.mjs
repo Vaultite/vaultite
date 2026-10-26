@@ -1,10 +1,5 @@
-// Setup's Plugins tab as one library (pages/Plugins.tsx): sections by category, the AI apps together whatever their
-// defaults (the coding agents one row, components/PluginGroup.tsx, its sheet each one's switch), each row a line
-// on what it does, on ones first, a built-in one with no source label or mark; the app's own (`alwaysOn`) parts and Vim
-// (in Editor) aren't rows; Filter narrows by status, source and category (chips under the search undo them), the search
-// above the list looks in all of them and in the directory; a plugin's sheet names its category; no menu: Your plugins
-// and Get plugins are tabs, Bundles Setup's other tab. Screenshots, light and dark, wide and narrow. Reads
-// only.
+// Setup's Plugins tab as one library (pages/Plugins.tsx): sections by category, the AI apps together, Filter and the
+// search, a plugin's sheet; light and dark, wide and narrow. Reads only.
 //   node web/qa/pluginlibrary.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { pluginsFilter, qa, until, wait } from "./lib/qa.mjs"

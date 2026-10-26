@@ -1,6 +1,5 @@
-// One shell on two devices: the last one to send its size wins (a phone shrinks it), and the other takes it back when
-// it's used again (clicked, typed in, its window focused), so the program redraws for it. Runs a shell on the server's machine
-// (the server and this script on the same one): throwaway server only.
+// One shell on two devices: the last to send its size wins, and the other takes it back when used again. Runs a shell
+// on the server's machine (this script on the same one): throwaway server only.
 //   node web/qa/termsize.mjs <base url>
 import { readFileSync, rmSync } from "node:fs"
 import { qa, terminalText, until, wait } from "./lib/qa.mjs"

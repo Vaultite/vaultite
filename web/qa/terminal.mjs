@@ -1,8 +1,5 @@
-// The Terminal plugin: a shell in a tab. Types a command and reads its output, reloads and finds the output again (the
-// session reattaches and replays), opens Claude Code (a tab that types `claude`), then checks who gets a shell: this machine,
-// and through Tailscale Serve only the owner's login or one in allowUsers (simulated headers); proxies, other logins and
-// other sites are refused, and the page says why instead of reconnecting. Runs a shell on the server's machine and writes the
-// terminal's settings: throwaway server only.
+// The Terminal plugin: output kept over a reload, Claude Code's tab, and who gets a shell (this machine, the owner or
+// allowUsers through Tailscale Serve). Runs a shell and writes its settings: throwaway server only.
 //   node web/qa/terminal.mjs <base url> [out dir]
 import http from "node:http"
 import { execFileSync } from "node:child_process"
@@ -14,9 +11,8 @@ const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = awa
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
 const vaultName = vaultPath.split("/").filter(Boolean).pop()
 mkdirSync(OUT, { recursive: true })
-// What it uses, whatever the vault turned off or hid (the sandbox starts calm: no Codex, no Terminals panel): Codex for
-// its tab, the Terminals panel for picking a terminal's row (in the window's workspace and in sidebars.json).
-// (vau told the served vault, not the one this shell may name: VAULTITE_VAULT in a Vaultite terminal is the user's)
+// What it uses, whatever the sandbox turned off (Codex, the Terminals panel). vau tells the served vault: a Vaultite
+// terminal's VAULTITE_VAULT is the user's.
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a],
   { encoding: "utf8", env: { ...process.env, VAULTITE_URL: B, VAULTITE_VAULT: vaultPath } })
 vau("plugin", "on", "codex")

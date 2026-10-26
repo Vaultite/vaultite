@@ -1,7 +1,5 @@
-// Export to PDF and the audio recorder in the desktop app (Electron), on a throwaway vault: Export to PDF saves the note
-// as a PDF where the save dialog says (the dialog answered here) and the window is back as it was; recording works with
-// a fake microphone when macOS already decided about the microphone for Electron (otherwise its prompt would wait for
-// a click: skipped, and said so). WRITES: throwaway vault only.
+// Export to PDF and the audio recorder in the desktop app; recording skipped (and said) when macOS hasn't decided about
+// the microphone, as its prompt would wait. WRITES: throwaway vault only.
 //   node web/qa/media-desktop.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

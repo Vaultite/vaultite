@@ -1,8 +1,5 @@
-// Sidebars without rails (Zen) over a browser tab in the desktop app (Electron): its page is a native view over the
-// window, which hears no pointer there, yet the pointer at the window's left or right edge over the page slides that
-// sidebar in, and away from it on the window's page slides it out. The moves go to the page as the Mac's would
-// (sendInputEvent), to a made-up site this script serves on 127.0.0.1.
-// WRITES: the throwaway vault only.
+// Zen's sidebars over a browser tab in the desktop app: its page is a native view the window doesn't hear, yet the
+// pointer at an edge slides the sidebar in (moves sent with sendInputEvent). Writes the throwaway vault only.
 //   node web/qa/pagepeek.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"

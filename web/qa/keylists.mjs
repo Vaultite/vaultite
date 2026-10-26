@@ -1,7 +1,5 @@
-// Keyboard lists (web/src/core/keylist.ts): the file tree moves with the arrows (→ opens a folder and steps in, ← goes
-// to the parent and closes it, Enter opens a file, ⌘Enter in a new tab), "Focus the left sidebar" brings the keyboard
-// in and Escape gives it back; Tab passes a list as one stop, ⇧F10 opens a row's menu, F6 moves between areas, an edge
-// resizes with the arrows; the palette takes Ctrl+J/K and keeps Tab; a canvas pans with the arrows. Throwaway only.
+// Keyboard lists (web/src/core/keylist.ts): the file tree, sidebars, menus, areas, resizing edges, the palette and a
+// canvas, all from the keyboard. Throwaway only.
 //   node web/qa/keylists.mjs <base url> [out dir]
 import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)

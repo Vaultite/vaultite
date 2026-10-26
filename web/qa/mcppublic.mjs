@@ -1,8 +1,5 @@
-// MCP on the internet (plugins/core/mcp/public.ts), as an app like claude.ai uses it: discovery, registration, the
-// sign-in page and its code, the owner letting it in (POST /api/mcp/connections), the token exchange with PKCE, MCP with
-// the token (every tool but the owner's, dispatch only with their yes, and gated calls waiting for the owner's yes), a refresh, and a disconnect ending it. Also what it refuses: an app returning
-// elsewhere, a wrong code or verifier, no token, an owner-only route through it. Starts its own server on a copy of the
-// vault (the public listener needs this machine's data/config.json), so it WRITES only there. No browser.
+// MCP on the internet (plugins/core/mcp/public.ts) as claude.ai uses it: OAuth with PKCE, gated tools, and what it
+// refuses. Its own server on a copy of the vault, so it WRITES only there. No browser.
 //   node web/qa/mcppublic.mjs <vault copy>
 import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"

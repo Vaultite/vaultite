@@ -1,10 +1,5 @@
-// Closing a terminal's tab isn't ending its shell. A shell running something (here `sleep`, and a bash script, which the
-// pty names "bash", like `mo`) keeps running when its last tab closes (a toast offers End it; the Terminals panel lists
-// it as detached); a shell at its prompt ends; the
-// same terminal open in two workspaces keeps running when one of its tabs closes (no toast); End session in the tab's
-// menu asks, then ends it and closes the tab. Graph view (the Local graph panel's button) opens beside a terminal,
-// never in its tab, and dragging the Local graph panel's heading onto a pane opens it as a tab. Runs shells and writes
-// workspaces: throwaway server only.
+// Closing a terminal's tab isn't ending its shell: one running something keeps running (End it), one at its prompt
+// ends; End session asks. Runs shells and writes workspaces: throwaway server only.
 //   node web/qa/termclose.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs"

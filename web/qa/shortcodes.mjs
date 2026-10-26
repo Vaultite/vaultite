@@ -1,6 +1,5 @@
-// Shortcodes (plugins/core/shortcodes): `:fir` suggests 🔥 with its emoji, Enter puts it in; `:icon-cal` an icon, written
-// `:LiCalendar:` and drawn as the icon off the cursor and while reading; `:fire:` typed whole becomes 🔥; on a phone the
-// list's rows are 44px. WRITES a "Qa shortcodes" folder: throwaway server only.
+// Shortcodes (plugins/core/shortcodes): emoji and icons suggested, written and drawn, 44px rows on a phone. Writes
+// Qa shortcodes/: throwaway server only.
 //   node web/qa/shortcodes.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { SHOTS, qa, until, wait } from "./lib/qa.mjs"

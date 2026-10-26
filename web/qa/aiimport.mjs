@@ -1,8 +1,5 @@
-// AI import (plugins/core/ai-import): "Import from ChatGPT or Claude…" picks a made-up export (tools/fixtures/ai-import),
-// one toast follows it and says what it did with "Review memories"; the chats are notes; the review list's card counts
-// the ticked ones and Add puts them in ME.md (MCP's remember, over this server's API) and under Added; importing again
-// adds nothing; Claude's .dms works; a file over 8 MB goes up in pieces; `vau import` does the same from a terminal; a
-// chat reads well at 390px. WRITES Chats/ and ME.md: throwaway server only.
+// AI import (plugins/core/ai-import) of a made-up export (tools/fixtures/ai-import): chats, memories into ME.md,
+// `vau import`, big files in pieces. WRITES Chats/ and ME.md: throwaway server only.
 //   node web/qa/aiimport.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import crypto from "node:crypto"

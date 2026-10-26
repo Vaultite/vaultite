@@ -1,7 +1,5 @@
-// Highlight colours (==🟢text==, web/src/core/highlights.ts): each of the six drawn in its tint with the emoji hidden,
-// in live preview, reading and a note embed; the swatch on the highlight at the cursor changes its colour or takes it
-// out; typing == suggests the colours; Format ▸ Highlight ▸ colours the selection. Screenshots light and dark.
-// WRITES a "Qa highlights" folder: throwaway server only.
+// Highlight colours (==🟢text==, web/src/core/highlights.ts): drawn in each view with the emoji hidden, changed from the
+// swatch, suggested, and from Format ▸ Highlight. WRITES a "Qa highlights" folder: throwaway server only.
 //   node web/qa/highlights.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, SELECT_WORD, SHOTS, until, wait } from "./lib/qa.mjs"

@@ -1,7 +1,5 @@
-// The desktop workspace around files: the tree's header (sort menu, its … menu, collapse / expand all), the tab bar
-// (+ right after the last tab, right-click menu), the path bar (folders find themselves in the tree, click the name to
-// rename, the view button), the status bar (view, word count), hover tooltips, the File icons setting, AGENTS.md being
-// editable, and right-click never showing the browser's menu. WRITES (renames a note, makes and edits AGENTS.md): throwaway only.
+// The desktop workspace around files: the tree's header, the tab bar, the path bar, the status bar, tooltips, AGENTS.md
+// editable, no browser menu. WRITES (renames a note, makes and edits AGENTS.md): throwaway only.
 //   node web/qa/workspace.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { SHOTS, qa, until, wait } from "./lib/qa.mjs"

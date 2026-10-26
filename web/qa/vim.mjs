@@ -1,11 +1,5 @@
-// The Vim plugin in the editor: off by default (typing types), turned on from elsewhere (the CLI, another device) open
-// editors take Vim's keys at once (normal mode, the mode in the status bar, x, dd, i...<Esc>, :w), in notes and in code
-// files, and the edits are saved; turned off they're gone. On top of Vim's own keys: ]] and gl move to headings and
-// links, gf follows a link, za folds a heading, : commands drive the app (:e, :vs, :q), Space starts the leader (the
-// keys hint, Space F F the quick switcher), Ctrl+W L moves to the pane on the right, yy copies to the system clipboard,
-// the vimrc (init.vim) maps keys and runs again when it changes, and Settings turns Vim off on this device. A phone
-// (touch, no trackpad) never gets it. WRITES a "Qa vim" folder, .vaultite/plugins/vim/ and
-// plugins.json's `enabled`: throwaway only.
+// The Vim plugin in the editor: turned on from elsewhere, open editors take its keys at once, plus the app's own (]],
+// gf, :e, the leader, the vimrc); a phone never gets it. WRITES "Qa vim/", plugins/vim/, plugins.json: throwaway.
 //   node web/qa/vim.mjs <base url> [out dir]
 import { apiAt, palette, qa, SHOTS, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, errs, watch, noErrors, done } = await qa(import.meta.url)

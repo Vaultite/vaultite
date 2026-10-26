@@ -1,9 +1,5 @@
-// The desktop app (Electron), end to end on a throwaway vault: its window and server, the title bar, the menu's
-// commands (⌘T, ⌘W), the menu bar (its menus, icons, keys from hotkeys.json, pinned pages), zoom (⌘+ ⌘- ⌘0, kept), the terminal (an image dropped on it typed as its path), Finder drops on the file tree (copy, ⌥ move, " 1" names; simulated with CDP drag
-// events carrying real files), a file dropped on the editor opening from outside the vault (saving in place, Copy to vault; an image, right-clicked for its menu; a PDF
-// and a workbook in their viewers, an HTML page run without the vault), a
-// file of another known vault opening in that vault's window, Manage vaults (list, create a vault: a second window
-// with its own server), the editor's menu (Look up), and vau dev screenshot. WRITES: throwaway vault only.
+// The desktop app end to end: window and server, menus, zoom, drops from Finder (CDP drag events with real files),
+// outside files, vaults' windows, vau dev screenshot. WRITES: throwaway vault only.
 //   node web/qa/desktop.mjs <vault copy> [packaged app binary]
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"

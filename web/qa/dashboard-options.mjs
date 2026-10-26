@@ -1,6 +1,5 @@
-// A block on a dashboard (the Claude dashboard, the user's file, read, not edited): its menu lists the folders its live
-// data is read from, each opening in Finder (plugin.folders), and Options unfolds its form in place, which writes its
-// fence. WRITES to the vault: throwaway server only.
+// A block on a dashboard (the user's file, read, not edited): its menu lists its live data's folders, Options writes
+// its fence. WRITES to the vault: throwaway server only.
 //   node web/qa/dashboard-options.mjs <base url> [out dir]
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"

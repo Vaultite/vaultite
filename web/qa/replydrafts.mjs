@@ -1,7 +1,5 @@
-// Reply drafts (plugins/core/inbox/Reply.tsx, drafts.ts): a reply typed and not sent stays a draft on this device until
-// the server has it (a send that never answers, or fails, keeps it); its row and its box say "Draft, not sent", and
-// leaving its box with it unsent says so, with Back to it. Desktop and a phone, light and dark. Screenshots in the out dir.
-// WRITES Inbox/, the inbox's events and sidebars.json (put back): throwaway server only.
+// Reply drafts (plugins/core/inbox/Reply.tsx, drafts.ts): unsent replies kept on this device until the server has
+// them, desktop and phone. Writes Inbox/, the inbox's events and sidebars.json (put back): throwaway server only.
 //   node web/qa/replydrafts.mjs <base url> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

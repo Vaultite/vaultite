@@ -1,10 +1,5 @@
-// A blank tab's page (components/NewTab.tsx, .vaultite/newtab.json: core/newtab.ts): the default sections and buttons,
-// a newtab.json written by hand followed live (sections in its order, its buttons as their commands draw them), the
-// right-click menu (a button moved and removed, a section hidden, each section's items only on it, Reset with Undo), dragging a section by its title and
-// a button to reorder them, a sidebar panel shown as a section, a button running its command, `opens` (the switcher as
-// a launcher, Settings' choice), and the phone's page
-// (Pinned's tiles first; + tapped before the vault arrives stays a new tab). Recently changed and opened list the user's files, the pages plugins wrote too. WRITES
-// .vaultite/newtab.json, plugins.json and a note: throwaway only.
+// A blank tab's page (components/NewTab.tsx, newtab.json: core/newtab.ts), followed live, edited from its menu and by
+// drag, on a phone too. WRITES .vaultite/newtab.json, plugins.json and a note: throwaway only.
 //   node web/qa/newtab.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs"
 import path from "node:path"

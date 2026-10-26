@@ -1,6 +1,5 @@
-// Images in a note (live preview): each on its line's first row beside its number, no empty rows around it; its corner
-// drags a width written as `|<n>`; its menu (right-click, a finger held on a phone) resets the size and removes the embed; the
-// Markdown button shows `![[...]]` with the image kept under it. WRITES a "Qa images" folder: throwaway server only.
+// Images in a note (live preview): laid out on their line, resized from the corner (`|<n>`), their menu, and the Markdown
+// button. WRITES a "Qa images" folder: throwaway server only.
 //   node web/qa/images.mjs <base url> <vault path> [out dir]
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"

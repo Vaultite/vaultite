@@ -1,8 +1,5 @@
-// Workspaces (plugins/core/workspaces): the switcher and its list (header and rail), workspace 1 from the setup, an
-// unused one unwritten until changed, each its own panels and tabs, ⌃1/⌃2 (from a terminal too, its shell surviving),
-// Rename, a reload, tabs, panes, tree files and pinned pages dragged onto another workspace's row (with a second window
-// on it), the menu (Delete with Undo, Duplicate), and the plugin off = sidebars.json's panels. Runs a shell and WRITES
-// .vaultite/plugins.json, sidebars.json, the plugin's files and "Qa ws *.md" (put back or removed): throwaway only.
+// Workspaces (plugins/core/workspaces): the switcher, each its own panels and tabs, ⌃1/⌃2, drags onto a row, menus.
+// Runs a shell; WRITES plugins.json, sidebars.json, the plugin's files and "Qa ws *.md" (put back): throwaway only.
 //   node web/qa/workspaces.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"

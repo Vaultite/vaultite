@@ -1,9 +1,5 @@
-// Archiving (plugins/core/archive): Archive in a file's menu moves it into its folder's hidden .archive/ (the key set,
-// links rewritten), Undo in the toast brings it back; the tree hides .archive/ until "Show archived files" in its
-// header's … menu (files.json's showArchived), then shows it dimmed; Unarchive from there; an archived file stays out of a base; the
-// palette's "Move archived files into archive folders" moves a file archived by hand, after asking; a new canvas made
-// from an archived note goes beside it, not into .archive/. WRITES "Qa archive"
-// and files.json (put back): throwaway server only.
+// Archiving (plugins/core/archive): into the folder's hidden .archive/ and back, shown dimmed, kept out of bases.
+// WRITES "Qa archive" and files.json (put back): throwaway server only.
 //   node web/qa/archive.mjs <base url> [out dir]
 import { readFileSync } from "node:fs"
 import path from "node:path"

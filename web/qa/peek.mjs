@@ -1,9 +1,5 @@
-// Sidebars without rails (Zen): hidden, each takes no room and is off the window with its toggle; at its edge of the
-// window it slides in as a floating panel, as far from the window's top as from its side, and its toggle rides on it,
-// mid-slide too, sitting in it where it sits beside the pinned sidebar, centred on its top row (the Mac's traffic
-// lights come once the left one is in: lights.mjs, not in a browser). Over a frame at the window's edges, whose page the
-// window doesn't hear, each still slides in and out. Writes appearance.json and sidebars.json (put back after):
-// throwaway server only.
+// Zen's sidebars: hidden, each slides in at its window edge as a floating panel, its toggle riding on it, over frames
+// too. Writes appearance.json and sidebars.json (put back): throwaway server only.
 //   node web/qa/peek.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
