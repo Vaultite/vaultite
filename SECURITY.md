@@ -5,11 +5,11 @@ Vaultite has **no accounts and no login**: whoever can reach the server can read
 - It listens on `127.0.0.1` by default. To use it from your phone, put it on a private network you control, such as a
   Tailscale tailnet with `tailscale serve`. Don't expose it to the internet.
 - Terminal tabs run a real shell on the server's machine. The terminal socket only accepts this machine (loopback, no
-  proxy headers) or, through Tailscale Serve, the machine owner's Tailscale login and logins listed in
-  `.vaultite/plugins/terminal/data.json` (`allowUsers`). Other origins are always refused. Another machine's shell
+  proxy headers) or, through Tailscale Serve, the machine owner's Tailscale login and logins listed in its
+  settings on that machine (`allowUsers`, kept on the machine for every plugin, never in the vault). Other origins are always refused. Another machine's shell
   (Machines) is checked on the machine you asked, then again on the one that runs it.
 - The MCP server (`POST /api/mcp`) reads and writes the whole vault, so it answers like the terminal: this machine,
-  or the owner's tailnet login through Tailscale Serve (`allowUsers` in `.vaultite/plugins/mcp/data.json`), never
+  or the owner's tailnet login through Tailscale Serve (and its `allowUsers`), never
   another site's page. `vau mcp` reaches the server like any `vau` command. The Inbox's events (which become toasts
   and notifications) are posted the same way: this machine or its owner only. The Web clipper fetches only public
   addresses (never this machine, the local network or the tailnet), checked again on every redirect and DNS answer;

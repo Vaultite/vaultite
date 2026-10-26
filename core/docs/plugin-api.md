@@ -38,7 +38,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.readSettings(file)`: The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty.
 - `plugin.saveSettings(data, file)`: Write the settings (null removes the file).
 - `plugin.patchSettings(changes, { nullRemoves)`: Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's value is checked against its manifest declaration (400).
-- `plugin.localKeys(file)`: The keys its manifest marks `local`: this machine's (core/trust.ts), never read from or written to the vault.
+- `plugin.localKeys(file)`: The keys its manifest marks `local`, and who may reach it (ACCESS) whatever it marks: this machine's (core/trust.ts), never read from or written to the vault.
 - `plugin.dayLog(kind)`: A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly.
 - `plugin.desktop(name, ...args)`: Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): the one attached to this server, else an always-on machine's serving this vault (`machines:desktop`); fails when there's none.
 - `plugin.onDesktopEvent(fn)`: fn(name, data) hears what this server's desktop app tells it unasked (a live view's frames), till it's unloaded.

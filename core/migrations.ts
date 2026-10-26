@@ -2,7 +2,7 @@
 // step's id goes in .vaultite/migrations.json when it has run (a synced vault's other machine skips it); a new vault starts with all done.
 import fs from "node:fs"
 import path from "node:path"
-import { infoWithLayout, type LayoutKey } from "./blocks.ts"
+import { infoWithLayout, type LayoutKey, settingsOf } from "./blocks.ts"
 import { FM, loadFm, setPropertyText } from "./frontmatter.ts"
 import { FENCE, scan } from "./sections.ts"
 import { type Item, readSoon, stamp, type Vault, writeAtomic } from "./vault.ts"
@@ -44,13 +44,14 @@ function dailyNotesOut(get: (name: string) => Item | null, set: (name: string, v
 
 /** Who may reach a plugin's owner-only parts (`allowRemote`, `allowUsers`) is this machine's now (core/trust.ts), not the
  *  vault settings': copied once to each machine as they were, so no one let in is shut out (access-local-2026-10). */
-export function accessToMachine(vault: Vault, plugins: { id: string; localKeys(): string[] }[]) {
+export function accessToMachine(vault: Vault, plugins: { id: string; manifest: Item }[]) {
   const trust = trustOf(vault.path), STEP = "access-local-2026-10"
   if (trust.ran(STEP)) return
   for (const p of plugins) {
     let set: Item | null
     try { set = vault.readConfig(`plugins/${p.id}/data`) } catch { return } // (mid-sync: next start)
-    const moving = ["allowRemote", "allowUsers"].filter((k) => set && k in set && !p.localKeys().includes(k))
+    // (one its manifest marked local was this machine's already: what the vault has for it never applied)
+    const moving = ["allowRemote", "allowUsers"].filter((k) => set && k in set && !settingsOf(p.manifest)[k]?.local)
     if (moving.length) trust.patchLocal(p.id, Object.fromEntries(moving.map((k) => [k, set![k]])))
   }
   trust.ran(STEP, true)

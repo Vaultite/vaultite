@@ -148,6 +148,9 @@ export class Request {
   }
 }
 
+/** Who may reach a plugin's owner-only parts (refusal): always this machine's settings, never a vault's. */
+const ACCESS = ["allowRemote", "allowUsers"]
+
 /** A route's answer sent as it is (text/markdown, or another type; bytes too: a font), not as JSON. `headers`: more
  *  of them (Cache-Control). */
 export class Text {
@@ -631,10 +634,11 @@ export class Plugin {
     return this.withLocal(this.vault.patchConfig(this.settingsName("data"), Object.fromEntries(mine), { nullRemoves }), "data")
   }
 
-  /** The keys its manifest marks `local`: this machine's (core/trust.ts), never read from or written to the vault. */
+  /** The keys its manifest marks `local`, and who may reach it (ACCESS) whatever it marks: this machine's (core/trust.ts),
+   *  never read from or written to the vault. */
   localKeys(file = "data"): string[] {
     if (file !== "data") return []
-    if (!this.locals) { const decls = settingsOf(this.manifest); this.locals = Object.keys(decls).filter((k) => decls[k].local) }
+    if (!this.locals) { const decls = settingsOf(this.manifest); this.locals = [...new Set([...ACCESS, ...Object.keys(decls).filter((k) => decls[k].local)])] }
     return this.locals
   }
   private locals: string[] | null = null
@@ -745,7 +749,7 @@ export class Plugin {
   /** Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the
    *  plugin's `allowUsers` and `allowRemote` from this machine only (core/trust.ts): a vault's never lets anyone in. */
   refusal(req: IncomingMessage, what = this.manifest.name as string): Promise<string> {
-    const set = trustOf(this.vault.path).local(this.id)
+    const set = this.localPart("data")
     return ownerRefusal(req, { allowRemote: set.allowRemote === true, allowUsers: Array.isArray(set.allowUsers) ? set.allowUsers : [] }, what)
   }
 

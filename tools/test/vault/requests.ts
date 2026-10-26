@@ -65,6 +65,14 @@ export default async ($: VaultTest) => {
       await vault.synced()
     }
     {
+      // (who may reach a plugin is always this machine's, declared local or not: the settings route keeps it here and it holds)
+      const [st] = await api("PATCH", "config/plugin/inbox", { allowRemote: true })
+      const opened = await refused("inbox.clear", {}), inVault = exists(".vaultite/plugins/inbox/data.json") && "allowRemote" in JSON.parse(read(".vaultite/plugins/inbox/data.json"))
+      await api("PATCH", "config/plugin/inbox", { allowRemote: null })
+      check("owner checks: a plugin's allowRemote set in its settings takes effect, kept on this machine, not the vault", st === 200 && opened === "ran" && !inVault &&
+        app.vaultPlugins.trust.local("inbox").allowRemote === undefined && await refused("inbox.clear", {}) === "refused", [st, opened, inVault])
+    }
+    {
       // (moved from the vault's settings: each machine takes what the vault had, once, so no one let in is shut out)
       const { accessToMachine } = await import("../../../core/migrations.ts")
       const trust = app.vaultPlugins.trust, steps = (trust as Any).read().steps as string[]

@@ -10,14 +10,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).
 - **Security fixes**: who may reach a plugin's owner-only parts (`allowRemote`, `allowUsers`) is this machine's alone,
-  never a vault file's (each machine keeps what the vault had, once); Vaultite Connect without owner tools refuses its
-  owner paths however they're written; Machines lists only tailnet addresses, only the owner asks another machine
-  through this one, and its pages never run on this app; a plugin that's off answers no request; an installed plugin
-  updates on its own only from where this machine allowed it, and only Vaultite's own address counts as official; a
-  vault plugin's commands and modules run only as allowed, and one naming a hidden script is refused; a Claude Code
-  account's folder is never one in the vault; an inbox reply is typed only into its agent, never a shell; a link to
-  what would run (a document that links to a script too) or to another computer's files never opens; a site's yes to
-  open another app is for that one kind of link.
+  never a vault file's, for every plugin, its settings' switch included (each machine keeps what the vault had, once);
+  Vaultite Connect without owner tools refuses its owner paths however they're written; Machines lists only tailnet
+  addresses, only the owner asks another machine through this one, and its pages never run on this app; a plugin that's
+  off answers no request; an installed plugin updates on its own only from where this machine allowed it, and only
+  Vaultite's own address counts as official; a vault plugin's commands and modules run only as allowed, and one naming
+  a hidden script is refused; a Claude Code account's folder is never one in the vault; an inbox reply is typed only
+  into its agent, never a shell; a link to what would run (a document that links to a script too) or to another
+  computer's files never opens; a site's yes to open another app is for that one kind of link.
 - **Agents browse out of your way**: a page an agent opens no longer joins your tabs. A card in the window's corner
   (dragged to any corner, like the mini player) shows it live, the agent's pointer moving to what it clicks; Open as tab
   brings the same page into your tabs, and the agent chip in its bar sends it back. An agent asking you opens its page
