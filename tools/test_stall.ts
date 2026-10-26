@@ -47,7 +47,7 @@ try {
   let loading: any = null
   while (Date.now() - t0 < 10_000) {
     const r = await get("loading", 1000)
-    if (r.status === 200) { loading = r.body; if (loading.ready || loading.downloading.length) break }
+    if (r.status === 200) { loading = r.body; if (loading.ready || loading.downloading.includes("Notes/Slow.md")) break } // (the Held notes may be named first)
     await sleep(100)
   }
   check("loading: answers before the vault is read, naming the file iCloud is still downloading",
