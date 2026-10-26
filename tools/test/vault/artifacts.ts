@@ -22,6 +22,14 @@ export default async ($: VaultTest) => {
         hop.status === 200 && asked.includes("https://cdn.jsdelivr.net/npm/x@1/hop.js"), [away.status, hop.status, asked])
     } finally { globalThis.fetch = real }
   }
+  {
+    // A page's link out (its bridge's `open`): once it read the vault, the user sees where it goes first, once a site.
+    const { askBeforeOpening } = await import("../../../plugins/core/html/links.ts")
+    const said = new Set(["docs.example.com"])
+    check("artifacts: a link out asks first once the page read the vault, naming its site, once per site",
+      askBeforeOpening(false, "https://evil.example/?d=secret", said) === null && askBeforeOpening(true, "https://evil.example/?d=secret", said) === "evil.example" &&
+      askBeforeOpening(true, "https://docs.example.com/x", said) === null && askBeforeOpening(true, "mailto:a@example.com?body=x", said) === "a@example.com")
+  }
   // Artifacts (.html) and tables (.csv): in the file list, written like other files, shown as text, their storage.
   write("Money/Spend.html", '<!doctype html><html><head><title>Spend</title><meta name="vaultite:icon" content="wallet"></head>' +
     '<body><h1>Spending</h1><script>vau.csv("Tx.csv")</script></body></html>')

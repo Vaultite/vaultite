@@ -1,6 +1,7 @@
 // An artifact in a sandboxed iframe, this side answering its bridge (reads, file list, storage, links, height, theme).
 // A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { askBeforeOpening } from "./links.ts"
 import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange } from "@vaultite"
 
 // Every view of one artifact (here and in the app's other windows) hears the others' db and storage writes.
@@ -60,6 +61,8 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   const growth = useRef<number[]>([])
   // Asking Claude: declined once, it stays declined while this view is open; the calls running, by their ask.
   const declined = useRef(false)
+  // Sites the user said yes to opening from it, while this view is open (links.ts).
+  const opened = useRef(new Set<string>()), listed = useRef(false)
   const asking = useRef(new Map<number, WebSocket>())
   useEffect(() => { declined.current = false }, [path])
 
@@ -115,7 +118,13 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
           .catch(() => { /* offline: it's kept until the next save */ })
       } else if (d.type === "open") {
         // (a shared folder's page opens no address for its guest: it would carry what it read out)
-        if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) { if (!share) window.open(d.url, "_blank", "noopener,noreferrer") }
+        if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) {
+          if (share) return
+          const site = askBeforeOpening(reads.current.size > 0 || listed.current, d.url, opened.current)
+          if (site !== null && !(await confirmDialog({ title: `Open ${site}?`, body: `${stem(path)} read your vault, and links to ${d.url.length > 300 ? `${d.url.slice(0, 300)}…` : d.url}`, confirm: "Open", cancel: "Cancel" }))) return
+          if (site !== null) opened.current.add(site)
+          window.open(d.url, "_blank", "noopener,noreferrer")
+        }
         else if (typeof d.path === "string" && d.path && !isHidden(d.path) && !outside) openFile(d.path, { newTab: !page })
       } else if (d.type === "abort") asking.current.get(d.id)?.close()
       else if (d.type === "ask") {
@@ -136,6 +145,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
           }
         } else if (d.op === "files") {
           const pre = String(args.prefix ?? "")
+          listed.current = true
           const s = getStore()
           const all = s ? [...s.files.files, ...s.files.others] : []
           reply(all.filter((f) => f.path.startsWith(pre) && !isHidden(f.path)).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size })))
