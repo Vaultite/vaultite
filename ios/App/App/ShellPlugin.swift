@@ -2,13 +2,8 @@ import Foundation
 import Capacitor
 import WebKit
 
-/// The shell's side of the bridge (the page's: web/src/core/phoneapp.ts). The web view starts on the first screen
-/// (web/phone.html, from the app's own files), which opens a server's app in its place; every page it loads gets this
-/// plugin, so the app can come back to the first screen ("Switch server…"), and so the tab list can show a picture of
-/// each tab (`snapshot`), so a touch can be answered with a tap (`haptic`), and so it runs what a widget asked (`pending`).
-///
-/// Navigation: Capacitor sends any page that isn't the app's own to Safari. The servers in the list are the app's own
-/// too (`shouldOverrideLoad`); links elsewhere still open in Safari.
+/// The shell's side of the bridge (the page's: web/src/core/phoneapp.ts), given to every page the web view loads.
+/// Capacitor sends pages that aren't the app's own to Safari; listed servers are its own too (`shouldOverrideLoad`).
 @objc(ShellPlugin)
 public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ShellPlugin"
@@ -88,9 +83,8 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    /// A picture of what the page shows now (the system's own, as the screen looks: web/src/core/tabShots.ts keeps one
-    /// per tab for the phone's tab list). `x`, `y`, `width`, `height`: the part to take, in the page's CSS pixels;
-    /// `scaled`: how wide the picture is, in points. A JPEG, as a data URL.
+    /// A picture of what the page shows now, as the screen looks (tabShots.ts keeps one per tab for the tab list).
+    /// `x`, `y`, `width`, `height`: the part, in CSS pixels; `scaled`: its width in points. A JPEG data URL.
     @objc func snapshot(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             guard let webView = self.webView else { return call.reject("no web view") }

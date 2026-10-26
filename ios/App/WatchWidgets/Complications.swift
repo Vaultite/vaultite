@@ -1,9 +1,8 @@
 import SwiftUI
 import WidgetKit
 
-/// Vaultite on the watch face: a microphone. A tap opens the app recording (`vaultite-watch://record`: the app's
-/// onOpenURL, Watch/ContentView.swift), so a voice note is one tap away. It shows nothing that changes, so its timeline
-/// is one entry, never reloaded.
+/// Vaultite on the watch face: a microphone, a tap away from recording (`vaultite-watch://record`). It shows nothing
+/// that changes, so its timeline is one entry, never reloaded.
 @main
 struct VaultiteComplications: Widget {
     var body: some WidgetConfiguration {

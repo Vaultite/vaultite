@@ -6,10 +6,8 @@ import { defineConfig, type Plugin } from 'vite'
 import { ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
 import { exportFile } from './core/rules.ts'
 
-// A page open in a browser keeps asking for the build it loaded from (a view's chunk, the first time it's opened), so a
-// rebuild keeps the files of the last days' builds rather than emptying dist/assets: a page from before the rebuild
-// still finds them. (An older build's file that's gone anyway: the app reloads into the new build, web/src/core/
-// errors.ts.) VAULTITE_CLEAN_BUILD=1 (the desktop and iPhone apps' builds, which ship dist) keeps only this build's.
+// An open page keeps asking for the build it loaded from (a view's chunk), so a rebuild keeps the last days' builds.
+// VAULTITE_CLEAN_BUILD=1 (the desktop and iPhone apps' builds, which ship dist) keeps only this one.
 const KEEP_DAYS = 3
 function keepRecentBuilds(): Plugin {
   return {
@@ -29,8 +27,7 @@ function keepRecentBuilds(): Plugin {
   }
 }
 
-// The app's plugins' icons (their manifests' `icon`: core/pluginmeta.ts) as virtual:plugin-icons, each Lucide one
-// imported alone: all of Lucide's is a chunk of its own (web/src/core/icons.tsx), loaded only when a file names one.
+// The app's plugins' icons as virtual:plugin-icons, each Lucide one imported alone (all of Lucide is its own chunk).
 // `more`: other plugins' folders by id (the demo's official ones).
 export function pluginIcons(more: Record<string, string> = {}): Plugin {
   const ID = 'virtual:plugin-icons', CORE = path.resolve(import.meta.dirname, 'plugins/core')

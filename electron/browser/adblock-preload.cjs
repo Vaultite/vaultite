@@ -1,6 +1,5 @@
-// Shields in each frame of a web page (electron/browser/adblock.ts): sandboxed, no Node, in the isolated world. It runs
-// before the page's first script, so scriptlets (YouTube's video ads) are in the page's world before the page is. The
-// user's own rules (Blocked elements) come with Shields', and again whenever they change.
+// Shields in each frame (adblock.ts), in the isolated world. It runs before the page's first script, so scriptlets
+// (YouTube's video ads) are in the page's world before the page is.
 "use strict"
 const { contextBridge, ipcRenderer, webFrame } = require("electron")
 

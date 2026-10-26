@@ -1,7 +1,5 @@
-// The desktop app's bridge into the page (sandboxed, so plain CommonJS): window.vaultite (typed in
-// web/src/core/desktop.ts) and data-electron and data-platform on <html>: index.css makes room for the traffic lights
-// on a Mac and Windows' controls on the right (Linux keeps its own title bar), unless data-fullscreen is set.
-// Everything goes through electron/main.ts, which checks that the page asking is one of its own windows.
+// The desktop app's bridge into the page (sandboxed, so plain CommonJS): window.vaultite (web/src/core/desktop.ts).
+// main.ts checks that the page asking is one of its own windows.
 const { contextBridge, ipcRenderer, webUtils } = require("electron")
 
 const MAC = process.platform === "darwin", WIN = process.platform === "win32"

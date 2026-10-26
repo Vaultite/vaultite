@@ -2,9 +2,8 @@ import Foundation
 import WatchConnectivity
 import WatchKit
 
-/// The watch's way to the server, through the phone (the phone's side and what it's asked: App/WatchLink.swift). The
-/// Inbox's events and answering them are messages (the phone must be reachable); a voice note is a file, queued until
-/// the phone takes it, its outcome coming back as a message when the phone is near, else later (`notes`).
+/// The watch's way to the server, through the phone (App/WatchLink.swift). The Inbox is messages (the phone must be
+/// reachable); a voice note is a file, queued until the phone takes it, its outcome coming back later (`notes`).
 @MainActor
 final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = PhoneLink()

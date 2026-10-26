@@ -1,6 +1,5 @@
-# Windows past ci.yml's tests on windows-2025 (main's gate): the tests on Arm, and what only a real Windows shows: vau
-# from PowerShell, cmd, Git Bash and WSL, the service, the terminals, and the installer installed and launched. Each
-# script in .github/windows/ writes what it saw to windows-out/, kept with the run (the app's screenshots too).
+# What only a real Windows shows (vau from each shell, the service, terminals, the installer) and the tests on Arm. Each
+# script in .github/windows/ writes what it saw to windows-out/, kept with the run.
 name: Windows
 on:
   push:

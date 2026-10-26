@@ -1,11 +1,8 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// Vaultite in the share sheet. A web page is clipped into the vault (POST /api/clip: from Safari with its HTML as
-/// shown, so a page you're logged in to clips too; from another app its address, which the server fetches). Other
-/// text goes to the inbox (POST /api/inbox); photos and files too, saved in the vault's attachments folder and embedded
-/// in that inbox note under the text shared with them (the op file.upload). It's sent to the server the app opened
-/// last (Shared/Servers.swift), over the tailnet like the app.
+/// Vaultite in the share sheet: a web page is clipped (from Safari with its HTML as shown, so pages behind a login clip
+/// too); other text, photos and files go to the inbox. Sent to the server the app opened last.
 class ShareViewController: UIViewController {
     private let card = UIView()
     private let spinner = UIActivityIndicatorView(style: .medium)

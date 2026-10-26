@@ -1,11 +1,8 @@
 import UIKit
 import UserNotifications
 
-/// The Inbox's events as the phone's notifications (and so the watch's): the app asks to notify, registers with Apple's
-/// push service and gives its token to the server it opened last (POST /api/inbox/devices; the server sends,
-/// plugins/core/inbox/push.ts). A notification's buttons answer it (the op inbox.answer): Approve and Deny on an agent
-/// asking permission (category "permission"), Reply (typed, or dictated on the watch) on a session's answer ("reply"),
-/// Mark read on the rest ("event"). The watch registers the same categories (Watch/WatchApp.swift).
+/// The Inbox's events as the phone's notifications (and so the watch's): its push token goes to the server it opened
+/// last (the server sends: plugins/core/inbox/push.ts). The watch registers the same categories (Watch/WatchApp.swift).
 final class Push: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Push()
 

@@ -1,7 +1,5 @@
-// Transcribes an audio file with Apple's on-device speech recognition (SpeechTranscriber, macOS 26), as the iPhone
-// app does: the Audio recorder's transcriber on a Mac, nothing to install. Compiled the first time it's needed
-// (plugin.ts). Prints the text; exit 2: this Mac can't (an older macOS, a language it hasn't), 1: it failed.
-//   transcribe <file> [--language pt]     transcribe --check [--language pt]
+// Apple's on-device speech recognition (SpeechTranscriber, macOS 26), compiled when first needed (plugin.ts). Exit 2:
+// this Mac can't (an older macOS, a language it hasn't), 1: failed.   transcribe <file>|--check [--language pt]
 import AVFoundation
 import Foundation
 import Speech

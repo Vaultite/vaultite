@@ -1,15 +1,9 @@
 #!/bin/zsh
-# The desktop app's updates (electron/main.ts runs this in a login shell, so git, node and npm are on the PATH): zsh on a
-# Mac, bash on Linux, so plain sh here.
-#
+# The desktop app's updates, run by electron/main.ts in a login shell (git, node and npm on the PATH): zsh on a Mac,
+# bash on Linux, so plain sh here.
 #   update.sh build <clone> <repo url> <the running app's commit> [<branch> <npm script> <commit>]
-#     Builds the newest main of the repo as Vaultite Main.app (Vaultite Dev: its branch, with app:build:dev), in a clone of
-#     its own (never a checkout someone works in): fetches, checks it out, installs packages when package-lock.json
-#     changed, `npm run app:build`, and moves the app (Linux: its unpacked folder, named as the app)
-#     to <clone>/../update. <commit>: that one rather than the branch's newest (an attached server's). Prints `@building <commit>` before a build (the app's toast), and last the commit built. Exit 3: the app already runs it; anything else but 0: it failed (the
-#     output says why).
+#     the branch's newest (or <commit>), built in a clone of its own into <clone>/../update. Exit 3: the app runs it.
 #   update.sh install <the app's pid> <new .app> <the running .app> [<its executable's name>]
-#     Once the app has quit, puts the new build in its place and opens it again (Linux: the folders, and the executable).
 set -eu
 # The login shell brings the user's aliases (an `rm -I` prompts, gets no answer and fails every build): none here.
 unalias -a 2>/dev/null || true

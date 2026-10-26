@@ -1,16 +1,7 @@
-# The desktop app: a signed and notarized Mac build (dmg and zip, Apple silicon and Intel), Linux's AppImage and .deb and
-# Windows' installer (x64 and arm64, each built on its own architecture: their native packages are installed there).
-# - A v* tag (matching package.json's version) is that GitHub release, its notes the summary atop CHANGELOG.md's section for it, and goes
-#   on the update feed (vaultite.com/updates: R2's vaultite-updates, which vaultite-cloud serves).
-# - Every night, if main changed, it's Vaultite Nightly (electron/nightly.cjs: an app of its own), the `nightly`
-#   prerelease, replaced each time: version <next patch>-nightly.<time>, on the feed's nightly/ (where Vaultite Nightly
-#   updates from). By hand: Actions, Release, Run workflow (on main).
-# Secrets: MAC_CERT_P12 (the Developer ID Application certificate and key, base64) and MAC_CERT_PASSWORD; NOTARY_KEY (an
-# App Store Connect API key's .p8, base64), NOTARY_KEY_ID and NOTARY_ISSUER; for the feed, CLOUDFLARE_API_TOKEN (R2
-# edit) and CLOUDFLARE_ACCOUNT_ID; to sign Windows' installers with Azure Trusted Signing (unsigned without),
-# AZURE_TENANT_ID, AZURE_CLIENT_ID and AZURE_CLIENT_SECRET, with the variables AZURE_SIGN_ENDPOINT,
-# AZURE_SIGN_ACCOUNT, AZURE_SIGN_PROFILE and AZURE_SIGN_PUBLISHER (the certificate's subject CN); SITE_DEPLOY_TOKEN (a fine-grained token: tkslucas/vaultite-site, Contents read and
-# write) for a release to redeploy vaultite.com, its demo built from it.
+# The desktop app for Mac, Linux and Windows (each built on its own architecture). A v* tag is that GitHub release and
+# goes on the update feed (vaultite.com/updates); nightly, if main changed, it's Vaultite Nightly (electron/nightly.cjs).
+# Secrets: MAC_CERT_P12 (the Developer ID Application certificate and key, base64), NOTARY_KEY (an App Store Connect
+# API key's .p8, base64), SITE_DEPLOY_TOKEN (fine-grained: tkslucas/vaultite-site, Contents read and write).
 name: Release
 on:
   push:
@@ -230,8 +221,7 @@ jobs:
               --title "Nightly $V" --notes "Vaultite Nightly: main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. It installs beside Vaultite and updates itself to each next nightly."
           fi
       # The feed's files, the update lists last so they never name a file that isn't there yet (a nightly's are
-      # nightly*.yml: electron-builder names them after the version's prerelease, as the app asks for; Windows' are
-      # latest.yml and nightly.yml, with no platform in their names).
+      # nightly*.yml, named after the version's prerelease; Windows' are latest.yml and nightly.yml).
       - name: The update feed
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

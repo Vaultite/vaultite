@@ -2,9 +2,8 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// The routines (the op routine.list), like Today's: the large one is the week, the medium one today's as icons, the
-/// small one today's as a list. A tap on a routine ticks it for today, like Today's (Feed.Routine.tappable); anywhere
-/// else opens the Today page. A routine's whole strip is its button (Hit): widgets only hit what's drawn.
+/// The routines, like Today's: a tap on one ticks it for today, anywhere else opens Today. A routine's whole strip is
+/// its button (Hit): widgets only hit what's drawn.
 
 struct CheckRoutine: AppIntent {
     static let title: LocalizedStringResource = "Tick a routine"

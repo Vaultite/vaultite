@@ -1,7 +1,5 @@
-// Part of electron-builder's afterPack (sign.cjs, before signing): Finder's Quick Look of Markdown files
-// (electron/quicklook/Preview.swift, a data-based preview extension in Contents/PlugIns), and document icons the system
-// makes from the app's icon for the files it opens. A Mac without Xcode's tools builds the app without the preview
-// (a release can't).
+// Part of afterPack (sign.cjs): Finder's Quick Look of Markdown (quicklook/Preview.swift) and the document icons. A Mac
+// without Xcode's tools builds the app without the preview (a release can't).
 const { execFileSync } = require("node:child_process")
 const fs = require("node:fs")
 const path = require("node:path")

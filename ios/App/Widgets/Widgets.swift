@@ -1,9 +1,8 @@
 import SwiftUI
 import WidgetKit
 
-/// The iPhone's widgets and controls (the target Widgets, embedded in the app's PlugIns): shortcuts that open the app
-/// (Actions.swift), today's routines (Routines.swift) and agents waiting (Agents.swift). They reach the server the app
-/// opened last (Servers.current), through the app group.
+/// The iPhone's widgets and controls: shortcuts (Actions.swift), today's routines (Routines.swift) and agents waiting
+/// (Agents.swift). They reach the server the app opened last through the app group.
 @main
 struct VaultiteWidgets: WidgetBundle {
     var body: some Widget {

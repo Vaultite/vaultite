@@ -2,9 +2,8 @@ import Foundation
 import HealthKit
 import UIKit
 
-/// Apple Health into the vault: sleep, workouts and each day's activity, posted to the route each server's Settings page
-/// named when it turned this on (ShellPlugin's health*). Its whole history first (newest days first, resumable), then
-/// what's new as the Watch syncs (observer queries with background delivery, anchored queries). Anchors are per server.
+/// Apple Health into the vault (sleep, workouts, each day's activity): the whole history first, newest days first and
+/// resumable, then what's new as the Watch syncs. Anchors are per server.
 final class Health {
     static let shared = Health()
     let store = HKHealthStore()

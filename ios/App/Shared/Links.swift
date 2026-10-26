@@ -1,9 +1,8 @@
 import AppIntents
 import Foundation
 
-/// What the widgets, controls, shortcuts and links ask the app for, as a `vaultite://` address: `record` (a voice note,
-/// the app's VoiceNote.swift), `command/<id>` (a palette command), `open/<path>` (a vault file) or `bundle/<owner>/<name>`
-/// (a bundle's preview, from its page on vaultite.com), the last three done by the server's page (phoneapp.ts takeLinks).
+/// What widgets, controls, shortcuts and links ask the app for, as a `vaultite://` address; all but `record` are done
+/// by the server's page (phoneapp.ts takeLinks).
 enum Links {
     static let record = URL(string: "vaultite://record")!
     static func command(_ id: String) -> URL { URL(string: "vaultite://command/\(id)")! }

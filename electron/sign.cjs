@@ -1,20 +1,5 @@
-// electron-builder's afterPack (package.json "build"): the app's native modules for its architecture (natives.cjs), then
-// signs it with codesign, one file at a time. Windows: only natives.cjs (signing is electron-builder's: release.yml).
-// electron-builder's own signing (@electron/osx-sign) opens every file in the bundle at once to find the binaries, and
-// with node_modules in it (some 26,000 files) that's more than macOS lets a process have open (EMFILE).
-//
-// With a code signing identity in the keychain it signs with that: VAULTITE_SIGN_IDENTITY (a name or its SHA-1), else
-// the first "Developer ID Application", else the first "Apple Development", else (not for a release) any other trusted
-// code signing identity, like a self-signed one made for a Mac that builds its own updates. macOS keeps privacy permissions (Files and
-// Folders, iCloud Drive, the microphone) for an app signed so across builds, since they're tied to its team and bundle
-// id; an app signed ad hoc is a new app to macOS on every build, and its shells lose the vault until they're granted
-// again. With no identity (or one that can't sign: a keychain locked over ssh) it signs ad hoc, and says so.
-//
-// The Quick Look extension (quicklook.cjs) is built into the app first, and signed in its own sandbox.
-//
-// A release (VAULTITE_RELEASE, npm run release) needs a Developer ID: every binary is signed with the hardened runtime
-// (electron/entitlements.plist) and a timestamp, then notarized with the `vaultite-notary` notarytool profile if there is one
-// and stapled (the dmg too: electron/dmg.cjs).
+// electron-builder's afterPack. codesign one file at a time: @electron/osx-sign opens all ~26,000 at once (EMFILE). A
+// real identity, not ad hoc, keeps macOS' privacy grants (the vault) across builds; else ad hoc.
 const { execFileSync } = require("node:child_process")
 const fs = require("node:fs")
 const os = require("node:os")
@@ -125,13 +110,8 @@ function staple(file, tries = 5) {
   }
 }
 
-// Chromium encrypts the cookies it keeps on disk, as Chrome does, with the app's key: its "<name> Safe Storage" Keychain
-// item on a Mac (the one safeStorage uses), the keyring on Linux. That's Electron's EnableCookieEncryption fuse, a byte in
-// its binary, flipped here before the app is signed: a change after breaks the signature (electron-builder's own
-// `electronFuses` flips them after afterPack, so after this has signed). Cookies saved in plain text before still load,
-// and are encrypted once a site sets them again. A build without the fuse can't read them, and drops every cookie of a
-// site with one it can't decrypt: update.sh never goes back to one (it looks for EnableCookieEncryption in this file),
-// and a run from source gets the fuse too (start.ts).
+// The cookie encryption fuse (EnableCookieEncryption) flips before signing, as a change after breaks the signature. A
+// build without it drops every cookie: update.sh (it greps this file) never goes back to one; start.ts sets it.
 async function fuses(context) {
   const { FuseVersion, FuseV1Options } = require("@electron/fuses")
   await context.packager.addElectronFuses(context, { version: FuseVersion.V1, [FuseV1Options.EnableCookieEncryption]: true })

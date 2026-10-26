@@ -2,8 +2,7 @@ import SwiftUI
 import UserNotifications
 import WatchKit
 
-/// Vaultite on the watch: no keyboard. A microphone (a voice note, transcribed on the phone, into the Inbox and to the
-/// front-door agent when the server has one) and the Inbox's events, answered with buttons or a dictated reply.
+/// Vaultite on the watch, no keyboard: a voice note and the Inbox's events, answered with buttons or a dictated reply.
 /// Everything goes through the phone (PhoneLink.swift).
 @main
 struct VaultiteWatchApp: App {

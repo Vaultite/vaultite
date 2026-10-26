@@ -5,10 +5,8 @@ import base, { pluginIcons, pluginModules } from './vite.config.ts'
 import { MACHINE } from './web/demo/machine.ts'
 import { ignoreOf, walk } from './core/rules.ts'
 
-// npm run build:demo: the web app with its server in the browser, on the sandbox vault (web/demo/CLAUDE.md), as static
-// files in web/dist-demo for any host, under any path.
-// (real paths: Vite sees each module at its real one, so a checkout or temp folder reached through a link, as a Mac's
-// /var is /private/var's, still matches)
+// npm run build:demo (web/demo/CLAUDE.md). Real paths: Vite sees each module at its real one, so a folder reached
+// through a link (a Mac's /var) still matches.
 const real = (p: string) => fs.realpathSync.native(p)
 const ROOT = real(import.meta.dirname)
 /** `file`'s path under `dir` with / (it's a module URL's), or null when it isn't under it. */
@@ -113,10 +111,8 @@ function noModuleUrls(): Plugin {
   }
 }
 
-/** The server's modules in the worker: each sees itself at /app as in the repo (its import.meta.url, dirname and filename), and core/plugins.ts
- *  takes the built-in plugins' backends from the bundle, but those that need a machine: virtual:demo-plugin-files names
- *  them (for web/demo/mount.ts) and keeps them once worker.ts imports virtual:demo-plugins, after the core (one chunk:
- *  WebKit runs a worker's script again when a chunk imports it). The official plugins' too, and their files. */
+/** The server's modules in the worker, each at /app as in the repo; virtual:demo-plugin-files names the backends left
+ *  out (they need a machine). One chunk: WebKit runs a worker's script again when a chunk imports it. */
 function demoServer(): Plugin {
   const dirs = [
     ...fs.readdirSync(path.join(ROOT, 'plugins/core')).filter((d) => !MACHINE.includes(d)).map((d) => ({ id: d, dir: path.join(ROOT, 'plugins/core', d) })),

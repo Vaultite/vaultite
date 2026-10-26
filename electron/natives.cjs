@@ -1,7 +1,5 @@
-// Part of electron-builder's afterPack (sign.cjs, before signing): a Mac app built for one architecture from this Mac's
-// node_modules, which npm installed for this Mac's. A package built for another (rolldown's binding, lightningcss's)
-// is swapped for its own architecture's, as package-lock.json pins it (downloaded, its integrity checked); prebuilds for
-// other platforms are dropped; then every binary in the app must run on its architecture, or the build fails.
+// Part of afterPack (sign.cjs): npm installed node_modules for this Mac's architecture, so a package built for another
+// is swapped for the target's (as package-lock.json pins it), and every binary must run on it or the build fails.
 const { execFileSync } = require("node:child_process")
 const crypto = require("node:crypto")
 const fs = require("node:fs")
@@ -97,9 +95,8 @@ function prebuilds(root, platform, arch) {
   }
 }
 
-/** A Windows app, built on its own architecture's Windows (nothing is swapped: a package for another fails the build):
- *  its prebuilds, and its id in its package.json, which main.ts gives Windows as its AppUserModelID (the Start menu
- *  shortcut's, so its notifications are the app's). */
+/** A Windows app, built on its own architecture (a package for another fails the build): its prebuilds, and its id,
+ *  which main.ts gives Windows as its AppUserModelID (so its notifications are the app's). */
 exports.windows = function windows(context) {
   const arch = require("builder-util").Arch[context.arch]
   const root = path.join(context.appOutDir, "resources", "app")

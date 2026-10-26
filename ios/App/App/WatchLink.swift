@@ -3,16 +3,8 @@ import Speech
 import UIKit
 import WatchConnectivity
 
-/// The watch's way to the server: the watch can't reach the tailnet itself, so it asks the phone (WatchConnectivity),
-/// which asks the server it opened last (Servers.current), like the share extension. The watch's side:
-/// Watch/PhoneLink.swift. What it asks, as a message (a dictionary, answered with one):
-///   - `do: inbox`: the Inbox's latest events (GET /api/inbox/events) -> `events` ([{id, title, body, kind, ask, read,
-///     t}]), `unread`.
-///   - `do: answer`, `id`, `answer` (approve, deny, read): the op inbox.answer -> `ok`.
-///   - `do: wake`: nothing; it wakes this app so the recordings sent with it come in now.
-/// A short voice note comes as message data, the phone near, answered with its outcome (JSON). Otherwise it comes as a file (transferFile, metadata `do: voice`, `id`): sent on (Voice.send: transcribed here when
-/// short, else by the server; `trim` seconds of silence cut from its end first), and the outcome sent back (`reply`: `voice`
-/// (its id), `text`, `path` or `error`).
+/// The watch's way to the server, which it can't reach itself: it asks the phone (WatchConnectivity), which asks the
+/// server it opened last. The watch's side: Watch/PhoneLink.swift.
 final class WatchLink: NSObject, WCSessionDelegate {
     static let shared = WatchLink()
 
@@ -115,11 +107,8 @@ final class WatchLink: NSObject, WCSessionDelegate {
     }
 }
 
-/// A recording on its way to the inbox, never lost: a short one transcribed here (the op inbox.voice, with the recording,
-/// kept above its words); a long one, or one
-/// this phone couldn't transcribe or send, goes as it is to the server (audio-recorder/voice), which transcribes it or
-/// keeps the audio. It waits in Application Support/Voice notes until it's sent, so one the server can't be reached for
-/// (or the app stopped mid-way) goes the app's next time in front.
+/// A recording on its way to the inbox, never lost: short ones transcribed here, the rest sent as is to the server.
+/// It waits in Application Support/Voice notes until sent, so one the server can't be reached for goes next time.
 @MainActor
 enum Voice {
     /// Longer than this, the server transcribes it: here it'd outlast what iOS gives an app in the background.

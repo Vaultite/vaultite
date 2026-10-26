@@ -8,9 +8,8 @@ export const MACHINE = ["terminal", "claude-code", "codex", "mcp", "machines",
   "activity", "agent-meters", "ai-import", "audio-recorder", "clipper", "calendar",
   ...OFFICIAL.filter((o) => o.machine).map((o) => o.id)]
 
-/** Of those, the ones the demo still draws, with the made-up data of their own preview (a plugin's `mockLive`, answered in
- *  the page: boot.ts): what agents did, their sessions and limits, other machines. Their backends are still left out, so
- *  nothing runs; a bundle turns them on or off as it says. By id: Vaultite's own plugins too (OFFICIAL). */
+/** Of those, the ones the demo still draws, with their preview's made-up data (`mockLive`, answered in the page:
+ *  boot.ts); their backends are still left out. By id: Vaultite's own plugins too (OFFICIAL). */
 export const SHOWN = ["claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "muse", "machines", "activity"]
 /** What needs a machine and isn't drawn with made-up data: off in the demo. */
 export const OFF = MACHINE.filter((id) => !SHOWN.includes(id))
@@ -36,9 +35,8 @@ export function panelsOff(cfg: Record<string, unknown>) {
 /** One of Vaultite's own plugins, which the demo has built in: a bundle installing it from there gets this one. */
 const builtIn = (id: string, source: unknown) => typeof source === "string" && source === `Vaultite/plugins/${id}` && OFFICIAL.some((o) => o.id === id)
 
-/** A bundle's files (an export's) as the demo applies them: what needs a machine off, and the vault plugins it brings or
- *  installs left out, by name (they run code: the app asks first), but Vaultite's own, built in here. `plugins`: its
- *  plugins.json as it came. */
+/** A bundle's files as the demo applies them: what needs a machine off, and the vault plugins it brings left out (they
+ *  run code: the app asks first), but Vaultite's own, built in here. `plugins`: its plugins.json as it came. */
 export function fitForDemo(given: Record<string, unknown>) {
   const files = { ...given }
   const read = (rel: string) => { const v = files[rel]; try { return isObj(v) ? v : typeof v === "string" ? JSON.parse(v) : null } catch { return null } }

@@ -1,6 +1,5 @@
-# Every push to main and every pull request: build, check and the tests, on Linux, macOS and Windows (windows.yml: Arm
-# and the Windows app itself), and the web demo. Nightly (and by hand):
-# every UI QA script too, so they don't rot (by hand, `-f scripts="a b"` runs only those).
+# Every push to main and pull request: build, check and the tests on Linux, macOS and Windows (windows.yml: Arm and the
+# app itself), and the web demo. Nightly: every UI QA script too, so they don't rot (`-f scripts="a b"`: only those).
 name: CI
 on:
   push:
@@ -54,9 +53,8 @@ jobs:
         run: npm test
       - if: ${{ !cancelled() }}
         run: npm run smoke
-  # The web demo (vaultite.com/demo), as the site builds it: with Vaultite's own plugins at their main, in Chrome and
-  # WebKit (Safari runs its workers its own way). It builds in a minute, beside the tests: a demo that can't start is
-  # caught on the push that broke it, not at a release.
+  # The web demo as the site builds it (Vaultite's own plugins at their main), in Chrome and WebKit: a demo that can't
+  # start is caught on the push that broke it, not at a release.
   demo:
     runs-on: ubuntu-24.04
     timeout-minutes: 30

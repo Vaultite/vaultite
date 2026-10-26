@@ -3,8 +3,7 @@ import Speech
 import SwiftUI
 
 /// A voice note on the phone (vaultite://record: the Action button, a control, a widget): it records as soon as it
-/// shows, then goes to the inbox like the watch's (Voice, WatchLink.swift: transcribed here when short, else by the
-/// server).
+/// shows, then goes to the inbox like the watch's (WatchLink.swift's Voice).
 @MainActor
 final class VoiceNote: NSObject, ObservableObject {
     enum Step: Equatable { case starting, recording, sending, sent(String), failed(String) }

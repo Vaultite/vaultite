@@ -1,8 +1,5 @@
-// Block an element, in the page (picker.ts runs this in an isolated world: the page's scripts never see it). The element
-// under the pointer is outlined; a click picks it; Wider and Narrower (↑ ↓) walk to its parent and back; what its
-// selector matches is marked in red, still shown (Preview, P, hides it to see the page without it), the selector
-// editable. Nothing's kept until Block: answers { selector } (Block, Enter) or null (Esc).
-// `at`: a point (CSS px) whose element starts picked (the page's right-click menu, Block element).
+// Block an element: runs in an isolated world (picker.ts), so the page's scripts never see it. Answers { selector } or
+// null; `at`: a point (CSS px) whose element starts picked (the page's right-click menu, Block element).
 function picker({ site, at }) {
   globalThis.__vaultitePicker?.cancel()
   return new Promise((resolve) => {

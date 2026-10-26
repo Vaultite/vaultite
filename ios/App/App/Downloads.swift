@@ -1,9 +1,8 @@
 import AVFoundation
 import Foundation
 
-/// Audio and video kept on this iPhone (the player's Download, web/src/core/phoneapp.ts): fetched in the background,
-/// even with the app closed, and played from the first screen when the server can't be reached. Where offline playback
-/// stopped waits here until the server's page takes it (`takePlaces`).
+/// Audio and video kept on this iPhone (the player's Download), fetched in the background and played from the first
+/// screen when the server can't be reached; where offline playback stopped waits for the page (`takePlaces`).
 final class Downloads: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     static let shared = Downloads()
 

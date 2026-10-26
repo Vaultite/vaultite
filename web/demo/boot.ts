@@ -50,9 +50,8 @@ class DemoSocket extends EventTarget {
 }
 globalThis.WebSocket = DemoSocket as unknown as typeof WebSocket
 
-/** What needs a machine but is drawn here (machine.ts SHOWN: agents' sessions and limits, Activity, Machines): its reads
- *  are answered in the page with its preview's made-up data (a plugin's `mockLive`, as Plugins > a plugin shows it); its
- *  writes need the app. Nothing reaches the server: their backends aren't in the demo. */
+/** What needs a machine but is drawn here (machine.ts SHOWN): reads are answered in the page with its preview's made-up
+ *  data (`mockLive`); writes need the app. */
 const shownRoute = new RegExp(`^api/(${SHOWN.join("|")})(?=[/?]|$)`)
 let made: Promise<Record<string, unknown>> | null = null
 const realFetch = globalThis.fetch.bind(globalThis)
@@ -69,8 +68,7 @@ globalThis.fetch = async (input, init) => {
   return key ? answer(mock[key]) : answer({ error: NEEDS_APP }, 501)
 }
 
-/** What says it's a demo: edits stay here, Reset, and where the app is. On phones, above their bottom bar, on two lines
- *  when narrow. It can be dragged out of the way (anywhere but its buttons), kept in the window, where it was for the
+/** What says it's a demo: edits stay here, Reset, and where the app is. Dragged out of the way, it stays there for the
  *  tab's session. */
 function badge() {
   const style = document.createElement("style")
@@ -169,9 +167,8 @@ async function reset() {
   location.replace(location.pathname)
 }
 
-/** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id> opens on that bundle, ?bundle=gh:<owner>/<name>
- *  on one shared from GitHub (fetched by this browser: a bundle's link, vaultite.com/b/...), and a message from the page
- *  switches it, all only from the demo's own site. The page hears which one is on, and what it is (vaultite-demo:info). */
+/** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id>, or gh:<owner>/<name> for one shared from
+ *  GitHub; a message switches it, only from the demo's own site, which hears what's on (vaultite-demo:info). */
 async function bundles() {
   const api = (path: string, body?: unknown) => fetch(`api/${path}`, body === undefined ? undefined
     : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json())
