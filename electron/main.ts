@@ -1,6 +1,7 @@
 // Vaultite as a desktop app (Electron): each vault a window with its server (its own, or one here: host.ts); see CLAUDE.md.
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
 import "../core/winspawn.ts" // (first: on Windows no program the main process starts opens a console window)
+import "./dockenv.ts" // (before anything reads the environment)
 import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"

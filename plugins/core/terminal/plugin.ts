@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, MODEL_NAME, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -203,13 +203,6 @@ const sweeper = setInterval(sweep, 3600 * 1000)
 sweeper.unref?.()
 plugin.onUnload(() => clearInterval(sweeper))
 
-/** A coding agent's own session, when one started the server or the app: a Claude Code that inherits CLAUDECODE and
- *  CLAUDE_CODE_CHILD_SESSION takes itself for nested and saves no transcript, and `vau` takes the shell for that agent. */
-const AGENT_SESSION = ["CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SESSION_ATTENDED",
-  "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_CODE_SSE_PORT",
-  "CLAUDE_PID", "CLAUDE_EFFORT"]
-const agentSession = (k: string) => AGENT_SESSION.includes(k) || (k.startsWith("CODEX_") && k !== "CODEX_HOME")
-
 /** The server's environment, less what's about the server itself (npm's variables when run with npm start, PORT) and
  *  the agent's session that started it, if one did. */
 function env(): Record<string, string> {
@@ -217,7 +210,7 @@ function env(): Record<string, string> {
   for (const [k, v] of Object.entries(process.env)) {
     // (ELECTRON_RUN_AS_NODE: how the desktop app runs this server; a shell that kept it would start every Electron app,
     // Vaultite or VS Code, as plain Node, which exits at once)
-    if (v === undefined || k.startsWith("npm_") || k.startsWith("VAULTITE_") || agentSession(k)
+    if (v === undefined || k.startsWith("npm_") || k.startsWith("VAULTITE_") || agentSession(k, v)
       || ["PORT", "HOST", "INIT_CWD", "TMUX", "TMUX_PANE", "ELECTRON_RUN_AS_NODE"].includes(k)) continue
     // (Windows' variables have any case, and a shell given Path and PATH would take either: one, Path)
     out[WIN && k.toUpperCase() === "PATH" ? PATH : k] = v

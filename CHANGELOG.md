@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The desktop app opened by an agent is the Dock's**: started from an agent's session or a Vaultite terminal (`open -a`,
+  a deploy), it no longer takes that session's account for the default one, nor its variables into new terminals.
 - **Many notes written at once**: an agent writing hundreds of notes together no longer gets some refused as "iCloud is
   still downloading" on a busy machine (a slow read of a file on disk isn't iCloud's).
 - **Windows reads its processes in milliseconds**: what finds your agents and their terminals (usage pages, the

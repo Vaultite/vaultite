@@ -103,6 +103,27 @@ check("codex: on in its config is on", S.codexComputerUse(wm) === "on" && byId([
 fs.rmSync(path.dirname(path.dirname(path.dirname(CU))), { recursive: true })
 fs.rmSync(path.join(home, ".local/bin/claude"))
 
+// ---------- opened by an agent: as if from the Dock (core/sessionenv.ts) ----------
+{
+  const { asFromDock } = await import("../core/sessionenv.ts")
+  const bin = path.join(tmp, "app-bin"), sep = path.delimiter
+  const launched = () => ({ HOME: home, PATH: [bin, "/usr/bin"].join(sep), CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s1", CLAUDE_CONFIG_DIR: path.join(home, ".claude-alice"),
+    CODEX_HOME: path.join(home, ".codex-alice"), CODEX_THREAD_ID: "t1", GIT_EDITOR: "true", AI_AGENT: "claude-code", VAULTITE: "1", VAULTITE_TERMINAL: "claude-x1",
+    VAULTITE_URL: "http://127.0.0.1:21001", VAULTITE_BIN: bin, VAULTITE_ZDOTDIR: "/tmp/zdot", VAULTITE_USER_DATA: "/tmp/ud", VAULTITE_DEBUG_PORT: "9339" } as Record<string, string | undefined>)
+  const e = launched()
+  asFromDock(e)
+  check("from the Dock: an agent's session, its account and its terminal's variables dropped, the app's own kept",
+    JSON.stringify(Object.keys(e).sort()) === JSON.stringify(["HOME", "PATH", "VAULTITE_DEBUG_PORT", "VAULTITE_USER_DATA"]) && e.PATH === "/usr/bin", e)
+  const kept = launched()
+  asFromDock(kept, true)
+  check("from the Dock: a script's copy keeps the account it chose", kept.CLAUDE_CONFIG_DIR === path.join(home, ".claude-alice") && kept.CODEX_HOME && !kept.CLAUDECODE, kept)
+  const own = { HOME: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude-alice"), CODEX_HOME: "/x", GIT_EDITOR: "true" }
+  check("from the Dock: an account chosen outside an agent's session is the user's", asFromDock(own).length === 0 && own.CLAUDE_CONFIG_DIR && own.GIT_EDITOR === "true", own)
+  const shell = { HOME: home, VAULTITE: "1", VAULTITE_TERMINAL: "zsh-x2", CLAUDE_CONFIG_DIR: path.join(home, ".claude-alice"), GIT_EDITOR: "vim" }
+  asFromDock(shell)
+  check("from the Dock: a plain terminal's variables dropped, the shell's own kept", !shell.VAULTITE && !shell.VAULTITE_TERMINAL && !!shell.CLAUDE_CONFIG_DIR && shell.GIT_EDITOR === "vim", shell)
+}
+
 // ---------- vau ----------
 check("vau: not installed", S.vauStatus(w, []).path === null)
 const v1 = S.installVau(w)
