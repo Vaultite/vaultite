@@ -75,6 +75,18 @@ export default async ($: VaultTest) => {
     check("hooks: every run is logged (vault-plugin.log)", st === 200 && body.includes("startup: `node started.mjs` exit 0") && body.includes("event file.changed: `node note-changed.mjs` exit 0") &&
       body.includes("wordcount.fail") && body.includes("the reason") && body.includes("timed out after 0.3 s"), body)
 
+    {
+      // (an event can come before the next request's sync: a script changed on disk since it was allowed doesn't run)
+      await api("POST", "ops/plugin.allow", { id: "wordcount", edits: false })
+      const script = path.join(VAULT, WC, "note-changed.mjs"), was = fs.readFileSync(script, "utf8")
+      fs.writeFileSync(script, `import fs from "node:fs"; fs.writeFileSync(process.env.VAULTITE_PLUGIN_STATE + "/changed-by-sync.txt", "ran")\n`)
+      eventsOf(vault).emit("file.changed", { paths: ["Notes/Count me.md"] })
+      await sleep(400)
+      check("hooks: a command whose files changed since this machine allowed them doesn't run", !fs.existsSync(path.join(state, "changed-by-sync.txt")))
+      fs.writeFileSync(script, was)
+      await api("POST", "ops/plugin.allow", { id: "wordcount", edits: true })
+    }
+
     // Checked before it loads: commands are argv arrays, inside its folder; ops in its area; known keys.
     const dir = path.join(VAULT, WC)
     const probs = hookProblems({ id: "wordcount", ops: [
@@ -86,6 +98,8 @@ export default async ($: VaultTest) => {
     const has = (s: string) => probs.some((p) => p.includes(s))
     check("hooks: the manifest's problems", has("'other.thing' should start with 'wordcount.'") && has("argv array of strings") && has("outside the plugin's folder") && has("isn't in the plugin's folder") &&
       has("kind is read, write or destructive") && has("param 'x' has no description") && has("'extra' isn't a key of an op") && has("did is what a call did") && has("events[0]: on is an event type") && has("startup[0] must be"), probs)
+    check("hooks: a hidden script it hands a program is refused even before it's there (it'd run unapproved once it is)",
+      hookProblems({ id: "wordcount", events: [{ on: "file.changed", command: ["node", ".later/run.mjs"] }] }, dir).some((p) => p.includes("'.later/run.mjs' is hidden")))
     check("hooks: the fixture has none", hookProblems(JSON.parse(fs.readFileSync(path.join(TOOLS, "fixtures", "wordcount", "manifest.json"), "utf8")), path.join(TOOLS, "fixtures", "wordcount")).length === 0)
     m.ops.push({ id: "wordcount.bad", summary: "x", kind: "read", command: "rm -rf /" })
     write(`${WC}/manifest.json`, JSON.stringify(m, null, 2))

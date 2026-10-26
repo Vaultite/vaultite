@@ -11,7 +11,7 @@ const POLICIES: UpdatePolicy[] = ["vaultite", "all", "off"]
 
 /** Whether a source is Vaultite's own (its GitHub organisation): what updates on its own unless the user says otherwise. */
 export function official(source: string) {
-  return /^vaultite\//i.test(source) || /github\.com[/:]vaultite\//i.test(source)
+  return /^vaultite\//i.test(source) || /^(https:\/\/(www\.)?github\.com\/|(ssh:\/\/)?git@github\.com[/:])vaultite\//i.test(source)
 }
 
 const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [])

@@ -156,8 +156,11 @@ const asking = new Map<string, Promise<boolean>>()
  *  remembered unless unticked). The camera and microphone then need macOS's yes too. */
 async function askPermission(profile: string, wc: WebContents, perm: string, details: { mediaTypes?: string[]; requestingUrl?: string; externalURL?: string }) {
   if (FREE.has(perm)) return true
-  const kinds = perm === "media" ? [...new Set((details.mediaTypes ?? []).map((t) => (t === "video" ? "camera" : "microphone")))] : [perm]
-  if (!kinds.length || kinds.some((k) => !ASKED[k])) return false
+  // (another app by its scheme, said in the question: a yes to zoommtg: is none to ms-msdt:)
+  const scheme = perm === "openExternal" ? (/^([a-z][a-z0-9+.-]*):/i.exec(details.externalURL ?? "")?.[1] ?? "").toLowerCase() : ""
+  if (perm === "openExternal" && !scheme) return false
+  const kinds = perm === "media" ? [...new Set((details.mediaTypes ?? []).map((t) => (t === "video" ? "camera" : "microphone")))] : [scheme ? `openExternal:${scheme}` : perm]
+  if (!kinds.length || kinds.some((k) => !ASKED[k.split(":")[0]])) return false
   const site = siteOf(hostOfUrl(details.requestingUrl || wc.getURL()))
   if (!site) return false
   const known = kinds.map((k) => permissionOf(profile, site, k))
@@ -168,7 +171,7 @@ async function askPermission(profile: string, wc: WebContents, perm: string, det
     let q = asking.get(key)
     if (!q) {
       const win = pageOf(wc)?.win ?? AppWindow.fromWebContents(wc) ?? undefined
-      const what = kinds.map((k) => ASKED[k]).join(" and ").replace(/ and use your /, " and ")
+      const what = kinds.map((k) => (scheme ? `open ${scheme}: links in another app` : ASKED[k])).join(" and ").replace(/ and use your /, " and ")
       const box = { type: "question" as const, message: `${site} wants to ${what}`, buttons: ["Allow", "Don't allow"], defaultId: 1, cancelId: 1,
         checkboxLabel: "Remember for this site", checkboxChecked: true }
       q = (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).then((r) => {
@@ -251,10 +254,10 @@ function stepOf(i: Input) {
   return [mod && "mod", MAC && i.control && "ctrl", i.alt && "alt", i.shift && "shift", key].filter(Boolean).join("+").toLowerCase()
 }
 
-/** A page's link to another app (zoommtg://, slack://), opened once the site may (asked like a permission, as
- *  browsers do); mailto: opens Mail. Never file: (a site doesn't open the Mac's files) or what runs code. */
+/** A page's link to another app (zoommtg://, slack://), opened once the site may (asked by scheme, as browsers do);
+ *  mailto: opens Mail. Never file:, network shares or Windows' schemes that run code. */
 async function otherApp(p: Page, to: string) {
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(to) || /^(javascript|data|vbscript|blob|file|about|chrome|devtools|view-source):/i.test(to)) return
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(to) || /^(javascript|data|vbscript|blob|file|about|chrome|devtools|view-source|ms-msdt|search-ms|search|ms-officecmd|shell|hcp|ms-help|res|smb|cifs|nfs|afp|disks?):/i.test(to)) return
   if (/^mailto:/i.test(to)) return void shell.openExternal(to)
   const wc = p.view.webContents
   if (wc.isDestroyed()) return

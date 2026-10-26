@@ -9,6 +9,18 @@ export default async ($: VaultTest) => {
   check("kinds by name", kindOf("a/b.py") === "code" && kindOf("x.IPYNB") === "notebook" && kindOf("s.pdf") === "pdf" && kindOf("w.xlsx") === "binary" &&
     kindOf("Makefile") === "code" && kindOf(".gitignore") === "code" && kindOf(".env.local") === "code" && kindOf("n.md") === "markdown" &&
     kindOf("odd.qqq") === "other", [kindOf("a/b.py"), kindOf(".env.local"), kindOf("odd.qqq")])
+  {
+    // Opening a file in its app (the desktop app, Open in default app): what would run is shown in its folder, by its name
+    // and by what it links to.
+    const { runsCode } = await import("../../../core/opening.ts")
+    fs.mkdirSync(path.join(VAULT, "Open"), { recursive: true })
+    fs.writeFileSync(path.join(VAULT, "Open/x.terminal"), "<plist/>")
+    fs.writeFileSync(path.join(VAULT, "Open/Real.pdf"), "%PDF-1.4\n")
+    fs.symlinkSync("x.terminal", path.join(VAULT, "Open/Report.pdf"))
+    check("opening: a link named like a document to what would run is shown, not opened", runsCode(path.join(VAULT, "Open/Report.pdf")) && runsCode(path.join(VAULT, "Open/x.terminal")) &&
+      !runsCode(path.join(VAULT, "Open/Real.pdf")) && ["a.chm", "b.jnlp", "c.iso", "d.xll", "e.mobileconfig", "f.pyz"].every((n) => runsCode(path.join(VAULT, "Open", n))))
+    fs.rmSync(path.join(VAULT, "Open"), { recursive: true })
+  }
   write("Code/clean.py", "import csv\n\n\ndef total(rows):\n    return sum(r['amount'] for r in rows)\n")
   write("Code/win.txt", "one\r\ntwo\r\n")
   write("Code/notes.qqq", "plain text with an odd name\n")

@@ -13,6 +13,7 @@ export default async ($: VaultTest) => {
       if (req.url === "/api/machines/self") return json(200, { instance: "peer-1", host: "box", platform: "linux", version: "0.1.0", commit: "abc1234", plugins: ["terminal", "harbor"],
         vault: JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
       if (req.url?.startsWith("/api/harbor/tides")) return json(200, [{ at: "06:10", label: "High" }])
+      if (req.url?.startsWith("/api/raw?")) { res.writeHead(200, { "Content-Type": "text/html" }); return res.end("<script>parent.x = 1</script>") }
       if (req.url === "/api/claude-code/session/a%20b?limit=2") return json(200, { id: "a b" })
       if (req.url?.startsWith("/api/render/block?")) {
         const q = new URL(req.url, "http://x").searchParams
@@ -41,6 +42,9 @@ export default async ($: VaultTest) => {
     check("machines: another machine's API through this one", c === 200 && JSON.parse(String(body))[0].label === "High", [c, body])
     ;[c, body] = await api("GET", "machines/box/claude-code/session/a b?limit=2")
     check("machines: its path encoded and its query kept", c === 200 && JSON.parse(String(body)).id === "a b", [c, body, seen.at(-1)])
+    const page0 = await app.run("GET", ["machines", "box", "raw"], { path: "x.html" }, {})
+    const h0 = (page0.body as Any)?.headers ?? {}
+    check("machines: another machine's page or picture never runs here (sandboxed, as sent)", page0.status === 200 && /^sandbox/.test(h0["Content-Security-Policy"] ?? "") && h0["X-Content-Type-Options"] === "nosniff", [page0.status, h0])
     ;[c, body] = await api("GET", "machines/box/nothing")
     check("machines: its errors come back as they are", c === 404 && body.error === "no such thing", [c, body])
     ;[c] = await api("GET", "machines/nope/state")

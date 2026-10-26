@@ -347,6 +347,7 @@ export class VaultPlugins {
     this.tiers = new Map(app.map((p) => [p.id, p.tier]))
     this.hooks = new Hooks(vault)
     this.trust = trustOf(vault.path)
+    this.hooks.allowed = (vp) => { try { return this.trust.approved(vp.id, digestOf(vp.dir).content) } catch { return false } }
   }
 
   /** An event (core/events.ts): the event hooks of the plugins that are loaded and on. */

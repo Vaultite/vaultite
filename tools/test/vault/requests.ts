@@ -55,6 +55,15 @@ export default async ($: VaultTest) => {
     const t = await refused("terminal.list", {})
     check("ops: an owner-only op is refused to someone else on the tailnet", t === "refused", t)
     check("ops: an op whose route only the owner may use is refused the same (the request goes with ctx.api)", await refused("inbox.clear", {}) === "refused")
+    {
+      // (who may reach any plugin is this machine's, whether or not its manifest marks allowRemote local)
+      const had = exists(".vaultite/plugins/inbox/data.json") ? read(".vaultite/plugins/inbox/data.json") : null
+      write(".vaultite/plugins/inbox/data.json", JSON.stringify({ allowRemote: true, allowUsers: ["stranger@example.com"] }))
+      await vault.synced()
+      check("owner checks: a plugin's allowRemote or allowUsers in the vault lets no one else in", await refused("inbox.clear", {}) === "refused")
+      if (had === null) fs.rmSync(path.join(VAULT, ".vaultite/plugins/inbox/data.json")); else write(".vaultite/plugins/inbox/data.json", had)
+      await vault.synced()
+    }
     check("ops: in-process (no request) nothing is refused", (await app.runOp("ops.list", {})).result !== undefined)
     // MCP lets a login the owner allowed (allowUsers) in, and its tools run for that request: the owner's ops stay refused.
     const { setTailscaleStatus } = await import("../../../core/owner.ts")

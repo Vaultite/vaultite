@@ -261,7 +261,8 @@ plugin.route("GET", "machines/*/**", async (req) => {
   }
   const type = r.headers.get("content-type") ?? "application/octet-stream"
   const body = Buffer.from(await r.arrayBuffer())
-  if (r.status === 200) return new Text(body, type)
+  // (its answer is that machine's, not this app's: a page or an SVG never runs on this origin)
+  if (r.status === 200) return new Text(body, type, { "Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'", "X-Content-Type-Options": "nosniff" })
   let err: unknown = { error: body.toString("utf8").slice(0, 500) }
   if (type.includes("json")) try { err = JSON.parse(body.toString("utf8")) } catch { /* as text */ }
   return reply(r.status, err)

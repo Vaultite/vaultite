@@ -181,6 +181,13 @@ export default async ($: VaultTest) => {
     ;[, accts] = await api("GET", "claude-code/accounts")
     check("claude accounts: a sibling signed in but with no sessions yet is one", accts.some((a: Any) => a.id === "lab"), accts)
     fs.rmSync(fresh, { recursive: true })
+    // (an account's folder holds Claude Code's settings, whose hooks it runs: never one the vault's writers can write)
+    fs.mkdirSync(path.join(VAULT, "Notes/.cc"), { recursive: true })
+    write(".vaultite/plugins/claude-code/data.json", JSON.stringify({ accounts: { lab: { dir: path.join(VAULT, "Notes/.cc") }, kit: { dir: tmp } } }))
+    ;[, accts] = await api("GET", "claude-code/accounts")
+    check("claude accounts: a folder the settings name is one, but never in the vault", !accts.some((a: Any) => a.id === "lab") && accts.some((a: Any) => a.id === "kit"), accts)
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/claude-code/data.json"))
+    fs.rmSync(path.join(VAULT, "Notes/.cc"), { recursive: true })
     fs.rmSync(WORK, { recursive: true })
   }
 }

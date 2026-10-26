@@ -46,7 +46,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.cachePath()`: .vaultite/cache/<id>.json in the vault (the vault's folder when run on its own, like the GitHub refresh).
 - `plugin.secrets()`: This machine's data/config.json (private URLs, keys). Never copy these into the vault.
 - `plugin.saveSecrets(data)`: Sets this plugin's own key in data/config.json (`secrets()[plugin.id]`; null removes it), the rest as it is. The file is readable by this machine's user only.
-- `plugin.refusal(req, what)`: Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the plugin's `allowUsers` and `allowRemote` settings.
+- `plugin.refusal(req, what)`: Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the plugin's `allowUsers` and `allowRemote` from this machine only (core/trust.ts): a vault's never lets anyone in.
 - `plugin.ownerOnly(req, what?)`: Throw 403 unless this request is this machine's owner's (refusal); one made in-process (no `http`) is.
 - `plugin.allows(what)`: Whether this machine's owner said yes to `what` (a command a vault setting names: a synced or shared vault mustn't choose what runs here). Kept on this machine, never in the vault (core/trust.ts).
 - `plugin.allow(what)`: Remember this machine's owner said yes to `what` (only after asking them: plugin.refusal).

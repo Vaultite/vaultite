@@ -88,6 +88,8 @@ export function installOps(app: App): Op[] {
         else if (apply && edited && !force) row.error = "its files were changed here since it was installed: pass force to replace them"
         // (one that says it does more beyond the vault than it did waits for the user, even when it updates on its own)
         else if (auto && changes.disclosures.some((d) => d.startsWith("now"))) row.error = "it says it does more beyond the vault now: update it by hand"
+        // (the lock syncs with the vault: on its own, only from where this machine allowed it)
+        else if (auto && app.vaultPlugins.trust.approval(id) && app.vaultPlugins.trust.approval(id)!.source !== l.source) row.error = "where it comes from changed since it was allowed here: update it by hand"
         else if (apply) {
           row.notes = await releaseNotes(src, l.commit, f.commit)
           await app.hold(() => place(app.vault, f, src, { how: auto ? "auto" : "manual", notes: row.notes }))

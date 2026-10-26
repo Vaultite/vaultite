@@ -197,6 +197,8 @@ export default async ($: VaultTest) => {
       check("connect: terminals, dispatch, screens and settings refused without owner tools; the rest not",
         ["/api/terminals", "/api/terminal/x", "/api/web-viewer/tabs", "/api/web-viewer/live/3", "/api/dispatch", "/api/ops/terminal.list", "/api/ops/dispatch.run", "/api/ops/settings.set", "/api/ops/ui.command", "/api/ui", "/api/vaults/open"].every((x) => ownerOnly(x))
         && !["/api/state", "/api/ops/docs.read", "/api/events", "/api/file"].some((x) => ownerOnly(x)))
+      check("connect: an owner path is refused however it's written, as the app routes it (doubled or trailing slashes, escapes)",
+        ["/api//ui", "/api/%75i", "/api//ops/plugin.enable", "/api/ops/plugin.enable/", "/api/ops//plugin.enable", "/api/ops/plugin%2Eenable", "/api/%74erminals", "/api/web-viewer//tabs"].every((x) => ownerOnly(x)))
       const fake = (headers: Record<string, string>) => ({ headers: { host: "127.0.0.1:8793", ...headers }, socket: { remoteAddress: "127.0.0.1" } }) as Any
       check("connect: the app's owner checks refuse what Connect marks, even with allowRemote", ownerRefusal(fake({ "x-vaultite-connect": "1" }), { allowRemote: true, owner: "" }, "the terminal").includes("Vaultite Connect")
         && ownerRefusal(fake({}), { owner: "" }, "the terminal") === "")

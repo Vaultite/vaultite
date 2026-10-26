@@ -32,13 +32,12 @@ export function verifyConnect(key: string | null, token: unknown, handle: string
   } catch { return null }
 }
 
-/** Why Connect refuses this while owner tools are off, or "". */
+/** Why Connect refuses this while owner tools are off, or "". Read as the app routes it (server.ts): empty parts
+ *  dropped, each decoded, so `/api//ui` or `/api/%75i` is /api/ui. */
 export function ownerOnly(pathname: string): string {
-  if (OWNER_PATHS.test(pathname)) return "this only answers on this Mac (turn on owner tools over Connect in Connections)"
-  const op = /^\/api\/ops\/([^/?]+)$/.exec(pathname)?.[1]
-  let id = ""
-  try { id = op ? decodeURIComponent(op) : "" } catch { /* a broken escape: no op */ }
-  if (id && OWNER_OPS.test(id)) return "this only runs on this Mac (turn on owner tools over Connect in Connections)"
+  const parts = pathname.split("/").filter(Boolean).map((x) => { try { return decodeURIComponent(x) } catch { return x } })
+  if (OWNER_PATHS.test(`/${parts.join("/")}`)) return "this only answers on this Mac (turn on owner tools over Connect in Connections)"
+  if (parts[0] === "api" && parts[1] === "ops" && OWNER_OPS.test(parts[2] ?? "")) return "this only runs on this Mac (turn on owner tools over Connect in Connections)"
   return ""
 }
 

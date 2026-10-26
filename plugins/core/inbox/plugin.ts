@@ -1156,8 +1156,13 @@ plugin.provide("inbox:handed", (terminal: string) => hand(terminal))
 const ending = new Map<string, number>()
 const ENDING = 30 * 60_000
 
-/** Where a reply to a report goes: typed into its terminal still running; else its session resumed while the prompt
- *  cache lasts (cheap), else a new session told to read the report. `want`: resume or new, whatever the cache. */
+/** The terminals a reply may be typed into: its agent running in it, never a shell at its prompt, which would run the
+ *  line (a report names its terminal, and anyone who writes the vault can write a report). */
+type Live = { id: string; agent?: string | null; busy?: boolean; state?: string }
+export const typable = (sessions: Live[]) => (id: string) => !!id && sessions.some((s) => s.id === id && !!s.agent && s.busy === true)
+
+/** Where a reply to a report goes: typed into its terminal still running (`live`: typable); else its session resumed while
+ *  the prompt cache lasts (cheap), else a new session told to read the report. `want`: resume or new, whatever the cache. */
 type Plan = { how: "type" | "resume" | "new"; to: string; ago: number | null; ttl: number | null; transcript: string }
 async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Promise<Plan | null> {
   const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
@@ -1339,15 +1344,14 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   const line = text.trim().replace(/\s*\n\s*/g, " ")
   if (!line) throw new OpError("text: the reply")
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
-  const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: { id: string; state?: string }[] }
-  const alive = (id: string) => !!id && sessions.some((s) => s.id === id)
+  const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
   const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
   // (a reply to its one question is its answer: an option by number or name, else typed as its own)
   if (asks && e.questions?.length === 1 && !e.questions[0].multi) {
     if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     return { how: "type", terminal: (await pickIn(ctx, e, [line])).terminal }
   }
-  const plan = await replyPlan(sessionOfRow(e), alive, how)
+  const plan = await replyPlan(sessionOfRow(e), typable(sessions), how)
   if (!plan) throw new OpError(`its terminal ${e.terminal} has ended and it names no session to resume`, 409)
   if (plan.how === "type" && asks && (e.questions || e.ask === "question")) {
     // (its questions put away, as Esc does in its terminal, so the reply is a message, not keys in its choices)
@@ -1411,19 +1415,19 @@ plugin.op({
   args: ["to"],
   run: async (p, ctx) => {
     const to = str(p.to).trim()
-    const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: { id: string }[] }
+    const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
     const alive = (id: string) => sessions.some((s) => s.id === id)
     let plan: Plan | null
     if (EVENT_ID.test(to)) {
       const e = await eventFor(ctx, to)
       if (e.machine) return onOwner(ctx, e, "inbox.reply-plan", { to: splitMachine(e.id)[0] })
-      plan = await replyPlan(sessionOfRow(e), alive)
+      plan = await replyPlan(sessionOfRow(e), typable(sessions))
     } else {
       const r = resultAt(to)
       if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
       const at = await elsewhere(r, alive)
       if (at) return onSessionMachine(ctx, at, "inbox.reply-plan", { to: `${r.id}.md` })
-      plan = await replyPlan(r, alive)
+      plan = await replyPlan(r, typable(sessions))
     }
     return { how: plan?.how ?? null, ago: plan?.ago ?? null, ttl: plan?.ttl ?? null }
   },
@@ -1472,11 +1476,11 @@ comes back to it. A session on another of the Machines gets it through the app t
     if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
     const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
     if (!terminal && !(session && agent)) throw new OpError("this result doesn't say which session wrote it (only inbox.report's do)", 409)
-    const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: { id: string; state?: string }[] }
+    const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
     const alive = (id: string) => !!id && sessions.some((s) => s.id === id)
     const at = await elsewhere(r, alive)
     if (at) return onSessionMachine(ctx, at, "inbox.reply", { to: `${r.id}.md`, text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
-    const plan = await replyPlan(r, alive, how)
+    const plan = await replyPlan(r, typable(sessions), how)
     if (!plan) throw new OpError(`its terminal ${terminal} has ended and the report has no session to resume`, 409)
     const again = "when it's done, report again with vau inbox report"
     if (plan.how === "type") {

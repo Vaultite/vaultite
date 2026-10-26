@@ -61,7 +61,7 @@ function accounts(): Account[] {
     if (ACCOUNT_ID.test(id) && ran) byDir.set(path.join(parent, n), id)
   }
   for (const [id, o] of Object.entries(set)) {
-    if (ACCOUNT_ID.test(id) && o && typeof o === "object" && typeof o.dir === "string" && o.dir) byDir.set(expandHome(o.dir), id)
+    if (ACCOUNT_ID.test(id) && o && typeof o === "object" && typeof o.dir === "string" && o.dir && !inVault(expandHome(o.dir))) byDir.set(expandHome(o.dir), id)
   }
   const out: Account[] = []
   for (const [dir, id] of byDir) {
@@ -70,6 +70,14 @@ function accounts(): Account[] {
     out.push({ id, dir, label: typeof o.label === "string" && o.label ? o.label : cap(id), private: o.private === true })
   }
   return out
+}
+
+/** Whether a folder is in the vault (or links into it): an account's holds Claude Code's settings, whose hooks it runs,
+ *  so the settings never name one that whoever writes the vault could fill. */
+function inVault(dir: string) {
+  const real = (p: string) => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
+  const roots = [path.resolve(plugin.vault.path), real(plugin.vault.path)]
+  return [path.resolve(dir), real(dir)].some((d) => roots.some((r) => d === r || d.startsWith(r + path.sep)))
 }
 
 // Its accounts' folders: a block's menu opens them in Finder.

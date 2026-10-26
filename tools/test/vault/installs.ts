@@ -405,6 +405,9 @@ export default async ($: VaultTest) => {
       await vau("plugin", "on", "lantern"); await vau("plugin", "on", "buoy")
       const vaultiteRow = (await vplugin("lantern")).source
       check("auto updates: a source of Vaultite's is flagged official, another's isn't", vaultiteRow?.official === true && (await vplugin("buoy")).source?.official === false, vaultiteRow)
+      const { official } = await import("../../../core/updates.ts")
+      check("auto updates: official only at Vaultite's own address, not one that names it further in", ["Vaultite/plugins/lantern", "https://github.com/vaultite/x.git", "git@github.com:vaultite/x.git"].every(official) &&
+        !["https://evil.example/github.com/vaultite/x.git", "git@evil.example:github.com/vaultite/x", "mallory/vaultite/x", "https://github.com.evil.example/vaultite/x"].some(official))
       repo("Vaultite/plugins", { "lantern/plugin.ts": lts("lantern", "bright") }, null, "feat(lantern): brighter at night")
       repo("Vaultite/plugins", { "README.md": "Lights.\n" }, null, "feat: a readme, not the lantern's")
       repo("Vaultite/plugins", { "lantern/AGENTS.md": "## Lantern\n" }, null, "chore(lantern): tidy")
@@ -459,6 +462,16 @@ export default async ($: VaultTest) => {
       ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
       check("auto updates: not one that says it does more beyond the vault now (that's the user's call)", /does more beyond the vault/.test((ao as Any[]).find((r) => r.id === "lantern")?.error) &&
         lock().lantern.version === "1.2.0", ao)
+      // (where it comes from is the lock's, a vault file: one changed since this machine allowed it isn't taken on its own)
+      repo("mallory/lantern", { "manifest.json": lm("lantern", "9.0.0"), "plugin.ts": lts("lantern", "evil") }, "v9.0.0")
+      const lk = conf("plugins-lock"), pj0 = conf("plugins")
+      write(".vaultite/plugins-lock.json", JSON.stringify({ ...lk, lantern: { ...lk.lantern, source: "mallory/lantern" } }))
+      write(".vaultite/plugins.json", JSON.stringify({ ...pj0, updatesOn: ["lantern"] }))
+      ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+      check("auto updates: not from another source than the one this machine allowed it from", !(ao as Any[]).find((r) => r.id === "lantern")?.applied && await light() === "steady" &&
+        lock().lantern.version === "1.2.0", ao)
+      write(".vaultite/plugins-lock.json", JSON.stringify(lk))
+      write(".vaultite/plugins.json", JSON.stringify(pj0))
 
       // Another machine updated it (the vault synced its files and lock): checked against the source, then allowed here.
       const now = await vplugin("lantern")

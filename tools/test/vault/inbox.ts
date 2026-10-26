@@ -472,6 +472,11 @@ export default async ($: VaultTest) => {
       check("reply typed in: no Enter when it doesn't show at the prompt (a dialog has the keys), an error",
         dialog.sent.length === 1 && over?.status === 409 && /didn't take it/.test(over.message), [dialog.sent, over?.message])
     }
+    {
+      const { typable } = await import("../../../plugins/core/inbox/plugin.ts")
+      const at = typable([{ id: "zsh-k3j2h1g0", agent: null, busy: false }, { id: "claude-a1b2c3d4", agent: "claude", busy: false }, { id: "claude-e5f6g7h8", agent: "claude", busy: true }])
+      check("reply typed in: only into its agent running, never a shell at its prompt (a report names its terminal)", !at("zsh-k3j2h1g0") && !at("claude-a1b2c3d4") && at("claude-e5f6g7h8") && !at("nope"))
+    }
     // Where a reply goes once the session ended: resumed while its prompt cache lasts (the TTL its transcript wrote with),
     // else a new session; a handed terminal ends when the turn that reported does.
     {

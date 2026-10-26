@@ -30,8 +30,8 @@ function commandProblems(c: unknown, dir: string, where: string): string[] {
     return [`${where}: command must be an argv array of strings, like ["node", "run.mjs"] (no shell)`]
   }
   const prog = c[0] as string
-  // (a script it hands a program, node's .hidden/run.mjs, is part of the approved version too)
-  const unhashed = (c as string[]).slice(1).find((a) => !path.isAbsolute(a) && fs.existsSync(path.resolve(dir, a)) && inside(dir, path.resolve(dir, a)) && !hashed(dir, path.resolve(dir, a)))
+  // (a script it hands a program, node's .hidden/run.mjs, is part of the approved version too: one not there yet as well)
+  const unhashed = (c as string[]).slice(1).find((a) => !path.isAbsolute(a) && inside(dir, path.resolve(dir, a)) && !hashed(dir, path.resolve(dir, a)))
   if (unhashed) return [`${where}: '${unhashed}' is hidden or in node_modules (not part of the plugin's version, so this machine couldn't approve it)`]
   if (path.isAbsolute(prog) || !prog.includes("/")) return []
   const abs = path.resolve(dir, prog)
@@ -139,6 +139,10 @@ export class Hooks {
   private busy = new Map<string, { pending: VaultEvent | null }>() // event hooks running: the event to run next
   private rate = new Map<string, number[]>() // event hooks' recent starts
 
+  /** Whether a plugin's files are still the ones this machine allowed (VaultPlugins sets it): an event or a job can come
+   *  before the next sync, after its files changed. */
+  allowed: (p: Declared) => boolean = () => true
+
   constructor(vault: Vault) {
     this.vault = vault
   }
@@ -184,6 +188,10 @@ export class Hooks {
         resolve({ exit: code, stdout, stderr, error, timedOut })
       }
       let child: ReturnType<typeof spawn>
+      if (!this.allowed(p)) {
+        error = "its files changed since this machine allowed it: it runs again once allowed (vau plugin allow)"
+        return finish(null, null)
+      }
       try {
         child = spawn(prog, args, { cwd: p.dir, env, stdio: ["pipe", "pipe", "pipe"] })
       } catch (e) {

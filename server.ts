@@ -43,7 +43,8 @@ Live.web = webBuild
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
-const { RUNS_CODE, tooBig } = await import("./core/filetypes.ts")
+const { tooBig } = await import("./core/filetypes.ts")
+const { runsCode } = await import("./core/opening.ts")
 const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
@@ -348,7 +349,7 @@ async function openHere(req: http.IncomingMessage, res: http.ServerResponse) {
   const done = (err: Error | null) => (err ? json(res, { error: String(err.message) }, 500) : json(res, { ok: true }))
   // (as the desktop app does: a script or an app, which opening would run, is shown in its folder instead)
   let reveal = !!body?.reveal
-  try { const st = fs.statSync(abs); reveal ||= RUNS_CODE.test(abs) || (st.isFile() && (st.mode & 0o111) !== 0) } catch { /* opened as asked */ }
+  reveal ||= runsCode(abs)
   // reveal: show it in Finder (open -R).
   if (process.platform === "darwin") return void execFile("/usr/bin/open", reveal ? ["-R", abs] : [abs], { timeout: 10000 }, done)
   if (process.platform === "win32") return void explorer(abs, reveal).then(() => done(null), done)

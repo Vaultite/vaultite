@@ -18,7 +18,7 @@ import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, plainText, sentence } from "../core/plainerror.ts"
-import { RUNS_CODE } from "../core/filetypes.ts"
+import { runsCode } from "../core/opening.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 
@@ -82,8 +82,8 @@ let behind = !!process.env.VAULTITE_BEHIND
 // What macOS runs rather than shows when opened (an app, a script, a link to one): a vault file of these, which a
 // synced or shared vault may bring, is shown in Finder instead of opened.
 function openVaultFile(abs: string) {
-  let runs = RUNS_CODE.test(abs)
-  try { const st = fs.statSync(abs); runs ||= st.isDirectory() || (st.mode & 0o111) !== 0 } catch { return }
+  let runs = runsCode(abs)
+  try { runs ||= fs.statSync(abs).isDirectory() } catch { return }
   if (runs) shell.showItemInFolder(abs); else void shell.openPath(abs)
 }
 /** A link the app's page hands to the system, as Obsidian does: any app's scheme (obsidian://, zotero://, tel:), never
@@ -91,7 +91,8 @@ function openVaultFile(abs: string) {
 async function openLink(url: string) {
   if (!/^[a-z][a-z0-9+.-]*:/i.test(url) || /^(javascript|data|vbscript|blob|about|chrome|devtools):/i.test(url)) return
   if (/^file:/i.test(url)) {
-    try { openVaultFile(fileURLToPath(url)) } catch { /* not a file address */ }
+    // (one on another computer, file://host/x, is a Windows network path: reaching it sends the user's login hash)
+    try { if (["", "localhost"].includes(new URL(url).hostname)) openVaultFile(fileURLToPath(url)) } catch { /* not a file address */ }
     return
   }
   // (another app does what the link says: asked first, as browsers do, whoever wrote the note and however it was clicked)

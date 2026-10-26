@@ -743,9 +743,9 @@ export class Plugin {
   }
 
   /** Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the
-   *  plugin's `allowUsers` and `allowRemote` settings. */
+   *  plugin's `allowUsers` and `allowRemote` from this machine only (core/trust.ts): a vault's never lets anyone in. */
   refusal(req: IncomingMessage, what = this.manifest.name as string): Promise<string> {
-    const set = this.settings({})
+    const set = trustOf(this.vault.path).local(this.id)
     return ownerRefusal(req, { allowRemote: set.allowRemote === true, allowUsers: Array.isArray(set.allowUsers) ? set.allowUsers : [] }, what)
   }
 
