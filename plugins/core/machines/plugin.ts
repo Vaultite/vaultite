@@ -107,8 +107,18 @@ async function probeDirect(m: DialEntry, own: string): Promise<Probed> {
       commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined,
       desktop: s.desktop === true, standalone: s.standalone === true }, dialed: s.dialed && typeof s.dialed === "object" ? s.dialed as Record<string, Item> : undefined }
   } catch (e) {
-    return { machine: { ...m, online: false, self: false, error: (e as Error).name === "TimeoutError" ? "no answer" : "unreachable" } }
+    return { machine: { ...m, online: false, self: false, error: unreachable(e) } }
   }
+}
+
+/** Why a machine didn't answer, in words: its name not found (DNS: Tailscale's off, or its DNS is) reads apart from a
+ *  machine that's there but not serving. */
+function unreachable(e: unknown) {
+  if ((e as Error).name === "TimeoutError") return "no answer"
+  const code = ((e as { cause?: { code?: string } }).cause)?.code
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "its name isn't found (DNS)"
+  if (code === "ECONNREFUSED") return "refused (its server isn't running)"
+  return "unreachable"
 }
 
 /** A machine as listed: one with an address asked (`direct`: once per listing, which its agent machines share), one
