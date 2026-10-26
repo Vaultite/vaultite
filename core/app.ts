@@ -496,8 +496,6 @@ export class App {
    *  that look at who's asking), held like every call (respond). Never throws: errors are answers too. */
   async run(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<Reply> {
     try {
-      // (a plugin that's off answers no request from outside; the app's own calls still reach it, a bundle editing it)
-      if (http && !match(this.on(), method, parts) && match(this.plugins, method, parts)) return reply(404, { error: `not found: its plugin is off` })
       // Who asked, for the hooks its writes run (plugin.onCreate): only a request over HTTP says.
       const h = (k: string) => { const v = http?.headers[k]; return typeof v === "string" && v ? v.slice(0, 200) : null }
       // A request is the user's own action, unless a plugin's command says it acts on its own (core/hooks.ts).

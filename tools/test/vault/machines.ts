@@ -55,13 +55,13 @@ export default async ($: VaultTest) => {
         !["https://evil.example.com", "http://192.168.1.5", "http://100.200.1.1", "https://ts.net.evil.example", "https://a@studio.tail1234.ts.net", "file:///etc"].some(onTailnet))
     }
     {
+      // (other machines ask it who it is: a machine with Machines off is still one, the mini PC's case)
       const owner = { headers: { host: "127.0.0.1:8793" }, socket: { remoteAddress: "127.0.0.1" } } as Any
       const conf = app.vault.config("plugins")
       await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "machines") })
-      const off = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {}, owner), inside = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {})
+      const off = await app.run("GET", ["machines", "self"], {}, {}, owner)
       await api("PUT", "config/plugins", conf)
-      const on = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {}, owner)
-      check("plugins: an off plugin's routes answer no request from outside, the app's own calls still", off.status === 404 && inside.status === 200 && on.status === 200, [off.status, inside.status, on.status])
+      check("machines: off, it still says who it is to other machines", off.status === 200, off.status)
     }
     ;[c, body] = await api("GET", "machines/box/nothing")
     check("machines: its errors come back as they are", c === 404 && body.error === "no such thing", [c, body])
