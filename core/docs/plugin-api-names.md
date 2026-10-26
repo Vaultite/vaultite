@@ -721,6 +721,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fromWsl(p, distro)`: A WSL path (absolute) as Windows sees it: /mnt/c/x is C:\x, the rest is \\wsl.localhost\<distro>\...
 - `frontmatterLinks(fm)`: The [[links]] in a file's frontmatter, with the key each is under (`project: "[[Lighthouse]]"`, a list's items, and `project: [[Lighthouse]]` unquoted too): [key, target].
 - `frontmatterTargets(fm)`: The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`).
+- `gitEnv(extra?)`: The environment for a git command: this process's but what names a repository (GIT_DIR and the like), and `extra`.
 - `GUEST_HEADER`: Set by a machine passing a request on (Machines) for someone who isn't its owner: it only takes rights away.
 - `guestRefusal(vault, rel, before, after)`: Why a guest may not write `after` at `rel` (over `before`, null for a new note), or "".
 - `Handler`

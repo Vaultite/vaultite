@@ -6,6 +6,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { dirname, join } from "node:path"
 import { pluginsFilter, qa, until, wait } from "./lib/qa.mjs"
 import { fileURLToPath } from "node:url"
+import { gitEnv } from "../../core/gitenv.ts"
 
 const { args: [BASE, VAULT, INDEX, REPOS, OUT = "/tmp/pluginstore-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
@@ -19,7 +20,7 @@ const putPlugins = (c) => writeFileSync(file(".vaultite/plugins.json"), JSON.str
 
 // A made-up plugin's repository: Harbor, v1.0.0 (it says it talks to a host), then v1.1.0 (it runs programs too).
 const HARBOR = join(REPOS, "alicepark", "harbor")
-const g = (...args) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main", ...args], { cwd: HARBOR, stdio: "pipe" })
+const g = (...args) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main", ...args], { cwd: HARBOR, stdio: "pipe", env: gitEnv() })
 const release = (version, tide, disclosures) => {
   mkdirSync(HARBOR, { recursive: true })
   writeFileSync(join(HARBOR, "manifest.json"), JSON.stringify({ id: "harbor", name: "Harbor", description: "A made-up plugin: the harbour's tides.", version, author: "Alice Park",

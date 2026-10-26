@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, gitEnv, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import type { Item } from "../../../core/vault.ts"
 
@@ -31,7 +31,7 @@ export const slug = (s: string) => s.toLowerCase().replace(/\.local$/, "").repla
 
 /** The app's commit (which version each machine runs): its checkout's, or the packaged desktop app's electron/build.json. */
 const commit = new Promise<string>((resolve) => {
-  execFile("git", ["-C", ROOT, "rev-parse", "--short", "HEAD"], { timeout: 3000 }, (err, out) => {
+  execFile("git", ["-C", ROOT, "rev-parse", "--short", "HEAD"], { timeout: 3000, env: gitEnv() }, (err, out) => {
     if (!err) return resolve(out.trim())
     try {
       resolve(String(JSON.parse(fs.readFileSync(path.join(ROOT, "electron", "build.json"), "utf8")).commit ?? "").slice(0, 7))

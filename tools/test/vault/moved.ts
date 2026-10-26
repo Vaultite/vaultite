@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
+import { gitEnv } from "../../../core/gitenv.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, exists, read, tmp, vault, write } = $
@@ -11,7 +12,7 @@ export default async ($: VaultTest) => {
   const { installFrom } = await import("../../../core/coreops/installs.ts")
   const { execFileSync } = await import("node:child_process")
   const g = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main",
-    "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd, stdio: "pipe" })
+    "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd, stdio: "pipe", env: gitEnv() })
   const repo = path.join(tmp, "moved-repos", "Vaultite", "plugins")
   const files = { "anchorage/manifest.json": JSON.stringify({ id: "anchorage", name: "Anchorage", description: "Made up: where boats wait.", version: "1.0.0",
     author: "Vaultite", repo: "Vaultite/plugins", disclosures: {}, settings: { berths: { type: "number", default: 3, label: "Berths", description: "how many" } } }),

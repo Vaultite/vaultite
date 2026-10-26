@@ -9,9 +9,10 @@ import { ROOT } from "../plugins.ts"
 import { updateStatus } from "../selfupdate.ts"
 import { API_VERSION, APP_VERSION } from "../version.ts"
 import type { Any } from "./common.ts"
+import { gitEnv } from "../gitenv.ts"
 
 const exec = promisify(execFile)
-const git = (...args: string[]) => exec("git", ["-C", ROOT, ...args], { timeout: 3000 }).then((r) => r.stdout.trim(), () => "")
+const git = (...args: string[]) => exec("git", ["-C", ROOT, ...args], { timeout: 3000, env: gitEnv() }).then((r) => r.stdout.trim(), () => "")
 
 /** The commit and branch it started on (the checkout's then, or the packaged app's build: electron/build.json). */
 const RUNNING = build()

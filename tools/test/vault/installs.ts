@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
+import { gitEnv } from "../../../core/gitenv.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, write, TOOLS } = $
@@ -12,7 +13,7 @@ export default async ($: VaultTest) => {
   {
     const { execFileSync } = await import("node:child_process")
     const g = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main",
-      "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd, stdio: "pipe" }).toString()
+      "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd, stdio: "pipe", env: gitEnv() }).toString()
     const repo = (name: string, files: Record<string, string>, tag: string | null, message = "x") => {
       const d = path.join(tmp, "repos", name)
       for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), t) }

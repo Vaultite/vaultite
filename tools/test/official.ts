@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import { stage } from "../../core/installs.ts"
 import { MOVED } from "../../core/migrations.ts"
 import { digestOf } from "../../core/vaultplugins.ts"
+import { gitEnv } from "../../core/gitenv.ts"
 
 const PAGES: Record<string, string> = { health: "Health", learning: "Learning", projects: "Projects", today: "Today" }
 
@@ -22,7 +23,7 @@ export function officialRepos(dir: string): string {
   const repo = path.join(dir, "Vaultite", "plugins")
   if (!fs.existsSync(path.join(repo, ".git"))) {
     const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main",
-      "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd: repo, stdio: "pipe" })
+      "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd: repo, stdio: "pipe", env: gitEnv() })
     fs.mkdirSync(repo, { recursive: true })
     for (const id of Object.keys(MOVED)) {
       fs.mkdirSync(path.join(repo, id), { recursive: true })
@@ -44,7 +45,7 @@ export function standIn(dir: string, id: string) {
   const repo = path.join(dir, "Vaultite", "plugins"), files = fs.mkdtempSync(path.join(dir, "stage-"))
   try {
     stage(path.join(repo, id), path.join(files, id))
-    return { tag: `${id}/v1.0.0`, commit: execFileSync("git", ["rev-parse", `${id}/v1.0.0^{commit}`], { cwd: repo, encoding: "utf8" }).trim(), hash: digestOf(path.join(files, id)).content }
+    return { tag: `${id}/v1.0.0`, commit: execFileSync("git", ["rev-parse", `${id}/v1.0.0^{commit}`], { cwd: repo, encoding: "utf8", env: gitEnv() }).trim(), hash: digestOf(path.join(files, id)).content }
   } finally {
     fs.rmSync(files, { recursive: true, force: true })
   }

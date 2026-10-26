@@ -370,6 +370,23 @@ for (const f of sources.filter((f) => /\.(tsx|css)$/.test(f))) {
   })
 }
 
+// git run by the app or a test gets gitEnv() (core/gitenv.ts): a GIT_DIR it inherits (a hook, `git bisect run`) never
+// points it at the repository it was started in.
+for (const f of sources.concat(walk(path.join(ROOT, "web", "qa"))).filter((f) => /\.(ts|mjs|cjs)$/.test(f))) {
+  const text = fs.readFileSync(f, "utf8")
+  for (const m of text.matchAll(/\b(?:execFileSync|execFile|spawnSync|spawn|exec)\(\s*["']git["']/g)) {
+    let depth = 0, end = m.index, quote = ""
+    for (; end < text.length; end++) {
+      const c = text[end]
+      if (quote) { if (c === "\\") end++; else if (c === quote) quote = "" }
+      else if (c === '"' || c === "'" || c === "`") quote = c
+      else if (c === "(") depth++
+      else if (c === ")" && !--depth) break
+    }
+    if (!text.slice(m.index, end).includes("gitEnv(")) problems.push(`${path.relative(ROOT, f)}:${text.slice(0, m.index).split("\n").length}: git without env: gitEnv() (core/gitenv.ts)`)
+  }
+}
+
 // The browser engine stands alone (electron/browser/CLAUDE.md): it reaches the app only through its host.
 for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(ts|cjs|js)$/.test(f)))
   for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))

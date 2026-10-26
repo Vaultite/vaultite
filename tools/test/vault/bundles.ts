@@ -4,6 +4,7 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { tidy } from "../../../core/bundles.ts"
 import { officialRepos, standIn } from "../official.ts"
+import { gitEnv } from "../../../core/gitenv.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, exists, read, write, writeWs } = $
@@ -465,7 +466,7 @@ export default async ($: VaultTest) => {
     // aren't the ones recorded are refused, nothing installed.
     const repo = path.join(OFFICIAL, "Vaultite", "plugins")
     const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...a],
-      { cwd: repo, encoding: "utf8" }).trim()
+      { cwd: repo, encoding: "utf8", env: gitEnv() }).trim()
     const pinned = git("rev-parse", "books/v1.0.0^{commit}")
     const booksPin = standIn(OFFICIAL, "books")
     const manifest = path.join(repo, "books", "manifest.json"), stood = fs.readFileSync(manifest, "utf8")

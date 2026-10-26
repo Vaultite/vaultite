@@ -5,9 +5,10 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { sourceSnapshot } from "../core/appsource.ts"
+import { gitEnv } from "../core/gitenv.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const git = (...args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8" }).trim()
+const git = (...args: string[]) => execFileSync("git", ["-C", ROOT, ...args], { encoding: "utf8", env: gitEnv() }).trim()
 fs.writeFileSync(path.join(ROOT, "electron", "build.json"),
   JSON.stringify({ commit: git("rev-parse", "HEAD"), repo: git("remote", "get-url", "origin"),
     ...(process.env.VAULTITE_RELEASE ? { release: true } : {}),

@@ -5,22 +5,27 @@ import fs from "node:fs"
 import path from "node:path"
 import { check, section, summary, tempDir } from "./test/lib.ts"
 import type { CiResult, UpdaterOptions } from "../core/selfupdate.ts"
+import { gitEnv } from "../core/gitenv.ts"
 const t0 = Date.now()
 
 const U = await import("../core/selfupdate.ts")
 const tmp = tempDir("vaultite-selfupdate-test-")
+// (as under a git hook or `git bisect run`: every git here, the test's and the updater's, still acts on its own folder)
+const decoy = path.join(tmp, "decoy.git")
+execFileSync("git", ["init", "--quiet", "--bare", decoy], { env: gitEnv() })
+Object.assign(process.env, { GIT_DIR: decoy, GIT_WORK_TREE: tmp, GIT_INDEX_FILE: path.join(decoy, "index") })
 const GH = "https://github.com/Alice/lighthouse.git"
-const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", ...args], { cwd, encoding: "utf8", stdio: "pipe" }).trim()
+const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", ...args], { cwd, encoding: "utf8", stdio: "pipe", env: gitEnv() }).trim()
 const origin = path.join(tmp, "origin.git"), dev = path.join(tmp, "dev"), server = path.join(tmp, "server")
-execFileSync("git", ["init", "--quiet", "--bare", "-b", "main", origin])
-execFileSync("git", ["clone", "--quiet", origin, dev], { stdio: "pipe" })
+execFileSync("git", ["init", "--quiet", "--bare", "-b", "main", origin], { env: gitEnv() })
+execFileSync("git", ["clone", "--quiet", origin, dev], { stdio: "pipe", env: gitEnv() })
 const commit = (files: Record<string, string>, msg: string) => {
   for (const [f, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dev, f)), { recursive: true }); fs.writeFileSync(path.join(dev, f), text) }
   git(dev, "add", "-A"); git(dev, "commit", "--quiet", "-m", msg); git(dev, "push", "--quiet", "origin", "HEAD:main")
   return git(dev, "rev-parse", "HEAD")
 }
 const first = commit({ "server.ts": "1", "package-lock.json": "{}" }, "first")
-execFileSync("git", ["clone", "--quiet", origin, server], { stdio: "pipe" })
+execFileSync("git", ["clone", "--quiet", origin, server], { stdio: "pipe", env: gitEnv() })
 // (origin reads as GitHub, as a real checkout's would, while it fetches from the folder)
 git(server, "remote", "set-url", "origin", GH)
 git(server, "config", `url.${origin}.insteadOf`, GH)
@@ -117,5 +122,10 @@ check("ci: another workflow doesn't", U.ciOf([run("push", "completed", "success"
 check("ci: running is not yet, failed is red", U.ciOf([run("push", "in_progress", null)]).ok === null && U.ciOf([run("push", "completed", "failure")]).ok === false)
 check("backend: web/, the desktop app, tools and docs don't restart the server", !U.backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
 check("backend: core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => U.backendChanged([f])))
+
+section("an inherited GIT_DIR")
+const inDecoy = (...args: string[]) => execFileSync("git", ["--git-dir", decoy, ...args], { encoding: "utf8", env: gitEnv() })
+check("no git run here touched the repository GIT_DIR named", !inDecoy("for-each-ref").trim() && /^count: 0$/m.test(inDecoy("count-objects", "-v"))
+  && inDecoy("config", "core.bare").trim() === "true" && !fs.existsSync(path.join(decoy, "index")))
 
 process.exit(summary("selfupdate", t0))

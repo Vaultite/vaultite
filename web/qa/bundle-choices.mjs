@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { gitEnv } from "../../core/gitenv.ts"
 
 const { args: [B, VAULT, FX, OUT = "/tmp/bundle-choices-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -18,7 +19,7 @@ const enabled = () => json(".vaultite/plugins.json")?.enabled ?? []
 
 // ---------- the fixture: a repository with a bundle, and an index listing it ----------
 const REPO = `${FX}/repos/qa/desk`
-const git = (...a) => execFileSync("git", ["-C", REPO, ...a], { encoding: "utf8" }).trim()
+const git = (...a) => execFileSync("git", ["-C", REPO, ...a], { encoding: "utf8", env: gitEnv() }).trim()
 function commit(scheme) {
   mkdirSync(REPO, { recursive: true })
   writeFileSync(`${REPO}/bundle.json`, JSON.stringify({ name: "Writing desk", description: "Pages for writing.", icon: "pen", tint: "purple" }))

@@ -22,6 +22,7 @@ import { runsCode } from "../core/opening.ts"
 import { permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
+import { gitEnv } from "../core/gitenv.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const PRELOAD = path.join(ROOT, "electron", "preload.cjs")
@@ -1485,7 +1486,7 @@ async function openDoc(name: string) {
 /** The repo's issues page (its GitHub address: the build's, else the checkout's origin), or null. */
 const issues = (() => {
   let repo = BUILD?.repo ?? ""
-  if (!repo) try { repo = execFileSync("git", ["-C", ROOT, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() } catch { /* not a checkout */ }
+  if (!repo) try { repo = execFileSync("git", ["-C", ROOT, "remote", "get-url", "origin"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: gitEnv() }).trim() } catch { /* not a checkout */ }
   const m = /github\.com[/:]([^/]+\/[^/]+?)(\.git)?$/.exec(repo)
   return m ? `https://github.com/${m[1]}/issues` : null
 })()

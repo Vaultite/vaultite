@@ -4,12 +4,13 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { AREAS } from "./test/vault/index.ts"
+import { gitEnv } from "../core/gitenv.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
 const base = argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "main"
 const dry = argv.includes("--dry")
-const git = (...a: string[]) => spawnSync("git", a, { cwd: ROOT, encoding: "utf8" }).stdout.split("\n").filter(Boolean)
+const git = (...a: string[]) => spawnSync("git", a, { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout.split("\n").filter(Boolean)
 const changed = [...new Set([...git("diff", "--name-only", `${base}...HEAD`), ...git("diff", "--name-only", "HEAD"),
   ...git("ls-files", "--others", "--exclude-standard")])].sort()
 

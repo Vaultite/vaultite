@@ -15,6 +15,7 @@ import { compareVersions, tagVersion } from "./version.ts"
 import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
 import { unzip } from "./unzip.ts"
 import type { Item, Vault } from "./vault.ts"
+import { gitEnv } from "./gitenv.ts"
 
 /** Where a plugin came from, as .vaultite/plugins-lock.json keeps it (so another machine knows): `source` as asked,
  *  `repo` on GitHub, the tag and commit fetched (null from a plain folder), its content hash and version then. */
@@ -94,7 +95,7 @@ export function parseSource(given: string, tag?: string | null): Source {
  *  Files come out as they're stored: Windows' git turns LF into CRLF by default, and they'd no longer be the ones recorded. */
 export function git(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("git", ["-c", "core.autocrlf=false", ...args], { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" } },
+    execFile("git", ["-c", "core.autocrlf=false", ...args], { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: gitEnv({ GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" }) },
       (err, stdout, stderr) => (err ? reject(new OpError(`git ${args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c")}: ${(String(stderr).trim().split("\n").at(-1) || err.message).slice(0, 300)}`, 502)) : resolve(String(stdout))))
   })
 }
