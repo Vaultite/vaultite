@@ -131,6 +131,8 @@ export async function vaultHarness(from?: string) {
     tmp, VAULT, TOOLS, app, vault, ON, open, merge3, Text, publicOf, check, sleep, run, api, sentBy, read, exists, write,
     WS_DIR, readWs, writeWs, clearWs, fixtureNow, settled, removeFolder, nextSecond,
     CLAUDE_DIR, CODEX_DIR,
+    /** Whether the app is built (web/dist): what serves or reads its build needs one (npm run build), which CI makes first. */
+    built: fs.existsSync(path.join(TOOLS, "..", "web", "dist", "index.html")),
     /** What an area leaves for the ones after it (tools/test/vault/index.ts says which need which). */
     vars: {} as Record<string, Any>,
   }

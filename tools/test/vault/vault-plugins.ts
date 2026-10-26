@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { skip } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, read, sleep, vault, write, TOOLS } = $
@@ -119,7 +120,9 @@ export default async ($: VaultTest) => {
   check("vault plugins: CodeMirror is the app's, loaded with it, not bundled", entry.includes('preload(["@codemirror/view"])')
     && bundle.includes("__vaultite.modules[`@codemirror/view`]") && !bundle.includes("cm-scroller"), bundle.slice(0, 300))
   check("vault plugins: with its Tailwind classes, under the app's", entry.includes("@layer plugins") && entry.includes("tracking-\\\\[0\\\\.0625em\\\\]"), bundle.slice(0, 400))
-  check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(entry) &&
+  // (which classes the app has is read from its built stylesheet)
+  if (!$.built) skip("vault plugins: its variants the app hasn't over the app's classes", "the app isn't built (npm run build)")
+  else check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(entry) &&
     !/@layer plugin-variants[^]*md\\\\:hidden/.test(entry), bundle.slice(0, 600))
   check("vault plugins: its docs join the topics", (await api("GET", "docs"))[1].some((t: Any) => t.id === "lighthouse"))
   check("vault plugins: allowed and on, it writes its page, pinned", read("Dashboards/Lighthouse.md").includes("block-lighthouse")

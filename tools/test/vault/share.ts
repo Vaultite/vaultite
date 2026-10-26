@@ -3,7 +3,7 @@ import http from "node:http"
 import path from "node:path"
 import { WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
-import { busy } from "../lib.ts"
+import { busy, skip } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   // Shared folders (plugins/core/share): a guest's link reaches its folder and the few routes it allows, nothing else.
@@ -78,15 +78,20 @@ export default async ($: VaultTest) => {
     const as = (g: typeof a) => ({ cookie: g.cookie })
     const page = await get(`${a.at}/`, as(a))
     const html = await page.text()
-    check("share: the app's page says who the guest is, before its code, and loads only from here", page.status === 200 && html.includes("window.vaultiteShare") && html.includes("Alice Park") && !html.includes("Shared/")
-      && /connect-src 'self'/.test(String(page.headers.get("content-security-policy"))))
-    const policy = String(page.headers.get("content-security-policy")), scriptSrc = /script-src ([^;]*)/.exec(policy)?.[1] ?? "", imgSrc = /img-src ([^;]*)/.exec(policy)?.[1] ?? ""
-    check("share: the page's policy runs only its own scripts (by hash, nothing inline else) and no image from another site",
-      !scriptSrc.includes("unsafe-inline") && /'sha256-/.test(scriptSrc) && !/https|\*/.test(imgSrc), policy)
+    if (!$.built) skip("share: the app's page and its policy, of its build only its page, code and icons", "the app isn't built (npm run build)")
+    else {
+      check("share: the app's page says who the guest is, before its code, and loads only from here", page.status === 200 && html.includes("window.vaultiteShare") && html.includes("Alice Park") && !html.includes("Shared/")
+        && /connect-src 'self'/.test(String(page.headers.get("content-security-policy"))))
+      const policy = String(page.headers.get("content-security-policy")), scriptSrc = /script-src ([^;]*)/.exec(policy)?.[1] ?? "", imgSrc = /img-src ([^;]*)/.exec(policy)?.[1] ?? ""
+      check("share: the page's policy runs only its own scripts (by hash, nothing inline else) and no image from another site",
+        !scriptSrc.includes("unsafe-inline") && /'sha256-/.test(scriptSrc) && !/https|\*/.test(imgSrc), policy)
+    }
     const other = await new Promise<number>((ok) => http.get({ host: "127.0.0.1", port, path: `/s/${token(edit)}`, headers: { host: "elsewhere.example" } }, (res) => { res.resume(); ok(res.statusCode ?? 0) }))
     check("share: links answer only at the vault's public address (not another host the listener is reached by)", other === 404, other)
-    const built = [await get(`${a.at}/phone.html`), await get(`${a.at}/vaults.html`), await get(`${a.at}/icon.svg`)]
-    check("share: of the app's build, only its page, code and icons", built[0].status === 404 && built[1].status === 404 && built[2].status === 200, built.map((x) => x.status))
+    if ($.built) {
+      const built = [await get(`${a.at}/phone.html`), await get(`${a.at}/vaults.html`), await get(`${a.at}/icon.svg`)]
+      check("share: of the app's build, only its page, code and icons", built[0].status === 404 && built[1].status === 404 && built[2].status === 200, built.map((x) => x.status))
+    }
     const none = [await get(`${a.at}/`), await get(`${a.at}/api/state`), await get(`${a.at}/api/state`, as(c)), await get(`${c.at}/api/state`, as(a))]
     check("share: without its own cookie, no page and no API (another share's cookie neither)", none[0].status === 403 && none.slice(1).every((x) => x.status === 401), none.map((x) => x.status))
 
