@@ -11,7 +11,9 @@ export function templates(plugins: Plugin[]): [string, string, string][] {
   const out: [string, string, string][] = []
   for (const p of plugins) {
     const dir = path.join(p.dir, "pages")
-    const names = fs.existsSync(dir) ? fs.readdirSync(dir).filter((n) => n.endsWith(".md") && !n.startsWith(".")).sort() : []
+    // (files of its own only: a link there to one elsewhere on the machine would copy it into the vault)
+    const own = (f: string) => fs.lstatSync(f, { throwIfNoEntry: false })?.isFile() === true
+    const names = fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() ? fs.readdirSync(dir).filter((n) => n.endsWith(".md") && !n.startsWith(".") && own(path.join(dir, n))).sort() : []
     for (const n of names) out.push([p.id, n, readText(path.join(dir, n))])
   }
   return out

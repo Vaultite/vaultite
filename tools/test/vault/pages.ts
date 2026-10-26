@@ -7,6 +7,17 @@ export default async ($: VaultTest) => {
   // Plugins' pages (core/pages.ts): turning a plugin on writes its pages once into the pages folder, pinned; opening a
   // vault writes none. dashboard.restore writes those missing, and moves the old copies in .vaultite/pages.
   const pinsNow = (): string[] => vault.config("pages").pinned ?? []
+  {
+    // (a plugin's page is its own file: a link in its pages/ to one elsewhere on the machine is never copied into the vault)
+    const { templates } = await import("../../../core/pages.ts")
+    const dir = path.join($.tmp, "pages-plugin"), outside = path.join($.tmp, "private-key.md")
+    fs.mkdirSync(path.join(dir, "pages"), { recursive: true })
+    fs.writeFileSync(outside, "secret\n")
+    fs.writeFileSync(path.join(dir, "pages", "Harbour.md"), "# Harbour\n")
+    fs.symlinkSync(outside, path.join(dir, "pages", "Keys.md"))
+    const got = templates([{ id: "harbour", dir } as Any]).map(([, n]) => n)
+    check("pages: a plugin's linked page isn't one", JSON.stringify(got) === '["Harbour.md"]', got)
+  }
   check("opening a vault writes no page", !exists("Dashboards") && !exists(".vaultite/pages"))
   const OLD = (n: string) => `.vaultite/pages/Dashboards/${n}.md`
   write(OLD("Errors"), "---\ntype: dashboard\nplugin: errors\n---\n\nAn older template\n")
