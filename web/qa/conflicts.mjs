@@ -127,7 +127,9 @@ await page.keyboard.type("tence and more.")
 out.lostAnswer = !!(await until(() => read().includes("Line three. Cut off mid-sentence and more."), 6000))
 out.lostNoClash = !(await page.locator(".cm-clash").count()) && !(await page.locator("[role=alert]", { hasText: "while you typed" }).count())
 
-// A phone: finger-sized choices, nothing sideways.
+// A phone: finger-sized choices, nothing sideways. (Alone on the note: open in another window too, the two type into
+// one doc the server saves, plugins/core/companion/cotype.ts, so an agent's write merges in with no clash)
+await page.close()
 const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2,
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1" })
 await notNow(phone)

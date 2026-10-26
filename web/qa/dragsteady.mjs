@@ -60,6 +60,13 @@ async function drag(from, points, steps = 12) {
     at = p
   }
 }
+/** A note's row in the file tree that a press lands on (the tree follows the open note: its first may be scrolled off). */
+const treeRow = () => page.evaluate(() => {
+  for (const r of document.querySelectorAll("[data-tree-path$='.md']")) {
+    const b = r.getBoundingClientRect()
+    if (document.elementFromPoint(b.x + 40, b.y + b.height / 2)?.closest("[data-tree-path]") === r) return b.toJSON()
+  }
+})
 const letGo = async () => { await page.keyboard.press("Escape"); await page.mouse.up(); await wait(250) }
 
 const PINS = ["Start here.md", "Notes/How this vault works.md", "Notes/Lisbon trip.md", "Projects/Lighthouse.md", "Dashboards/People.md", "Dashboards/Design.md", "Dashboards/Queue.md", "ME.md"]
@@ -89,7 +96,7 @@ try {
   await page.evaluate(() => { const box = document.querySelector("[data-pin-tiles]").closest("[data-panel-scroll]"); box.style.maxHeight = `${box.clientHeight}px` })
   const rest = await tiles()
   check("Pinned: four tiles a row at rest", rest.cols === 4, rest)
-  const row = await page.locator("[data-tree-path$='.md']").first().boundingBox()
+  const row = await treeRow()
   const sixth = await page.locator("[data-pin-tiles] [data-pin]").nth(5).boundingBox()
   await reset()
   await drag([row.x + 40, row.y + row.height / 2], [[sixth.x + sixth.width * 0.3, sixth.y + sixth.height / 2]], 20)
@@ -112,7 +119,7 @@ try {
   const s0 = await strip()
   check("tab strip: more tabs than fit scroll with no scrollbar", s0.over && s0.bar === 0 && s0.width === "none", s0)
   const bar = await page.locator("[data-tab-bar]").first().boundingBox()
-  const file = await page.locator("[data-tree-path$='.md']").first().boundingBox()
+  const file = await treeRow()
   await reset()
   await drag([file.x + 40, file.y + file.height / 2], [[bar.x + 120, bar.y + 20], [bar.x + bar.width - 60, bar.y + 20], [bar.x + bar.width / 2, bar.y + 300]], 15)
   const s1 = await strip(), along = await read()
