@@ -293,5 +293,9 @@
     "electron-winstaller": true,
     "fsevents": true,
     "node-pty": true
+  },
+  "overrides": {
+    "kdbxweb": { "@xmldom/xmldom": "^0.8.15" },
+    "lodash-es": "^4.18.1"
   }
 }
