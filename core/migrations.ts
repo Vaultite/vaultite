@@ -6,6 +6,7 @@ import { infoWithLayout, type LayoutKey } from "./blocks.ts"
 import { FM, loadFm, setPropertyText } from "./frontmatter.ts"
 import { FENCE, scan } from "./sections.ts"
 import { type Item, readSoon, stamp, type Vault, writeAtomic } from "./vault.ts"
+import { trustOf } from "./trust.ts"
 import { isObj, strings as strs } from "./values.ts"
 
 const FILE = "migrations"
@@ -39,6 +40,20 @@ function dailyNotesOut(get: (name: string) => Item | null, set: (name: string, v
     const icons = isObj(tab.icons) ? renamedKey(tab.icons, OLD_CMD, NEW_CMD) : null
     if (actions || icons) set("newtab", { ...tab, ...(actions ? { actions } : {}), ...(icons ? { icons } : {}) })
   }
+}
+
+/** Who may reach a plugin's owner-only parts (`allowRemote`, `allowUsers`) is this machine's now (core/trust.ts), not the
+ *  vault settings': copied once to each machine as they were, so no one let in is shut out (access-local-2026-10). */
+export function accessToMachine(vault: Vault, plugins: { id: string; localKeys(): string[] }[]) {
+  const trust = trustOf(vault.path), STEP = "access-local-2026-10"
+  if (trust.ran(STEP)) return
+  for (const p of plugins) {
+    let set: Item | null
+    try { set = vault.readConfig(`plugins/${p.id}/data`) } catch { return } // (mid-sync: next start)
+    const moving = ["allowRemote", "allowUsers"].filter((k) => set && k in set && !p.localKeys().includes(k))
+    if (moving.length) trust.patchLocal(p.id, Object.fromEntries(moving.map((k) => [k, set![k]])))
+  }
+  trust.ran(STEP, true)
 }
 
 /** Built-ins that were on from the start (`essential`) and became `offByDefault`: on where they weren't switched off. */

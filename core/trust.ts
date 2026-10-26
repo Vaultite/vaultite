@@ -13,7 +13,8 @@ import { isObj } from "./values.ts"
 export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean; source?: string; says?: Disclosures
   paused?: string } // (when the user was told it changed and stopped: once per approval)
 type More = { version?: string; edits?: boolean; source?: string; says?: Disclosures }
-type Store = { plugins: Record<string, Approval>; allowed: Record<string, string>; local: Record<string, Record<string, unknown>> }
+type Store = { plugins: Record<string, Approval>; allowed: Record<string, string>; local: Record<string, Record<string, unknown>>
+  steps: string[] } // (this machine's migrations that ran: core/migrations.ts)
 /** What's hashed of a plugin's folder (core/vaultplugins.ts digestOf). */
 export type Digest = { content: string; files: Record<string, string> }
 
@@ -43,7 +44,7 @@ export class Trust {
     try { o = JSON.parse(fs.readFileSync(this.file, "utf8")) } catch { /* none, or unreadable: nothing approved */ }
     const d = isObj(o) ? o : {}
     this.data = { plugins: isObj(d.plugins) ? d.plugins as Store["plugins"] : {}, allowed: isObj(d.allowed) ? d.allowed as Store["allowed"] : {},
-      local: isObj(d.local) ? d.local as Store["local"] : {} }
+      local: isObj(d.local) ? d.local as Store["local"] : {}, steps: Array.isArray(d.steps) ? d.steps.filter((x) => typeof x === "string") : [] }
     this.stamp = mtime
     return this.data
   }
@@ -120,6 +121,13 @@ export class Trust {
   /** A plugin's settings its manifest marks `local` (who may reach it): this machine's, so a synced vault can't set them. */
   local(plugin: string): Record<string, unknown> {
     return this.read().local[plugin] ?? {}
+  }
+
+  /** Whether this machine ran migration `step` for this vault; `mark`: note that it has. */
+  ran(step: string, mark = false) {
+    const d = this.read(), had = d.steps.includes(step)
+    if (mark && !had) { d.steps.push(step); this.save() }
+    return had
   }
 
   /** Change some of them (null removes one). */

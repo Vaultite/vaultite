@@ -64,6 +64,27 @@ export default async ($: VaultTest) => {
       if (had === null) fs.rmSync(path.join(VAULT, ".vaultite/plugins/inbox/data.json")); else write(".vaultite/plugins/inbox/data.json", had)
       await vault.synced()
     }
+    {
+      // (moved from the vault's settings: each machine takes what the vault had, once, so no one let in is shut out)
+      const { accessToMachine } = await import("../../../core/migrations.ts")
+      const trust = app.vaultPlugins.trust, steps = (trust as Any).read().steps as string[]
+      steps.splice(0, steps.length, ...steps.filter((x) => x !== "access-local-2026-10"))
+      const had = exists(".vaultite/plugins/inbox/data.json") ? read(".vaultite/plugins/inbox/data.json") : null
+      write(".vaultite/plugins/inbox/data.json", JSON.stringify({ allowUsers: ["friend@example.com"] }))
+      write(".vaultite/plugins/terminal/data.json", JSON.stringify({ allowRemote: true }))
+      await vault.synced()
+      accessToMachine(vault, app.plugins)
+      const once = trust.local("inbox").allowUsers
+      write(".vaultite/plugins/inbox/data.json", JSON.stringify({ allowUsers: ["mallory@example.com"] }))
+      await vault.synced()
+      accessToMachine(vault, app.plugins)
+      check("owner checks: the vault's allowUsers moves to this machine once, a local key's never", JSON.stringify(once) === '["friend@example.com"]' &&
+        JSON.stringify(trust.local("inbox").allowUsers) === '["friend@example.com"]' && trust.local("terminal").allowRemote !== true && trust.ran("access-local-2026-10"), [once, trust.local("inbox"), trust.local("terminal")])
+      trust.patchLocal("inbox", { allowUsers: null })
+      fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/terminal/data.json"), "{}\n")
+      if (had === null) fs.rmSync(path.join(VAULT, ".vaultite/plugins/inbox/data.json")); else write(".vaultite/plugins/inbox/data.json", had)
+      await vault.synced()
+    }
     check("ops: in-process (no request) nothing is refused", (await app.runOp("ops.list", {})).result !== undefined)
     // MCP lets a login the owner allowed (allowUsers) in, and its tools run for that request: the owner's ops stay refused.
     const { setTailscaleStatus } = await import("../../../core/owner.ts")

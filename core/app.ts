@@ -10,7 +10,7 @@ import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
 import { CONNECT_HEADER, overNetwork, ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
-import { migrate, migrateMoved } from "./migrations.ts"
+import { accessToMachine, migrate, migrateMoved } from "./migrations.ts"
 import { installFrom } from "./coreops/installs.ts"
 import * as F from "./files.ts"
 import * as O from "./outside.ts"
@@ -942,6 +942,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   if (fresh) B.markNew(app.vault)
   if (start) {
     await migrate(app.vault, fresh)
+    accessToMachine(app.vault, app.plugins)
     app.tidyPluginLists()
     B.tidy(app.vault)
     await turn()
