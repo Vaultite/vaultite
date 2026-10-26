@@ -7,6 +7,9 @@ import os from "node:os"
 import path from "node:path"
 import { runtimeDir } from "../../core/runtime.ts"
 
+// (a test's git, run from a hook or `git bisect run`, would otherwise reach the repo running it)
+for (const k of Object.keys(process.env)) if (/^GIT_(DIR|WORK_TREE|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|COMMON_DIR|NAMESPACE|PREFIX)$/.test(k)) delete process.env[k]
+
 export type Any = any
 export type Status = "ok" | "FAIL" | "skip"
 export type Result = { name: string; status: Status; note: string; section: string }
