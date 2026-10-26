@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Many notes written at once**: an agent writing hundreds of notes together no longer gets some refused as "iCloud is
+  still downloading" on a busy machine (a slow read of a file on disk isn't iCloud's).
 - **Windows reads its processes in milliseconds**: what finds your agents and their terminals (usage pages, the
   inbox's sessions) asks one PowerShell kept running, rather than starting one each time (20 s on an Arm machine).
 - **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third

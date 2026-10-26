@@ -205,12 +205,19 @@ const textOf = (buf: Buffer) => decoder.decode(buf).replace(/\r\n?/g, "\n")
 
 /** A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says. */
 export function readBytes(p: string): Buffer {
-  if (Date.now() - (reading.get(p)?.since ?? Infinity) >= SLOW) throw stillDownloading(p)
+  if (Date.now() - (reading.get(p)?.since ?? Infinity) >= SLOW && !onDisk(p)) throw stillDownloading(p)
   try { const b = fs.readFileSync(p); if (fetching.size) fetching.delete(p); return b } catch (e) {
     if (!placeholder(e)) throw e
     fetchFromICloud(p, e)
     throw stillDownloading(p, e)
   }
+}
+
+/** Whether a file's bytes are here, a plain file and no placeholder: a slow read of it was a busy disk (a burst of
+ *  writes queued before it, a file this server just wrote), safe to read at once. */
+function onDisk(p: string) {
+  const st = fs.statSync(p, { throwIfNoEntry: false })
+  return !!st?.isFile() && !evicted(p, st)
 }
 
 /** A read iCloud hasn't given yet, as notHereYet knows it (errno 11, EDEADLK). */

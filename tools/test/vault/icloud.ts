@@ -103,6 +103,31 @@ export default async ($: VaultTest) => {
       fs.rmSync(path.join(VAULT, ".vaultite/plugins/lighthouse"), { recursive: true, force: true })
     }
   }
+  // A read queued behind a burst (700 writes at once) is slow, not iCloud: the file, on disk, still reads at once.
+  {
+    const { iCloud, readSoon, readText } = await import("../../../core/vault.ts")
+    const file = path.join(VAULT, "Notes/Queued.md"), readAsync = fs.promises.readFile, was = { ...iCloud }
+    write("Notes/Queued.md", "Queued.\n")
+    let free = () => {}
+    fs.promises.readFile = ((p: string, ...a: unknown[]) => path.resolve(String(p)) === path.resolve(file)
+      ? new Promise((ok) => { free = () => ok(readAsync(p, ...(a as []))) }) : (readAsync as (...x: unknown[]) => Promise<unknown>)(p, ...a)) as typeof fs.promises.readFile
+    try {
+      const late = await readSoon(file, 50)
+      await sleep(1100)
+      let text: string | null = null
+      try { text = readText(file) } catch { /* held */ }
+      check("a slow read of a file on disk isn't iCloud's: it reads", late === null && text === "Queued.\n", text)
+      Object.assign(iCloud, { on: true, evicted: (abs: string) => path.resolve(abs) === path.resolve(file) })
+      let held = false
+      try { readText(file) } catch (e) { held = (e as NodeJS.ErrnoException).code === "EDEADLK" }
+      check("…a placeholder's still waits for iCloud", held)
+    } finally {
+      fs.promises.readFile = readAsync
+      Object.assign(iCloud, was)
+      free()
+      fs.rmSync(file, { force: true })
+    }
+  }
   // A dashboard in /api/render: its title, then its text (no line of its own under the title).
   write("Dashboards/Sub.md", "---\ntype: dashboard\nicon: sun\n---\n\nText.\n")
   const [, sub] = await api("GET", "render?path=Dashboards/Sub.md")
