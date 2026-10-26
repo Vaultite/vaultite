@@ -17,7 +17,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Vaultite's own address counts as official; a vault plugin's commands and modules run only as allowed, and one naming
   a hidden script is refused; a Claude Code account's folder is never one in the vault; an inbox reply is typed only
   into its agent, never a shell; a link to what would run (a document that links to a script too) or to another
-  computer's files never opens; a site's yes to open another app is for that one kind of link.
+  computer's files never opens; a site's yes to open another app is for that one kind of link; an app on the internet
+  writing any hidden file (an agent's `.claude/`) waits for your yes; a page that read the vault asks before a link
+  takes it out, naming the site; the desktop app's windows grant only what the app needs, and another machine's asks
+  before it hears, sees or locates you; a zip too big unpacked, or with names Windows reads as other files, is refused,
+  and a plugin's linked pages are never copied into the vault.
 - **Agents browse out of your way**: a page an agent opens no longer joins your tabs. A card in the window's corner
   (dragged to any corner, like the mini player) shows it live, the agent's pointer moving to what it clicks; Open as tab
   brings the same page into your tabs, and the agent chip in its bar sends it back. An agent asking you opens its page
