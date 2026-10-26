@@ -1,5 +1,5 @@
 // The Inbox (plugins/core/inbox): events, a session's sheet, results, the view, the panel, the block, a phone. WRITES
-// Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back), starts a shell: throwaway server only, then kill its tmux.
+// Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back), starts terminals: throwaway server only, then kill its tmux.
 //   node web/qa/inbox.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs"
@@ -45,8 +45,9 @@ check("and counts on the button", (await until(async () => (await count()) === 1
 await shot(page, "1-toast-and-badge")
 
 // 2. An agent's session asking permission in a terminal: a toast; Open shows its sheet (what it asks, Approve and
-// Deny); its Open session goes to the terminal.
-const term = `qa${Date.now().toString(36)}`
+// Deny); its Open session goes to the terminal. (An agent's terminal: QA's stand-in claude runs in it.)
+const term = `claude-qa${Date.now().toString(36)}`
+await api("POST", `terminals/${term}`)
 await page.goto(`${B}#view/terminal%2F${term}`)
 await until(() => page.locator(".xterm").count())
 await wait(1500)
@@ -104,7 +105,7 @@ check("its sheet: the answer drawn as Markdown", !!(await until(() => sheet.loca
 check("opened, it's read", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.read === true)))
 await wait(400)
 await shot(page, "2b-session-sheet-answer")
-// The reply goes into its session: here its terminal, still running (a shell, so the reply runs as a command).
+// The reply goes into its session: here its terminal, its agent still running (the stand-in, which the terminal echoes).
 await page.keyboard.press("Escape")
 await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Stop", last_assistant_message: "Ready. What should I echo?" })
 const termRow = await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.terminal === term && !e.read))
@@ -115,8 +116,20 @@ await sheet.getByRole("button", { name: "Send" }).click()
 const typed = await until(async () => ((await api("GET", `terminals/${term}/screen`))?.lines ?? []).join("\n").includes("qa-replied"), 10000)
 check("Send: the reply typed into its terminal, and the row read", !!typed && (await api("GET", "inbox/events")).events.find((e) => e.id === termRow?.id)?.read === true,
   (await api("GET", `terminals/${term}/screen`).catch(() => ({})))?.lines?.slice(-5))
+// A row naming a plain shell (anyone who writes the vault can name one): its box says a new session gets the reply,
+// never the shell, which would run it.
+const shell = `qd${Date.now().toString(36)}`
+await api("POST", `terminals/${shell}`)
+await page.keyboard.press("Escape")
+await api("POST", `inbox/hook?agent=claude&terminal=${shell}`, { hook_event_name: "Stop", cwd: "/tmp/beacon", last_assistant_message: "Beacon is ready. Anything else?" })
+await page.locator("[data-sonner-toast]", { hasText: "Beacon is ready" }).getByRole("button", { name: "Open" }).click()
+const planLine = sheet.locator("[data-reply-plan]")
+check("a row naming a plain shell: its box says a new session gets the reply", !!(await until(async () => (await planLine.getAttribute("data-reply-plan").catch(() => null)) === "new")) &&
+  (await planLine.innerText()).startsWith("Starts a new session"), await planLine.innerText().catch(() => null))
+await page.keyboard.press("Escape")
+await api("DELETE", `terminals/${shell}`).catch(() => {})
 
-// 4. vau notify is an event too.// 4. vau notify is an event too.
+// 4. vau notify is an event too.
 vau("notify", "Wrote the weekly review", "--action-open", "Welcome.md")
 check("vau notify: a toast with Open", !!(await toastWith("Wrote the weekly review")))
 

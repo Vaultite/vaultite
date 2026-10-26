@@ -1,8 +1,8 @@
 // An agent's report (inbox.report) and the reply from it (inbox.reply) into its terminal, desktop and 390px. Writes
-// Inbox/, Attachments/ and starts a shell: throwaway server only (then `tmux -L vaultite-<port> kill-server`).
+// Inbox/, Attachments/ and starts terminals: throwaway server only (then `tmux -L vaultite-<port> kill-server`).
 //   node web/qa/report.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
-import { mkdirSync, readFileSync } from "node:fs"
+import { mkdirSync, readFileSync, readdirSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { devices } from "playwright-core"
@@ -14,11 +14,14 @@ const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
 const api = apiAt(B)
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 const enc = (p) => encodeURIComponent(p)
-const term = "q7r8s9t0"
-const vau = (...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args],
-  { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: term, CLAUDE_CODE_SESSION_ID: "" }, encoding: "utf8" })
+// An agent's terminal, as a report's is: QA's stand-in claude runs in it (a reply is typed only into a running agent).
+const term = "claude-q7r8s9t0"
+const vauIn = (terminal, ...args) => execFileSync("node", [fileURLToPath(new URL("../../bin/vau", import.meta.url)), ...args],
+  { env: { ...process.env, VAULTITE_URL: B.replace(/\/$/, ""), VAULTITE_TERMINAL: terminal, CLAUDE_CODE_SESSION_ID: "" }, encoding: "utf8" })
+const vau = (...args) => vauIn(term, ...args)
 
 await api("POST", `terminals/${term}`)
+check("its terminal runs the agent", await until(async () => (await api("GET", "terminals/sessions")).sessions?.some((s) => s.id === term && s.agent === "claude" && s.busy), 10000))
 const shot = path.join(os.tmpdir(), "vaultite-qa-shot.png")
 execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=1280x800:rate=1", "-frames:v", "1", shot])
 const title = "Lighthouse page redesigned"
@@ -55,6 +58,25 @@ check("reply: kept in the report with when, which is done", await until(() => />
 check("reply: the report stays open, in the archive", await until(() => page.url().includes(enc("Inbox/.archive/")) && box.isVisible(), 5000), page.url())
 check("reply: still scrolled where it was read, not back at the top", before > 100 && await until(async () => Math.abs((await scrolled()) - before) < 40, 4000), { before, after: await scrolled() })
 await page.screenshot({ path: `${OUT}report-replied.png` })
+
+// A report naming a plain shell (anyone who writes the vault can write one): the box says a new session gets the reply,
+// and it does; nothing is typed into the shell, which would run it.
+const shell = "q7r8s9t1"
+await api("POST", `terminals/${shell}`)
+vauIn(shell, "inbox", "report", "Beacon footer kept", "--work", "change", "--tldr", "Kept the Beacon footer.", "--summary", "Kept the footer.", "--agent", "claude")
+const inShell = await until(() => readdirSync(path.join(VAULT, "Inbox")).find((f) => f.endsWith(".md") && read(`Inbox/${f}`).includes(`terminal: ${shell}`)), 5000)
+await page.goto(`${B}#file/${enc(`Inbox/${inShell}`)}`)
+const plan = page.locator("[data-reply-plan]")
+check("a shell's report: the box says a new session gets the reply", await until(async () => (await plan.getAttribute("data-reply-plan").catch(() => null)) === "new", 10000) &&
+  (await plan.innerText()).startsWith("Starts a new session"), await plan.innerText().catch(() => null))
+await box.fill("echo qa-shell-ran")
+await page.keyboard.press("ControlOrMeta+Enter")
+check("… and says it started one", !!(await until(async () => (await page.locator("[data-sonner-toast]").allInnerTexts()).some((t) => t.includes("Started a new session with your reply")), 10000)),
+  await page.locator("[data-sonner-toast]").allInnerTexts())
+const shellLines = (await api("GET", `terminals/${shell}/screen?lines=20`)).lines ?? []
+check("… never typing into the shell", !shellLines.join("\n").includes("qa-shell-ran"), shellLines)
+const fresh = await until(() => /^terminal: (claude-\S+)$/m.exec(read(`Inbox/.archive/${inShell}`))?.[1], 5000)
+for (const t of [shell, fresh]) if (t) await api("DELETE", `terminals/${t}`).catch(() => {})
 
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 const ph = watch(await phone.newPage())
