@@ -53,7 +53,7 @@ export type State = PluginState & {
   /** The times the app keeps in plain notes, no kind's (a plugin's plugin.state: Note dates' created, updated). */
   noteStamps?: string[]
 }
-export type KindInfo = { sections: string[]; stamps: string[] }
+type KindInfo = { sections: string[]; stamps: string[] }
 /** A vault plugin as the server lists it (core/vaultplugins.ts on the server). */
 export type VaultPluginInfo = {
   id: string; name: string; description: string; requires: string[]; enhances: string[]; runsOnServer: boolean; desktopApp?: boolean; tint?: string; category?: string

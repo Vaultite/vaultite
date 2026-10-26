@@ -6,7 +6,7 @@
 export type CanvasItem = { id: string; type: string; x: number; y: number; w: number; h: number; text?: string; from?: string; to?: string }
 /** Someone else on a canvas: their pointer (in its units), name and colour (a CSS colour), what they have selected. */
 export type CanvasPeer = { id: string; name: string; color: string; x: number; y: number; selected?: string[]; busy?: boolean }
-export type Point = { x: number; y: number }
+type Point = { x: number; y: number }
 
 export type OpenCanvas = {
   path: string

@@ -12,7 +12,7 @@ export type Table = { rows: Row[]; align: Align[]; delim: string; aligned: strin
 export type Cell = { r: number; c: number }
 
 /** A row's cells as written: split at pipes that aren't escaped, the outer pipes dropped, trimmed. */
-export function cellsOf(line: string): string[] {
+function cellsOf(line: string): string[] {
   let t = line.trim()
   if (t.startsWith("|")) t = t.slice(1)
   if (t.endsWith("|") && !t.endsWith("\\|")) t = t.slice(0, -1)

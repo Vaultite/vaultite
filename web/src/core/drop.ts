@@ -27,7 +27,7 @@ export const canDropAt = (item: DragItem, d: Drop) => canDrop(item, d.group, d.k
 export type Slot = { el: Element; tab?: string; set?: string }
 
 /** Where an element is laid out, without the slide a drag's preview gives it (useSlide): hits are worked out on that. */
-export function laidOut(el: Element) {
+function laidOut(el: Element) {
   const r = el.getBoundingClientRect(), slid = el.closest<HTMLElement>("[data-slide]")
   if (!slid?.style.transform) return r
   const m = new DOMMatrixReadOnly(getComputedStyle(slid).transform)

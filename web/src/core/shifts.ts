@@ -18,7 +18,7 @@ const REGIONS: [string, string][] = [
   ["aside[data-side=left]", "left sidebar"], ["aside[data-side=right]", "right sidebar"], ["[data-status-bar]", "status bar"],
   ["[role=tablist]", "tabs"], ["[data-pane]", "pane"],
 ]
-export function regionOf(n: Node | null | undefined): string {
+function regionOf(n: Node | null | undefined): string {
   const el = n instanceof Element ? n : n?.parentElement
   return (el && REGIONS.find(([sel]) => el.closest(sel))?.[1]) || "page"
 }

@@ -25,7 +25,7 @@ const host = () => forked() ?? attached
 export const inDesktop = () => !!host()
 
 /** Why no desktop app can be asked: none here (nor on an always-on machine Machines lists). */
-export const NO_DESKTOP = "the browser is in Vaultite's desktop app, and none is attached to this server: open Vaultite on this Mac, or on an always-on one listed in Machines"
+const NO_DESKTOP = "the browser is in Vaultite's desktop app, and none is attached to this server: open Vaultite on this Mac, or on an always-on one listed in Machines"
 export const noDesktop = () => refused || NO_DESKTOP
 
 /** What the host sends besides replies (`allow`: outside files a window may open; events). */

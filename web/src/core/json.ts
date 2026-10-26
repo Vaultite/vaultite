@@ -1,7 +1,7 @@
 // JSON with where each value sits in the text: keys keep their order (a JS object would reorder numeric keys) and an
 // edit replaces only the value's characters, the same small-edit rule as Markdown.
 
-export type JScalar = { kind: "string"; value: string } | { kind: "number"; value: number } | { kind: "boolean"; value: boolean } | { kind: "null"; value: null }
+type JScalar = { kind: "string"; value: string } | { kind: "number"; value: number } | { kind: "boolean"; value: boolean } | { kind: "null"; value: null }
 export type JNode = (
   | JScalar
   | { kind: "object"; entries: { key: string; value: JNode }[] }

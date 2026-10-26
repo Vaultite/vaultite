@@ -10,7 +10,7 @@ import { type Item, requestWriter, type Vault } from "./vault.ts"
 export const byGuest = () => requestWriter.getStore()?.client === "guest"
 
 /** What coding agents read as instructions where they work (Claude Code, Codex, Gemini, Amp, aider, Copilot...). */
-export const FOR_AGENTS = /^(claude|agents?|gemini|qwen|crush|conventions|skill|copilot-instructions|warp)(\.(local|override))?\.md$/i
+const FOR_AGENTS = /^(claude|agents?|gemini|qwen|crush|conventions|skill|copilot-instructions|warp)(\.(local|override))?\.md$/i
 /** Code blocks only drawn as code: any other language may be a plugin's block, which runs or fetches (Dataview's JS,
  *  genui, block-*, a chart): a guest adds none, nor a line inside one. */
 const PLAIN = new Set(["", "text", "txt", "plain"])

@@ -8,7 +8,7 @@ import path from "node:path"
 const exists = (p: string) => { try { return fs.statSync(p).isFile() } catch { return false } }
 
 /** `name` as Windows finds it: a path, or on Path with one of PATHEXT's extensions (claude.exe, codex.cmd). */
-export function which(name: string, env: NodeJS.ProcessEnv): string | null {
+function which(name: string, env: NodeJS.ProcessEnv): string | null {
   const exts = (env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
   const tries = (base: string) => [...(path.extname(base) ? [base] : []), ...exts.map((e) => base + e.toLowerCase())]
   if (/[\\/]/.test(name)) return tries(name).find(exists) ?? null
@@ -22,7 +22,7 @@ export function which(name: string, env: NodeJS.ProcessEnv): string | null {
 
 /** cmd's escaping of one argument for a .cmd or .bat (cross-spawn's): quoted as a program reads it, then each of cmd's
  *  own characters escaped, twice (the batch file's %* parses it again). A line break can't pass: it becomes a space. */
-export function cmdArg(arg: string) {
+function cmdArg(arg: string) {
   let a = arg.replace(/\r?\n/g, " ").replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, "$1$1")
   a = `"${a}"`
   for (let i = 0; i < 2; i++) a = a.replace(/[()%!^"<>&|;, ]/g, "^$&")
@@ -30,7 +30,7 @@ export function cmdArg(arg: string) {
 }
 
 /** An npm shim (`codex.cmd`) runs Node on a script: that, without cmd, so arguments pass whole (JSON, line breaks). */
-export function npmShim(file: string, env: NodeJS.ProcessEnv): string[] | null {
+function npmShim(file: string, env: NodeJS.ProcessEnv): string[] | null {
   let text = ""
   try { text = fs.readFileSync(file, "utf8") } catch { return null }
   const script = /"%(?:~?dp0%?|dp0%)\\?([^"%]+\.[cm]?js)"\s+%\*/i.exec(text)?.[1]

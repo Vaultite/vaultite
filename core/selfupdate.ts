@@ -7,7 +7,7 @@ import { promisify } from "node:util"
 
 const exec = promisify(execFile)
 
-export type UpdateState = "off" | "current" | "waiting" | "updating" | "failed"
+type UpdateState = "off" | "current" | "waiting" | "updating" | "failed"
 /** What `app.version` (vau version) shows: what runs and what the updates are doing. */
 export type UpdateStatus = {
   /** The branch followed, null when off. */
@@ -57,7 +57,7 @@ export const githubRepo = (url: string) => /github\.com[/:]([\w.-]+\/[\w.-]+?)(?
 
 /** Whether CI's runs on `sha` passed, from GitHub's API (the gh CLI when it's signed in, else anonymously: the repo is
  *  public). */
-export async function githubCi(repo: string, sha: string): Promise<CiResult> {
+async function githubCi(repo: string, sha: string): Promise<CiResult> {
   const api = `repos/${repo}/actions/runs?head_sha=${sha}&per_page=50`
   let body: { workflow_runs?: { path?: string; event?: string; status?: string; conclusion?: string | null }[] }
   try {

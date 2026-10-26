@@ -41,7 +41,7 @@ const RESERVED = new Set(["restore", "import", "onboarding", "previous", "keep",
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "editor", "hotkeys", "newtab"] as const
 /** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes; its dark one is shown
  *  when the app is dark (each falls back to the other). */
-export const PREVIEW = "preview.png", PREVIEW_DARK = "preview-dark.png"
+const PREVIEW = "preview.png", PREVIEW_DARK = "preview-dark.png"
 export const PICTURES: string[] = [PREVIEW, PREVIEW_DARK]
 /** The app's own appearance and editor settings when a key isn't set: a bundle setting one of these removes the key
  *  instead, so a vault never holds a default. */
@@ -600,7 +600,7 @@ export type Previous = {
   was?: Applied | null
 }
 /** The bundle applied last (applied.json), and the changes it was applied without. */
-export type Applied = { bundle: string; name: string; at: string; skip: string[] }
+type Applied = { bundle: string; name: string; at: string; skip: string[] }
 /** A bundle being tried (trial.json): Keep ends it, Restore puts back the setup from before it. */
 export type Trial = { bundle: string; name: string; at: string }
 

@@ -62,7 +62,7 @@ export function keepAnchored(grid: HTMLElement, selector: string): () => void {
 
 /** Where on screen (a y) something held at `y` goes so it's in sight in `box` (null: the window): below what's stuck
  *  at its top (a pane's view bar, a phone's header), with room under it for a few lines. */
-export function inSight(box: HTMLElement | null, y: number): number {
+function inSight(box: HTMLElement | null, y: number): number {
   const r = box ? box.getBoundingClientRect() : { top: 0, bottom: innerHeight }
   const pad = parseFloat(getComputedStyle(box ?? document.documentElement).scrollPaddingTop) || 0
   const bar = [...(box ?? document).querySelectorAll<HTMLElement>("[data-view-bar]")].find((b) => b.getClientRects().length)

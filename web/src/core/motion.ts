@@ -7,7 +7,7 @@ import { cell } from "@/core/signal"
 type Kind = "back" | "forward"
 
 /** Whether changes animate: the API is there, and the user hasn't asked for less motion. */
-export const moves = () =>
+const moves = () =>
   typeof document !== "undefined" && typeof document.startViewTransition === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches
 
 const VARS = ["--mto", "--mfrom"]

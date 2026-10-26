@@ -9,13 +9,13 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
 import { plainText } from "../../../core/plainerror.ts"
 
-export type KnownVault = { path: string; name: string; open?: boolean
+type KnownVault = { path: string; name: string; open?: boolean
   /** The playground (desktop; the sandbox in code): made up, made afresh each time it opens. */
   sandbox?: boolean
   /** Another machine's server (desktop; `path` is its address). */
   remote?: boolean }
 export type VaultList = { current?: string | null; home?: string; vaults: KnownVault[] }
-export type FolderList = { path: string; home: string; parent: string | null; folders: { name: string; vault: boolean }[] }
+type FolderList = { path: string; home: string; parent: string | null; folders: { name: string; vault: boolean }[] }
 export type VaultBackend = {
   list: () => Promise<VaultList>
   open: (path: string) => Promise<unknown>

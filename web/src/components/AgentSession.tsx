@@ -12,10 +12,10 @@ import { machinePath, splitMachine } from "@/core/machines"
 import { useEnabled } from "@/core/plugins"
 import { cn } from "@/lib/utils"
 
-export type Tool = { kind: "tool"; id: string; name: string; summary: string; input: string; result: string | null; error: boolean; at: string }
-export type Said = { kind: "user" | "assistant"; text: string; at: string }
+type Tool = { kind: "tool"; id: string; name: string; summary: string; input: string; result: string | null; error: boolean; at: string }
+type Said = { kind: "user" | "assistant"; text: string; at: string }
 export type Entry = Said | Tool
-export type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
+type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
 export type SessionPage = Head & { id: string; project: string; start: number; total: number; entries: Entry[]; speaker?: string }
 
 const PAGE = 150

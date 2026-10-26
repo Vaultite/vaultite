@@ -5,8 +5,8 @@ import { SCHEMES, schemeId } from "@/themes/schemes"
 import { signal } from "@/core/signal"
 import type { DesktopApi, Translucency } from "@/core/desktop"
 
-export type VaultTheme = { name: string; author: string; version: string; modes: ("light" | "dark")[]; mtime: number; problem?: string }
-export type VaultSnippet = { name: string; mtime: number; path: string }
+type VaultTheme = { name: string; author: string; version: string; modes: ("light" | "dark")[]; mtime: number; problem?: string }
+type VaultSnippet = { name: string; mtime: number; path: string }
 export type VaultAppearance = { themes: VaultTheme[]; snippets: VaultSnippet[] }
 
 const THEMES = ".vaultite/themes", SNIPPETS = ".vaultite/snippets"

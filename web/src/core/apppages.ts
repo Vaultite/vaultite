@@ -5,7 +5,7 @@ import { isDesktop } from "@/core/platform"
 import { share } from "@/core/share"
 import { findOpen, go, replaceTabTarget } from "@/core/workspace"
 
-export const SETUP_TABS = ["bundles", "plugins"] as const
+const SETUP_TABS = ["bundles", "plugins"] as const
 export type SetupTab = (typeof SETUP_TABS)[number]
 
 export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIcon; tint: string

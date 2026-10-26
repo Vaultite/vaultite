@@ -12,7 +12,7 @@ const WIKI_START = new RegExp(`^!?${WIKI_LINK}`)
 export const footnoteText = (s: string) => dropHighlightEmoji(s).replace(/\[\[([^\]|]+\|)?|\]\]|[*_`~]/g, "")
 
 /** What a [[target]] is (its kind tints it: person, book...), or null: nothing yet. */
-export type Resolves = (target: string) => { kind: string } | null
+type Resolves = (target: string) => { kind: string } | null
 /** What drawing needs from the vault: `resolves` links, `asset` a vault file's address (an image), or null. */
 export type MarkdownOpts = { resolves?: Resolves; asset?: (name: string) => string | null }
 

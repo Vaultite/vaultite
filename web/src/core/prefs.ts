@@ -10,11 +10,11 @@ import { signal } from "@/core/signal"
 export type Theme = "system" | "light" | "dark"
 /** Colour scheme: recolours every page (tokens in index.css, overrides in themes/<name>.css; the list is
  *  themes/schemes.ts), or "theme:<Name>", an Obsidian theme in the vault's .vaultite/themes/ (or .obsidian/themes/). */
-export type Scheme = string
+type Scheme = string
 export type Density = "compact" | "comfortable"
 /** How a sidebar with more than fits scrolls: each panel in its own box, under dividers that set their heights
  *  ("panels"), or the whole sidebar as one ("sidebar"). */
-export type SidebarScroll = "panels" | "sidebar"
+type SidebarScroll = "panels" | "sidebar"
 /** How the file tree orders files (folders always come first, by name). */
 export type FileSort = "name" | "name-desc" | "modified" | "modified-old" | "created" | "created-old"
 export type Prefs = {

@@ -11,7 +11,7 @@ export function distros(): Promise<string[]> {
 }
 
 /** `wsl --list --quiet`'s output (UTF-16, one distro a line) as names. */
-export function distroList(out: Buffer): string[] {
+function distroList(out: Buffer): string[] {
   const text = out.includes(0) ? out.toString("utf16le") : out.toString("utf8")
   return text.replace(/^\uFEFF/, "").split(/\r?\n/).map((l) => l.replace(/\0/g, "").trim()).filter((l) => l && !/^docker-desktop/.test(l))
 }

@@ -120,7 +120,7 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   /** It's in its player, a window of its own (still its tab's). */
   player?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
-export type WebRect = { x: number; y: number; width: number; height: number }
+type WebRect = { x: number; y: number; width: number; height: number }
 /** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
  *  known by number, each a tab's: hidden while it's in the background, ended with it. Older builds ignore tabs. */
 export type WebPages = {

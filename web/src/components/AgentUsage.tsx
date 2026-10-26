@@ -126,7 +126,7 @@ const titleOf = (s: { title: string; private?: boolean }, untitled: string) => (
 
 const daysOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.days === "number" ? Math.round(o.days) : 30, 1), 3650)
 /** What a cost is: an estimate at list prices, unless the source says otherwise. */
-export const costNote = (src: AgentSource) => src.costNote ?? "Estimated at list prices"
+const costNote = (src: AgentSource) => src.costNote ?? "Estimated at list prices"
 export const money = (v: number) => (v < 100 ? `$${v.toFixed(2)}` : `$${numberText(Math.round(v))}`)
 export const tokens = (n: number) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n)

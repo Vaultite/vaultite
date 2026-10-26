@@ -8,10 +8,10 @@ import { fileURLToPath } from "node:url"
 import { wslShim } from "./vaushims.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-export const WSL_MARK = "vau for WSL, written by Vaultite: runs Windows' vau through WSL's interop. Safe to delete."
+const WSL_MARK = "vau for WSL, written by Vaultite: runs Windows' vau through WSL's interop. Safe to delete."
 
 /** The folder holding vau for WSL, a Windows path (in WSL: wslpath -u, or core/wsl.ts' toWsl). */
-export const wslVauDir = (env: Record<string, string | undefined> = process.env) =>
+const wslVauDir = (env: Record<string, string | undefined> = process.env) =>
   path.win32.join(env.LOCALAPPDATA || path.win32.join(os.homedir(), "AppData", "Local"), "Vaultite", "wsl")
 
 /** Writes vau for WSL (when it changed) running this checkout's bin/vau with `exe` as Node (this process's by default:
@@ -33,7 +33,7 @@ export function writeWslVau(o: { exe?: string; dir?: string; env?: Record<string
 
 /** In a distro: ~/.local/bin/vau a link to vau for WSL (never over another program's), then whether a login shell finds
  *  it. The script gets the Windows path as $1 and makes it WSL's itself (its mounts may not be /mnt). */
-export const DISTRO_INSTALL = `set -e
+const DISTRO_INSTALL = `set -e
 t=$(wslpath -u "$1")
 f="$HOME/.local/bin/vau"
 if [ -e "$f" ] && [ ! -L "$f" ] && ! grep -q 'written by Vaultite' "$f"; then echo "other $f"; exit 0; fi

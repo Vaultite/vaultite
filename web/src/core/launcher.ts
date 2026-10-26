@@ -11,7 +11,7 @@ import { newTabInSet, setById } from "@/core/tabsets"
 export const opensSwitcher = () => getPrefs().newTab.opens === "switcher"
 
 /** The views a new tab can be here (`asNewTab`), of the plugins that are on: their targets and names. */
-export function newTabViews(disabled = getPrefs().disabled) {
+function newTabViews(disabled = getPrefs().disabled) {
   return active(disabled).flatMap((p) => Object.entries(p.views ?? {}).flatMap(([name, v]) =>
     v.asNewTab && v.asNewTab.here?.() !== false ? [{ target: `view:${name}`, label: v.asNewTab.label }] : []))
 }

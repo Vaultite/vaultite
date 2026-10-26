@@ -6,7 +6,7 @@ import { getPrefs, setPrefs } from "@/core/prefs"
 import { defaultOrder, keyList, placeKey } from "../../../core/slots.ts"
 
 /** The app's own items, drawn by the bar (StatusBar.tsx), between the plugins' status items before and `after`. */
-export const BUILT_IN = [
+const BUILT_IN = [
   { key: "core:view", title: "Current view" },
   { key: "core:words", title: "Word count" },
   { key: "core:characters", title: "Character count" },
@@ -16,7 +16,7 @@ export const BUILT_IN = [
 export type BarItem = { key: string; title: string } & ({ ambient: AmbientItem; status?: undefined } | { ambient?: undefined; status?: StatusItem })
 
 /** Every item there could be now, in their default order (`defaults`: those shown where nothing's saved). */
-export function barItems(disabled: string[]) {
+function barItems(disabled: string[]) {
   const ambient = ambientItems(disabled).map((x): BarItem => ({ key: x.key, title: x.item.title, ambient: x.item }))
   const status = statusItems(disabled).map((x): BarItem => ({ key: x.key, title: x.item.title ?? x.plugin.name, status: x.item }))
   const all = [...ambient, ...status.filter((x) => !x.status!.after), ...BUILT_IN.map((b): BarItem => ({ ...b })), ...status.filter((x) => x.status!.after)]

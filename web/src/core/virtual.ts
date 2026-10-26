@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { scrollerOf } from "@/core/near"
 
 /** A row drawn, and the space before it (rows not drawn since the last one). */
-export type Slot = { index: number; gap: number }
+type Slot = { index: number; gap: number }
 export type Virtual = {
   slots: Slot[]
   /** The space after the last row drawn. */

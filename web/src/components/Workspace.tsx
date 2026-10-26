@@ -62,7 +62,7 @@ setCloseGuard(async (tos) => {
 
 /** A core page a tab can show (Setup, Settings), drawn for its address `to` in `tab`. `full`: it lays out and scrolls
  *  itself under the tab's bar (RailLayout), and is kept drawn while hidden, as other pages are. */
-export type PageTab = { label: string; full?: boolean; render?: (store: Store, to: string, tab: Tab | null) => ReactNode }
+type PageTab = { label: string; full?: boolean; render?: (store: Store, to: string, tab: Tab | null) => ReactNode }
 type Props = {
   store: Store | null; error: string | null
   /** Where it starts: the sidebar's width (a CSS length: px open, spacing units as the rail). */

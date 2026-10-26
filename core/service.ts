@@ -26,7 +26,7 @@ export function stableNode(exe: string, PATH = "") {
 
 /** Windows' task runs wscript (no window; a task can set no variables), whose script sets them and runs the server in
  *  cmd's hidden console (what it runs shares it, rather than a window each), again 3 s after it stops. */
-export const TASK = "Vaultite server"
+const TASK = "Vaultite server"
 /** A JScript string, ASCII only (wscript reads a file without a BOM in the system's code page). */
 const js = (s: string) => JSON.stringify(s).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)
 const winQuote = (s: string) => `"${s}"` // (a Windows path can't hold a ")

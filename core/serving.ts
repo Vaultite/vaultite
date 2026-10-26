@@ -61,7 +61,7 @@ export function reclaim(vault: string, port: number, app: boolean) {
 export const servingKey = () => mine?.key ?? ""
 
 /** Let the vault go (exit, a switch to another): only this process's own claim. */
-export function release() {
+function release() {
   if (!mine) return
   try { if ((JSON.parse(fs.readFileSync(mine.file, "utf8")) as Serving).pid === process.pid) fs.unlinkSync(mine.file) } catch { /* gone */ }
   mine = null
