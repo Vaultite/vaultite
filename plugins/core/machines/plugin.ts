@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { API_VERSION, APP_VERSION, bullets, GUEST_HEADER, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import type { Item } from "../../../core/vault.ts"
 
@@ -41,14 +41,24 @@ const commit = new Promise<string>((resolve) => {
   })
 })
 
-/** The machines in the settings, checked: a usable id and an http(s) url, each id once. */
+/** An address on the tailnet (a .ts.net name, a 100.64/10 or fd7a:115c:a1e0:: address) or this machine's loopback: the
+ *  settings are a vault file, and the server asks what's there as its owner, so never a host its writer picks. */
+export function onTailnet(url: string) {
+  let h: string
+  try { const u = new URL(url); if (!/^https?:$/.test(u.protocol) || u.username || u.password) return false; h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "") } catch { return false }
+  const v4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h)
+  if (v4) return v4[1] === "127" || (v4[1] === "100" && Number(v4[2]) >= 64 && Number(v4[2]) <= 127)
+  return h.endsWith(".ts.net") || h === "localhost" || h === "::1" || h.startsWith("fd7a:115c:a1e0:")
+}
+
+/** The machines in the settings, checked: a usable id and a tailnet url (onTailnet), each id once. */
 function listed(): DialEntry[] {
   const raw = plugin.settings({}).machines
   const out: DialEntry[] = []
   for (const m of Array.isArray(raw) ? raw as Item[] : []) {
     const id = String(m?.id ?? "").toLowerCase(), url = String(m?.url ?? "").replace(/\/+$/, "")
     const via = typeof m.via === "string" && ID.test(m.via) && m.via !== id ? m.via : undefined
-    if (!ID.test(id) || (!via && !/^https?:\/\//.test(url)) || out.some((o) => o.id === id)) continue
+    if (!ID.test(id) || (!via && !onTailnet(url)) || out.some((o) => o.id === id)) continue
     out.push({ id, label: String(m.label || id), url: via ? "" : url, ...(via ? { via } : {}) })
   }
   return out
@@ -249,13 +259,13 @@ plugin.route("GET", "machines/*/**", async (req) => {
     await plugin.ownerOnly(req, "Reading an agent machine's files")
     return agentFs(id, rest, req.query)
   }
+  // (that machine sees this one's tailnet login, the owner's: only the owner asks through it)
+  await plugin.ownerOnly(req, "Another machine's API")
   const qs = new URLSearchParams(req.query).toString()
-  // (that machine sees this one's tailnet login, the owner's: someone else asking here stays someone else there)
-  const guest: Record<string, string> = req.http && await plugin.refusal(req.http) ? { [GUEST_HEADER]: "1" } : {}
   let r: Response
   try {
     r = await fetch(`${m.url}/api/${rest.split("/").map(encodeURIComponent).join("/")}${qs ? `?${qs}` : ""}`,
-      { headers: { ...MACHINE_CLIENT, ...guest }, signal: AbortSignal.timeout(15000) })
+      { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(15000) })
   } catch {
     throw new HTTPError(502, `${m.label} doesn't answer`)
   }

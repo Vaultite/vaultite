@@ -130,11 +130,9 @@ try {
   machinePlugin.forget()
   assert.ok((await api("GET", "machines")).body.some((m: { id: string; online: boolean }) => m.id === "sandbox" && !m.online))
   const seen: string[] = []
-  const guests: string[] = []
   let says = false // a relay that says its agent machines in /self (else one from before: /info)
   const relay = http.createServer((req, res) => {
     seen.push(`${req.method} ${req.url}`)
-    if (req.headers["x-vaultite-guest"]) guests.push(String(req.url))
     res.setHeader("Content-Type", "application/json")
     if (req.url === "/api/machines/self") return res.end(JSON.stringify({ instance: "another-server", host: "other", plugins: [], ...(says ? { dialed: { away: { online: true, platform: "linux" } } } : {}) }))
     if (req.url === "/api/machines/away/info") return res.end(JSON.stringify({ online: true, platform: "linux" }))
@@ -160,10 +158,10 @@ try {
     assert.equal(forwarded.status, 200)
     assert.equal(forwarded.body.entries[0].name, "report.txt")
     assert.equal((await api("GET", "machines/away/state")).status, 404)
-    // That machine sees this one's tailnet login (the owner's): someone else asking here is marked so there.
+    // That machine sees this one's tailnet login (the owner's): only the owner asks through this one.
     await api("GET", "machines/other/terminals/sessions")
-    await api("GET", "machines/other/terminals/x/screen", {}, outsider)
-    assert.deepEqual(guests, ["/api/terminals/x/screen"], "only a request for someone who isn't the owner goes on as a guest")
+    assert.equal((await api("GET", "machines/other/terminals/x/screen", {}, outsider)).status, 403, "someone who isn't the owner isn't passed on")
+    assert.ok(seen.includes("GET /api/terminals/sessions") && !seen.includes("GET /api/terminals/x/screen"), "the owner's request goes on")
     assert.equal((await api("POST", "ops/machines.revoke", { id: "away" })).status, 200)
     assert.equal((await api("POST", "machines/other/approve", { code: "12345678" })).status, 200)
     assert.ok(seen.includes("GET /api/machines/away/fs/list?path=%2Fworkspace"))

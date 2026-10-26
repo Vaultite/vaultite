@@ -1,11 +1,11 @@
 ## Machines
 Your other computers running Vaultite (one vault, many machines: the vault is the data, a machine is where things
 run). The list is `.vaultite/plugins/machines/data.json`: `{"machines": [{"id": "studio", "label": "Studio", "url":
-"https://studio.example.ts.net:8447"}]}` (`id`: lowercase letters, digits and -; `url`: where its app answers). A server
+"https://studio.example.ts.net:8447"}]}` (`id`: lowercase letters, digits and -; `url`: where its app answers, on the tailnet: a .ts.net name or a tailnet address). A server
 served through Tailscale Serve adds itself once (with the Tailscale plugin on; `added` remembers it, so one you remove
 stays removed); edit the labels freely.
 - `GET /api/machines` says which answer and what each runs (`self`: this one); `GET /api/machines/<id>/<path>` is
-  `GET /api/<path>` on that machine (read-only).
+  `GET /api/<path>` on that machine (read-only, for this machine's owner).
 - The browser's agents (`vau docs web-viewer`) on a server that isn't a desktop app's go to the first machine listed
   whose desktop app has this vault open (`desktop` in `/api/machines`), through its `POST /api/machines/desktop` (the
   owner's only).

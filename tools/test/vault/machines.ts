@@ -45,6 +45,15 @@ export default async ($: VaultTest) => {
     const page0 = await app.run("GET", ["machines", "box", "raw"], { path: "x.html" }, {})
     const h0 = (page0.body as Any)?.headers ?? {}
     check("machines: another machine's page or picture never runs here (sandboxed, as sent)", page0.status === 200 && /^sandbox/.test(h0["Content-Security-Policy"] ?? "") && h0["X-Content-Type-Options"] === "nosniff", [page0.status, h0])
+    {
+      // (the list is a vault file, and the server asks a machine as its owner: only the owner, only the tailnet)
+      const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "100.64.0.9" } } as Any
+      const r = await app.run("GET", ["machines", "box", "harbor", "tides"], {}, {}, stranger)
+      const { onTailnet } = await import("../../../plugins/core/machines/plugin.ts")
+      check("machines: another machine's API only for this one's owner", r.status === 403, r.status)
+      check("machines: only addresses on the tailnet (or this machine's)", ["https://studio.tail1234.ts.net:8447", "http://100.101.2.3:8793", "http://127.0.0.1:8794", "http://[fd7a:115c:a1e0::1]:8793"].every(onTailnet) &&
+        !["https://evil.example.com", "http://192.168.1.5", "http://100.200.1.1", "https://ts.net.evil.example", "https://a@studio.tail1234.ts.net", "file:///etc"].some(onTailnet))
+    }
     ;[c, body] = await api("GET", "machines/box/nothing")
     check("machines: its errors come back as they are", c === 404 && body.error === "no such thing", [c, body])
     ;[c] = await api("GET", "machines/nope/state")
