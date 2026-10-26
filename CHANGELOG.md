@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third
+  faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).
 - **Agents browse out of your way**: a page an agent opens no longer joins your tabs. A card in the window's corner
   (dragged to any corner, like the mini player) shows it live, the agent's pointer moving to what it clicks; Open as tab

@@ -57,9 +57,10 @@ function markdownFiles(root: string, rel = ""): string[] {
 /** Change the vault's Markdown files (`only` those, else all) by `change`, each read off the main thread as a sync reads
  *  it: a file iCloud is slow to give never holds the start. Returns those not read yet (iCloud bringing them): later. */
 async function eachMarkdown(v: Vault, only: string[] | undefined, change: (rel: string, text: string) => string) {
-  const queue = [...only ?? markdownFiles(v.abs(""))], later: string[] = []
+  const queue = only ?? markdownFiles(v.abs("")), later: string[] = []
+  let at = 0 // (not shift(): on a big array each one moves the rest)
   const next = async () => {
-    for (let rel = queue.shift(); rel !== undefined; rel = queue.shift()) {
+    for (let rel = queue[at++]; rel !== undefined; rel = queue[at++]) {
       const abs = v.abs(rel)
       let data: Buffer | null
       try { data = await readSoon(abs) } catch { continue } // (gone meanwhile, or not a file)

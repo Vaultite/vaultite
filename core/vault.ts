@@ -845,10 +845,11 @@ export class Vault {
   /** The texts of `rels` (or why one can't be read), read 64 at a time off the main thread. `late`: the ones still
    *  being read after READ_WAIT in all (a file started after that gets a moment). */
   private async readAll(rels: string[]) {
-    const texts = new Map<string, string | Error>(), late: string[] = [], queue = [...rels], was = new Set(this.downloading)
+    const texts = new Map<string, string | Error>(), late: string[] = [], was = new Set(this.downloading)
     const deadline = Date.now() + READ_WAIT
+    let at = 0 // (not shift(): on a big array each one moves the rest, so a vault's 30,000 files cost a second)
     const next = async () => {
-      for (let rel = queue.shift(); rel !== undefined; rel = queue.shift()) {
+      for (let rel = rels[at++]; rel !== undefined; rel = rels[at++]) {
         const abs = path.join(this.path, rel)
         try {
           const data = await readSoon(abs, Math.max(deadline - Date.now(), 200))
@@ -862,7 +863,7 @@ export class Vault {
         }
       }
     }
-    await Promise.all(Array.from({ length: Math.min(64, queue.length) }, next))
+    await Promise.all(Array.from({ length: Math.min(64, rels.length) }, next))
     return { texts, late: late.sort() }
   }
 
