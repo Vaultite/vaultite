@@ -8,8 +8,23 @@ type Cell = ({ md: string } | { embed: string; height?: number } | { wide: boole
 /** An embed of a note or a part of it (`![[Note#Heading]]`), not of another kind of file. */
 const isNote = (target: string) => { const name = target.split(/[#|]/)[0]; return !/\.[a-z0-9]+$/i.test(name) || /\.md$/i.test(name) }
 
-/** A dashboard of only Markdown (no blocks): read at a note's width. */
-export const onlyText = (body: string) => layout(body).every((c) => "md" in c)
+/** Its cells, without the blocks nobody draws (their plugin is off: they take no room). */
+function cellsOf(body: string, disabled: string[]): Cell[] {
+  return layout(body).flatMap((c): Cell[] => {
+    if ("md" in c || "embed" in c) return [c]
+    const blocks = c.blocks.filter((b) => blockFor(b.name, disabled, blockOptions(b.text)).render)
+    return blocks.length ? [{ ...c, blocks }] : []
+  })
+}
+
+const half = (c: Cell | undefined) => !!c && "blocks" in c && !c.wide
+
+/** A dashboard nothing of which needs more than a note's width (no wide block, page embedded or two blocks side by
+ *  side: the grid sets half ones next to each other): read and edited at a note's width, its cards one under another. */
+export const narrow = (body: string, disabled: string[]) => {
+  const cells = cellsOf(body, disabled)
+  return cells.every((c, i) => "md" in c || ("embed" in c ? isNote(c.embed) : half(c) && !half(cells[i + 1])))
+}
 
 function layout(body: string): Cell[] {
   const cells: Cell[] = []
@@ -30,12 +45,8 @@ function layout(body: string): Cell[] {
 
 export function Dashboard({ ctx }: { ctx: PageCtx }) {
   const { body, disabled } = ctx
-  // Blocks nobody draws (their plugin is off) take no room.
-  const cells = useMemo(() => layout(body).flatMap((c): Cell[] => {
-    if ("md" in c || "embed" in c) return [c]
-    const blocks = c.blocks.filter((b) => blockFor(b.name, disabled, blockOptions(b.text)).render)
-    return blocks.length ? [{ ...c, blocks }] : []
-  }), [body, disabled])
+  const cells = useMemo(() => cellsOf(body, disabled), [body, disabled])
+  const one = useMemo(() => narrow(body, disabled), [body, disabled])
   // Each card's key for its remembered height: what it draws, and which of the same it is (not its place in the file,
   // so a block added above doesn't make the others forget).
   const keys = useMemo(() => {
@@ -54,15 +65,16 @@ export function Dashboard({ ctx }: { ctx: PageCtx }) {
   const grid = useRef<HTMLDivElement>(null)
   useEffect(() => (grid.current ? keepAnchored(grid.current, ":scope > [data-line]") : undefined), [])
   return (
-    // Two columns when its pane is wide enough (a container query: a dashboard in a narrow split gets one).
-    <div className="@container"><div ref={grid} className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
+    // Two columns when its pane is wide enough (a container query: a dashboard in a narrow split gets one) and it's
+    // read wide.
+    <div className="@container"><div ref={grid} className={cn("grid grid-cols-1 gap-4", !one && "@2xl:grid-cols-2")}>
       {cells.map((c, i) => "embed" in c ? (
         // (a note, or a part of one, is text: as long as the text around it; a page, a table or a PDF takes the row)
-        <Card key={i} at={keys[i]} line={c.line} className={cn("min-w-0 @2xl:col-span-2", isNote(c.embed) && "max-w-(--line-width)")}><EmbedView target={c.embed} height={c.height} store={ctx.store} from={ctx.path} seen={[ctx.path]} /></Card>
+        <Card key={i} at={keys[i]} line={c.line} className={cn("min-w-0", !one && "@2xl:col-span-2", isNote(c.embed) && "max-w-(--line-width)")}><EmbedView target={c.embed} height={c.height} store={ctx.store} from={ctx.path} seen={[ctx.path]} /></Card>
       ) : "md" in c ? (
         // Markdown between blocks: a row of its own, its math and diagrams
         // drawn once it's on the page; its lines as long as a note's (FileView), however wide the cards around it.
-        <Card key={i} at={keys[i]} line={c.line} end={c.line + c.md.split("\n").length - 1} className="min-w-0 @2xl:col-span-2"><Markdown text={c.md} store={ctx.store} from={ctx.path} plain tasks className="dash-prose max-w-(--line-width)" /></Card>
+        <Card key={i} at={keys[i]} line={c.line} end={c.line + c.md.split("\n").length - 1} className={cn("min-w-0", !one && "@2xl:col-span-2")}><Markdown text={c.md} store={ctx.store} from={ctx.path} plain tasks className="dash-prose max-w-(--line-width)" /></Card>
       ) : (
         <Card key={i} at={keys[i]} line={c.line} className={cn("grid min-w-0 grid-cols-1 gap-4", c.blocks.length > 1 && "content-start", c.wide && "@2xl:col-span-2")}>
           {c.blocks.map((b, j) => <BlockView key={j} name={b.name} text={b.text} ctx={ctx} disabled={disabled} quiet nth={b.nth} />)}

@@ -2,7 +2,7 @@
 // between blocks is typed in place; a block's </> edits its options in its card; a card dragged moves its fence; Add a
 // block puts one in; remove and Full width write the file; source mode is its Markdown and back. Then on a phone: one
 // column, the bars showing, text typed and a card moved with a held finger. The file on disk is checked after each
-// step. WRITES to the vault: throwaway server only.
+// step. A dashboard with nothing side by side reads at a note's width. WRITES to the vault: throwaway server only.
 //   node web/qa/dashboardedit.mjs <base url> [out dir]
 import { SHOTS, fingers, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
@@ -143,6 +143,27 @@ await palette(page, "Switch to live preview", 1500)
 check("back to the grid", await page.locator(".cm-grid [data-card]").count() >= 4)
 check("switching views changed nothing on disk", (await disk()) === was)
 await ctx.close()
+
+// Nothing side by side (one block between text): read and edited at a note's width, centred, the card as wide as the
+// text; a callout after a table keeps its gap.
+await write(`${FM}A line about the page.\n\n\`\`\`block-agenda\n\`\`\`\n\n## Notes\n\n| Thing | Value |\n| --- | --- |\n| One | 1 |\n\n> [!note] After the table\n\nA last line.\n`); await wait(800)
+const lone = await browser.newContext({ viewport: { width: 1600, height: 1200 }, deviceScaleFactor: 1 })
+const lp = watch(await lone.newPage(), { label: "lone" })
+const lbox = async (sel) => (await lp.locator(sel).first().boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 }
+await lp.goto(`${B}#file/${enc(PAGE)}`); await wait(2000)
+if ((await lp.locator(".file-view .cm-content[contenteditable=true]").count()) > 0) await palette(lp, "Switch to reading view")
+const lv = await lbox(".file-view"), lpane = await lp.locator(".file-view").first().evaluate((e) => { const r = e.parentElement.getBoundingClientRect(); return { x: r.x, width: r.width } })
+const lc = await lbox('.file-view [data-line]:has([data-block="agenda"])'), lt = await lbox(".dash-prose")
+check(`lone block: a note's width, centred (${Math.round(lv.x)}+${Math.round(lv.width)} in ${Math.round(lpane.x)}+${Math.round(lpane.width)})`,
+  lv.width < 760 && Math.abs((lv.x - lpane.x) - (lpane.x + lpane.width - lv.x - lv.width)) < 4)
+check(`lone block: the card as wide as the text (${Math.round(lc.width)} / ${Math.round(lt.width)})`, Math.abs(lc.width - lt.width) < 2 && Math.abs(lc.x - lt.x) < 2)
+const gap = await lp.locator(".dash-prose .callout").first().evaluate((e) => e.getBoundingClientRect().top - e.previousElementSibling.getBoundingClientRect().bottom)
+check(`a callout after a table keeps its gap (${gap})`, gap >= 8)
+await lp.screenshot({ path: `${OUT}dashboardedit-lone.png` })
+await palette(lp, "Switch to live preview", 1500)
+const le = await lbox(".file-view"), lec = await lbox('[data-card="agenda"]')
+check(`lone block: editing keeps the width and the card's (${Math.round(le.width)}, ${Math.round(lec.width)} / ${Math.round(lc.width)})`, Math.abs(le.width - lv.width) < 2 && Math.abs(lec.width - lc.width) < 40)
+await lone.close()
 
 // A phone: one column, bars showing at a finger's size, text typed, a card moved with a held finger.
 await write(START); await wait(800)

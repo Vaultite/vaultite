@@ -2,6 +2,7 @@
 // grid it reads as. Each card has its bar (drag, options, wide, stacked, source, remove); a card at the end adds one.
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { GripVertical, Plus, RectangleHorizontal, Rows2, Trash2 } from "lucide-react"
+import { narrow } from "./Dashboard"
 import { BlockView, capitalize, chooseBlock, cn, edgeScroller, notify, startDrag, useDrag, useDropHit, useDropTarget, type GridCard, type GridEdit, type PageCtx } from "@vaultite"
 
 /** A run's blocks in cells: one, and those stacked under it. */
@@ -67,10 +68,11 @@ export function EditGrid({ cards, edit, ctx }: { cards: GridCard[]; edit: GridEd
     const seen = new Map<string, number>()
     return cards.map((c) => { const n = seen.get(c.name) ?? 0; seen.set(c.name, n + 1); return `${c.name}:${n}` })
   }, [cards])
+  const two = !narrow(ctx.body, ctx.disabled)
   return (
     // Two columns when its pane is wide enough, as the page is read (Dashboard.tsx).
     <div ref={root} className="@container" data-dashboard-grid>
-      <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
+      <div className={cn("grid grid-cols-1 gap-4", two && "@2xl:grid-cols-2")}>
         {cells.map((cell) => {
           const lead = cell[0], line = hit && !hit.add && cell.includes(hit.k) ? hit : null
           return (
@@ -82,7 +84,7 @@ export function EditGrid({ cards, edit, ctx }: { cards: GridCard[]; edit: GridEd
             </div>
           )
         })}
-        {writable && <AddCard edit={edit} ctx={ctx} only={!cards.length} over={!!hit?.add} />}
+        {writable && <AddCard edit={edit} ctx={ctx} only={two && !cards.length} over={!!hit?.add} />}
       </div>
     </div>
   )

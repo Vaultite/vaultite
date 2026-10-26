@@ -922,6 +922,9 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 /* <details><summary> toggles */
 :is(.note-prose, .dash-prose, .vau-editor .cm-block-details) details:not(.callout) > summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
 :is(.note-prose, .dash-prose, .vau-editor .cm-block-details) details:not(.callout) { margin: 0 0 14px; }
+/* (a dashboard's text keeps its own rhythm, 10px above each part: a note's margins below would leave these none above) */
+.dash-prose > .callout, .dash-prose > .md-code, .dash-prose > details:not(.callout) { margin: 0; }
+.dash-prose > .callout:not(:first-child), .dash-prose > .md-code:not(:first-child), .dash-prose > details:not(.callout):not(:first-child) { margin-top: 10px; }
 /* Footnotes */
 .footnote-ref, .cm-footnote-ref { font-size: 0.72em; line-height: 0; vertical-align: super; padding: 0 1px; color: var(--primary); cursor: pointer; font-weight: 500; }
 .footnote-ref.missing, .cm-footnote-ref.is-missing { color: var(--muted-foreground); cursor: default; }
