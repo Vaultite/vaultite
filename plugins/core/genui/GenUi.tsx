@@ -57,7 +57,10 @@ export function GenUiFence(ctx: BlockCtx) {
     from: ctx.path, data,
     call: (fn, args) => frame.current?.contentWindow?.postMessage({ g: 1, type: "call", fn, args }, "*"),
     action: (name, args) => {
-      const a = typeof args[0] === "string" ? args[0] : ""
+      // (a string, or ChatGPT's object form: {value, location} for an entity, {url}, {prompt})
+      const o = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : null
+      const pick = (...ks: string[]) => ks.map((k) => o?.[k]).find((v): v is string => typeof v === "string" && !!v.trim())
+      const a = typeof args[0] === "string" ? args[0] : name === "openEntityDetail" ? [pick("value", "name", "query"), pick("location", "address")].filter(Boolean).join(", ") : pick("url", "href", "prompt", "query", "text", "value") ?? ""
       if (name === "copy" || name === "copyText") void copyText(a).then(() => notify("Copied"))
       else if ((name === "openUrl" || name === "openExternal") && /^https?:\/\//i.test(a)) openWebLink(a)
       else if (name === "issueNewTurn" || name === "sendMessage" || name === "sendFollowUpMessage") {

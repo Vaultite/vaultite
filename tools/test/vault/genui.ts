@@ -68,6 +68,20 @@ export default async ($: VaultTest) => {
   check("genui: DIL.useNow draws again as time goes", new Set(ticks).size >= 2, ticks)
   send({ type: "run", nodes: dil.parse("<text>x</text>"), names: [], state: {} })
 
+  // As ChatGPT's compiler does: a statement whose value throws is undefined rather than stopping the answer; one that's
+  // several (`const a = 1, b = 2`) runs as written; useState's own key names its saved value; a connected app's tool says it isn't here.
+  got.length = 0
+  const safe = dil.parse('{@body const list = [1]}{@body const s = list[5].x}{@body const a = 1, b = a + 1}{@body const [v, setV] = DIL.useState(0, {key: "picked"})}{@body const f = (x, y) => x + y}<text>s={String(s)} b={b} v={v} f={f(2, 3)}</text>')
+  send({ type: "run", nodes: safe, names: dil.stateNames(safe), state: { picked: 9 } })
+  await new Promise((r) => setTimeout(r, 5))
+  const safeTree = got.find((m) => m.type === "tree")
+  check("genui: a throwing statement is undefined, the rest runs", said(safeTree?.tree).includes("s=undefined b=2 v=9 f=5"), got)
+  got.length = 0
+  send({ type: "run", nodes: dil.parse('{@body const [r, setR] = DIL.useState("")}{@body DIL.useEffect(() => { GenUI.runPluginTool({tool: "x"}).then((x) => setR(x.status)) }, [])}<text>r={r}</text>'), names: ["r"], state: {} })
+  for (let i = 0; i < 20 && !said(got).includes("r=error"); i++) await new Promise((r) => setTimeout(r, 10))
+  check("genui: GenUI.runPluginTool answers that it isn't available", said(got).includes("r=error"), got)
+  send({ type: "run", nodes: dil.parse("<text>x</text>"), names: [], state: {} })
+
   // Its values, kept in the fence's {@state} line.
   const kept = dil.withState(SRC, { size: "l", n: 3 })
   check("genui: values kept on a {@state} line, read back, replaced, removed", dil.savedState(kept).n === 3 &&

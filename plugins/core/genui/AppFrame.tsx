@@ -16,7 +16,7 @@ function tailwind() {
     ])
     const files: Record<string, string> = { "tailwindcss/theme.css": theme.default, "tailwindcss/preflight.css": preflight.default, "tailwindcss/utilities.css": utilities.default }
     const c = await compile(
-      '@layer theme, base, components, utilities;\n@import "tailwindcss/theme.css" layer(theme);\n@import "tailwindcss/preflight.css" layer(base);\n@import "tailwindcss/utilities.css" layer(utilities);\n@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));',
+      '@layer theme, base, components, utilities;\n@import "tailwindcss/theme.css" layer(theme);\n@import "tailwindcss/preflight.css" layer(base);\n@import "tailwindcss/utilities.css" layer(utilities);\n@custom-variant dark (&:where(.dark, .dark *, [data-theme=dark], [data-theme=dark] *));',
       { loadStylesheet: async (id: string) => ({ path: id, base: "", content: files[id] ?? "" }) },
     )
     return (classes: string[]) => c.build(classes)
@@ -29,10 +29,54 @@ const candidates = (html: string) => [...new Set(html.match(/[^\s"'`<>=;{}()]+/g
 const CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob: https:; font-src data:; media-src data: blob: https:"
 const TOKENS = ["background", "foreground", "card", "muted", "muted-foreground", "border", "primary", "primary-foreground", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray", "chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "font-sans", "font-mono"]
 
+/** The scheme's colours as `--vau-*`, and under the names ChatGPT's apps are written for (its host's: `--text-primary`,
+ *  `--main-surface-*`, shadcn's `--background`..., the kit's `--viz-*`), so an app made there takes this look. */
 const vars = () => {
   const css = getComputedStyle(document.documentElement)
-  return TOKENS.map((t) => `--vau-${t}:${css.getPropertyValue(`--${t}`).trim()};`).join("")
+  const own = Object.fromEntries(TOKENS.map((t) => [t, css.getPropertyValue(`--${t}`).trim()]))
+  const v = (t: string) => `var(--vau-${t})`
+  const mix = (a: string, n: number, b = "transparent") => `color-mix(in oklab, ${a} ${n}%, ${b})`
+  const as: Record<string, string> = {
+    "main-surface-primary": v("background"), "main-surface-secondary": mix(v("foreground"), 4, v("background")), "main-surface-tertiary": mix(v("foreground"), 8, v("background")),
+    "text-primary": v("foreground"), "text-secondary": v("muted-foreground"), "text-tertiary": mix(v("muted-foreground"), 70), link: v("primary"),
+    "border-light": mix(v("foreground"), 8), "border-medium": mix(v("foreground"), 15), "border-heavy": mix(v("foreground"), 25),
+    background: v("background"), foreground: v("foreground"), card: v("card"), "card-foreground": v("foreground"), popover: v("card"), "popover-foreground": v("foreground"),
+    primary: v("primary"), "primary-foreground": v("primary-foreground"), secondary: mix(v("foreground"), 7), "secondary-foreground": v("foreground"),
+    muted: v("muted"), "muted-foreground": v("muted-foreground"), accent: mix(v("foreground"), 7), "accent-foreground": v("foreground"),
+    destructive: v("red"), border: v("border"), input: v("border"), ring: v("primary"), radius: "8px",
+    blue: v("blue"), green: v("green"), red: v("red"), orange: v("orange"), purple: v("purple"), yellow: v("yellow"), pink: v("pink"), teal: v("teal"),
+    "viz-series-1": v("chart-1"), "viz-series-2": v("chart-2"), "viz-series-3": v("chart-3"), "viz-series-4": v("chart-4"), "viz-series-5": v("chart-5"), "viz-series-6": v("purple"),
+    "viz-panel": v("card"), "viz-card": mix(v("foreground"), 3, v("card")), "viz-chip-card": mix(v("foreground"), 6, v("card")), "viz-border": v("border"),
+    "viz-text": v("foreground"), "viz-muted": v("muted-foreground"), "viz-accent": v("primary"), "viz-accent-bg": mix(v("primary"), 14), "viz-accent-text": v("primary"),
+    "font-sans": v("font-sans"), "font-size-base": "16px", "radius-sm": "4px", "radius-md": "6px", "radius-lg": "8px", "radius-xl": "12px", "radius-2xl": "16px",
+  }
+  return TOKENS.map((t) => `--vau-${t}:${own[t]};`).join("") + Object.entries(as).map(([k, x]) => `--${k}:${x};`).join("")
 }
+
+/** ChatGPT's app kit, as its apps expect it: fields, sliders, cards and badges styled; in the dark, Tailwind's light
+ *  greys turned to the scheme's surfaces (an app written light still reads). */
+const KIT = `
+input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{border:1px solid var(--border-medium);border-radius:12px;background:var(--vau-card);color:inherit;padding:6px 12px;font:inherit;font-size:14px}
+input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in oklab,var(--vau-primary) 45%,transparent);outline-offset:0}
+button{cursor:pointer}
+input[type=range]{accent-color:var(--vau-primary);width:100%}
+input[type=checkbox],input[type=radio]{accent-color:var(--vau-primary)}
+a{color:var(--link)}
+.card,[data-card]{border:1px solid var(--viz-border);border-radius:16px;padding:12px;background:var(--viz-card)}
+.metric-card{border-radius:12px;padding:12px;background:var(--viz-chip-card)}
+.viz-stat-value{font-size:20px;font-weight:500;font-variant-numeric:tabular-nums}
+.viz-badge{display:inline-flex;align-items:center;gap:4px;border-radius:9999px;padding:0 8px;height:20px;font-size:12px;font-weight:500;background:var(--viz-accent-bg);color:var(--viz-accent-text)}
+.viz-callout{border-radius:12px;padding:12px;background:var(--viz-accent-bg)}
+[data-tooltip]{position:relative}
+`
+// (unlayered: over Tailwind's own utilities)
+const DARK = `
+.dark .bg-white,.dark .bg-gray-50,.dark .bg-slate-50,.dark .bg-neutral-50,.dark .bg-zinc-50{background-color:var(--viz-card)}
+.dark .bg-gray-100,.dark .bg-slate-100,.dark .bg-neutral-100,.dark .bg-zinc-100{background-color:var(--viz-chip-card)}
+.dark .text-black,.dark .text-gray-900,.dark .text-slate-900,.dark .text-gray-800,.dark .text-slate-800,.dark .text-neutral-900,.dark .text-zinc-900{color:var(--text-primary)}
+.dark .text-gray-700,.dark .text-gray-600,.dark .text-slate-600,.dark .text-gray-500,.dark .text-slate-500,.dark .text-neutral-500,.dark .text-zinc-500{color:var(--text-secondary)}
+.dark .border-gray-200,.dark .border-gray-100,.dark .border-slate-200,.dark .border-gray-300,.dark .border-neutral-200,.dark .border-zinc-200{border-color:var(--border-light)}
+`
 
 // The app's side of the bridge, in the frame: the bindings (setters call back), effects, its height, links.
 function bridge() {
@@ -58,6 +102,7 @@ function bridge() {
       for (const f of effects) { try { f() } catch (err) { console.error(err) } }
     } else if (e.data.type === "theme") {
       document.documentElement.dataset.theme = e.data.dark ? "dark" : "light"
+      document.documentElement.classList.toggle("dark", !!e.data.dark)
       document.documentElement.setAttribute("style", e.data.vars)
     }
   })
@@ -82,8 +127,8 @@ export function AppFrame({ p, html, host }: { p: P; html: string; host: Host }) 
     tailwind().then((build) => { if (live) setCss(build(candidates(html))) }).catch(() => { if (live) setCss("") })
     return () => { live = false }
   }, [html])
-  const doc = useMemo(() => css === null ? "" : `<!doctype html><html data-theme="${isDark() ? "dark" : "light"}" style="${vars()}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width">` +
-    `<style>${css}\nhtml,body{background:transparent;margin:0;color:var(--vau-foreground);font-family:var(--vau-font-sans),system-ui,sans-serif;font-size:15px;color-scheme:${isDark() ? "dark" : "light"}}body{overflow:hidden}</style>` +
+  const doc = useMemo(() => css === null ? "" : `<!doctype html><html data-theme="${isDark() ? "dark" : "light"}" class="${isDark() ? "dark" : ""}" data-app-block-surface="inline" style="${vars().replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><meta name="viewport" content="width=device-width">` +
+    `<style>${css}\n@layer base{${KIT}}\n${DARK}\nhtml,body{background:transparent;margin:0;color:var(--vau-foreground);font-family:var(--vau-font-sans),system-ui,sans-serif;font-size:15px;color-scheme:${isDark() ? "dark" : "light"}}body{overflow:hidden}</style>` +
     `<script>(${bridge.toString()})()</script></head><body>${html}</body></html>`, [css, html])
   // Its bindings: sent once it's up and whenever they change.
   const send = () => frame.current?.contentWindow?.postMessage({ ga: 1, type: "bind", bind: JSON.parse(bindKey) }, "*")

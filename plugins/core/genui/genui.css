@@ -12,5 +12,10 @@
 .genui-table th, .genui-table td { padding: 6px 10px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
 .genui-table th { font-weight: 600; color: var(--muted-foreground); font-size: 13px; }
 .genui-table tr:last-child td { border-bottom: 0; }
-.genui-slider { height: 20px; }
+/* ChatGPT's slider: a 24px track filled to its value, a white 20px thumb. */
+.genui-slider { -webkit-appearance: none; appearance: none; height: 24px; border-radius: 9999px; background: linear-gradient(to right, var(--fill, var(--primary)) 0 var(--pct, 0%), color-mix(in oklab, var(--foreground) 10%, transparent) var(--pct, 0%) 100%); }
+.genui-slider:disabled { opacity: 0.5; cursor: default; }
+.genui-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 9999px; background: white; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25), 0 0 0 0.5px rgb(0 0 0 / 0.08); }
+.genui-slider::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 9999px; background: white; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
+.genui-slider:focus-visible { outline: 2px solid color-mix(in oklab, var(--primary) 45%, transparent); outline-offset: 2px; }
 .genui-block { padding: 2px 0; }

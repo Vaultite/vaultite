@@ -44,9 +44,11 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   const same = (a?: unknown[], b?: unknown[]) => !!a && !!b && a.length === b.length && a.every((x, i) => Object.is(x, b[i]))
   const schedule = () => { if (!queued && !rendering) { queued = true; Promise.resolve().then(draw) } }
   const DIL = {
-    useState(init: unknown, own = true) {
+    useState(init: unknown, own: unknown = true) {
       const k = at++
-      const name = own ? names[stateAt++] : undefined
+      // (a name of its own, `DIL.useState(0, {key: "n"})` as ChatGPT's compiler writes it, else the one the source gives it)
+      const named = own && typeof own === "object" && typeof (own as { key?: unknown }).key === "string" ? (own as { key: string }).key : undefined
+      const name = own ? (named !== undefined ? (stateAt++, named) : names[stateAt++]) : undefined
       if (!slots[k]) {
         slots[k] = { name, v: name !== undefined && Object.hasOwn(saved, name) ? saved[name] : typeof init === "function" ? (init as () => unknown)() : init }
       }
@@ -104,7 +106,12 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       })
     },
   }
-  const GenUI = new Proxy({}, { get: (_, name) => (...args: unknown[]) => { post({ type: "action", name: String(name), args: clone(args) }) } })
+  // What it asks of the app, sent there. A connected app's tool (runPluginTool) isn't here: it answers so, as ChatGPT's does on a failure.
+  const GenUI = new Proxy({}, { get: (_, name) => (...args: unknown[]) => {
+    if (name === "runPluginTool" || name === "callTool") return Promise.resolve({ status: "error", message: "Connected apps aren't available in a note" })
+    post({ type: "action", name: String(name), args: clone(args) })
+    return Promise.resolve()
+  } })
   const clone = (v: unknown): unknown => { try { return JSON.parse(JSON.stringify(v ?? null)) } catch { return null } }
 
   const x = (f: () => unknown, src: string) => {
@@ -141,7 +148,7 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   const gen = (ns: N[]): string => `(()=>{const __k=[];${ns.map(one).join("\n")}\nreturn __k})()`
   const one = (n: N): string => {
     if (n.t === "md") return `__k.push(__md([${(n.parts as unknown[]).map((p) => (typeof p === "string" ? J(p) : (p as { el?: N }).el ? `{el:${gen([(p as { el: N }).el])}[0]}` : `{v:${expr((p as { e: string }).e)}}`)).join(",")}]));`
-    if (n.t === "body") return `${n.js as string}\n;`
+    if (n.t === "body") return `${safeBody(n.js as string)}\n;`
     if (n.t === "el") return `__k.push(__h(${J(n.name)},${props(n.props as [])},${gen(n.kids as N[])}));`
     if (n.t === "app") return `__k.push(__app(${props(n.props as [])},${J(n.html)}));`
     if (n.t === "each") return `__k.push(...__each(${expr(n.list as string)},(${n.as as string},${(n.index as string) ?? "__i"})=>${gen(n.kids as N[])}));`
@@ -150,6 +157,28 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       return bs.map((b, i) => `${i ? "else " : ""}${b.test !== null ? `if (${expr(b.test)}) ` : ""}{__k.push(...${gen(b.kids)})}`).join("\n")
     }
     return ""
+  }
+
+  // A statement's value that throws is undefined, as ChatGPT's are (`const s = stages[step]` past the end doesn't stop the
+  // answer): `const x = expr` with one name and one value; anything else as it's written.
+  const safeBody = (js: string) => {
+    const m = /^\s*(const|let|var)\s+([A-Za-z_$][\w$]*)\s*=(?!=)([\s\S]+)$/.exec(js)
+    if (!m || /\b(?:DIL|React)\.use[A-Z]\w*\s*\(/.test(m[3]) || !single(m[3])) return js
+    return `${m[1]} ${m[2]} = ${expr(m[3].trim().replace(/;\s*$/, ""))}`
+  }
+  // Whether JS is one expression: no `,` or `;` outside brackets, strings and templates (then wrapping it keeps its meaning).
+  const single = (src: string) => {
+    let depth = 0
+    const body = src.trim().replace(/;\s*$/, "")
+    for (let i = 0; i < body.length; i++) {
+      const c = body[i]
+      if (c === '"' || c === "'" || c === "`") { for (i++; i < body.length && body[i] !== c; i++) if (body[i] === "\\") i++; continue }
+      if (c === "/" && (body[i + 1] === "/" || body[i + 1] === "*")) return false
+      if (c === "(" || c === "[" || c === "{") depth++
+      else if (c === ")" || c === "]" || c === "}") depth--
+      else if (depth === 0 && (c === "," || c === ";")) return false
+    }
+    return depth === 0
   }
 
   // Functions out of what it drew, into ids the app calls back with.

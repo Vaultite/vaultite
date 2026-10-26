@@ -1,6 +1,6 @@
 // DIL's components drawn as the app's own: its colours, type and controls, so an answer reads like the note around
 // it. Unknown ones draw their insides. Props follow ChatGPT's (sizes, colours, spacing units of 4px).
-import { createContext, Suspense, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { createContext, Fragment, Suspense, useContext, useId, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { cn, haptic, Markdown, namedIcon, PinMap, Switch } from "@vaultite"
 import type { Tree } from "./sandbox"
@@ -32,7 +32,8 @@ function pad(v: unknown): string | undefined {
   if (v && typeof v === "object") { const o = v as P; return `${space(o.top ?? o.y) ?? 0} ${space(o.right ?? o.x) ?? 0} ${space(o.bottom ?? o.y) ?? 0} ${space(o.left ?? o.x) ?? 0}` }
   return space(v)
 }
-const RADIUS: Record<string, string> = { none: "0", "2xs": "2px", xs: "4px", sm: "6px", md: "8px", lg: "10px", xl: "12px", "2xl": "16px", "3xl": "20px", "4xl": "24px", full: "9999px" }
+// (ChatGPT's renderer's own scale, as measured: lg is 8px)
+const RADIUS: Record<string, string> = { none: "0", "2xs": "2px", xs: "2px", sm: "4px", md: "6px", lg: "8px", xl: "12px", "2xl": "16px", "3xl": "24px", "4xl": "32px", full: "9999px" }
 const radius = (v: unknown) => (typeof v === "string" ? RADIUS[v] ?? v : typeof v === "number" ? `${v}px` : v === true ? RADIUS.md : undefined)
 
 /** ChatGPT's surfaces and colours as the scheme's. */
@@ -40,6 +41,8 @@ const SURFACE: Record<string, string> = {
   surface: "var(--card)", "surface-primary": "var(--card)", "surface-secondary": "color-mix(in oklab, var(--foreground) 3%, var(--background))",
   "surface-tertiary": "color-mix(in oklab, var(--foreground) 6%, var(--background))", "surface-elevated": "var(--card)",
   "surface-elevated-secondary": "color-mix(in oklab, var(--foreground) 4%, var(--card))", "surface-canvas": "color-mix(in oklab, var(--foreground) 2%, var(--background))",
+  "surface-soft": "color-mix(in oklab, var(--foreground) 5%, transparent)", "surface-inverted": "var(--foreground)",
+  border: "var(--border)", "border-subtle": "color-mix(in oklab, var(--border) 50%, transparent)",
   primary: "var(--primary)", secondary: "color-mix(in oklab, var(--foreground) 6%, transparent)", muted: "var(--muted)", transparent: "transparent",
 }
 const TONE: Record<string, string> = {
@@ -51,16 +54,49 @@ const TONE: Record<string, string> = {
   blue: "var(--blue)", indigo: "var(--indigo)", purple: "var(--purple)", pink: "var(--pink)", gray: "var(--gray)",
 }
 TONE.prose = TONE.emphasis = "var(--foreground)"
-const tone = (v: unknown) => (typeof v === "string" ? TONE[v] ?? (/^(#|rgb|hsl|oklch|var\()/.test(v) ? v : undefined) : undefined)
-const surface = (v: unknown) => (typeof v === "string" ? SURFACE[v] ?? (/^(\w+)-solid$/.test(v) && TONE[v.slice(0, -6)] ? TONE[v.slice(0, -6)] : /^(\w+)-surface$/.test(v) && TONE[v.slice(0, -8)] ? `color-mix(in oklab, ${TONE[v.slice(0, -8)]} 10%, transparent)` : undefined) ?? (TONE[v] ? `color-mix(in oklab, ${TONE[v]} 14%, transparent)` : /^(#|rgb|hsl|oklch|var\()/.test(v) ? v : undefined) : undefined)
+TONE.subtle = TONE.faint = TONE.tertiary
+TONE.inverse = "var(--background)"
+const CSS_COLOR = /^(#|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\(|var\(|currentColor$|transparent$|white$|black$)/
+/** A `{light, dark}` pair: the one for the look now (a change of look draws it again). */
+const themed = (v: unknown): unknown => (v && typeof v === "object" && !Array.isArray(v) && ("light" in v || "dark" in v) ? (document.documentElement.classList.contains("dark") ? (v as P).dark ?? (v as P).light : (v as P).light ?? (v as P).dark) : v)
+/** A hue with a shade (`blue-500`, `gray-75`): the scheme's hue, lighter or darker. */
+const shade = (v: string) => {
+  const m = /^(\w+)-(\d{2,3})$/.exec(v)
+  if (!m || !TONE[m[1]]) return undefined
+  const n = +m[2]
+  return n <= 500 ? `color-mix(in oklab, ${TONE[m[1]]} ${Math.max(8, Math.round((n / 500) * 100))}%, white)` : `color-mix(in oklab, ${TONE[m[1]]} ${Math.round(100 - ((n - 500) / 500) * 70)}%, black)`
+}
+const tone = (v0: unknown): string | undefined => {
+  const v = themed(v0)
+  return typeof v === "string" ? TONE[v] ?? shade(v) ?? (CSS_COLOR.test(v) ? v : undefined) : undefined
+}
+const surface = (v0: unknown): string | undefined => {
+  const v = themed(v0)
+  if (typeof v !== "string") return undefined
+  if (SURFACE[v]) return SURFACE[v]
+  const m = /^(\w+)-(solid|surface|soft|subtle)$/.exec(v)
+  if (m && TONE[m[1]]) return m[2] === "solid" ? TONE[m[1]] : `color-mix(in oklab, ${TONE[m[1]]} ${m[2] === "subtle" ? 7 : m[2] === "soft" ? 16 : 10}%, transparent)`
+  if (TONE[v]) return `color-mix(in oklab, ${TONE[v]} 14%, transparent)`
+  return shade(v) ?? (CSS_COLOR.test(v) ? v : undefined)
+}
 
 // ChatGPT's scales (px, line height): text, headings (a title's) and captions.
-const TEXT: Record<string, [number, number]> = { "3xs": [8, 12], "2xs": [10, 14], xs: [12, 18], sm: [14, 20], md: [16, 24], base: [16, 24], lg: [18, 29], xl: [20, 28], "2xl": [24, 32], "3xl": [30, 38] }
-const HEADING: Record<string, [number, number]> = { "2xs": [14, 20], xs: [16, 24], sm: [18, 26], md: [20, 26], lg: [24, 28], xl: [32, 38], "2xl": [36, 42], "3xl": [48, 48], "4xl": [60, 60], "5xl": [72, 72] }
+const TEXT: Record<string, [number, number]> = { "3xs": [9, 12], "2xs": [10, 13], xs: [12, 16], sm: [14, 20], md: [16, 26], base: [16, 26], lg: [18, 29], xl: [20, 28], "2xl": [24, 32], "3xl": [30, 38] }
+const HEADING: Record<string, [number, number]> = { "2xs": [14, 20], xs: [14, 20], sm: [16, 26], md: [16, 26], lg: [18, 28], xl: [20, 28], "2xl": [24, 32], "3xl": [48, 52], "4xl": [60, 64], "5xl": [72, 76] }
 const CAPTION: Record<string, [number, number]> = { xs: [10, 13], sm: [10, 13], md: [12, 16], lg: [14, 18] }
 const WEIGHT: Record<string, number> = { light: 300, normal: 400, regular: 400, medium: 500, semibold: 600, bold: 700, heavy: 800 }
 const JUSTIFY: Record<string, string> = { start: "flex-start", end: "flex-end", center: "center", between: "space-between", around: "space-around", evenly: "space-evenly", stretch: "stretch" }
 const ALIGN: Record<string, string> = { start: "flex-start", end: "flex-end", center: "center", baseline: "baseline", stretch: "stretch" }
+
+/** `border`: true (the app's hairline), a width, CSS (`"2px dashed red"`), a colour token, or `{size, color, style}`. */
+function border(v: unknown, color: unknown, key: string): CSSProperties {
+  const c = (x: unknown) => tone(x) ?? (x === "subtle" ? "color-mix(in oklab, var(--border) 50%, transparent)" : x === "strong" ? "color-mix(in oklab, var(--foreground) 25%, transparent)" : "var(--border)")
+  if (v === true || v === "true") return { [key]: `1px solid ${c(color)}` }
+  if (typeof v === "number") return { [key]: `${v}px solid ${c(color)}` }
+  if (typeof v === "string") return { [key]: /\s/.test(v) ? v : tone(v) || v === "subtle" || v === "strong" || v === "default" ? `1px solid ${c(v)}` : `${v} solid ${c(color)}` }
+  if (v && typeof v === "object") { const o = v as P; return { [key]: `${num(o.size ?? o.width) ?? 1}px ${str(o.style) ?? "solid"} ${c(o.color ?? color)}` } }
+  return {}
+}
 
 /** What every element may say about its own box. */
 function boxStyle(p: P): CSSProperties {
@@ -74,7 +110,12 @@ function boxStyle(p: P): CSSProperties {
   const bg = surface(p.background ?? p.bg)
   if (bg) s.background = bg
   if (p.radius !== undefined) s.borderRadius = radius(p.radius)
-  if (p.border) s.border = `${typeof p.border === "number" ? p.border : 1}px solid ${tone(p.borderColor) ?? "var(--border)"}`
+  if (p.border) Object.assign(s, border(p.border, p.borderColor, "border"))
+  for (const side of ["Top", "Right", "Bottom", "Left"] as const) { const b = p[`border${side}`]; if (b) Object.assign(s, border(b, p.borderColor, `border${side}`)) }
+  if (p.rowGap !== undefined) s.rowGap = space(p.rowGap)
+  if (p.columnGap !== undefined) s.columnGap = space(p.columnGap)
+  if (p.aspectRatio !== undefined) s.aspectRatio = typeof p.aspectRatio === "number" ? p.aspectRatio : str(p.aspectRatio)?.replace(":", "/")
+  if (p.scrollable) s.overflow = "auto"
   if (p.shadow) s.boxShadow = "0 1px 3px rgb(0 0 0 / 0.08), 0 1px 2px rgb(0 0 0 / 0.04)"
   for (const k of ["width", "minWidth", "maxWidth", "height", "minHeight", "maxHeight"] as const) {
     const v = p[k]
@@ -101,7 +142,7 @@ function flexStyle(p: P, dir: "row" | "column"): CSSProperties {
     gap: space(p.gap ?? (dir === "row" ? 2 : 3)),
     justifyContent: JUSTIFY[str(p.justify) ?? ""] ?? undefined,
     alignItems: ALIGN[str(p.align) ?? ""] ?? (dir === "row" ? "center" : undefined),
-    flexWrap: p.wrap === true || p.wrap === "wrap" ? "wrap" : undefined,
+    flexWrap: p.wrap === true || p.wrap === "wrap" ? "wrap" : p.wrap === "wrap-reverse" ? "wrap-reverse" : undefined,
     ...boxStyle(p),
   }
 }
@@ -191,23 +232,65 @@ function Slotted({ s, slots, inline, from }: { s: string; slots: Tree[]; inline:
 
 type Part = (x: { p: P; k: Tree[] }) => ReactNode
 
-function Box({ p, k }: { p: P; k: Tree[] }) { return <div style={flexStyle(p, "column")}><Kids k={k} /></div> }
+/** What a piece is, for the space ChatGPT puts around it in a column. */
+function kindOf(t: Tree): string {
+  if (t.t === "md") return /^\s*#{1,6}\s/.test(t.s) ? "title" : "text"
+  if (t.t === "app") return "block"
+  const n = t.n.toLowerCase()
+  if (/^(title|heading|h[1-6])$/.test(n)) return "title"
+  if (n === "caption") return "caption"
+  if (n === "label") return "label"
+  if (/^(text|p|paragraph|body|bold|strong|markdown|list|ul)$/.test(n)) return "text"
+  if (n === "button") return "button"
+  if (/^(input|textfield|text-input|number-input|textarea|select|dropdown|slider|range|date-picker|checkbox|switch|toggle|segmented|segmented-control|segmentedcontrol|radio-group|radiogroup)$/.test(n)) return "control"
+  return "block"
+}
+/** The space between two pieces in a column with no `gap` of its own (ChatGPT's auto-spacing), or at the top level. */
+function autoGap(a: string, b: string, top: boolean): number {
+  if (top) return b === "title" && a !== "title" ? 24 : a === "title" && (b === "text" || b === "caption") ? 8 : 16
+  if (a === "label" && (b === "control" || b === "button")) return 2
+  if (b === "caption" && a !== "caption") return 4
+  if (a === "title") return b === "text" ? 8 : 16
+  if (b === "button" && a !== "button") return 12
+  if (a === "text" && b === "text") return 12
+  return 8
+}
+/** Kids spaced as ChatGPT spaces them when the box doesn't say. */
+export function Spaced({ k, top = false }: { k: Tree[]; top?: boolean }) {
+  const shown = k.filter((x) => !(x.t === "md" && !x.s.trim()))
+  return <>{shown.map((x, i) => (
+    <Fragment key={keyOf(x, i)}>
+      {i > 0 && <div aria-hidden className="shrink-0" style={{ height: autoGap(kindOf(shown[i - 1]), kindOf(x), top) }} />}
+      <Piece t={x} />
+    </Fragment>
+  ))}</>
+}
+const autoSpaced = (p: P) => p.gap === undefined && !p.disableAutoSpacing && (p.justify === undefined || p.justify === "start")
+
+function Box({ p, k }: { p: P; k: Tree[] }) {
+  if (str(p.direction) === "row") return <Row p={p} k={k} />
+  return autoSpaced(p) ? <div style={{ ...flexStyle(p, "column"), gap: 0 }}><Spaced k={k} /></div> : <div style={flexStyle(p, "column")}><Kids k={k} /></div>
+}
 function Row({ p, k }: { p: P; k: Tree[] }) { return <div style={flexStyle(p, "row")}><Kids k={k} /></div> }
 
 function Grid({ p, k }: { p: P; k: Tree[] }) {
-  const cols = num(p.columns ?? p.cols) ?? 2
-  const min = str(p.minColumnWidth ?? p.minChildWidth)
+  const c = p.columns ?? p.cols
+  const cols = num(c) ?? 2
+  // (`columns="sm"`: as many as fit at that width; a list: each one's width, numbers as fractions)
+  const fit = { xs: "120px", sm: "160px", md: "220px", lg: "300px" }[str(c) ?? ""]
+  const min = str(p.minColumnWidth ?? p.minChildWidth) ?? fit
+  const template = Array.isArray(c) ? c.map((x) => (typeof x === "number" ? `minmax(0, ${x}fr)` : String(x))).join(" ") : min ? `repeat(auto-fill, minmax(min(100%, ${min}), 1fr))` : `repeat(${cols}, minmax(0, 1fr))`
   // Narrow (a phone): more than two columns fold to two, as ChatGPT's do.
   return (
-    <div className="genui-grid" data-cols={cols > 2 ? "many" : undefined}
-      style={{ display: "grid", gridTemplateColumns: min ? `repeat(auto-fill, minmax(min(100%, ${min}), 1fr))` : `repeat(${cols}, minmax(0, 1fr))`, gap: space(p.gap ?? 3), ...boxStyle({ ...p, gap: undefined }) }}>
+    <div className="genui-grid" data-cols={!Array.isArray(c) && !min && cols > 2 ? "many" : undefined}
+      style={{ display: "grid", gridTemplateColumns: template, gridTemplateRows: typeof p.rows === "number" ? `repeat(${p.rows}, auto)` : undefined, alignItems: ALIGN[str(p.align) ?? ""], gap: p.gap !== undefined ? space(p.gap) : "16px 12px", ...boxStyle({ ...p, gap: undefined }) }}>
       <Kids k={k} />
     </div>
   )
 }
 function GridItem({ p, k }: { p: P; k: Tree[] }) {
-  const span = num(p.span ?? p.colSpan)
-  return <div className="genui-cell" style={{ gridColumn: span ? `span ${span} / span ${span}` : undefined, minWidth: 0, display: "flex", flexDirection: "column", ...boxStyle(p) }}><Kids k={k} /></div>
+  const span = num(p.span ?? p.colSpan), rows = num(p.rowSpan)
+  return <div className="genui-cell" style={{ ...flexStyle(p, "column"), ...(autoSpaced(p) ? { gap: 0 } : {}), gridColumn: span ? `span ${span} / span ${span}` : undefined, gridRow: rows ? `span ${rows} / span ${rows}` : undefined }}>{autoSpaced(p) ? <Spaced k={k} /> : <Kids k={k} />}</div>
 }
 
 const text = (base: string, weight = 400, extra?: CSSProperties, Tag: "div" | "span" | "strong" | "label" = "div", scale = TEXT): Part => ({ p, k }) => {
@@ -220,8 +303,9 @@ function Title({ p, k }: { p: P; k: Tree[] }) {
 }
 
 function Icon({ p }: { p: P; k: Tree[] }) {
-  const I = namedIcon(ICON_NAMES[str(p.name) ?? ""] ?? str(p.name) ?? "") ?? namedIcon("circle")
-  const size = { xs: 12, sm: 14, md: 16, lg: 20, xl: 24, "2xl": 32 }[str(p.size) ?? "md"] ?? (num(p.size) ?? 16)
+  const name = (str(p.name) ?? "").replace(/^lucide:/, "")
+  const I = namedIcon(ICON_NAMES[name] ?? name) ?? namedIcon(name.replace(/-(filled|fill|outline|solid)$/, "")) ?? namedIcon("circle")
+  const size = { xs: 12, sm: 14, md: 16, lg: 18, xl: 20, "2xl": 24, "3xl": 32 }[str(p.size) ?? "md"] ?? (num(p.size) ?? 16)
   return I ? <I style={{ width: size, height: size, color: tone(p.color), flexShrink: 0, display: "inline-block", verticalAlign: "-0.15em" }} strokeWidth={2} aria-hidden /> : null
 }
 /** ChatGPT's icon names Lucide calls otherwise. */
@@ -235,7 +319,7 @@ const ICON_NAMES: Record<string, string> = {
 }
 
 // ChatGPT's control heights (px) and padding, a pill unless `pill={false}`.
-const CONTROL: Record<string, [number, number]> = { "3xs": [22, 6], "2xs": [24, 6], xs: [26, 8], sm: [28, 10], md: [32, 12], lg: [36, 12], xl: [40, 14], "2xl": [44, 16], "3xl": [48, 16] }
+const CONTROL: Record<string, [number, number]> = { "3xs": [22, 8], "2xs": [24, 8], xs: [26, 10], sm: [28, 12], md: [32, 16], lg: [36, 16], xl: [40, 18], "2xl": [44, 20], "3xl": [48, 22] }
 const control = (size: unknown, dflt: string, pill: unknown, uniform?: unknown): CSSProperties => {
   const [h, x] = CONTROL[str(size) ?? dflt] ?? CONTROL[dflt]
   return { height: h, minHeight: h, padding: uniform ? 0 : `0 ${x}px`, width: uniform ? h : undefined, borderRadius: pill === false ? 10 : 9999, fontSize: h >= 44 ? 16 : 14 }
@@ -247,18 +331,26 @@ function Button({ p, k }: { p: P; k: Tree[] }) {
   const ink = c === "primary" || c === "secondary" ? null : tone(c)
   const look =
     variant === "solid" ? (c === "secondary" ? "bg-foreground/[0.07] text-foreground hover:bg-foreground/[0.11]" : ink ? "text-white hover:opacity-90" : "bg-primary text-primary-foreground hover:bg-primary/85")
-    : variant === "outline" ? "border-[0.5px] border-border bg-background hover:bg-foreground/[0.05]"
-    : variant === "soft" ? "bg-foreground/[0.06] hover:bg-foreground/[0.1]"
+    : variant === "outline" ? "border border-foreground/[0.16] bg-transparent hover:bg-foreground/[0.05]"
+    : variant === "soft" ? (ink ? "hover:opacity-85" : "bg-foreground/[0.08] hover:bg-foreground/[0.12]")
     : variant === "link" ? "!h-auto !px-0 underline-offset-2 hover:underline"
-    : "hover:bg-foreground/[0.06]"
+    : "hover:bg-foreground/[0.08]"
   const href = str(p.href)
+  const submit = !!p.submit || str(p.type) === "submit"
+  const block = !!(p.block || p.fullWidth)
+  const busy = !!p.loading
+  const Spin = busy ? namedIcon("loader-circle") : null
   return (
-    <button type="button" disabled={!!p.disabled || (!on && !href)} aria-pressed={p.pressed === undefined ? undefined : !!p.pressed}
-      onClick={(e) => { e.stopPropagation(); haptic(); if (on) on(); else if (href) host.action("openUrl", [href]) }}
-      className={cn("inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-50", look, !!(p.block || p.fullWidth) && "w-full")}
-      style={{ ...control(p.size, "lg", p.pill, p.uniform), ...(variant === "link" ? { height: "auto", minHeight: 0, padding: 0 } : {}), ...(variant === "solid" && ink ? { background: ink } : ink ? { color: ink } : {}), ...(p.width ? { width: str(p.width) } : {}) }}>
-      {str(p.iconStart ?? p.icon) && <Icon p={{ name: p.iconStart ?? p.icon, size: "sm" }} k={[]} />}
-      <Inline k={k.length ? k : str(p.label) ? [{ t: "md", s: str(p.label)! }] : []} />
+    <button type={submit ? "submit" : "button"} disabled={!!p.disabled || busy} aria-pressed={p.pressed === undefined ? undefined : !!p.pressed}
+      aria-label={str(p.ariaLabel) ?? (p.uniform ? str(p.label) ?? str(p.iconStart ?? p.icon) : undefined)} data-tip={str(p.tooltip)}
+      onClick={(e) => { e.stopPropagation(); haptic(); if (on) { if (submit) e.preventDefault(); on() } else if (href) host.action("openUrl", [href]) }}
+      // (block: as wide as it can be, sharing a row with others like it rather than pushing them out)
+      className={cn("inline-flex min-w-0 cursor-pointer items-center justify-center gap-1.5 font-medium whitespace-nowrap transition-colors disabled:cursor-default disabled:opacity-50", block ? "w-full shrink" : "shrink-0", look, !on && !href && !submit && "cursor-default")}
+      style={{ ...control(p.size, "lg", p.pill, p.uniform), ...(variant === "link" ? { height: "auto", minHeight: 0, padding: 0 } : {}),
+        ...(variant === "solid" && ink ? { background: ink } : variant === "soft" && ink ? { background: `color-mix(in oklab, ${ink} 14%, transparent)`, color: ink } : ink ? { color: ink } : {}),
+        ...(p.width ? { width: typeof p.width === "number" ? `${p.width}px` : str(p.width) } : {}), ...(p.flex !== undefined ? { flex: boxStyle({ flex: p.flex }).flex } : {}) }}>
+      {Spin ? <Spin className="size-3.5 animate-spin" aria-hidden /> : str(p.iconStart ?? p.icon) && <Icon p={{ name: p.iconStart ?? p.icon, size: "sm" }} k={[]} />}
+      {!p.uniform || k.length || !str(p.iconStart ?? p.icon) ? <span className="min-w-0 truncate"><Inline k={k.length ? k : str(p.label) ? [{ t: "md", s: str(p.label)! }] : []} /></span> : null}
       {str(p.iconEnd) && <Icon p={{ name: p.iconEnd, size: "sm" }} k={[]} />}
     </button>
   )
@@ -314,7 +406,7 @@ function Slider({ p }: { p: P; k: Tree[] }) {
   const v = num(p.value) ?? min
   return (
     <input type="range" min={min} max={max} step={step} value={v} disabled={!on} aria-label={str(p.label) ?? "Value"}
-      onChange={(e) => on?.(+e.target.value)} className="genui-slider w-full cursor-pointer accent-[var(--primary)]" style={boxStyle({ ...p, color: undefined })} />
+      onChange={(e) => on?.(+e.target.value)} className="genui-slider w-full cursor-pointer" style={{ ...boxStyle({ ...p, color: undefined }), ["--pct" as string]: `${max > min ? ((v - min) / (max - min)) * 100 : 0}%`, ...(tone(p.color) ? { ["--fill" as string]: tone(p.color) } : {}) }} />
   )
 }
 
@@ -387,17 +479,23 @@ function Tabs({ p, k }: { p: P; k: Tree[] }) {
 
 function Badge({ p, k }: { p: P; k: Tree[] }) {
   const c = tone(p.color) ?? "var(--muted-foreground)"
-  const solid = str(p.variant) === "solid"
+  const v = str(p.variant) ?? "soft"
+  const h = { sm: 20, md: 22, lg: 24 }[str(p.size) ?? "sm"] ?? 20
+  const ink = str(p.color) && str(p.color) !== "secondary" ? c : "var(--foreground)"
   return (
-    <span className="inline-flex w-fit shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium whitespace-nowrap"
-      style={solid ? { background: c, color: "white" } : { background: `color-mix(in oklab, ${c} 14%, transparent)`, color: str(p.color) && str(p.color) !== "secondary" ? c : "var(--foreground)" }}>
+    <span className="inline-flex w-fit shrink-0 items-center gap-1 px-2 text-[12px] font-medium whitespace-nowrap"
+      style={{ height: h, borderRadius: p.pill === false ? 6 : 9999, ...(v === "solid" ? { background: c, color: "white" } : v === "outline" ? { boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${c} 40%, transparent)`, color: ink } : { background: `color-mix(in oklab, ${c} 14%, transparent)`, color: ink }) }}>
+      {str(p.icon ?? p.iconStart) && <Icon p={{ name: p.icon ?? p.iconStart, size: "xs" }} k={[]} />}
       <Inline k={k.length ? k : str(p.label) ? [{ t: "md", s: str(p.label)! }] : []} />
     </span>
   )
 }
 
 function Divider({ p }: { p: P; k: Tree[] }) {
-  return p.vertical ? <div className="w-px self-stretch bg-border" /> : <hr className="my-1 border-0 border-t-[0.5px] border-border" style={{ marginTop: space(p.spacing), marginBottom: space(p.spacing) }} />
+  const c = str(p.color) === "subtle" ? "color-mix(in oklab, var(--border) 50%, transparent)" : str(p.color) === "strong" ? "color-mix(in oklab, var(--foreground) 22%, transparent)" : tone(p.color) ?? "var(--border)"
+  const w = num(p.size) ?? 1
+  return p.vertical || str(p.orientation) === "vertical" ? <div className="self-stretch" style={{ width: w, background: c, marginLeft: space(p.spacing), marginRight: space(p.spacing) }} />
+    : <hr className="border-0" style={{ borderTop: `${w}px solid ${c}`, marginTop: space(p.spacing) ?? 4, marginBottom: space(p.spacing) ?? 4, ...(p.flush ? { marginLeft: "calc(var(--genui-pad, 0px) * -1)", marginRight: "calc(var(--genui-pad, 0px) * -1)" } : {}) }} />
 }
 
 function Progress({ p }: { p: P; k: Tree[] }) {
@@ -447,7 +545,12 @@ function ChartPart({ p }: { p: P; k: Tree[] }) {
 }
 
 /** A card: a bordered box, ChatGPT's surface. */
-const Card: Part = ({ p, k }) => <div style={flexStyle({ border: true, radius: "lg", padding: 4, gap: 2, ...p }, "column")}><Kids k={k} /></div>
+const Card: Part = ({ p, k }) => {
+  const soft = str(p.variant) === "soft"
+  const width = { sm: 360, md: 440, lg: 560 }[str(p.size) ?? ""]
+  const q = { radius: "3xl", padding: 4, ...(soft ? { background: "surface-tertiary" } : { border: true, background: "surface-elevated" }), ...(width ? { maxWidth: width, width: "100%" } : {}), ...p }
+  return autoSpaced(p) ? <div style={{ ...flexStyle(q, "column"), gap: 0 }}><Spaced k={k} /></div> : <div style={flexStyle(q, "column")}><Kids k={k} /></div>
+}
 
 /** A list: `<list>` of `<list-item label description>`s or `items`; `marker` bullet, number, check, none or an icon's
  *  name; `connector="line"` joins the markers (a timeline). */
@@ -562,40 +665,65 @@ const Cite: Part = ({ p, k }) => {
 const Pressable: Part = ({ p, k }) => {
   const host = useContext(HostCtx)
   const on = fnOf(host, p.onClick ?? p.onPress)
+  const off = !!p.disabled || !on
+  // (its hover is its own colour when it gives one, none when it says false)
+  const hover = p.hoverBackground === false || p.hoverBackground === "none" ? undefined : surface(p.hoverBackground)
+  const [over, setOver] = useState(false)
+  const style = flexStyle({ gap: 0, ...p }, "column")
+  if (over && !off && hover) style.background = hover
+  if (p.insetBorder) style.boxShadow = `inset 0 0 0 1px ${tone(p.borderColor) ?? "var(--border)"}`
+  const pressed = p.ariaPressed ?? p.pressed
   return (
-    <div role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); haptic(); on?.() }} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); on?.() } }}
-      className="cursor-pointer rounded-[12px] transition-colors hover:bg-foreground/[0.04]" style={flexStyle({ gap: 0, ...p }, "column")}><Kids k={k} /></div>
+    <div role="button" tabIndex={off ? -1 : 0} aria-disabled={off || undefined} aria-pressed={pressed === undefined ? undefined : !!pressed} aria-label={str(p.ariaLabel)} data-tip={str(p.tooltip)}
+      onClick={(e) => { e.stopPropagation(); if (off) return; haptic(); on?.() }} onKeyDown={(e) => { if (!off && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); on?.() } }}
+      onPointerEnter={() => setOver(true)} onPointerLeave={() => setOver(false)}
+      className={cn("transition-[background,opacity] duration-150", off ? "cursor-default" : "cursor-pointer", !!p.disabled && "opacity-50", !hover && p.hoverBackground !== false && p.hoverBackground !== "none" && !off && "hover:opacity-85")}
+      style={style}><Kids k={k} /></div>
   )
 }
 
 /** SVG's own elements, as written (attributes camel-cased, handlers called back). */
-const SVG_TAGS = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "text", "tspan", "defs", "linearGradient", "radialGradient", "stop", "clipPath", "mask", "pattern", "use", "title", "desc", "marker", "foreignObject"])
+const SVG_TAGS = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon", "text", "tspan", "textPath", "defs", "symbol", "linearGradient", "radialGradient", "stop", "clipPath", "mask", "pattern", "use", "title", "desc", "marker", "image",
+  "animate", "animateTransform", "animateMotion", "set", "mpath", "filter", "feGaussianBlur", "feOffset", "feBlend", "feColorMatrix", "feComposite", "feFlood", "feMerge", "feMergeNode", "feDropShadow", "feMorphology", "feTurbulence", "feDisplacementMap"])
+// (lowercase as a model may write them: SVG's own names are camel-cased)
+const SVG_NAME = new Map([...SVG_TAGS].map((n) => [n.toLowerCase(), n]))
+// An svg's ids made its own (`url(#glow)` in two answers on a page would find the first one's), and its colour tokens as the scheme's.
+const SvgIds = createContext<(v: string) => string>((v) => v)
 function SvgPart({ t }: { t: Extract<Tree, { t: "el" }> }) {
   const host = useContext(HostCtx)
-  if (!SVG_TAGS.has(t.n)) return null
+  const own = useContext(SvgIds)
+  const n = SVG_NAME.get(t.n.toLowerCase())
+  if (!n) return null
   const attrs: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(t.p)) {
     if (k === "key" || k === "$n") continue
     const f = fnOf(host, v)
-    if (f) { if (/^on[A-Z]/.test(k)) attrs[k] = () => f(); continue }
+    if (f) { if (/^on[A-Z]/.test(k)) attrs[k] = (e: { stopPropagation?: () => void }) => { e?.stopPropagation?.(); haptic(); f() }; continue }
+    if (k === "style" && v && typeof v === "object") { attrs.style = v; continue }
     if (typeof v !== "string" && typeof v !== "number") continue
-    const name = k === "class" ? "className" : k.includes("-") && !k.startsWith("data-") && !k.startsWith("aria-") ? k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) : k
-    attrs[name] = typeof v === "string" && v === "prose" ? "currentColor" : v
+    const name = k === "class" ? "className" : k === "xlink:href" ? "href" : k.includes("-") && !k.startsWith("data-") && !k.startsWith("aria-") ? k.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) : k
+    attrs[name] = typeof v === "string" ? (k === "id" ? own(`#${v}`).slice(1) : /^(fill|stroke|stopColor|stop-color|color|floodColor)$/.test(k) ? tone(v) ?? own(v) : own(v)) : v
   }
-  const El = t.n as "g"
+  if (Object.values(t.p).some((v) => fnOf(host, v))) attrs.cursor ??= "pointer"
+  const El = n as "g"
   return <El {...attrs}>{t.k.map((x, i) => (x.t === "md" ? x.s.replace(/\\(.)/g, "$1") : <Piece key={i} t={x} />))}</El>
 }
 const Svg: Part = ({ p, k }) => {
   const size = num(p.size) ?? str(p.size)
   const c = tone(p.color) ?? "currentColor"
+  const prefix = `g${useId().replace(/[^\w-]/g, "")}-`
+  const ids = new Set<string>()
+  const walk = (ts: Tree[]) => { for (const x of ts) if (x.t === "el") { if (typeof x.p.id === "string") ids.add(x.p.id); walk(x.k) } }
+  walk(k)
+  const own = (v: string) => (ids.size ? v.replace(/(url\(\s*['"]?#|^#)([\w:.-]+)/g, (m, a: string, id: string) => (ids.has(id) ? `${a}${prefix}${id}` : m)) : v)
   return (
-    <SvgCtx.Provider value={true}>
+    <SvgCtx.Provider value={true}><SvgIds.Provider value={own}>
       <svg viewBox={str(p.viewBox) ?? "0 0 24 24"} width={p.width as number ?? size ?? "100%"} height={p.height as number ?? size} preserveAspectRatio={str(p.preserveAspectRatio)}
         fill={str(p.fill) === "currentColor" || !p.fill ? c : str(p.fill)} stroke={str(p.stroke)} strokeWidth={num(p.strokeWidth)} strokeLinecap={str(p.strokeLinecap) as never} strokeLinejoin={str(p.strokeLinejoin) as never}
         style={{ color: c, maxWidth: "100%", display: "block" }}>
         {k.map((x, i) => <Piece key={i} t={x} />)}
       </svg>
-    </SvgCtx.Provider>
+    </SvgIds.Provider></SvgCtx.Provider>
   )
 }
 
@@ -730,7 +858,7 @@ const Pulse: Part = ({ p }) => {
   const size = num(p.size) ?? 12, c = tone(p.color) ?? "var(--green)"
   return <span className="relative inline-flex shrink-0" style={{ width: size, height: size }}><span className="absolute inset-0 animate-ping rounded-full opacity-60" style={{ background: tone(p.pulseColor) ?? c }} /><span className="relative rounded-full" style={{ width: size, height: size, background: c }} /></span>
 }
-const Tooltip: Part = ({ p, k }) => <span data-tip={str(p.content) ?? ""} className="inline-flex"><Kids k={k} /></span>
+const Tooltip: Part = ({ p, k }) => <span data-tip={str(p.content ?? p.label ?? p.text) ?? ""} className="inline-flex"><Kids k={k} /></span>
 const mark = (style: CSSProperties, Tag: "span" | "em" | "strong" | "u" | "s" = "span"): Part => ({ p, k }) => <Tag style={{ ...style, ...(p.weight ? { fontWeight: WEIGHT[str(p.weight) ?? ""] } : {}) }}><Inline k={k} /></Tag>
 const Pass: Part = ({ k }) => <Kids k={k} />
 const MarkdownPart: Part = ({ k }) => {
@@ -828,7 +956,7 @@ const PARTS: Record<string, Part> = {
 export function Drawn({ tree, host }: { tree: Tree[]; host: Host }) {
   return (
     <HostCtx.Provider value={host}>
-      <div className="genui flex min-w-0 flex-col gap-4 @container"><Kids k={tree} /></div>
+      <div className="genui flex min-w-0 flex-col @container"><Spaced k={tree} top /></div>
     </HostCtx.Provider>
   )
 }
