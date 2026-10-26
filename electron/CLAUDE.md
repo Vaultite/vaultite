@@ -9,7 +9,8 @@
   build is a new app and its terminals get "Operation not permitted" on an iCloud Drive vault. A new native need is an
   entitlement (`entitlements.plist`) or an Info.plist usage string (package.json's `build`).
 - Four apps, each its own id, name and userData, so any of them install side by side: Vaultite (releases), Vaultite
-  Nightly (`nightly.cjs`), Vaultite Main (`source.cjs`: built from source, `app:build`) and Vaultite Dev (a branch).
+  Nightly (`nightly.cjs`), Vaultite Main (`source.cjs`: built from source, `app:build`) and Vaultite Dev (a branch;
+  `npm run app:dev` opens the sandbox, never Set up).
 - Test a release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check
   its privacy grants. Uploading the update feed is by hand, never part of a build.
 - Debugging the real window: `debugPort` in `vaults.json` (or `VAULTITE_DEBUG_PORT`) serves Chromium's DevTools
@@ -21,7 +22,7 @@
   turn on there (an agent's plugin and its page), nor outside the vault but what they tick (an agent's config: Claude
   Code's computer use, Codex's, OpenClaw's and Hermes' MCP servers); its tests write only under `VAULTITE_SETUP_HOME`.
 - macOS credits what programs in the app's terminals do (screen capture, Accessibility) to the app: the terminal keeper
-  is the app's child, and stays its even after the app quits. One grant covers every agent there. Vaultite Dev (`npm run app:dev`) opens the sandbox, never Set up.
+  is the app's child, and stays its even after the app quits. One grant covers every agent there.
 - Windows: a release build only (no update.sh; Vaultite Main is Mac and Linux). Its title bar is the page's, with
   Windows' controls drawn over the top-right corner (preload.cjs tells their colours, index.css keeps clear of them);
   files and vaultite:// links come in argv and `second-instance`, outside paths go to the page with forward slashes.

@@ -19,8 +19,8 @@
   otherwise), and only what must wait says it's working (`useBusy`, `<Button busy>`). A failure puts it back and says so.
 - An error never shows its exception's text (`e.message`, `String(e)`): `notifyError(e, "Couldn't …")` or
   `errorText(e, …)` say what failed and the reason a person can act on (`core/plainerror.ts`); a bug's text goes to
-  Errors, behind Details or `ErrorDetails`. What can be
-  undone acts and offers Undo; only the irreversible asks (`confirmDialog()`).
+  Errors, behind Details or `ErrorDetails`. What can be undone acts and offers Undo; only the irreversible asks
+  (`confirmDialog()`).
 - Tooltips (`data-tip`) say only what can't be seen: an icon's name, a cut-off label, what a row shows as colour.
 - Menus: `menuFor` / `menuBelow`. A held finger is the right-click (`watchHolds`), so a menu is always an
   `onContextMenu`. A plugin places a file menu item with its `section`, never by special-casing it. Show/hide lists are
@@ -69,7 +69,8 @@
 - Counts that only go down: `counts.mjs` (components React renders per keystroke and per outside change, against
   `counts.json`); after a win, run it with `--ratchet` and commit the lowered limits. `loading.mjs` fails on any shift
   in the sidebars or the status bar, however small: one scores a few thousandths, under any CLS limit.
-- QA runs on Playwright's Chromium (`CHROME` in `web/qa/lib/qa.mjs`): a headless Google Chrome left running hides the user's Chrome.
+- QA runs on Playwright's Chromium (`CHROME` in `web/qa/lib/qa.mjs`): a headless Google Chrome left running hides the
+  user's Chrome.
 - Say when a phone-facing change is untested on a phone: desktop WebKit has missed iPhone-only layout bugs.
 - Measure speed with CDP `Performance.getMetrics` per frame: headless Chrome paints every ~40 ms whatever the page does.
 - A hash set by hand is undone about 0.7 s later by the workspace's tabs: load fresh (`about:blank`, then the address).

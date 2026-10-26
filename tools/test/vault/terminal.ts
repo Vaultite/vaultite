@@ -228,7 +228,7 @@ export default async ($: VaultTest) => {
   }
 
   // The keeper lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper running for
-  // days took the machine's ptys, and new terminals and tmux failed). (Windows: windows-terminal.ts.)
+  // days took the machine's ptys, and new terminals and tmux failed). (Windows: terminal-windows.ts.)
   if (process.platform !== "win32") {
     const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { execFileSync } = await import("node:child_process")

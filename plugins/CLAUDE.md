@@ -2,8 +2,9 @@
 
 ## How it's built
 - Built-in plugins are `plugins/core/<id>/`: the `alwaysOn` ones are the app itself (no switch, not on the Plugins
-  page, nor in bundles), the `essential` ones are on from the start, the rest are Vaultite plugins, `offByDefault`. Vault plugins live in the
-  vault (installed, or the user's own); Vaultite's own are in the repo Vaultite/plugins (`../vaultite-plugins`: its `node test.ts` checks them against this checkout).
+  page, nor in bundles), the `essential` ones are on from the start, the rest are Vaultite plugins, `offByDefault`.
+  Vault plugins live in the vault (installed, or the user's own); Vaultite's own are in the repo Vaultite/plugins
+  (`../vaultite-plugins`: its `node test.ts` checks them against this checkout).
 - The core is generic primitives; what assumes one person's life (a job, a bank's CSV, one tool) is a vault plugin.
 - A plugin is one folder, found by glob (no registration). The backend is the `Plugin` class (`core/plugins.ts`), the
   frontend `definePlugin` (`web/src/core/define.ts`): their doc comments are the reference.

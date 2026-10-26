@@ -6,7 +6,6 @@ The server pushes changed paths (`core/live.ts`); `web/src/core/live.ts` reloads
   and is redone if one overtook it. A write that bypasses it flickers.
 - A refresh is a patch against the server's last state (`GET /api/state?since=<v>`), never against the optimistic
   store. Treat the store's objects as immutable (sort a copy): they're the base the next patch applies to.
-- Editors save `PUT /api/file {path, text, base}`: a change on disk meanwhile is 3-way merged, 409 when the same lines
-  changed.
+- Editors save `PUT /api/file {path, text, base}`: merged against `base` (`core/CLAUDE.md`, Writes).
 - Shared settings are per-key writes (`PATCH /api/config/<name>`, null removes), never a whole list: other devices, the
   CLI and AIs edit the same files.
