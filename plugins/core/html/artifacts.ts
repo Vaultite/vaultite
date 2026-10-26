@@ -89,9 +89,19 @@ export async function cdn(host: string, rest: string): Promise<{ status: number;
     const m = JSON.parse(fs.readFileSync(meta, "utf8"))
     return { status: 200, type: m.type, body: fs.readFileSync(file) }
   } catch { /* not cached yet */ }
-  let res: Response
+  let res: Response, at = url
   try {
-    res = await fetch(url, { headers: { "User-Agent": UA }, redirect: "follow", signal: AbortSignal.timeout(20_000) })
+    // (a redirect only to another of the CDNs, over https: the server fetches it, and anyone may read what it gets)
+    for (let hops = 0; ; hops++) {
+      res = await fetch(at, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(20_000) })
+      const to = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null
+      if (!to) break
+      const next = new URL(to, at)
+      if (hops >= 5 || next.protocol !== "https:" || !CDN_HOSTS.includes(next.host)) {
+        return { status: 502, type: "text/plain", body: Buffer.from(`${at} redirects to ${next.host || to}, which isn't a CDN artifacts may use`) }
+      }
+      at = next.href
+    }
   } catch (e) {
     return { status: 502, type: "text/plain", body: Buffer.from(`couldn't fetch ${url}: ${(e as Error).message}`) }
   }
@@ -99,7 +109,7 @@ export async function cdn(host: string, rest: string): Promise<{ status: number;
   let body: Buffer = Buffer.from(await res.arrayBuffer())
   if (!res.ok) return { status: res.status, type, body }
   if (/css|javascript|ecmascript|json/.test(type)) {
-    const finalHost = new URL(res.url || url).host
+    const finalHost = new URL(at).host
     body = Buffer.from(rootRelative(viaCache(body.toString("utf8")), CDN_HOSTS.includes(finalHost) ? finalHost : host))
   }
   fs.mkdirSync(CACHE(), { recursive: true })

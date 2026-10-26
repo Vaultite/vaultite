@@ -6,6 +6,22 @@ import { standIn } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, vault, write } = $
+  {
+    // CDN files come through the server: a redirect is followed only to another CDN of the list, never elsewhere.
+    const { cdn } = await import("../../../plugins/core/html/artifacts.ts")
+    const real = globalThis.fetch, asked: string[] = []
+    globalThis.fetch = (async (u: string) => {
+      asked.push(String(u))
+      if (String(u).includes("/away.js")) return new Response(null, { status: 302, headers: { location: "http://127.0.0.1:9/secret" } })
+      if (String(u).startsWith("https://unpkg.com/") && String(u).includes("/hop.js")) return new Response(null, { status: 301, headers: { location: "https://cdn.jsdelivr.net/npm/x@1/hop.js" } })
+      return new Response("export const x = 1\n", { status: 200, headers: { "content-type": "text/javascript" } })
+    }) as typeof fetch
+    try {
+      const away = await cdn("unpkg.com", `t${Date.now()}/away.js`), hop = await cdn("unpkg.com", `t${Date.now()}/hop.js`)
+      check("cdn: a redirect off the CDNs isn't followed; one to another of them is", away.status >= 400 && !asked.some((u) => u.includes("127.0.0.1")) &&
+        hop.status === 200 && asked.includes("https://cdn.jsdelivr.net/npm/x@1/hop.js"), [away.status, hop.status, asked])
+    } finally { globalThis.fetch = real }
+  }
   // Artifacts (.html) and tables (.csv): in the file list, written like other files, shown as text, their storage.
   write("Money/Spend.html", '<!doctype html><html><head><title>Spend</title><meta name="vaultite:icon" content="wallet"></head>' +
     '<body><h1>Spending</h1><script>vau.csv("Tx.csv")</script></body></html>')
