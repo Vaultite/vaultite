@@ -765,7 +765,8 @@ export default async ($: VaultTest) => {
     cr = await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "yesterday-ish")
     check("vau inbox snooze: a time it can't read is refused", cr.code !== 0, cr)
     const stampNow = (ms = 0) => { const d = new Date(Date.now() + ms); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace("T", " ") }
-    await api("PUT", "inbox/Snooze me", { snoozed: stampNow(-1000) })
+    await $.nextSecond() // (its time a second later than anything before: on top however fast the run, not tied)
+    await api("PUT", "inbox/Snooze me", { snoozed: stampNow() })
     let [, items] = await api("GET", "inbox")
     const firstOpen = () => items.find((r: Any) => r.status === "new")?.id
     list = await vau("inbox")
