@@ -1,9 +1,9 @@
-// The Ask box (terminal:ask): a question for a coding agent in a new background terminal (terminal.ask), then a toast
-// with Open. Where (agent, account, machine): picked under the field, kept per workspace, else the default place.
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
-import { ArrowUp, ChevronDown, Server } from "lucide-react"
-import { accountsOf, agentsOn, cell, defaultPlaceOf, isViewOpen, keyHint, notify, notifyError, op, openMenu, openView, otherMachines, PaletteFrame,
-  resolvePlace, useAgents, useDefaultPlace, useMachines, useScopedState, type Agent, type AgentAccount, type MenuItem } from "@vaultite"
+// The Ask box (terminal:ask): a question for a coding agent in a new background terminal (terminal.ask), with the files
+// pasted or dropped in, then a toast with Open. Where (agent, account, machine): picked under the field, kept per workspace.
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
+import { ArrowUp, ChevronDown, FileText, Server, X } from "lucide-react"
+import { accountsOf, agentsOn, cell, cn, defaultPlaceOf, getStore, isViewOpen, keyHint, notify, notifyError, op, openMenu, openView, otherMachines, PaletteFrame,
+  pastedFiles, resolvePlace, saveAttachments, useAgents, useDefaultPlace, useMachines, useScopedState, type Agent, type AgentAccount, type MenuItem } from "@vaultite"
 
 const shown = cell(false)
 /** Open the Ask box (its field focused, so dictation types into it). */
@@ -24,6 +24,14 @@ function keepDraft(text: string) {
   try { if (text.trim()) localStorage.setItem(DRAFT, text); else localStorage.removeItem(DRAFT) } catch { /* private mode, full */ }
 }
 
+/** A file pasted or dropped in, kept with the draft until it's asked (in memory: a reload lets go of it); `path` once
+ *  saved, so asking again after a failure doesn't save it twice. */
+type Attached = { id: number; file: File; url?: string; path?: string }
+const attached = cell<Attached[]>([])
+let nextId = 0
+const attach = (files: File[]) => attached.update((l) => [...l, ...files.map((file) => ({ id: ++nextId, file, url: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined }))])
+const detach = (ids: number[]) => attached.update((l) => l.filter((x) => { const gone = ids.includes(x.id); if (gone && x.url) URL.revokeObjectURL(x.url); return !gone }))
+
 export function AskBox() {
   return shown.use() ? <Box close={() => shown.set(false)} /> : null
 }
@@ -31,6 +39,8 @@ export function AskBox() {
 function Box({ close }: { close: () => void }) {
   const [text, setText] = useState(draftOf)
   const [sending, setSending] = useState(false)
+  const files = attached.use()
+  const [over, setOver] = useState(false)
   const [saved, save] = useScopedState<AskPlace>("terminal:ask", NONE, "workspace")
   const home = useDefaultPlace(), machines = useMachines(), agents = useAgents()
   const field = useRef<HTMLTextAreaElement>(null)
@@ -64,13 +74,22 @@ function Box({ close }: { close: () => void }) {
     if (!prompt || sending || !agent) return
     setSending(true)
     try {
+      // (saved first, where pasted files go: on another machine the ask waits for its copies)
+      const unsaved = files.filter((x) => !x.path), s = getStore()
+      if (unsaved.length) {
+        if (!s) throw new Error("The vault isn't loaded yet")
+        const paths = await saveAttachments(s, "", unsaved.map((x) => x.file))
+        unsaved.forEach((x, i) => { x.path = paths[i] })
+      }
+      const given = files.map((x) => x.path!)
       // Nothing picked here: the workspace's default, which gives way to this machine when that one's away.
       // A machine picked here that's away now: this one, said in the toast.
       const at = saved.machine === undefined ? await resolvePlace(agent.name, { profile: saved.profile })
         : machine && away.some((m) => m.id === machine) ? { machine: "", profile, instead: `${machineLabel} is offline` } : { machine, profile, instead: "" }
       const r = await op<{ id: string; title: string }>("terminal.ask", { prompt, agent: agent.name, ...(at.profile ? { account: at.profile } : {}),
-        ...(at.machine ? { machine: at.machine } : {}) })
+        ...(at.machine ? { machine: at.machine } : {}), ...(given.length ? { files: given } : {}) })
       keepDraft("")
+      detach(files.map((x) => x.id))
       close()
       const to = `terminal/${r.id}`
       notify(`Asked ${speaker(agent)}: ${r.title}${at.instead ? ` (${at.instead}: on this machine)` : ""}`, {
@@ -80,6 +99,22 @@ function Box({ close }: { close: () => void }) {
       notifyError(e, `Couldn't ask ${speaker(agent)}`)
       field.current?.focus()
     }
+  }
+
+  const onPaste = (e: ClipboardEvent) => {
+    const got = pastedFiles(e.clipboardData)
+    if (!got.length) return
+    e.preventDefault()
+    attach(got)
+  }
+  const dragsFiles = (e: DragEvent) => e.dataTransfer.types.includes("Files")
+  const onDragOver = (e: DragEvent) => { if (!dragsFiles(e) || sending) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setOver(true) }
+  const onDrop = (e: DragEvent) => {
+    setOver(false)
+    if (!dragsFiles(e) || sending) return
+    e.preventDefault()
+    attach([...e.dataTransfer.files])
+    field.current?.focus()
   }
 
   const onKey = (e: KeyboardEvent) => {
@@ -108,8 +143,14 @@ function Box({ close }: { close: () => void }) {
   const Icon = agent?.icon
   return (
     <PaletteFrame label="Ask an agent" onClose={close}>
-      <div data-ask-box className="flex flex-col">
-        <textarea ref={field} value={text} onChange={(e) => { setText(e.target.value); keepDraft(e.target.value) }} onKeyDown={onKey} rows={1} disabled={sending}
+      <div data-ask-box onDragOver={onDragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false) }} onDrop={onDrop}
+        className={cn("flex flex-col", over && "bg-primary/[0.06] ring-1 ring-primary ring-inset")}>
+        {files.length > 0 && (
+          <div data-ask-files className={cn("flex flex-wrap gap-2 px-4 pt-4", sending && "opacity-60")}>
+            {files.map((x) => <Thumb key={x.id} item={x} remove={sending ? undefined : () => { detach([x.id]); field.current?.focus() }} />)}
+          </div>
+        )}
+        <textarea ref={field} value={text} onChange={(e) => { setText(e.target.value); keepDraft(e.target.value) }} onKeyDown={onKey} onPaste={onPaste} rows={1} disabled={sending}
           placeholder={`Ask ${speaker(agent)}…`} aria-label={`Ask ${speaker(agent)}`} enterKeyHint="send"
           className="max-h-[33dvh] min-h-14 w-full resize-none overflow-y-auto bg-transparent px-5 py-4 text-[17px] leading-[24px] outline-none placeholder:text-muted-foreground" />
         <div className="flex items-center gap-1.5 border-t-[0.5px] border-border px-3 py-2">
@@ -134,6 +175,29 @@ function Box({ close }: { close: () => void }) {
         </div>
       </div>
     </PaletteFrame>
+  )
+}
+
+/** A file going with the question: an image's thumbnail, else its name; its x takes it off. */
+function Thumb({ item, remove }: { item: Attached; remove?: () => void }) {
+  const name = item.file.name || "Pasted image"
+  return (
+    <div data-ask-file className="group relative">
+      {item.url
+        ? <img src={item.url} alt={name} className="size-14 rounded-[8px] border-[0.5px] border-border object-cover" />
+        : (
+          <div className="flex h-14 max-w-48 items-center gap-2 rounded-[8px] border-[0.5px] border-border bg-foreground/[0.04] px-3 text-[13px]">
+            <FileText className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{name}</span>
+          </div>
+        )}
+      {remove && (
+        <button type="button" aria-label={`Remove ${name}`} onClick={remove}
+          className="absolute -top-1.5 -right-1.5 grid size-5 cursor-pointer place-items-center rounded-full border-[0.5px] border-border bg-popover text-muted-foreground shadow-sm after:absolute after:-inset-3 hover:text-foreground md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 md:after:hidden">
+          <X className="size-3" strokeWidth={2.5} />
+        </button>
+      )}
+    </div>
   )
 }
 

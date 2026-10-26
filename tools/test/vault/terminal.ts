@@ -79,6 +79,17 @@ export default async ($: VaultTest) => {
       tr.out.includes('"Plan the garden for spring, with the beds by the fence…"'), [tr, calls])
     tr = await term("ask", { prompt: "   " })
     check("vau terminal ask: an empty prompt is refused", tr.code === 1 && tr.err.includes("say what to ask"), tr)
+    fs.mkdirSync(path.join(VAULT, "Attachments"), { recursive: true })
+    fs.writeFileSync(path.join(VAULT, "Attachments/Qa shot.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    calls.length = 0
+    tr = await term("ask", { prompt: "What's wrong here?", files: ["Attachments/Qa shot.png"] })
+    const given = /^POST terminals\/claude-[a-z0-9]{8} (.*)$/.exec(calls[0] ?? "")
+    check("vau terminal ask: files given with the prompt, by their full paths", tr.code === 0 && !!given &&
+      JSON.parse(given[1]).prompt === `What's wrong here?\n\nAttached:\n- ${path.join(fs.realpathSync(VAULT), "Attachments/Qa shot.png")}`, [tr, calls])
+    calls.length = 0
+    tr = await term("ask", { prompt: "And this?", files: ["Attachments/Nowhere.png"] })
+    check("vau terminal ask: a file that isn't there is refused, nothing started", tr.code === 1 && tr.err.includes("there's no file") && !calls.length, [tr, calls])
+    fs.rmSync(path.join(VAULT, "Attachments/Qa shot.png"))
     calls.length = 0
     tr = await term("resume", { session: "left sidebar" })
     check("vau terminal resume <title>: the one session with those words, resumed in a tab", tr.code === 0 &&

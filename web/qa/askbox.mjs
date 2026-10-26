@@ -2,7 +2,8 @@
 // grows with what's typed and Shift+Enter is a new line; Esc or a click off closes it, keeping what's typed for the next
 // (caret at its end) until it's asked; the row under it picks the agent (remembered); Enter asks in a new terminal in the background (terminal.ask, here on haiku): the box closes, no tab opens, the
 // Terminals list has it, and a toast "Asked Claude: <first words>" has Open, which opens its tab. On a phone it fits the
-// screen with 44px targets. Run by hand on a server with Claude Code, its session answers (tools/qa.ts' stand-in only
+// screen with 44px targets. An image or file pasted in shows above the field (its x takes it off) and goes with the
+// question: saved as an attachment, its path in terminal.ask's files. Run by hand on a server with Claude Code, its session answers (tools/qa.ts' stand-in only
 // starts): throwaway server only, the session ended after.
 //   node web/qa/askbox.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
@@ -18,12 +19,14 @@ const PROMPT = "Reply with just the word pong."
 const box = (p) => p.locator("[data-ask-box]")
 const sessions = async () => (await api("POST", "ops/terminal.list", {})).sessions ?? []
 const started = []
+/** What each ask sent (terminal.ask's body). */
+const asked = []
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = watch(await ctx.newPage(), { label: "desktop" })
   // A cheap model for the session it starts (the box asks with the agent's default).
-  await page.route("**/api/ops/terminal.ask", (r) => r.continue({ postData: JSON.stringify({ ...JSON.parse(r.request().postData() ?? "{}"), model: "haiku" }) }))
+  await page.route("**/api/ops/terminal.ask", (r) => { const b = JSON.parse(r.request().postData() ?? "{}"); asked.push(b); return r.continue({ postData: JSON.stringify({ ...b, model: "haiku" }) }) })
   await page.goto(B)
   await page.waitForFunction(() => document.querySelector("#root > *"), null, { timeout: 20000 })
   await wait(1500)
@@ -64,6 +67,28 @@ try {
   await wait(200)
   check("its menu closing leaves the box open", await box(page).count() === 1)
 
+  // Pasted files: shown above the field, kept when the box closes, one taken off by its x.
+  const paste = (files) => page.evaluate(async (files) => {
+    const d = new DataTransfer()
+    for (const f of files) d.items.add(f.png
+      ? new File([await (await fetch("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")).blob()], "image.png", { type: "image/png" })
+      : new File([f.text], f.name, { type: "text/plain" }))
+    document.querySelector("[data-ask-box] textarea").dispatchEvent(new ClipboardEvent("paste", { clipboardData: d, bubbles: true, cancelable: true }))
+  }, files)
+  const thumbs = () => box(page).locator("[data-ask-file]")
+  await paste([{ png: true }, { name: "notes.txt", text: "some notes" }])
+  check("pasted files show above the field: an image's thumbnail, a file's name", await until(async () => (await thumbs().count()) === 2, 2000) &&
+    (await thumbs().nth(0).locator("img").count()) === 1 && (await thumbs().nth(1).innerText()).includes("notes.txt"))
+  check("…and type nothing in it", (await box(page).locator("textarea").inputValue()) === "")
+  await page.screenshot({ path: `${OUT}attached.png` })
+  await page.keyboard.press("Escape")
+  await until(async () => (await box(page).count()) === 0, 2000)
+  await palette(page, "Ask an agent in the background", 400)
+  check("closing the box keeps them", (await thumbs().count()) === 2)
+  await thumbs().nth(1).hover()
+  await box(page).getByRole("button", { name: "Remove notes.txt" }).click()
+  check("its x takes one off", await until(async () => (await thumbs().count()) === 1, 2000))
+
   // Enter: a session in the background, a toast with Open.
   const before = new Set((await sessions()).map((s) => s.id))
   await box(page).locator("textarea").click()
@@ -75,6 +100,10 @@ try {
     await toast.getByRole("button", { name: "Open" }).count() === 1, await toast.innerText().catch(() => ""))
   const fresh = await until(async () => (await sessions()).find((s) => !before.has(s.id) && s.agent === "claude"), 10000)
   if (fresh) started.push(fresh.id)
+  const files = asked.at(-1)?.files ?? []
+  const saved = files.length === 1 && /^Attachments\/Pasted image \d{14}\.png$/.test(files[0]) &&
+    (await fetch(`${B}api/file?path=${encodeURIComponent(files[0])}`, { headers: { "X-Vaultite-Client": "cli" } })).status === 415
+  check("the image went with it, saved as an attachment (the one taken off didn't)", saved, asked.at(-1))
   check("the Terminals list has the new session, with no tab", !!fresh && !fresh.tabs?.length, fresh)
   const hash = await page.evaluate(() => location.hash)
   check("no tab opened for it", !hash.includes(fresh?.id ?? "-"), hash)
@@ -92,7 +121,7 @@ try {
   }
   await page.screenshot({ path: `${OUT}opened.png` })
   await palette(page, "Ask an agent in the background", 400)
-  check("once asked, the next box starts empty", (await box(page).locator("textarea").inputValue()) === "")
+  check("once asked, the next box starts empty", (await box(page).locator("textarea").inputValue()) === "" && (await thumbs().count()) === 0)
   await page.keyboard.press("Escape")
   await ctx.close()
 
@@ -114,5 +143,6 @@ try {
   await phone.close()
 } finally {
   for (const id of started) await api("POST", "ops/terminal.end", { id }).catch(() => {})
+  for (const f of asked.flatMap((b) => b.files ?? [])) await fetch(`${B}api/file?path=${encodeURIComponent(f)}`, { method: "DELETE" }).catch(() => {})
 }
 await done()

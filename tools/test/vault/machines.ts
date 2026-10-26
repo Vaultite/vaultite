@@ -143,6 +143,7 @@ export default async ($: VaultTest) => {
       if (req.url === "/api/machines/self") return json(200, { instance: "peer-2", host: "box", platform: "linux", version: "0.1.0", commit: "abc1234", plugins: ["terminal"],
         vault: peerVault ?? JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
       if (req.url === "/api/file?path=Notes%2FQa%20there.md") return json(200, { path: "Notes/Qa there.md", text: "Over there.\n" })
+      if (req.url === "/api/file?path=Attachments%2FQa%20there.png") return json(415, { error: "'Attachments/Qa there.png' isn't text" })
       if (req.url === "/api/ops/terminal.run" && req.method === "POST") {
         let b = ""
         req.on("data", (d) => { b += d })
@@ -173,6 +174,11 @@ export default async ($: VaultTest) => {
       ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Hi", machine: "box", model: "haiku" })
       check("terminal.ask: on another machine, passed on to its server, its terminal named with it", c === 200 && body.id === "claude-qa2@box" && body.machine === "box" &&
         body.shown === false && seen.includes(`ask ${JSON.stringify({ prompt: "Hi", agent: "claude", model: "haiku" })}`), [c, body, seen])
+      write("Attachments/Qa there.png", "\u0089PNG")
+      seen.length = 0
+      ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Look", machine: "box", files: ["Attachments/Qa there.png"] })
+      check("terminal.ask: files passed on with it, once that machine has them", c === 200 && body.id === "claude-qa2@box" &&
+        seen.includes(`ask ${JSON.stringify({ prompt: "Look", agent: "claude", files: ["Attachments/Qa there.png"] })}`), [c, body, seen])
       ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Hi", machine: "gone" })
       check("terminal.ask: an offline machine says so", c === 502 && String(body.error).includes("offline"), [c, body])
       ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "nope" })
@@ -193,6 +199,7 @@ export default async ($: VaultTest) => {
       peer.close()
       fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
       fs.rmSync(path.join(VAULT, "Notes/Qa there.md"))
+      fs.rmSync(path.join(VAULT, "Attachments/Qa there.png"), { force: true })
       await api("GET", "machines")
     }
   }

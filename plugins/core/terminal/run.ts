@@ -60,12 +60,23 @@ export function runOps(plugin: Plugin, keep: Keep) {
     if (!found) throw new OpError(`${m.label} doesn't have ${rel} yet (its sync may still be bringing it there)`, 409)
   }
 
-  /** Runs it on machine `m` (its server), once its copy of the file is this one's. */
-  async function onMachine(ctx: OpCtx, m: Machine, rel: string, w: What, o: { account: string; allow: boolean; again: boolean }) {
-    reachable(ctx, m)
+  /** Machine `m` has this vault (so it can open `rel`). */
+  async function sameVault(m: Machine, rel: string) {
     if (!m.vault || m.vault !== await plugin.ask<string>("machines:vault", "")) {
       throw new OpError(`${m.label} ${m.vault ? "has a vault of its own, not this one" : "doesn't say which vault it has (an older Vaultite)"}, so it can't open ${rel}`, 409)
     }
+  }
+
+  /** `rel` is a file in the vault, else the op's error. */
+  function vaultFile(rel: string) {
+    if (rel.startsWith("/") || rel.split("/").includes("..")) throw new OpError(`'${rel}' isn't a path in the vault`)
+    try { if (!fs.statSync(plugin.vault.abs(rel)).isFile()) throw new Error() } catch { throw new OpError(`there's no file '${rel}'`, 404) }
+  }
+
+  /** Runs it on machine `m` (its server), once its copy of the file is this one's. */
+  async function onMachine(ctx: OpCtx, m: Machine, rel: string, w: What, o: { account: string; allow: boolean; again: boolean }) {
+    reachable(ctx, m)
+    await sameVault(m, rel)
     await sameCopy(m, rel)
     const out = await passOn<{ handed?: boolean; running?: boolean }>(ctx, m, "terminal.run", { path: rel, ...w, open: false, ...(o.allow ? { allow: true } : {}),
       ...(o.account ? { account: o.account } : {}), ...(o.again ? { again: true } : {}) })
@@ -166,8 +177,7 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
       const w: What = command ? { command } : { agent: agent || "claude", ...(prompt ? { prompt } : {}), ...(report === false ? { report } : {}) }
       if (w.agent && !TERMINAL_AGENT.test(w.agent)) throw new OpError(`'${w.agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
       if (account && (!w.agent || !/^[a-z0-9]{1,32}$/.test(account))) throw new OpError(w.agent ? `'${account}' isn't an account's id` : "a command has no accounts")
-      if (rel.startsWith("/") || rel.split("/").includes("..")) throw new OpError(`'${rel}' isn't a path in the vault`)
-      try { if (!fs.statSync(plugin.vault.abs(rel)).isFile()) throw new Error() } catch { throw new OpError(`there's no file '${rel}'`, 404) }
+      vaultFile(rel)
       const m = await machineFor(machine)
       const key = JSON.stringify([w, rel, account ?? ""])
       let r: Started | null = null
@@ -206,10 +216,12 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
     summary: "Ask a coding agent (Claude Code by default) something in a new terminal that runs in the background, here or on another machine.",
     help: `The agent starts with the prompt as its first message, in a terminal with no tab (open: show it): it's listed
 with the others (vau terminal) and answers there. With machine, on another of the Machines (its terminal is
-<id>@<machine>); with account, in that one of the agent's accounts; with model, that model (haiku, sonnet...). title:
-the prompt's first words, until the agent names its session.
+<id>@<machine>); with account, in that one of the agent's accounts; with model, that model (haiku, sonnet...); with
+files, vault files it's given with the prompt (their full paths, under it: the Ask box's pasted images), once that
+machine's copies are there. title: the prompt's first words, until the agent names its session.
 
   vau terminal ask "What changed in the release notes this week?"
+  vau terminal ask "What's wrong in this screenshot?" --files "Attachments/Pasted image 20261025203000.png"
   vau terminal ask "Summarize Notes/Idea.md" --machine studio --account personal`,
     kind: "write",
     lock: false, // starting a shell holds nothing of the vault
@@ -219,21 +231,30 @@ the prompt's first words, until the agent names its session.
       account: { type: "string", description: "the agent's account to run in (personal)" },
       machine: { type: "string", description: "ask on another of the Machines, by its id (studio); this one when left out" },
       model: { type: "string", description: "the model to run, for an agent that takes one (haiku, sonnet...); its default when left out" },
+      files: { type: "array", items: { type: "string" }, commas: false, description: "vault files to give it with the prompt (Attachments/Pasted image 20261025203000.png)" },
       open: { type: "boolean", description: "open its terminal's tab in the user's window (default false: in the background)" },
     },
     args: ["prompt"],
-    run: async ({ prompt, agent, account, machine, model, open }, ctx) => {
+    run: async ({ prompt, agent, account, machine, model, files = [], open }, ctx) => {
       const said = prompt.trim()
       if (!said) throw new OpError("say what to ask")
       if (!TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
       if (account && !/^[a-z0-9]{1,32}$/.test(account)) throw new OpError(`'${account}' isn't an account's id`)
       if (model && !MODEL_NAME.test(model)) throw new OpError(`'${model}' isn't a model's name`)
+      for (const rel of files) vaultFile(rel)
       const m = await machineFor(machine)
       let id: string
-      if (m) id = (await passOn(ctx, m, "terminal.ask", { prompt: said, agent, ...(account ? { account } : {}), ...(model ? { model } : {}) })).id
-      else {
+      if (m) {
+        reachable(ctx, m)
+        // (just pasted here: iCloud may still be bringing them there)
+        for (const rel of files) { await sameVault(m, rel); await sameCopy(m, rel) }
+        id = (await passOn(ctx, m, "terminal.ask", { prompt: said, agent, ...(account ? { account } : {}), ...(model ? { model } : {}),
+          ...(files.length ? { files } : {}) })).id
+      } else {
         id = newTerminalId(account ? agentIn(agent.split("_")[0], account) : agent)
-        await startAgent(ctx, id, said, model ? { model } : {})
+        // (their full paths, so it reads them wherever it starts)
+        const given = files.length ? `\n\nAttached:\n${files.map((rel: string) => `- ${path.join(vaultDir(), rel)}`).join("\n")}` : ""
+        await startAgent(ctx, id, said + given, model ? { model } : {})
       }
       let shown = false
       if (open) {

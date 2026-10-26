@@ -34,8 +34,9 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
   plugins' schedules (a note run each morning) start agents with it; the same run again while one still runs answers
   with that one (`again`: another).
 - `vau terminal ask "<prompt>"` (terminal.ask) asks an agent something in a new terminal in the background (no tab;
-  `agent`, `account`, `machine`, `model`, `open`): the app's Ask box ("Ask an agent in the background…") does it, then
-  says so in a toast with Open.
+  `agent`, `account`, `machine`, `model`, `files`, `open`): the app's Ask box ("Ask an agent in the background…") does it, then
+  says so in a toast with Open. Images and files pasted or dropped in the box are saved as attachments when it asks and
+  go as `files`: their full paths under the prompt, once another machine's copies are there (sameCopy, as terminal.run).
 - A session ended for good (its tab's End session, its row's x, `vau terminal end`: an agent asked to close itself runs
   it without an id) closes its tabs on every device, as does exiting the shell left after an agent (exit, ⌃D); an
   agent's session that died or whose machine restarted keeps them, saying so, with Restart. Otherwise a shell ends only
