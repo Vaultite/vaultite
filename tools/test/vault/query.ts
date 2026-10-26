@@ -197,4 +197,7 @@ export default async ($: VaultTest) => {
     ;[, md] = await api("GET", "render?path=Bases test/Query.md")
     check("a ```base fence: a formula column and summaries", md.includes("| [[Emma]] | 300 | 200 |") && md.includes("|  | **Sum** 700 | **Average** 100 |"), md)
   }
+  // (what it wrote goes: in a vault with no other notes, its note would be where a later area's new ones go)
+  fs.rmSync(path.join(VAULT, "Templates/Qtest person.md"))
+  for (const d of ["Query test", "Bases test"]) await $.removeFolder(d)
 }
