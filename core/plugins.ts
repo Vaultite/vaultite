@@ -28,6 +28,7 @@ import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
 import { type PropTypes, readTypes } from "./proptypes.ts"
 import { trustOf } from "./trust.ts"
+import { keptShell } from "./keptshell.ts"
 import { notHereYet, onItsOwn, runHook } from "./writegate.ts"
 /** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
  *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
@@ -196,8 +197,6 @@ let procs: [number, Promise<Map<number, Proc>>] | null = null
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 /** Every process on this machine by pid, from one `ps` shared by every caller of the last `maxAge` ms. */
 export function processTable(maxAge = 1000): Promise<Map<number, Proc>> {
-  // (Windows asks PowerShell, which takes a second: kept longer, never two at once)
-  if (process.platform === "win32") maxAge = Math.max(maxAge, 5000)
   if (procs && Date.now() - procs[0] < maxAge) return procs[1]
   const p = process.platform === "win32" ? windowsProcesses() : new Promise<Map<number, Proc>>((resolve) => {
     // (LC_ALL=C: procps writes lstart's day and month in the locale's language, which the pattern wouldn't read)
@@ -216,23 +215,22 @@ export function processTable(maxAge = 1000): Promise<Map<number, Proc>> {
   return p
 }
 
-/** Windows' processes (Win32_Process): no terminals' foreground groups there (tpgid 0). */
-function windowsProcesses() {
-  // (tabs as [char]9: `t is a tab only in double quotes, which would need escaping through the command line)
+/** Windows' processes (Win32_Process): no terminals' foreground groups there (tpgid 0). Asked of one PowerShell kept
+ *  running (keptshell.ts): a new one each time took seconds a read, 20 s on an Arm machine. */
+const powershell = process.platform === "win32" ? keptShell("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "-"],
+  { echo: (m) => `'${m}'`, first: "[Console]::OutputEncoding = [Text.Encoding]::UTF8" }) : null
+async function windowsProcesses() {
+  // (tabs as [char]9: `t is a tab only in double quotes)
   const script = "Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,CommandLine,Name | ForEach-Object { ($_.ProcessId, $_.ParentProcessId, " +
     "$(if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 }), $(if ($_.CommandLine) { $_.CommandLine -replace '[\\r\\n\\t]', ' ' } else { $_.Name })) -join [char]9 }"
-  return new Promise<Map<number, Proc>>((resolve) => {
-    execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${script}`],
-      // (an Arm machine under load takes many seconds)
-      { timeout: 45000, maxBuffer: 64 << 20, windowsHide: true }, (_err, out) => {
-        const map = new Map<number, Proc>()
-        for (const line of String(out ?? "").split(/\r?\n/)) {
-          const [pid, ppid, started, ...args] = line.split("\t")
-          if (/^\d+$/.test(pid ?? "")) map.set(Number(pid), { ppid: Number(ppid) || 0, tpgid: 0, started: Number(started) || 0, args: args.join(" ") })
-        }
-        resolve(map)
-      })
-  })
+  // (the first read starts PowerShell: half a minute on an Arm machine under load)
+  const out = await powershell!.ask(script, 60_000)
+  const map = new Map<number, Proc>()
+  for (const line of String(out ?? "").split(/\r?\n/)) {
+    const [pid, ppid, started, ...args] = line.split("\t")
+    if (/^\d+$/.test(pid ?? "")) map.set(Number(pid), { ppid: Number(ppid) || 0, tpgid: 0, started: Number(started) || 0, args: args.join(" ") })
+  }
+  return map
 }
 
 /** One of the vault's machines, as the Machines plugin's services ("machines", "machines:machine") answer it. */

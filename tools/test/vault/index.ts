@@ -1,6 +1,7 @@
 // The vault test's areas, in the order they run; deps: the areas that set up what each needs.
 export const AREAS: { name: string; deps: string[] }[] = [
   { name: "state", deps: [] },
+  { name: "processes", deps: [] },
   { name: "agent-files", deps: [] },
   { name: "write-gate", deps: [] },
   { name: "data", deps: [] },

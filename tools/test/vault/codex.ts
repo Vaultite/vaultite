@@ -22,8 +22,8 @@ export default async ($: VaultTest) => {
     const term = app.plugins.find((p) => p.id === "terminal")!, was = term.services["terminal:of"]
     term.services["terminal:of"] = async (pid: number) => (pid === proc.pid ? "codex-b3ac0n01" : null)
     try {
-      // (listed once the process table has it, then past Codex's 2 s memo of its processes; Windows' table is slow, up to
-      // 45 s a read on Arm: a deadline, not a count of reads)
+      // (listed once the process table has it, then past Codex's 2 s memo of its processes; Windows' first read starts
+      // PowerShell, half a minute on Arm: a deadline, not a count of reads)
       const t0 = Date.now()
       const seen = !!(await waitFor(async () => (await processTable()).has(proc.pid!), 120_000, 1000))
       const waited = { seen, ms: Date.now() - t0, procs: (await processTable()).size }
