@@ -121,6 +121,8 @@ export function fillFirstTab(to: string) {
 }
 
 export const useFocusedFile = () => changed.use(() => lastFile)
+/** Whether the focused tab shows a file (not a view or a new tab). */
+export const useFileTab = () => changed.use(() => !!activeTab()?.to.startsWith("file:"))
 export const groups = () => leaves(state.root)
 /** A group's tabs (the focused group's by default). */
 export function useTabs(group?: string): Group {

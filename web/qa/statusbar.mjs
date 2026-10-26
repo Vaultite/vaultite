@@ -137,7 +137,7 @@ try {
   await page.setViewportSize({ width: 1280, height: 800 }); await wait(2500)
   await page.evaluate(() => {
     const k = JSON.parse(localStorage.getItem("vaultite.statusbar.items") ?? "[]")
-    localStorage.setItem("vaultite.statusbar.items", JSON.stringify(k.map(([key, w]) => [key, key === "qa-long:long" ? w + 300 : w])))
+    localStorage.setItem("vaultite.statusbar.items", JSON.stringify(k.map(([key, w, ...rest]) => [key, key === "qa-long:long" ? w + 300 : w, ...rest])))
   })
   const longWidth = () => page.evaluate(() => Math.round(document.querySelector("[data-status-items] > [data-status-key='qa-long:long']")?.getBoundingClientRect().width ?? 0))
   const natural = await longWidth()
@@ -148,6 +148,15 @@ try {
   await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, P); await wait(1500)
   const back = await longWidth()
   check("an item drawn narrower than last load keeps none of its old room", Math.abs(after - natural) <= 2 && Math.abs(back - natural) <= 2, { natural, after, back })
+  // …and a file's items hold no room when the app opens on a view: no file comes there (an empty stretch past the line).
+  await wait(2500)
+  await page.evaluate(() => { location.hash = "#view/inbox" })
+  await page.reload(); await wait(1000)
+  const onView = await page.evaluate(() => [...document.querySelectorAll("[data-status-items] > :not([data-ambient])")]
+    .filter((el) => el.offsetWidth).map((el) => el.dataset.statusKey ?? (el.hasAttribute("data-status-sep") ? "line" : "coming")))
+  check("opened on a view: no room held for the last file's items", onView.length === 0, onView)
+  await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, P)
+  await until(async () => /word/.test(await bar.innerText()), 15000)
 
   // 7. The file's items are items too: hidden by right-click, back from the palette; none at all leaves a faint corner.
   const look_ = async () => (await api("GET", "config/appearance")).statusBar ?? []

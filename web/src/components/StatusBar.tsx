@@ -13,6 +13,7 @@ import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
 import { joinFm } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
 import { usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
+import { useFileTab } from "@/core/workspace"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { barShown, barShows, type BarItem, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
@@ -104,8 +105,8 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
 const KEPT_ITEMS = "vaultite.statusbar.items", KEPT_SETUP = "vaultite.statusbar.setup"
 /** How long at most the app's load holds the bar's room for what's still to come. */
 const LOAD_HOLD = 8000
-/** The items' widths at the last load, in the bar's order. */
-type Kept = [key: string, width: number][]
+/** The items' widths at the last load, in the bar's order; a file's own marked (older loads': unknown, so held). */
+type Kept = [key: string, width: number, file?: 1][]
 /** Last load's room, held while the app loads so nothing moves: each item's until it draws (a file's until the file
  *  comes). Ends for good at another file, a new `setup` (a bundle) or LOAD_HOLD. Null: nothing held. */
 function useLoadHolds(bar: RefObject<HTMLElement | null>, row: RefObject<HTMLElement | null>, path: string, setup: string): Kept | null {
@@ -148,7 +149,10 @@ function useLoadHolds(bar: RefObject<HTMLElement | null>, row: RefObject<HTMLEle
         // (as drawn without what's held: an item drawing nothing is kept as 0, holding no room)
         const slots = [...r.querySelectorAll<HTMLElement>("[data-status-key]")], mins = slots.map((x) => x.style.minWidth)
         for (const x of slots) x.style.minWidth = ""
-        const items: Kept = slots.map((x) => [x.dataset.statusKey!, x.matches(":empty") ? 0 : x.getBoundingClientRect().width])
+        const items: Kept = slots.map((x) => {
+          const w = x.matches(":empty") ? 0 : x.getBoundingClientRect().width
+          return x.hasAttribute("data-ambient") ? [x.dataset.statusKey!, w] : [x.dataset.statusKey!, w, 1]
+        })
         slots.forEach((x, i) => { x.style.minWidth = mins[i] })
         try {
           localStorage.setItem(KEPT_ITEMS, JSON.stringify(items))
@@ -216,7 +220,9 @@ export function StatusBar() {
   // The items: the tucked ones in the tray, the rest in the bar, but those that don't fit, which the tray shows too.
   // A file's are there only while one is focused.
   const barRef = useRef<HTMLDivElement>(null), rowRef = useRef<HTMLDivElement>(null), itemsRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
-  const held = useLoadHolds(barRef, rowRef, path, setup)
+  // (a file's items are held only on a file's tab: on a view or a new tab no file comes, and their room stayed empty)
+  const loading = useLoadHolds(barRef, rowRef, path, setup), fileTab = useFileTab()
+  const held = useMemo(() => (fileTab ? loading : loading?.filter(([, , file]) => !file) ?? null), [loading, fileTab])
   const drawable = useMemo(() => bar.shown.filter((x) => x.ambient || open || held?.some(([k, w]) => k === x.key && w > 0)), [bar, open, held])
   const inBar = useMemo(() => drawable.filter((x) => !statusBarMore.includes(x.key)), [drawable, statusBarMore])
   const [tray, setTray] = useState(false)
