@@ -1,7 +1,7 @@
 // Vaultite as a desktop app (Electron): each vault a window with its server (its own, or one here: host.ts); see CLAUDE.md.
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
 import "../core/winspawn.ts" // (first: on Windows no program the main process starts opens a console window)
-import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
+import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -19,6 +19,7 @@ import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, plainText, sentence } from "../core/plainerror.ts"
 import { runsCode } from "../core/opening.ts"
+import { permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 
@@ -1730,7 +1731,35 @@ function ejectImages() {
   }
 }
 
+/** The default session's permissions (the app's windows, another machine's, the frames a note shows): electron/apppermissions.ts.
+ *  Another machine's window asks for the microphone, camera and location, once a launch per site. */
+const remoteAsked = new Map<string, Promise<boolean>>(), remoteYes = new Set<string>()
+function guardPermissions() {
+  const s = session.defaultSession
+  const decide = (url: string, perm: string) => permissionFor(perm, whose(url, remotes.map((r) => r.url), DIST))
+  s.setPermissionRequestHandler((wc, perm, ok, details) => {
+    const url = details.requestingUrl || wc.getURL(), d = decide(url, perm)
+    if (d !== "ask") return ok(d === "allow")
+    const site = new URL(url).origin, key = `${site} ${perm} ${(details as { mediaTypes?: string[] }).mediaTypes?.join(",") ?? ""}`
+    if (!remoteAsked.has(key)) {
+      const what = perm === "geolocation" ? "know your location" : (details as { mediaTypes?: string[] }).mediaTypes?.includes("video") ? "use your camera" : "use your microphone"
+      const win = AppWindow.fromWebContents(wc) ?? undefined, box = { type: "question" as const, message: `${new URL(url).hostname} wants to ${what}`, buttons: ["Allow", "Don't allow"], defaultId: 1, cancelId: 1 }
+      remoteAsked.set(key, (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).then((r) => {
+        if (r.response === 0) remoteYes.add(`${site} ${perm}`)
+        return r.response === 0
+      }, () => false))
+    }
+    void remoteAsked.get(key)!.then(ok)
+  })
+  s.setPermissionCheckHandler((_wc, perm, origin) => {
+    const d = decide(origin, perm)
+    if (d !== "ask") return d === "allow"
+    try { return remoteYes.has(`${new URL(origin).origin} ${perm}`) } catch { return false }
+  })
+}
+
 app.whenReady().then(async () => {
+  guardPermissions()
   if (await offerMove()) return
   if (fs.existsSync(DOCK_ICON()) || !app.isPackaged) applyDockIcon()
   app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() })
