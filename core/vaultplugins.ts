@@ -53,7 +53,8 @@ const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").trim()
 const message = (e: unknown) => plain(String((e as Error)?.message ?? e)).split("\n").slice(0, 6).join("\n")
 
 // --- plugin.ts: what it may import
-const FOLDERS = new Map<string, { dir: string; hash: string }>() // vault plugin id -> its folder and the version loaded
+/** Vault plugin id -> its folder, the version loaded and its files' hashes then (what its imports must still be). */
+const FOLDERS = new Map<string, { dir: string; hash: string; files: Record<string, string> }>()
 const APP = pathToFileURL(path.join(ROOT, "server.ts")).href
 const TAG = /[?&]plugin=([^&]+)&v=(\w+)$/
 const BUILT_IN = path.join(ROOT, "plugins", "core") + path.sep
@@ -77,6 +78,16 @@ const asModule = <R extends { url: string; format?: string | null }>(r: R): R =>
 }
 
 registerHooks({
+  // (a module it imports later, after it was allowed: as allowed, or not at all)
+  load(url, context, next) {
+    const r = next(url, context), m = TAG.exec(url)
+    if (!m || !url.startsWith("file:")) return r
+    const id = decodeURIComponent(m[1]), at = FOLDERS.get(id), rel = at ? path.relative(at.dir, fileURLToPath(url)).split(path.sep).join("/") : ""
+    if (!at || at.hash !== m[2] || r.source == null || fileHash(Buffer.from(r.source as Uint8Array | string)) !== at.files[rel]) {
+      throw new Error(`${id}: ${rel || url} changed since this machine allowed it: it loads once allowed again`)
+    }
+    return r
+  },
   resolve(spec, context, next) {
     const m = context.parentURL ? TAG.exec(context.parentURL) : null
     // (a vault plugin's plugin.ts, imported by the app with its tag)
@@ -281,6 +292,8 @@ function statOf(dir: string) {
   }).join("\n")
 }
 
+const fileHash = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex").slice(0, 16)
+
 /** Each of its files' hash (its settings and userFiles left out), and the whole's: what this machine approves, and the
  *  lock records. `before`: as it was hashed before its other settings files were left out (core/installs.ts asLocked). */
 export function digestOf(dir: string, before = false): Digest {
@@ -290,7 +303,7 @@ export function digestOf(dir: string, before = false): Digest {
   for (const f of walk(dir)) {
     if (skip(f)) continue
     const rel = path.relative(dir, f).split(path.sep).join("/")
-    files[rel] = crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex").slice(0, 16)
+    files[rel] = fileHash(fs.readFileSync(f))
     whole.update(`\0${rel}\0${files[rel]}`)
   }
   return { content: whole.digest("hex").slice(0, 16), files }
@@ -445,7 +458,7 @@ export class VaultPlugins {
 
   private async load(vp: VaultPlugin) {
     try {
-      FOLDERS.set(vp.id, { dir: fs.realpathSync(vp.dir), hash: vp.hash }) // what Node resolves imports to (the vault may be a symlink)
+      FOLDERS.set(vp.id, { dir: fs.realpathSync(vp.dir), hash: vp.hash, files: vp.digest.files }) // what Node resolves imports to (the vault may be a symlink)
       const file = path.join(vp.dir, "plugin.ts")
       let p: Plugin
       if (fs.existsSync(file)) {
@@ -501,7 +514,11 @@ export class VaultPlugins {
         built = JSON.parse(readText(file))
       } catch {
         let code: Code
-        try { code = JSON.parse(readText(codeFile)) } catch { code = await bundle(vp) }
+        try { code = JSON.parse(readText(codeFile)) } catch {
+          code = await bundle(vp)
+          // (what it read as it built is what was allowed: the app runs it as the user's own code)
+          if (digestOf(vp.dir).content !== vp.digest.content) throw new Error("its files changed as it was built: it's built again once allowed")
+        }
         built = await withStyles(vp, code)
         fs.mkdirSync(CACHE, { recursive: true })
         const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-)?[0-9a-f]{12}\\.json$`) // (not claude-chat's for claude)

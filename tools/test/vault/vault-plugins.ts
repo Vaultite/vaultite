@@ -218,6 +218,22 @@ export default async ($: VaultTest) => {
   check("vault plugins: turned off, it's unloaded", !lh.loaded && !lh.on && (await api("GET", "lighthouse"))[0] === 404 && (await api("GET", "keepers"))[0] === 404
     && !app.plugins.some((p) => p.id === "lighthouse"))
   check("vault plugins: and its docs leave", (await api("GET", "docs/lighthouse"))[0] === 404)
+  {
+    // (a module a plugin imports later, after it was allowed: the file as allowed, or nothing)
+    const TP = ".vaultite/plugins/tidepool"
+    write(`${TP}/manifest.json`, JSON.stringify({ id: "tidepool", name: "Tidepool", description: "A made-up plugin.", version: "1.0.0", author: "Alice Park", repo: "alicepark/tidepool", disclosures: {}, apiVersion: 1 }))
+    write(`${TP}/plugin.ts`, 'import { Plugin } from "@vaultite/core/plugins.ts"\nexport const plugin = new Plugin(import.meta.url)\nplugin.route("GET", "tidepool/word", async () => ({ word: (await import("./word.ts")).word }))\nplugin.route("GET", "tidepool/later", async () => ({ word: (await import("./later.ts")).word }))\n')
+    write(`${TP}/word.ts`, 'export const word = "calm"\n')
+    write(`${TP}/later.ts`, 'export const word = "calm"\n')
+    await api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: [...(vault.config("plugins").enabled ?? []), "tidepool"] })
+    await api("POST", "ops/plugin.allow", { id: "tidepool", edits: false })
+    const calm = await app.run("GET", ["tidepool", "word"], {}, {})
+    fs.writeFileSync(path.join(VAULT, TP, "later.ts"), 'export const word = "storm"\n')
+    const r = await app.run("GET", ["tidepool", "later"], {}, {})
+    check("vault plugins: a module imported after it was allowed loads only as allowed", (calm.body as Any)?.word === "calm" && r.status !== 200 && (r.body as Any)?.word !== "storm", [calm.body, r.status, r.body])
+    await api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: (vault.config("plugins").enabled ?? []).filter((x: string) => x !== "tidepool") })
+    fs.rmSync(path.join(VAULT, TP), { recursive: true })
+  }
   fs.rmSync(path.join(VAULT, ".vaultite/plugins/people"), { recursive: true })
   Object.assign($.vars, { vplugin })
 }
