@@ -3,6 +3,7 @@
 import { type ChildProcess, spawn, spawnSync, type SpawnOptions } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
+import os from "node:os"
 import path from "node:path"
 import { runtimeDir } from "../../core/runtime.ts"
 
@@ -30,14 +31,24 @@ export function standIn(dir: string, name: string, js: string) {
   return path.join(dir, name)
 }
 
+const servers = new Set<ChildProcess>()
+const killServers = () => { for (const s of servers) if (s.exitCode === null && s.signalCode === null) try { s.kill("SIGKILL") } catch { /* gone */ } }
+
+/** A temp folder for this test, removed when it exits, however it does: removed at its end, an app's last writes would
+ *  make it again. */
+export function tempDir(prefix: string) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  // (its servers ended first, which may hold files in it; Windows may still: retried, and a leftover isn't a failure)
+  process.on("exit", () => { killServers(); try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch { /* left */ } })
+  return dir
+}
+
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** A port nothing listens on now, on 127.0.0.1. */
 export const freePort = () => new Promise<number>((resolve) => {
   const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address() as net.AddressInfo; s.close(() => resolve(port)) })
 })
 
-const servers = new Set<ChildProcess>()
-const killServers = () => { for (const s of servers) if (s.exitCode === null && s.signalCode === null) try { s.kill("SIGKILL") } catch { /* gone */ } }
 let ending = false
 /** This checkout's server.ts for a test (spawn's options): killed when the test ends, by its end, a signal or a crash,
  *  and ending itself should the test die unseen (VAULTITE_PARENT_PID, server.ts). */
@@ -63,7 +74,24 @@ export function stopTerminals(port: number | string) {
   spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
 }
 
+// A test that hangs fails where it is, rather than holding its CI job until the job's timeout: nothing checked for this
+// long ends it (VAULTITE_TEST_STALL: seconds).
+const STALL = Number(process.env.VAULTITE_TEST_STALL || 600) * 1000
+let progress = 0, watchdog: NodeJS.Timeout | null = null
+function alive() {
+  progress = Date.now()
+  if (watchdog) return
+  watchdog = setInterval(() => {
+    if (Date.now() - progress < STALL) return
+    const last = results.at(-1)
+    console.log(`FAIL ${current?.name ?? "test"}: stalled, nothing checked for ${STALL / 1000} s${last ? ` after "${last.name}"` : ""}`)
+    process.exit(1)
+  }, Math.min(STALL, 5000))
+  watchdog.unref()
+}
+
 export function check(name: string, ok: unknown, got?: unknown) {
+  alive()
   const note = ok ? "" : JSON.stringify(got)?.slice(0, 400) ?? ""
   console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `  -> ${note}`}`)
   results.push({ name, status: ok ? "ok" : "FAIL", note, section: current?.name ?? "" })
@@ -72,6 +100,7 @@ export function check(name: string, ok: unknown, got?: unknown) {
 }
 
 export function skip(name: string, why: string) {
+  alive()
   console.log(`skip ${name}: ${why}`)
   results.push({ name, status: "skip", note: why, section: current?.name ?? "" })
 }
@@ -84,6 +113,7 @@ function close() {
 }
 function open(name: string) {
   close()
+  alive()
   console.log(`\n== ${name}`)
   current = { name, ms: 0, ok: true, fails: [] }
   sections.push(current)
@@ -107,6 +137,15 @@ export function section(name: string, fn?: () => Promise<unknown> | unknown): Pr
     close()
     return run.fails.length === 0
   })()
+}
+
+/** How long `fn` kept this thread busy, in ms: what would hold a server up. Unlike the clock, it doesn't count what else
+ *  a loaded machine runs meanwhile, so "at once" checks hold on a slow CI runner. */
+export async function busy<T>(fn: () => T | Promise<T>): Promise<{ value: T; ms: number }> {
+  const t0 = process.threadCpuUsage()
+  const value = await fn()
+  const d = process.threadCpuUsage(t0)
+  return { value, ms: (d.user + d.system) / 1000 }
 }
 
 export async function waitFor<T>(fn: () => Promise<T> | T, ms = 15000, step = 500): Promise<T | null> {
@@ -155,6 +194,7 @@ export function report(suite: string, last = 20) {
 /** Prints the totals (and each section's time when there were several), keeps the run, returns the exit code. */
 export function summary(suite: string, t0: number) {
   close()
+  if (watchdog) clearInterval(watchdog)
   const fails = results.filter((r) => r.status === "FAIL"), skips = results.filter((r) => r.status === "skip")
   if (sections.length > 1) {
     console.log("\nsections:")

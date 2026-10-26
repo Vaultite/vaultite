@@ -1,16 +1,18 @@
 // Read-only VM enrollment, authentication, real Python file reads, reconnect and revocation on a throwaway vault.
 import assert from "node:assert/strict"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import crypto from "node:crypto"
 import http from "node:http"
 import { WebSocket } from "ws"
+import { tempDir } from "./test/lib.ts"
 
 if (process.platform === "win32") { console.log("skip machines: the dial-in agent (dial.py) is for Linux and macOS machines"); process.exit(0) }
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-machines-test-"))
+const tmp = tempDir("vaultite-machines-test-")
+// (a hung step fails the run, rather than holding CI to its job's timeout; it takes seconds)
+setTimeout(() => { console.error("machines: timed out after 5 min"); process.exit(1) }, 300_000).unref()
 const vault = path.join(tmp, "vault"), home = path.join(tmp, "vm")
 fs.mkdirSync(path.join(vault, ".vaultite/plugins/machines"), { recursive: true })
 fs.mkdirSync(home)
@@ -173,6 +175,5 @@ try {
   await command(["stop"]).catch(() => {})
   pub.stop()
   for (const p of app.plugins) p.unload()
-  fs.rmSync(tmp, { recursive: true, force: true })
   process.exit(failed ? 1 : 0)
 }

@@ -1,9 +1,8 @@
 // The vault test's one app, in-process, on a throwaway vault (or a copy of one), and the helpers every area gets as `$`.
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
-import os from "node:os"
 import path from "node:path"
-import { check, sleep, type Any } from "../lib.ts"
+import { check, sleep, tempDir, type Any } from "../lib.ts"
 
 export type { Any }
 export type VaultTest = Awaited<ReturnType<typeof vaultHarness>>
@@ -15,7 +14,7 @@ const fixtureNow = () => { const d = new Date(); d.setHours(2, 0, 0, 0); return 
 
 /** The test vault (made up, or a copy of `from`), the agents' made-up homes in the environment, then the app. */
 export async function vaultHarness(from?: string) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-test-"))
+  const tmp = tempDir("vaultite-test-")
   const VAULT = path.join(tmp, "vault")
   if (from) fs.cpSync(from, VAULT, { recursive: true })
   else {
@@ -134,7 +133,5 @@ export async function vaultHarness(from?: string) {
     CLAUDE_DIR, CODEX_DIR,
     /** What an area leaves for the ones after it (tools/test/vault/index.ts says which need which). */
     vars: {} as Record<string, Any>,
-    // Windows may still hold a file a watcher or child just let go: retry, and a leftover temp folder isn't a failure.
-    close: () => { try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) } catch {} },
   }
 }

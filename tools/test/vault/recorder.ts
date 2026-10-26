@@ -10,7 +10,10 @@ export default async ($: VaultTest) => {
   // ---------- Audio recorder: transcripts as jobs, written under the recording's embed ----------
   {
     // (outside the vault: a program in it is never run)
-    const fake = standIn(tmp, "fake-transcriber.sh", 'console.log(`Heard ${process.argv[2].replace(/^.*[\\\\/]/, "")}.\\n\\nSecond paragraph.`)')
+    // (each file it's given kept in heard.txt, so a check can see the app's copy went: tmpdir is other runs' too)
+    const heardAt = path.join(tmp, "heard.txt")
+    const fake = standIn(tmp, "fake-transcriber.sh", `import fs from "node:fs"; fs.appendFileSync(${JSON.stringify(heardAt)}, process.argv[2] + "\\n")\n` +
+      'console.log(`Heard ${process.argv[2].replace(/^.*[\\\\/]/, "")}.\\n\\nSecond paragraph.`)')
     const settings = ".vaultite/plugins/audio-recorder/data.json"
     // Which program runs is this machine's (data/config.json), never the vault's.
     const config = path.join(process.env.VAULTITE_LOCAL!, "config.json")
@@ -50,7 +53,8 @@ export default async ($: VaultTest) => {
     check("audio: a voice note's recording is kept, embedded above its words", !!heard && read(`Attachments/${heard}`) === "not really audio" &&
       read(v.note).includes(`![[${heard}]]\n\nHeard voice.webm.`), v.note && read(v.note))
     if (heard) fs.rmSync(path.join(VAULT, "Attachments", heard))
-    check("audio: a voice note leaves no temporary copy", !fs.readdirSync(os.tmpdir()).some((f) => f.startsWith("vaultite-voice-")), fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith("vaultite-voice-")))
+    const copy = fs.readFileSync(heardAt, "utf8").trim().split("\n").at(-1)!
+    check("audio: a voice note leaves no temporary copy", path.basename(path.dirname(copy)).startsWith("vaultite-voice-") && !fs.existsSync(path.dirname(copy)), copy)
     const [s7] = await api("POST", "audio-recorder/voice", {}, sent(Buffer.alloc(0)))
     check("audio: a voice note needs its recording", s7 === 400, s7)
     if (v.note) fs.rmSync(path.join(VAULT, v.note))

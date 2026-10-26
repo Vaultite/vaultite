@@ -3,13 +3,12 @@
 import { execFileSync, spawnSync } from "node:child_process"
 import { once } from "node:events"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
-import { check, freePort, results, sleep, summary, testServer } from "./test/lib.ts"
+import { check, freePort, results, sleep, summary, tempDir, testServer } from "./test/lib.ts"
 const began = Date.now()
 if (process.platform === "win32") { console.log("skip stall: FIFOs stand in for a slow file, and Windows has none"); process.exit(0) }
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-stall-test-"))
+const tmp = tempDir("vaultite-stall-test-")
 const VAULT = path.join(tmp, "vault")
 const put = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); fs.writeFileSync(path.join(VAULT, rel), text) }
 const fifo = (rel: string) => { fs.mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); execFileSync("mkfifo", [path.join(VAULT, rel)]) }
@@ -104,5 +103,4 @@ for (const [how, end] of [["exits", "process.exit(0)"], ["is killed", "process.k
   if (!gone && Number(pid) > 0) try { process.kill(Number(pid), "SIGKILL") } catch { /* gone */ }
 }
 if (results.some((r) => r.status === "FAIL")) console.log(log.slice(-3000))
-fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("stall", began))

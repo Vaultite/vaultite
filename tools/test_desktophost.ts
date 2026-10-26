@@ -2,13 +2,12 @@
 // who may, another protocol, calls answered, its going. `node tools/test_desktophost.ts` (npm test)
 import fs from "node:fs"
 import http from "node:http"
-import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
-import { check, freePort, sleep, summary, testServer } from "./test/lib.ts"
+import { check, freePort, sleep, summary, tempDir, testServer } from "./test/lib.ts"
 const began = Date.now()
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-host-test-"))
+const tmp = tempDir("vaultite-host-test-")
 const VAULT = path.join(tmp, "vault")
 fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ enabled: ["web-viewer", "machines"], disabled: [] }))

@@ -70,8 +70,10 @@ export default async ($: VaultTest) => {
     // Markdown: headings moved under the turns (not in code), fences that can't close early.
     check("ai-import note: headings shifted, code left alone", shiftHeadings("# A\n```\n# b\n```\n###### C") === "### A\n```\n# b\n```\n###### C")
     check("ai-import note: a fence longer than the text's", fenced("a ``` b") === "````\na ``` b\n````")
+    // (the fixtures' times are UTC: a chat's turns and note are dated by the user's own day, which may be the next)
+    const day = (iso: string) => stamp(new Date(iso)).slice(0, 10)
     const n1 = chatNote(r.chat, new Map([["file-Img001", "file-Img001-beach.png"]]))
-    check("ai-import note: turns as ## headings, the image embedded, the branches said", n1.body.startsWith("## You · 2026-09-20") && n1.body.includes("![[file-Img001-beach.png]]") &&
+    check("ai-import note: turns as ## headings, the image embedded, the branches said", n1.body.startsWith(`## You · ${day("2026-09-20T16:00:00Z")}`) && n1.body.includes("![[file-Img001-beach.png]]") &&
       n1.body.includes("### Day 1") && n1.body.includes("#### Day 2") && n1.body.includes("```\n# not a heading") && n1.body.includes("2 other branches") && n1.fm.messages === 6 && n1.fm.ext_id === `chatgpt-${(trip as Any).id}`, n1)
 
     // The import, through the API: the zip in the vault (an upload is the same file, written as it comes).
@@ -89,7 +91,7 @@ export default async ($: VaultTest) => {
       return { state: "timeout" }
     }
     let j = await runJob({ path: "Imports/chatgpt-export.zip" })
-    const tripRel = "Chats/ChatGPT/2026-09-20 Trip to Lisbon.md"
+    const tripRel = `Chats/ChatGPT/${day("2026-09-20T16:00:00Z")} Trip to Lisbon.md`
     check("ai-import chatgpt: done, every chat made (a one-message one too), the broken item said", j.state === "done" && j.source === "chatgpt" && j.created === 3 && j.skipped === 0 && j.problems.length === 1 && j.read === j.total, j)
     check("ai-import chatgpt: the chat note", exists(tripRel) && read(tripRel).startsWith("---\ntype: chat\nsource: chatgpt\next_id: chatgpt-") && read(tripRel).includes("models: [gpt-4o, o3]"), exists(tripRel) && read(tripRel))
     check("ai-import chatgpt: an image, once, in Attachments", j.images === 1 && exists("Chats/ChatGPT/Attachments/file-Img001-beach.png"), j)
@@ -122,7 +124,7 @@ export default async ($: VaultTest) => {
         read("Chats/Claude/Attachments/cookbook.pdf.txt") === "A long cookbook page. ".repeat(300) && recipes.includes("*Attached* [[cookbook.pdf.txt]]") &&
         recipes.includes("The end of the page.") && recipes.includes("Attached pantry.txt"), [j, recipes.slice(0, 1500)])
     }
-    check("ai-import claude: a chat links its project", read("Chats/Claude/2026-09-21 When do I plant tomatoes.md").includes("project: '[[Chats/Claude/Projects/Garden planning|Garden planning]]'"))
+    check("ai-import claude: a chat links its project", read(`Chats/Claude/${day("2026-09-21T11:00:00Z")} When do I plant tomatoes.md`).includes("project: '[[Chats/Claude/Projects/Garden planning|Garden planning]]'"))
     check("ai-import claude: memories to review", j.memories === 5 && reviewItems(read("Chats/Claude/Memories to review.md")).some((i) => i.fact === "Has a dog named Biscuit"), j)
     j = await runJob({ path: "Imports/claude-export.dms" })
     check("ai-import claude again: unchanged, its attachment's file not doubled", j.created === 0 && j.projects === 0 && j.unchanged === 2 && j.memories === 0 &&

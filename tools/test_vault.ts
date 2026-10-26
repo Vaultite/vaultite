@@ -35,6 +35,5 @@ for (const a of areas) {
   const mod = await import(`./test/vault/${a.name}.ts`)
   await section(a.name, () => mod.default($))
 }
-$.close()
 const code = summary("vault", t0)
 process.exit(code)

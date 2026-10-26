@@ -2,13 +2,12 @@
 // what it replaces, and every file, block and view reads without a problem.   node tools/test_sandbox.ts (npm test)
 import crypto from "node:crypto"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
-import { check, summary } from "./test/lib.ts"
+import { check, summary, tempDir } from "./test/lib.ts"
 const t0 = Date.now()
 
 const S = await import("../core/sandbox.ts")
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-sandbox-test-"))
+const tmp = tempDir("vaultite-sandbox-test-")
 /** Every file under dir: path -> hash. */
 function tree(dir: string) {
   const out: Record<string, string> = {}
@@ -120,5 +119,4 @@ check("sandbox: the workout logs are found", gym.total > 10, gym.total)
 const [, logs] = await api("GET", `query?q=${encodeURIComponent(JSON.stringify({ type: "log", view: "calendar", date: "date", month: S.addDays(S.localToday(), -15).slice(0, 7) }))}`)
 check("sandbox: a calendar month has logs", logs.total > 10, logs.total)
 
-fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("sandbox", t0))

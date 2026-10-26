@@ -3,6 +3,7 @@ import http from "node:http"
 import path from "node:path"
 import { WebSocket } from "ws"
 import type { Any, VaultTest } from "./harness.ts"
+import { busy } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   // Shared folders (plugins/core/share): a guest's link reaches its folder and the few routes it allows, nothing else.
@@ -232,7 +233,7 @@ export default async ($: VaultTest) => {
       // that expand past memory), Markdown marked reads slowly (a long run of `*a_`, lines nested deep).
       let bomb = "a0: &a0 [x]\n"
       for (let i = 1; i <= 8; i++) bomb += `a${i}: &a${i} [${Array(10).fill(`*a${i - 1}`).join(", ")}]\n`
-      const timed = async (text: string) => { const t0 = performance.now(), res = await put(a, "A.md", text); return { status: res.status, ms: performance.now() - t0 } }
+      const timed = async (text: string) => { const { value, ms } = await busy(() => put(a, "A.md", text)); return { status: value.status, ms } }
       const bombed = await timed(`---\n${bomb}---\n# A\n`), reused = await timed("---\nx: &x [a]\ny: *x\n---\n# A\n")
       const slow = [await timed(`# A\n\n${"*a_".repeat(20_000)}\n`), await timed(`# A\n\n${"> ".repeat(60_000)}x\n`), await timed(`# A\n\n${"- ".repeat(60_000)}x\n`)]
       const spaced = await timed(`# A\n\n]:${" ".repeat(120_000)}!\n`)
@@ -243,9 +244,8 @@ export default async ($: VaultTest) => {
       await put(a, "A.md", "# A\n")
       const { load } = await import("../../../core/yaml.ts")
       let blown = ""
-      const t0 = performance.now()
-      try { load(bomb) } catch (e) { blown = (e as Error).message }
-      check("share: the vault reads no alias bomb either (it would hold the server), but values reused a few times, yes", /alias/i.test(blown) && performance.now() - t0 < 1000
+      const { ms: loading } = await busy(() => { try { load(bomb) } catch (e) { blown = (e as Error).message } })
+      check("share: the vault reads no alias bomb either (it would hold the server), but values reused a few times, yes", /alias/i.test(blown) && loading < 1000
         && JSON.stringify(load("base: &b {x: 1}\none:\n  <<: *b\n  y: 2\ntwo: *b\n")) === '{"base":{"x":1},"one":{"x":1,"y":2},"two":{"x":1}}', blown)
       const around = await put(a, "T.md", "Owner's template: <% tp.date.now() %>\nA guest's line\nNote: see [the lessons](https://example.com/lessons), a < b, [[Sub/B]], **bold** and `code`\n\n[^1]: Source: the lessons\n")
       const inside = await put(a, "Dash.md", "# Dash\n\n```dataviewjs\ndv.paragraph(1)\nfetch(1)\n```\n")
@@ -338,10 +338,11 @@ export default async ($: VaultTest) => {
       const thread = (await op("companion.status", {})).notes.find((n: Any) => n.id === zed[0].id)
       check("share: a guest's threads in a note, and replies in one, are capped", zed.length === 100 && thread.replies.length === 100, [zed.length, thread?.replies?.length])
       // A long comment is checked as it's kept (cut short), at once; a share gone since the socket opened takes none.
-      const t0 = performance.now()
-      said!(JSON.stringify({ t: "answer", id: zed[1].id, verdict: "reply", text: `]:${" ".repeat(60_000)}!` }))
-      said!(JSON.stringify({ t: "answer", id: zed[1].id, verdict: "reply", text: `${"x".repeat(4000)} ![p](https://tracker.example/p.png)` }))
-      const ms = performance.now() - t0, replies = (await op("companion.status", {})).notes.find((n: Any) => n.id === zed[1].id)?.replies ?? []
+      const { ms } = await busy(() => {
+        said!(JSON.stringify({ t: "answer", id: zed[1].id, verdict: "reply", text: `]:${" ".repeat(60_000)}!` }))
+        said!(JSON.stringify({ t: "answer", id: zed[1].id, verdict: "reply", text: `${"x".repeat(4000)} ![p](https://tracker.example/p.png)` }))
+      })
+      const replies = (await op("companion.status", {})).notes.find((n: Any) => n.id === zed[1].id)?.replies ?? []
       check("share: a guest's long comment is checked at once, as it's kept", ms < 500 && replies.length === 2 && replies.every((x: Any) => x.text.length <= 4000), [ms, replies.length])
       let gone: ((d: string) => void) | null = null, cut = false
       const ended = { readyState: 1, OPEN: 1, send: () => {}, terminate: () => { cut = true }, on: (ev: string, fn: Any) => { if (ev === "message") gone = fn } }

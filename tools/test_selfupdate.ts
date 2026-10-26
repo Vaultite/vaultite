@@ -2,14 +2,13 @@
 // restart stood in for. In npm test.
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
-import { check, section, summary } from "./test/lib.ts"
+import { check, section, summary, tempDir } from "./test/lib.ts"
 import type { CiResult, UpdaterOptions } from "../core/selfupdate.ts"
 const t0 = Date.now()
 
 const U = await import("../core/selfupdate.ts")
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-selfupdate-test-"))
+const tmp = tempDir("vaultite-selfupdate-test-")
 const GH = "https://github.com/Alice/lighthouse.git"
 const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", ...args], { cwd, encoding: "utf8", stdio: "pipe" }).trim()
 const origin = path.join(tmp, "origin.git"), dev = path.join(tmp, "dev"), server = path.join(tmp, "server")
@@ -119,5 +118,4 @@ check("ci: running is not yet, failed is red", U.ciOf([run("push", "in_progress"
 check("backend: web/, the desktop app, tools and docs don't restart the server", !U.backendChanged(["web/src/a.ts", "plugins/core/x/index.tsx", "electron/main.ts", "tools/t.ts", "CHANGELOG.md", "web/dist/x.js"]))
 check("backend: core, plugins' backends, server.ts and dependencies do", ["core/a.ts", "plugins/core/x/plugin.ts", "server.ts", "package.json", "core/docs/design.md"].every((f) => U.backendChanged([f])))
 
-fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("selfupdate", t0))

@@ -3,6 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { CODEX_DIR, api, app, check, fixtureNow } = $
@@ -21,10 +22,10 @@ export default async ($: VaultTest) => {
     const term = app.plugins.find((p) => p.id === "terminal")!, was = term.services["terminal:of"]
     term.services["terminal:of"] = async (pid: number) => (pid === proc.pid ? "codex-b3ac0n01" : null)
     try {
-      // (listed once the process table has it, then past Codex's 2 s memo of its processes; Windows' table is slow)
+      // (listed once the process table has it, then past Codex's 2 s memo of its processes; Windows' table is slow, up to
+      // 45 s a read on Arm: a deadline, not a count of reads)
       const t0 = Date.now()
-      let seen = false
-      for (let i = 0; i < 30 && !(seen = (await processTable()).has(proc.pid!)); i++) await new Promise((r) => setTimeout(r, 1000))
+      const seen = !!(await waitFor(async () => (await processTable()).has(proc.pid!), 120_000, 1000))
       const waited = { seen, ms: Date.now() - t0, procs: (await processTable()).size }
       await new Promise((r) => setTimeout(r, 2100))
       const turn = service(app.plugins, "agent-turn:codex")!, meters = service(app.plugins, "agent-meters:codex")!

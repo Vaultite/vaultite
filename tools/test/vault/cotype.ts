@@ -4,7 +4,7 @@ import { fromBase64, toBase64 } from "lib0/buffer"
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate } from "y-protocols/awareness"
 import * as Y from "yjs"
 import type { Any, VaultTest } from "./harness.ts"
-import { waitFor } from "../lib.ts"
+import { busy, waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   // Typing together (plugins/core/companion/rooms.ts): a Y.Doc per open note, written back a person at a time.
@@ -193,10 +193,9 @@ export default async ($: VaultTest) => {
       d.getText("md").insert(1, "z")
       parts.push(Y.encodeStateAsUpdate(d, sv))
     }
-    const k = ada.got.length, t0 = performance.now()
-    co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.mergeUpdates(parts)) }, "Co/N.md")
-    await co.settled()
-    check("cotype: a guest's change under many Yjs ids is refused", ada.got.slice(k).some((m) => m.t === "y-reject") && !owner.text.toString().includes("zz") && performance.now() - t0 < 2000)
+    const k = ada.got.length
+    const { ms } = await busy(async () => { co.heard(ada.ws, { t: "y", path: "Co/N.md", u: toBase64(Y.mergeUpdates(parts)) }, "Co/N.md"); await co.settled() })
+    check("cotype: a guest's change under many Yjs ids is refused", ada.got.slice(k).some((m) => m.t === "y-reject") && !owner.text.toString().includes("zz") && ms < 2000, ms)
   }
   {
     // An emoji changed on disk comes in whole (Yjs makes half a character a U+FFFD).
@@ -249,14 +248,16 @@ export default async ($: VaultTest) => {
     Y.applyUpdate(d, Y.encodeStateAsUpdate(owner.doc))
     d.on("update", (u: Uint8Array) => many.push(u))
     for (let i = 0; i < 600; i++) d.getText("md").insert(0, "q")
-    const k = kit.got.length, t0 = performance.now()
-    for (const u of many) co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md")
-    const big = new Y.Doc()
-    Y.applyUpdate(big, Y.encodeStateAsUpdate(owner.doc))
-    const bytes: Uint8Array[] = []
-    for (let i = 0; i < 3; i++) { const sv = Y.encodeStateVector(big); big.getText("md").insert(0, "w".repeat(150_000)); bytes.push(Y.encodeStateAsUpdate(big, sv)) }
-    for (const u of bytes) co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md")
-    const capped = kit.got.slice(k).filter((m) => m.t === "y-reject").length, ms = performance.now() - t0
+    const k = kit.got.length
+    const { ms } = await busy(() => {
+      for (const u of many) co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md")
+      const big = new Y.Doc()
+      Y.applyUpdate(big, Y.encodeStateAsUpdate(owner.doc))
+      const bytes: Uint8Array[] = []
+      for (let i = 0; i < 3; i++) { const sv = Y.encodeStateVector(big); big.getText("md").insert(0, "w".repeat(150_000)); bytes.push(Y.encodeStateAsUpdate(big, sv)) }
+      for (const u of bytes) co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(u) }, "Co/N.md")
+    })
+    const capped = kit.got.slice(k).filter((m) => m.t === "y-reject").length
     co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(new Uint8Array([1, 2, 3, 250, 250])) }, "Co/N.md")
     co.heard(kit.ws, { t: "y", path: "Co/N.md", u: toBase64(new Uint8Array([9, 9, 9, 9])) }, "Co/N.md")
     await co.settled()

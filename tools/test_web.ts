@@ -3,10 +3,9 @@
 import assert from "node:assert"
 import fs from "node:fs"
 import { registerHooks } from "node:module"
-import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { check, section, summary } from "./test/lib.ts"
+import { check, section, summary, tempDir } from "./test/lib.ts"
 const t0 = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -21,7 +20,7 @@ const STUBS: Record<string, string> = {
   "@/core/live": "export const answerUi = () => {}",
 }
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
-const shim = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vau-shim-")), "vaultite.ts")
+const shim = path.join(tempDir("vau-shim-"), "vaultite.ts")
 fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}`)
 registerHooks({
   resolve(spec, context, next) {
@@ -66,7 +65,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 // ---------- reading: the same values as the server ----------
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-web-"))
+const tmp = tempDir("vaultite-web-")
 const VAULT = path.join(tmp, "vault")
 fs.mkdirSync(VAULT)
 process.env.VAULTITE_VAULT = VAULT
@@ -2102,5 +2101,4 @@ await section("login approvals", async () => {
   check("login approvals: a counter that goes up is new", pr.verify(signed(phone, c2, { counter: 6 }), [{ ...pk, counter: 5 }], c2).counter === 6)
 })
 
-fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("web", t0))
