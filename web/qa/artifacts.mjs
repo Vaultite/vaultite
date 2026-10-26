@@ -94,17 +94,40 @@ for (let i = 0; i < 30 && !live; i++) {
 }
 check("a changed CSV redraws the artifact", live)
 
-// Links: a web link opens a new tab; a vault link opens the note in the app.
+// Links: a web link opens a new tab, asking first once the page read the vault; a vault link opens the note in the app.
+const popup = () => page.context().waitForEvent("page", { timeout: 4000 }).catch(() => null)
+const asked = () => until(() => page.$("dialog[data-confirm]"), 2000)
 if (f) {
-  const pop = page.context().waitForEvent("page", { timeout: 4000 }).catch(() => null)
+  let pop = popup()
   const fr = page.frames().find((x) => x.url().includes("/v/QA/") && x.url().includes("frame=1"))
   await fr.click("#ext")
-  const p2 = await pop
+  const ask = await asked()
+  check("a page that read the vault asks before opening a site", !!ask && /Open example\.com\?/.test(await ask.innerText()), await ask?.innerText())
+  if (ask) await page.click("dialog[data-confirm] [data-confirm-ok]")
+  let p2 = await pop
   check("web link opens a new tab", !!p2 && p2.url().startsWith("https://example.com"), p2?.url())
+  if (p2) await p2.close()
+  pop = popup()
+  await fr.click("#ext")
+  p2 = await pop
+  check("… and doesn't ask again for that site", !!p2 && !(await page.$("dialog[data-confirm]")), p2?.url())
   if (p2) await p2.close()
   await fr.click("#note")
   check("vault link opens the note", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes("QA/QA note.md")), await page.evaluate(() => location.hash))
 }
+
+// A page that read nothing of the vault opens its links without asking.
+writeFileSync(`${VAULT}/QA/QA plain.html`, `<!doctype html><p>plain</p><a id="ext" href="https://example.com/">example</a><script>window.__t = { ready: 1 }</script>`)
+await page.goto(`${B}#file/${enc("QA/QA plain.html")}`)
+let plain = null
+await until(async () => { plain = page.frames().find((x) => x.url().includes("/v/QA/QA%20plain.html") && x.url().includes("frame=1")); return !!plain && !!(await plain.evaluate(() => window.__t?.ready).catch(() => null)) }, 8000)
+if (plain) {
+  const pop = popup()
+  await plain.click("#ext")
+  const p2 = await pop
+  check("a page that read nothing opens a link without asking", !!p2 && !(await page.$("dialog[data-confirm]")), p2?.url())
+  if (p2) await p2.close()
+} else check("a page that read nothing opens", false)
 
 // A note with both embedded, being read.
 await page.goto(`${B}#file/${enc("QA/QA note.md")}`)
