@@ -231,6 +231,7 @@ jobs:
           for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/*-Setup-*.exe out/*-Setup-*.exe.blockmap out/*.yml; do
             npx -y wrangler@4 r2 object put "vaultite-updates/$dir$(basename "$f")" --file "$f" --remote
           done
+          node tools/prune_feed.ts "$dir"
       # vaultite.com's demo is the latest release: its repository's deploy.yml builds this one and deploys the site.
       - name: The website
         if: env.STABLE == 'true'
