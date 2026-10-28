@@ -437,14 +437,15 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
    load just appears. A skeleton bar stands for a line of text, with a light passing over it. */
 @keyframes loading-in { from { opacity: 0; } }
 .loading-in { animation: loading-in 150ms ease-out 200ms both; }
-/* An agent at work: slow and eased, as it works for minutes in the background. */
+/* An agent at work: a few slow breaths as it starts, then still. Endless, it made macOS redraw the window's blur 60
+   times a second for as long as any agent ran (a third of WindowServer's CPU). */
 @keyframes breathe { 50% { opacity: 0.3; } }
-.breathe { animation: breathe 2.2s ease-in-out infinite; }
+.breathe { animation: breathe 2.2s ease-in-out 3; }
 /* A status dot (Badged) pops in; one that asks for the user rings once as it comes. */
 @keyframes dot-in { from { transform: scale(0); } }
 @keyframes dot-ping { to { transform: scale(2.6); opacity: 0; } }
 .dot-in { animation: dot-in 180ms ease-out; }
-.dot-in.breathe { animation: dot-in 180ms ease-out, breathe 2.2s ease-in-out infinite; }
+.dot-in.breathe { animation: dot-in 180ms ease-out, breathe 2.2s ease-in-out 3; }
 .dot-ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: dot-ping 1s ease-out; }
 @media (prefers-reduced-motion: reduce) { .dot-in, .dot-ping::after { animation: none; } }
 /* Set up Vaultite's hint of what to do in System Settings: a pointer comes to the app's switch, clicks, and it turns on. */
