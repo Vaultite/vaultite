@@ -1,14 +1,14 @@
-// The container chip at the address's left: which container the tab is in (its colour and name), and a menu to move the
-// tab to another or always open its site there. A container's own options (containerItems) are in Sites.
+// The container chip at the address's left: which container the tab is in, or what's typed will open in (its colour and
+// name), and a menu to choose another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
-import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notify, notifyError, plural, webPages, type MenuItem, type WebSite } from "@vaultite"
+import { choose, colorItems, confirmDialog, currentWorkspace, dotIcon, menuBelow, notify, notifyError, plural, webPages, type MenuItem, type WebSite } from "@vaultite"
 import { accountIn, askSites, keep, listed } from "./accounts"
 import { allLogins, andList, isIn, loginsOf, moveLogin, sitesOf } from "./loginsets"
 import { siteOf } from "./address"
 import { passwordsForAgents } from "./agentlogins"
 import {
-  addContainer, argOf, colorOf, containerById, containers, moveContainer, profileIn, removeContainer, ruleFor, setSiteRule, updateContainer,
+  addContainer, colorOf, containerById, containers, moveContainer, profileIn, removeContainer, ruleFor, setSiteRule, updateContainer,
   type Container,
 } from "./containers"
 
@@ -104,33 +104,35 @@ export const containerItems = (c: Container, canLock: boolean): MenuItem[] => {
   { label: `Delete ${c.name}…`, icon: Trash2, danger: true, sep: true, run: () => void deleteContainer(c) },
   ]
 }
-/** The container menu for a tab showing `url` in `container`; `reopen` takes the tab's new arg. Only choosing: a
- *  container's own options are in Sites (`manage`). Each names who's signed in to the page's site there, if known. */
-export function containerMenu(container: string | null, url: string, reopen: (arg: string) => void, manage: () => void): MenuItem[] {
+/** The container menu for `url` (the page's, or an address being typed) opening in `container`: `pick` takes the one
+ *  chosen. Only choosing: a container's own options are in Sites (`manage`). Each names who's signed in to the site there. */
+export function containerMenu(container: string | null, url: string, pick: (id: string | null) => void, manage: () => void): MenuItem[] {
   const list = containers(), site = siteOf(url), rule = site ? ruleFor(url) : null
   const here = containerById(container)
   const who = (id: string | null) => (site && accountIn(profileIn(id), site)) || undefined
   return [
     { label: "Open in", caption: true, run: () => {} },
-    { label: "No container", icon: Box, checked: !here, hint: who(null), run: () => { if (here) reopen(url) } },
-    ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, hint: who(c.id), run: () => { if (c.id !== here?.id) reopen(argOf(url, c.id)) } })),
+    // (none is the workspace's own logins, which a workspace with a container of its own can still have)
+    { label: currentWorkspace() ? "No container (workspace logins)" : "No container", icon: Box, checked: !here, hint: who(null), run: () => { if (here) pick(null) } },
+    ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, hint: who(c.id), run: () => { if (c.id !== here?.id) pick(c.id) } })),
     ...(site && here ? [{ label: `Always open ${site} here`, icon: Pin, checked: rule === here.id, sep: true,
       run: () => void setSiteRule(site, rule === here.id ? null : here.id) }] : []),
     ...(site && !here && rule ? [{ label: `Stop opening ${site} in ${containerById(rule)?.name ?? rule}`, icon: PinOff, sep: true, run: () => void setSiteRule(site, null) }] : []),
-    { label: "New container…", icon: Plus, sep: true, run: () => newContainer((c) => reopen(argOf(url, c.id))) },
+    { label: "New container…", icon: Plus, sep: true, run: () => newContainer((c) => pick(c.id)) },
     { label: "Manage containers…", icon: Settings2, run: manage },
   ]
 }
 
-/** Inside the page bar's address (a narrow bar, `@container/bar`: the dot alone). */
-export function ContainerButton({ container, url, reopen, manage }: { container: string | null; url: string; reopen: (arg: string) => void; manage: () => void }) {
+/** Inside the page bar's address (a narrow bar, `@container/bar`: the dot alone): where the page is, or where what's
+ *  typed will open, `why` saying why when it isn't plain (a site's rule, the workspace's container). */
+export function ContainerButton({ container, url, why, pick, manage }: { container: string | null; url: string; why: string; pick: (id: string | null) => void; manage: () => void }) {
   const c = containerById(container)
-  const open = (e: MouseEvent) => menuBelow(e, containerMenu(container, url, reopen, manage))
+  const open = (e: MouseEvent) => menuBelow(e, containerMenu(container, url, pick, manage))
   // (who's signed in where, asked as the pointer comes: the menu names them as it opens)
   const ask = () => askSites([profileIn(null), ...containers().map((x) => profileIn(x.id))])
   if (!c) {
     return (
-      <button type="button" onClick={open} onPointerEnter={ask} onFocus={ask} aria-label="Container" aria-haspopup="menu" data-tip="Open in a container" data-web-container=""
+      <button type="button" onClick={open} onPointerEnter={ask} onFocus={ask} aria-label="Container" aria-haspopup="menu" data-tip={why || "Open in a container"} data-web-container=""
         className="ml-0.5 grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-tertiary hover:bg-foreground/[0.07] hover:text-foreground">
         <Box className="size-3.5" strokeWidth={2} />
       </button>
@@ -138,6 +140,7 @@ export function ContainerButton({ container, url, reopen, manage }: { container:
   }
   return (
     <button type="button" onClick={open} onPointerEnter={ask} onFocus={ask} aria-label={`Container: ${c.name}`} aria-haspopup="menu" data-web-container={c.id}
+      data-tip={why || undefined} data-web-container-why={why || undefined}
       className="ml-0.5 flex h-5.5 max-w-[120px] shrink-0 cursor-pointer items-center gap-1.5 rounded-[5px] px-1.5 text-[12px] font-medium hover:brightness-110 @max-md/bar:px-[7px]"
       style={{ color: colorOf(c), background: `color-mix(in srgb, ${colorOf(c)} 14%, transparent)` }}>
       <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c) }} />

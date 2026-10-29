@@ -68,11 +68,19 @@ function mdTarget(s: Store, href: string, from?: string) {
   return `${hit.replace(/\.md$/i, "")}${anchor ? `#${anchor}` : ""}`
 }
 
+/** How a link was clicked: ⌘ (Ctrl elsewhere) or a middle click is a new tab (a web page's behind the one on screen,
+ *  in front with ⇧ too, as browsers do); ⌥⌘ sends a web page to the system browser (`out`). */
+export type LinkClick = { newTab: boolean; front?: boolean; out?: boolean }
+export function linkClick(e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; button: number }): LinkClick {
+  const mod = e.metaKey || e.ctrlKey
+  return { newTab: mod || e.button === 1, ...(mod && e.shiftKey ? { front: true } : {}), ...(mod && e.altKey ? { out: true } : {}) }
+}
+
 /** A plugin that's on takes this web link (the Browser opens it in a tab): whether one did. */
-function takeWebLink(url: string, mod: boolean) {
+function takeWebLink(url: string, how: LinkClick) {
   const { disabled } = getPrefs()
   for (const p of active(disabled)) {
-    try { if (p.webLink?.(url, { mod })) return true } catch { /* a plugin failing leaves the link to the browser */ }
+    try { if (p.webLink?.(url, how)) return true } catch { /* a plugin failing leaves the link to the browser */ }
   }
   return false
 }
@@ -88,22 +96,24 @@ export function takeSchemeLink(url: string, mod = false) {
 const OTHER_SCHEME = /^(?!https?:|mailto:|tel:|javascript:|data:|blob:|file:|vaultite:)[a-z][a-z0-9+.-]*:/i
 
 /** Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the
- *  system browser (a new browser tab on the web). `mod`: ⌘-clicked. */
-export function openWebLink(url: string, mod = false) {
-  if (!takeWebLink(url, mod)) window.open(url, "_blank", "noopener,noreferrer")
+ *  system browser (a new browser tab on the web). `how`: how it was clicked (linkClick). */
+export function openWebLink(url: string, how: LinkClick = { newTab: false }) {
+  if (!takeWebLink(url, how)) window.open(url, "_blank", "noopener,noreferrer")
 }
 
-// Links drawn as <a href> anywhere in the app go the same way: a plain click (and ⌘-click) on a web link or another
-// app's (obsidian://) is offered to the plugins first; a middle click, or one no plugin takes, does what it did.
+// Links drawn as <a href> anywhere in the app go the same way: a click on a web link or another app's (obsidian://) is
+// offered to the plugins first (⇧ or ⌥ alone aren't: Glance's ⌥-click); one no plugin takes does what it did.
 if (typeof window !== "undefined") {
-  addEventListener("click", (e) => {
-    if (e.defaultPrevented || e.button !== 0 || e.shiftKey || e.altKey) return
+  const clicked = (e: MouseEvent) => {
+    if (e.defaultPrevented || (e.button !== 0 && e.button !== 1) || ((e.shiftKey || e.altKey) && !(e.metaKey || e.ctrlKey))) return
     const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null
     if (!a || a.hasAttribute("download")) return
-    if (OTHER_SCHEME.test(a.href)) { if (takeSchemeLink(a.href, e.metaKey || e.ctrlKey)) e.preventDefault(); return }
+    if (OTHER_SCHEME.test(a.href)) { if (e.button === 0 && takeSchemeLink(a.href, e.metaKey || e.ctrlKey)) e.preventDefault(); return }
     if (!/^https?:/i.test(a.href) || a.origin === location.origin) return
-    if (takeWebLink(a.href, e.metaKey || e.ctrlKey)) e.preventDefault()
-  })
+    if (takeWebLink(a.href, linkClick(e))) e.preventDefault()
+  }
+  addEventListener("click", clicked)
+  addEventListener("auxclick", clicked)
 }
 
 /** A Markdown link that runs one of the app's commands: `[Open Claude Code](vaultite://command/terminal:claude-split)`.
@@ -125,13 +135,14 @@ async function openOtherLink(url: string, mod = false) {
 
 /** Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app
  *  link). A [[link]] to nothing makes that note, or asks which when another file may be what it meant. */
-export async function followLink(s: Store, link: { wiki?: string; url?: string; tag?: string }, newTab: boolean, from?: string) {
+export async function followLink(s: Store, link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick, from?: string) {
   if (link.tag) return openTag(link.tag)
+  const click = typeof how === "boolean" ? { newTab: how } : how, newTab = click.newTab
   let wiki = link.wiki ?? ""
   if (link.url) {
     const cmd = COMMAND_LINK.exec(link.url)
     if (cmd) { if (!runCommandLink(cmd[1])) notify("That isn't available here"); return }
-    if (/^https?:/i.test(link.url)) return openWebLink(link.url, newTab)
+    if (/^https?:/i.test(link.url)) return openWebLink(link.url, click)
     if (/^[a-z][a-z0-9+.-]*:/i.test(link.url)) return openOtherLink(link.url, newTab)
     wiki = mdTarget(s, link.url, from)
   }

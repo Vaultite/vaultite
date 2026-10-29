@@ -16,21 +16,34 @@ export type Owned<W> = {
   let: number
   /** When its window reloaded (ms): its tab takes it back within RECLAIM_MS, or it ends. */
   orphan?: number
+  /** When its tab moved to another window (ms): the tab takes it there within MOVE_MS, or it ends. */
+  moving?: number
 }
 
 /** How long a reloaded window's tabs have to take their pages back. */
 export const RECLAIM_MS = 8000
+/** How long a tab moved to another window has to take its page there (that window may be loading). */
+export const MOVE_MS = 20_000
 /** Background tabs' pages each window keeps even when the Mac runs short of memory (the most recently shown). */
 export const KEEP = 4
 
-/** Showing `tab` in `win`: the page it has (`reuse`, null: make one), and its pages to end first (in other logins: the
- *  tab moved to another container). */
+/** Showing `tab` in `win`: the page it has (`reuse`, null: make one; one in another window when the tab moved here),
+ *  and its pages to end first (in other logins: the tab moved to another container). */
 export function claim<W, P extends Owned<W>>(pages: Iterable<P>, win: W, tab: string, profile: string): { reuse: P | null; end: P[] } {
   if (!tab) return { reuse: null, end: [] }
-  const mine = [...pages].filter((p) => p.win === win && p.tab === tab && !p.closing)
+  const mine = [...pages].filter((p) => p.tab === tab && !p.closing && (p.win === win || p.moving !== undefined))
   const reuse = mine.find((p) => p.profile === profile) ?? null
+  if (reuse) reuse.moving = undefined
   return { reuse, end: mine.filter((p) => p !== reuse) }
 }
+
+/** `tab` left `win` for another window: its pages wait there to be claimed (`unmoved` ends them after). */
+export function tabMoved<W>(pages: Iterable<Owned<W>>, win: W, tab: string, now: number) {
+  for (const p of pages) if (tab && p.win === win && p.tab === tab && !p.closing) p.moving = now
+}
+/** Pages whose moved tab didn't take them in time. */
+export const unmoved = <W, P extends Owned<W>>(pages: Iterable<P>, now: number) =>
+  [...pages].filter((p) => p.moving !== undefined && now - p.moving >= MOVE_MS)
 
 /** A view let go of `p` (its tab hidden or gone): whether it ends now. */
 export function letGo<W>(p: Owned<W>, now: number): boolean {

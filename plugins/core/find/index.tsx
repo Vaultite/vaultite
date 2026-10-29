@@ -13,11 +13,11 @@ const open = (replace: boolean) => {
   if (ed) load().then((m) => m.openFind(ed.view, replace))
   else loadPage().then((m) => m.openPageFind())
 }
-// (a terminal draws its own text: nothing for a find in the page there)
+// (a terminal draws its own text: nothing for a find in the page there; a web page has the Browser's own)
 const page = () => {
   if (document.querySelector("dialog[open]")) return true
   const pane = document.getElementById("main-scroll")
-  return !!pane && !pane.querySelector(".xterm")
+  return !!pane && !pane.querySelector(".xterm, [data-web-box]")
 }
 
 export default definePlugin({

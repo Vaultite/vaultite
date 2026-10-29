@@ -1,7 +1,7 @@
 // Containers: named logins a tab picks (Personal, Work), each its own cookies and storage, so one site can be signed in
 // to with several accounts side by side. A tab in one is `view:web/@<id>/<address>`; a tab in none has its workspace's.
-import { COLORS, colorVar, currentWorkspace, isColor, type Color } from "@vaultite"
-import { settings, profile, type Settings } from "./state"
+import { COLORS, colorVar, currentWorkspace, isColor, openTab, webPages, type Color } from "@vaultite"
+import { settings, settingsRead, profile, type Settings } from "./state"
 import { siteOf } from "./address"
 
 export type Container = { id: string; name: string; color: Color
@@ -41,6 +41,8 @@ export function splitArg(arg: string): { container: string | null; url: string }
   return m ? { container: m[1], url: m[2] } : { container: null, url: arg }
 }
 export const argOf = (url: string, container: string | null) => (container ? `@${container}/${url}` : url)
+/** A tab of its own showing a page's source (view-source:, Chrome's), in its container, beside the active tab. */
+export const viewSource = (url: string, container: string | null, from?: string) => { if (/^https?:\/\//i.test(url)) openTab(`view:web/${argOf(`view-source:${url}`, container)}`, { from }) }
 
 /** The logins (electron/web.ts's profile) of a page in `container`, or the workspace's in none. */
 export const profileIn = (container: string | null) => (container ? `c-${container}` : profile())
@@ -52,10 +54,28 @@ export function ruleFor(url: string): string | null {
   const site = siteOf(url)
   return (site && containers().find((c) => c.sites?.includes(site))?.id) || null
 }
-/** The container a new page opened in none goes to: its site's, else the current workspace's (a space's), if any. */
-export function openingIn(url: string): string | null {
-  const own = currentWorkspace()?.container
-  return ruleFor(url) ?? (own && containerById(own) ? own : null)
+/** Where an address opens and why (the chip says it while it's typed): `container` null is the workspace's own logins. */
+export type Where = { container: string | null; why: string }
+/** Where `url` opens from a tab in `from` (`fresh`: a tab with no page yet, or a new one): the container picked for it
+ *  (`chosen`, null: none), else its site's, else the tab's, else (fresh) the workspace's. Enter, ⌥Enter and ⌘T ask it. */
+export function destination(url: string, { from, fresh, chosen }: { from: string | null; fresh: boolean; chosen?: string | null }): Where {
+  if (chosen !== undefined) return { container: containerById(chosen)?.id ?? null, why: "" }
+  const rule = containerById(url ? ruleFor(url) : null)
+  if (rule) return { container: rule.id, why: `${siteOf(url)} always opens in ${rule.name}` }
+  if (containerById(from)) return { container: from, why: "" }
+  const own = fresh ? containerById(currentWorkspace()?.container) : null
+  return own ? { container: own.id, why: "This workspace's container" } : { container: null, why: "" }
+}
+
+/** Addresses the user put in no container though their workspace has one: the page opened next there stays out of it. */
+const outside = new Set<string>()
+export const keepOutside = (url: string) => { outside.add(url) }
+export const keptOutside = (url: string) => outside.delete(url)
+/** `url` in a new web tab behind the one on screen (`from`: the tab it's opened from), in `container` (destination's),
+ *  its page loading at once as a browser's background tab's does. */
+export function openBehind(url: string, container: string | null, from?: string) {
+  const id = openTab(`view:web/${argOf(url, container)}`, { background: true, from }), web = webPages
+  if (web) void settingsRead().then(() => web.open(url, null, profileIn(container), id)).then((r) => web.release(r.id), () => {})
 }
 
 const save = (list: Container[]) => settings.set({ containers: list })

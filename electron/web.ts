@@ -1,14 +1,14 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { AppWindow } from "./appwindow.ts"
-import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
+import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, openedByAgent, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
-import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned, type Playback } from "./webpages.ts"
+import { claim, discardable, hear, letGo, media, MOVE_MS, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -20,8 +20,14 @@ setEngineHost({ windows: () => AppWindow.getAllWindows() })
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean
-  player?: boolean }
+  player?: boolean; zoom?: number; unsafe?: boolean; crashed?: boolean; typed?: boolean }
 type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
+  /** Its address failed on a certificate it may choose to trust for this session (`allow-cert`). */
+  cert?: { url: string; host: string; fp: string }
+  /** Its renderer kept dying: it shows "This page crashed" till a reload. */
+  crashed?: boolean
+  /** Its frames holding typed, unsent input (web-preload.cjs), by frame: its tab isn't archived meanwhile. */
+  typed: Map<string, boolean>
   /** Where its tab last asked it to be (null: hidden): where it goes back to from full screen. */
   want: WebRect | null
   /** Its player: a window of its own it fills (see the player's section below), still its tab's. */
@@ -42,6 +48,10 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   hadFocus?: boolean
   /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
   sound: Playback; hush?: NodeJS.Timeout
+  /** Its first load was a download, before a tab had it: the tab it's handed to closes. */
+  downloaded?: boolean
+  /** Its history is being put back (a tab come back): what it shows is `target` till that's in. */
+  restoring?: boolean
   /** It's the spare's, its first load not in yet: the spare's about:blank is no page to go back to (gone once it is). */
   blankBehind?: boolean
   /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
@@ -55,10 +65,15 @@ export type WebSite = { site: string; signed?: boolean; account?: string; more?:
 
 const profileOf = (x: unknown) => (typeof x === "string" && /^[a-z0-9-]{1,32}$/.test(x) ? x : "")
 const MAC = process.platform === "darwin"
-/** Keys a page keeps even when the app has a shortcut on them: editing text, finding, a rich editor's marks. */
+/** The browser's keys a page may take first, as in Chrome (a doc's own find, a map's zoom): one it leaves alone is the
+ *  app's (its preload says so, web-preload.cjs), never the menu bar's. */
+const BROWSER_KEYS = new Set(["f", "g", "shift+g", "=", "shift+=", "-", "0"].map((k) => `mod+${k}`))
+/** Keys a page keeps even when the app has a shortcut on them: editing text, a rich editor's marks, the browser's. */
 // (⌘Y isn't redo on a Mac: it's History there, as in Chrome)
-const PAGE_KEYS = new Set(["a", "c", "v", "x", "z", "shift+z", ...(MAC ? [] : ["y"]), "f", "g", "shift+g", "b", "i", "u", "k", "shift+v", "arrowleft",
-  "arrowright", "arrowup", "arrowdown", "backspace", "delete", "enter", "shift+enter", "tab"].map((k) => `mod+${k}`))
+const PAGE_KEYS = new Set([...["a", "c", "v", "x", "z", "shift+z", ...(MAC ? [] : ["y"]), "b", "i", "u", "k", "shift+v", "arrowleft",
+  "arrowright", "arrowup", "arrowdown", "backspace", "delete", "enter", "shift+enter", "tab"].map((k) => `mod+${k}`), ...BROWSER_KEYS])
+/** The page's own keys, as Chrome's: reload, reload past the cache, its DevTools. */
+const OWN_KEYS: Record<string, string> = { "mod+r": "reload", "mod+shift+r": "hard-reload", [MAC ? "mod+alt+i" : "mod+shift+i"]: "devtools", [MAC ? "mod+alt+u" : "mod+u"]: "source" }
 
 const pages = new Map<number, Page>()
 /** Each window's app shortcuts with ⌘, ⌃ or ⌥ (web:keys). */
@@ -68,7 +83,7 @@ const sessions = new Map<string, Session>()
 
 const web = (u: string) => /^https?:\/\//i.test(u)
 /** What a page may show: the web, and what a feature of the engine adds (an extension's own pages). */
-const shows = (u: string) => web(u) || engineOpens(u)
+const shows = (u: string) => web(u) || engineOpens(u) || /^view-source:https?:\/\//i.test(u)
 /** Images asked for with Save image to vault (their addresses), whose downloads go to the window instead. */
 const toVault = new Set<string>()
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
@@ -107,6 +122,9 @@ function webSession(profile: string) {
     const dir = app.getPath("downloads")
     const file = path.join(dir, freeName(dir, item.getFilename() || "download"))
     item.setSavePath(file)
+    // (a tab opened for it, nothing of its own shown yet, closes, as Chrome's does: no empty tab left behind; one not
+    // handed to its tab yet closes as it is)
+    if (p && !p.agent && wc && !shows(wc.getURL())) { if (p.tab) tell(p.win, { type: "close", tab: p.tab }); else p.downloaded = true }
     item.once("done", (_ev, state) => {
       if (p && !p.win.isDestroyed()) tell(p.win, { type: "download", name: path.basename(file), path: file, ok: state === "completed" })
     })
@@ -198,6 +216,8 @@ function freeName(dir: string, name: string) {
   return out
 }
 
+/** How long a click or key lets a page open a tab or window (Chromium's user activation). */
+const ACTIVATION_MS = 5000
 /** How near the window's left or right edge (CSS px) a page's pointer is told to the window. */
 const EDGE = 12
 const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
@@ -208,9 +228,11 @@ function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
   // (the spare's about:blank is no address: the one it's loading shows till it's in)
-  const blank = p.blankBehind
+  const blank = p.blankBehind || p.restoring
+  const zoom = wc.getZoomFactor()
   return { url: (!blank && wc.getURL()) || p.target, title: (!blank && wc.getTitle()) || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
-    ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}) }
+    ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}), ...(Math.abs(zoom - 1) > 0.001 ? { zoom } : {}),
+    ...(p.cert && p.error ? { unsafe: true } : {}), ...(p.crashed ? { crashed: true } : {}), ...([...p.typed.values()].some(Boolean) ? { typed: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
@@ -243,7 +265,7 @@ const sendState = (p: Page) => tell(p.win, { type: "state", id: p.id, state: sta
 const pagesChanged = (win: AppWindow) => tell(win, { type: "pages" })
 
 /** A shortcut as the app's commands name it (web/src/core/commands.ts: canonical, lower case): "mod+shift+t". */
-function stepOf(i: Input) {
+function stepOf(i: Pick<Input, "key" | "code" | "meta" | "control" | "alt" | "shift">) {
   if (["Meta", "Control", "Alt", "Shift", "CapsLock", "Fn", "OS"].includes(i.key)) return ""
   const CODES: Record<string, string> = { Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/" }
   const byCode = /^Key[A-Z]$/.test(i.code) ? i.code.slice(3) : /^Digit\d$/.test(i.code) ? i.code.slice(5) : CODES[i.code]
@@ -276,18 +298,29 @@ function painted(p: Page) {
   p.view.setBackgroundColor("#ffffff")
 }
 ipcMain.on("vaultite:web:painted", (e) => { const p = pageOf(e.sender); if (p && shows(e.sender.getURL())) painted(p) })
+// One of the browser's keys a page left alone (BROWSER_KEYS), or the mouse's back or forward button in it: the app's,
+// as its other shortcuts are (Back walks the page's history first, then the tab's).
+ipcMain.on("vaultite:web:key", (e, k: { key?: unknown; code?: unknown; meta?: unknown; ctrl?: unknown; alt?: unknown; shift?: unknown }) => {
+  const p = pageOf(e.sender)
+  if (!p || p.agent || p.player || !k || typeof k.key !== "string" || typeof k.code !== "string") return
+  const key = { key: k.key, code: k.code, meta: k.meta === true, ctrl: k.ctrl === true, alt: k.alt === true, shift: k.shift === true }
+  if (BROWSER_KEYS.has(stepOf({ ...key, control: key.ctrl }))) tell(p.win, { type: "key", id: p.id, ...key })
+})
+// Typed input a frame holds, unsent (or none now): the tab isn't archived while it does, as Chrome doesn't discard it.
+ipcMain.on("vaultite:web:typed", (e, on) => {
+  const p = pageOf(e.sender), key = `${e.processId}:${e.frameId}`
+  if (!p || (p.typed.get(key) ?? false) === (on === true)) return
+  p.typed.set(key, on === true)
+  sendState(p)
+})
+ipcMain.on("vaultite:web:nav", (e, dir) => { const p = pageOf(e.sender); if (p && !p.agent && !p.player) tell(p.win, { type: "nav", id: p.id, dir: dir < 0 ? -1 : 1 }) })
 
-/** A page's view in a profile's session. */
-function newView(profile: string) {
-  // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
-  // extension's own pages embedded in it)
-  return new WebContentsView({
-    // (a page's full screen never resizes the window by itself: fit() fills its window or player, which goes full
-    // screen only where that's wanted)
-    webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, webSecurity: true, spellcheck: true,
-      disableHtmlFullscreenWindowResize: true },
-  })
-}
+// A page's settings, sandboxed ("in sub frames" only lets the engine's preloads reach an extension's page embedded in it);
+// its full screen never resizes the window by itself (fit() fills its window or player).
+const prefsOf = (profile: string) => ({ session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true,
+  webSecurity: true, spellcheck: true, disableHtmlFullscreenWindowResize: true })
+/** A page's view in a profile's session (`adopt`: the contents a page's window.open made, kept, so `window.opener` works). */
+const newView = (profile: string, adopt?: WebContents) => new WebContentsView({ ...(adopt ? { webContents: adopt } : {}), webPreferences: prefsOf(profile) })
 
 // ---------- a spare page: the next tab's renderer started ahead, as Chrome does (Electron turns Chrome's off) ----------
 
@@ -324,9 +357,12 @@ function takeSpare(profile: string) {
   return s.view
 }
 
-/** `agent`: an agent's, in the background (no tab). */
-function make(win: AppWindow, url: string, profile: string, tab: string, agent = false): Page {
-  const taken = takeSpare(profile), view = taken ?? newView(profile)
+/** `agent`: an agent's, in the background (no tab). `adopt`: the contents a page's window.open made (`opener`'s), already
+ *  loading `url`. */
+function make(win: AppWindow, url: string, profile: string, tab: string, { agent = false, adopt, opener }: { agent?: boolean; adopt?: WebContents; opener?: number } = {}): Page {
+  // (a tab whose page went, or moved to other logins, given its history back: Back and Forward as they were)
+  const kept = tab && !adopt ? pastOf(tab, profile, url) : null
+  const taken = adopt || kept ? null : takeSpare(profile), view = taken ?? newView(profile, adopt)
   makeSpare(profile)
   view.setBackgroundColor(lookOf(win))
   view.setVisible(false)
@@ -335,12 +371,19 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
   const p: Page = { id: next++, win, view, profile, tab, agent, drawn: agent, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(),
-    blankBehind: !!taken, fresh: true }
+    blankBehind: !!taken, fresh: true, typed: new Map() }
   pages.set(p.id, p)
   if (agent) park(p)
   const wc = view.webContents
   if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
-  pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => shownNow(p), tab: () => p.tab,
+  // (its address mid-restore is any of its entries': the tab mustn't follow it, and load that over it)
+  if (kept) {
+    p.restoring = true
+    const done = () => { if (kept.load && wc.navigationHistory.getActiveIndex() < kept.entries.length) return; p.restoring = false; wc.off("did-navigate", done); sendState(p) }
+    wc.on("did-navigate", done)
+  }
+  // (its window as it is now: a tab moved to another window takes its page along, `moveTo`)
+  pageMade({ id: p.id, wc, profile, get win() { return p.win }, url, opener, hide: () => place(p, null), visible: () => shownNow(p), tab: () => p.tab,
     player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) }, own: (to) => own(p, tabOf(to)), close: () => end(p),
     rest: () => rest(p), wake: () => wake(p), resting: () => !!p.resting })
 
@@ -352,33 +395,64 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
   }
   wc.on("will-navigate", (e) => refuse(e, e.url))
   wc.on("will-redirect", (e) => refuse(e, e.url))
+  // Chrome's popup blocker (Electron has none): a page opens something only just after a click or key in it, else the
+  // user's told and may open it. An agent's opens are its own pages.
+  let input = 0, toldBlocked = 0
+  wc.on("input-event", (_e, i) => { if (["mouseDown", "rawKeyDown", "keyDown", "gestureTap", "touchStart"].includes(i.type)) input = Date.now() })
   wc.setWindowOpenHandler(({ url: to, disposition, features }) => {
+    const agents = p.agent || openedByAgent(p.id)
+    if (!agents && Date.now() - input > ACTIVATION_MS) {
+      if (Date.now() - toldBlocked > 10_000 && web(to)) { toldBlocked = Date.now(); tell(p.win, { type: "blocked", id: p.id, tab: p.tab, url: to, profile }) }
+      return { action: "deny" }
+    }
+    input = 0
     if (!shows(to)) { void otherApp(p, to); return { action: "deny" } }
-    // A popup with a size (signing in with another site): a small window in the same session, which can answer the page.
-    if (disposition === "new-window" && features) {
+    // (a sized popup, signing in with another site, is a small window; else a tab behind, in front or (⇧-click) to the
+    // side, handed the contents Chromium made so `window.opener` works)
+    const popup = disposition === "new-window" && features.split(",").some((f) => !/^\s*(noopener|noreferrer)?\s*$/i.test(f))
+    if (popup && !agents) {
       return { action: "allow", overrideBrowserWindowOptions: {
-        width: 520, height: 700, parent: win, autoHideMenuBar: true,
-        webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false },
+        width: 520, height: 700, parent: p.win, autoHideMenuBar: true, webPreferences: prefsOf(profile),
       } }
     }
-    tell(win, { type: "open", id: p.id, url: to })
-    return { action: "deny" }
+    const how = disposition === "background-tab" ? "background" : disposition === "new-window" ? "side" : "foreground"
+    return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => {
+      const child = make(p.win, to, profile, "", { agent: agents, adopt: (o as { webContents: WebContents }).webContents, opener: p.id })
+      pagesChanged(p.win)
+      // (the window hands it to the tab it opens for it, `web:adopt`, or it ends)
+      if (!agents) {
+        child.orphan = Date.now()
+        setTimeout(() => { if (child.orphan !== undefined && pages.has(child.id)) end(child) }, RECLAIM_MS).unref()
+        tell(p.win, { type: "open", id: p.id, tab: p.tab, url: to, profile, how, page: child.id })
+      }
+      return child.view.webContents
+    } }
   })
   wc.on("did-create-window", (child) => {
-    child.webContents.on("will-navigate", (e) => refuse(e, e.url))
-    child.webContents.setWindowOpenHandler(({ url: to }) => { if (web(to)) openElsewhere(to); else void otherApp(p, to); return { action: "deny" } })
+    if (pageOf(child.webContents)) return
+    popupOf(p, child)
   })
 
-  revive(wc)
   const changed = () => sendState(p)
-  wc.on("did-start-loading", () => { p.error = undefined; changed() })
-  wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument && shows(d.url)) p.target = d.url })
+  revive(wc, undefined, () => { p.crashed = true; changed() })
+  wc.on("did-start-loading", () => { p.error = undefined; p.crashed = false; changed() })
+  // A certificate this Mac doesn't trust: refused, as Chrome does, unless the user chose to go on to that host with that very
+  // certificate this session (`allow-cert`, from its tab's warning). Never trusted for them.
+  wc.on("certificate-error", (e, to, error, cert, done, main) => {
+    const host = hostOfUrl(to)
+    if (unsafeOk.has(`${p.profile} ${host} ${cert.fingerprint}`)) { e.preventDefault(); done(true); return }
+    done(false)
+    if (main && /\bERR_CERT_/.test(error)) p.cert = { url: to, host, fp: cert.fingerprint }
+  })
+  wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) p.target = d.url } })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to) => { p.sound = playback(); noteVisit(profile, to); changed() })
+  wc.on("did-navigate", (_e, to) => { p.sound = playback(); p.typed.clear(); noteVisit(profile, to); if (!p.agent) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
+  wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
   // (loaded and still not told it painted, a page with no paint timing (an extension's): white a moment later)
   wc.on("did-finish-load", () => { if (p.fresh && shows(wc.getURL())) setTimeout(() => painted(p), 1000).unref() })
-  wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
-  wc.on("page-title-updated", changed)
+  wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) { changed(); keepPast(p) } })
+  wc.on("page-title-updated", () => { changed(); keepPast(p) })
+  wc.on("dom-ready", () => tellGlance(wc))
   // (its sound changed: told now, and again when a quiet stretch ends it)
   const sounded = () => {
     clearTimeout(p.hush)
@@ -394,13 +468,13 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
     p.error = desc || `error ${code}`
     changed()
   })
-  wc.on("focus", () => { if (!p.player) tell(win, { type: "focus", id: p.id }) })
+  wc.on("focus", () => { if (!p.player) tell(p.win, { type: "focus", id: p.id }) })
   // Full screen (a video's button): it fills its window (made full screen, as Chrome does) or its player, over the rest.
   wc.on("enter-html-full-screen", () => {
     p.full = true
     if (!p.player) {
-      win.contentView.addChildView(p.view) // (again: over every other page and the window's own, raised or not)
-      if (!win.isFullScreen()) { win.setFullScreen(true); p.madeFull = true }
+      p.win.contentView.addChildView(p.view) // (again: over every other page and the window's own, raised or not)
+      if (!p.win.isFullScreen()) { p.win.setFullScreen(true); p.madeFull = true }
     }
     fit(p)
   })
@@ -409,7 +483,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
     // (its player's video leaving full screen, with Esc or the site's own button, leaves the player: Esc never reaches
     // the page while it's full screen)
     if (p.player && p.filled) { p.filled = false; fromPlayer(p, true); return }
-    if (p.madeFull) { p.madeFull = false; if (!win.isDestroyed() && win.isFullScreen()) win.setFullScreen(false) }
+    if (p.madeFull) { p.madeFull = false; if (!p.win.isDestroyed() && p.win.isFullScreen()) p.win.setFullScreen(false) }
     fit(p)
   })
   wc.on("page-favicon-updated", (_e, urls) => void iconFrom(p, urls))
@@ -425,7 +499,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
   let more = 0, timer: ReturnType<typeof setTimeout> | null = null
   const send = (n: { title: string; body: string; url: string }) => {
     sent.push(Date.now())
-    tell(win, { type: "notify", id: p.id, profile: p.profile, url: n.url, site: siteOf(hostOfUrl(n.url)), title: n.title, body: n.body })
+    tell(p.win, { type: "notify", id: p.id, profile: p.profile, url: n.url, site: siteOf(hostOfUrl(n.url)), title: n.title, body: n.body })
   }
   const drain = () => {
     if (timer) { clearTimeout(timer); timer = null }
@@ -436,6 +510,12 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
     if ((waiting.length || more) && !timer) timer = setTimeout(drain, sent[0] + 60_000 - now + 50)
   }
   wc.on("destroyed", () => { if (timer) clearTimeout(timer) })
+  // (closed by its own script, window.close() in a page window.open made, or by Chromium after a download: its tab too)
+  wc.once("destroyed", () => {
+    if (pages.get(p.id) !== p) return
+    if (p.tab && !p.closing && !p.agent) tell(p.win, { type: "close", tab: p.tab })
+    end(p)
+  })
   wc.on("console-message", (e) => {
     if (!mark || !e.message.startsWith(mark)) return
     let j: { title?: unknown; body?: unknown }
@@ -462,23 +542,36 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
   wc.on("before-input-event", (e, i) => {
     if (i.type !== "keyDown") return
     const step = stepOf(i)
+    wc.setIgnoreMenuShortcuts(BROWSER_KEYS.has(step))
     // In its player the page keeps every key but Esc, which brings it back (⌘W closes the player, as the menu has it).
     if (p.player) { if (step === "escape") { e.preventDefault(); fromPlayer(p, true) } return }
-    const nav = { "mod+r": "reload", "mod+[": "back", "mod+]": "forward" }[step]
-    if (nav) { e.preventDefault(); go(p, nav); return }
-    if (step === "mod+l") { e.preventDefault(); tell(win, { type: "address", id: p.id }); return }
-    if (!step || PAGE_KEYS.has(step) || !keysOf.get(win)?.has(step)) return
+    // (Esc stops a load, and still reaches the page)
+    if (step === "escape" && !p.full && wc.isLoadingMainFrame()) wc.stop()
+    const own = OWN_KEYS[step]
+    if (own) { e.preventDefault(); go(p, own); return }
+    if (step === "mod+l") { e.preventDefault(); tell(p.win, { type: "address", id: p.id }); return }
+    if (!step || PAGE_KEYS.has(step) || !keysOf.get(p.win)?.has(step)) return
     e.preventDefault()
-    tell(win, { type: "key", id: p.id, key: i.key, code: i.code, meta: i.meta, ctrl: i.control, alt: i.alt, shift: i.shift })
+    tell(p.win, { type: "key", id: p.id, key: i.key, code: i.code, meta: i.meta, ctrl: i.control, alt: i.alt, shift: i.shift })
   })
 
   wc.on("context-menu", (_e, c) => {
     const items: MenuItemConstructorOptions[] = []
+    // (what's opened from here opens in the page's container, unless one is picked)
+    const open = (url: string, how: string, container?: string | null) => tell(p.win, { type: "open", id: p.id, tab: p.tab, url, profile: p.profile, how,
+      ...(container !== undefined ? { container } : {}) })
     if (c.linkURL && web(c.linkURL)) {
+      const link = c.linkURL, text = c.linkText.trim()
       items.push(
-        { label: "Open link in a new tab", click: () => tell(win, { type: "open", id: p.id, url: c.linkURL }) },
-        { label: "Open link in another browser", click: () => openElsewhere(c.linkURL) },
-        { label: "Copy link", click: () => clipboard.writeText(c.linkURL) },
+        { label: "Open link in new tab", click: () => open(link, "background") },
+        ...(menus.containers.length ? [{ label: "Open link in container", submenu: [{ id: "", name: "No container" }, ...menus.containers]
+          .map((x): MenuItemConstructorOptions => ({ label: x.name, click: () => open(link, "background", x.id || null) })) }] : []),
+        { label: "Open link to the side", click: () => open(link, "side") },
+        ...(menus.glance ? [{ label: "Glance", click: () => open(link, "glance") }] : []),
+        { label: "Open link in another browser", click: () => openElsewhere(link) },
+        { type: "separator" },
+        { label: "Copy link", click: () => clipboard.writeText(link) },
+        ...(text ? [{ label: "Copy link text", click: () => clipboard.writeText(text) }] : []),
         { type: "separator" },
       )
     }
@@ -490,7 +583,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
         { label: "Copy image", click: () => wc.copyImageAt(c.x, c.y) },
         ...(web(src) ? [
           { label: "Copy image address", click: () => clipboard.writeText(src) },
-          { label: "Open image in a new tab", click: () => tell(win, { type: "open", id: p.id, url: src }) },
+          { label: "Open image in new tab", click: () => open(src, "background") },
         ] : []),
         { type: "separator" },
       )
@@ -504,17 +597,41 @@ function make(win: AppWindow, url: string, profile: string, tab: string, agent =
       { label: "Forward", enabled: h.canGoForward(), click: () => go(p, "forward") },
       { label: "Reload", click: () => go(p, "reload") },
       { type: "separator" },
-      { label: "Save page to vault", click: () => tell(win, { type: "clip", id: p.id }) },
+      { label: "Save page to vault", click: () => tell(p.win, { type: "clip", id: p.id }) },
       { label: "Open in another browser", enabled: web(wc.getURL()), click: () => openElsewhere(wc.getURL()) },
       { type: "separator" },
-      ...(/^https?:/i.test(wc.getURL()) ? [{ label: "Block element…", click: () => tell(win, { type: "block", id: p.id, x: c.x, y: c.y }) }] : []),
+      ...(/^https?:/i.test(wc.getURL()) ? [{ label: "Block element…", click: () => tell(p.win, { type: "block", id: p.id, x: c.x, y: c.y }) }] : []),
+      ...(web(wc.getURL()) ? [{ label: "View page source", click: () => go(p, "source") }] : []),
       { label: "Inspect element", click: () => wc.inspectElement(c.x, c.y) },
     )
-    Menu.buildFromTemplate(items).popup({ window: p.player ?? win })
+    Menu.buildFromTemplate(items).popup({ window: p.player ?? p.win })
   })
 
-  void wc.loadURL(url).catch(() => { /* did-fail-load says why */ })
+  if (kept) {
+    // (restoring loads where it was; with `load`, the address loads over that before it asks for anything. A restore's
+    // promise can fail, ERR_ABORTED, with the page on its way in: loaded afresh only if nothing came)
+    const restored = wc.navigationHistory.restore({ entries: kept.entries, index: kept.index })
+    if (kept.load) { void restored.catch(() => {}); void wc.loadURL(url).catch(() => {}) }
+    else void restored.catch(() => { if (!wc.isDestroyed() && !wc.getURL() && !wc.isLoading()) void wc.loadURL(url).catch(() => {}) })
+  } else if (!adopt) void wc.loadURL(url).catch(() => { /* did-fail-load says why */ })
   return p
+}
+
+/** A sized popup a page opened (signing in with another site): titled with its site and container, its own links opening
+ *  as the page's would (tabs in its container), closed with its page. */
+function popupOf(p: Page, child: BrowserWindow) {
+  const cw = child.webContents
+  const name = () => { const c = p.profile.startsWith("c-") ? menus.containers.find((x) => `c-${x.id}` === p.profile)?.name : ""; return [hostOfUrl(cw.getURL()) || "Sign in", c].filter(Boolean).join(" · ") }
+  child.on("page-title-updated", (e) => { e.preventDefault(); child.setTitle(name()) })
+  cw.on("did-navigate", () => { if (!child.isDestroyed()) child.setTitle(name()) })
+  cw.on("will-navigate", (e) => { if (!shows(e.url)) { e.preventDefault(); void otherApp(p, e.url) } })
+  cw.setWindowOpenHandler(({ url: to }) => {
+    if (web(to)) tell(p.win, { type: "open", id: p.id, tab: p.tab, url: to, profile: p.profile, how: "foreground" }); else void otherApp(p, to)
+    return { action: "deny" }
+  })
+  const close = () => { if (!child.isDestroyed()) child.close() }
+  p.view.webContents.once("destroyed", close)
+  child.once("closed", () => { if (!p.view.webContents.isDestroyed()) p.view.webContents.off("destroyed", close) })
 }
 
 /** Where an agent's page is out of sight: off the window, shown and unthrottled, so it draws on in a desktop's viewport
@@ -548,6 +665,18 @@ function wake(p: Page) {
 /** Out of sight: parked if it's an agent's, else hidden. */
 const stow = (p: Page) => { if (p.drawn) park(p); else p.view.setVisible(false) }
 
+/** Page `p` into window `win`, its tab having moved there (a pop-out): the same page, live, not loaded again. (Not
+ *  `web:adopt`, which gives a tab-less page its tab.) */
+function moveTo(p: Page, win: AppWindow) {
+  const from = p.win
+  if (!from.isDestroyed() && !p.player) from.contentView.removeChildView(p.view)
+  if (p.full && !p.player) leaveFull(p)
+  p.win = win
+  p.view.setVisible(false)
+  if (!p.player) addPage(win, p.view)
+  if (!from.isDestroyed()) pagesChanged(from)
+}
+
 /** Page `p` to the app's tab `tab` (opened as a tab: it stays parked till the tab places it), or to the background. */
 function own(p: Page, tab: string) {
   if (!pages.has(p.id) || p.closing) return
@@ -564,7 +693,8 @@ function end(p: Page) {
   fromPlayer(p)
   pagesChanged(p.win)
   if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view)
-  void unload(p.view.webContents)
+  // (none once its contents are gone: closed by its own script)
+  if (p.view.webContents) void unload(p.view.webContents)
 }
 
 /** Close a page as a browser closes a tab: its beforeunload and unload run first (sites save state there, Discord its
@@ -579,7 +709,7 @@ function unload(wc: WebContents) {
 }
 
 /** Before the app quits: every page unloaded, as its tab's close would. */
-export const unloadPages = () => Promise.all([...pages.values()].map((p) => unload(p.view.webContents))).then(() => {})
+export const unloadPages = () => { if (pastTimer) savePasts(); return Promise.all([...pages.values()].map((p) => unload(p.view.webContents))).then(() => {}) }
 
 /** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
  *  one in a player is on screen, whatever its tab, and an agent's is never let go (browser/agent.ts). */
@@ -645,7 +775,27 @@ function go(p: Page, action: string, url?: string): unknown {
   const h = wc.navigationHistory
   if (action === "back" && canBack(p)) h.goBack()
   else if (action === "forward" && h.canGoForward()) h.goForward()
+  // (a page that crashed for good starts a renderer again)
   else if (action === "reload") wc.reload()
+  // The user chose to go on past its certificate warning: that host with that certificate, in these logins, this session.
+  else if (action === "allow-cert" && p.cert && p.error) { unsafeOk.add(`${p.profile} ${p.cert.host} ${p.cert.fp}`); void wc.loadURL(p.cert.url).catch(() => {}) }
+  // (its source in a tab of its own: the window opens it, in its container)
+  else if (action === "source") { if (web(wc.getURL())) tell(p.win, { type: "source", id: p.id, url: `view-source:${wc.getURL()}` }) }
+  // Tab `url` is to be its copy: Back and Forward too (taken as that tab's page is made, `web:open`).
+  // Tab `url` is to be its copy: its kept history is that tab's too, which its page starts from (`pastOf`).
+  else if (action === "duplicate" && url && tabOf(url) && p.tab) {
+    keepPast(p)
+    const k = pastsOf().get(p.tab)
+    if (k) { pastsOf().set(tabOf(url), { ...k, at: Date.now() }); pastTimer ??= setTimeout(savePasts, 2000) }
+  }
+  else if (action === "hard-reload") wc.reloadIgnoringCache()
+  // (a page's DevTools are a window of their own: a view has nowhere to dock them)
+  else if (action === "devtools") { if (wc.isDevToolsOpened()) wc.closeDevTools(); else wc.openDevTools({ mode: "detach" }) }
+  else if (action === "zoom-in" || action === "zoom-out" || action === "zoom-reset") zoomSite(p, action === "zoom-reset" ? 0 : action === "zoom-in" ? 1 : -1)
+  else if (action === "print") wc.print({}, () => {})
+  // Back's and Forward's lists: each place it can go, by its index (`go-to` goes there), `at` the one it's on.
+  else if (action === "history") return { at: h.getActiveIndex(), entries: h.getAllEntries().map((x, i) => ({ i, url: x.url, title: x.title })).filter((x) => shows(x.url)) }
+  else if (action === "go-to") { const i = Number(url); if (Number.isInteger(i) && i >= 0 && i < h.length() && shows(h.getEntryAtIndex(i)?.url ?? "")) h.goToIndex(i) }
   // (where Back or Forward would go, for a tab of its own)
   else if (action === "back-address") return canBack(p) ? h.getEntryAtIndex(h.getActiveIndex() - 1)?.url : undefined
   else if (action === "forward-address") return h.canGoForward() ? h.getEntryAtIndex(h.getActiveIndex() + 1)?.url : undefined
@@ -656,6 +806,31 @@ function go(p: Page, action: string, url?: string): unknown {
   else if (action === "load" && url && shows(url)) { p.target = url; void wc.loadURL(url).catch(() => {}) }
   // (answers "none" when the page has no video)
   else if (action === "pip") return wc.executeJavaScriptInIsolatedWorld(1004, [{ code: PIP }], true).catch(() => null)
+}
+
+/** Certificates the user went on past, by "<profile> <host> <fingerprint>": for this run of the app only. */
+const unsafeOk = new Set<string>()
+
+// ---------- zoom: a site's, as Chrome's, kept per host on this Mac (userData web-zoom.json), never the vault ----------
+
+const ZOOMS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5]
+let zooms: Record<string, number> | null = null
+const zoomFile = () => path.join(app.getPath("userData"), "web-zoom.json")
+function zoomsKept() {
+  if (!zooms) { try { zooms = JSON.parse(fs.readFileSync(zoomFile(), "utf8")) as Record<string, number> } catch { zooms = {} } }
+  return zooms
+}
+const zoomOf = (host: string) => { const z = zoomsKept()[host]; return typeof z === "number" && z >= ZOOMS[0] && z <= ZOOMS[ZOOMS.length - 1] ? z : 1 }
+const zoomTo = (p: Page, z: number) => { const wc = p.view.webContents; if (!wc.isDestroyed() && Math.abs(wc.getZoomFactor() - z) > 0.001) wc.setZoomFactor(z) }
+/** Page `p`'s site a step in (1) or out (-1), or back to 100% (0): its other pages follow, in every container. */
+function zoomSite(p: Page, step: -1 | 0 | 1) {
+  const host = hostOfUrl(p.view.webContents.getURL()), now = p.view.webContents.getZoomFactor()
+  if (!host) return
+  const to = step === 0 ? 1 : (step > 0 ? ZOOMS.find((z) => z > now + 0.001) : ZOOMS.findLast((z) => z < now - 0.001)) ?? now
+  const k = zoomsKept()
+  if (Math.abs(to - 1) < 0.001) delete k[host]; else k[host] = to
+  try { writeAtomic(zoomFile(), JSON.stringify(k)) } catch { /* this session's only */ }
+  for (const x of pages.values()) if (!x.agent && hostOfUrl(x.view.webContents.getURL()) === host) { zoomTo(x, to); sendState(x) }
 }
 
 // ---------- players: a page in a window of its own, to watch or share (a call's window picker finds it by its title) ----------
@@ -798,7 +973,8 @@ export function webWindow(win: AppWindow) {
   win.contentView.on("bounds-changed", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
   win.on("closed", () => {
-    for (const p of [...pages.values()]) if (p.win === win) end(p)
+    // (a page on its way to another window goes on: that window takes it, else it ends)
+    for (const p of [...pages.values()]) if (p.win === win && p.moving === undefined) end(p)
     // (no page left anywhere: no spare kept for one)
     if (!pages.size) endSpare()
   })
@@ -817,10 +993,81 @@ setOpener(async (win, url, profile) => {
   if (!shows(url)) throw new Error("only http and https pages")
   await readySession(profile)
   if (!mayOpen(profile)) throw new Error("this container is locked")
-  const p = make(win as AppWindow, url, profile, "", true)
+  const p = make(win as AppWindow, url, profile, "", { agent: true })
   pagesChanged(p.win)
   return allPages().find((x) => x.id === p.id)!
 })
+
+/** What a page's right-click offers besides its own: the containers to open a link in, and Glance (a plugin, when on),
+ *  which ⌥-click on a link in a page also opens (web-preload.cjs). The window tells them as they change. */
+let menus: { containers: { id: string; name: string }[]; glance: boolean } = { containers: [], glance: false }
+const tellGlance = (wc: WebContents) => { if (!wc.isDestroyed()) wc.send("vaultite:web:glance", menus.glance) }
+handle("web:menus", (_win, m) => {
+  const o = (m && typeof m === "object" ? m : {}) as { containers?: unknown; glance?: unknown }
+  const containers = (Array.isArray(o.containers) ? o.containers : []).flatMap((c) => (c && typeof c.id === "string" && profileOf(c.id) && typeof c.name === "string"
+    ? [{ id: c.id as string, name: (c.name as string).slice(0, 80) }] : [])).slice(0, 50)
+  const glance = o.glance === true, changed = glance !== menus.glance
+  menus = { containers, glance }
+  if (changed) for (const p of pages.values()) tellGlance(p.view.webContents)
+})
+ipcMain.on("vaultite:web:glance", (e, url) => {
+  const p = pageOf(e.sender)
+  if (p && !p.agent && menus.glance && e.senderFrame === e.sender.mainFrame && typeof url === "string" && web(url)) {
+    tell(p.win, { type: "open", id: p.id, tab: p.tab, url, profile: p.profile, how: "glance" })
+  }
+})
+// A page made for a tab the window opens after (a page's link to a new tab, a glance's page kept as a tab): the tab's now.
+handle("web:adopt", (win, id, tab) => {
+  const p = pages.get(Number(id)), to = tabOf(tab)
+  if (!p || p.win !== win || p.closing || !to || p.agent) throw new Error("that page is gone")
+  p.orphan = undefined
+  own(p, to)
+  if (p.downloaded) tell(p.win, { type: "close", tab: to })
+})
+
+// ---------- each tab's page history, kept on this Mac for it to come back with (⌘⇧T, a relaunch, a page let go) ----------
+
+type Past = { profile: string; index: number; entries: { url: string; title: string; pageState?: string }[]; at: number }
+const pastFile = () => path.join(app.getPath("userData"), "web-tab-history.json")
+let pasts: Map<string, Past> | null = null
+const pastsOf = () => {
+  if (pasts) return pasts
+  try { pasts = new Map(Object.entries(JSON.parse(fs.readFileSync(pastFile(), "utf8")) as Record<string, Past>)) } catch { pasts = new Map() }
+  return pasts
+}
+let pastTimer: NodeJS.Timeout | null = null
+function savePasts() {
+  if (pastTimer) { clearTimeout(pastTimer); pastTimer = null }
+  const old = Date.now() - 30 * 86400_000
+  const list = [...pastsOf()].filter(([, v]) => v.at > old).sort((a, b) => b[1].at - a[1].at).slice(0, 500)
+  pasts = new Map(list)
+  try { writeAtomic(pastFile(), JSON.stringify(Object.fromEntries(list))) } catch (e) { console.error("vaultite: tabs' page history wasn't kept:", e) }
+}
+/** Page `p`'s history as it is now, kept for its tab (its own addresses only: no spare's about:blank, 50 around where it is). */
+function keepPast(p: Page) {
+  const wc = p.view.webContents
+  if (!p.tab || p.agent || wc.isDestroyed() || p.blankBehind || p.restoring) return
+  const h = wc.navigationHistory, all = h.getAllEntries(), at = h.getActiveIndex()
+  if (!shows(all[at]?.url ?? "")) return
+  // (a page's state, its scroll and form, only while small: the file is rewritten as pages move on)
+  const mine = all.map((e, i) => ({ url: e.url, title: e.title, ...(e.pageState && e.pageState.length < 8000 ? { pageState: e.pageState } : {}), i })).filter((e) => shows(e.url))
+  const i = mine.findIndex((e) => e.i === at), from = Math.max(0, i - 40), was = pastsOf().get(p.tab)
+  const next = { profile: p.profile, index: i - from, entries: mine.slice(from, i + 10).map(({ i: _, ...e }) => e), at: Date.now() }
+  pastsOf().set(p.tab, next)
+  // (a title changing alone, as some sites' do every second, waits for the next move to be written)
+  if (!was || was.index !== next.index || was.entries.map((e) => e.url).join() !== next.entries.map((e) => e.url).join()) pastTimer ??= setTimeout(savePasts, 2000)
+}
+/** How tab `tab`'s page starts in `profile` at `url`, from its kept history: as it was (its page come back), or, in other
+ *  logins or at another address (moved to another container), its places up to there with `url` loaded after (`load`). */
+function pastOf(tab: string, profile: string, url: string) {
+  const k = pastsOf().get(tab)
+  if (!k) return null
+  if (k.profile === profile && k.entries[k.index]?.url === url) return k.entries.length > 1 ? { entries: k.entries, index: k.index, load: false } : null
+  // (without what sites keep in them: another session's)
+  const back = k.entries.slice(0, k.index + 1).map(({ url, title }) => ({ url, title }))
+  if (back.at(-1)?.url === url) back.pop()
+  return back.length ? { entries: back, index: back.length - 1, load: true } : null
+}
 
 /** The IPC handlers (main.ts checks the asking page is a vault window's and gives its AppWindow). */
 export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
@@ -832,8 +1079,10 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     await readySession(prof)
     if (!mayOpen(prof)) throw new Error("this container is locked")
     const { reuse, end: other } = claim(pages.values(), win, owner, prof)
-    for (const x of other) end(x)
+    // (the tab moved to another container: its history as it is now, for Back to go where it went before)
+    for (const x of other) { keepPast(x); end(x) }
     const p = reuse ?? make(win, u, prof, owner)
+    if (p.win !== win) moveTo(p, win)
     p.holds++
     p.orphan = undefined
     pagesChanged(win)
@@ -880,8 +1129,20 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   },
   // Its player: on (`fullScreen`: on a Space of its own) or back in its tab.
   "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen !== false); fromPlayer(p, true) },
-  "web:close": (win, tab) => { for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p) },
+  // (`moved`: its tab went on in another of this vault's windows, which takes its page as it shows it, `adopt`)
+  "web:close": (win, tab, moved) => {
+    if (moved !== true) { for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p); return }
+    tabMoved(pages.values(), win, tabOf(tab), Date.now())
+    setTimeout(() => { for (const p of unmoved(pages.values(), Date.now())) end(p) }, MOVE_MS + 100).unref()
+  },
   "web:go": (win, id, action, url) => go(mine(win, id), str(action), typeof url === "string" ? url : undefined),
+  // Find in the page (`found` events answer): `next` goes on from the match it's at, else a new search; "" stops it, the
+  // match it was at left selected, as Chrome's Esc does.
+  "web:find": (win, id, text, o) => {
+    const wc = mine(win, id).view.webContents, t = str(text).slice(0, 1000), x = (o ?? {}) as { forward?: unknown; next?: unknown; matchCase?: unknown }
+    if (!t) { wc.stopFindInPage("keepSelection"); return null }
+    return wc.findInPage(t, { forward: x.forward !== false, findNext: x.next !== true, matchCase: x.matchCase === true })
+  },
   "web:html": async (win, id) => {
     const p = mine(win, id)
     // In a world of its own: the page's scripts can't stand in for what's read.

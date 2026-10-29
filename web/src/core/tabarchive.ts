@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react"
 import { newId, type Tab } from "../../../core/layout.ts"
 import { scopedState, subscribeScoped } from "@/core/scope"
-import { archivesAfter, closeToArchive, findOpen, groups, restoreTab, selectTab, unseenTabs } from "@/core/workspace"
+import { archivesAfter, canReopenTab, closeToArchive, findOpen, groups, lastClosedAt, reopenTab, restoreTab, selectTab, unseenTabs } from "@/core/workspace"
 
 /** An archived tab: what it showed and was called, where it was (its pane, its place there, its tab group), and when it
  *  was archived. Its history stays behind, as it does in the workspace's file. */
@@ -51,6 +51,15 @@ export function reopenArchived(id: string, shown = true) {
   const taken = groups().some((g) => g.tabs.some((t) => t.id === e.id))
   restoreTab({ tab: { id: taken ? newId() : e.id, to: e.to, ...(e.set ? { set: e.set } : {}) }, group: e.group, at: e.at }, shown)
 }
+
+/** ⌘⇧T: the tab closed last or archived since, whichever was later (skipping `gone` ones), till both lists are empty. */
+export function reopenLatest(gone: (to: string) => boolean) {
+  let a = archivedTabs()[0]
+  while (a && gone(a.to)) { removeArchived([a.id]); a = archivedTabs()[0] }
+  if (a && a.archived > lastClosedAt()) reopenArchived(a.id)
+  else reopenTab(gone)
+}
+export const canReopen = () => canReopenTab() || archivedTabs().length > 0
 
 export function removeArchived(ids: string[]) {
   const drop = new Set(ids), cur = archivedTabs()

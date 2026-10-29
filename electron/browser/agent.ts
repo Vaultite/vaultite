@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, openInBackground, tell, type EngineWindow, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 
 type Access = "none" | "read" | "act"
@@ -479,13 +479,26 @@ setTimeout(() => {
 }, 60_000).unref()
 
 /** What an agent is doing in each page now, and since when (the pages' list says it). */
-const doing = new Map<number, { what: string; at: number }>()
+const doing = new Map<number, { what: string; at: number; by?: By }>()
 /** An agent is at work in a page: who and what, for the pages' list and its pointer. */
 export const acting = (p: EnginePage, by: By, what: string) => {
   actor.set(p.wc, by.name || "Agent")
-  doing.set(p.id, { what, at: Date.now() })
+  doing.set(p.id, { what, at: Date.now(), by })
   changed(p.win)
 }
+/** Who opens what page `id` opens now: its agent, or one that acted in it a moment ago (a click on a link to a new tab). */
+const openerOf = (id: number) => owners.get(id) ?? (Date.now() - (doing.get(id)?.at ?? 0) < 5000 ? doing.get(id)?.by : undefined)
+setAgentActing((id) => !!openerOf(id))
+// What an agent opened from a page (a link to a new tab, a sign-in popup) is that agent's page too, in the background.
+eachPage((p) => {
+  const by = p.opener === undefined || p.tab() ? undefined : openerOf(p.opener)
+  if (!by) return
+  owners.set(p.id, by)
+  used.set(p.id, Date.now())
+  actor.set(p.wc, by.name || "Agent")
+  doing.set(p.id, { what: `Opening ${hostOf(p.url)}`, at: Date.now(), by })
+  changed(p.win)
+})
 
 // ---------- the pages agents are at work in, told to their window as they change (its corner card, tabs) ----------
 

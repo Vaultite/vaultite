@@ -1,10 +1,11 @@
 // One right-click menu for a link wherever drawn Markdown has one (a note, read or edited; a sheet, a timeline): open
 // it, copy it, change it where it's written; a link to a file has the file's own menu too, as Obsidian's does.
-import { Copy, Ellipsis, ExternalLink, FilePlus, Hash, Link, Mail, Pencil, SquareArrowOutUpRight, Unlink } from "lucide-react"
+import { Copy, Ellipsis, ExternalLink, FilePlus, Globe, Hash, Link, Mail, Pencil, SquareArrowOutUpRight, Unlink } from "lucide-react"
 import { openAt } from "@/core/anchors"
 import { getStore } from "@/core/data"
 import { openFile } from "@/core/files"
-import { followLink, linkPlace, openTag, shortestLink, type Link as Linked } from "@/core/links"
+import { followLink, linkPlace, openTag, openWebLink, shortestLink, type Link as Linked } from "@/core/links"
+import { desktop } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
 import { openInSplit } from "@/core/splits"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
@@ -34,8 +35,10 @@ export function linkItems(link: Linked, opts: { from?: string; text?: string; ed
     const mail = /^mailto:/i.test(url) ? url.slice(7).split("?")[0] : ""
     let address = mail
     try { address = decodeURIComponent(mail) } catch { /* as written */ }
+    // (in the desktop app a web link opens in its Browser: the system's on asking)
+    const out: MenuItem[] = desktop?.web && /^https?:/i.test(url) ? [{ label: "Open link in another browser", icon: Globe, run: () => openWebLink(url, { newTab: false, out: true }) }] : []
     return grouped([
-      [{ label: "Open link", icon: ExternalLink, run: () => follow(false) }],
+      [{ label: "Open link", icon: ExternalLink, run: () => follow(false) }, ...out],
       [mail ? { label: "Copy email address", icon: Mail, run: () => copied(address, "email address") } : { label: "Copy link", icon: Link, run: () => copied(url, "link") }, ...copyText],
       change,
     ])

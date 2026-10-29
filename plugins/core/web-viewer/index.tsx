@@ -1,11 +1,12 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
-// Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
+// Links open here (⌥⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, memo, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, isWindows, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PencilLine, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
+  ZoomOut } from "lucide-react"
+import { choose, closeTab, closeView, definePlugin, detailPath, focusGroup, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, panesOf, post, runCommandById, runShortcut, typingIn, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
-import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
-import { iconCame, siteIcon } from "./icons"
+import { addContainer, argOf, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
+import { iconCame, siteIcon, spinnerIcon } from "./icons"
 import { painted } from "./layers"
 import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView } from "./Sites"
 import { ExtensionsView } from "./Extensions"
@@ -16,7 +17,7 @@ import { liveTitle, LiveView } from "./LiveView"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { bookmark, focusedPage, focusedPageId, linksInViewer, onScreen, pageTookKeyboard, passkeyAsks, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { bookmark, focusedPage, focusedPageId, linksInViewer, loadingIn, onScreen, pageOfTab, pageTookKeyboard, passkeyAsks, profile, setPageFlags, stateCame, setPlayer, setSounds, settings, shown, soundOf, titleOf, typedIn } from "./state"
 import { agentPage, agentPageOfTab, agentPages, openAsTab, pauseAgents, setAgentPages, working, type AgentPage } from "./agentpages"
 import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
@@ -30,6 +31,21 @@ const WebPage = lazy(() => import("./WebPage"))
  *  opens (WebPage moves it there). */
 const openPage = (url: string, container: string | null = null) => openView(`web/${argOf(url, container)}`, { newTab: true })
 
+/** What a page opened (a link to a new tab, window.open, its link menu): in a new tab after it, behind or in front, to
+ *  the side or in a glance, in its container (or the one picked); the page made for it (`page`) handed to that tab. */
+function opened(m: Extract<WebEvent, { type: "open" }>) {
+  const c = m.container !== undefined ? m.container : destination(m.url, { from: containerOfProfile(m.profile), fresh: false }).container
+  if (c === null) keepOutside(m.url)
+  const to = `view:web/${argOf(m.url, c)}`
+  if (m.how === "glance") return openDetail(detailPath("glance", to))
+  if (m.how === "background" && !m.page) return openBehind(m.url, c, m.tab || undefined)
+  // (handed over first: the tab's page claims it as it's drawn)
+  const id = newTabId()
+  if (m.page) void webPages?.engine?.("web:adopt", m.page, id).catch(() => {})
+  if (m.how === "side") openInSplit(to, "right", true, id)
+  else openTab(to, { background: m.how === "background", from: m.tab || undefined, id })
+}
+
 const openExtensions = () => openView("web-extensions", { newTab: !isViewOpen("view:web-extensions") })
 setExtensionsOpener(openExtensions)
 
@@ -38,11 +54,31 @@ function askAddress(container: string | null = null) {
   openView(`web/${argOf("", container)}`, { another: true })
 }
 
+/** A copy of tab `tab` (its page's address and container) right after it, its page starting with that one's Back and
+ *  Forward, as Chrome's Duplicate. */
+async function duplicate(arg: string, tab: string) {
+  const id = (await webPages?.list?.().catch(() => null))?.find((p) => p.tab === tab)?.id, made = newTabId()
+  // (its history handed over before the tab asks for its page; the address keeps its container)
+  if (id) await webPages?.go(id, "duplicate", made).catch(() => {})
+  openTab(`view:web/${arg}`, { from: tab, id: made })
+}
+
 /** Bookmark the page in the focused pane. */
 function bookmarkPage() {
   const url = focusedPage()?.url()
   if (url) void bookmark(url, titleOf(url) ?? "")
 }
+
+/** The focused pane shows a web tab (with a page or not): the browser's keys are the page's, never the app's menu's
+ *  (⌘R reloading the app). */
+function onWebTab() {
+  const w = getTabLayout(), g = panesOf(w.root).find((x) => x.id === w.focus), t = g?.tabs.find((x) => x.id === g.active)
+  return !!t && (t.to === "view:web" || t.to.startsWith("view:web/"))
+}
+/** What the focused page does now (none: nothing). */
+const onPage = (action: Parameters<NonNullable<typeof webPages>["go"]>[1]) => { const id = focusedPageId(); if (id) void webPages?.go(id, action) }
+/** A page in the focused pane, not under a sheet (whose own find ⌘F is). */
+const pageInFront = () => !!focusedPage() && !document.querySelector("dialog[open]")
 
 /** Pick a container, then an address to open in it. */
 function askContainer() {
@@ -114,6 +150,9 @@ function Background() {
   // What agents may do in each container, and where their tabs open, told to the desktop app as they change.
   const agents = JSON.stringify(Object.fromEntries(useContainers().flatMap((c) => (c.agents ? [[profileIn(c.id), c.agents]] : []))))
   useEffect(() => { void webPages?.engine?.("agents:access", JSON.parse(agents), profileIn("agents")).catch(() => {}) }, [agents])
+  // What a page's right-click offers: its containers and Glance, told to the desktop app as they change.
+  const glance = useEnabled()("glance"), names = JSON.stringify(useContainers().map(({ id, name }) => ({ id, name })))
+  useEffect(() => { void webPages?.engine?.("web:menus", { containers: JSON.parse(names), glance }).catch(() => {}) }, [names, glance])
   // Which containers need Touch ID, told to the desktop app as they change.
   const locks = useContainers().filter((c) => c.lock).map((c) => profileIn(c.id)).join(" ")
   useEffect(() => { void webPages?.engine?.("lock:set", locks ? locks.split(" ") : []).catch(() => {}) }, [locks])
@@ -122,16 +161,22 @@ function Background() {
     const web = webPages
     if (!web?.list) return
     let timer = 0
-    const read = () => void web.list!().then((list) => setSounds(list.flatMap((p) => p.muted || p.playing
-      ? [{ playing: !!p.playing, muted: !!p.muted, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : [])), () => {})
+    const read = () => void web.list!().then((list) => {
+      setSounds(list.flatMap((p) => p.muted || p.playing
+        ? [{ playing: !!p.playing, muted: !!p.muted, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : []))
+      const of = (on: (p: (typeof list)[number]) => boolean | undefined) => new Set(list.flatMap((p) => (p.tab && on(p) ? [p.tab] : [])))
+      setPageFlags(of((p) => p.loading && !p.error), of((p) => p.typed))
+    }, () => {})
     const off = web.on((m) => { if (m.type === "state" || m.type === "pages") { clearTimeout(timer); timer = window.setTimeout(read, 250) } })
     return () => { off(); clearTimeout(timer) }
   }, [])
   // The pages agents are at work in: as the desktop app tells them, and as they are when this window loads.
   useEffect(() => { void Promise.resolve(webPages?.engine?.("agents:pages")).then((l) => { if (Array.isArray(l)) setAgentPages(l as AgentPage[]) }, () => {}) }, [])
   useEffect(() => webPages?.on((m) => {
-    if (m.type === "state") shown.get(m.id)?.onState(m.state)
-    else if (m.type === "open") openPage(m.url, shown.get(m.id)?.container ?? null)
+    if (m.type === "state") stateCame(m.id, m.state)
+    else if (m.type === "open") opened(m)
+    else if (m.type === "close") closeTab(m.tab, true)
+    else if (m.type === "blocked") notify(`Blocked a pop-up from ${hostOf(m.url) || "a page"}`, { action: { label: "Open", run: () => opened({ ...m, type: "open", how: "foreground" }) } })
     else if (m.type === "engine:agent:pages" && Array.isArray(m.pages)) setAgentPages(m.pages as AgentPage[])
     else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
     // An agent asks: its page shown as a tab (opened as one from the background, in its agent's tab group), so the user
@@ -156,11 +201,15 @@ function Background() {
     }
     else if (m.type === "focus") { pageTookKeyboard(m.id); const s = shown.get(m.id); if (s) focusGroup(s.group) }
     else if (m.type === "address") shown.get(m.id)?.focusAddress()
+    else if (m.type === "source") { const s = shown.get(m.id); viewSource(m.url.replace(/^view-source:/, ""), s?.container ?? null, s?.tab) }
     else if (m.type === "clip") shown.get(m.id)?.clip()
     else if (m.type === "block") void pickElement(m.id, undefined, { x: m.x, y: m.y })
     else if (m.type === "image") void saveImage(m)
     else if (m.type === "icon") iconCame(m.host, m.icon)
     else if (m.type === "notify" || m.type === "session") pageNotified(m)
+    else if (m.type === "found") shown.get(m.id)?.found(m.active, m.matches)
+    // (the mouse's back and forward buttons over a page: its pane's Back and Forward)
+    else if (m.type === "nav") { const s = shown.get(m.id); if (s) focusGroup(s.group); runCommandById(m.dir < 0 ? "nav:back" : "nav:forward") }
     else if (m.type === "key") runShortcut(new KeyboardEvent("keydown", { key: m.key, code: m.code, metaKey: m.meta, ctrlKey: m.ctrl, altKey: m.alt, shiftKey: m.shift, cancelable: true }))
     else if (m.type === "engine:ext:changed") extensionsChanged()
     // (an extension's tab, in its session's container)
@@ -183,8 +232,8 @@ function Preview() {
       <p className="text-[15px] leading-[20px] text-muted-foreground">
         A web browser in the desktop app's tabs, next to your notes: containers for several accounts, Shields against ads and
         trackers, Chrome extensions, history and bookmarks, and agents that work beside you. Save to vault clips a page as you
-        see it into Clippings. Links in notes and terminals open here; {modKey}-click opens them in another browser. On the web
-        and on phones links open in your browser as before.
+        see it into Clippings. Links in notes and terminals open here, {modKey}-click behind your tab; ⌥{modKey}-click opens them
+        in another browser. On the web and on phones links open in your browser as before.
       </p>
     </Panel>
   )
@@ -195,13 +244,22 @@ export default definePlugin({
   views: {
     web: {
       icon: Globe,
-      title: (arg) => { const { url } = splitArg(arg); return url ? titleOf(url) || extensionPageName(url) || hostOf(url) || "Web page" : "New tab" },
-      iconFor: (arg) => { const { container, url } = splitArg(arg), c = containerById(container); return siteIcon(url, c ? colorOf(c) : undefined) },
+      title: (arg) => { const { url } = splitArg(arg); return url ? titleOf(url) || extensionPageName(url) || (url.startsWith("view-source:") ? url : hostOf(url)) || "Web page" : "New tab" },
+      // (loading: a spinner, as a browser's tab shows; a page's source: its own icon)
+      iconFor: (arg, tab) => {
+        const { container, url } = splitArg(arg), c = containerById(container), color = c ? colorOf(c) : undefined
+        return tab && loadingIn(tab) ? spinnerIcon(color) : url.startsWith("view-source:") ? FileCode2 : siteIcon(url, color)
+      },
       // (with appearance `tabTint`: the active tab in its container's colour, lightly)
       tabTint: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
       // (a new tab group of one site's pages is named after it)
       groupName: (arg) => siteName(splitArg(arg).url),
       full: true,
+      // (Back and Forward walk the page's history before the tab's)
+      history: (_arg, tab, dir) => {
+        const p = pageOfTab(tab), st = p?.state()
+        return p && (dir < 0 ? st?.back : st?.forward) ? () => void webPages?.go(p.id, dir < 0 ? "back" : "forward") : null
+      },
       // (what a new tab can be, its address to type: in the desktop app, where pages show)
       asNewTab: { label: "Web page", here: () => !!webPages },
       // The address is the page's own state: following a link changes the tab's arg, not the page.
@@ -224,14 +282,15 @@ export default definePlugin({
         }
         return s ? { icon: s.muted ? VolumeX : Volume2, label: s.muted ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.muted ? "unmute" : "mute") } : null
       },
-      // (a page playing sound is in use, seen or not)
-      archives: (arg, tab) => !soundOf(arg, tab)?.playing,
-      // (a tab's page is its own, whatever else shows the address)
-      // (once the window paints behind it again, as WebPage lets go of one)
-      onTabClose: (_arg, tab) => void painted().then(() => webPages?.close(tab)),
-      tabMenu: (arg) => {
+      // (a page playing sound or holding what was typed and not sent is in use, seen or not)
+      archives: (arg, tab) => !soundOf(arg, tab)?.playing && !typedIn(tab),
+      // (a tab's page is its own, whatever else shows the address; moved to another window, it goes along)
+      // (once the window paints behind it again, as WebPage lets go of one; not if it's back by then: ⌘⇧T)
+      onTabClose: (_arg, tab, moved) => void painted().then(() => { if (!panesOf(getTabLayout().root).some((g) => g.tabs.some((t) => t.id === tab))) void webPages?.close(tab, moved) }),
+      tabMenu: (arg, tab) => {
         const { url } = splitArg(arg), sound = soundOf(arg)
         return [
+          ...(/^https?:\/\//i.test(url) ? [{ label: "Duplicate tab", icon: CopyPlus, run: () => void duplicate(arg, tab) }] : []),
           ...(sound ? [{ label: sound.muted ? "Unmute tab" : "Mute tab", icon: sound.muted ? Volume2 : VolumeX,
             run: () => void webPages?.go(sound.id, sound.muted ? "unmute" : "mute") }] : []),
           ...(/^https?:\/\//i.test(url) ? webPageActions({ url, title: titleOf(url) ?? "" }) : []),
@@ -257,9 +316,12 @@ export default definePlugin({
     "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
       menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} /> },
   },
-  webLink: (url, { mod }) => {
-    if (!webPages || mod || !linksInViewer()) return false
-    openPage(url)
+  webLink: (url, { newTab, front, out }) => {
+    if (!webPages || out || !linksInViewer()) return false
+    const c = destination(url, { from: null, fresh: true }).container
+    if (newTab && front) openTab(`view:web/${argOf(url, c)}`)
+    else if (newTab) openBehind(url, c)
+    else openPage(url)
     return true
   },
   commands: [
@@ -276,7 +338,9 @@ export default definePlugin({
     { id: "web:open-container", name: "New tab in container…", desktop: true, when: () => !!webPages, run: askContainer, icon: Box },
     { id: "web:clip", name: "Clip current web page", when: () => !!focusedPage(), run: () => focusedPage()?.clip(), icon: Scissors },
     { id: "web:browser", name: "Open current web page in another browser", when: () => !!focusedPage(), run: () => { const p = focusedPage(); if (p) void webPages?.external(p.url()) }, icon: ExternalLink },
-    { id: "web:address", name: "Edit current web page's address", when: () => !!focusedPage(), run: () => focusedPage()?.focusAddress(), icon: PencilLine },
+    // (⌘L with a web tab in front, wherever the keyboard is but another field: the editor's ⌘L is a note's)
+    { id: "web:address", name: "Edit current web page's address", keys: ["Mod+L"], when: () => !!focusedPage(),
+      keysWhen: () => !typingIn(document.activeElement) || !!document.activeElement?.closest("[data-web-bar]"), run: () => focusedPage()?.focusAddress(), icon: PencilLine },
     { id: "web:search-selection", name: "Search the web for selected text", desktop: true, when: () => !!webPages && !!selectedText().trim(), run: () => openWebLink(searchUrl(selectedText().replace(/\s+/g, " "), settings.get().search)), icon: Search },
     { id: "web:extensions", name: "Extensions", desktop: true, when: hasExtensions, run: openExtensions, icon: Puzzle },
     { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: manageContainers },
@@ -290,6 +354,20 @@ export default definePlugin({
       when: () => !!webPages?.player && /^https?:\/\//i.test(focusedPage()?.url() ?? ""), on: () => !!focusedPage()?.inPlayer(),
       run: () => setPlayer(focusedPageId(), !focusedPage()?.inPlayer()) },
     { id: "web:bookmark", name: "Bookmark current web page", keys: ["Mod+D"], when: () => !!focusedPage(), run: bookmarkPage, icon: Bookmark },
+    // The browser's keys, as Chrome's, wherever the keyboard is while a web tab is in front (a page takes ⌘F, ⌘G and zoom
+    // first: electron/web.ts BROWSER_KEYS); elsewhere they're the app's.
+    { id: "web:reload", name: "Reload current web page", keys: ["Mod+R"], when: onWebTab, run: () => onPage("reload"), icon: RotateCw },
+    { id: "web:hard-reload", name: "Reload current web page without its cache", keys: ["Mod+Shift+R"], when: onWebTab, run: () => onPage("hard-reload"), icon: RotateCw },
+    { id: "web:devtools", name: "Show developer tools for current web page", keys: [isMac ? "Mod+Alt+I" : "Mod+Shift+I"], when: onWebTab, run: () => onPage("devtools"), icon: Code },
+    { id: "web:find", name: "Find in current web page", keys: ["Mod+F"], when: () => pageInFront() && !!webPages?.find, run: () => focusedPage()?.find("open"), icon: Search },
+    { id: "web:find-next", name: "Find next in current web page", keys: ["Mod+G"], when: () => pageInFront() && !!webPages?.find, run: () => focusedPage()?.find("next"), icon: Search },
+    { id: "web:find-previous", name: "Find previous in current web page", keys: ["Mod+Shift+G"], when: () => pageInFront() && !!webPages?.find, run: () => focusedPage()?.find("previous"), icon: Search },
+    { id: "web:zoom-in", name: "Zoom in on current web page", keys: ["Mod+=", "Mod+Shift+="], when: () => !!focusedPage(), run: () => onPage("zoom-in"), icon: ZoomIn },
+    { id: "web:zoom-out", name: "Zoom out on current web page", keys: ["Mod+-"], when: () => !!focusedPage(), run: () => onPage("zoom-out"), icon: ZoomOut },
+    { id: "web:zoom-reset", name: "Reset current web page's zoom", keys: ["Mod+0"], when: () => !!focusedPage(), run: () => onPage("zoom-reset"), icon: Scan },
+    { id: "web:source", name: "View current web page's source", keys: [isMac ? "Mod+Alt+U" : "Mod+U"], icon: FileCode2,
+      when: () => /^https?:\/\//i.test(focusedPage()?.url() ?? ""), run: () => { const p = focusedPage(); if (p) viewSource(p.url(), p.container, p.tab) } },
+    { id: "web:print", name: "Print current web page", when: () => /^https?:\/\//i.test(focusedPage()?.url() ?? ""), run: () => onPage("print"), icon: Printer },
     { id: "web:import-brave", name: "Import from Brave…", desktop: true, when: () => browsersHere().some((s) => s.browser === "brave"), run: () => void askImport("brave"), icon: Download },
     { id: "web:import-chrome", name: "Import from Chrome…", desktop: true, when: () => browsersHere().some((s) => s.browser === "chrome"), run: () => void askImport("chrome"), icon: Download },
   ],

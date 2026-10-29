@@ -13,8 +13,10 @@ its tabs. Which are open isn't kept in a file: each server knows its own windows
 `vau tabs device-close <device> [tabs...]` closes tabs on one that's open now (all of them without tabs).
 
 **Archived tabs**: with `archive_after` (never, 12h, 24h, 7d, 30d), an unpinned tab off screen that long
-closes into Archived tabs (`view:archived-tabs`, the quick switcher, `vau tabs archived`), unless closing it loses
-something (a terminal, unsaved edits, a page playing sound). Kept with the tabs (the workspace's
+closes into Archived tabs (`view:archived-tabs`, the quick switcher, `vau tabs archived`, ⌘⇧T as for a tab closed
+then), unless closing it loses
+something (a terminal, unsaved edits, a page playing sound or holding typed input not sent). The Tabs panel ends with
+an Archived tabs row, how many, while there are any. Kept with the tabs (the workspace's
 `state["core:archived-tabs"]`, or this device's); a tab's `seen` is when it was last on screen (ms).
 
 **Tab groups**, as in a browser: a named, coloured run of a pane's tabs, side by side, that folds to its name. In the

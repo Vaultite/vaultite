@@ -224,7 +224,7 @@ function tabItems(tab: Tab, phone = false): MenuItem[] {
   const out: MenuItem[] = []
   const file = vaultPath(tab.to)
   const v = tab.to.startsWith("view:") ? viewFor(tab.to, getPrefs().disabled) : null
-  if (v?.on && v.def.tabMenu) out.push(...v.def.tabMenu(v.arg).map((it, i) => ({ ...it, sep: i === 0 })))
+  if (v?.on && v.def.tabMenu) out.push(...v.def.tabMenu(v.arg, tab.id).map((it, i) => ({ ...it, sep: i === 0 })))
   if (v?.on) out.push(...viewMenuItems(tab.to).map((it, i) => ({ ...it, sep: i === 0 })))
   if (tab.to.startsWith("file:/")) out.push({ ...copyToVaultItem(tab.to.slice(5), () => selectTab(tab.id)), sep: true }, ...revealItem(tab.to.slice(5)))
   if (file) {

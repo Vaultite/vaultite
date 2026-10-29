@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
 import { Copy } from "lucide-react"
 import { keyHint } from "@/core/commands"
-import { drawnLink, followLink, resolver } from "@/core/links"
+import { drawnLink, followLink, linkClick, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
 import { dropMermaid, hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
 import { isReadOnly, readFile } from "@/core/files"
@@ -78,7 +78,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     e.preventDefault()
     e.stopPropagation()
     // ⌘-click or a middle-click: a new tab, as in the editor.
-    followLink(s, a.dataset.tag ? { tag: a.dataset.tag } : a.dataset.url ? { url: a.dataset.url } : { wiki: a.dataset.wiki }, e.metaKey || e.ctrlKey || e.button === 1, from)
+    followLink(s, a.dataset.tag ? { tag: a.dataset.tag } : a.dataset.url ? { url: a.dataset.url } : { wiki: a.dataset.wiki }, linkClick(e), from)
   }
   // An image in the text: its menu, as in a note (a `![[x]]` drawn in its place answers with its own first); a link:
   // its menu; text selected in it: Copy, under a link's items.

@@ -166,6 +166,7 @@ export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   }
   if (ts.length === 1 && ts[0] === "enum" && d.values?.length) return <Choice k={k} d={d} value={shown} set={set} />
   if (d.choices && ts.length === 1 && ts[0] === "string") return <ServerChoice k={k} d={d} value={value} set={set} />
+  if (d.values?.length && ts.length === 1 && ts[0] === "string") return <Presets k={k} d={d} value={value} set={set} />
   if (ts.length === 1 && ts[0] === "number") return <NumberField k={k} d={d} value={value} set={set} />
   if (ts.length === 1 && ts[0] === "list" && d.values?.length) return <Chips k={k} d={d} value={shown} set={set} />
   if (d.folder && ts.length === 1 && ts[0] === "list") return <Folders k={k} d={d} value={value} set={set} />
@@ -186,6 +187,21 @@ function ServerChoice({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   const enumOf: SettingDecl = { ...d, type: "enum", values: list.map((c) => c.value), labels: Object.fromEntries(list.map((c) => [c.value, c.label])) }
   return <Choice k={k} d={enumOf} value={typeof value === "string" ? value : String(d.default ?? "")} set={set} />
 }
+
+/** A text with ones to pick from (a search engine's address): one of them, or Custom, typed in. */
+function Presets({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
+  const values = (d.values ?? []).map(String), shown = typeof value === "string" ? value : String(d.default ?? "")
+  const [own, setOwn] = useState(false)
+  const custom = own || !values.includes(shown)
+  const choices: SettingDecl = { ...d, type: "enum", values: [...values, CUSTOM], labels: { ...d.labels, [CUSTOM]: "Custom" } }
+  return (
+    <>
+      <Choice k={k} d={choices} value={custom ? CUSTOM : shown} set={(v) => { setOwn(v === CUSTOM); if (v !== CUSTOM) set(v) }} />
+      {custom && <TextField k={`${k}-custom`} d={{ ...d, label: "Custom", description: "", default: undefined }} value={values.includes(shown) ? "" : shown} set={set} list={false} />}
+    </>
+  )
+}
+const CUSTOM = "\0custom"
 
 /** One of a few short values: segmented; more, a row that unfolds into the choices (a menu can't open over a sheet). */
 function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {

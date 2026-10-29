@@ -81,6 +81,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
 - `canDropTab(item, d)`: Would that drop (in a list of a pane's tabs drawn elsewhere: the Tabs panel) change anything?
+- `canNavigate(t, dir)`
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
 - `canvases()`: The canvases in the page (a hidden tab's too: `canvasShown` tells).
 - `CanvasItem`: A thing on a canvas as others read it, in the canvas's units (x/y its top left): a shape, a text, an arrow joining `from` and `to` (items' ids).
@@ -213,7 +214,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `foldSet(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
 - `foldSetMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds.
-- `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
+- `followLink(s, link, how, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
@@ -287,6 +288,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
 - `Link`: A link as drawn Markdown names it: a [[link]]'s target, a Markdown link's address, or a #tag.
+- `linkClick(e)`
+- `LinkClick`: How a link was clicked: ⌘ (Ctrl elsewhere) or a middle click is a new tab (a web page's behind the one on screen, in front with ⇧ too, as browsers do); ⌥⌘ sends a web page to the system browser…
 - `LinkEdit`: What changes a link where it's written (an editor's): its target selected to type over, or the link taken out leaving its text.
 - `linkItems(link, opts?)`: The menu for a link (`from`: the file it's in; `text`: what it shows; `edit`: where it can be changed).
 - `linkPlace(s, link, from?)`: Where a link in drawn Markdown goes, without going: a file (and the heading or block in it), a plugin's detail, or a web address; null for what isn't a place (a #tag, a command, another app's…
@@ -326,10 +329,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `moveManyInto(paths, folder, { before, reveal }?)`: Move several files and folders into a folder, then one toast with Undo for all of them.
 - `mutate(f)`: Change the store optimistically, after a write: f returns a new store, with new objects where it changed (never one changed in place: the store's objects are also the server's last state, which…
 - `namedIcon(name?)`: An icon by its name (`dumbbell`): one of ICONS, one a plugin adds, any other of Lucide's, or an emoji; null for none.
+- `navigate(dir)`: Back (-1) or forward (1) in the active tab's history.
 - `NewFile`: A kind of file it makes, in the New submenu: `make` writes one in `folder` ("" the top) and answers its path, which opens with its name ready to type.
 - `newNoteFolder(s, from?)`: The folder every new note goes in ("" = the top), unless the vault says otherwise.
 - `newTab(gid?)`: A new tab, in the focused group (or `gid`'s), next to the active one (or at the end: `newTabsAt`, its tab bar's +): a blank tab, one per pane (the blank tab it has already moves there instead; the…
 - `NewTabCtx`
+- `newTabId()`
 - `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.
 - `NoteBody({ store, path, body, fm, className })`: `path`'s body (no frontmatter), drawn read-only.
 - `NoteEditor(props)`: Markdown that isn't a file, edited like a note (a canvas's text card).
@@ -377,10 +382,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).
+- `openTab(to, { background, from, id }?)`: `to` in a new tab of its own though another may show it, after `from` (default: the active tab) and the ones opened from it before, in its tab group; `background`: the user stays (agents' always).
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
 - `openView(to, opts?)`: Open a plugin's view, shown once: a tab that has it shows it (no two terminal tabs fighting over its size), else a new tab or the group to the right.
-- `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
+- `openWebLink(url, how?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
 - `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.

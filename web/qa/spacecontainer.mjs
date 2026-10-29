@@ -1,4 +1,4 @@
-// A workspace's container in the desktop app (Electron, plugins/core/web-viewer/containers.ts openingIn): a page opened
+// A workspace's container in the desktop app (Electron, plugins/core/web-viewer/containers.ts destination): a page opened
 // in no container goes to its workspace's (Work), unless its site always opens in another (Personal) or it was opened in
 // one (explicit); without one, the workspace's own logins. WRITES the throwaway vault only (Workspaces on, a slot file).
 //   node web/qa/spacecontainer.mjs <vault copy>

@@ -55,7 +55,10 @@ export { mergeSeen as mergeTabsSeen, seenSince as tabsSeenSince, setArchiveAfter
 export { archivedTabs, archiveUnseen, removeArchived, reopenArchived, restoreArchived, retargetArchived, useArchivedTabs, type ArchivedTab } from "@/core/tabarchive"
 // Its tabs one by one (the Tabs panel): the layout live, its panes, showing, closing and opening a tab, and what each
 // tab shows and its menu, as in its bar.
-export { closeTab, goHere, hashOf, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
+export { closeTab, goHere, hashOf, newTab, openTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
+export { newId as newTabId } from "../../core/layout.ts"
+// Back and Forward in the focused tab (a view's own history first: ViewDef.history), and whether a tab can go there.
+export { canNavigate, navigate } from "@/core/workspace"
 // What the + buttons open: a blank tab, or the quick switcher picking it (newtab.json's `opens`).
 export { openNewTab } from "@/core/launcher"
 export { leaves as panesOf, withoutTabsIn, type Group as TabGroup, type Tab } from "../../core/layout.ts"
@@ -131,7 +134,7 @@ export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, op
 export { onVaultChange, touches, useVaultChange } from "@/core/live"
 export { DEVICE } from "@/core/device"
 export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
-export { backlinks, drawnLink, followLink, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type Target } from "@/core/links"
+export { backlinks, drawnLink, followLink, linkClick, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type LinkClick, type Target } from "@/core/links"
 /** The links in a line of Markdown, with where each one's target and text are written (core/links.ts, shared with the server). */
 export { linksIn, type LinkSpan } from "../../core/links.ts"
 /** A link's right-click menu, the same wherever one is drawn: open it, copy it, and (`edit`) change it where it's written. */

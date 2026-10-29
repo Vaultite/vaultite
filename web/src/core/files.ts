@@ -14,7 +14,7 @@ import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "../../../core/layout.ts"
 import { isDesktop } from "@/core/platform"
 import { guestEdits, share } from "@/core/share"
-import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, goAnother, guarded, keepsTab, openBehind, retarget, targetOf } from "@/core/workspace"
+import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, keepsTab, openTab, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
@@ -142,7 +142,8 @@ function openAsked(path: string, split?: "right" | "down" | null, newTab = false
   if (/^https?:\/\//i.test(path)) path = `view:web/${path}`
   const view = path.startsWith("view:")
   const to = view ? path : `file:${path.replace(/^file:/, "")}`
-  if (background) return openBehind(to)
+  // (behind the user's tab: agents never take the focus; one open already is left as it is)
+  if (background) return void (findOpen(to) || openTab(to, { background: true }))
   if (!isDesktop()) return view ? afterSheets(() => go(to)) : openFile(to.slice(5))
   if (split) return openInSplit(to, split === "down" ? "bottom" : "right")
   if (!view) besideKept()
@@ -170,7 +171,7 @@ onUiAction((m) => {
  *  tab or the group to the right. `another`: a tab of its own anyway, in the focused pane (a blank web page). */
 export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean; another?: boolean } = {}) {
   const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
-  if (opts.another) return goAnother(target)
+  if (opts.another) return void openTab(target)
   if (findOpen(target)) return opts.focus === false ? undefined : go(target)
   if (opts.split) return openInSplit(target, "right", opts.focus !== false)
   go(target, opts.newTab)

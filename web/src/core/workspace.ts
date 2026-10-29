@@ -64,9 +64,12 @@ const changed = signal()
 /** The next workspace, tidied (an emptied group closes; with none left, a blank tab; tab groups as they must be:
  *  fixSets). A focused group that closed hands the focus to its neighbour. */
 export function set(next: Workspace) {
+  const was = shownTab(focused())?.id ?? ""
   const root = stamped(tidy(fixAllSets(next.root)) ?? blankGroup(), state.root)
   state = { root, focus: focusAfter(state.root, root, next.focus) }
   try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
+  const now = activeTab().id
+  if (now !== was) { shownAfter = { tab: now, prev: was }; if (lastChild?.opener !== now) lastChild = null }
   noteFile()
   changed.notify()
 }
@@ -153,6 +156,8 @@ const isFile = (to: string) => to.startsWith("file:")
 export function navigate(dir: -1 | 1) {
   if (dir < 0 && route().detail) return backDetail()
   const cur = activeTab()
+  const own = ownHistory(cur, dir)
+  if (own) return own()
   const back = [...(cur.back ?? [])], fwd = [...(cur.fwd ?? [])]
   const to = dir < 0 ? back.pop() : fwd.shift()
   if (!to && dir < 0 && opener(cur)) { const from = cur.from!; return guarded([cur], () => { closeTab(cur.id, true); selectTab(from) }) }
@@ -161,7 +166,10 @@ export function navigate(dir: -1 | 1) {
   set(withGroup(state.focus, (g) => mapTabs(g, cur.id, (t) => ({ ...t, to, back, fwd }))))
   show(to, false)
 }
-export const canNavigate = (t: Tab | undefined, dir: -1 | 1) => !!(dir < 0 ? t?.back : t?.fwd)?.length || (dir < 0 && !!opener(t))
+export const canNavigate = (t: Tab | undefined, dir: -1 | 1) => !!(dir < 0 ? t?.back : t?.fwd)?.length || (dir < 0 && !!opener(t)) || (!!t && !!ownHistory(t, dir))
+/** A view's own history (a web page's), walked before its tab's: how to go `dir` in tab `t` now, or null. Set by the app. */
+let ownHistory: (t: Tab, dir: -1 | 1) => (() => void) | null = () => null
+export const setOwnHistory = (fn: typeof ownHistory) => { ownHistory = fn }
 /** The tab `t` was opened beside, if it's still open. */
 const opener = (t: Tab | undefined) => (t?.from && t.from !== t.id && groupOfTab(t.from) ? t.from : null)
 
@@ -257,20 +265,32 @@ export function go(to: string, newTab = false, push = true) {
   show(to, push)
 }
 
-/** `to` in a tab of its own though another shows it (a browser's New tab), in the focused pane: its blank tab, else a
- *  new one beside the active tab. */
-export function goAnother(to: string) {
-  const cur = activeTab()
-  set(withGroup(state.focus, (g) => (isBlank(cur) ? mapTabs(g, cur.id, (t) => moveOn(t, to)) : withTabAfter(g, cur.id, to))))
-  show(to, true)
-}
+/** The tab on screen in the focused pane and the one before it there: closing a tab opened from the one before it, with
+ *  no other shown between, goes back to it (closeTab), as a browser's tab opened from a link does. */
+let shownAfter = { tab: "", prev: "" }
+/** The tab opened last from `opener` while it stayed on screen: the next opened from it goes after it (Chrome's order). */
+let lastChild: { opener: string; tab: string } | null = null
 
-/** A new tab showing `to` beside the active one, the user staying where they are (a browser's ⌘-click); one already open
- *  anywhere is left as it is. What agents open goes here: they never take the focus. */
-export function openBehind(to: string) {
-  if (findOpen(to)) return
-  const cur = activeTab()
-  set(withGroup(state.focus, (g) => ({ ...withTabAfter(g, cur.id, to), active: g.active })))
+/** `to` in a new tab of its own though another may show it, after `from` (default: the active tab) and the ones opened
+ *  from it before, in its tab group; `background`: the user stays (agents' always). `id`: a page was handed it first. */
+export function openTab(to: string, { background = false, from, id = newId() }: { background?: boolean; from?: string; id?: string } = {}): string {
+  const g = (from && groupOfTab(from)) || focused(), cur = shownTab(g)!
+  if (!from && !background && isBlank(cur)) {
+    set(withGroup(g.id, (x) => ({ ...x, tabs: x.tabs.map((t) => (t.id === cur.id ? { id, to, ...(cur.set ? { set: cur.set } : {}) } : t)), active: id }), { focus: g.id }))
+    show(to, true)
+    return id
+  }
+  const opener = from && g.tabs.some((t) => t.id === from) ? from : cur.id
+  const tab: Tab = { id, to, from: opener }
+  const after = lastChild?.opener === opener && g.tabs.some((t) => t.id === lastChild!.tab) ? lastChild.tab : opener
+  const set0 = g.tabs.find((t) => t.id === opener)?.set
+  set(withGroup(g.id, (x) => {
+    const at = x.tabs.findIndex((t) => t.id === after) + 1
+    return { ...x, tabs: [...x.tabs.slice(0, at), set0 ? { ...tab, set: set0 } : tab, ...x.tabs.slice(at)], active: background ? x.active : id }
+  }, background ? {} : { focus: g.id }))
+  if (background) lastChild = { opener, tab: id }
+  else show(to, true)
+  return id
 }
 
 /** A group with a new tab showing `to` right after tab `after`, active (`from`: the tab it was opened from, Tab.from),
@@ -374,7 +394,7 @@ export function takeOut(ids: string[]) {
     const g = groupOfTab(id)
     const t = g?.tabs.find((x) => x.id === id)
     if (!g || !t) continue
-    if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, false)
+    if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, false, true)
     const left = withoutTabs(g, new Set([id]))
     leave(g.id, left.tabs, left.active)
   }
@@ -391,7 +411,18 @@ export function toggleStacked(gid = state.focus) {
 export function togglePinTab(id: string) {
   const g = groupOfTab(id)
   if (!g) return
-  set(withGroup(g.id, (x) => mapTabs(x, id, (t) => { const { pinned, ...rest } = t; return pinned ? rest : { ...rest, pinned: true } })))
+  set(withGroup(g.id, (x) => mapTabs(x, id, (t) => { const { pinned, home, ...rest } = t; return pinned ? rest : { ...rest, pinned: true, home: t.to } })))
+}
+/** ⌘W on a pinned tab, as Arc's: the pane shows the next tab, and one with a page of its own here (a web page) ends it
+ *  and goes back to its `home`, as a fresh tab that loads it when shown; others (a note, a terminal) stay as they are. */
+export function restTab(id: string) {
+  const g = groupOfTab(id), t = g?.tabs.find((x) => x.id === id)
+  if (!g || !t) return
+  const ended = t.to.startsWith("view:") && !!onClosed?.(t.to, t.id, false, false)
+  const next: Tab = ended ? { id: newId(), to: t.home ?? t.to, pinned: true, ...(t.home ? { home: t.home } : {}), ...(t.set ? { set: t.set } : {}) } : t
+  const active = g.tabs.length > 1 ? withoutTabs(g, new Set([id])).active : next.id
+  set(withGroup(g.id, (x) => ({ ...x, tabs: x.tabs.map((y) => (y.id === id ? next : y)), active })))
+  showActiveUnder()
 }
 
 /** Clicking in a group's pane gives it the focus (the address shows its tab; commands act on it). */
@@ -422,8 +453,9 @@ export const tabCount = (ws: Workspace = state) => leaves(ws.root).reduce((n, g)
 
 /** Views hear each tab of theirs leaving this window (closed, or taken out to another), `last` once no tab anywhere shows
  *  that place (other workspaces too: `setOpenElsewhere`; a terminal ends its shell). Moving between panes isn't leaving. */
-let onClosed: ((to: string, tab: string, last: boolean) => void) | null = null
-export const setTabCloser = (fn: (to: string, tab: string, last: boolean) => void) => { onClosed = fn }
+let onClosed: ((to: string, tab: string, last: boolean, moved: boolean) => boolean) | null = null
+/** `fn` answers whether something of the tab's own ended (its web page); `moved`: the tab went on in another window. */
+export const setTabCloser = (fn: (to: string, tab: string, last: boolean, moved: boolean) => boolean) => { onClosed = fn }
 /** Whether a place is open in tabs kept elsewhere (Workspaces: the other workspaces' tabs). Set by the app. */
 let elsewhere: (to: string) => boolean = () => false
 export const setOpenElsewhere = (fn: (to: string) => boolean) => { elsewhere = fn }
@@ -440,16 +472,20 @@ function closed(tabs: Tab[], pane?: Group) {
 /** Views hear their tabs leave (`last` once a place: with the last of its tabs). */
 function heard(tabs: Tab[]) {
   const last = new Set(lastOf(tabs))
-  tabs.forEach((t, i) => { if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, last.has(t.to) && !tabs.slice(i + 1).some((x) => x.to === t.to)) })
+  tabs.forEach((t, i) => { if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, last.has(t.to) && !tabs.slice(i + 1).some((x) => x.to === t.to), false) })
 }
 
 /** A closed tab, with its pane and its place there: what ⌘⇧T and the archived tabs (core/tabarchive.ts) bring back. */
 export type ClosedTab = { tab: Tab; group: string; at: number }
-/** Tabs closed lately, for ⌘⇧T, with their pane and place; or a whole pane (closePane), with where it sat. Not blank
- *  tabs, nor views that end with their tab (a terminal's shell). */
-type Closed = ClosedTab | { pane: Group; spot: Spot | null }
-const reopenable: Closed[] = []
-const keptTab = (t: Tab): Tab => ({ id: t.id, to: t.to, back: t.back, fwd: t.fwd, ...(t.pinned ? { pinned: true } : {}), ...(t.set ? { set: t.set } : {}) })
+/** Tabs closed lately (`closed`: when), for ⌘⇧T, with their place; or a pane (closePane) with where it sat. Kept with
+ *  the tabs, across relaunches; never blank tabs, nor views that end with their tab (a terminal's shell). */
+type Closed = (ClosedTab | { pane: Group; spot: Spot | null }) & { closed?: number }
+const CLOSED_KEY = `${KEY}.closed`
+const reopenable: Closed[] = (() => {
+  try { const l = JSON.parse(tabStore().getItem(CLOSED_KEY) ?? "[]"); return Array.isArray(l) ? l.filter((e) => e && typeof e === "object" && ("pane" in e ? okGroup(e.pane) : typeof e.tab?.id === "string" && typeof e.tab.to === "string")) : [] } catch { return [] }
+})()
+const keepClosed = () => { try { tabStore().setItem(CLOSED_KEY, JSON.stringify(reopenable)) } catch { /* private mode */ } }
+const keptTab = (t: Tab): Tab => ({ id: t.id, to: t.to, back: t.back, fwd: t.fwd, ...(t.pinned ? { pinned: true } : {}), ...(t.home ? { home: t.home } : {}), ...(t.set ? { set: t.set } : {}) })
 function closedEntry(t: Tab): ClosedTab | null {
   const g = groupOfTab(t.id)
   return g ? { tab: keptTab(t), group: g.id, at: g.tabs.indexOf(t) } : null
@@ -458,22 +494,26 @@ function remember(tabs: Tab[], pane?: Group) {
   const ending = new Set(lastOf(tabs).filter(keeps))
   if (pane) {
     const kept = pane.tabs.filter((t) => !isBlank(t) && !ending.has(t.to)).map(keptTab)
-    if (kept.length) reopenable.push({ pane: { ...pane, tabs: kept }, spot: spotOf(state.root, pane.id) })
+    if (kept.length) reopenable.push({ pane: { ...pane, tabs: kept }, spot: spotOf(state.root, pane.id), closed: Date.now() })
   }
   // The last first: reopened one by one, each goes back in front of those after it.
   else for (const t of [...tabs].reverse()) {
     const e = isBlank(t) || ending.has(t.to) ? null : closedEntry(t)
-    if (e) reopenable.push(e)
+    if (e) reopenable.push({ ...e, closed: Date.now() })
   }
   reopenable.splice(0, Math.max(0, reopenable.length - 50))
+  keepClosed()
 }
 export const canReopenTab = () => reopenable.length > 0
-/** Reopen the tab closed last where it was (restoreTab); skips ones open again or `gone`. A pane closed last comes back
- *  whole (reopenPane). */
+/** When the tab ⌘⇧T would reopen was closed (0: none). */
+export const lastClosedAt = () => reopenable.at(-1)?.closed ?? 0
+/** Reopen the tab closed last where it was (restoreTab), even where another tab has its place (a browser's way); skips
+ *  `gone` ones. A pane closed last comes back whole (reopenPane). */
 export function reopenTab(gone: (to: string) => boolean = () => false) {
-  const back = (t: Tab) => !findOpen(t.to) && !gone(t.to)
+  const back = (t: Tab) => !gone(t.to) && !groupOfTab(t.id)
   let last = reopenable.pop()
   while (last && ("pane" in last ? !last.pane.tabs.some(back) : !back(last.tab))) last = reopenable.pop()
+  keepClosed()
   if (!last) return
   if ("pane" in last) return reopenPane(last.pane, last.spot, back)
   restoreTab(last)
@@ -519,7 +559,10 @@ export function closeTab(id: string, force = false) {
   if (!force) return guarded(g.tabs.filter((t) => t.id === id), () => closeTab(id, true))
   closed(g.tabs.filter((t) => t.id === id))
   const left = withoutTabs(g, new Set([id]))
-  leave(g.id, left.tabs, left.active)
+  // (opened from the tab shown just before it, and nothing else shown since: back to that one)
+  const from = g.tabs.find((t) => t.id === id)?.from
+  const back = g.active === id && from && shownAfter.tab === id && shownAfter.prev === from && left.tabs.some((t) => t.id === from)
+  leave(g.id, left.tabs, back ? from : left.active)
 }
 
 /** Whether a pane can be closed: not the only one (closing its tabs leaves a blank one: Close all). */
@@ -661,6 +704,7 @@ export function retarget(from: string, to: string) {
   const moved = changed
   const follow = (t: Tab) => ({ ...t, to: one(t.to), back: t.back?.map(one), fwd: t.fwd?.map(one) })
   for (const r of reopenable) { if ("pane" in r) r.pane = { ...r.pane, tabs: r.pane.tabs.map(follow) }; else r.tab = follow(r.tab) }
+  keepClosed()
   if (!moved) return
   set(next)
   const cur = activeTab()
@@ -688,4 +732,5 @@ export function dropTabs(path: string) {
     if ("pane" in r && left.length) r.pane = { ...r.pane, tabs: left }
     else if ("pane" in r || gone(r.tab.to)) reopenable.splice(i, 1)
   }
+  keepClosed()
 }

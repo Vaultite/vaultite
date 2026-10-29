@@ -847,9 +847,21 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tabs: asked for a new tab of what another tab has, from a blank tab: that tab, no copy", tabs() === "file:a.md *", tabs())
   one([A, B], "b"); ws.go("file:a.md", true)
   check("tabs: asked for a new tab from a tab with something, it still gets one", tabs() === "file:a.md,file:b.md,file:a.md *", tabs())
-  one([A, B], "a"); ws.openBehind("view:terminal/x"); ws.openBehind("file:b.md")
-  check("tabs: what an agent opens goes in a tab beside the active one, which stays shown; one already open is left",
+  one([A, B], "a"); ws.openTab("view:terminal/x", { background: true })
+  check("tabs: a tab opened behind goes beside the active one, which stays shown",
     tabs() === "file:a.md,view:terminal/x,file:b.md *" && ws.activeTab().to === "file:a.md", tabs())
+  // Links opened from a page: behind it in click order after its earlier ones, as Chrome does, till the user moves on.
+  one([A, B], "a"); ws.openTab("file:1.md", { background: true, from: "a" }); ws.openTab("file:2.md", { background: true, from: "a" }); ws.openTab("file:a.md", { background: true, from: "a" })
+  check("tabs: links opened behind one tab go after it in the order they were opened, a copy of an open one too",
+    tabs() === "file:a.md,file:1.md,file:2.md,file:a.md,file:b.md *" && ws.activeTab().id === "a", tabs())
+  ws.selectTab("b"); ws.selectTab("a"); ws.openTab("file:3.md", { background: true, from: "a" })
+  check("tabs: … once the user showed another tab, the next goes right after it again", tabs() === "file:a.md,file:3.md,file:1.md,file:2.md,file:a.md,file:b.md *", tabs())
+  one([A, B], "a"); const kid = ws.openTab("file:k.md", { from: "a" })
+  check("tabs: one opened in front from a tab is shown, after it", tabs() === "file:a.md,file:k.md,file:b.md *" && ws.activeTab().id === kid, tabs())
+  ws.closeTab(kid)
+  check("tabs: … closing it straight away goes back to the tab it came from", ws.activeTab().id === "a", ws.activeTab())
+  const kid2 = ws.openTab("file:k.md", { from: "a" }); ws.selectTab("b"); ws.selectTab(kid2); ws.closeTab(kid2)
+  check("tabs: … but not once another was shown in between: its neighbour, as ever", ws.activeTab().id === "b", ws.activeTab())
   one([A, N], "n"); g.location.hash = "#file/a.md"; ws.followHash("file/a.md")
   check("tabs: a link from a blank tab to what another tab has closes the blank one", tabs() === "file:a.md *", tabs())
   one([A, N], "n"); ws.selectTab("a")
@@ -1028,9 +1040,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("agent pages opened as a tab by the user: in their pane, after its tab, in a new group, shown",
     runs() === `a,${here}(Agent/here) | c` && ws.groups()[0].active === here && shares() === "0.50,0.50", runs())
   const WB = { id: "wb", to: "view:web/" }
-  two([A], [WB], "gL"); ws.goAnother("view:web/")
+  two([A], [WB], "gL"); ws.openTab("view:web/")
   check("new web page: a tab of its own in the focused pane, though another pane has a blank page", tabs() === "file:a.md,view:web/ * | view:web/", tabs())
-  one([A, N], "n"); ws.goAnother("view:web/")
+  one([A, N], "n"); ws.openTab("view:web/")
   check("new web page: from a blank tab, in it", tabs() === "file:a.md,view:web/ *", tabs())
   two([A, B], [C], "gL"); sp.moveToSplit("right", "b"); sp.moveTabTo("b", "gL", "center")
   check("panes: one made beside another and gone again leaves it its room", shares() === "0.50,0.50", shares())
@@ -1088,7 +1100,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------
 {
   const wp = await import("../electron/webpages.ts")
-  type P = { id: number; win: string; tab: string; profile: string; holds: number; closing: boolean; let: number; orphan?: number; agent?: boolean }
+  type P = { id: number; win: string; tab: string; profile: string; holds: number; closing: boolean; let: number; orphan?: number; moving?: number; agent?: boolean }
   let n = 0
   const page = (tab: string, o: Partial<P> = {}): P => ({ id: ++n, win: "w", tab, profile: "", holds: 1, closing: false, let: 0, ...o })
   const a = page("t1"), b = page("t2")
@@ -1110,6 +1122,12 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const ended = wp.windowReloaded([r1, r2, r3], "w", 1000)
   check("pages: a window reloading: tabs' pages wait to be taken back, the rest end", ended.length === 2 && r1.orphan === 1000 && r1.holds === 0, ended)
   check("pages: one not taken back in time ends", !wp.unclaimed([r1], 1000 + wp.RECLAIM_MS - 1).length && wp.unclaimed([r1], 1000 + wp.RECLAIM_MS)[0] === r1)
+  const m1 = page("t8", { holds: 0 }), m2 = page("t8", { win: "w2", holds: 0 })
+  wp.tabMoved([m1], "w", "t8", 1000)
+  check("pages: a tab moved to another window takes its page there, live", m1.moving === 1000 && wp.claim([m1], "w2", "t8", "").reuse === m1 && m1.moving === undefined)
+  check("pages: …another window's tab of that id doesn't, unless it moved", wp.claim([m2], "w", "t8", "").reuse === null)
+  wp.tabMoved([m1], "w", "t8", 2000)
+  check("pages: one moved and never taken ends", !wp.unmoved([m1], 2000 + wp.MOVE_MS - 1).length && wp.unmoved([m1], 2000 + wp.MOVE_MS)[0] === m1)
   const mine = page("", { agent: true, holds: 0 })
   check("pages: an agent's in the background stays through a window reload, never orphaned", !wp.windowReloaded([mine], "w", 1000).length && mine.orphan === undefined)
   mine.holds = 1
@@ -1175,7 +1193,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------
 {
-  const { addressOf, hostOf, siteName } = await import("../plugins/core/web-viewer/address.ts")
+  const { addressOf, guessedHttps, hostOf, httpFallback, siteName } = await import("../plugins/core/web-viewer/address.ts")
   check("Browser: a group of a site's tabs is named after it, none for this machine", siteName("https://www.github.com/a") === "Github"
     && siteName("https://news.bbc.co.uk/") === "Bbc" && siteName("http://localhost:3000/") === null && siteName("http://192.168.1.2/") === null)
   check("Browser: an address with its scheme as it is", addressOf(" https://example.com/a?b=1#c ") === "https://example.com/a?b=1#c")
@@ -1184,6 +1202,11 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("Browser: words are a search", addressOf("open source notes") === "https://duckduckgo.com/?q=open%20source%20notes"
     && addressOf("notes", "https://search.example/?s=%s") === "https://search.example/?s=notes")
   check("Browser: other schemes and nothing are refused", addressOf("file:///etc/hosts") === null && addressOf("javascript:alert(1)") === null && addressOf("  ") === null)
+  check("Browser: a name with a port and the local network's names get http", addressOf("nas:5000") === "http://nas:5000/" && addressOf("home-macbook-air-m1:8080/x") === "http://home-macbook-air-m1:8080/x"
+    && addressOf("printer.local") === "http://printer.local/" && addressOf("router.lan") === "http://router.lan/" && addressOf("box.home.arpa") === "http://box.home.arpa/" && addressOf("app.test") === "http://app.test/")
+  check("Browser: a guessed https falls back to http only when it can't connect", guessedHttps("example.com") && !guessedHttps("https://example.com") && !guessedHttps("open notes") && !guessedHttps("nas:5000")
+    && httpFallback("https://example.com/a", "ERR_CONNECTION_REFUSED") === "http://example.com/a" && httpFallback("https://example.com/", "ERR_CERT_AUTHORITY_INVALID") === "http://example.com/"
+    && httpFallback("https://example.com/", "ERR_NAME_NOT_RESOLVED") === null)
   check("Browser: a tab's name before the page's title is its site", hostOf("https://www.example.com/a") === "example.com" && hostOf("nonsense") === "nonsense")
 }
 

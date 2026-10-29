@@ -172,7 +172,7 @@ const startsWord = (hay: string, w: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${
 
 /** Matches for what's typed in the address bar, best first, and the address to complete it to inline: a site visited
  *  while what's typed is part of its name (as Firefox), a deeper address only once typed or visited often (as Chrome). */
-export function search(text: string, limit = 8): { complete: { text: string; url: string } | null; rows: Suggestion[] } {
+export function search(text: string, limit = 8): { complete: { text: string; url: string } | null; rows: (Suggestion & { score: number })[] } {
   const t = text.trim().toLowerCase(), ws = words(t)
   if (!ws.length) return { complete: null, rows: [] }
   const where = ws.map(() => "(instr(lower(url), ?) > 0 OR instr(lower(title), ?) > 0)").join(" AND ")
@@ -186,9 +186,9 @@ export function search(text: string, limit = 8): { complete: { text: string; url
     return [{ r, score: r.frecency * q }]
   }).sort((a, b) => b.score - a.score)
   const complete = completion(t, found)
-  const rows = scored.map((x) => x.r)
-  if (complete) { const i = rows.findIndex((r) => r.url === complete.url); if (i > 0) rows.unshift(...rows.splice(i, 1)) }
-  return { complete, rows: rows.slice(0, limit).map(({ frecency: _f, ...r }) => r) }
+  if (complete) { const i = scored.findIndex((x) => x.r.url === complete.url); if (i > 0) scored.unshift(...scored.splice(i, 1)) }
+  // (`score`: how well it matches, so the address bar can rank its open tabs and bookmarks among these)
+  return { complete, rows: scored.slice(0, limit).map(({ r: { frecency: _f, ...r }, score }) => ({ ...r, score: Math.round(score * 100) / 100 })) }
 }
 
 function completion(t: string, rows: (Suggestion & { frecency: number })[]) {

@@ -8,6 +8,7 @@ import type { Store, VaultMeta } from "@/core/data"
 import type { ConfirmOptions } from "@/components/ConfirmDialog"
 import type { Dot } from "@/components/kit"
 import type { MenuItem } from "@/components/ContextMenu"
+import type { LinkClick } from "@/core/links"
 import type { Side, Sidebars } from "../../../core/sidebars.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { Color } from "../../../core/colors.ts"
@@ -184,6 +185,8 @@ export type SearchDoc = {
   text: string; recent: number
   /** Ranking boost (pages 12, people 10, notes 8, books 4, logs 0). */
   weight?: number
+  /** Where it goes, at the row's end (the container a web page opens in): `label` after a dot of `color`. */
+  tag?: { label: string; color: string }
   /** Archived (the core sets it from its `file`): ranked after everything else. */
   archived?: boolean
   /** In the excluded files (the core sets it from its `file`): ranked after the rest, never suggested. */
@@ -252,14 +255,17 @@ export type ViewDef = {
   /** The tab a new tab of it opens beside, in that tab's pane and tab group, when one shows it (`file:Notes/Idea.md`: a
    *  session started on that note), as a browser opens a tab beside the one it came from; null: beside the current one. */
   opensBeside?: (arg: string) => string | null
+  /** A history of its own (a web page's), which Back and Forward walk before the tab's: how to go `dir` in tab `tab`
+   *  now, or null when it can't (then the tab's history, or its opener). */
+  history?: (arg: string, tab: string, dir: -1 | 1) => (() => void) | null
   /** Its tab is its own (a terminal): opening anything else from it (a link, the sidebar, Graph view) opens beside it,
    *  never in its place, so it's never navigated away from by accident. */
   keepsTab?: boolean
   /** Whether its tab, unpinned, archives itself once unseen a while (Tabs' setting); a function says per tab (a page
    *  playing sound doesn't). Unset: yes, unless closing it ends something (keepsTab, onClose, confirmClose). */
   archives?: boolean | ((arg: string, tab: string) => boolean)
-  /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session). */
-  tabMenu?: (arg: string) => (FileMenuItem & { danger?: boolean })[]
+  /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session); `tab`: its id. */
+  tabMenu?: (arg: string, tab: string) => (FileMenuItem & { danger?: boolean })[]
   /** The arg its pin keeps (Pinned; null: this one can't be): unset, its arg as is (none: `view:<name>`, in Pinned's
    *  menu). Else a lasting one (a terminal's conversation), `(a) => a || null` (it needs one), `() => null` (never). */
   pinAs?: (arg: string) => string | null
@@ -272,9 +278,9 @@ export type ViewDef = {
   /** The last tab showing it was closed (not moved, not navigated away from: it's still in that tab's history then;
    *  not while another tab has it, here or in another workspace). */
   onClose?: (arg: string) => void
-  /** A tab showing it left this window: closed (each one, before `onClose`), or taken out to another window. What
-   *  that tab had of its own here ends (its web page); `tab` is its id, as `usePane().tab` says. */
-  onTabClose?: (arg: string, tab: string) => void
+  /** A tab showing it left this window: closed (each one, before `onClose`), or taken out to another window (`moved`,
+   *  its id kept there). What the tab had of its own ends, or goes with it (its web page); `tab`: `usePane().tab`. */
+  onTabClose?: (arg: string, tab: string, moved: boolean) => void
   /** Before its last tabs close: what to ask, or null to close without asking. Only for what closing would lose (a
    *  terminal doesn't ask: its process keeps running); closing from its own ctx never asks. */
   confirmClose?: (args: string[]) => Promise<ConfirmOptions | null> | ConfirmOptions | null
@@ -594,16 +600,23 @@ export type PluginDef = {
   searchQuery?: {
     /** Things matching it, asked a moment after typing stops (the last answer wins), listed under `section`. */
     find?: (q: string) => Promise<SearchDoc[]>; section?: string
-    /** Rows for the text itself, at once (open it as an address, search the web for it): after the matches. */
-    typed?: (q: string) => SearchDoc[]
+    /** Rows for the text itself, at once (open it as an address, search the web for it): after the matches. `complete`:
+     *  what a new tab's switcher completed it to inline; `turn`: how far ⌥↓ (less ⌥↑) moved its rows' `tag`. */
+    typed?: (q: string, o: { complete: string | null; turn: number }) => SearchDoc[]
+    /** What a new tab's switcher completes the text to inline, asked as it's typed ("github.com" for "gith"); null: none. */
+    complete?: (q: string) => Promise<string | null>
+    /** What ⌥↑/⌥↓ change in its typed rows' `tag` ("container"), said along the bottom. */
+    turns?: string
+    /** The text is one of its own (an address): ⇧Enter opens it, rather than making a note of that name. */
+    owns?: (q: string) => boolean
     /** What a new tab's switcher (newtab.json `opens`) says while it lists `typed` first ("Search or enter address…");
      *  null: not here (no web tabs in this app). */
     launcher?: () => string | null
   }
   links?: (store: Store) => LinkTarget[]
   /** Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser.
-   *  The first plugin that's on and takes it wins. */
-  webLink?: (url: string, how: { mod: boolean }) => boolean
+   *  The first plugin that's on and takes it wins. `how`: plain, a new tab (behind, or `front`), or `out` (⌥⌘). */
+  webLink?: (url: string, how: LinkClick) => boolean
   /** Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one.
    *  The first plugin that's on and takes it wins; none: the link does nothing. */
   schemeLink?: (url: string, how: { mod: boolean }) => boolean

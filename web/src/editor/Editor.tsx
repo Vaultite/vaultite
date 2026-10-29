@@ -24,6 +24,7 @@ import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import type { SlashItem } from "@/core/define"
+import type { LinkClick } from "@/core/links"
 import { docChanged, registerDoc } from "@/core/anchors"
 import { registerEditor } from "@/core/editors"
 import { runShortcut } from "@/core/commands"
@@ -68,7 +69,7 @@ type Props = {
   onChange: (doc: string, start: number) => void
   /** An undo or redo changed the hidden frontmatter (Properties show it). */
   onUndoFrontmatter?: () => void
-  onOpen: (link: { wiki?: string; url?: string }, newTab: boolean) => void
+  onOpen: (link: { wiki?: string; url?: string }, how: boolean | LinkClick) => void
   /** Names to suggest after [[ (file names, people), with the file's path when it's one and what picking it writes; an
    *  alias with the link to what it stands for (`link`), put in as [[link|alias]]. */
   names: () => { label: string; detail?: string; path?: string; insert?: string; link?: string }[]

@@ -32,6 +32,8 @@ export type EnginePage = { id: number; wc: WebContents; profile: string; win: En
   player: (on: boolean, fullScreen: boolean) => void
   /** The app's tab it's for ("": none). */
   tab: () => string
+  /** The page that opened it (a link to a new tab, window.open), if one did. */
+  opener?: number
   /** Give it to the app's tab `tab` (opened as a tab), or to the background ("": an agent's, with no tab). */
   own: (tab: string) => void
   /** End it, as closing its tab would. */
@@ -196,6 +198,12 @@ export const engineOpens = (url: string) => openers.some((fn) => { try { return 
 
 /** Every open page. */
 export const allPages = () => [...pages.values()]
+
+let agentActing: (id: number) => boolean = () => false
+/** Whether what page `id` opens now is an agent's doing (its own page, or one it's acting in), so it opens as that
+ *  agent's page in the background, never the user's tab: agent.ts says. */
+export const setAgentActing = (fn: (id: number) => boolean) => { agentActing = fn }
+export const openedByAgent = (id: number) => agentActing(id)
 
 type Opener = (win: EngineWindow, url: string, profile: string) => Promise<EnginePage>
 let opener: Opener = () => Promise.reject(new Error("no pages here"))

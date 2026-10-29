@@ -101,11 +101,24 @@ export function useQueried(query: string): { section: string; hits: Hit[] }[] {
 }
 
 /** Plugins' rows for the query itself (`searchQuery.typed`). */
-export function typedHits(query: string, disabled: string[]): Hit[] {
+export function typedHits(query: string, disabled: string[], o: { complete: string | null; turn: number } = { complete: null, turn: 0 }): Hit[] {
   const q = query.trim()
   if (!q) return []
-  return active(disabled).flatMap((p) => { try { return (p.searchQuery?.typed?.(q) ?? []).map((d) => ({ ...d, marks: [], score: 0 })) } catch { return [] } })
+  return active(disabled).flatMap((p) => { try { return (p.searchQuery?.typed?.(q, o) ?? []).map((d) => ({ ...d, marks: [], score: 0 })) } catch { return [] } })
 }
+
+/** What the first plugin that completes a new tab's text inline completes it to (null: none does). */
+export async function completeTyped(query: string, disabled: string[]): Promise<string | null> {
+  for (const p of active(disabled)) {
+    const c = p.searchQuery?.complete && await p.searchQuery.complete(query).catch(() => null)
+    if (c) return c
+  }
+  return null
+}
+/** What ⌥↑/⌥↓ change in plugins' typed rows ("container"), if one's do. */
+export const typedTurns = (disabled: string[]) => active(disabled).find((p) => p.searchQuery?.turns)?.searchQuery?.turns ?? null
+/** A plugin takes the text as its own (an address): ⇧Enter doesn't make a note of it. */
+export const typedOwned = (query: string, disabled: string[]) => active(disabled).some((p) => { try { return !!p.searchQuery?.owns?.(query.trim()) } catch { return false } })
 
 /** What a new tab's switcher says while a plugin lists its typed rows first there; null: none does now. */
 export function launcherText(disabled: string[]): string | null {

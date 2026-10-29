@@ -12,16 +12,20 @@
   protocol: sendInputEvent never reaches a frame from another site, a captcha's or "Sign in with Google"). Small
   ambient bits the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window.
 - A tab owns its page by the tab's id (`usePane().tab`; electron/webpages.ts decides): hidden in the background, the same
-  one when shown again, ended when the tab closes or leaves the window (`onTabClose`) or shows something else. None
+  one when shown again, ended when the tab closes or leaves the window (`onTabClose`; moved to another of the vault's
+  windows, it goes along: `moved`, web.ts `adopt`) or shows something else. None
   outlives its tab: a reloaded window's tabs take theirs back within seconds or they end. Never match pages by address:
-  `getURL()` is "" till the first load commits (it was how hidden pages kept playing with no tab).
+  `getURL()` is "" till the first load commits (it was how hidden pages kept playing with no tab). A page made before
+  its tab (window.open's, kept for `window.opener`; a glance kept as a tab) is handed to it by id (`web:adopt`) first.
 - An agent's page opens with no tab (web.ts `make(..., agent)`), parked: shown off the window, unthrottled, so it draws
   on (live pictures, screenshots); a hidden view stops drawing at its next cross-site load. Unused a minute it rests
   hidden (agent.ts), and every agent call or watch wakes it (EnginePage `wake`). Open as tab hands it to a tab (`own`).
 - A page in its player (a window of its own, web.ts's players) is still its tab's, `win` its tab's window: only where
   it's drawn changes (`fit`), so ending, reclaiming and closing work as for any; its tab draws nothing over it meanwhile.
   Esc never reaches a page that's full screen (Electron takes it), so the player's video leaving full screen leaves it.
-- The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events.
+- The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events. The browser's keys a site may take
+  (⌘F, ⌘G, zoom: web.ts BROWSER_KEYS) reach the page first and come back only if it left them (web-preload.cjs), never
+  to the menu bar, whose ⌘F and ⌘= are the app's.
 - Claude Code on the web's sessions are read here (electron/web.ts) for the Cloud sessions plugin, which says what.
 - Extensions (electron/browser/extensions.ts) are this Mac's, in userData: each is code with every site's logins, so a
   synced vault setting never chooses one (plugins rule 4). Their bar buttons, popups and the Extensions tab:

@@ -76,3 +76,23 @@ export function siteIcon(url: string, color?: string): LucideIcon {
   }
   return c
 }
+
+const spinners = new Map<string, LucideIcon>()
+/** A loading tab's icon, Chrome's: a small ring turning where its site's icon goes (its container's bar kept). */
+export function spinnerIcon(color?: string): LucideIcon {
+  const key = color ?? ""
+  let c = spinners.get(key)
+  if (!c) {
+    c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => (
+      <span className={`${className ?? ""} relative inline-grid text-muted-foreground`} data-web-loading>
+        <svg viewBox="0 0 16 16" className="size-full motion-safe:animate-spin" fill="none" strokeWidth={2} strokeLinecap="round">
+          <circle cx="8" cy="8" r="6" stroke="currentColor" opacity={0.25} />
+          <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" />
+        </svg>
+        {color && <span className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />}
+      </span>
+    )) as unknown as LucideIcon
+    spinners.set(key, c)
+  }
+  return c
+}

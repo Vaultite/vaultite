@@ -3,8 +3,13 @@ A web browser in tabs of the desktop app, next to your notes. A tab `view:web/<a
 that page (`vau open "view:web/https://example.com"`); its bar has back, forward, reload, the address (an address or
 words to search for; the tab's container at its left, Shields at its right), pinned extensions, Save and a … menu. Save
 clips the page as it's shown (the Web clipper's `POST /api/clip` with its HTML, so a page you're logged in to works
-too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Block an element,
-Open in another browser, Open as player, Picture in picture, plugins' other actions and Extensions. Right-click an image in a
+too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Find in page,
+Print, View page source (⌥⌘U: a view-source: tab, also in the page's right-click), Block an element, Open in another browser, Open as player, Picture in picture, plugins' other actions and
+Extensions. Keys are Chrome's: Back and Forward (the bar's, ⌘[ ⌘], ⌥⌘← →, the mouse's buttons) walk the
+page's history, then the tab's; a right-click or a hold on Back or Forward lists its places. ⌘F finds in the page (a bar
+under its bar: Enter, ⌘G, ⇧⌘G, Esc), ⌘+ ⌘- ⌘0 zoom its site (kept per site on the Mac; the address says 110% till a
+click resets it), ⌘R and ⇧⌘R reload it (past the cache), ⌥⌘I opens its DevTools, Esc stops a load; a site that takes
+⌘F or the zoom keys itself (a doc's own find) keeps them. ⌘W on a pinned web tab unloads it, back where it was pinned. Right-click an image in a
 page: Save image to vault (into the attachments folder, like a pasted one), Download image, Copy image, Copy image
 address. Commands: "Open web page…", "Clip current web page", "Open web pages in a tab". Pages keep their own logins,
 apart from the app's, on the Mac running the desktop app; nothing about them is kept in the vault.
@@ -15,12 +20,17 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   Touch ID, agent access, delete: deleting clears its logins) on its heading's … or right-click. They're the plugin's `containers` setting:
   `[{ "id": "work", "name": "Work", "color": "orange", "sites": ["linear.app"] }]` (colours: blue, orange, green, red,
   purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there; else, with
-  Workspaces, the workspace's `container`, else the workspace's own logins). What's opened
-  from a page in a container opens in it too. `"lock": true` makes a container need Touch ID: its pages don't open or
+  Workspaces, the workspace's `container`, else the workspace's own logins). While an address is typed, the chip
+  shows where it will open and why, and choosing there (or ⌥↑/⌥↓) applies on Enter; a tab moved to another container
+  keeps its back history. What's opened from a page in a container opens in it too. `"lock": true` makes a container need Touch ID: its pages don't open or
   show until unlocked in its tab, and lock again when the Mac locks, sleeps or is idle 15 minutes ("Lock containers").
 - Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps
-  its page, closing it ends it, and ⌘⇧T opens it again afresh at its address. When the Mac runs short of memory,
-  background tabs' pages may be let go (never one playing sound) and load again when shown. A tab playing sound shows
+  its page, closing it ends it, and ⌘⇧T opens it again with its Back and Forward (kept on the Mac, so a relaunch keeps
+  them too). Moved to a new window, its page goes along, live; Duplicate tab (its menu) is a copy beside it with its Back
+  and Forward. A loading tab's icon spins, a line under the bar with it. A page that didn't load says why in words, with
+  Try again (again by itself once back online); a certificate the Mac doesn't trust warns as Chrome does (Advanced: go
+  on to that site, this session only); one that keeps crashing says so, with Reload. When the Mac runs short of memory,
+  background tabs' pages may be let go (never one playing sound) and load again when shown, history and all. A tab playing sound shows
   a speaker beside its site's icon: a click on it mutes or unmutes the tab, and while a page plays the status bar's "Web
   pages playing" names it, its menu showing its tab or muting it. Playing lasts from a page's first sound till its media
   pauses or ends, through quiet scenes; sound without media (a game) ends after 10 seconds of silence.
@@ -64,8 +74,14 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
 - On the web and phones links open in the browser, and a web tab says so with a link out.
 - Pinned: Pin in a page's tab menu (or `vau pin <address>`) pins it to the sidebar by its address, with its site's icon
   and its title, kept up to date while it's open; a click opens it here. While the plugin is off it doesn't show.
-- Links: web links clicked in the app (in notes, blocks, sheets, terminals) open in a new web tab; ⌘-click (Ctrl
-  elsewhere) opens them in the system browser, as does every link with `openLinks: browser`.
+- Links: web links clicked in the app (in notes, blocks, sheets, terminals) open in a web tab; ⌘-click (Ctrl elsewhere)
+  or a middle click opens one behind, ⌘⇧-click in front, ⌥⌘-click (and the link's menu) in the system browser, as does
+  every link with `openLinks: browser`. In a page, as in Chrome: ⌘-click, a middle click and the link's menu open a new
+  tab behind it (in the page's container and tab group, after the ones opened from it before), ⌘⇧-click and
+  target=_blank in front (closing it straight away shows the page again), ⇧-click to the side, ⌥-click a glance (with
+  Glance on); `window.open` keeps `window.opener`, a page's script opens nothing without a click (it says so, with
+  Open), a tab whose page only downloaded closes. The link's menu also has Open link in container, to the side, Glance
+  and Copy link text. What an agent's page opens is its own page, never a tab of the user's.
 - Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,
   `browser_act`, `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
   `browser_evaluate`, `browser_ask_user`, `browser_login`, `browser_close`). The browser is the desktop app's attached to this server (one server per vault on a
@@ -120,7 +136,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   loads again. Each attempt is kept with the agent's steps (site, entry, result, who said yes) and in Activity.
 - History: every page's visits (address, title, time, logins, typed or a link) are kept on the Mac running the desktop
   app, never in the vault, ranked by frecency. The address bar completes a site inline as you type and lists the search,
-  open tabs ("Switch to tab"), bookmarks and history (⇧⌦ removes a history row); "Open web page…" is a new web tab with
+  then open tabs ("Switch to tab"), bookmarks and history ranked together (⇧⌦ removes a history row); what's typed
+  stays till Esc, Enter or the page goes elsewhere; ⌥Enter opens it in a new tab, ⌘Enter behind; `nas:5000` and
+  `.local` names open over http, and a guessed https that can't connect tries http; "Open web page…" is a new web tab with
   its address ready, the sites visited most under it. The History tab ("Show history", ⌘Y on a Mac): by day, searched,
   rows removed (Undo), and "Clear browsing history…" for a time range.
 - Bookmarks are a note, `Bookmarks.md` (`type: bookmarks`; one moved keeps working): a heading per folder (`## Reading`,

@@ -4,7 +4,7 @@ import { useCallback, useMemo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 import type { Store } from "@/core/data"
 import { findEmbed, folderOf, isMd, openFile, readFile, stem } from "@/core/files"
-import { followLink, resolver, shortestLink, type Target } from "@/core/links"
+import { followLink, resolver, shortestLink, type LinkClick, type Target } from "@/core/links"
 import { markdownLinks, pasteAttachments } from "@/core/conventions"
 import { notifyError } from "@/core/notify"
 import { slashItems } from "@/core/slash"
@@ -80,7 +80,7 @@ export function useVaultEditing(store: Store, from: string, own: () => string) {
   const names = useMemo(() => { let list: ReturnType<typeof linkNames> | null = null; return () => (list ??= linkNames(store, from)) }, [store, from])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const headings = useCallback((name: string) => headingsIn(resolve, name, from, own), [resolve, from])
-  const onOpen = useCallback((link: { wiki?: string; url?: string; tag?: string }, newTab: boolean) => followLink(store, link, newTab, from), [store, from])
+  const onOpen = useCallback((link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick) => followLink(store, link, how, from), [store, from])
   const mdLinks = useCallback(() => markdownLinks(store), [store])
   const slash = useCallback(() => slashItems(store), [store])
   const paste = useCallback(async (files: File[]) => {

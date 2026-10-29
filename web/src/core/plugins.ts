@@ -814,8 +814,9 @@ const safeViews = new WeakMap<ViewDef, ViewDef>()
 function safeView(name: string, def: ViewDef): ViewDef {
   let safe = safeViews.get(def)
   if (safe) return safe
-  const guard = <T,>(f: ((arg: string) => T) | undefined, or: T) => f && ((arg: string) => {
-    try { return f(arg) } catch (e) { console.error(`view ${name}`, e); return or }
+  // (the hooks that take a tab's id too get it: iconFor's)
+  const guard = <T,>(f: ((arg: string, tab?: string) => T) | undefined, or: T) => f && ((arg: string, tab?: string) => {
+    try { return f(arg, tab) } catch (e) { console.error(`view ${name}`, e); return or }
   })
   safe = { ...def, title: guard(def.title, name)!, iconFor: guard(def.iconFor, def.icon), iconClass: guard(def.iconClass, undefined),
     iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), tabTint: guard(def.tabTint, undefined), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null), opensBeside: guard(def.opensBeside, null), onScreen: guard(def.onScreen, false) }

@@ -6,7 +6,7 @@ import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
-import { closeTab, focusGroup, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
+import { closeTab, focusGroup, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
 import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
 import { evenOut, resize } from "@/core/splits"
 import { setGroupNamer } from "@/core/tabsets"
@@ -28,16 +28,18 @@ import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 import { unsavedIn } from "@/core/unsaved"
 
-setTabCloser((to, tab, last) => {
+setTabCloser((to, tab, last, moved) => {
   const v = viewFor(to, getPrefs().disabled)
-  if (!v?.on) return
-  v.def.onTabClose?.(v.arg, tab)
+  if (!v?.on) return false
+  v.def.onTabClose?.(v.arg, tab, moved)
   if (last) v.def.onClose?.(v.arg)
+  return !!v.def.onTabClose
 })
 setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
 setGroupNamer((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.groupName?.(v.arg)) || null })
 setOpener((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.opensBeside?.(v.arg)) || null })
+setOwnHistory((t, dir) => { const v = viewFor(t.to, getPrefs().disabled); return (v?.on && v.def.history?.(v.arg, t.id, dir)) || null })
 setPageTest((path) => isPage(path))
 setArchivable((t) => {
   if (t.to.startsWith("file:")) return !unsavedIn(t.to.slice(5))

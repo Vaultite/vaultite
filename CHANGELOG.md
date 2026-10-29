@@ -6,6 +6,21 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Browser's keys act on the page, as Chrome's**: Back and Forward (every key, the mouse's buttons) walk
+  the page's history before the tab's, and right-clicking or holding the bar's Back lists its places; ⌘F finds in the
+  page, ⌘+ ⌘- ⌘0 zoom its site (kept per site), ⌘R, ⇧⌘R and ⌥⌘I reload it or open its DevTools (never the app's), Esc
+  stops a load, ⇧⌘[ ⇧⌘] switch tabs, the … menu prints, and ⌘W on a pinned tab unloads it back to where it was pinned.
+- **The Browser's address bar works like a browser's**: what you type stays when you click away, the container chip
+  shows where it will open (⌥↓ changes it), ⌘T goes to the site it completes, `nas:5000` and `.local` names open, ⌘L
+  works from anywhere, and the search engine is a choice in Settings.
+- **Links open tabs as in Chrome**: ⌘-click, a middle click or a page's "Open link in new tab" opens it behind, in order
+  after the page; ⌘⇧-click and target=_blank in front, and closing it goes back; sign-in and editor pages opened by a
+  site keep talking to it, agents' clicks never open your tabs, pop-ups need a click, and ⌘⇧T brings a page back with
+  its history, archived ones and after a relaunch too.
+- **The Browser's rough edges, smoothed as in Chrome**: pages that don't load say why in plain words (and load again once
+  you're back online), untrusted certificates warn before you go on, a crashing page says so with Reload, loading tabs
+  spin, View page source and Duplicate tab are in the menus, a tab moved to a new window keeps its page, and the Tabs
+  panel ends with your archived tabs (never one holding text you typed).
 - **A working agent no longer keeps the Mac busy**: its tab's dot breathes a few times as it starts, then holds still;
   breathing for as long as it worked made macOS redraw the window 60 times a second (a third of WindowServer's CPU).
 - **The desktop app opened by an agent is the Dock's**: started from an agent's session or a Vaultite terminal (`open -a`,

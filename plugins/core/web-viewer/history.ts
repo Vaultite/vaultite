@@ -8,7 +8,8 @@ export type Suggestion = { url: string; title: string; host: string; visits: num
 export type Visit = { id: number; url: string; title: string; host: string; at: number; profile: string; how: How }
 /** Visits taken out, as the desktop app answers them: what Undo puts back. */
 export type Removed = { url: string; title: string; at: number; profile: string; how: How; source: string }
-export type Found = { complete: { text: string; url: string } | null; rows: Suggestion[] }
+/** `rows`' `score`: how well each matches what's typed (frecency, more for a match at the start). */
+export type Found = { complete: { text: string; url: string } | null; rows: (Suggestion & { score: number })[] }
 export type ImportSource = { browser: "brave" | "chrome"; name: string; profiles: { dir: string; name: string; history: boolean; bookmarks: boolean }[] }
 export type ImportedBookmark = { url: string; title: string; folder: string }
 

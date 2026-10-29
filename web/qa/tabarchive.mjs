@@ -69,6 +69,11 @@ try {
   await command(page, "Show archived tabs", 800)
   const rows = () => page.$$eval("[data-archived-tab]", (els) => els.map((e) => e.getAttribute("data-archived-tab")))
   check("Archived tabs lists what's still archived", (await rows()).join() === "tb", await rows())
+  // The Tabs panel's foot: a quiet Archived tabs row, how many, opening them.
+  await command(page, "Show tabs in the sidebar", 800)
+  const foot = page.locator("[data-tabs-panel] [data-archived-row]")
+  check("the Tabs panel ends with Archived tabs and how many", !!(await until(() => foot.count(), 5000)) && /Archived tabs\s*1/.test(await foot.innerText()), await foot.count())
+  await command(page, "Show tabs on top", 500)
   await page.locator("[data-archived-tab='tb']").click({ button: "right" })
   await page.getByRole("menuitem", { name: "Remove", exact: true }).click()
   await until(async () => !(await rows()).length, 3000)

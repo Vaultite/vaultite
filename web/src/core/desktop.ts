@@ -118,7 +118,12 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   /** It's playing sound: from its first sound till its media pauses, through quiet scenes; its sound is muted. */
   playing?: boolean; muted?: boolean
   /** It's in its player, a window of its own (still its tab's). */
-  player?: boolean }
+  player?: boolean
+  /** Its site's zoom, when it isn't 100% (1.25: 125%). */
+  zoom?: number
+  /** `error` is a certificate it may go on past (`allow-cert`); its renderer kept crashing (a reload starts it again);
+   *  it holds typed, unsent input. Older builds don't say. */
+  unsafe?: boolean; crashed?: boolean; typed?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
 type WebRect = { x: number; y: number; width: number; height: number }
 /** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
@@ -132,10 +137,16 @@ export type WebPages = {
   place: (id: number, rect: WebRect | null) => Promise<{ focused?: boolean; shown?: boolean } | undefined | void>
   /** Its tab went to the background (a tab or workspace switch): hidden, kept for the tab's next `open`. */
   release: (id: number) => Promise<unknown>
-  /** Tab `tab` closed, left this window or stopped showing a web page: its page ends. */
-  close: (tab: string) => Promise<unknown>
-  /** `back-address`, `forward-address`: where Back or Forward would go (older builds answer nothing). */
-  go: (id: number, action: "back" | "forward" | "reload" | "back-address" | "forward-address" | "stop" | "load" | "focus" | "mute" | "unmute" | "pip", url?: string) => Promise<unknown>
+  /** Tab `tab` closed, left this window or stopped showing a web page: its page ends. `moved`: it went on in another of
+   *  this vault's windows, which takes the page, live, as it shows it (older builds end it). */
+  close: (tab: string, moved?: boolean) => Promise<unknown>
+  /** `back-address`, `forward-address`: where Back or Forward would go. `history`: `{ at, entries: [{ i, url, title }] }`,
+   *  `go-to` entry `url` (its i). `allow-cert`: past its warning (`unsafe`). `duplicate`: tab `url` gets its history. */
+  go: (id: number, action: "back" | "forward" | "reload" | "hard-reload" | "devtools" | "back-address" | "forward-address" | "stop" | "load" | "focus" | "mute"
+    | "unmute" | "pip" | "zoom-in" | "zoom-out" | "zoom-reset" | "print" | "history" | "go-to" | "allow-cert" | "source" | "duplicate", url?: string) => Promise<unknown>
+  /** Find `text` in the page, answered by `found` events: `next` goes on from the match it's at (`forward` false: back),
+   *  else it's a new search; "" stops. Older builds don't have it. */
+  find?: (id: number, text: string, o?: { next?: boolean; forward?: boolean; matchCase?: boolean }) => Promise<unknown>
   /** Into its player, a window of its own its main video fills (`fullScreen`: on a Space of its own), or back in its tab
    *  (`on` false). Older builds don't have it. */
   player?: (id: number, on: boolean, fullScreen?: boolean) => Promise<unknown>
@@ -184,14 +195,26 @@ export type WebPages = {
 }
 export type WebEvent =
   | { type: "state"; id: number; state: WebPageState }
-  | { type: "open"; id: number; url: string }
+  /** Page `id` (tab `tab`, logins `profile`) opens `url` in a new tab, a side pane or a glance, in `container` if one was
+   *  picked (null: none); `page`: the page made for it, handed to its tab with `engine("web:adopt", page, tab)`. */
+  | { type: "open"; id: number; tab: string; url: string; profile: string; how: "background" | "foreground" | "side" | "glance"; container?: string | null; page?: number }
+  /** Page `id`'s script opened `url` with nobody clicking: not opened (a popup blocker). */
+  | { type: "blocked"; id: number; tab: string; url: string; profile: string }
+  /** Tab `tab` closes itself (its page's first load was a download). */
+  | { type: "close"; tab: string }
   /** The pointer moved over a page near the window's left or right edge, or just left there (window CSS px). */
   | { type: "pointer"; x: number; y: number }
   | { type: "focus"; id: number }
   | { type: "clip"; id: number }
   | { type: "block"; id: number; x: number; y: number }
   | { type: "address"; id: number }
+  /** Its source asked for (⌥⌘U, its menu): a view-source: address for a tab of its own. */
+  | { type: "source"; id: number; url: string }
   | { type: "key"; id: number; key: string; code: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }
+  /** The mouse's back (-1) or forward (1) button over a page. */
+  | { type: "nav"; id: number; dir: -1 | 1 }
+  /** What a find found so far: the match it's at (1-based; 0: none), of how many, `final` once it's done counting. */
+  | { type: "found"; id: number; request: number; active: number; matches: number; final: boolean }
   | { type: "download"; name: string; path: string; ok: boolean }
   /** An image saved to the vault from a page's menu: its bytes (null: it couldn't be had), its name and type. */
   | { type: "image"; id: number; name: string; mime: string; data: Uint8Array | null; error?: string }

@@ -1,11 +1,11 @@
 // A web page in a tab: a slim bar over the desktop app's native page. While anything of the app covers the box, the
 // window goes over its pages and shows the live page through a hole (layers.ts).
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
-  VolumeX, X, type LucideIcon } from "lucide-react"
+import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
+  Search, ShieldAlert, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages, type MenuItem,
-  type WebPageAction, type WebPageState, type WebPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, menuBelow, navigate, notify, notifyError, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
+  type MenuItem, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
 import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, popupOpen, sameRect, setCover, setHole, type Change, type Cover } from "./layers"
@@ -13,12 +13,15 @@ import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
 import { manageContainers } from "./Sites"
-import { argOf, containerById, openingIn, profileIn, ruleFor, splitArg } from "./containers"
+import { argOf, containerById, containers, destination, keepOutside, keptOutside, openBehind, profileIn, splitArg, viewSource } from "./containers"
+import { fallbackFor, fallsBack, guessedFor, openWebTab, useDraft } from "./drafts"
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
 import { Passkey } from "./Passkey"
-import { bookmark, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown } from "./state"
+import { bookmark, forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown, takeUnheard, type FindAsk } from "./state"
+import { FindBar, findOpen, setFindOpen, type Found } from "./FindBar"
+import { siteIcon } from "./icons"
 import { agentPages, doneAsk, pauseAgents, toBackground, working, WORKING_MS } from "./agentpages"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
@@ -47,8 +50,8 @@ function pageArea(r: DOMRect) {
 }
 
 const http = (u: string) => /^https?:\/\//i.test(u)
-/** What a tab may follow and name: the web, and an extension's own pages (its options). */
-const ownPage = (u: string) => http(u) || /^chrome-extension:\/\//i.test(u)
+/** What a tab may follow and name: the web, an extension's own pages (its options) and a page's source. */
+const ownPage = (u: string) => http(u) || /^(chrome-extension:\/\/|view-source:https?:\/\/)/i.test(u)
 
 /** Whether tab `id` still shows a web page (else it went elsewhere: its page ends; gone, it closed or is in another
  *  workspace's tabs). */
@@ -74,9 +77,13 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   /** A passkey it asked for: drawn in its place till the phone answers. */
   const passkey = passkeyAsks.use((m) => (id ? m.get(id) : undefined))
   const live = useRef({ arg, state, setArg, setTabArg, error: false, passkey: false })
-  useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error, passkey: !!passkey } })
+  useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error || !!state.crashed, passkey: !!passkey } })
   // In its player (a window of its own): the tab says so, and nothing here places the page.
   const away = !!state.player
+  // Its find bar (FindBar.tsx), open per tab as in Chrome: `ask` bumped by ⌘F, ⌘G and ⇧⌘G (0: shown again, not asked).
+  const [ask, setAsk] = useState<{ n: number; how: FindAsk } | null>(() => (findOpen(tab) ? { n: 0, how: "open" } : null))
+  const [found, setFound] = useState<Found | null>(null)
+  const askFind = (how: FindAsk) => { setFindOpen(tab, true); setAsk((a) => ({ n: (a?.n ?? 0) + 1, how })) }
 
   // A container that needs Touch ID: whether it's locked now (null: not known yet), asked again as containers lock.
   const [locked, setLocked] = useState<boolean | null>(container ? null : false)
@@ -104,9 +111,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const leave = (id: number) => void painted().then(() => { void web.release(id); if (tab && !stillWeb(tab)) void web.close(tab) })
     settingsRead().then(() => {
       // Opened in none: a site that always opens in a container, or a workspace with one of its own, takes its tab
-      // there (drawn afresh, index.tsx).
-      const rule = container ? null : openingIn(arg)
-      if (rule && containerById(rule)) { live.current.setTabArg(argOf(arg, rule)); return Promise.reject(null) }
+      // there (drawn afresh, index.tsx), unless the user put it in none.
+      const into = container || keptOutside(arg) ? null : destination(arg, { from: null, fresh: true }).container
+      if (into) { live.current.setTabArg(argOf(arg, into)); return Promise.reject(null) }
       // (where its box is now: shown at once, not after this tab draws again; not under something of the app's)
       const el = box.current, r = el && !popupOpen() ? pageArea(el.getBoundingClientRect()) : null
       return web.open(arg, r && r.width >= 2 && r.height >= 2 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null, profileIn(container), tab)
@@ -114,6 +121,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (gone) { leave(r.id); return }
       mine = r.id
       shownFocused.current = !!r.focused
+      forgetUnheard(r.id) // (what it said before is in `r.state`; what it says from now till its tab listens is kept)
       taken.current = live.current.arg
       setId(r.id)
       setState(r.state)
@@ -121,6 +129,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     return () => { gone = true; if (mine) leave(mine); setId(0) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked, blank])
+
+  // (made blank, Back to safety with nowhere to go back to: what its page said goes with it)
+  useEffect(() => { if (blank) setState({ url: "", title: "", back: false, forward: false, loading: false }) }, [blank])
 
   // The tab's address follows the page; one given to the tab (not from the page) is loaded.
   useEffect(() => {
@@ -134,6 +145,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     if (ownPage(state.url) && state.url !== live.current.arg) live.current.setArg(state.url)
     if (ownPage(state.url)) setTitle(state.url, state.title)
   }, [state.url, state.title])
+  // (another page: what was found was found there)
+  useEffect(() => setFound(null), [state.url])
 
   const clip = async () => {
     if (!id || saving) return
@@ -163,10 +176,14 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   useEffect(() => {
     if (!id) return
     shown.set(id, {
-      group, container, url: () => live.current.state.url, onState: setState, clip: () => void clipRef.current(),
+      group, tab, container, url: () => live.current.state.url, state: () => live.current.state, onState: setState, clip: () => void clipRef.current(),
+      find: askFind, found: (active, matches) => { if (findOpen(tab)) setFound({ active, matches }) },
       focusAddress: () => { address.current?.focus(); address.current?.select() }, inPlayer: () => !!live.current.state.player,
     })
+    const missed = takeUnheard(id)
+    if (missed) setState(missed)
     return () => { shown.delete(id) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, group, container, web])
   // (a new web tab's keyboard is its address's)
   useEffect(() => { if (blank && focused && !typingIn(document.activeElement)) address.current?.focus() }, [blank, focused])
@@ -275,38 +292,98 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     }
   }, [id, web, away])
   // (an error's note in the box: the page goes, and comes back with a retry)
-  useEffect(() => kick.current?.(), [state.error, !!passkey])
+  useEffect(() => kick.current?.(), [state.error, state.crashed, !!passkey])
+  // (no error page while it's tried again over http, below)
+  const [retried, setRetried] = useState(false)
+  // An address typed with no scheme went to https: one that can't connect there is tried over http, as browsers do.
+  useEffect(() => {
+    if (!id || !state.error) return
+    const to = fallbackFor(state.url, state.error) ?? fallbackFor(arg, state.error)
+    if (to) { setRetried(true); void web.go(id, "load", to) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, state.error])
+  useEffect(() => { if (!state.error) setRetried(false) }, [state.error])
+  const falling = !!state.error && (retried || fallsBack(state.url, state.error) || fallsBack(arg, state.error))
+
+  // What's typed in the address, kept till Esc, Enter or the page going elsewhere (while it's typed, it rebases).
+  const [draft, setDraft] = useDraft(tab)
+  const noHash = (u: string) => u.replace(/#.*$/, "")
+  useEffect(() => {
+    if (!draft || noHash(draft.on) === noHash(state.url)) return
+    setDraft(document.activeElement === address.current ? { ...draft, on: state.url } : null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.url])
+  /** The address Enter would open now (the bar's first or chosen suggestion). */
+  const [target, setTarget] = useState<string | null>(null)
+  // Where it opens, live on the chip while it's typed (and on a new tab): one answer for Enter, ⌥Enter and ⌘Enter.
+  const drafting = blank || !!draft
+  const where = (to: string) => destination(to, { from: container, fresh: blank, chosen: draft?.chosen })
+  const into = drafting ? where(target ?? (blank ? "" : state.url || arg)) : { container, why: "" }
+  const choose = (chosen: string | null) => setDraft({ text: draft?.text ?? null, chosen, on: draft?.on ?? state.url })
+  const pickContainer = (id: string | null) => {
+    if (drafting) return choose(id)
+    const url = state.url || arg
+    if (id === null) keepOutside(url)
+    setTabArg(argOf(url, id))
+  }
+  const turn = (by: 1 | -1) => {
+    const ids = [null, ...containers().map((c) => c.id)], i = ids.indexOf(into.container)
+    choose(ids[(i + by + ids.length) % ids.length])
+  }
 
   const inside = containerById(container)
   const ext = useExtensionBar(id, state.url)
 
-  const go: Go = (to, how, newTab) => {
+  const go: Go = (to, how, place, guessed) => {
     markTyped(to, how)
-    if (newTab) { openView(`web/${argOf(to, container)}`, { newTab: true }); return }
-    // (a site that always opens in another container: the tab moves there)
-    const rule = ruleFor(to)
-    if (rule && rule !== container && containerById(rule)) { setTabArg(argOf(to, rule)); return }
-    if (!id) { setArg(to); return }
+    if (guessed) guessedFor(to)
+    const { container: c } = where(to)
+    setDraft(null)
+    // (a new page in none stays there: the chip said so, whatever the workspace's container)
+    if (c === null && (place !== "here" || !id || container !== null)) keepOutside(to)
+    if (place !== "here") return openWebTab(to, c, place === "back", tab || undefined)
+    // (another container is another page: the tab moves there, its back history with it)
+    if (c !== container) return setTabArg(argOf(to, c))
+    if (!id) return setArg(to)
     void web.go(id, "load", to)
     void web.go(id, "focus")
   }
 
-  // (a tab of its own even when another shows that address: a copy is what Reload's asked for)
-  const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openView(`web/${argOf(to, container)}`, { another: true }) }
+  // (behind it, as a link's new tab: a tab of its own even when another shows that address, a copy is what Reload's asked for)
+  const inNewTab = (to: unknown) => { if (typeof to === "string" && to) openBehind(to, destination(to, { from: container, fresh: false }).container, tab || undefined) }
 
   const onWeb = http(state.url)
   const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
+  // Back and Forward walk the page's history, then the tab's (Back from a page opened from another tab goes back to it).
+  const me = panesOf(getTabLayout().root).flatMap((g) => g.tabs).find((t) => t.id === tab)
+  const back = state.back || canNavigate(me, -1), forward = state.forward || canNavigate(me, 1)
+  const walk = (dir: -1 | 1) => { if (dir < 0 ? state.back : state.forward) void web.go(id, dir < 0 ? "back" : "forward"); else navigate(dir) }
+  /** Back's or Forward's places, nearest first, as a menu under its button. */
+  const places = async (el: HTMLElement, dir: -1 | 1) => {
+    const h = await web.go(id, "history").catch(() => null) as { at: number; entries: { i: number; url: string; title: string }[] } | null
+    if (!h) return
+    const list = h.entries.filter((x) => (dir < 0 ? x.i < h.at : x.i > h.at))
+    if (dir < 0) list.reverse()
+    const r = el.getBoundingClientRect()
+    openMenu({ x: r.left, y: r.bottom + 4 }, [
+      ...list.slice(0, 15).map((x): MenuItem => ({ label: x.title || x.url, icon: siteIcon(x.url), run: () => void web.go(id, "go-to", String(x.i)) })),
+      { label: "Show full history", icon: History, sep: list.length > 0, run: () => openView("web-history", { newTab: true }) },
+    ])
+  }
   return (
     <div className="flex h-full min-h-0 flex-col" data-web-page={id || ""}>
       {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
-      <div ref={bar} className="@container/bar flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5" data-web-bar>
-        <BarButton icon={ArrowLeft} label="Back" disabled={!state.back} onClick={() => void web.go(id, "back")} onNewTab={() => void web.go(id, "back-address").then(inNewTab)} />
-        <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} onNewTab={() => void web.go(id, "forward-address").then(inNewTab)} className="@max-xs/bar:hidden" />
+      <div ref={bar} className="@container/bar relative flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5" data-web-bar>
+        <BarButton icon={ArrowLeft} label="Back" disabled={!back} onClick={() => walk(-1)} onNewTab={() => void web.go(id, "back-address").then(inNewTab)}
+          onMenu={id && state.back ? (el) => void places(el, -1) : undefined} />
+        <BarButton icon={ArrowRight} label="Forward" disabled={!forward} onClick={() => walk(1)} onNewTab={() => void web.go(id, "forward-address").then(inNewTab)}
+          onMenu={id && state.forward ? (el) => void places(el, 1) : undefined} className="@max-xs/bar:hidden" />
         <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")}
           onNewTab={state.loading ? undefined : () => inNewTab(state.url)} />
-        <AddressBar url={state.url} current={tabArg} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }}
-          lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} manage={manageContainers} />}
-          trail={id > 0 && onWeb ? <ShieldsButton id={id} url={state.url} loading={state.loading} /> : null} />
+        <AddressBar url={state.url} tab={tab} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
+          onLeave={() => { if (id) void web.go(id, "focus") }}
+          lead={<ContainerButton container={into.container} url={drafting ? target ?? "" : state.url || arg} why={into.why} pick={pickContainer} manage={manageContainers} />}
+          trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<ShieldsButton id={id} url={state.url} loading={state.loading} /></> : null} />
         {id > 0 && <AgentChip id={id} />}
         {(state.playing || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
@@ -315,6 +392,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         <SaveButton disabled={!id || !onWeb} saving={saving} onSave={() => void clip()} actions={actions.filter((a) => a.kind === "save")} />
         <MoreButton disabled={!onWeb} items={(at) => [
           { label: "Bookmark", icon: Bookmark, hint: commandKeys("web:bookmark") || undefined, run: () => void bookmark(state.url, state.title) },
+          ...(id && web.find ? [{ label: "Find in page…", icon: Search, hint: commandKeys("web:find") || undefined, run: () => askFind("open") }] : []),
+          ...(id ? [{ label: "Print…", icon: Printer, run: () => void web.go(id, "print") }] : []),
+          { label: "View page source", icon: FileCode2, hint: commandKeys("web:source") || undefined, run: () => viewSource(state.url, container, tab) },
           ...(web.engine && id ? [{ label: "Block an element…", icon: MousePointerSquareDashed, run: () => void pickElement(id) }] : []),
           { label: "Open in another browser", icon: ArrowUpRight, run: () => void web.external(state.url) },
           ...(web.player && id ? [away
@@ -324,12 +404,18 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           ...withSep(actionItems(actions.filter((a) => a.kind !== "save"))),
           ...withSep(extensionItems(ext, at)),
         ]} />
+        <Progress loading={id > 0 && state.loading && !state.error} />
       </div>
+      {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found}
+        close={() => { setFindOpen(tab, false); setAsk(null); setFound(null); void web.go(id, "focus") }} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
-        {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab)} />}
+        {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab ? "back" : "here")} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
         {passkey && <Passkey ask={passkey} />}
-        {state.error && <Problem error={state.error} url={state.url || arg} onRetry={() => void web.go(id, "reload")} />}
+        {blank ? null : state.crashed ? <Crashed url={state.url || arg} onReload={() => void web.go(id, "reload")} />
+          : state.error && state.unsafe ? <Unsafe error={state.error} url={state.url || arg} onBack={() => (state.back ? void web.go(id, "back") : setTabArg(argOf("", container)))}
+            onGo={() => void web.go(id, "allow-cert")} />
+          : state.error && !falling && <Problem error={state.error} url={state.url || arg} onRetry={() => void web.go(id, "reload")} />}
         {locked && inside && <Locked name={inside.name} unlock={() => void Promise.resolve(web.engine?.("lock:unlock", profileIn(container), inside.name))
           .then((ok) => { if (ok === true) setLocked(false) }, (e) => notifyError(e, "Couldn't unlock it"))} />}
       </div>
@@ -422,23 +508,140 @@ function Locked({ name, unlock }: { name: string; unlock: () => void }) {
   )
 }
 
+/** Why a page didn't load, in words (Chrome's), by Chromium's error: its heading and what to do. */
+function problemOf(error: string, host: string): { icon: LucideIcon; title: string; detail: string } {
+  const e = error.replace(/^net::/, "")
+  if (/^ERR_INTERNET_DISCONNECTED$/.test(e)) return { icon: WifiOff, title: "You're offline", detail: "It loads again once this Mac is back online." }
+  if (/^ERR_NETWORK_CHANGED$/.test(e)) return { icon: WifiOff, title: "Your connection was interrupted", detail: "The network changed while it loaded." }
+  if (/^ERR_NAME_(NOT_RESOLVED|RESOLUTION_FAILED)$/.test(e)) return { icon: Globe, title: `Can't find ${host}`, detail: "Check the address for a typo, or that the site still exists." }
+  if (/^ERR_CONNECTION_REFUSED$/.test(e)) return { icon: Globe, title: `${host} refused to connect`, detail: "Nothing is answering at that address, or it turned this browser away." }
+  if (/^ERR_(CONNECTION_)?TIMED_OUT$/.test(e)) return { icon: Globe, title: `${host} took too long to respond`, detail: "The site may be down or busy, or the network slow." }
+  if (/^ERR_TOO_MANY_REDIRECTS$/.test(e)) return { icon: Globe, title: `${host} redirected you too many times`, detail: "Signing out of it, or clearing its cookies in Sites, may fix it." }
+  if (/^ERR_CONNECTION_(RESET|CLOSED|ABORTED)$|^ERR_EMPTY_RESPONSE$/.test(e)) return { icon: Globe, title: `${host} closed the connection`, detail: "It may work if you try again." }
+  if (/^ERR_ADDRESS_UNREACHABLE$/.test(e)) return { icon: Globe, title: `Can't reach ${host}`, detail: "It's on a network this Mac isn't on." }
+  if (/^ERR_(SSL|CERT)_/.test(e)) return { icon: ShieldAlert, title: `${host} can't make a secure connection`, detail: "It sent something this browser can't trust." }
+  if (/^ERR_(FILE_NOT_FOUND|INVALID_RESPONSE|INVALID_HTTP_RESPONSE|HTTP_RESPONSE_CODE_FAILURE)$/.test(e)) return { icon: FileWarning, title: `${host} sent nothing to show`, detail: "Its page may be broken." }
+  return { icon: Globe, title: `Couldn't open ${host}`, detail: "Something went wrong loading it." }
+}
+/** Errors from being offline: tried again on their own once the Mac is back online, as Chrome does. */
+const OFFLINE = /^(net::)?ERR_(INTERNET_DISCONNECTED|NETWORK_CHANGED|NAME_NOT_RESOLVED|NAME_RESOLUTION_FAILED|ADDRESS_UNREACHABLE)$/
+
+const PANEL = "absolute inset-0 flex flex-col items-center overflow-y-auto bg-background px-8 pt-20 pb-10 text-center"
+const PANEL_BUTTON = "mt-4 cursor-pointer rounded-[6px] border-[0.5px] border-border px-3 py-1.5 text-[13px] hover:bg-foreground/[0.06]"
+
 function Problem({ error, url, onRetry }: { error: string; url: string; onRetry: () => void }) {
+  const p = problemOf(error, hostOf(url)), Icon = p.icon
+  const retry = useRef(onRetry)
+  useEffect(() => { retry.current = onRetry })
+  useEffect(() => {
+    if (!OFFLINE.test(error)) return
+    const back = () => retry.current()
+    addEventListener("online", back)
+    return () => removeEventListener("online", back)
+  }, [error])
   return (
-    <div className="absolute inset-0 flex flex-col items-center bg-background px-8 pt-20 text-center" data-web-error>
-      <Globe className="size-8 text-tertiary" strokeWidth={1.5} />
-      <p className="mt-4 text-[15px] text-foreground">Couldn't open {hostOf(url)}</p>
-      <p className="mt-1 text-[13px] text-muted-foreground">{error}</p>
-      <button type="button" onClick={onRetry} className="mt-4 cursor-pointer rounded-[6px] border-[0.5px] border-border px-3 py-1.5 text-[13px] hover:bg-foreground/[0.06]">Try again</button>
+    <div className={PANEL} data-web-error={error}>
+      <Icon className="size-8 text-tertiary" strokeWidth={1.5} />
+      <p className="mt-4 max-w-[520px] text-[15px] text-foreground" data-web-error-title>{p.title}</p>
+      <p className="mt-1 max-w-[520px] text-[13px] text-muted-foreground">{p.detail}</p>
+      <button type="button" onClick={onRetry} className={PANEL_BUTTON} data-web-retry>Try again</button>
+      <p className="mt-6 font-mono text-[11px] text-tertiary select-text">{error.replace(/^net::/, "")}</p>
     </div>
   )
 }
 
-/** `onNewTab`: a middle-click or ⌘-click, as on a link (Back's page in a new tab, Reload's a copy of this one). */
-function BarButton({ icon: Icon, label, onClick, onNewTab, disabled, className }: { icon: LucideIcon; label: string; onClick: () => void; onNewTab?: () => void; disabled?: boolean; className?: string }): ReactNode {
+/** A certificate this Mac doesn't trust, as Chrome warns of it: back to safety, or (Advanced) on to the site anyway, which
+ *  trusts that certificate for that site till the app quits. */
+function Unsafe({ error, url, onBack, onGo }: { error: string; url: string; onBack: () => void; onGo: () => void }) {
+  const [more, setMore] = useState(false)
+  const host = hostOf(url)
   return (
-    <button type="button" onClick={(e) => { if (onNewTab && (e.metaKey || e.ctrlKey)) onNewTab(); else onClick() }} disabled={disabled} aria-label={label} data-tip={label}
-      onAuxClick={(e) => { if (e.button === 1 && onNewTab) { e.preventDefault(); onNewTab() } }} className={cn(BAR_ICON, className)}>
+    <div className={PANEL} data-web-unsafe>
+      <ShieldAlert className="size-8" strokeWidth={1.5} style={{ color: "var(--red)" }} />
+      <p className="mt-4 text-[15px] text-foreground">Your connection isn't private</p>
+      <p className="mt-1 max-w-[520px] text-[13px] text-muted-foreground">Someone may be trying to steal what you send to {host}, like passwords, messages or card numbers.</p>
+      <div className="mt-4 flex gap-2">
+        <button type="button" onClick={() => setMore(!more)} className={cn(PANEL_BUTTON, "mt-0")} data-web-unsafe-more>{more ? "Hide details" : "Advanced"}</button>
+        <Button look="primary" onClick={onBack} data-web-unsafe-back>Back to safety</Button>
+      </div>
+      {more && (
+        <div className="mt-5 max-w-[520px] text-[13px] text-muted-foreground">
+          <p>{host}'s certificate isn't one this Mac trusts: the site may be set up wrong, or someone may be standing in for it.</p>
+          <button type="button" onClick={onGo} className="mt-2 cursor-pointer text-[13px] underline underline-offset-2 hover:text-foreground" data-web-unsafe-go>
+            Continue to {host} (unsafe)
+          </button>
+        </div>
+      )}
+      <p className="mt-6 font-mono text-[11px] text-tertiary select-text">{error.replace(/^net::/, "")}</p>
+    </div>
+  )
+}
+
+/** Its page kept crashing (web.ts gave up reloading it): said, with Reload, never a blank tab. */
+function Crashed({ url, onReload }: { url: string; onReload: () => void }) {
+  return (
+    <div className={PANEL} data-web-crashed>
+      <FileWarning className="size-8 text-tertiary" strokeWidth={1.5} />
+      <p className="mt-4 text-[15px] text-foreground">This page crashed</p>
+      <p className="mt-1 max-w-[520px] text-[13px] text-muted-foreground">Something went wrong showing {hostOf(url)}. Reloading it may help.</p>
+      <button type="button" onClick={onReload} className={PANEL_BUTTON} data-web-reload>Reload</button>
+    </div>
+  )
+}
+
+/** A thin line under the bar while the page loads, as Safari's and Arc's: it eases most of the way, then fills and fades
+ *  as the load ends. It says only that it's loading, not how much is left (Chromium doesn't know). */
+function Progress({ loading }: { loading: boolean }) {
+  const el = useRef<HTMLDivElement>(null), was = useRef(false)
+  useEffect(() => {
+    const e = el.current
+    if (!e || loading === was.current) return
+    was.current = loading
+    if (loading) {
+      e.getAnimations().forEach((a) => a.cancel())
+      e.animate([{ opacity: 1, transform: "scaleX(0.02)" }, { opacity: 1, transform: "scaleX(0.85)" }], { duration: 9000, easing: "cubic-bezier(.08,.7,.25,1)", fill: "forwards" })
+    } else {
+      const from = getComputedStyle(e).transform
+      e.getAnimations().forEach((a) => a.cancel())
+      e.animate([{ opacity: 1, transform: from === "none" ? "scaleX(0.85)" : from }, { opacity: 1, transform: "scaleX(1)", offset: 0.4 }, { opacity: 0, transform: "scaleX(1)" }],
+        { duration: 450, easing: "ease-out", fill: "forwards" })
+    }
+  }, [loading])
+  return <div ref={el} aria-hidden data-web-progress={loading ? "loading" : ""} className="pointer-events-none absolute inset-x-0 -bottom-[0.5px] h-[2px] origin-left opacity-0"
+    style={{ background: "var(--primary)" }} />
+}
+
+/** `onNewTab`: a middle-click or ⌘-click, as on a link (Back's page in a new tab, Reload's a copy of this one). `onMenu`:
+ *  a right-click or a press held, as Chrome's Back lists its places. */
+function BarButton({ icon: Icon, label, onClick, onNewTab, onMenu, disabled, className }: { icon: LucideIcon; label: string; onClick: () => void; onNewTab?: () => void
+  onMenu?: (el: HTMLElement) => void; disabled?: boolean; className?: string }): ReactNode {
+  const hold = useRef(0), held = useRef(false)
+  const unhold = () => { clearTimeout(hold.current); hold.current = 0 }
+  return (
+    <button type="button" disabled={disabled} aria-label={label} data-tip={label} className={cn(BAR_ICON, className)}
+      onClick={(e) => { if (held.current) { held.current = false; return } if (onNewTab && (e.metaKey || e.ctrlKey)) onNewTab(); else onClick() }}
+      onAuxClick={(e) => { if (e.button === 1 && onNewTab) { e.preventDefault(); onNewTab() } }}
+      onContextMenu={onMenu && ((e) => { e.preventDefault(); onMenu(e.currentTarget) })}
+      onPointerDown={onMenu && ((e) => {
+        if (e.button !== 0 || e.pointerType === "touch") return
+        const el = e.currentTarget
+        held.current = false
+        hold.current = window.setTimeout(() => { held.current = true; onMenu(el) }, HOLD_MS)
+      })}
+      onPointerUp={unhold} onPointerLeave={unhold}>
       <Icon className="size-4" strokeWidth={2} />
+    </button>
+  )
+}
+/** How long Back is held for its list. */
+const HOLD_MS = 450
+
+/** A site zoomed in or out: how much, a click putting it back to 100%. */
+function ZoomButton({ zoom, reset }: { zoom: number; reset: () => void }) {
+  return (
+    <button type="button" onClick={reset} aria-label={`Zoom ${Math.round(zoom * 100)}%: reset to 100%`} data-tip="Reset zoom" data-web-zoom={Math.round(zoom * 100)}
+      className="flex h-6 shrink-0 cursor-pointer items-center rounded-[5px] px-1.5 text-[12px] tabular-nums text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground">
+      {Math.round(zoom * 100)}%
     </button>
   )
 }

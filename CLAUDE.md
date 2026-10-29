@@ -28,8 +28,9 @@ the main writers. Served on a private network (a tailnet), no accounts.
 
 ## UI
 Read `web/CLAUDE.md` first. UI text: sentence case, no emojis, no all caps.
-Agents never take the user's focus: what an op opens for one (not `byUser`) goes behind their tab (`openBehind`),
-with a toast to show it. `vau open` is the exception: showing the user something is its point.
+Agents never take the user's focus: what an op opens for one (not `byUser`) goes behind their tab
+(`openTab(to, { background: true })`), with a toast to show it. `vau open` is the exception: showing the user something
+is its point.
 
 ## Running and verifying
 - `npm start` serves on 127.0.0.1:8793, often the live server: give anything else its own port, and keep tests off the

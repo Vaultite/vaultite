@@ -13,7 +13,8 @@ import { useTypingFade } from "@/core/typing"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canClosePane, canReopenTab, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { restTab } from "@/core/workspace"
 import { hasSiblings, moveTabBy, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "../../core/layout.ts"
@@ -23,6 +24,7 @@ import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
 import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
 import { leaveSet, makeSet } from "@/core/tabsets"
+import { canReopen, reopenLatest } from "@/core/tabarchive"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
 import { allSwitches, switchCommand } from "@/core/switches"
@@ -339,11 +341,10 @@ export default function App() {
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
-    // (A pinned tab stays open: closed from its menu, with its pane, or unpinned first; the toast says so.)
+    // (A pinned tab stays: ⌘W rests it, as Arc does; it's closed from its menu, with its pane, or unpinned first.)
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, label: "Close tab", icon: X, run: () => {
       const t = activeTab()
-      if (!t.pinned) return closeTab(t.id)
-      notify(canClosePane() ? "Pinned: unpin it or close the pane" : "Pinned: unpin it to close it", { id: "pinned", action: { label: "Unpin", run: () => togglePinTab(t.id) } })
+      if (t.pinned) restTab(t.id); else closeTab(t.id)
     } },
     // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs.)
     { id: "pane:close", name: "Close pane", keys: ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
@@ -363,14 +364,14 @@ export default function App() {
       when: () => isDesktop() && tabsHere() >= n, run: () => selectTabAt(n), icon: Hash })),
     { id: "tab:goto-last", name: "Go to last tab", keys: desktopApp ? ["Mod+9"] : undefined, when: isDesktop, run: () => selectTabAt(-1), icon: ArrowRightToLine },
     // (⌘⇧T is the browser's too.)
-    { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: () => isDesktop() && canReopenTab(), run: () => reopenTab(fileGone), icon: RotateCcw },
+    { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: () => isDesktop() && canReopen(), run: () => reopenLatest(fileGone), icon: RotateCcw },
     { id: "tab:close-others", name: "Close all other tabs", keys: ["Mod+Alt+W"], when: isDesktop, run: () => closeTabs("others", activeTab().id), icon: CopyX },
     // (⌃⇧PgUp and PgDn are the browser's: the desktop app has them.)
     { id: "tab:move-left", name: "Move tab left", keys: desktopApp ? ["Ctrl+Shift+PageUp"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(-1), icon: ArrowLeft },
     { id: "tab:move-right", name: "Move tab right", keys: desktopApp ? ["Ctrl+Shift+PageDown"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(1), icon: ArrowRight },
     // (⌃Tab is the browser's: the desktop app has it, the web none by default.)
-    { id: "tab:next", name: "Go to next tab", keys: desktopApp ? ["Ctrl+Tab"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(1), icon: ChevronRight },
-    { id: "tab:previous", name: "Go to previous tab", keys: desktopApp ? ["Ctrl+Shift+Tab"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(-1), icon: ChevronLeft },
+    { id: "tab:next", name: "Go to next tab", keys: desktopApp ? ["Ctrl+Tab", ...(isMac ? ["Mod+Shift+]"] : [])] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(1), icon: ChevronRight },
+    { id: "tab:previous", name: "Go to previous tab", keys: desktopApp ? ["Ctrl+Shift+Tab", ...(isMac ? ["Mod+Shift+["] : [])] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(-1), icon: ChevronLeft },
     // (Ctrl+. is IBus' emoji key on Linux: Alt+Enter there too, JetBrains' "show actions".)
     { id: "file:actions", name: "Show actions for current file", keys: isMac ? ["Mod+."] : ["Mod+.", "Alt+Enter"], when: () => !!actionTarget(), run: () => chooseAction(actionTarget()), icon: Zap },
     { id: "file:reveal", name: "Reveal current file in file tree", when: () => !!tabFile() && isEnabled("files", getPrefs().disabled),

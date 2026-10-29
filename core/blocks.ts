@@ -8,7 +8,8 @@ type OptionType = "string" | "number" | "boolean" | "list" | "map" | "enum"
 export type OptionDecl = {
   type: OptionType | OptionType[]
   description: string
-  /** enum: the values it may be; list: the items its list may have (left out: any). */
+  /** enum: the values it may be; list: the items its list may have (left out: any); a setting's string: ones to pick
+   *  from (labelled by `labels`), another typed in too. */
   values?: (string | number)[]
   /** What it is when left out: the block gets it filled in (resolveOptions). */
   default?: unknown

@@ -21,7 +21,7 @@ import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
 import { commentSpans, highlightClass, highlightColor, highlightSpans, paragraphAt, unquoted, type HighlightColor } from "@/core/highlights"
 import { highlightItems } from "@/core/highlightMenu"
-import { drawnLink, type Link } from "@/core/links"
+import { drawnLink, linkClick, type Link, type LinkClick } from "@/core/links"
 import { openMenu } from "@/components/ContextMenu"
 import type { ReadingBlock, ReadingDrawn } from "@/core/define"
 import type { ReadBlock } from "@/core/plugins"
@@ -1837,7 +1837,7 @@ const newTable = EditorView.updateListener.of((u) => {
 })
 
 /** Links: a click on a rendered link opens it (in the editor, only with ⌘ when its Markdown is showing). */
-export function linkHandler(open: (link: { wiki?: string; url?: string; tag?: string }, newTab: boolean) => void) {
+export function linkHandler(open: (link: { wiki?: string; url?: string; tag?: string }, how: boolean | LinkClick) => void) {
   return EditorView.domEventHandlers({
     mousedown(e, view) {
       if (e.button !== 0 && e.button !== 1) return false
@@ -1856,10 +1856,9 @@ export function linkHandler(open: (link: { wiki?: string; url?: string; tag?: st
       const raw = el.classList.contains("cm-wikilink-raw") || el.classList.contains("cm-link-raw")
       if (raw && !(e.metaKey || e.ctrlKey) && view.state.facet(EditorView.editable)) return false
       e.preventDefault()
-      const newTab = e.metaKey || e.ctrlKey || e.button === 1
       if (e.button === 1) noPaste()
-      if (el.dataset.wiki) open({ wiki: el.dataset.wiki }, newTab)
-      else if (el.dataset.url) open({ url: el.dataset.url }, newTab)
+      if (el.dataset.wiki) open({ wiki: el.dataset.wiki }, linkClick(e).newTab)
+      else if (el.dataset.url) open({ url: el.dataset.url }, linkClick(e))
       return true
     },
   })

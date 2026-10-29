@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react"
 import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "lucide-react"
 import {
   edgeScroller, canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
-  notifyError, openView, panesOf, pastEnd, put, rowMenu, RowKeys, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
+  isViewOpen, notifyError, openView, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
@@ -235,6 +235,18 @@ function NewTabRow() {
   )
 }
 
+/** The panel's foot, as Arc's: the archived tabs, how many, when there are any. */
+function ArchivedRow() {
+  const n = useArchivedTabs().length
+  if (!n) return null
+  return (
+    <SidebarRow data-archived-row icon={Archive} label="Archived tabs" open className="mt-2 text-muted-foreground"
+      onClick={() => openView("archived-tabs", { newTab: !isViewOpen("view:archived-tabs") })}>
+      <span className="mr-1 shrink-0 text-[12px] text-tertiary tabular-nums">{n}</span>
+    </SidebarRow>
+  )
+}
+
 function TabsPanel({ store, open }: SidebarCtx) {
   if (!open) return null
   return (
@@ -244,6 +256,7 @@ function TabsPanel({ store, open }: SidebarCtx) {
       <TabRows store={store} />
       <NewTabRow />
       <OtherDevices store={store} />
+      <ArchivedRow />
     </div>
   )
 }

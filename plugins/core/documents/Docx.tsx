@@ -1,7 +1,7 @@
 // A Word document drawn with docx-preview in a shadow root, so its styles and the app's don't touch. The file is
 // untrusted: embedded HTML isn't drawn and links never run (web links open like any other).
 import { useEffect, useRef, useState } from "react"
-import { Loading, openWebLink } from "@vaultite"
+import { linkClick, Loading, openWebLink } from "@vaultite"
 
 /** Pages are drawn at their size (in CSS pixels) and scaled to the box's width when it's narrower. */
 const STYLE = `
@@ -59,7 +59,7 @@ export default function Docx({ url, embed }: { url: string; embed?: boolean }) {
     if (!a) return
     e.preventDefault()
     const href = a.getAttribute("href") ?? ""
-    if (/^https?:/i.test(href)) openWebLink(href, e.metaKey || e.ctrlKey)
+    if (/^https?:/i.test(href)) openWebLink(href, linkClick(e))
     else if (/^mailto:/i.test(href)) window.open(href, "_blank", "noopener")
     else if (href.startsWith("#")) host.current?.shadowRoot?.getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView({ block: "start" })
   }

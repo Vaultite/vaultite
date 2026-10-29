@@ -1,7 +1,7 @@
 // A .pptx drawn read-only like PowerPoint (pptx-renderer, its own chunk), far slides not kept drawn. The file is
 // untrusted: the renderer escapes text, filters link protocols and limits what the zip may unpack.
 import { useEffect, useRef, useState } from "react"
-import { Loading, openWebLink } from "@vaultite"
+import { linkClick, Loading, openWebLink } from "@vaultite"
 
 export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
@@ -38,7 +38,7 @@ export default function Deck({ url, embed }: { url: string; embed?: boolean }) {
     if (!a) return
     e.preventDefault()
     const href = a.getAttribute("href") ?? ""
-    if (/^https?:/i.test(href)) openWebLink(href, e.metaKey || e.ctrlKey)
+    if (/^https?:/i.test(href)) openWebLink(href, linkClick(e))
   }
   return (
     <div className={embed ? "max-h-[520px] overflow-auto" : undefined} data-deck={count || undefined}>

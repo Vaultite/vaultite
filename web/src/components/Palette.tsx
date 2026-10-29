@@ -82,9 +82,15 @@ const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
   )
 })
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look }: {
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, select = false, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look, complete, onKey: ownKey }: {
   label: string; placeholder: string
-  query: string; setQuery: (q: string) => void
+  /** `deleting`: the change took text away (an inline completion isn't offered then). */
+  query: string; setQuery: (q: string, how?: { deleting: boolean }) => void
+  /** What the query is completed to inline (a new tab's site, "github.com" for "gith"): the rest shown selected after
+   *  what's typed, as a browser's address bar does; → takes it. */
+  complete?: string | null
+  /** Keys of the caller's, before the palette's: true when it took one. */
+  onKey?: (e: KeyboardEvent) => boolean
   /** Open with the query selected (a kept one: useFinderQuery), else the caret after it. */
   select?: boolean
   items: T[]
@@ -111,6 +117,13 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const [sel, setSel] = useState(query ? 0 : start)
   const list = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
+  const [composing, setComposing] = useState(false)
+  const suffix = complete && !composing && query && !/\s/.test(query) && complete.length > query.length && complete.toLowerCase().startsWith(query.toLowerCase())
+    ? complete.slice(query.length) : ""
+  useLayoutEffect(() => {
+    const f = input.current
+    if (suffix && f && document.activeElement === f) f.setSelectionRange(query.length, query.length + suffix.length, "forward")
+  }, [query, suffix])
   // The page under it held still (PaletteFrame), then the field focused.
   useLayoutEffect(() => {
     const f = input.current
@@ -145,6 +158,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const [rowPick] = useState(() => (i: number, e: Pointer) => picks.current(i, e))
   const [rowHover] = useState(() => (i: number) => setSel(i))
   const onKey = (e: KeyboardEvent) => {
+    if (e.nativeEvent.isComposing || ownKey?.(e)) return
+    if ((e.key === "ArrowRight" || e.key === "End") && suffix) { setQuery(query + suffix); return }
     // ⌃J/⌃K (Vim's) move too, and on a Mac ⌃N/⌃P (Emacs'); elsewhere those are the app's Mod+N and Mod+P.
     if (e.key === "ArrowDown" || (e.ctrlKey && (e.key === "j" || (isMac && e.key === "n")))) { e.preventDefault(); setSel((s) => Math.min(s + 1, items.length - 1)) }
     else if (e.key === "ArrowUp" || (e.ctrlKey && (e.key === "k" || (isMac && e.key === "p")))) { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)) }
@@ -159,7 +174,9 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   return (
     <PaletteFrame label={label} onClose={onClose} onKeyDown={onDialogKey}>
       <div className="flex items-center gap-2 border-b-[0.5px] border-border pr-3 pl-5">
-        <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKey} placeholder={placeholder}
+        <input ref={input} value={query + suffix} onKeyDown={onKey} placeholder={placeholder}
+          onChange={(e) => setQuery(e.target.value, { deleting: !!(e.nativeEvent as InputEvent).inputType?.startsWith("delete") })}
+          onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
           autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="go" role="combobox" aria-expanded aria-controls="palette-results"
           aria-activedescendant={items[sel] ? `palette-${items[sel].id}` : undefined}
           className="h-14 min-w-0 flex-1 bg-transparent text-[17px] outline-none placeholder:text-muted-foreground" />

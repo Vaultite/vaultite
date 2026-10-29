@@ -10,7 +10,7 @@ import { launcherAt, launcherClosed } from "@/core/launcher"
 import { newNoteFolder } from "@/core/conventions"
 import { snippet } from "@/core/links"
 import { openDetail } from "@/core/nav"
-import { launcherText, search, suggestions, typedHits, useQueried, useSearchIndex, type Hit } from "@/core/search"
+import { completeTyped, launcherText, search, suggestions, typedHits, typedOwned, typedTurns, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
 import { Marked, Palette, useFinderQuery } from "@/components/Palette"
@@ -70,9 +70,22 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
     return () => { on = false; clearTimeout(t) }
   }, [q, node, plain, limit])
   const queried = useQueried(plain && !error ? q : "")
-  const typed = useMemo(() => (plain && !error ? typedHits(q, disabled) : []), [q, plain, error, disabled])
   // (a launcher whose plugin opens nothing here, the web app's Browser, is the switcher with a new tab's picks)
   const lead = launcher ? launcherText(disabled) : null
+  // A launcher's text completed inline as a browser's address bar does (a site visited before), unless just deleted.
+  const [auto, setAuto] = useState(true)
+  const [done, setDone] = useState<{ for: string; text: string } | null>(null)
+  useEffect(() => {
+    if (!lead || !plain || error || !q.trim() || !auto) return
+    let on = true
+    void completeTyped(q.trim(), disabled).then((text) => { if (on) setDone(text ? { for: q, text } : null) })
+    return () => { on = false }
+  }, [lead, plain, error, q, auto, disabled])
+  const complete = lead && auto && q.trim() && done && done.text.toLowerCase().startsWith(q.toLowerCase()) && q.toLowerCase().startsWith(done.for.toLowerCase().slice(0, q.length)) ? done.text : null
+  // ⌥↓/⌥↑: where the typed rows open (the Browser's container), another.
+  const [turn, setTurn] = useState(0)
+  const typed = useMemo(() => (plain && !error ? typedHits(q, disabled, { complete: complete && complete.length > q.length ? complete : null, turn }) : []), [q, plain, error, disabled, complete, turn])
+  const turns = typed.some((h) => h.tag) ? typedTurns(disabled) : null
   // The search tab with everything, the same row while the query is (results arriving don't draw it again).
   const everything = useMemo<Hit>(() => {
     const query = q.trim()
@@ -115,21 +128,33 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
   }
 
   return (
-    <Palette label="Search" placeholder={lead ?? "Find or create a note…"} query={q} setQuery={setQ} select={select} items={hits} onClose={onClose} look={fileIcons}
+    <Palette label="Search" placeholder={lead ?? "Find or create a note…"} query={q} select={select} items={hits} onClose={onClose} look={fileIcons}
       onEnd={more ? () => setLimit((n) => n + PAGE) : undefined}
-      onPick={(h, { mod, shift }) => (shift || !h ? create(mod) : go(h, mod))}
+      onPick={(h, { mod, shift }) => ((shift && !(h && typedOwned(q, disabled))) || !h ? create(mod) : go(h, mod))}
+      setQuery={(v, how) => { setQ(v); setAuto(!how?.deleting) }} complete={complete}
+      onKey={(e) => {
+        if (!turns || !e.altKey || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return false
+        e.preventDefault()
+        setTurn((t) => t + (e.key === "ArrowDown" ? 1 : -1))
+        return true
+      }}
       heading={!q.trim() ? "Recent files and pages" : node && !plain ? explain(node) : undefined}
       section={(h) => (h.id === "search-tab" ? "More" : sections.has(h.id) ? sections.get(h.id) || undefined : plain && h.id.startsWith("text-") ? "In files" : undefined)}
       empty={error ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">{error}</p>
         : q.trim() && <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Nothing matches "{q.trim()}". Enter makes a note with that name.</p>}
-      hints={launcher ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to open in new tab"], ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]
-        : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to open"], ["Mod+Enter", "to open in new tab"], ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
+      hints={[["ArrowUp ArrowDown", "to navigate"], ...(launcher ? [["Enter", "to open in new tab"]] as [string, string][] : [["Enter", "to open"], ["Mod+Enter", "to open in new tab"]] as [string, string][]),
+        ...(turns ? [["Alt+ArrowUp Alt+ArrowDown", `to change ${turns}`]] as [string, string][] : []), ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
       row={(h) => (<>
         {fileIcons && <h.icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="flex min-w-0 flex-1 items-baseline gap-2.5">
           <span className="min-w-0 shrink truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={h.title} marks={h.marks} /></span>
           {h.meta && <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground"><Marked text={h.meta} marks={h.metaMarks ?? []} /></span>}
         </span>
+        {h.tag && (
+          <span className="flex shrink-0 items-center gap-1.5 text-[13px] text-muted-foreground" data-tag={h.tag.label}>
+            <span className="size-2 rounded-full" style={{ background: h.tag.color }} />{h.tag.label}
+          </span>
+        )}
       </>)} />
   )
 }

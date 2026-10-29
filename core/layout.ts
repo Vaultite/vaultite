@@ -10,6 +10,8 @@ export type Tab = { id: string; to: string
   from?: string
   /** Pinned: what's opened from it opens in a tab beside it, ⌘W and closing others leave it open. */
   pinned?: boolean
+  /** A pinned tab's place when it was pinned: ⌘W takes it back there (its page unloaded), as Arc's pinned tabs. */
+  home?: string
   /** The tab group it's in (one of its pane's `sets`). */
   set?: string
   /** When it was last on screen (ms, to the minute), stamped while tabs archive themselves (Tabs' setting). */
@@ -100,10 +102,10 @@ const okTab = (t: unknown): t is Tab => !!t && typeof t === "object" && typeof (
 const strings = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x === "string")
 function okHistory(t: Tab): Tab {
   if ((t.back === undefined || strings(t.back)) && (t.fwd === undefined || strings(t.fwd)) && (t.from === undefined || typeof t.from === "string")
-    && (t.set === undefined || (typeof t.set === "string" && !!t.set))) return t
-  const { back, fwd, from, set, ...rest } = t
+    && (t.set === undefined || (typeof t.set === "string" && !!t.set)) && (t.home === undefined || (typeof t.home === "string" && !!t.home))) return t
+  const { back, fwd, from, set, home, ...rest } = t
   return { ...rest, ...(strings(back) ? { back } : {}), ...(strings(fwd) ? { fwd } : {}), ...(typeof from === "string" ? { from } : {}),
-    ...(typeof set === "string" && set ? { set } : {}) }
+    ...(typeof set === "string" && set ? { set } : {}), ...(typeof home === "string" && home ? { home } : {}) }
 }
 
 /** Every group changed by `fn`. */

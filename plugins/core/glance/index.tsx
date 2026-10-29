@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import { Columns2, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import {
-  afterSheets, backDetail, definePlugin, detailPath, getStore, linkPlace, openAt, openDetail, openInSplit, openView, SheetActions, showAnchorIn, stem,
+  afterSheets, backDetail, definePlugin, detailPath, getStore, linkPlace, newTabId, openAt, openDetail, openInSplit, openTab, SheetActions, showAnchorIn, stem,
   TargetView, viewInfo, viewShown, webPages, type Store,
 } from "@vaultite"
 
@@ -52,15 +52,19 @@ function Clicks() {
   return null
 }
 
-/** Keep what's glanced at: in a new tab of the focused pane, or in the pane beside it. */
-function keep(to: string, anchor: string, side: boolean) {
+/** Keep what's glanced at: in a new tab of the focused pane (of its own, though another shows it), or in the pane beside
+ *  it. A web page goes on as it is, handed to that tab before the sheet lets go of it (its `data-web-page`, WebPage). */
+function keep(to: string, anchor: string, side: boolean, box: HTMLElement | null) {
+  const page = Number(box?.querySelector<HTMLElement>("[data-web-page]")?.dataset.webPage) || 0
+  const id = newTabId()
+  if (page && to.startsWith("view:web/")) void webPages?.engine?.("web:adopt", page, id).catch(() => {})
   afterSheets(() => {
     const file = to.startsWith("file:") ? to.slice(5) : null
     if (side) {
-      openInSplit(to, "right")
+      openInSplit(to, "right", true, id)
       if (file && anchor) openAt(file, anchor)
     } else if (file) openAt(file, anchor, { newTab: true })
-    else openView(to, { newTab: true })
+    else openTab(to, { id })
   })
 }
 
@@ -83,8 +87,8 @@ function Glance({ store, to, anchor }: { store: Store; to: string; anchor: strin
   return (
     <div ref={box} className="contents">
       <SheetActions>
-        <Action icon={SquareArrowOutUpRight} label="Open in tab" run={() => keep(now.current, anchor, false)} />
-        <Action icon={Columns2} label="Open to the side" run={() => keep(now.current, anchor, true)} />
+        <Action icon={SquareArrowOutUpRight} label="Open in tab" run={() => keep(now.current, anchor, false, box.current)} />
+        <Action icon={Columns2} label="Open to the side" run={() => keep(now.current, anchor, true, box.current)} />
       </SheetActions>
       <TargetView store={store} to={to} close={backDetail} setTarget={(t) => { now.current = t }} />
     </div>

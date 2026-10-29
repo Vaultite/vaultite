@@ -71,6 +71,18 @@ export function setSounds(next: Sound[]) {
   if (redraw) viewsChanged()
 }
 
+/** Tabs whose page is loading (a spinner for its icon), and whose page holds typed, unsent input (it isn't archived). */
+const loadingTabs = cell(new Set<string>()), typedTabs = cell(new Set<string>())
+export const loadingIn = (tab: string) => loadingTabs.get().has(tab)
+export const typedIn = (tab: string) => typedTabs.get().has(tab)
+export function setPageFlags(loading: Set<string>, typed: Set<string>) {
+  const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((x) => b.has(x))
+  if (!same(typed, typedTabs.get())) typedTabs.set(typed)
+  if (same(loading, loadingTabs.get())) return
+  loadingTabs.set(loading)
+  viewsChanged()
+}
+
 /** A page waiting on a passkey from a phone (electron/browser/passkeys.ts), by the page's id: its QR code while it's to be
  *  scanned, then how it's going. */
 export type PasskeyAsk = { ask: number; state: string; qr: string; site: string; create: boolean }
@@ -85,8 +97,14 @@ export function setOnScreen(id: number, on: boolean) {
 
 /** A page on screen (WebPage.tsx): what the desktop app's events about it reach. */
 export type Shown = {
-  /** Its pane (a tab group's id). */
-  group: string
+  /** Its pane (a tab group's id), and its tab's id. */
+  group: string; tab: string
+  /** Where it is now, what it can do. */
+  state: () => WebPageState
+  /** ⌘F (open the find bar, or put the keyboard back in it), ⌘G, ⇧⌘G. */
+  find: (how: FindAsk) => void
+  /** What its find found (a `found` event). */
+  found: (active: number, matches: number) => void
   /** Its container's id (null: none): what's opened from it opens there too. */
   container: string | null
   url: () => string
@@ -97,12 +115,28 @@ export type Shown = {
   inPlayer: () => boolean
 }
 export const shown = new Map<number, Shown>()
+/** The last state each page told while no tab drew it (the 100 latest): a page's first news can come before its tab
+ *  listens (a refused address fails at once), and is taken as it does. */
+const unheard = new Map<number, WebPageState>()
+export function stateCame(id: number, s: WebPageState) {
+  const on = shown.get(id)
+  if (on) return on.onState(s)
+  unheard.delete(id)
+  unheard.set(id, s)
+  if (unheard.size > 100) unheard.delete(unheard.keys().next().value!)
+}
+/** Page `id`'s news since `forget`, once its tab listens. */
+export const forgetUnheard = (id: number) => { unheard.delete(id) }
+export function takeUnheard(id: number) { const s = unheard.get(id); unheard.delete(id); return s }
 /** The page in the focused pane, if one is: "Clip current web page". */
 let focused = 0
 export const setFocusedPage = (id: number, on: boolean) => { if (on) focused = id; else if (focused === id) focused = 0 }
 export const focusedPage = () => (focused ? shown.get(focused) ?? null : null)
 /** That page's id (0: none). */
 export const focusedPageId = () => (focused && shown.has(focused) ? focused : 0)
+/** Tab `tab`'s page on screen, with its id. */
+export const pageOfTab = (tab: string) => { for (const [id, s] of shown) if (s.tab === tab) return { id, ...s }; return null }
+export type FindAsk = "open" | "next" | "previous"
 
 /** The page the desktop app last said took the keyboard (0: none, or the window's own page has it since). */
 let keyboard = 0

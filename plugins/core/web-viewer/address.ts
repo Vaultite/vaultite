@@ -4,10 +4,12 @@
 /** The search used for words that aren't an address: `%s` is what was typed. */
 export const SEARCH = "https://duckduckgo.com/?q=%s"
 
-const LOCAL = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|(\d{1,3}\.){3}\d{1,3})(:\d+)?$/i
+/** Hosts on this machine or the local network, which rarely have https: this machine, IP addresses, a name with a
+ *  port ("nas:5000") and the local network's names (printer.local, router.lan, app.test). */
+const LOCAL = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|(\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+(?=:\d)|[a-z0-9.-]+\.(local|lan|internal|test|localhost|home\.arpa))(:\d+)?$/i
 
-/** An http(s) address as it is; a host ("example.com/a", "localhost:3000") with https:// (http:// for this machine
- *  and IP addresses); anything else a search (`search`, with %s). null for nothing, or another scheme (file:, mailto:). */
+/** An http(s) address as it is; a host ("example.com/a", "localhost:3000") with https:// (http:// for local ones);
+ *  anything else a search (`search`, with %s). null for nothing, or another scheme (file:, mailto:). */
 export function addressOf(typed: string, search = SEARCH): string | null {
   const t = typed.trim()
   if (!t) return null
@@ -21,6 +23,15 @@ export function addressOf(typed: string, search = SEARCH): string | null {
   if (/^[a-z][a-z0-9+.-]*:\S/i.test(t) && !/\s/.test(t)) return null // mailto:, file:, javascript:...
   return searchUrl(t, search)
 }
+
+/** What's typed went to https only because it named no scheme: http is tried when that can't connect, as browsers do. */
+export const guessedHttps = (typed: string) => {
+  const t = typed.trim(), to = addressOf(t)
+  return !/^[a-z][a-z0-9+.-]*:\/\//i.test(t) && !!to?.startsWith("https:") && to !== searchUrl(t)
+}
+/** The http address to try after `url`, guessed https, failed with `error` (a connection's or a certificate's). */
+export const httpFallback = (url: string, error: string) =>
+  /^https:\/\//i.test(url) && /ERR_(CONNECTION_|SSL_|CERT_|EMPTY_RESPONSE|TIMED_OUT|ADDRESS_UNREACHABLE|TUNNEL_)/.test(error) ? `http://${url.slice(8)}` : null
 
 /** Words searched for with `search` (its %s), else the default search. */
 export const searchUrl = (words: string, search = SEARCH) => (search.includes("%s") ? search : SEARCH).replace("%s", encodeURIComponent(words.trim()))

@@ -101,7 +101,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `searchLive`: Things it finds that aren't in the store (running terminals): `docs` is asked whenever search looks, and `subscribe` says when they change while search is open.
 - `searchQuery`: What the quick switcher finds by the query itself, too many to index (the browsing history).
 - `links`
-- `webLink`: Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser. The first plugin that's on and takes it wins.
+- `webLink`: Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser. The first plugin that's on and takes it wins. `how`: plain, a new tab (behind, or `front`), or `out` (⌥⌘).
 - `schemeLink`: Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one. The first plugin that's on and takes it wins; none: the link does nothing.
 - `preview`: What the Plugins sheet shows, with made-up data: a render, or the id of the plugin whose dashboards (pages/*.md) to show (a plugin whose blocks are on Projects previews "projects"). Defaults to its own dashboards.
 - `mock`: Made-up data for previews: its keys of the store (what its plugin.ts puts in /api/state), made from the real store where that's configuration, not personal data (the logs' areas).

@@ -30,7 +30,6 @@ try {
         box: r && [r.x, r.y, r.width, r.height].map(Math.round).join(","), focus: w.focus === g.id }
     })
   })
-  const toast = (text) => until(() => page.locator("[data-sonner-toast]", { hasText: text }).count(), 3000)
   const menuItem = async (label) => {
     const it = page.locator("[role=menuitem]", { hasText: label }).first()
     if (!(await it.count())) { await page.keyboard.press("Escape"); return false }
@@ -47,8 +46,9 @@ try {
   check("two panes, the lower one's c pinned", same(before.map((p) => p.tabs), [[a], [b, `${c}*`]]) && before[1].focus, before)
 
   await command(page, "Close current tab")
-  check("Close current tab on a pinned tab says why", await toast("Pinned: unpin it or close the pane"))
-  check("…and leaves it open", same(await panes(), before), await panes())
+  check("Close current tab on a pinned tab moves on, as Arc's", await until(async () => (await panes())[1]?.active === b), await panes())
+  check("…and leaves it open, pinned", same((await panes()).map((p) => p.tabs), before.map((p) => p.tabs)), await panes())
+  await hash(c); await until(async () => same(await panes(), before))
 
   // The lower pane's strip (not at the window's top: drawn), its X on hover.
   const strip = page.locator(`[data-group]:not([data-top]) [data-bare]`)
@@ -80,8 +80,8 @@ try {
   // The only pane: nothing to close it with.
   check("the only pane: no Close pane in the palette", !(await command(page, "Close pane")))
   check("…nor an X", (await page.locator("[data-pane-close]").count()) === 0)
-  await command(page, "Pin tab"); await command(page, "Close current tab")
-  check("…and a pinned tab says only to unpin it", await toast("Pinned: unpin it to close it"))
+  await command(page, "Pin tab"); await command(page, "Close current tab"); await wait(300)
+  check("…and a pinned tab alone stays", same((await panes()).map((p) => p.tabs), [[`${a}*`]]), await panes())
   await command(page, "Unpin tab")
 
   // Pane titles on: the X beside each title row's handle.
