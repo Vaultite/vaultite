@@ -38,7 +38,7 @@ export function KeyBar({ label, keys, hide, scroll, className }: { label: string
   return (
     <div role="toolbar" aria-label={label} data-no-drag data-key-bar
       className={cn("flex shrink-0 items-center gap-1 border-t-[0.5px] border-border bg-sidebar py-1.5 pr-1.5 select-none [-webkit-touch-callout:none]", className)}>
-      <div className={cn("flex min-w-0 flex-1 gap-1 pl-1.5", scroll && "overflow-x-auto overscroll-x-contain [scrollbar-width:none]")}>
+      <div className={cn("flex min-w-0 flex-1 gap-1 pl-1.5", scroll && "edge-fade-x overflow-x-auto overscroll-x-contain [scrollbar-width:none]")}>
         {keys.map((k) => (
           <button key={k.name} type="button" tabIndex={-1} aria-label={k.name} {...tap(k.run)} className={key}>{k.label}</button>
         ))}

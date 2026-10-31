@@ -90,7 +90,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   if (!ctx.open) {
     return (
       <SidebarSide.Provider value={side}>
-        <div ref={box} data-rail className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
+        <div ref={box} data-rail className="edge-fade-y relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
           {head && <div data-rail-section className="flex shrink-0 flex-col">{head}</div>}
           {panels.map(({ key, panel }) => (
             <div key={key} data-panel={key} data-rail-section className="flex shrink-0 flex-col" onContextMenu={menuFor(() => panelMenu(key, side))}>
@@ -109,7 +109,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     // units between any two panels; and the last one ends 2 units above the vault's bar.
     <SidebarSide.Provider value={side}>
     <div ref={box} data-sidebar-body={side} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
-      className={cn("relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
+      className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
         const { key, panel } = p
@@ -133,7 +133,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
             className={cn("flex shrink-0 flex-col pb-1", item?.panel === key && "opacity-50")}>
             {/* Its own box (each panel scrolling in its own: the height usePanelLayout gives it), around what it draws
                 (measured: the most it's given). Scrolling as one, both are plain. */}
-            <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "overflow-y-auto [scrollbar-width:thin]")}>
+            <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto [scrollbar-width:thin]")}>
               <div data-panel-content className="flex shrink-0 flex-col">
                 <PanelFold.Provider value={{ collapsed: folded, toggle: () => togglePanelCollapsed(key) }}>
                   {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...ctx, panel: key })}</SidebarHeading>}

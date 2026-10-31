@@ -488,7 +488,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `runCommandNamed(text)`: Run a command that's available now by its id ("switcher:open") or its name as the palette lists it ("Open quick switcher", any case): false if there's none (Vim's :cmd).
 - `runShortcut(e)`: Take a keydown if the app's keys have it (a command, or a sequence step): true if taken.
 - `sameSidebars`
-- `saveAttachments(s, from, files, folder?)`: Save pasted or dropped files as `from`'s attachments where the vault says (or `folder`), answering their paths.
+- `saveAttachments(s, from, files, folder?)`: Save pasted or dropped files as `from`'s attachments (or in `folder`), answering their paths: "Pasted image <time>" when nameless, as Obsidian names them.
 - `savedSidebars(prefs?)`: sidebars.json as saved (null: unset, the default).
 - `savePdf(name)`: In the desktop app: the window, as it prints, saved as a PDF where the user picks (Export to PDF).
 - `Scope`

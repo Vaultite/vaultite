@@ -192,7 +192,7 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   const count = res && <span className="hidden shrink-0 text-[13px] text-muted-foreground tabular-nums @sm:inline" data-base-count>{countText(res)}</span>
   const tabs = views.length > 1 && (
     // (the tabs scroll sideways; their right edge fades, so one cut off there reads as more to scroll to)
-    <div className="-ml-1 flex min-w-0 flex-1 gap-0.5 overflow-x-auto pr-4 pl-1 [mask-image:linear-gradient(to_right,black_calc(100%-16px),transparent)] [scrollbar-width:none]" role="tablist" data-base-views>
+    <div className="-ml-1 flex min-w-0 flex-1 gap-0.5 edge-fade-x overflow-x-auto pr-4 pl-1 [scrollbar-width:none]" role="tablist" data-base-views>
       {views.map((v, i) => {
         const Icon = iconOf(v.type)
         return (

@@ -198,11 +198,15 @@ const H = 844, count = () => P.locator("[data-tabs-button]").innerText().then((t
 
 // The bar dragged up: the page shrinks after the finger, then into its card in the tab list.
 const z1 = await zooms()
-const lifted = await drag(195, H - 25, 195, H - 280, () => P.evaluate(() => document.querySelector("#main-scroll > main")?.style.transform ?? ""))
+const lifted = await drag(195, H - 25, 195, H - 280, () => P.evaluate(() => {
+  const main = document.querySelector("#main-scroll > main"), r = main?.getBoundingClientRect(), bar = document.querySelector("[data-phone-bar]").getBoundingClientRect()
+  return { transform: main?.style.transform ?? "", clip: main?.style.clipPath ?? "", shadow: !!document.querySelector("[data-lift-shadow]"), bottom: r ? r.bottom : 0, bar: bar.top }
+}))
 s = await settled()
-check("bar dragged up: the page follows the finger", lifted.includes("scale"), lifted)
+check("bar dragged up: the page follows the finger", lifted.transform.includes("scale"), lifted)
+check("bar dragged up: the page is one card, cut to the screen, with its shadow", lifted.clip.startsWith("inset(") && lifted.shadow, lifted)
 check("bar dragged up: the tab list zooms open", (await zooms()) === z1 + 1 && (await zoomed()).ok === true && await P.isVisible("[data-tab-card]"), await zoomed())
-check("bar dragged up: nothing left behind", clean(s) && !(await P.evaluate(() => "pageLift" in document.documentElement.dataset)), s)
+check("bar dragged up: nothing left behind", clean(s) && !(await P.evaluate(() => "pageLift" in document.documentElement.dataset || !!document.querySelector("[data-lift-shadow]") || !!document.querySelector("#main-scroll > main")?.style.clipPath)), s)
 await P.click("[data-sheet-done]"); s = await settled()
 const n = await zooms()
 await drag(195, H - 25, 195, H - 55)
@@ -216,6 +220,16 @@ await wait(400)
 check("pull down: Open a file picked in the middle opens the quick switcher, the tab stays", pulled.join() === "switcher:open" && (await P.locator("[role=dialog][aria-label=\"Search\"]").count()) > 0 && (await title()) === t0 && (await count()) === c0, { pulled, t: await title() })
 await P.keyboard.press("Escape"); await wait(300)
 check("pull down: the page back in place", !(await P.evaluate(() => document.querySelector("#main-scroll > main")?.style.transform)) && !(await P.locator("[data-pull-actions]").count()))
+// A short pull fills only part of the ring and runs nothing; a flick right through it runs nothing either.
+const searchOpen = () => P.locator("[role=dialog][aria-label=\"Search\"]").count()
+const short = await drag(195, 300, 195, 400, () => P.evaluate(() => ({ ring: !!document.querySelector("[data-pull-ring]"), on: document.querySelectorAll("[data-pull][data-on]").length })))
+await wait(400)
+check("pull down a little: the ring shows, nothing runs", short.ring && !short.on && !(await searchOpen()) && (await title()) === t0, short)
+await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 300 }] })
+for (let i = 1; i <= 4; i++) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 195, y: 300 + i * 50 }] })
+await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+await wait(400)
+check("pull down: a flick through it runs nothing", !(await searchOpen()) && (await title()) === t0)
 const right = await drag(195, 300, 300, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
 await wait(600)
 check("pull down and right: Close tab", right.join() === "tab:close" && (await count()) === c0 - 1, { right, n: await count() })
@@ -246,14 +260,14 @@ const glide = await P.evaluate(() => new Promise((done) => {
   new MutationObserver((_, mo) => {
     if (gone.isConnected) return
     mo.disconnect()
-    for (const a of document.getAnimations()) { a.pause(); a.currentTime = 0 }
+    for (const a of document.getAnimations()) if (a.timeline === document.timeline) { a.pause(); a.currentTime = 0 }
     const now = at()
     done({ moved: [...now].filter(([id, [x, y]]) => Math.hypot(x - was.get(id)[0], y - was.get(id)[1]) > 2).map(([id]) => id), n: now.size })
   }).observe(grid, { childList: true, subtree: true })
   gone.querySelector("button[aria-label^=Close]").click()
 }))
 check("a card closed: the others start their glide where they were", glide.n >= 1 && !glide.moved.length, glide)
-await P.evaluate(() => { for (const a of document.getAnimations()) a.finish() })
+await P.evaluate(() => { for (const a of document.getAnimations()) if (a.timeline === document.timeline) a.finish() })
 await P.click("[data-sheet-done]"); await settled()
 
 await done()

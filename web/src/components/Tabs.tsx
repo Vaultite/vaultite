@@ -561,7 +561,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
-        className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", item?.group === group.id && "opacity-50")}>
+        className={cn("edge-fade-x relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", item?.group === group.id && "opacity-50")}>
         {tabs.map((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined

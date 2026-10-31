@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Synt
 import { ArrowUpRight, Download, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import { dateText } from "@/core/data"
 import { get } from "@/core/http"
+import { localCopy } from "@/core/justsaved"
 import { formatSize, kindIcon, kindName, type FileKind } from "@/core/filekinds"
 import { openFile } from "@/core/files"
 import { isDesktop } from "@/core/platform"
@@ -22,6 +23,7 @@ const drawsHeic = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|E
 /** The address of a file's bytes (a vault path, or an outside file's absolute path). An iPhone photo (HEIC) a browser
  *  can't draw comes as JPEG, made on the server (core/heic.ts); a download is always the file itself. */
 export const rawUrl = (path: string, opts: { download?: boolean; v?: number } = {}) =>
+  (!opts.download && !opts.v && localCopy(path)) ||
   `api/raw/${encodeURIComponent(path.split("/").pop()!)}?path=${encodeURIComponent(path)}${opts.download ? "&download=1" : !drawsHeic && /\.(heic|heif)$/i.test(path) ? "&as=jpeg" : ""}${opts.v ? `&v=${opts.v}` : ""}`
 
 /** Size, dates and a PDF's pages, read again when the file changes (`n` counts the changes); `missing` once it's gone. */

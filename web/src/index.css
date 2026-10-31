@@ -339,10 +339,9 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 :is(.note-prose, .vau-editor) iframe { max-width: 100%; border: 0; border-radius: 10px; }
 /* `![[Note]]` in running text: drawn in its place, as on a line of its own */
 .note-prose .md-embed { display: block; margin: 0.5em 0; }
-/* Filter chips: on phones one sideways-scrolling row, no scrollbar, faded at the right edge; wrapped from md up. */
+/* Filter chips: on phones one sideways-scrolling row, no scrollbar (faded at its edges: edge-fade-x); wrapped from md up. */
 @media (max-width: 767px) {
-  .chip-row { scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
+  .chip-row { scrollbar-width: none; }
   .chip-row::-webkit-scrollbar { display: none; }
   .chip-row::after { content: ""; flex: 0 0 8px; }
 }
@@ -363,6 +362,35 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
   ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); }
   ::-webkit-scrollbar-corner { background: transparent; }
 }
+/* A scroller that fades out at an edge while there's more past it: `edge-fade-x` (strips of chips, keys, tabs),
+   `edge-fade-y`, and `edge-fade-b` (the bottom only, under sticky headings). Driven by its own scroll, no JS: one that
+   doesn't overflow has no timeline, so no fade. */
+@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes edge-fade-start { from { --fade-start: 0px; } to { --fade-start: var(--edge-fade-s); } }
+@keyframes edge-fade-end { from { --fade-end: var(--edge-fade-e); } to { --fade-end: 0px; } }
+@utility edge-fade-x {
+  --edge-fade-s: 28px; --edge-fade-e: 28px;
+  animation: edge-fade-start linear both, edge-fade-end linear both;
+  animation-timeline: scroll(self inline), scroll(self inline);
+  animation-range: 0 28px, calc(100% - 28px) 100%;
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+}
+@utility edge-fade-y {
+  --edge-fade-s: 24px; --edge-fade-e: 24px;
+  animation: edge-fade-start linear both, edge-fade-end linear both;
+  animation-timeline: scroll(self block), scroll(self block);
+  animation-range: 0 24px, calc(100% - 24px) 100%;
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+}
+@utility edge-fade-b {
+  --edge-fade-s: 0px; --edge-fade-e: 24px;
+  animation: edge-fade-end linear both;
+  animation-timeline: scroll(self block);
+  animation-range: calc(100% - 24px) 100%;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade-end)), transparent);
+}
+
 /* Every scroller is a stacking context. Otherwise what's positioned inside it (a sticky heading, a z-indexed bar)
    belongs to an outer one, and iOS WebKit draws it in layers above the scroller, over its scroll indicator, which
    shows chopped. A scroller made outside these selectors gets `isolate` (web/qa/scrollers.mjs finds one that doesn't). */
@@ -1071,7 +1099,9 @@ html[data-motion="back"]::view-transition-new(root), html[data-motion="forward"]
 }
 /* The bar dragged up (core/pageLift.ts): the page, a card of its own over a dimmed ground, shrinks after the finger. */
 html[data-page-lift], html[data-page-lift] body { background: color-mix(in srgb, var(--foreground) 14%, var(--background)); }
-html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(--background); border-radius: 0 0 28px 28px; box-shadow: 0 10px 40px rgb(0 0 0 / 0.25); }
+html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(--background); }
+/* (cut to the card by its clip-path, the page can't cast a shadow: a box of the card's size behind it does) */
+[data-lift-shadow] { box-shadow: 0 10px 40px rgb(0 0 0 / 0.25), 0 0 0 0.5px rgb(0 0 0 / 0.06); }
 /* The phone's bar stays where it is: its buttons change in place. */
 ::view-transition-group(phone-bar) { animation-duration: 200ms; }
 

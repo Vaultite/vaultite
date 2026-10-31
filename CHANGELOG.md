@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Phone polish**: dragging the bar up lifts the page as one rounded card (no more text from above the screen showing
+  over the header), following the finger more closely; a tab opened from the tab list comes in as sharp as the page;
+  pulling a page down past its top fills a ring round the action and runs it only once full (a longer pull, and a flick
+  through it does nothing); strips that scroll sideways (the editing keys, tabs, chips) and sidebars fade at an edge
+  while there's more past it; a pasted picture shows at once, without waiting for the server to notice the file.
 - **Change fonts and the terminal cursor from the palette, previewed as you move**: Change text font…, Change interface
   font… and Change monospace font… show the whole app in the selected font until Enter keeps it (Esc goes back), as
   Change colour scheme… does. Terminals now use the monospace font too, and Terminal settings have the cursor's shape

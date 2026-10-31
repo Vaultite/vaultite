@@ -54,7 +54,7 @@ export function EventText({ e, exists, plain }: { e: ActivityEvent; exists: Set<
 export function Chips<T extends string>({ name, opts, value, onChange }: { name: string; opts: { v: T; label: string }[]; value: T | ""; onChange: (v: T | "") => void }) {
   const all: { v: T | ""; label: string }[] = [{ v: "", label: "All" }, ...opts]
   return (
-    <div role="radiogroup" aria-label={name} className="chip-row -mx-1 mb-2 flex gap-1 overflow-x-auto px-1 max-md:-mt-1.5 max-md:mb-0.5 max-md:py-1.5">
+    <div role="radiogroup" aria-label={name} className="chip-row edge-fade-x -mx-1 mb-2 flex gap-1 overflow-x-auto px-1 max-md:-mt-1.5 max-md:mb-0.5 max-md:py-1.5">
       {all.map((o) => {
         const on = o.v === value
         return (

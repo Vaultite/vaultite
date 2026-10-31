@@ -101,6 +101,9 @@ const lingering = cell<string | null>(null)
 const linger = lingering.set
 export const useLingeringSheet = lingering.use
 
+/** A page a finger has carried up (core/pageLift.ts) is a card with these corners (px, unscaled). */
+export const LIFT_RADIUS = 28
+
 /** Where the page shows (what a card's picture is of): between the header and the bar. Its layout sizes, so a page a
  *  finger has shrunk still says where it is unshrunk. */
 export function pageRect() {
@@ -273,8 +276,8 @@ export function zoomOut(open: () => void, current: () => string, page?: DOMRect,
     // (its tap target stays: a tap where it's landing takes the page back)
     const tap = p.card.querySelector<HTMLElement>(":scope > button")
     if (tap) hold(tap, "visibility", "visible")
-    // A page a finger has shrunk has its bottom corners rounded (index.css' data-page-lift).
-    const lr = page ? 28 * (page.width / P.width) : 0
+    // A page a finger has shrunk has its bottom corners rounded (pageLift.ts).
+    const lr = page ? LIFT_RADIUS * (page.width / P.width) : 0
     flyHero(h, page ?? P, h.S, [0, 0, lr, lr], [h.r, h.r, h.r, h.r])
     fade([ground], { opacity: 0 }, { opacity: 1 }, 0, 0.3 * T)
     fade(p.chrome, { opacity: 0 }, { opacity: 1 }, 0.05 * T, 0.4 * T)
@@ -330,9 +333,15 @@ export function zoomIn(id: string, show: () => void) {
     const left = Math.max(0.25 * T, T - (performance.now() - t0))
     fade(p.chrome, { opacity: c?.chrome ?? 1 }, { opacity: 0 }, 0, left)
     fade([ground], { opacity: c?.sheet ?? 1 }, { opacity: 0 }, 0, left)
-    // A drawn stand-in isn't the page: the page comes through it.
+    // The page comes through the card: a drawn stand-in at once, a picture (never quite the page: its text a little
+    // softer, a clock since moved on) once the page is drawn under it and the card is within a few px of landing.
     if (h.drawn) fade([h.el], { opacity: 1 }, { opacity: 0 }, 0, left + 0.15 * T)
-    void finished().then(async () => {
+    const through = h.drawn ? Promise.resolve() : settle(160).then(() => {
+      if (!mine()) return
+      const from = Math.max(0, 0.7 * T - (performance.now() - t0))
+      fade([h.el], { opacity: 1 }, { opacity: 0 }, from, from + Math.max(0.25 * T, T - (performance.now() - t0) - from))
+    })
+    void through.then(finished).then(async () => {
       // The page drawn under the hero (a file's text loads), then the sheet goes.
       if (mine()) await settle(160)
       if (mine()) finish()

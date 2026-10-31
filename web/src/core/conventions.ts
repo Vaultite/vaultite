@@ -1,8 +1,9 @@
 // Where new files go and how links are written: new notes at the top, [[wikilinks]], unless a plugin that's on answers
 // otherwise (`conventions`: a vault's .obsidian/app.json; first answer wins); pasted files where the settings say.
 import type { Conventions } from "@/core/define"
-import type { Store } from "@/core/data"
+import { mutate, type Store } from "@/core/data"
 import { post, upload } from "@/core/http"
+import { keepLocal } from "@/core/justsaved"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { attachmentDir, unarchived } from "../../../core/fileprops.ts"
@@ -49,10 +50,10 @@ export function attachmentFolder(s: Store | null | undefined, from: string): str
   return attachmentDir(s?.filing?.attachments ?? "Attachments", unarchived(from))
 }
 
-/** Save pasted or dropped files as `from`'s attachments where the vault says (or `folder`), answering their paths. A
- *  taken name gets a number; a nameless one is "Pasted image YYYYMMDDHHmmss.<ext>", as Obsidian names them. */
+/** Save pasted or dropped files as `from`'s attachments (or in `folder`), answering their paths: "Pasted image <time>"
+ *  when nameless, as Obsidian names them. Each is in the store once saved, not once the server's file watcher sees it. */
 export async function saveAttachments(s: Store, from: string, files: File[], folder = attachmentFolder(s, from)): Promise<string[]> {
-  if (folder) await post("folder", { path: folder }).catch(() => {}) // (it's there already: fine)
+  if (folder && !s.files.folders.includes(folder)) await post("folder", { path: folder }).catch(() => {}) // (there already: fine)
   const out: string[] = []
   const d = new Date(), p2 = (n: number) => String(n).padStart(2, "0")
   const when = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`
@@ -63,6 +64,10 @@ export async function saveAttachments(s: Store, from: string, files: File[], fol
     const name = nameless ? `Pasted image ${when}.${ext}` : f.name
     const { path } = await post<{ path: string }>("upload/name", { folder, name })
     await upload(path, f)
+    keepLocal(path, f)
+    const now = Date.now()
+    mutate((st) => st.files.others.some((o) => o.path === path) ? st
+      : { ...st, files: { ...st.files, others: [...st.files.others, { path, mtime: now, ctime: now, size: f.size }] } })
     out.push(path)
   }
   return out

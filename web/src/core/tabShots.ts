@@ -11,8 +11,9 @@ const subs = signal()
 const changed = () => subs.notify()
 const CACHE = "vaultite-tab-shots"
 const key = (id: string) => new URL(`__tab-shot/${encodeURIComponent(id)}`, location.href).href
-/** How wide a picture is, in points: sharp enough on a card (about half the screen) and as it grows to the page. */
-const WIDTH = 300
+/** A picture is the page's own width and sharpness (at the screen's scale): a tab grows from its card to the whole
+ *  screen, where a smaller or rougher one shows soft till the page replaces it. */
+const QUALITY = 0.82
 /** The longest a tab change waits for its picture (ms): the shell answers in a frame or two. */
 const WAIT = 250
 
@@ -52,7 +53,7 @@ export function shootTab(): Promise<void> {
   const bottom = document.querySelector("[data-phone-bar]")?.getBoundingClientRect().top ?? innerHeight
   if (bottom - top < 40) return Promise.resolve()
   if (taking && taking.id === tab.id && taking.to === tab.to && performance.now() - taking.at < 600) return capped(taking.done)
-  const done = phoneApp!.snapshot({ x: 0, y: top, width: innerWidth, height: bottom - top, scaled: WIDTH, quality: 0.65 })
+  const done = phoneApp!.snapshot({ x: 0, y: top, width: innerWidth, height: bottom - top, scaled: innerWidth, quality: QUALITY })
     .then(async ({ url }) => {
       const blob = await (await fetch(url)).blob()
       const was = shots.get(tab.id), own = URL.createObjectURL(blob)

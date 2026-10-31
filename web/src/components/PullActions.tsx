@@ -1,5 +1,5 @@
-// Phones: a page pulled down past its top shows three commands (appearance.json's `pullActions`, left to right; by
-// default New note, Open a file, Close tab). The finger picks one by going left or right, and letting go far enough runs it.
+// Phones: a page pulled down past its top shows three commands (appearance.json's `pullActions`: New note, Open a file,
+// Close tab). Going left or right picks one; a ring round it fills as the pull goes, and a let-go once it's full runs it.
 import { useEffect, useRef, useState } from "react"
 import { Command as CommandIcon } from "lucide-react"
 import { available, runCommandById, useCommandList, type Command } from "@/core/commands"
@@ -16,9 +16,13 @@ export const DEFAULT_PULL = ["file:new", "switcher:open", "tab:close"]
 export const pullActions = (p: Pick<Prefs, "pullActions">) => DEFAULT_PULL.map((d, i) => p.pullActions?.[i] || d)
 export const pullLabel = (c: Command) => c.label ?? c.name
 /** How far down (px) a pull must go to run what's picked; how far sideways picks the left or right one. */
-const FAR = 100, SIDE = 48
-/** How far the page moves down for a pull of `dy`: after the finger, then less and less. */
-const shift = (dy: number) => (dy < 140 ? dy * 0.72 : 100.8 + (dy - 140) * 0.2)
+const FAR = 150, SIDE = 48
+/** How long (ms) the ring must have been full at the let-go: a flick through it is no pull. */
+const HELD = 90
+/** How far the page moves down for a pull of `dy`: behind the finger, then less and less. */
+const shift = (dy: number) => (dy < FAR ? dy * 0.58 : FAR * 0.58 + (dy - FAR) * 0.15)
+/** How full the ring is (0 to 1) at a pull of `dy`. */
+const fill = (dy: number) => Math.min(1, Math.max(0, (dy - 24) / (FAR - 24)))
 const page = () => document.querySelector<HTMLElement>("#main-scroll > main")
 function moveTo(dy: number, ms = 0) {
   const el = page()
@@ -37,14 +41,14 @@ export function PullActions() {
   // One not there now (its plugin off, or only on computers) leaves its place empty, so the others stay where the finger expects.
   const slots = pullActions(prefs).map((id) => { const c = byId.get(id); return c && available([c]).length ? c : null })
   const [pull, setPull] = useState<{ dy: number; pick: Slot } | null>(null)
-  const g = useRef<{ x: number; y: number; dy: number; pick: Slot; on: boolean } | null>(null)
+  const g = useRef<{ x: number; y: number; dy: number; pick: Slot; on: boolean; full: number } | null>(null)
   const slotsRef = useRef(slots)
   slotsRef.current = slots
   useEffect(() => {
     const start = (e: TouchEvent) => {
       g.current = null
       if (e.touches.length !== 1 || scrollY > 0 || busy(e.target) || document.querySelector("dialog[open]")) return
-      g.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, pick: 1, on: false }
+      g.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, pick: 1, on: false, full: 0 }
     }
     const move = (e: TouchEvent) => {
       const p = g.current
@@ -58,19 +62,20 @@ export function PullActions() {
       }
       const pick: Slot = dx < -SIDE ? 0 : dx > SIDE ? 2 : 1
       if ((dy >= FAR) !== (p.dy >= FAR) || (dy >= FAR && pick !== p.pick)) haptic("selection")
+      if (dy >= FAR && (p.dy < FAR || pick !== p.pick)) p.full = e.timeStamp
       p.dy = Math.max(0, dy)
       p.pick = pick
       moveTo(p.dy)
       setPull({ dy: p.dy, pick })
     }
-    const end = () => {
+    const end = (e: TouchEvent) => {
       const p = g.current
       g.current = null
       if (!p?.on) return
       setPull(null)
       moveTo(0, 260)
       const c = slotsRef.current[p.pick]
-      if (p.dy >= FAR && c) { haptic(); runCommandById(c.id) }
+      if (p.dy >= FAR && c && e.timeStamp - p.full >= HELD) { haptic(); runCommandById(c.id) }
     }
     addEventListener("touchstart", start, { passive: true })
     addEventListener("touchmove", move, { passive: true })
@@ -82,17 +87,18 @@ export function PullActions() {
     }
   }, [])
   if (!pull) return null
-  const k = Math.min(1, pull.dy / FAR), ready = pull.dy >= FAR
+  const k = Math.min(1, pull.dy / 60), ready = pull.dy >= FAR, ring = fill(pull.dy)
   return (
     <div data-pull-actions aria-hidden className="pointer-events-none fixed inset-x-0 z-20 flex items-center justify-center gap-6 overflow-hidden md:hidden"
       style={{ top: document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0, height: shift(pull.dy), opacity: k }}>
       {slots.map((c, i) => {
         if (!c) return <span key={i} className="w-[72px]" />
-        const on = ready && pull.pick === i, Icon = commandIcon(c) ?? CommandIcon
+        const picked = pull.pick === i, on = ready && picked, Icon = commandIcon(c) ?? CommandIcon
         return (
           <span key={i} data-pull={c.id} data-on={on || undefined} className="flex w-[72px] flex-col items-center gap-1">
-            <span className={cn("grid size-11 place-items-center rounded-full transition-[background-color,color,scale] duration-150",
+            <span className={cn("relative grid size-11 place-items-center rounded-full transition-[background-color,color,scale] duration-150",
               on ? "scale-110 bg-primary text-primary-foreground" : "bg-foreground/[0.07] text-muted-foreground")}>
+              {picked && !on && <Ring k={ring} />}
               <Icon className="size-[21px]" strokeWidth={2} />
             </span>
             <span className={cn("line-clamp-2 text-center text-[12px] leading-[15px]", on ? "text-foreground" : "text-muted-foreground")}>{pullLabel(c)}</span>
@@ -100,5 +106,15 @@ export function PullActions() {
         )
       })}
     </div>
+  )
+}
+
+/** The picked one's ring, `k` of the way round from the top. */
+function Ring({ k }: { k: number }) {
+  const r = 20.5, c = 2 * Math.PI * r
+  return (
+    <svg data-pull-ring viewBox="0 0 44 44" className="pointer-events-none absolute inset-0 size-11 -rotate-90 text-primary">
+      <circle cx="22" cy="22" r={r} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - k)} opacity={k ? 1 : 0} />
+    </svg>
   )
 }

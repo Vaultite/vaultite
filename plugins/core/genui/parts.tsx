@@ -731,7 +731,7 @@ const Svg: Part = ({ p, k }) => {
 const Carousel: Part = ({ p, k }) => {
   const shown = num(p.visibleItems)
   return (
-    <div className="genui-carousel -mx-1 flex snap-x snap-proximity overflow-x-auto px-1 pb-1" style={{ gap: space(p.gap ?? 2) }}>
+    <div className="genui-carousel edge-fade-x -mx-1 flex snap-x snap-proximity overflow-x-auto px-1 pb-1" style={{ gap: space(p.gap ?? 2) }}>
       {k.map((x, i) => <div key={i} className="shrink-0 snap-start" style={{ width: shown ? `calc((100% - ${(shown - 1) * 8}px) / ${shown})` : "min(260px, 80%)" }}><Piece t={x} /></div>)}
     </div>
   )
