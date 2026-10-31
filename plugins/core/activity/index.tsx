@@ -1,13 +1,14 @@
 // Activity's frontend: draws what the server records (plugin.ts, model.ts) and reports what only the app knows
 // (Report.tsx).
-import { Activity, CalendarDays } from "lucide-react"
-import { definePlugin, getStore, openFile, openView, pageOf } from "@vaultite"
+import { Activity, CalendarDays, SquareTerminal } from "lucide-react"
+import { currentFile, definePlugin, getStore, openFile, openView, pageOf } from "@vaultite"
 import { FeedBlock, FeedView } from "./Feed"
 import { mockLive } from "./mock"
 import { ActivityPanel } from "./Panel"
 import { RECAP_TINT, RecapBlock, RecapPage, RecapStats } from "./Recaps"
 import { PerfApp, PerfRoutes, PerfServer } from "./Perf"
 import { Report } from "./Report"
+import { chooseSession, sessionsHere, SessionsChip } from "./Sessions"
 import { SummaryBlock } from "./Summary"
 
 
@@ -36,12 +37,15 @@ export default definePlugin({
   sidebar: {
     feed: { title: "Activity", names: ["activity"], heading: false, sort: 32, hidden: true, view: "activity", flyout: { icon: Activity }, render: (ctx) => <ActivityPanel {...ctx} /> },
   },
+  // The agents' sessions that changed the file ("2 sessions"): each shown again, or resumed.
+  fileBar: { sessions: { title: "Sessions here", sort: 46, render: (file) => (sessionsHere(file.path) ? <SessionsChip file={file} /> : null) } },
   views: { activity: { icon: Activity, title: () => "Activity", render: ({ store }) => <FeedView store={store} /> } },
   commands: [
     {
       id: "activity:open", name: "Open activity",
       run: () => { const page = pageOf(getStore(), "activity", "Activity"); return page ? openFile(page.path) : openView("activity", { newTab: true }) },
     },
+    { id: "activity:sessions", name: "Sessions that changed this file", icon: SquareTerminal, when: () => sessionsHere(currentFile()), run: chooseSession },
   ],
   background: () => <Report />,
   mockLive,

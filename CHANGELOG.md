@@ -18,6 +18,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Asking the companion no longer writes in your note**: a line starting with @claude becomes a comment thread by the
   text above it when you press Enter or leave the line, and Claude answers in that thread; replies there reach it
   without its name. @claude in any comment asks it too, and Ask (Mod+Shift+K) opens a comment that starts with @claude.
+- **Sessions here**: a file's top bar says which coding agent sessions changed it lately ("2 sessions"), as an artifact
+  does in claude.ai; click for each one's title and when, and pick one to show its terminal, or resume it if it ended.
+  Also "Sessions that changed this file" in the palette and `vau sessions <file>`.
 - **The container menu names who's signed in while you type**: typing gmail.com names each container's Google account
   (gmail.com, youtu.be and twitter.com count as Google's, YouTube's and X's logins), and a menu opened before the
   logins were listed fills them in as they answer, rather than showing none.

@@ -9,12 +9,12 @@ import {
   bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, recordSpan, section, serverUrl, spans, type Proc, type RequestEnd,
   type RequestStart, type Span,
 } from "../../../core/plugins.ts"
-import { agentName, KNOWN_AGENTS } from "../../../core/agents.ts"
+import { agentName, KNOWN_AGENTS, parseTerminal } from "../../../core/agents.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
 import { buildRecap, type Read, type Sources } from "./build.ts"
 import { profile, type Profiled } from "./profile.ts"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, renderRecap } from "./recap.ts"
-import { ACTION_KINDS, actionsOf, type Action, type Actor, type ActivityEvent, type ActivityList, type ActivitySummary, type ClientPerf, type Minute, type Perf, type RouteStat, type SlowRequest, type Timing } from "./model.ts"
+import { ACTION_KINDS, actionsOf, type Action, type Actor, type ActivityEvent, type ActivityList, type ActivitySummary, type ClientPerf, type FileSession, type Minute, type Perf, type RouteStat, type SlowRequest, type Timing } from "./model.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -228,6 +228,18 @@ function withCaller(a: Actor, c: Caller | null): Actor {
   return { ...a, ...term }
 }
 
+/** Sessions' agent ids by terminal, as last heard (a hook, the terminal's list): kept a minute, as /clear starts another. */
+const sessionIds = new Map<string, [number, string]>()
+/** An agent's actor with its agent's id for the session (a resumed terminal's is in its id), so it can be resumed later. */
+async function withSession(a: Actor): Promise<Actor> {
+  if (a.kind !== "agent" || !a.terminal || a.sessionId) return a
+  const heard = sessionIds.get(a.terminal)
+  const id = parseTerminal(a.terminal)?.resume ?? (heard && Date.now() - heard[0] < MINUTE ? heard[1]
+    : (await plugin.ask<{ session?: string } | null>("terminal:info", null, a.terminal).catch(() => null))?.session)
+  if (id) sessionIds.set(a.terminal, [Date.now(), id])
+  return id ? { ...a, sessionId: id } : a
+}
+
 // ---------- what a request did
 
 type Did = { action: Action; text: string; paths: string[]; by?: string } | null
@@ -379,7 +391,7 @@ plugin.onRequest((s) => {
       if (w) w.event = ev
     }
     if (caller) {
-      const done = caller.then((c) => finish(withCaller(actor, c)))
+      const done = caller.then(async (c) => finish(await withSession(withCaller(actor, c))))
       naming.add(done)
       void done.finally(() => naming.delete(done))
     }
@@ -491,7 +503,9 @@ plugin.route("POST", "activity/hook", async (req) => {
   const terminal = str(req.query.terminal)
   // (a chat session has no terminal: its title says which)
   const term = terminal ? await terminalInfo(terminal) : str(req.query.session) ? { session: str(req.query.session).slice(0, 120) } : {}
-  const actor: Actor = { kind: "agent", name: nameOf(agent), ...term }
+  const sid = (str(b.session_id) || str(b.thread_id) || str(b["thread-id"]) || str(b.sessionID)).slice(0, 120) || parseTerminal(terminal)?.resume
+  if (sid && terminal) sessionIds.set(terminal, [Date.now(), sid])
+  const actor: Actor = { kind: "agent", name: nameOf(agent), ...term, ...(sid ? { sessionId: sid } : {}) }
   const t = Date.now()
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) {
     const file = str(input.file_path) || str(input.notebook_path)
@@ -506,9 +520,9 @@ plugin.route("POST", "activity/hook", async (req) => {
   return { ok: true }
 }, { sync: false }) // (an agent waits on its hook, which reads nothing of the vault)
 
-async function terminalInfo(id: string): Promise<{ terminal?: string; session?: string }> {
-  const t = await plugin.ask<{ title?: string } | null>("terminal:info", null, id)
-  return { terminal: id, ...(t?.title ? { session: t.title } : {}) }
+async function terminalInfo(id: string): Promise<{ terminal?: string; session?: string; sessionId?: string }> {
+  const t = await plugin.ask<{ title?: string; session?: string } | null>("terminal:info", null, id)
+  return { terminal: id, ...(t?.title ? { session: t.title } : {}), ...(t?.session ? { sessionId: t.session } : {}) }
 }
 
 // ---------- the app's own interactions and timings
@@ -586,7 +600,7 @@ function keptChange(e: ActivityEvent) {
   changesKept.has.add(e)
   changesKept.list.push(e)
 }
-plugin.provide("activity:changes", async (since: number) => {
+async function changes(since: number) {
   // (a write just answered is recorded once its caller is named: Review keeping "everything" must see it)
   if (naming.size) await Promise.race([Promise.all(naming), new Promise((r) => setTimeout(r, 3000))])
   if (!changesKept) {
@@ -600,7 +614,38 @@ plugin.provide("activity:changes", async (since: number) => {
   }
   return changesKept.list.filter((e) => e.t >= since && isChange(e)).sort((a, b) => a.t - b.t)
     .map((e) => (e.action === "request" && e.wrote ? { ...e, paths: e.wrote } : e))
-})
+}
+plugin.provide("activity:changes", changes)
+
+/** The agents' sessions among `events` that changed file `p`, newest first: one per agent's session id, else per
+ *  terminal (its events from before the id was known take the terminal's). */
+export function sessionsOf(events: ActivityEvent[], p: string): FileSession[] {
+  const want = strip(p)
+  const mine = events.filter((e) => e.actor.kind === "agent" && e.actor.terminal && isChange(e) && changedPaths(e).some((x) => strip(x) === want)).sort((a, b) => a.t - b.t)
+  const sidOf = new Map<string, string>()
+  for (const e of mine) if (e.actor.sessionId) sidOf.set(e.actor.terminal!, e.actor.sessionId)
+  const by = new Map<string, FileSession>()
+  for (const e of mine) {
+    const sid = e.actor.sessionId ?? sidOf.get(e.actor.terminal!), k = sid ?? `\0${e.actor.terminal}`, at = e.last ?? e.t
+    const s = by.get(k) ?? { agent: e.actor.name, first: e.t, last: 0, n: 0, live: false }
+    s.n += e.count ?? 1
+    if (at >= s.last) { s.last = at; s.agent = e.actor.name; s.terminal = e.actor.terminal }
+    if (e.actor.session) s.title = e.actor.session
+    if (sid) s.sessionId = sid
+    by.set(k, s)
+  }
+  return [...by.values()].sort((a, b) => b.last - a.last)
+}
+
+/** The sessions that changed `p` in the last `days`, each live when its terminal still runs that session. */
+async function fileSessions(p: string, days: number): Promise<FileSession[]> {
+  return Promise.all(sessionsOf(await changes(Date.now() - days * DAY), p).map(async (s) => {
+    const t = await plugin.ask<{ session?: string; busy?: boolean } | null>("terminal:info", null, s.terminal).catch(() => null)
+    const runs = parseTerminal(s.terminal ?? "")?.agent ?? KNOWN_AGENTS.find((a) => a.name === s.agent)?.terminal
+    return { ...s, ...(runs ? { runs } : {}), live: !!t?.busy && (!s.sessionId || !t.session || t.session === s.sessionId) }
+  }))
+}
+plugin.route("GET", "activity/sessions", async (req) => ({ sessions: await fileSessions(str(req.query.path), Math.min(31, Math.max(1, Number(req.query.days) || 30))) }))
 
 function query(q: Record<string, string>): ActivityList {
   const limit = Math.min(500, Math.max(1, Number(q.limit) || 50))
@@ -799,6 +844,24 @@ autosaves) are one line with a count. Kept on the server's machine for keep_days
     }
     return lines.length ? lines.join("\n") : "Nothing recorded yet."
   },
+})
+
+plugin.op({
+  id: "activity.sessions",
+  cli: "sessions",
+  summary: "The coding agents' sessions that changed a file, newest first: title, agent, when, whether it still runs, and its terminal to open or resume.",
+  help: `From the edits Activity kept (keep_days, default 14): one line per session, by its agent's session id. A running
+one's terminal opens with vau terminal open <terminal>; an ended one resumes with vau terminal resume <session id>.
+
+  vau sessions Notes/Idea.md`,
+  kind: "read",
+  args: ["path"],
+  params: {
+    path: { type: "string", format: "path", required: true, description: "the file" },
+    days: { type: "integer", minimum: 1, maximum: 31, default: 30, description: "how far back" },
+  },
+  run: async ({ path: p, days }) => ({ sessions: await fileSessions(p, days) }),
+  text: (r: { sessions: FileSession[] }) => r.sessions.map((s) => `${localDate(s.last)} ${localTime(s.last)}  ${s.agent}${s.title ? ` "${s.title}"` : ""}: ${s.n} change${s.n === 1 ? "" : "s"}, ${s.live ? `running in ${s.terminal}` : "ended"}${s.sessionId ? `, session ${s.sessionId}` : ""}`).join("\n") || "No agent's session changed it lately.",
 })
 
 plugin.op({

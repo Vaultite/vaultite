@@ -65,6 +65,30 @@ export default async ($: VaultTest) => {
   await api("POST", "activity/hook?agent=claude&terminal=claude-x1", { tool_name: "Bash", tool_input: { command: "vau open Act/b.md\nsecond line" } })
   ev = await actEvents("&actor=agent")
   check("activity: an agent's hooks report its edits (vault paths) and commands (first line)", ev.some((e: Any) => e.text === "Edited Act/b.md" && e.actor.terminal === "claude-x1") && ev.some((e: Any) => e.text === "Ran vau open Act/b.md"), ev)
+  {
+    // Sessions here: the agents' sessions that changed a file, one per agent's session id (a resumed terminal's is its id's).
+    const edit = (agent: string, terminal: string, file: string, sid?: string) =>
+      api("POST", `activity/hook?agent=${agent}&terminal=${terminal}`, { tool_name: "Edit", tool_input: { file_path: path.join(VAULT, file) }, ...(sid ? { session_id: sid } : {}) })
+    await edit("claude-code", "claude-s1", "Act/s.md", "sid-one-1111")
+    await edit("claude-code", "claude-s1", "Act/s.md", "sid-one-1111")
+    await edit("codex", "resume-codex-sid-two-2222", "Act/s.md")
+    await edit("claude-code", "claude-s3", "Act/other.md", "sid-three")
+    const [, r] = await api("GET", "activity/sessions?path=Act/s.md")
+    const one = r.sessions.find((s: Any) => s.sessionId === "sid-one-1111"), two = r.sessions.find((s: Any) => s.sessionId === "sid-two-2222")
+    check("activity: a file's sessions, by session id, with the agent that resumes each, none still running", r.sessions.length === 2 &&
+      one?.n === 2 && one.runs === "claude" && one.agent === "Claude Code" && one.terminal === "claude-s1" && two?.runs === "codex" && !one.live && !two.live, r)
+    const [, txt] = await api("POST", "ops/activity.sessions", { path: "Act/other.md" })
+    check("activity: activity.sessions answers them", txt.sessions?.length === 1 && txt.sessions[0].sessionId === "sid-three", txt)
+    const ev = (t: number, actor: Any, paths: string[], action = "edit"): Any => ({ id: String(t), t, actor: { kind: "agent", name: "Claude Code", ...actor }, action, text: "", paths })
+    const g = act.sessionsOf([
+      ev(1, { terminal: "claude-a" }, ["N/x.md"]), ev(2, { terminal: "claude-a", sessionId: "s-a", session: "Fix tabs" }, ["N/x.md"]),
+      ev(5, { terminal: "claude-b" }, ["N/x.md"]), ev(6, { terminal: "claude-c", sessionId: "s-c" }, ["N/y.md"]),
+      ev(7, { terminal: "claude-d" }, ["N/x.md"], "open"), { ...ev(8, {}, ["N/x.md"]), actor: { kind: "you", name: "You" } },
+      { ...ev(9, { terminal: "claude-e" }, ["N/x.md"], "request"), wrote: [] },
+    ], "N/x")
+    check("activity: sessionsOf groups a terminal's edits under its session id, newest first; opens, the user's and requests that wrote nothing aren't",
+      g.length === 2 && g[0].terminal === "claude-b" && !g[0].sessionId && g[1].sessionId === "s-a" && g[1].n === 2 && g[1].first === 1 && g[1].title === "Fix tabs", g)
+  }
   app.changed(["Act/c.md", ".vaultite/cache/github.json"])
   write("Act/c.md", "hi\n")
   app.changed(["Act/c.md", ".vaultite/cache/github.json"])

@@ -14,6 +14,8 @@ export type Actor = {
    *  title (a Claude Code session's name). */
   terminal?: string
   session?: string
+  /** Its agent's own id for that session (what resumes it), when known. */
+  sessionId?: string
 }
 
 /** What was done; `ui` is an agent driving the app, `run` a shell command an agent ran, `request` anything else. */
@@ -75,6 +77,16 @@ export type ActivitySummary = {
   bucket: "hour" | "day"
   /** The files touched most, with who touched them. */
   files: { path: string; n: number; last: number; actors: string[] }[]
+}
+
+/** An agent's session that changed a file (activity.sessions), newest first. */
+export type FileSession = {
+  /** Its agent ("Claude Code") and that agent's name in a terminal ("claude"), what resumes it. */
+  agent: string; runs?: string
+  /** Its title, the terminal it last ran in and its agent's own id for it. */
+  title?: string; terminal?: string; sessionId?: string
+  /** When it first and last changed the file (ms), how many times, and whether that terminal still runs it. */
+  first: number; last: number; n: number; live: boolean
 }
 
 export type RouteStat = { route: string; n: number; errors: number; avg: number; p50: number; p95: number; max: number }

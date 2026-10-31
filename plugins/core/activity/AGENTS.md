@@ -8,6 +8,8 @@ server's memory and event loop, and each app window's load. Nothing to write: it
 - Read it: `vau activity` (`--actor agent`, `--action changes` (changes, opens, commands, settings, other),
   `--path Notes/Idea.md`), `vau perf`, or `GET /api/activity?limit=&actor=&action=&path=`,
   `GET /api/activity/summary?days=1`, `GET /api/activity/perf`.
+- The coding agents' sessions that changed a file (each one's title, terminal, session id, whether it still runs):
+  `vau sessions Notes/Idea.md` (activity.sessions); its top bar shows them as "2 sessions", to reopen or resume.
 - The `perf-server`, `perf-routes` and `perf-app` blocks are on the Activity page's Performance tab.
 
 ## Recaps (`Recaps/<YYYY-MM-DD>.md`)

@@ -1283,8 +1283,9 @@ plugin.provide("terminal:of-pids", async (pids: number[]) => {
   return null
 })
 
-/** A terminal's id and title (a Claude Code session's name), or null when it isn't running. */
+/** A terminal's id and title (a Claude Code session's name), whether something runs in it and its agent's session id,
+ *  or null when it isn't running. */
 plugin.provide("terminal:info", async (id: string) => {
   const s = (await localList()).find((x) => x.id === id)
-  return s ? { id: s.id, title: s.title } : null
+  return s ? { id: s.id, title: s.title, busy: s.busy, ...(s.session ? { session: s.session } : {}) } : null
 })
