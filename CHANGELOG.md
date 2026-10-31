@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The traffic lights slide with a hidden sidebar**: as it slides in or out they ride in its top row instead of
+  popping in once it has arrived, and on macOS 26 they sit centred on that row.
 - **A hidden sidebar slides over a web page as it does over a note**: in and out, both sides, instead of sliding under
   the page and popping in at the end.
 - **Clicks reach what the app draws over a web page again**: an agent's page opened as a tab could come back over the

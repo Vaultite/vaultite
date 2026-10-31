@@ -2,7 +2,7 @@
 // the window, as Zen's compact mode does, and slides out once the pointer has left it.
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { getDrag } from "@/core/drag"
-import { hasLights, showLights, webPages } from "@/core/desktop"
+import { hasLights, lightsFrame, showLights, webPages, type LightsFrame } from "@/core/desktop"
 import { space } from "@/lib/utils"
 
 export type Peek = "left" | "right" | null
@@ -38,22 +38,60 @@ function lightsAt(aside: Element | null) {
   return a.right > 0 ? { x: a.left, mid: row.top + row.height / 2 } : null
 }
 
-/** The traffic lights, on the left sidebar's top row, hidden with it. The Mac draws them: moved a frame at a time they
- *  lagged its slide and flashed at their default place, so they go as it slides out and come once it has slid in. */
+/** The lights' stand-ins (App.tsx's [data-lights-ghost]) where the Mac draws them for the sidebar slid in, rounded to
+ *  points as electron/main.ts rounds them, so one takes the other's place without a pixel's move. */
+function fitGhost(aside: HTMLElement, ghost: HTMLElement, f: LightsFrame) {
+  const row = aside.querySelector("[data-titlebar]")
+  if (!row) return
+  // (its left as laid out, which its slide doesn't change; its row's middle, which a sideways slide doesn't move)
+  const left = parseFloat(getComputedStyle(aside).left) || 0, top = aside.getBoundingClientRect().top
+  const r = row.getBoundingClientRect(), z = f.zoom
+  const x = Math.round(f.inset + left * z) + (f.width - f.size) / 2
+  const y = Math.round((r.top + r.height / 2) * z - f.height / 2) + (f.height - f.size) / 2
+  ghost.style.left = `${x / z - left}px`
+  ghost.style.top = `${y / z - top}px`
+  ghost.style.setProperty("--light-size", `${f.size / z}px`)
+  ghost.style.setProperty("--light-pitch", `${f.pitch / z}px`)
+}
+
+/** The traffic lights on the left sidebar's top row; the Mac draws them a beat behind the page, so while it slides
+ *  stand-ins take their place: it slides out once theirs are gone. Answers whether it's drawn slid in. */
 export function usePeekLights(hidden: boolean, peek: Peek) {
   const shown = peek === "left"
+  const [drawn, setDrawn] = useState(shown)
+  if (drawn !== shown && (shown || !hidden || !hasLights)) setDrawn(shown)
+  // What the window was last told, and whether the stand-ins are wanted (the Mac's aren't there).
+  const lights = useRef({ said: "", away: true })
   useEffect(() => {
     if (!hasLights) return
-    const aside = document.querySelector("aside[data-side=left]")
-    if (hidden && !aside) return showLights(null)
-    let said = "", live = true
-    const say = (at: ReturnType<typeof lightsAt>) => { const now = JSON.stringify(at); if (now !== said) { said = now; showLights(at) } }
+    const aside = document.querySelector<HTMLElement>("aside[data-side=left]")
+    if (hidden && !aside) { void showLights(null); return }
+    const ghost = aside?.querySelector<HTMLElement>("[data-lights-ghost]") ?? null
+    const fit = () => { const f = lightsFrame(); if (aside && ghost && f) fitGhost(aside, ghost, f) }
+    const stand = (on: boolean) => { lights.current.away = on; ghost?.toggleAttribute("data-shown", on) }
+    let live = true
+    fit()
+    stand(lights.current.away)
+    const say = (at: ReturnType<typeof lightsAt>) => {
+      // (the zoom too: the same place in CSS px is another in points)
+      const now = JSON.stringify([at, devicePixelRatio])
+      if (now === lights.current.said) return Promise.resolve()
+      lights.current.said = now
+      if (!at) stand(true)
+      return showLights(at).then(() => {
+        fit()
+        // (the window has them shown, drawn a frame or so later)
+        if (at) setTimeout(() => { if (lights.current.said === now) stand(false) }, 40)
+      })
+    }
     const place = () => {
       // (only its sliding moves them: a rail folding changes its width, not where they sit)
       const sliding = aside?.getAnimations().filter((a) => (a as CSSTransition).transitionProperty === "translate") ?? []
-      if (!sliding.length) return say(lightsAt(aside))
-      say(null)
-      void Promise.allSettled(sliding.map((a) => a.finished)).then(() => { if (live) place() })
+      if (sliding.length) {
+        void say(null)
+        void Promise.allSettled(sliding.map((a) => a.finished)).then(() => { if (live) place() })
+      } else if (hidden && drawn && !shown) void say(null).then(() => requestAnimationFrame(() => { if (live) setDrawn(false) }))
+      else void say(lightsAt(aside))
     }
     place()
     const sized = new ResizeObserver(() => place())
@@ -61,7 +99,8 @@ export function usePeekLights(hidden: boolean, peek: Peek) {
     if (row) sized.observe(row)
     addEventListener("resize", place)
     return () => { live = false; sized.disconnect(); removeEventListener("resize", place) }
-  }, [hidden, shown])
+  }, [hidden, shown, drawn])
+  return drawn
 }
 
 /** How close to the edge (px) and how long there (ms) opens it: the right edge waits longer, panes' scrollbars are there. */

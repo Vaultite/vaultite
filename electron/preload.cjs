@@ -10,6 +10,7 @@ const mark = () => {
 mark()
 addEventListener("DOMContentLoaded", mark)
 ipcRenderer.on("vaultite:fullscreen", (_e, on) => document.documentElement.toggleAttribute("data-fullscreen", !!on))
+ipcRenderer.on("vaultite:key", (_e, on) => document.documentElement.toggleAttribute("data-window-inactive", !on))
 
 // Windows' controls (titleBarOverlay) take the colour of the page under them and the height of its title row, as the
 // theme, the sidebars and the zoom change; main.ts answers how wide they are, which index.css keeps clear (--window-controls).

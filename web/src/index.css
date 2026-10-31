@@ -1005,6 +1005,17 @@ html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen])
 html[data-electron][data-platform=darwin]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
 /* A pop-out window (no sidebars): its top-left tab bar makes room for the lights. */
 html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
+/* Stand-ins for the traffic lights while the sidebar slides (core/peek.ts places and shows them): the Mac's colours as
+   macOS 26 draws them (Display P3), and out of focus its grey, which lightens what's under it (darkens, in light mode). */
+[data-lights-ghost] { position: absolute; display: flex; gap: calc(var(--light-pitch) - var(--light-size)); pointer-events: none; }
+[data-lights-ghost]:not([data-shown]), html[data-fullscreen] [data-lights-ghost] { visibility: hidden; }
+[data-lights-ghost] > i { width: var(--light-size); height: var(--light-size); border-radius: 50%; background: var(--light);
+  box-shadow: inset 0 0 0 0.5px var(--light-rim); }
+[data-lights-ghost] > i:nth-child(1) { --light: color(display-p3 0.925 0.404 0.396); --light-rim: color(display-p3 0.867 0.184 0.169); }
+[data-lights-ghost] > i:nth-child(2) { --light: color(display-p3 0.949 0.792 0.267); --light-rim: color(display-p3 0.898 0.69 0.004); }
+[data-lights-ghost] > i:nth-child(3) { --light: color(display-p3 0.396 0.769 0.4); --light-rim: color(display-p3 0.169 0.663 0.18); }
+html[data-window-inactive] [data-lights-ghost] > i { --light: rgb(35 35 35); --light-rim: rgb(45 45 45); mix-blend-mode: plus-lighter; }
+@media (prefers-color-scheme: light) { html[data-window-inactive] [data-lights-ghost] > i { mix-blend-mode: difference; } }
 /* In step with the panes sliding (Workspace: transition-[left] duration-200 ease-out), so the first tab never passes
    under the lights while the sidebar opens or folds. */
 html[data-electron] [data-corner] > [role="tablist"] { transition: padding-left 200ms cubic-bezier(0, 0, 0.2, 1); }

@@ -7,7 +7,7 @@ import { runCommandLink, useCommands } from "@/core/commands"
 import { isDesktop, isMac, isWindows, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
-import { desktop as desktopApp, otherVaults } from "@/core/desktop"
+import { desktop as desktopApp, hasLights, otherVaults } from "@/core/desktop"
 import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
 import { useTypingFade } from "@/core/typing"
 import { keepTypingInSight } from "@/core/sight"
@@ -454,8 +454,8 @@ export default function App() {
   const rside = showRight && !hideRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
   const peek = usePeek(hideLeft, hideRight && hasRight)
   const leftOpen = sidebar || hideLeft
-  // The traffic lights go with the sidebar they sit in.
-  usePeekLights(hideLeft, peek)
+  // The traffic lights go with the sidebar they sit in; it slides out once they're gone.
+  const leftIn = usePeekLights(hideLeft, peek)
   useTypingFade(desktop && typingFade)
   useEffect(() => keepTypingInSight(), [])
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
@@ -493,7 +493,7 @@ export default function App() {
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
           "transition-[width] duration-200 ease-out md:flex",
           hideLeft && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-        )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", peek === "left") } : { width: side }}>
+        )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
         <div data-titlebar onContextMenu={menuFor(headerMenu)} className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !leftOpen && "pointer-events-none opacity-0")}>
@@ -501,6 +501,8 @@ export default function App() {
             <div key={key} data-header-item={key} className="flex min-w-0 shrink-0 items-center"><Guard what="This item"><Drawn draw={() => item.render({ store, open: true, file: filePath, tab: targetOf(tab) })} /></Guard></div>
           ))}
         </div>
+        {/* Stand-ins for the Mac's traffic lights while it slides (core/peek.ts places and shows them). */}
+        {hideLeft && hasLights && <span aria-hidden data-lights-ghost=""><i /><i /><i /></span>}
         {/* The plugins' panels; as a rail, the header's items go first, under the toggle. Phones draw them in drawers
             (PhoneDrawer.tsx). */}
         <div className="flex min-h-0 flex-1 flex-col">
@@ -586,7 +588,7 @@ export default function App() {
       {!popout && (
         <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
           className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "left" && "pointer-events-none") : undefined}
-          style={hideLeft ? peekRider("left", peek === "left", sidebarPx(sidebarWidth)) : undefined} />
+          style={hideLeft ? peekRider("left", leftIn, sidebarPx(sidebarWidth)) : undefined} />
       )}
       {desktop && !popout && (
         <SidebarToggle side="right" open={rightOpen} empty={!hasRight}

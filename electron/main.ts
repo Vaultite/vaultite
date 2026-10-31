@@ -33,8 +33,10 @@ const MAC = process.platform === "darwin"
 // Where a Mac window's traffic lights sit (points from its top-left corner) until its page places them
 // (window:lights): web/src/index.css lays the sidebar's top row out around them.
 const LIGHTS = { x: 16, y: 14 }
-// Their height (points), to centre them on a row: each button's frame on macOS 15 (a 12pt circle in 14×16).
-const LIGHTS_HEIGHT = 16
+// Each button (points), to centre them on a row and for the page's stand-ins (core/peek.ts): macOS 26 draws a 14pt
+// circle filling its frame, 23pt apart; before it, a 12pt circle in a 14×16 frame, 20pt apart.
+const BUTTONS = MAC && Number(process.getSystemVersion().split(".")[0]) >= 26
+  ? { width: 14, height: 14, size: 14, pitch: 23 } : { width: 14, height: 16, size: 12, pitch: 20 }
 const LINUX = process.platform === "linux"
 const WIN = process.platform === "win32"
 /** The window's own title bar: the Mac's traffic lights over the page; Windows' controls drawn over its top-right corner
@@ -481,6 +483,9 @@ function guard(win: AppWindow, origin: string) {
   // The Mac lays the title bar out again on these and may put the traffic lights back where they sit by default.
   const again = () => applyLights(win)
   if (MAC) { win.on("focus", again); win.on("blur", again); win.on("show", again); win.on("restore", again); win.on("resized", again); win.on("leave-full-screen", again) }
+  // Out of focus, the Mac greys the lights: so do the page's stand-ins for them (data-window-inactive, index.css).
+  const key = () => { if (!win.isDestroyed()) win.webContents.send("vaultite:key", win.isFocused()) }
+  if (MAC) { win.on("focus", key); win.on("blur", key); win.webContents.on("dom-ready", key) }
   // A pop-out: the page window.open made, in a window of ours (its pages go over it as in the vault's), closed with it.
   // `at`: where the page asked it to open (a tab dragged out of the window: core/workspace.ts popOut).
   const popOut = (w: Win, page: WebContents, webPreferences?: WebPreferences, at?: { x?: number; y?: number }) => {
@@ -1097,19 +1102,20 @@ function applyLights(w: AppWindow) {
   // (shown again, the Mac lays them out where they sit by default: placed once more)
   if (at) w.setWindowButtonPosition(at)
 }
-// The traffic lights in the page's sidebar's top row (`at`, CSS px: `x` right of LIGHTS, centred on the line `mid`
-// down), hidden while it is (no rails). An older page sends a boolean: they stay put.
+// The traffic lights in the page's sidebar's top row (`at`, CSS px: `x` right of LIGHTS, centred on `mid` down), hidden
+// while it is (no rails); an older page sends a boolean. Answers how they're drawn, for the page's stand-ins.
 ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | null) => {
   who(e)
   const w = AppWindow.fromWebContents(e.sender)
   if (!MAC || !w) return
   if (at && typeof at === "object" && Number.isFinite(at.x) && Number.isFinite(at.mid)) {
     const z = e.sender.getZoomFactor()
-    setLights(w, { x: Math.round(LIGHTS.x + at.x * z), y: Math.round(at.mid * z - LIGHTS_HEIGHT / 2) })
+    setLights(w, { x: Math.round(LIGHTS.x + at.x * z), y: Math.round(at.mid * z - BUTTONS.height / 2) })
   } else if (at) w.setWindowButtonVisibility(true)
   else setLights(w, null)
   const v = [...wins.values()].find((x) => x.win === w)?.vault
   if (v && !!v.lightsOff !== !at) { if (at) delete v.lightsOff; else v.lightsOff = true; save() }
+  return { zoom: e.sender.getZoomFactor(), inset: LIGHTS.x, ...BUTTONS }
 })
 // The page's appearance `translucent` (electron/translucency.ts): what the window can do of it, now.
 ipcMain.handle("window:translucent", (e, on: unknown) => {

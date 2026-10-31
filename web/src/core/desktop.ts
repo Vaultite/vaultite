@@ -77,8 +77,8 @@ export type DesktopApi = {
   /** The window (or a rectangle of it, in CSS pixels) as a PNG, base64 (`vau dev screenshot`). Builds from before it don't have it. */
   capture?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<{ png: string; width: number; height: number }>
   /** Show a Mac window's traffic lights at `at` (CSS px: `x` right of where they sit, centred on the line `mid` down),
-   *  or hide them (null). Builds from before it don't have it; ones from before `at` show them in place. */
-  lights?: (at: Lights | null) => Promise<unknown>
+   *  or hide them (null); answers how they're drawn. Older builds lack it, show them in place, or answer nothing. */
+  lights?: (at: Lights | null) => Promise<LightsFrame | undefined>
   /** Ask for the window's sidebars and bars see-through to the desktop, blurred (appearance `translucent`), and hear
    *  whenever that changes. A Mac's and Windows'; builds from before it don't have it. */
   translucent?: { set: (on: boolean) => Promise<Translucency>; on: (fn: (t: Translucency) => void) => void }
@@ -89,6 +89,9 @@ export type DesktopApi = {
 export type Translucency = { on: boolean; why?: "system" | "reduced" | "apps" | "reopen" }
 
 export type Lights = { x: number; mid: number }
+/** How the Mac draws the lights for an `at` (points): the first button `inset` right of `at.x` and centred on `mid`
+ *  in a `width`×`height` frame, each a circle `size` across, `pitch` apart; `zoom` the page's. */
+export type LightsFrame = { zoom: number; inset: number; width: number; height: number; size: number; pitch: number }
 
 export type UpdateMode = "automatic" | "notify" | "off"
 
@@ -351,9 +354,13 @@ export const captureWindow = (): Promise<{ png: string; width: number; height: n
 
 /** A Mac window's traffic lights, which the page can hide and move: the desktop app's, not a browser's. */
 export const hasLights = isMac && !!desktop?.lights
+let frame: LightsFrame | null = null
+/** How the window draws its lights, once it has said (builds from before it don't). */
+export const lightsFrame = () => frame
 /** The Mac window's traffic lights shown at `at` (the sidebar's top row they sit in, which may float over the page),
- *  or hidden (null: a sidebar hidden without its rail); nothing elsewhere. */
-export const showLights = (at: Lights | null) => { if (isMac) desktop?.lights?.(at).catch(() => {}) }
+ *  or hidden (null: a sidebar hidden without its rail); nothing elsewhere. Resolves once the window has them so. */
+export const showLights = (at: Lights | null): Promise<void> => isMac && desktop?.lights
+  ? desktop.lights(at).then((f) => { if (f && typeof f === "object" && f.zoom > 0) frame = f }, () => {}) : Promise.resolve()
 
 /** The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them. */
 export const lookUp = desktop?.lookUp && isMac ? desktop.lookUp : null
