@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A delegated task's changed files on Windows**: the files a Codex turn changed, under the home folder or on a
+  drive, are listed as Windows paths.
 - **HTML pages can share live state**: `vau.shared()` gives a page a JSON map that's the same, live, in every view of
   it on any device, and who has it open; a page made for two (a game, a drill) plays across the user's devices.
 - **Browser tabs come back after quitting**: quitting the desktop app closed every web page tab, as if each page had

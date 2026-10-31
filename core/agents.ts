@@ -465,7 +465,7 @@ export function changedFiles(entries: Entry[]): string[] {
     // (its input may be cut short: read the path, not the JSON)
     const m = /"(?:file_path|notebook_path)":\s*"((?:[^"\\]|\\.)+)"/.exec(e.input)
     if (m) out.add(m[1].replace(/\\(.)/g, "$1"))
-    else for (const c of e.input.matchAll(/^(?:add|update|delete) ([~/].*)$/gm)) out.add(c[1].replace(/^~(?=\/)/, HOME))
+    else for (const c of e.input.matchAll(/^(?:add|update|delete) (~[/\\].*|\/.*|[A-Za-z]:[/\\].*)$/gm)) out.add(c[1][0] === "~" ? path.join(HOME, c[1].slice(2)) : c[1])
   }
   return [...out]
 }

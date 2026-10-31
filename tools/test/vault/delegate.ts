@@ -31,8 +31,8 @@ export default async ($: VaultTest) => {
     const tool = (name: string, input: string, error = false) => ({ kind: "tool", id: name, name, summary: "", input, result: null, error, at: "" }) as Any
     check("delegate: the files a turn changed, from Claude Code's edits (an input cut short too) and Codex's file changes",
       changedFiles([tool("Edit", '{\n  "file_path": "/w/a.ts",\n  "old_string": "x"'), tool("Write", '{"file_path": "/w/b.md", "content": "…'), tool("Bash", '{"command": "rm /w/c"}'),
-        tool("Edit", "update ~/w/d.ts\n@@ -1 +1 @@\n-a\n+b\n\nadd /w/new file.ts\nhello"), tool("Edit", '{"file_path": "/w/failed.ts"}', true)]).join() ===
-        ["/w/a.ts", "/w/b.md", path.join(HOME, "w/d.ts"), "/w/new file.ts"].join())
+        tool("Edit", "update ~/w/d.ts\n@@ -1 +1 @@\n-a\n+b\n\nadd /w/new file.ts\nhello\ndelete C:\\w\\e.ts"), tool("Edit", '{"file_path": "/w/failed.ts"}', true)]).join() ===
+        ["/w/a.ts", "/w/b.md", path.join(HOME, "w/d.ts"), "/w/new file.ts", "C:\\w\\e.ts"].join())
     check("delegate: Codex's sandbox and approvals as a permission mode", modeOf("on-request", "workspace-write", "auto_review") === "auto" &&
       modeOf("on-request", "workspace-write") === "acceptEdits" && modeOf("on-request", "read-only") === "default" && modeOf("never", "read-only") === "plan" &&
       modeOf("never", "danger-full-access") === "bypassPermissions" && modeOf("", "") === null)
