@@ -22,7 +22,8 @@ export default definePlugin({
   blocks: { lighthouse: () => <BeamCard /> },
   commands: [{ id: "lighthouse:beam", name: "Say the lighthouse's beam", run: () => notify("The beam is on") },
     { id: "lighthouse:mark", name: "Mark the lamp", run: () => notify(new LampMark().toDOM().textContent ?? "") },
-    { id: "lighthouse:logbook", name: "Read the lighthouse's logbook", run: async () => notify((await import("./logbook")).logbook()) }],
+    { id: "lighthouse:logbook", name: "Read the lighthouse's logbook", run: async () => notify((await import("./logbook")).logbook()) },
+    { id: "lighthouse:tally", name: "Tally the beam", run: async () => notify(await (await import("./logbook")).tally(21)) }],
   // (notes say whether the beam's plugin is in their editor: the app's CodeMirror, not a copy of it)
   editor: (ctx) => (ctx.kind === "markdown" ? EditorView.contentAttributes.of({ "data-lighthouse": "" }) : []),
   mockLive: () => ({ lighthouse: { beam: "on", keepers: 2 } }),

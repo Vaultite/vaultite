@@ -165,6 +165,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   you're back online), untrusted certificates warn before you go on, a crashing page says so with Reload, loading tabs
   spin, View page source and Duplicate tab are in the menus, a tab moved to a new window keeps its page, and the Tabs
   panel ends with your archived tabs (never one holding text you typed).
+- **Excalidraw's fonts no longer throw an error**: a vault plugin's chunk that a package also runs as a worker (Excalidraw's
+  font subsetting) no longer pulls in the plugin's own code, which failed there; vault plugins are bundled again once.
 - **A working agent no longer keeps the Mac busy**: its tab's dot breathes a few times as it starts, then holds still;
   breathing for as long as it worked made macOS redraw the window 60 times a second (a third of WindowServer's CPU).
 - **The desktop app opened by an agent is the Dock's**: started from an agent's session or a Vaultite terminal (`open -a`,

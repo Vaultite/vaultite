@@ -107,9 +107,18 @@ export default async ($: VaultTest) => {
   const [bcode, entry] = await api("GET", `plugins/lighthouse/${lh.bundle}/bundle.js`)
   // (it preloads CodeMirror: bundle.js imports its module only then, a static import would run first)
   const [, main] = await api("GET", `plugins/lighthouse/${lh.bundle}/main.js`)
-  const shared = [...String(main).matchAll(/from\s*["']\.\/([\w-]+\.js)["']/g)].map((m) => m[1]) // (its code, in a chunk its import() shares)
-  let bundle = String(main)
-  for (const f of shared) bundle += (await api("GET", `plugins/lighthouse/${lh.bundle}/${f}`))[1]
+  /** A chunk and every chunk it imports statically: what runs when it's imported. */
+  const reach = async (first: string, code?: string) => {
+    const got = new Map<string, string>()
+    for (const todo = [first]; todo.length;) {
+      const f = todo.pop()!, text = got.size || code === undefined ? String((await api("GET", `plugins/lighthouse/${lh.bundle}/${f}`))[1]) : code
+      got.set(f, text)
+      for (const [, dep] of text.matchAll(/(?:from|import)\s*["']\.\/([\w-]+\.js)["']/g)) if (!got.has(dep)) todo.push(dep)
+    }
+    return got
+  }
+  const own = await reach("main.js", String(main)) // (its code, in chunks its import()s share)
+  const shared = [...own.keys()].slice(1), bundle = [...own.values()].join("")
   check("vault plugins: its module is imported after what it preloads, never statically", typeof entry === "string" && shared.length > 0 &&
     !/\bfrom\s*["']/.test(entry.split("\n").slice(1).join("\n")) /* (after its styles' line) */ && /preload\(\["@codemirror\/view"\]\);\nconst m = await import\("\.\/main\.js"\)/.test(entry), [entry.slice(-300), String(main).slice(0, 200)])
   check("vault plugins: its bundle is one module sharing the app's React and API", bcode === 200 && bundle.includes("__vaultite.modules[`react/jsx-runtime`]")
@@ -117,6 +126,11 @@ export default async ($: VaultTest) => {
   const chunk = /import\(["`']\.\/(logbook-[\w-]+\.js)["`']\)/.exec(bundle)?.[1]
   check("vault plugins: what it imports when needed is a chunk of its own, beside its bundle", !!chunk && !bundle.includes("calm seas") &&
     (await api("GET", `plugins/lighthouse/${lh.bundle}/${chunk}`))[1]?.includes?.("calm seas") && (await api("GET", `plugins/lighthouse/0/${chunk}`))[0] === 404, bundle.slice(-300))
+  // (a chunk that is also a worker's script imports only what it needs: none reads globalThis.__vaultite, a page's)
+  const book = chunk ? String((await api("GET", `plugins/lighthouse/${lh.bundle}/${chunk}`))[1]) : ""
+  const tallied = /import\(["`']\.\/(tally-[\w-]+\.js)["`']\)/.exec(book)?.[1], reached = tallied ? await reach(tallied) : new Map<string, string>()
+  check("vault plugins: a chunk that runs as a worker too reaches none of the page's modules", reached.size > 1 && [...reached.values()].some((c) => c.includes("The beam was"))
+    && ![...reached.values()].some((c) => c.includes("__vaultite")), [...reached.keys()])
   check("vault plugins: CodeMirror is the app's, loaded with it, not bundled", entry.includes('preload(["@codemirror/view"])')
     && bundle.includes("__vaultite.modules[`@codemirror/view`]") && !bundle.includes("cm-scroller"), bundle.slice(0, 300))
   check("vault plugins: with its Tailwind classes, under the app's", entry.includes("@layer plugins") && entry.includes("tracking-\\\\[0\\\\.0625em\\\\]"), bundle.slice(0, 400))

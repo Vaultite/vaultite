@@ -25,7 +25,7 @@ const CSS = path.join(ROOT, "web", "src", "index.css") // the app's Tailwind set
 const BUILD = "5:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8)
 // What its code bundles against: the app's packages. A new stylesheet alone only redoes its styles (an update that
 // bundled Excalidraw again took seconds off the app's start).
-const CODE = "6:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
+const CODE = "7:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
 
 export type VaultPlugin = {
   id: string; dir: string; manifest: Item
@@ -205,6 +205,9 @@ async function bundle(vp: VaultPlugin) {
     cwd: ROOT,
     platform: "browser",
     logLevel: "silent",
+    // (an import()ed chunk imports what it shares from its own chunks, not its importer's: one that is a package's worker
+    // too, Excalidraw's fonts, would run the plugin's code there, reading globalThis.__vaultite, which no worker has)
+    experimental: { chunkOptimization: { avoidRedundantChunkLoads: false } },
     resolve: { conditionNames: ["production", "browser", "import", "default"] }, // (as the app's own build)
     transform: { jsx: { runtime: "automatic" }, define: { "process.env.NODE_ENV": JSON.stringify("production") } },
     plugins: [{
@@ -433,8 +436,8 @@ export class VaultPlugins {
           const { problems, warnings } = r
           manifest = r.manifest ?? manifest
           const digest = digestOf(dir)
-          // (the app's built stylesheet too: which of its classes the app has decides their layer)
-          const hash = crypto.createHash("sha256").update(BUILD).update((builtCss(), appCss?.file ?? "")).update(digest.content).update(theirs).digest("hex").slice(0, 12)
+          // (the app's built stylesheet too: which of its classes the app has decides their layer; CODE: code bundled anew is a new version)
+          const hash = crypto.createHash("sha256").update(BUILD).update(CODE).update((builtCss(), appCss?.file ?? "")).update(digest.content).update(theirs).digest("hex").slice(0, 12)
           const icon = iconOf(manifest.icon, (f) => { const file = path.join(dir, f); return inside(dir, file) && fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? readText(file) : null })
           vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, icon, stat, problems, warnings, hash, digest }
         } catch (e) {
