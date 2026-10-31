@@ -23,6 +23,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   turn cut off by a reboot goes on by itself), another machine's sessions open the same way, its edits show in Activity,
   every session's tab is its chat (one started in a terminal carries on there once that ends), Open in terminal resumes it
   in Claude Code, and the inbox's replies and voice notes go straight into chat sessions. `vau chat` drives them.
+- **Claude companions run in the app's chat, not a terminal**: the companion on Claude Code, @opus, @opus-review and
+  the other Claude names are chat sessions now. What you do reaches them the moment it happens (asks that come while
+  one is busy go together as it finishes), they answer with their own tools instead of shell commands, their cursor
+  shows them reading or thinking while they really are, and they keep going through a server restart. Show its session
+  opens its chat; Codex and OpenCode companions stay in terminals.
 - **Agents' sessions stay in the inbox until they're dealt with**: each session is one thread that needs you (it asks,
   answered, reported or failed), then shows its agent working once you reply, and leaves only when you mark it done or
   it finishes with nothing more for you; opening or reading it no longer makes it disappear. A report is its session's

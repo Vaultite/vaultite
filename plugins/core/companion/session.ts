@@ -1,5 +1,5 @@
 // Its sessions from the app: the mode, showing one, stopping one, a fresh one. The status bar's menu and each cursor's.
-import { Power, RotateCcw, SquareTerminal } from "lucide-react"
+import { MessageSquare, Power, RotateCcw, SquareTerminal } from "lucide-react"
 import { notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
 import { type Agent, getState, howText, type Mode } from "./live"
 
@@ -21,6 +21,8 @@ export const modeItem = (off = false): MenuItem => ({
 })
 
 const main = (name: string) => name.toLowerCase() === getState().name.toLowerCase()
+/** Where a session shows: a Claude Code one (its id a UUID) in a chat tab, another in its terminal. */
+const sessionView = (id: string) => (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id) ? `claude-session/${id}` : `terminal/${id}`)
 const as = (name: string) => (main(name) ? {} : { as: name })
 
 export async function setMode(mode: Mode) {
@@ -28,7 +30,7 @@ export async function setMode(mode: Mode) {
   if (mode === "off") return
   try {
     const r = await op<{ id: string; running: boolean }>("companion.start")
-    if (!r.running) notify(`${getState().name} is starting`, { action: { label: "Show", run: () => openView(`terminal/${r.id}`) } })
+    if (!r.running) notify(`${getState().name} is starting`, { action: { label: "Show", run: () => openView(sessionView(r.id)) } })
   } catch (e) { notifyError(e) }
 }
 
@@ -38,11 +40,11 @@ async function start(name: string) {
   try { await op("companion.start", { ...as(name), ...(a?.runs ? { agent: a.runs } : {}), ...(a?.model ? { model: a.model } : {}), ...(a?.effort ? { effort: a.effort } : {}) }) } catch (e) { notifyError(e) }
 }
 
-/** Agent `name`'s terminal (the companion's by default), in a new tab. */
+/** Agent `name`'s session (the companion's by default), in a new tab: its chat, or its terminal. */
 export async function showSession(name = getState().name) {
   const r = await op<{ sessions: { name: string; id: string }[] }>("companion.status")
   const s = r.sessions.find((x) => x.name.toLowerCase() === name.toLowerCase())
-  if (s) openView(`terminal/${s.id}`, { newTab: true })
+  if (s) openView(sessionView(s.id), { newTab: true })
   else notify(`${name} isn't running`, { action: { label: "Start", run: () => void (main(name) ? setMode(getState().mode === "off" ? "quiet" : getState().mode) : start(name)) } })
 }
 
@@ -66,7 +68,7 @@ export function agentMenu(a: Agent): MenuItem[] {
   return [
     ...(main(a.name) ? [modeItem()] : []),
     ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),
-    { label: "Show its session", icon: SquareTerminal, run: () => void showSession(a.name), sep: main(a.name) && !how },
+    { label: "Show its session", icon: (a.runs ?? "").split("_")[0] === "claude" ? MessageSquare : SquareTerminal, run: () => void showSession(a.name), sep: main(a.name) && !how },
     { label: "Start fresh", icon: RotateCcw, run: () => void fresh(a.name), disabled: a.state === "starting", sep: true },
     { label: "Stop", icon: Power, danger: true, run: () => void stop(a.name) },
   ]

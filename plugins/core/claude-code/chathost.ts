@@ -20,6 +20,8 @@ export type ToolDef = { name: string; description: string; schema: { properties?
 export type Spec = {
   id: string; resume: boolean; cwd: string; env: Record<string, string>; claude?: string
   model?: string; effort?: Effort; mode?: Mode; append?: string; title?: string; tools?: ToolDef[]
+  /** Permission rules it runs without asking (allowedTools: "mcp__vaultite-app", "Bash(vau read:*)"), and never. */
+  allowed?: string[]; denied?: string[]
   /** Who started it ("app", "inbox", a plugin's id): the inbox and the list say so. */
   by?: string; account?: string
   /** Its news stays out of the inbox (a plugin's own session). */
@@ -54,6 +56,18 @@ export type Event =
 export type Sdk = {
   query: (p: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) => Query
   mcp?: (name: string, tools: { name: string; description: string; schema: ToolDef["schema"]; run: (args: unknown) => Promise<unknown> }[]) => McpServerConfig
+}
+
+/** The in-process MCP server of a session's relayed tools, as the SDK makes one (`createSdkMcpServer`), each tool's
+ *  parameters made zod from the JSON Schema the server gave (zod's `fromJSONSchema`). */
+export function relayed(create: typeof import("@anthropic-ai/claude-agent-sdk")["createSdkMcpServer"], fromJSONSchema: typeof import("zod")["fromJSONSchema"]): NonNullable<Sdk["mcp"]> {
+  const shapeOf = (schema: ToolDef["schema"]) => Object.fromEntries(Object.entries(schema.properties ?? {}).map(([k, s]) => {
+    const z = fromJSONSchema(s as Parameters<typeof fromJSONSchema>[0])
+    return [k, schema.required?.includes(k) ? z : z.optional()]
+  }))
+  // (always in its prompt: behind tool search, beside the user's own MCP servers, it reached for the shell instead)
+  return (name, tools) => create({ name, alwaysLoad: true, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: shapeOf(t.schema),
+    handler: async (args: unknown) => (await t.run(args)) as never })) })
 }
 
 /** Minutes a session sits idle (no turn, nothing asked) before its claude process ends; the next message resumes it. */
@@ -98,7 +112,7 @@ export class Host {
   private sdk: Sdk
   private sessions = new Map<string, Session>()
   private listeners = new Set<(e: Event) => void>()
-  private calls = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>()
+  private calls = new Map<string, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout>; e: Extract<Event, { t: "tool" }> }>()
   log: (...a: unknown[]) => void
   constructor(sdk: Sdk, log: (...a: unknown[]) => void = () => {}) { this.sdk = sdk; this.log = log }
 
@@ -131,7 +145,8 @@ export class Host {
       ...(spec.claude ? { pathToClaudeCodeExecutable: spec.claude } : {}),
       ...(spec.resume ? { resume: spec.id } : { sessionId: spec.id }),
       ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}),
-      ...(spec.mode ? { permissionMode: spec.mode } : {}),
+      ...(spec.mode ? { permissionMode: spec.mode } : {}), ...(spec.allowed?.length ? { allowedTools: spec.allowed } : {}),
+      ...(spec.denied?.length ? { disallowedTools: spec.denied } : {}),
       // (only so the picker can switch to it later, as the TUI's --allow-dangerously-skip-permissions does)
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true, thinking: { type: "adaptive", display: "summarized" },
@@ -254,13 +269,16 @@ export class Host {
     c.resolve(result)
   }
 
+  /** The tool calls the server hasn't answered: told again to a server that follows (one restarting missed them). */
+  pendingCalls() { return [...this.calls.values()].map((c) => c.e) }
+
   private relay(id: string, name: string, args: unknown) {
-    const call = crypto.randomUUID()
+    const call = crypto.randomUUID(), e = { t: "tool" as const, id, call, name, args }
     return new Promise<unknown>((resolve) => {
       const timer = setTimeout(() => { this.calls.delete(call); resolve({ isError: true, content: [{ type: "text", text: "Vaultite didn't answer" }] }) }, TOOL_MS)
       timer.unref?.()
-      this.calls.set(call, { resolve, timer })
-      this.emit({ t: "tool", id, call, name, args })
+      this.calls.set(call, { resolve, timer, e })
+      this.emit(e)
     })
   }
 
@@ -371,6 +389,7 @@ export class Host {
     x.ended = true
     if (x.idle) clearTimeout(x.idle)
     for (const [id, p] of x.asks) { p.resolve({ behavior: "deny", message: "The session ended" }); x.asks.delete(id) }
+    for (const [call, c] of this.calls) if (c.e.id === x.s.id) { clearTimeout(c.timer); this.calls.delete(call); c.resolve({ isError: true, content: [{ type: "text", text: "The session ended" }] }) }
     x.wake?.()
     try { x.q?.close() } catch { /* ended */ }
     x.q = null
@@ -424,7 +443,8 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
     const id = String(m.id ?? "")
     switch (m.op) {
       case "hello": return { v: 1, pid: process.pid, ...o.hello?.() }
-      case "follow": followers.add(c); return { sessions: host.list() }
+      // (after its answer: the calls a server gone a moment missed)
+      case "follow": followers.add(c); setTimeout(() => { for (const e of host.pendingCalls()) send(c, e) }, 0); return { sessions: host.list() }
       case "list": return { sessions: host.list() }
       case "read": { const r = host.read(id); if (!r) throw new Error(`no session ${id} runs here`); return r }
       case "start": return { s: host.start(m.spec as Spec, typeof m.prompt === "string" ? m.prompt : undefined) }

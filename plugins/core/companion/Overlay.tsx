@@ -132,6 +132,10 @@ export function follow(a: Target & { name: string }) {
   const t = setInterval(() => { if (go() || ++n > 40) clearInterval(t) }, 100)
 }
 
+/** Approve or Deny what its session asks: a chat session's in the chat (`chat:<id>`), a terminal's through its inbox event. */
+const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
+  ? op("claude-code.chat-answer", { id: event.slice(5), allow: v === "approve" }) : op("inbox.answer", { id: event, answer: v }))
+
 const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", away: "away" }
 
 /** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
@@ -364,7 +368,7 @@ const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, 
               <button key={v} type="button" data-gate={v} className={cn("cursor-pointer rounded-[7px] px-2.5 py-1 text-[12.5px] font-medium max-sm:py-1.5",
                 v === "approve" ? "text-white hover:brightness-110" : "text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground")}
                 style={v === "approve" ? { background: tint } : undefined}
-                onClick={() => { haptic("medium"); const undo = answered(a.name); op("inbox.answer", { id: a.asks!.event, answer: v }).catch((e) => { undo(); notifyError(e, "Couldn't answer it") }) }}>
+                onClick={() => { haptic("medium"); const undo = answered(a.name); answerAsk(a.asks!.event, v).catch((e) => { undo(); notifyError(e, "Couldn't answer it") }) }}>
                 {v === "approve" ? "Approve" : "Deny"}</button>
             ))}
           </span>

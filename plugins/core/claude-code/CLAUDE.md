@@ -3,7 +3,12 @@
 - Chat sessions run in the chat keeper (`chatd.ts`, a detached process like the terminal keeper, named by the port), so
   a turn survives a restart or deploy; the server follows it (`chat.ts`) and tells the inbox only the news it hasn't
   (the keeper's `seq`/`told`). A server serving no port (a test's) never starts one: tests run `chathost.ts` in-process
-  with a stand-in SDK (`tools/test/vault/claude-chat.ts`), so no test spends a real session.
+  with a stand-in SDK (`tools/test/vault/claude-chat.ts`), or a real keeper process whose SDK is one
+  (`companion-chat.ts`, `chatd/hooks.ts`), so no test spends a real session.
+- A plugin's session (`exports.chat`, the companion's) has tools that run on the server: the keeper serves them as an
+  in-process MCP server and relays each call, holding it until a server answers (one that restarts is told it again
+  when it follows). The plugin serves them again as it loads (`serve`); a call waits a moment for that. Its start
+  options are kept, so a resume (its next message, a keeper gone mid-turn) runs it with them again.
 - It runs the user's own `claude` (`pathToClaudeCodeExecutable`): the version their terminals run, its login and
   updates, and no 300 MB bundled binary in the packaged app (package.json leaves the SDK's platform packages out).
 - Entries (`chatlog.ts`) are keyed by the ids SDK messages and transcript lines share (a user message's uuid,

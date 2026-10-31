@@ -31,7 +31,9 @@ export type ChatDeps = {
 /** A tool a plugin serves to the session it starts (the companion's): run on the server, called through the keeper. */
 export type ChatTool = ToolDef & { run: (args: unknown) => Promise<unknown> }
 export type ChatStart = { prompt?: string; cwd?: string; account?: string; model?: string; effort?: Effort; mode?: Mode; append?: string
-  title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean }
+  title?: string; by?: string; tools?: ChatTool[]; inbox?: boolean
+  /** Permission rules it runs without asking ("mcp__vaultite-app": its tools; "Bash(vau read:*)"), and never. */
+  allowed?: string[]; denied?: string[] }
 
 const SESSION = /^[\w-]{1,80}$/
 const MODE_LABELS: Record<Mode, string> = { default: "Ask for permissions", acceptEdits: "Accept edits", plan: "Plan mode", auto: "Auto mode",
@@ -120,8 +122,11 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   const asking = new Map<string, Map<string, Extract<Entry, { k: "ask" }>>>()
   /** The chat tabs watching each session. */
   const watching = new Map<string, Set<WebSocket>>()
-  /** Tools served to the sessions plugins started, by session. */
-  const served = new Map<string, Map<string, ChatTool>>()
+  /** How the sessions plugins started run (their tools, words, account...), by session: a resume runs them so again. */
+  const owned = new Map<string, ChatStart>()
+  /** Who hears each session's state (a plugin driving its own): its summary, null once it's gone. */
+  const listeners = new Set<(id: string, s: Summary | null) => void>()
+  const inform = (id: string, s: Summary | null) => { for (const fn of listeners) try { fn(id, s) } catch (e) { console.error("chat: listener:", e) } }
   let wire: Promise<Wire> | null = null
 
   const daemon = path.join(plugin.dir, "chatd.ts")
@@ -157,7 +162,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       }
       const { sessions } = await w.request("follow") as { sessions: Summary[] }
       for (const s of sessions) { hosted.set(s.id, s); void readAsks(w, s.id) }
-      for (const s of sessions) tellInbox(s)
+      for (const s of sessions) { tellInbox(s); inform(s.id, s) }
       void recover(new Set(sessions.map((s) => s.id)))
       return w
     })()
@@ -174,7 +179,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
    *  keeper died mid-turn starts another, which takes those turns up again. */
   const look = () => {
     if (wire) { for (const s of hosted.values()) tellInbox(s); void handOver() }
-    else if (WIN || fs.existsSync(CHAT_SOCKET) || (port && Object.values(kept).some(midTurn))) keeper(!!port).catch(() => {})
+    else if (WIN || fs.existsSync(CHAT_SOCKET) || (port && Object.values(kept).some((k) => midTurn(k) && (!k.tools || owned.has(k.id))))) keeper(!!port).catch(() => {})
   }
 
   // ---------- what outlives the keeper: each session as last seen (this machine's, out of the vault), so turns cut off
@@ -193,7 +198,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     // (one that ended stays known as a chat's, so a reply resumes it here; the newest few hundred)
     if (!s) { if (kept[id]) kept[id] = { ...kept[id], state: "closed" } }
     else kept[id] = { id, state: s.state, cwd: s.cwd, account: s.account, model: s.model, effort: s.effort, mode: s.mode, by: s.by, at: s.at,
-      ...(served.has(id) || kept[id]?.tools ? { tools: true } : {}), ...(s.quiet ? { quiet: true } : {}), ...(kept[id]?.thread ? { thread: kept[id].thread } : {}) }
+      ...(owned.get(id)?.tools?.length || kept[id]?.tools ? { tools: true } : {}), ...(s.quiet ? { quiet: true } : {}), ...(kept[id]?.thread ? { thread: kept[id].thread } : {}) }
     const ids = Object.keys(kept)
     for (const old of ids.slice(0, Math.max(0, ids.length - 300))) delete kept[old]
     save()
@@ -203,8 +208,9 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   async function recover(running: Set<string>) {
     for (const k of Object.values(kept)) {
       if (running.has(k.id)) continue
-      // (one that wasn't mid-turn needs nothing: its next message resumes it; a plugin's tools died with the server)
-      if (!midTurn(k) || k.tools) { if (k.state !== "closed") { kept[k.id] = { ...k, state: "closed" }; save() } continue }
+      // (one that wasn't mid-turn needs nothing: its next message resumes it; one with a plugin's tools waits for them, serve)
+      if (k.tools && !owned.has(k.id) && midTurn(k)) continue
+      if (!midTurn(k)) { if (k.state !== "closed") { kept[k.id] = { ...k, state: "closed" }; save() } continue }
       const times = (revived.get(k.id) ?? []).filter((t) => Date.now() - t < 5 * 60_000)
       if (times.length >= 3) continue
       revived.set(k.id, [...times, Date.now()])
@@ -241,7 +247,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   const asksOf = (id: string) => { let m = asking.get(id); if (!m) asking.set(id, (m = new Map())); return m }
 
   function dropAll() {
-    for (const id of hosted.keys()) toTabs(id, { t: "state", s: null })
+    for (const id of hosted.keys()) { toTabs(id, { t: "state", s: null }); inform(id, null) }
     hosted.clear()
     asking.clear()
   }
@@ -258,14 +264,15 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       keep(e.s)
       toTabs(e.s.id, { t: "state", s: e.s })
       tellInbox(e.s)
+      inform(e.s.id, e.s)
       // (Claude Code names a session as its first turns end, a moment after: its tabs hear it)
       if (e.s.state === "idle" && was !== "idle" && watching.has(e.s.id)) for (const ms of [500, 4000]) setTimeout(() => void sayTitle(e.s.id), ms)
     } else if (e.t === "gone") {
       keep(null, e.id)
       hosted.delete(e.id)
       asking.delete(e.id)
-      served.delete(e.id)
       toTabs(e.id, { t: "state", s: null })
+      inform(e.id, null)
     } else if (e.t === "tool") void runTool(e.id, e.call, e.name, e.args)
     else if (e.t === "did") {
       // (Activity's intake for agents' hooks, the session named by its title)
@@ -274,11 +281,14 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     }
   }
 
+  const toolOf = (id: string, name: string) => owned.get(id)?.tools?.find((t) => t.name === name)
   async function runTool(id: string, call: string, name: string, args: unknown) {
-    const t = served.get(id)?.get(name)
+    // (a server just started: its plugin serves the session's tools again in a moment, serve)
+    for (let i = 0; i < 100 && !toolOf(id, name); i++) await new Promise((r) => setTimeout(r, 200))
+    const t = toolOf(id, name)
     let result: unknown
     try {
-      result = t ? await t.run(args) : { isError: true, content: [{ type: "text", text: "This tool isn't served any more (the server restarted): start the session again" }] }
+      result = t ? await t.run(args) : { isError: true, content: [{ type: "text", text: `Vaultite serves no tool ${name} to this session now: the plugin that started it is off` }] }
     } catch (err) {
       result = { isError: true, content: [{ type: "text", text: String((err as Error)?.message ?? err) }] }
     }
@@ -290,8 +300,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   /** Each session's news told in turn, its title read first (the name Claude Code gave it). */
   const telling = new Map<string, Promise<void>>()
   /** The news told so far, by session (the keeper's `told` can trail it a moment). */
-  const told = new Map<string, number>()
-  const isNews = (s: Summary) => s.seq > Math.max(s.told, told.get(s.id) ?? 0)
+  const toldInbox = new Map<string, number>()
+  const isNews = (s: Summary) => s.seq > Math.max(s.told, toldInbox.get(s.id) ?? 0)
   function tellInbox(s: Summary) {
     if (!isNews(s)) return
     const now = { ...s }
@@ -318,8 +328,8 @@ export function chats(plugin: Plugin, d: ChatDeps) {
         if (typeof id === "string" && kept[s.id] && kept[s.id].thread !== id) { kept[s.id] = { ...kept[s.id], thread: id }; save() }
       }, (e) => console.error("chat: inbox:", e))
     }
-    told.set(s.id, s.seq)
-    if (told.size > 500) told.delete(told.keys().next().value!)
+    toldInbox.set(s.id, s.seq)
+    if (toldInbox.size > 500) toldInbox.delete(toldInbox.keys().next().value!)
     void ask("told", { id: s.id, seq: s.seq }).catch(() => {})
   }
 
@@ -382,19 +392,20 @@ export function chats(plugin: Plugin, d: ChatDeps) {
       ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), ...(o.mode ? { mode: o.mode } : {}),
       append: [chatContext(), o.append].filter(Boolean).join("\n\n"), ...(o.title ? { title: o.title } : {}),
       ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema }) => ({ name, description, schema })) } : {}),
-      ...(o.inbox === false ? { quiet: true } : {}) }
+      ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}) }
   }
 
-  /** A new session: its id. */
-  async function start(o: ChatStart) {
+  /** A new session: its id. `own`: a plugin's, run so again when it's resumed. */
+  async function start(o: ChatStart, own = false) {
     const a = accountOf(o.account)
     if (o.cwd && !fs.statSync(o.cwd, { throwIfNoEntry: false })?.isDirectory()) throw new OpError(`there's no folder ${o.cwd}`, 404)
     if (o.model && !d.models().models.some((m) => m.id === o.model) && !/^claude-[\w.-]+$/.test(o.model)) throw new OpError(`'${o.model}' isn't a model Claude Code runs`)
     const id = crypto.randomUUID()
-    if (o.tools?.length) served.set(id, new Map(o.tools.map((t) => [t.name, t])))
+    if (own) owned.set(id, { ...o, prompt: undefined })
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: false }, a), ...(o.prompt?.trim() ? { prompt: o.prompt.trim() } : {}) }) as { s: Summary }
-    hosted.set(id, s)
-    return s
+    // (its news after the answer, in the same read, was heard first: newer)
+    if (!hosted.has(id)) hosted.set(id, s)
+    return hosted.get(id)!
   }
 
   /** Why session `id` can't take a message from the app now, or "" (it runs in a terminal: two writers would fork it). */
@@ -405,8 +416,9 @@ export function chats(plugin: Plugin, d: ChatDeps) {
   }
 
   /** What the user says to session `id`: straight in while the keeper runs it, else it's resumed with it. */
-  async function send(id: string, text: string, o: ChatStart = {}) {
+  async function send(id: string, text: string, given: ChatStart = {}) {
     if (!SESSION.test(id)) throw new OpError(`'${id}' isn't a session id`)
+    const o = { ...owned.get(id), ...given }
     const said = text.trim()
     if (!said) throw new OpError("text: what to say")
     if (hosted.has(id) && hosted.get(id)!.state !== "error") return await ask("send", { id, text: said }) as { uuid: string; answered?: string }
@@ -419,7 +431,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const was = hosted.get(id)
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: true, cwd: o.cwd || t?.cwd || "",
       model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode }, f.account), prompt: said }) as { s: Summary }
-    hosted.set(id, s)
+    if (hosted.get(id) === was) hosted.set(id, s)
     return { uuid: "", resumed: true }
   }
 
@@ -750,8 +762,22 @@ plan sent back, what to change. mode: the permission mode after an approved plan
   return {
     hosted: (id: string) => hosted.has(id),
     askingNow, turnNow,
-    /** For a plugin's session (the companion's): started with its tools, told things, stopped. */
-    api: { start, send, stop: (id: string) => ask("stop", { id }), list: () => [...hosted.values()] },
+    /** A plugin's sessions (the companion's): resumed as started (its tools...); `serve` gives them again after a
+     *  restart; `on` hears each state (null: its process ended, idle a while: the next message resumes it). */
+    api: {
+      start: (o: ChatStart) => start(o, true),
+      send: (id: string, text: string, o: ChatStart = {}) => send(id, text, o),
+      stop: async (id: string) => { owned.delete(id); return hosted.has(id) ? await ask("stop", { id }) : { stopped: false } },
+      list: () => [...hosted.values()],
+      serve(id: string, o: ChatStart) {
+        owned.set(id, { ...o, prompt: undefined })
+        // (cut off mid-turn by a keeper that ended, before its tools were back: taken up again now)
+        if (kept[id] && midTurn(kept[id]) && !hosted.has(id) && can()) void keeper(!!port).then(() => recover(new Set(hosted.keys()))).catch(() => {})
+      },
+      on(fn: (id: string, s: Summary | null) => void) { listeners.add(fn); return () => { listeners.delete(fn) } },
+      /** What it asks now, in words ("Claude wants to run a command: rm -rf build"). */
+      asking: (id: string) => [...(asking.get(id)?.values() ?? [])].map((a) => a.title + (a.detail ? `: ${a.detail}` : "")),
+    },
     letGo,
   }
 }

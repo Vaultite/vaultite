@@ -69,6 +69,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "token-count", deps: ["pages"] },
   { name: "installs", deps: ["pages","vault-plugins","cli"] },
   { name: "companion", deps: ["pages"] },
+  { name: "companion-chat", deps: ["pages", "claude-chat"] },
   { name: "share", deps: ["pages"] },
   { name: "cotype", deps: ["pages"] },
   { name: "start", deps: ["pages"] },

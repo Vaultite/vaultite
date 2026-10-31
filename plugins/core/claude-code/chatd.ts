@@ -2,7 +2,7 @@
 // so a turn running survives the server restarting or a deploy, as the terminal keeper's shells do (terminal/ptyd.ts).
 import fs from "node:fs"
 import { fileURLToPath } from "node:url"
-import { Host, listen, type ToolDef } from "./chathost.ts"
+import { Host, listen, relayed } from "./chathost.ts"
 
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: chatd.ts <socket path> [<its files' path>]"); process.exit(2) }
@@ -14,17 +14,7 @@ const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
 const sdk = await import("@anthropic-ai/claude-agent-sdk")
 const { fromJSONSchema } = await import("zod")
 
-/** A relayed tool's parameters as the SDK takes them (zod, from the JSON Schema the server gives). */
-const shapeOf = (schema: ToolDef["schema"]) => Object.fromEntries(Object.entries(schema.properties ?? {}).map(([k, s]) => {
-  const z = fromJSONSchema(s as Parameters<typeof fromJSONSchema>[0])
-  return [k, schema.required?.includes(k) ? z : z.optional()]
-}))
-
-const host = new Host({
-  query: sdk.query,
-  mcp: (name, tools) => sdk.createSdkMcpServer({ name, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: shapeOf(t.schema),
-    handler: async (args: unknown) => (await t.run(args)) as Awaited<ReturnType<Parameters<typeof sdk.tool>[3]>> })) }),
-}, log)
+const host = new Host({ query: sdk.query, mcp: relayed(sdk.createSdkMcpServer, fromJSONSchema) }, log)
 
 /** Its own files are gone (the checkout moved): it makes way once it holds no session, and the server starts another. */
 const stale = () => !fs.existsSync(SELF)
