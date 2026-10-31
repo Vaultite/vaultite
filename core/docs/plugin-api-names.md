@@ -410,6 +410,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pastedFiles(d)`: The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as text and a picture of them.
 - `pastEnd(list, last, x, y, el)`: Whether a drag at (x, y) over `el` is just past a list's `last` row, where a drop puts it at the end: under it, down to its panel's bottom or a row's height (a panel often ends right under it),…
 - `patch(path, body)`
+- `phoneAudio`: The shell's audio player, for the player (null outside the iPhone app, or in one built before it).
+- `PhoneAudioInfo`: What the lock screen shows: with chapters, the one playing as the title.
+- `PhoneAudioState`: The shell's audio: `path` while a file is loaded; `waiting` while it should play but hasn't the data; `type` (in the event) what changed.
 - `PhoneDownload`: A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile.
 - `phoneFiles`: The phone's kept files, for a player (null outside the iPhone app).
 - `phoneHealth`: The phone's Apple Health, for a plugin that takes it (null outside the iPhone app): `route` is where the server takes what it reads (after /api/).

@@ -1,6 +1,7 @@
 // Playing on through a bad connection and a reload: a stream that dropped or got stuck starts again where it was, and
 // what played when the page reloaded (iOS ends a background page it wants the memory of) plays on from there.
 import { useEffect } from "react"
+import { adoptNative, isNative } from "./native"
 import { getNow, isVideo, parkEl, take } from "./now"
 
 type Playing = { path: string; t: number; from?: string; at: number }
@@ -13,6 +14,7 @@ const STUCK = 20_000, TRIES = 10
 
 /** Watch an element (now.ts' wire): start it again after a network error or 20 s without moving, and keep what plays. */
 export function steady(el: HTMLMediaElement, path: string) {
+  if (isNative(el)) return // (the shell does both: native.ts)
   let wanted = false, tries = 0, waiting = false, kept = 0, last = -1, still = 0
   let timer: ReturnType<typeof setInterval> | null = null
   const keep = () => { kept = Date.now(); write({ path, t: el.currentTime, from: el.dataset.from, at: kept }) }
@@ -80,6 +82,7 @@ function leaving() {
 /** In the plugin's background: once, as the app starts. */
 export function Resume() {
   useEffect(() => {
+    adoptNative()
     resume()
     addEventListener("pagehide", leaving)
     return () => removeEventListener("pagehide", leaving)

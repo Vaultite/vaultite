@@ -66,6 +66,13 @@ final class Downloads: NSObject, URLSessionDownloadDelegate, @unchecked Sendable
         return items.values.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
+    /// The kept copy of a vault file, when it's all here.
+    func file(for path: String) -> URL? {
+        lock.lock(); defer { lock.unlock() }
+        guard let it = items[path], it.done, let f = it.file, FileManager.default.fileExists(atPath: f) else { return nil }
+        return URL(fileURLWithPath: f)
+    }
+
     func remove(path: String) {
         lock.lock(); defer { lock.unlock() }
         session.getAllTasks { tasks in tasks.filter { $0.taskDescription == path }.forEach { $0.cancel() } }

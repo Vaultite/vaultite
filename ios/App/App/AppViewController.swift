@@ -23,6 +23,11 @@ class AppViewController: CAPBridgeViewController {
             webView.navigationDelegate = fallback
             self.fallback = fallback
         }
+        // What the audio playing here does, told to the page (plugins/core/player/native.ts), whichever page it is now.
+        Audio.shared.tell = { [weak self] state in
+            guard let data = try? JSONSerialization.data(withJSONObject: state), let json = String(data: data, encoding: .utf8) else { return }
+            self?.webView?.evaluateJavaScript("dispatchEvent(new CustomEvent('vaultite:audio', { detail: \(json) }))")
+        }
         // The system's background behind a page while it loads: no white flash in dark mode.
         webView?.isOpaque = false
         webView?.backgroundColor = .systemGroupedBackground

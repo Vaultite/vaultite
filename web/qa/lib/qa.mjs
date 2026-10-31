@@ -22,7 +22,8 @@ export const WEBGL = ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 // (imported when used: boot.mjs, the smoke test, says it's skipped rather than failing where there's no Chrome)
 // (each waits for this machine's QA slot first: tools/qa_slots.ts)
-export const launch = async (opts) => { await hold(); return (await import("playwright-core")).chromium.launch({ executablePath: CHROME, ...opts }) }
+// (muted: a test never plays on the machine's speakers)
+export const launch = async (opts) => { await hold(); return (await import("playwright-core")).chromium.launch({ executablePath: CHROME, ...opts, args: [...(opts?.args ?? []), "--mute-audio"] }) }
 
 /** `fn`'s first truthy value within `ms`, else its last; a throw counts as not yet (the page may be mid-render). */
 export async function until(fn, ms = 5000, every = 100) {

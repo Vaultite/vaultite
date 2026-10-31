@@ -13,9 +13,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A full player for audiobooks and podcasts**: a sound's tab (and a tap on the mini player) shows its cover, a
   scrubber, big skips and the chapters inside .m4b and .mp3 files (with the lock screen naming the chapter), plus
   bookmarks with notes, a sleep timer (minutes or the end of the chapter) and a short rewind after a pause.
-- **Audio and video play on through a bad connection and a reload**: a stream that drops or sticks (a phone out
-  walking) starts again where it was, and what was playing when the page reloaded (iOS ends a background page it wants
-  the memory of) plays on from there.
+- **Audio and video play on through a bad connection and a reload**: in the iPhone app sound plays in the app itself,
+  not the page, so a reload or iOS ending the page never stops it; it buffers minutes ahead, starts again after a
+  dropped connection, keeps the lock screen, the sleep timer and where you stopped with the page asleep, and waits for a
+  voice note. Elsewhere a stream that drops or sticks starts again where it was, and a reload plays on from there.
 - **The Browser's keys act on the page, as Chrome's**: Back and Forward (every key, the mouse's buttons) walk
   the page's history before the tab's, and right-clicking or holding the bar's Back lists its places; ⌘F finds in the
   page, ⌘+ ⌘- ⌘0 zoom its site (kept per site), ⌘R, ⇧⌘R and ⌥⌘I reload it or open its DevTools (never the app's), Esc

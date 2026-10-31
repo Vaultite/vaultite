@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react"
 import { currentFile, devicePref, get, getStore, phoneFiles, put, rawUrl } from "@vaultite"
 import { AUDIO, VIDEO, type Chapter, type Mark, type Place } from "./shelves"
+import { describeNative, isNative, nativeAudio, sleepNative } from "./native"
 import { steady } from "./steady"
 
 /** `from`: the note it was started in (the mini player goes back there). */
@@ -174,7 +175,7 @@ export const useVersion = () => useSyncExternalStore(subscribe, () => version)
 /** The element for a file: the one playing it, or a new one. */
 export function take(path: string, video: boolean, v?: number): HTMLMediaElement {
   if (now && now.path === path) return now.el
-  const el = document.createElement(video ? "video" : "audio")
+  const el = (!video && nativeAudio()) || document.createElement(video ? "video" : "audio")
   el.src = rawUrl(path, { v })
   el.preload = "metadata"
   el.controls = true
@@ -281,7 +282,7 @@ function away() {
 }
 function toSound() {
   const { el: v, path } = now!
-  const a = document.createElement("audio")
+  const a = nativeAudio() ?? document.createElement("audio")
   a.src = v.currentSrc || v.src
   a.preload = "auto"
   a.playbackRate = v.playbackRate
@@ -290,6 +291,7 @@ function toSound() {
   if (v.dataset.from) a.dataset.from = v.dataset.from
   wire(a, path, false)
   const at = v.currentTime
+  a.currentTime = at
   a.addEventListener("loadedmetadata", () => { a.currentTime = at }, { once: true })
   parkEl(a)
   swapped = v as HTMLVideoElement
@@ -332,6 +334,7 @@ export function setSleep(s: Sleep) {
   sleepChapter = -1
   clearTimeout(sleepTimer)
   if (s && "until" in s) sleepTimer = setTimeout(() => sleepCheck(now?.el), s.until - Date.now() + 50)
+  if (now && isNative(now.el)) sleepNative(s ? ("until" in s ? { until: s.until } : { chapter: true }) : {})
   for (const f of sleepSubs) f()
 }
 function sleepCheck(el: HTMLMediaElement | undefined) {
@@ -354,10 +357,14 @@ function retitle(el: HTMLMediaElement, path: string) {
 }
 
 function session(el: HTMLMediaElement, path: string) {
-  const ms = navigator.mediaSession
-  if (!ms) return
   const art = artOf(path), cs = chaptersOf(path), i = chapterAt(cs, el.currentTime)
   titled = `${path}#${i}`
+  if (isNative(el)) { // (the shell names the chapter itself, as the page may be asleep)
+    const { title, by } = labelOf({ path, from: now?.from })
+    return describeNative({ title, artist: by, album: "Vaultite", artwork: art ? new URL(art, location.href).href : undefined, chapters: cs })
+  }
+  const ms = navigator.mediaSession
+  if (!ms) return
   try {
     const { title, by } = labelOf({ path, from: now?.from })
     const chapter = cs[i]?.title
@@ -378,7 +385,7 @@ function session(el: HTMLMediaElement, path: string) {
 }
 function position(el: HTMLMediaElement) {
   const ms = navigator.mediaSession
-  if (!ms || now?.el !== el) return
+  if (!ms || now?.el !== el || isNative(el)) return
   ms.playbackState = el.paused ? "paused" : "playing"
   if (Number.isFinite(el.duration) && el.duration > 0) {
     try { ms.setPositionState({ duration: el.duration, position: Math.min(el.currentTime, el.duration), playbackRate: el.playbackRate || 1 }) } catch { /* bad numbers */ }

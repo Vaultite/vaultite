@@ -23,6 +23,7 @@ final class VoiceNote: NSObject, ObservableObject {
         }
         do {
             let session = AVAudioSession.sharedInstance()
+            Audio.shared.holdForRecording() // (what's playing waits for the note)
             try session.setCategory(.record, mode: .default)
             try session.setActive(true)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("voice-\(UUID().uuidString).m4a")
@@ -37,6 +38,7 @@ final class VoiceNote: NSObject, ObservableObject {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } catch {
             step = .failed(Servers.say(error))
+            Audio.shared.resumeAfterRecording()
         }
     }
 
@@ -76,6 +78,7 @@ final class VoiceNote: NSObject, ObservableObject {
         file = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         Downloads.playback() // (back to playing, for the page's audio and video)
+        Audio.shared.resumeAfterRecording()
     }
 }
 

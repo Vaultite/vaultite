@@ -25,6 +25,15 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "health", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setHealth", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "resendHealth", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioLoad", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioPlay", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioPause", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioSeek", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioRate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioStop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "audioSleep", returnType: CAPPluginReturnPromise),
     ]
 
     /// What a widget or a shortcut asked for (AppViewController): `command` or `open`, until the page takes it.
@@ -190,6 +199,50 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let url = pageServer() else { return call.reject("not a server in the list") }
         Health.shared.resend(url)
         call.resolve()
+    }
+
+    // ---------- the page's audio, played here (Audio.swift): its changes come back as the event `vaultite:audio`
+
+    @objc func audioLoad(_ call: CAPPluginCall) {
+        guard let path = call.getString("path"), let address = call.getString("url"), let url = URL(string: address), Servers.knows(url) else {
+            return call.reject("not a file on a server in the list")
+        }
+        let info = Self.info(call)
+        DispatchQueue.main.async {
+            Audio.shared.load(path: path, url: url, from: call.getString("from"), t: call.getDouble("t"), rate: Float(call.getDouble("rate") ?? 1),
+                              title: info.title, artist: info.artist, album: info.album, artwork: info.artwork, chapters: info.chapters)
+            call.resolve(Audio.shared.state())
+        }
+    }
+    @objc func audioPlay(_ call: CAPPluginCall) { onAudio(call) { Audio.shared.play() } }
+    @objc func audioPause(_ call: CAPPluginCall) { onAudio(call) { Audio.shared.pause() } }
+    @objc func audioStop(_ call: CAPPluginCall) { onAudio(call) { Audio.shared.stop() } }
+    @objc func audioState(_ call: CAPPluginCall) { onAudio(call) {} }
+    @objc func audioSeek(_ call: CAPPluginCall) {
+        let t = call.getDouble("t") ?? 0
+        onAudio(call) { Audio.shared.seek(t) }
+    }
+    @objc func audioRate(_ call: CAPPluginCall) {
+        let r = Float(call.getDouble("rate") ?? 1)
+        onAudio(call) { Audio.shared.setRate(r) }
+    }
+    @objc func audioInfo(_ call: CAPPluginCall) {
+        let info = Self.info(call)
+        onAudio(call) { Audio.shared.describe(title: info.title, artist: info.artist, album: info.album, artwork: info.artwork, chapters: info.chapters) }
+    }
+    @objc func audioSleep(_ call: CAPPluginCall) {
+        let until = call.getDouble("until"), chapter = call.getBool("chapter") ?? false
+        onAudio(call) { Audio.shared.sleep(until: until, chapter: chapter) }
+    }
+    private func onAudio(_ call: CAPPluginCall, _ act: @escaping () -> Void) {
+        DispatchQueue.main.async { act(); call.resolve(Audio.shared.state()) }
+    }
+    private static func info(_ call: CAPPluginCall) -> (title: String, artist: String, album: String, artwork: String?, chapters: [(Double, String)]) {
+        let chapters: [(Double, String)] = (call.getArray("chapters", JSObject.self) ?? []).compactMap { c in
+            guard let t = c["t"] as? Double ?? (c["t"] as? Int).map(Double.init), let title = c["title"] as? String else { return nil }
+            return (t, title)
+        }
+        return (call.getString("title") ?? "", call.getString("artist") ?? "", call.getString("album") ?? "", call.getString("artwork"), chapters)
     }
 
     /// The server of the list whose page asks.
