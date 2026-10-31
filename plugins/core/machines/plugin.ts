@@ -5,8 +5,9 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { API_VERSION, APP_VERSION, bullets, gitEnv, HTTPError, inDesktop, LOADED, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, gitEnv, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
+import { alerts, duration, EVERY, KEEP_DAYS, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -182,6 +183,10 @@ plugin.provide("machines:ids", () => listed().map((m) => m.id)) // (the first ru
 
 plugin.route("GET", "machines", () => machines())
 plugin.route("GET", "machines/self", () => self())
+plugin.route("GET", "machines/health", async (req) => {
+  await plugin.ownerOnly(req, "This machine's processes")
+  return health(req.query.since || "24h")
+}, { lock: false })
 
 // --- the browser of an always-on machine (plugin.desktop on a server with none attached): a laptop's app answers only
 // its own server's agents
@@ -304,6 +309,53 @@ const first = setTimeout(() => { if (plugin.loaded) void register() }, 5000)
 const hourly = setInterval(() => { if (plugin.loaded) void register() }, 3600 * 1000)
 first.unref?.(); hourly.unref?.()
 plugin.onUnload(() => { clearTimeout(first); clearInterval(hourly) })
+
+// --- this machine's health, a sample a minute (health.ts)
+
+const healthLog = plugin.dayLog<Sample>("health")
+const watching = watch()
+function health(span: string): Report {
+  let since: number
+  try { since = Date.now() - duration(span) } catch (e) { throw new HTTPError(400, (e as Error).message) }
+  const days: string[] = []
+  for (let t = since; t < Date.now() + 86400_000; t += 86400_000) days.push(localDate(t))
+  return report([...new Set(days)].flatMap((d) => healthLog.read(d)).filter((s) => s.t >= since).sort((a, b) => a.t - b.t), since)
+}
+async function sampleHealth() {
+  if (!plugin.loaded || plugin.isOff()) return
+  const s = await sample()
+  if (!s) return
+  healthLog.append(s.t, [s])
+  healthLog.prune(KEEP_DAYS)
+  for (const a of alerts(watching, s, HOST))
+    await plugin.ask("inbox:event", null, { source: "machines", kind: "error", key: `health-${HOST}-${a.key}`, title: a.title, body: a.body })
+}
+const sampler = setInterval(() => void sampleHealth().catch((e) => console.error("machines: health sample:", e)), EVERY)
+sampler.unref?.()
+plugin.onUnload(() => clearInterval(sampler))
+
+plugin.op({
+  id: "machines.health", cli: "machines health", mcp: "machine_health", kind: "read", owner: "This machine's processes",
+  summary: "What has been hogging a machine and since when: load, memory pressure, swap, and processes that held high CPU or memory.",
+  help: `Every server samples its machine once a minute (load, memory pressure, swap, the top processes by CPU and by
+memory), kept a week on that machine. This lists what held a lot of CPU (50%+, 100 is one core) or memory (a tenth of
+RAM) for 5+ samples, each with when it was first and last seen so. A process over 80% CPU for 10 min, or memory critical
+as long, is also sent to the inbox, once in 6 hours.
+
+  vau machines health
+  vau machines health --since 6h
+  vau machines health --machine studio --since 2d`,
+  params: {
+    since: { type: "string", default: "24h", description: "how far back: 30m, 6h, 7d" },
+    machine: { type: "string", description: "another machine's id (Machines' list): its health, asked through this server" },
+  },
+  run: async ({ since, machine }, ctx) => {
+    if (!machine) return health(since)
+    const r = await ctx.api("GET", `machines/${encodeURIComponent(machine)}/machines/health?since=${encodeURIComponent(since)}`)
+    return typeof r === "string" || Buffer.isBuffer(r) ? JSON.parse(String(r)) : r // (the other machine's answer comes back as text)
+  },
+  text: (r: Report) => reportText(r),
+})
 
 // --- blocks as text
 

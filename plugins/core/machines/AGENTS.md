@@ -17,6 +17,12 @@ stays removed); edit the labels freely.
   address), else by asking each one. Each says its vault's id (`vault`, from `vault.json`, made once): machines with
   the same one share the vault, the others have vaults of their own.
 
+### Health
+Each server samples its own machine once a minute (load, memory pressure, swap, the top processes by CPU and by
+memory), kept a week on that machine, outside the vault. `vau machines health --since 6h` (`--machine <id>` for
+another one) lists what held high CPU or memory and since when; a process over 80% CPU for 10 min, or memory critical
+as long, goes to the inbox, once in 6 hours.
+
 ### Read-only file agents
 A VM behind a firewall can dial a server's public MCP listener with the Python file agent at
 `<public-address>/machines/agent.py`: download it to `~/.vaultite-dial/agent.py` and run

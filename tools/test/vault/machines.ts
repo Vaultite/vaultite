@@ -100,6 +100,52 @@ export default async ($: VaultTest) => {
     }
   }
 
+  // Machine health (health.ts): ps and memory read as each platform writes them, what held the machine over the
+  // samples and since when, and an alert once a hog has lasted.
+  {
+    const h = await import("../../../plugins/core/machines/health.ts")
+    check("machine health: ps' CPU time, macOS' and procps'", Math.abs(h.cpuSeconds("2266:09.79") - 135969.79) < 1e-6 && h.cpuSeconds("01:02:03") === 3723 && h.cpuSeconds("1-00:00:01") === 86401)
+    const rows = h.parsePs("  339  99.7 8942:31.44 980224 /System/Library/Frameworks/FSEvents.framework/Support/fseventsd\n  411  40.8  10:00.00 119840 /Applications/Big App.app/Contents/MacOS/Big App Helper (Renderer)\n   12   3.5 00:00:01   2048 sshd\nnot a row\n")
+    check("machine health: ps rows, names with spaces, RSS in MB", rows.length === 3 && rows[0].name === "fseventsd" && rows[0].rss === 957 && rows[1].name === "Big App Helper (Renderer)" && rows[2].secs === 1, rows)
+    const top = h.topOf(rows, new Map([[339, 8942 * 60 + 31.44 - 57], [411, 600]]), 60_000)
+    check("machine health: CPU over the last minute from CPU time (ps' own % for one new since)", top[0].name === "fseventsd" && top[0].cpu === 95 &&
+      top.find((p) => p.pid === 411)?.cpu === 0 && top.find((p) => p.pid === 12)?.cpu === 4, top)
+    const mac = h.parseSysctl("8589934592\ntotal = 8192.00M  used = 7088.00M  free = 1104.00M  (encrypted)\n2\n34\n")
+    check("machine health: macOS' memory (sysctl)", mac.mem.total === 8192 && mac.mem.free === 34 && mac.mem.pressure === "warn" && mac.swap.used === 7088 && mac.swap.total === 8192, mac)
+    const linux = h.parseMeminfo("MemTotal:       8000000 kB\nMemFree:  100000 kB\nMemAvailable:    320000 kB\nSwapTotal:      2048000 kB\nSwapFree:       1024000 kB\n")
+    check("machine health: Linux's memory (/proc/meminfo)", linux.mem.free === 4 && linux.mem.pressure === "critical" && linux.swap.used === 1000 && linux.swap.total === 2000, linux)
+    const t0 = Date.UTC(2026, 9, 30, 12)
+    const at = (i: number, procs: Any[]): Any => ({ t: t0 + i * 60_000, load: [4, 4, 4], mem: { total: 8192, free: 30, pressure: i > 15 ? "warn" : "normal" }, swap: { used: 7000, total: 8192 }, procs })
+    const fsev = { name: "fseventsd", pid: 339, cpu: 95, rss: 1400 }, blip = { name: "mdworker", pid: 77, cpu: 90, rss: 50 }
+    const samples = Array.from({ length: 20 }, (_, i) => at(i, i >= 5 && i < 8 ? [fsev, blip] : i >= 2 ? [fsev] : []))
+    const r = h.report(samples, t0, "box")
+    check("machine health: a hog held through many samples, from when, still now; a blip isn't one", r.cpu.length === 1 && r.cpu[0].name === "fseventsd" && r.cpu[0].samples === 18 &&
+      r.cpu[0].first === t0 + 2 * 60_000 && r.memory[0]?.rss === 1400 && r.pressure.warn === 4 && r.swapMax === 7000, r)
+    const text = h.reportText(r)
+    check("machine health: as text", text.includes("fseventsd (339): 95% for 18 min, from ") && text.includes("still now") && text.includes("swap up to 6.8 GB"), text)
+    const w = h.watch(), told: string[] = []
+    for (let i = 0; i < 30; i++) told.push(...h.alerts(w, at(i, [fsev, { ...fsev, pid: 340 }]), "box").map((a) => a.key))
+    check("machine health: a process over 80% for 10 min and memory critical (swap) for as long, each told once", told.join() === "cpu-fseventsd,memory", told)
+    const w2 = h.watch(), told2: string[] = []
+    for (let i = 0; i < 30; i++) told2.push(...h.alerts(w2, at(i, i % 9 === 8 ? [] : [fsev]), "box").map((a) => a.key))
+    check("machine health: a streak that breaks starts again", !told2.includes("cpu-fseventsd"), told2)
+    check("machine health: durations", h.duration("30m") === 1_800_000 && h.duration("2d") === 172_800_000)
+
+    const [c0, none] = await api("GET", "machines/health?since=1h")
+    check("machine health: none yet", c0 === 200 && none.now === null && none.samples === 0, none)
+    const [c1, bad] = await api("GET", "machines/health?since=soon")
+    check("machine health: a bad window is a 400", c1 === 400 && /duration/.test(bad.error), bad)
+    const mp = app.plugins.find((x: Any) => x.id === "machines")!
+    const { localDate } = await import("../../../core/plugins.ts")
+    const now = Date.now(), recent = Array.from({ length: 6 }, (_, i) => ({ ...at(i, [fsev]), t: now - (5 - i) * 60_000 }))
+    fs.appendFileSync(path.join(mp.localDir(), `health-${localDate(now)}.jsonl`), [{ ...at(0, [fsev]), t: now - 3 * 86400_000 }, ...recent].map((s) => JSON.stringify(s)).join("\n") + "\n")
+    const [c2, kept] = await api("GET", "machines/health?since=1h")
+    check("machine health: read back from this machine's log, the window's samples only", c2 === 200 && kept.samples === 6 && kept.cpu[0]?.name === "fseventsd" && kept.now?.t === recent[5].t, kept)
+    const [c3, op] = await api("POST", "ops/machines.health", { since: "2h" })
+    check("machine health: the op", c3 === 200 && op.samples === 6, op)
+    fs.rmSync(path.join(mp.localDir(), `health-${localDate(now)}.jsonl`))
+  }
+
   // Terminal tabs on several machines: saved with their shell's machine (`<id>@<machine>`), shown to each app as its own
   // or the other's; a vault without machines unchanged.
   {
