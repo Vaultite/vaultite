@@ -15,16 +15,20 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         let body: String
         let preview: String
         let kind: String
+        /// open (it needs the user, or a message to read), working (its agent is on their answer) or done.
+        var state: String
         let ask: String
         let terminal: String
         let session: String
+        /// Its host answers it (an agent run outside a terminal), not a terminal.
+        let host: Bool
         var read: Bool
         let t: Date
 
-        /// An agent waiting on a permission in an app terminal: Approve and Deny answer it.
-        var approvable: Bool { kind == "waiting" && ask == "permission" && !terminal.isEmpty && !read }
+        /// An agent waiting on a permission (in an app terminal, or its host's): Approve and Deny answer it.
+        var approvable: Bool { state == "open" && kind != "info" && ask == "permission" && (!terminal.isEmpty || host) }
         /// An agent's session at its prompt, or asking its own question (a reply answers it): a reply goes back into it.
-        var repliable: Bool { (!terminal.isEmpty || !session.isEmpty) && ["answer", "report", "error", "question", ""].contains(ask) && (kind == "waiting" || kind == "done") }
+        var repliable: Bool { kind == "session" && state != "done" && ["answer", "report", "error", "question", ""].contains(ask) }
     }
 
     /// A voice note sent: on its way, saved (what it said), or failed (why).
@@ -38,7 +42,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     @Published var events: [Event] = []
-    @Published var unread = 0
+    /// What needs the user (sessions and asks open), the title's count.
+    @Published var needs = 0
     @Published var loading = false
     @Published var problem: String?
     @Published var notes: [Note] = []
@@ -77,24 +82,29 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
             events = (r["events"] as? [[String: Any]] ?? []).compactMap { e in
                 guard let id = e["id"] as? String, let title = e["title"] as? String else { return nil }
                 return Event(id: id, title: title, body: e["body"] as? String ?? "", preview: e["preview"] as? String ?? e["body"] as? String ?? "",
-                             kind: e["kind"] as? String ?? "info", ask: e["ask"] as? String ?? "", terminal: e["terminal"] as? String ?? "",
-                             session: e["session"] as? String ?? "", read: e["read"] as? Bool ?? false,
-                             t: Date(timeIntervalSince1970: (e["t"] as? Double ?? 0) / 1000))
+                             kind: e["kind"] as? String ?? "info", state: e["state"] as? String ?? "open", ask: e["ask"] as? String ?? "",
+                             terminal: e["terminal"] as? String ?? "", session: e["session"] as? String ?? "", host: e["host"] as? Bool ?? false,
+                             read: e["read"] as? Bool ?? false, t: Date(timeIntervalSince1970: (e["t"] as? Double ?? 0) / 1000))
             }
-            unread = r["unread"] as? Int ?? events.filter { !$0.read }.count
+            needs = r["needs"] as? Int ?? events.filter { $0.state == "open" && ($0.kind == "session" || $0.kind == "waiting") }.count
             problem = nil
         } catch {
             problem = error.localizedDescription
         }
     }
 
-    /// Answer an event (approve, deny, read, or reply with `text`): what happened, in a word or a line.
+    /// Answer an event (approve, deny, done, or reply with `text`): what happened, in a word or a line.
     func answer(_ id: String, _ answer: String, text: String? = nil) async -> (ok: Bool, text: String) {
         do {
             var message: [String: Any] = ["do": "answer", "id": id, "answer": answer]
             if let text { message["text"] = text }
             let r = try await ask(message)
-            if let i = events.firstIndex(where: { $0.id == id }), !events[i].read { events[i].read = true; unread = max(0, unread - 1) }
+            if let i = events.firstIndex(where: { $0.id == id }) {
+                let needed = events[i].state == "open" && events[i].kind != "info"
+                events[i].read = true
+                if answer == "done" { events.remove(at: i); if needed { needs = max(0, needs - 1) } }
+                else if answer != "read" { events[i].state = "working"; if needed { needs = max(0, needs - 1) } }
+            }
             WKInterfaceDevice.current().play(.success)
             return (true, r["text"] as? String ?? "Done")
         } catch {

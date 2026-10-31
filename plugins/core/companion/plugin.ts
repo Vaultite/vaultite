@@ -848,7 +848,7 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
 // A permission an agent's session asks (Claude Code's folder trust before it starts, a tool's) shows by its cursor with
 // Approve and Deny, until its terminal no longer waits (answered there, in the inbox or on the phone).
 plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
-  const s = ev.kind === "waiting" && ev.ask === "permission" ? sessions().find((x) => x.id === ev.terminal) : undefined
+  const s = ev.kind !== "info" && ev.state === "open" && ev.ask === "permission" ? sessions().find((x) => x.id === ev.terminal) : undefined
   if (!s) return
   setAgent(s.name, { asks: { event: str(ev.id), text: str(ev.body) || str(ev.title) } })
   void (async () => {

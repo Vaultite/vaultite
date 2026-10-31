@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents' sessions stay in the inbox until they're dealt with**: each session is one thread that needs you (it asks,
+  answered, reported or failed), then shows its agent working once you reply, and leaves only when you mark it done or
+  it finishes with nothing more for you; opening or reading it no longer makes it disappear. A report is its session's
+  thread, not a second row; done ones are under Done on the Inbox page, and the badge counts only what needs you.
 - **The traffic lights slide with a hidden sidebar**: as it slides in or out they ride in its top row instead of
   popping in once it has arrived, and on macOS 26 they sit centred on that row.
 - **A hidden sidebar slides over a web page as it does over a note**: in and out, both sides, instead of sliding under

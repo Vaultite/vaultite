@@ -2,7 +2,7 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Agents' sessions that need the user (unread `waiting` events), with Approve and Deny for a permission (the op
+/// Agents' sessions that need the user (open `session` and `waiting` events), with Approve and Deny for a permission (the op
 /// inbox.answer), as the notification has. Kept current by the server's widget push when one starts or stops waiting.
 
 struct ApproveEvent: AppIntent {

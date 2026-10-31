@@ -4,7 +4,7 @@
   "category": "agents",
   "alwaysOn": true,
   "name": "Inbox",
-  "description": "What your agents tell you, in one place: each coding agent's session that needs you (it asks something, wants an approval, or answered with something to read), one row each to read and reply to, with toasts, a badge, the Mac's and the phone's notifications; a turn done with nothing for you goes in quietly. And results to review (an agent's research, a clipped page) as files in Inbox/ to mark done (into Inbox/.archive/), file away, or snooze till later.",
+  "description": "What your agents tell you, in one place: each coding agent's session is one thread, in the inbox while it needs you (it asks something, wants an approval, or answered or reported with something to read) and until you mark it done or reply and it finishes with nothing more for you, with toasts, a badge, the Mac's and the phone's notifications; a turn done with nothing for you goes in quietly. And results to review (an agent's research, a clipped page) as files in Inbox/ to mark done (into Inbox/.archive/), file away, or snooze till later.",
   "forAgents": "Something for the user to read later (research, a summary) goes in their inbox: `inbox.add`.",
   "tint": "blue",
   "enhances": ["terminal", "clipper", "mcp"],
@@ -15,18 +15,17 @@
     "dispatch": { "type": "string", "default": "", "label": "Voice notes go to", "description": "the agent a voice note (from the watch, the phone or the app) starts with it (claude, codex, claude_personal...), in a new terminal; empty: they're only kept in the inbox" },
     "voice_audio": { "type": "boolean", "default": true, "label": "Keep voice notes' audio", "description": "a voice note's recording is kept as an attachment, embedded above what was said; off, only the words are kept" },
     "dispatch_prompt": { "type": "string", "default": "A voice note from the user, dictated on their watch, phone or computer (names and words may be misheard). It's in the inbox as `{path}`, named after its first words. What they said:\n\n{text}\n\nThe user isn't watching. First name the note for what it's about, in a few words: `vau move \"{path}\" \"{folder}/<Title>.md\"`. Then work out what it asks for and see it through:\n- Something to remember or write down: write it in the vault (vau) and tell the user in one line (vau notify, with --action-open for what to look at).\n- A task (code, research, a fix): do it all the way, by the rules of where it's done (a repo's CLAUDE.md); anything outward-facing (messages, posts, purchases) or that can't be undone, don't: ask instead. End it with `vau inbox report` (its work and a TL;DR in plain words, what you did, open questions, screenshots of what changed: vau inbox report --help); the user's reply comes back here.\n\nLast, archive the note: `vau inbox done \"{folder}/<Title>.md\"` (not by editing its status, which leaves it in the inbox).", "label": "Voice note prompt", "description": "what that agent is told with a voice note: {path} is the note in the inbox, {folder} its folder, {text} what was said" },
-    "show_read": { "type": "boolean", "default": false, "label": "Show read events", "description": "read events from the last day stay in the lists, greyed out, the rest behind Show N earlier; off, the inbox shows only what needs you (sessions and events not read yet, results to review), and the Inbox page has the read ones folded under Read" },
-    "keep_days": { "type": "number", "default": 7, "min": 1, "max": 90, "label": "Days to keep read events", "description": "how long agents' events are kept on this machine once read; unread ones stay until you read or dismiss them" }
+    "keep_days": { "type": "number", "default": 7, "min": 1, "max": 90, "label": "Days to keep done events", "description": "how long agents' threads and events are kept on this machine once done, under Done on the Inbox page; what's open stays until it's done" }
   },
   "blocks": {
     "reply": {
-      "description": "a reply box under an agent's report: what's typed goes back into its session (its terminal, the session resumed while its context is cached, or a new session that reads the report), and the report is done"
+      "description": "a reply box under an agent's report: what's typed goes back into its session (its terminal, the session resumed while its context is cached, or a new session that reads the report), and its thread is working on it"
     },
     "inbox": {
-      "description": "what's new: results to review in Inbox/ and the agents' latest events",
+      "description": "what needs you: agents' sessions that need you, results to review in Inbox/, what agents work on since you answered, and messages",
       "live": "agents' events on this machine and the vault's other machines (not in the vault)",
       "options": {
-        "events": { "type": "number", "default": 5, "min": 0, "max": 50, "description": "how many of the latest events to show (unread ones always are; read ones only with the setting show_read, greyed out, the rest folded into Show N earlier; 0 hides them)" },
+        "events": { "type": "number", "default": 5, "min": 0, "max": 50, "description": "how many of the agents' threads and messages to show in each list, the rest folded into Show N more (0 hides them)" },
         "results": { "type": "number", "default": 10, "min": 0, "max": 100, "description": "how many results to review to show (0 hides them)" },
         "title": { "type": "string", "default": "Inbox", "description": "the card's title" }
       }

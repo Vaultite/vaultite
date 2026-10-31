@@ -1,4 +1,4 @@
-// The Inbox (plugins/core/inbox): events, a session's sheet, results, the view, the panel, the block, a phone. WRITES
+// The Inbox (plugins/core/inbox): threads, a session's sheet, results, the view, the panel, the block, a phone. WRITES
 // Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back), starts terminals: throwaway server only, then kill its tmux.
 //   node web/qa/inbox.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
@@ -38,10 +38,13 @@ await page.waitForSelector("aside [data-inbox-button]")
 await wait(800)
 check("the Inbox button is in the sidebar's header, nothing new", (await count()) === 0, await count())
 
-// 1. An event: a toast, a count.
+// 1. A message: a toast, no count (the badge is what needs you).
 await api("POST", "inbox/events", { source: "backup", kind: "done", title: "Backup finished", body: "12 GB in 4 min" })
-check("an event toasts", !!(await toastWith("Backup finished: 12 GB in 4 min")), await toasts().allInnerTexts())
-check("and counts on the button", (await until(async () => (await count()) === 1)) === true, await count())
+check("a message toasts", !!(await toastWith("Backup finished: 12 GB in 4 min")), await toasts().allInnerTexts())
+await wait(500)
+check("and doesn't count on the button: nothing needs you", (await count()) === 0, await count())
+await api("POST", "inbox/events", { source: "browser", kind: "waiting", title: "Lighthouse needs you in the browser" })
+check("an ask counts", (await until(async () => (await count()) === 1)) === true, await count())
 await shot(page, "1-toast-and-badge")
 
 // 2. An agent's session asking permission in a terminal: a toast; Open shows its sheet (what it asks, Approve and
@@ -88,23 +91,35 @@ const other = `qb${Date.now().toString(36)}`
 await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "Stop", session_id: "qa-other", cwd: "/tmp/lighthouse",
   last_assistant_message: "Two ways to fix the **flaky test**:\n\n1. Await the write\n2. Retry the read\n\nWhich one do you want?" })
 check("a session that needs you: a toast with its answer's first line", !!(await toastWith("lighthouse: Two ways to fix the flaky test")), await toasts().allInnerTexts())
-await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "UserPromptSubmit" })
+// (a turn that goes on by itself, a background task's: no prompt of the user's)
 await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "Stop", last_assistant_message: "" })
 await wait(1200)
 ev = await api("GET", "inbox/events")
 const rows = ev.events.filter((e) => e.terminal === other)
-check("one row per session; a quiet turn after leaves its answer to read as it was", rows.length === 1 && rows[0].read !== true && rows[0].preview?.startsWith("Two ways"), rows)
+check("one thread per session; a quiet turn after leaves its answer to read as it was", rows.length === 1 && rows[0].state === "open" && rows[0].read !== true && rows[0].preview?.startsWith("Two ways"), rows)
 const quiet = `qc${Date.now().toString(36)}`
 const toastsBefore = (await toasts().allInnerTexts()).length
 await api("POST", `inbox/hook?agent=claude&terminal=${quiet}`, { hook_event_name: "Stop", cwd: "/tmp/quiet", last_assistant_message: "" })
 await wait(1500)
 ev = await api("GET", "inbox/events")
-check("a turn done with nothing for you: read, no toast", ev.events.find((e) => e.terminal === quiet)?.read === true && (await toasts().allInnerTexts()).length <= toastsBefore, ev.events.find((e) => e.terminal === quiet))
+check("a turn done with nothing for you: done, no toast", ev.events.find((e) => e.terminal === quiet)?.state === "done" && (await toasts().allInnerTexts()).length <= toastsBefore, ev.events.find((e) => e.terminal === quiet))
 await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("button", { name: "Open" }).click()
 check("its sheet: the answer drawn as Markdown", !!(await until(() => sheet.locator("strong", { hasText: "flaky test" }).count())) && (await sheet.locator("ol li").count()) === 2, await sheet.innerText().catch(() => ""))
-check("opened, it's read", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.read === true)))
+check("opened, it's read, and still needs you", !!(await until(async () => { const e = (await api("GET", "inbox/events")).events.find((x) => x.id === rows[0].id); return e?.read === true && e.state === "open" })))
 await wait(400)
 await shot(page, "2b-session-sheet-answer")
+// What the inbox was for: read and not answered, it doesn't go away (the block's Needs you still has it, plain).
+await page.keyboard.press("Escape")
+const kept = page.locator(`[data-inbox-needs] [data-event="${rows[0].id}"]`)
+check("read, not answered: still listed under Needs you, no longer bold", !!(await until(() => kept.count())) && (await kept.first().getAttribute("data-unread")) === null, await kept.count())
+await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("button", { name: "Open" }).click().catch(() => openFromRow())
+async function openFromRow() { await kept.first().locator("button").first().click() }
+await until(() => sheet.count())
+await sheet.locator("[data-session-done]").click()
+check("Mark done in its sheet: done, out of the list", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "done")) &&
+  !!(await until(async () => (await kept.count()) === 0)))
+await page.locator("[data-sonner-toast]", { hasText: "Done: " }).first().getByRole("button", { name: "Undo" }).click()
+check("Undo: it needs you again", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "open")))
 // The reply goes into its session: here its terminal, its agent still running (the stand-in, which the terminal echoes).
 await page.keyboard.press("Escape")
 await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Stop", last_assistant_message: "Ready. What should I echo?" })
@@ -114,7 +129,7 @@ await until(() => sheet.locator("[data-reply]").count())
 await sheet.locator("[data-reply]").fill("echo qa-replied")
 await sheet.getByRole("button", { name: "Send" }).click()
 const typed = await until(async () => ((await api("GET", `terminals/${term}/screen`))?.lines ?? []).join("\n").includes("qa-replied"), 10000)
-check("Send: the reply typed into its terminal, and the row read", !!typed && (await api("GET", "inbox/events")).events.find((e) => e.id === termRow?.id)?.read === true,
+check("Send: the reply typed into its terminal, and its thread working on it", !!typed && !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === termRow?.id)?.state === "working")),
   (await api("GET", `terminals/${term}/screen`).catch(() => ({})))?.lines?.slice(-5))
 // A row naming a plain shell (anyone who writes the vault can name one): its box says a new session gets the reply,
 // never the shell, which would run it.
@@ -158,42 +173,45 @@ check("a result written as a file toasts", !!(await toastWith("In your inbox: Pl
 await api("POST", "inbox", { title: "A field guide to tiling", body: "Worth reading.", from: "Web clipper", source: "https://example.com/tiling" })
 await api("POST", "inbox", { title: "Notes to file away", body: "Some notes.", from: "Codex" })
 check("and one added through the API", !!(await toastWith("In your inbox: A field guide to tiling")))
-const c = await until(async () => { const n = await count(); return n >= 4 ? n : 0 })
-check("the button counts results and unread events", c >= 4, await count())
+const needs = async () => (await api("GET", "inbox/events")).needs
+check("the button counts results and what needs you", !!(await until(async () => (await count()) === 3 + (await needs()))), [await count(), await needs()])
 
-// 6. The Inbox view, from the button: both kinds; it reads the events.
+// 6. The Inbox view, from the button: what needs you, results, what agents work on, messages; it reads the messages.
 await page.locator("aside [data-inbox-button]").click()
 await page.waitForSelector("[data-inbox-view]")
 check("the view lists results to review", (await page.locator("[data-inbox-view] [data-result]").count()) === 3, await page.locator("[data-inbox-view] [data-result]").count())
-const readList = page.locator("[data-inbox-view] [data-inbox-read]")
-check("and the unread events, the read ones folded under Read", (await page.locator("[data-inbox-view] [data-event]").count()) >= 1 && (await page.locator("[data-inbox-view] [data-inbox-fold]").count()) === 0 &&
-  (await readList.getAttribute("data-inbox-read")) === "closed", [await page.locator("[data-inbox-view] [data-event]").count(), await page.locator("[data-inbox-view] [data-inbox-fold]").count()])
+check("and what needs you, what agents work on, and messages, each under its heading", (await page.locator("[data-inbox-view] [data-inbox-needs] [data-event]").count()) >= 2 &&
+  (await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()) >= 1 && (await page.locator("[data-inbox-view] [data-inbox-messages] [data-event]").count()) >= 1,
+  [await page.locator("[data-inbox-view] [data-inbox-needs] [data-event]").count(), await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()])
 await wait(400)
 await shot(page, "2-inbox-view")
-check("open, it reads the events: the count is the results", (await until(async () => (await count()) === 3)) === true, await count())
+check("open, it reads the messages, which doesn't change the count", !!(await until(async () => !(await api("GET", "inbox/events")).events.some((e) => e.kind === "info" && !e.read && !e.kept))) &&
+  (await count()) === 3 + (await needs()), await count())
 
-// 6b. Opened from the view, then back to it: read, so folded under Read (the view's tab is kept drawn meanwhile).
+// 6b. A message opened from the view, then back to it: read, so done, under Done (the view's tab is kept drawn meanwhile).
 const evRow = (title) => page.locator("[data-inbox-view] [data-event]", { hasText: title })
+const dealt = page.locator("[data-inbox-view] [data-inbox-settled]")
 check("still drawn as new while the view is open", (await evRow("Wrote the weekly review").getAttribute("data-unread")) === "true")
 await evRow("Wrote the weekly review").locator("button").first().click()
 await until(() => page.evaluate(() => location.hash.includes("Welcome")))
 await page.locator("aside [data-inbox-button]").click()
 await page.waitForSelector("[data-inbox-view]")
-check("opened, then back: read, folded away", !!(await until(async () => (await evRow("Wrote the weekly review").count()) === 0)), await evRow("Wrote the weekly review").count())
-await readList.getByRole("button", { name: /^Read \d/ }).click()
-check("Read, open: there, drawn as read", (await evRow("Wrote the weekly review").getAttribute("data-unread")) === null, await evRow("Wrote the weekly review").getAttribute("data-unread"))
+check("opened, then back: read, done, folded away", !!(await until(async () => (await evRow("Wrote the weekly review").count()) === 0)), await evRow("Wrote the weekly review").count())
+await dealt.getByRole("button", { name: /^Done \d/ }).click()
+check("Done, open: there, drawn as read", (await evRow("Wrote the weekly review").getAttribute("data-unread")) === null, await evRow("Wrote the weekly review").getAttribute("data-unread"))
 
-// 6c. Right-click: Mark as unread stays so while the view is seen; Mark as read.
+// 6c. Right-click: Mark as unread brings a message back, and stays so while the view is seen; Mark as read.
 await evRow("Wrote the weekly review").click({ button: "right" })
 await page.getByRole("menuitem", { name: "Mark as unread" }).click()
 await wait(2000)
 let one = (await api("GET", "inbox/events")).events.find((e) => e.title === "Wrote the weekly review")
-check("Mark as unread: unread, and seeing the view doesn't read it", one?.read === false && one.kept === true && (await evRow("Wrote the weekly review").getAttribute("data-unread")) === "true", one)
-check("it counts on the button", (await count()) === 4, await count())
+check("Mark as unread: unread, open again, and seeing the view doesn't read it", one?.read === false && one.kept === true && one.state === "open" &&
+  (await page.locator("[data-inbox-view] [data-inbox-messages] [data-event]", { hasText: "Wrote the weekly review" }).first().getAttribute("data-unread")) === "true", one)
 await evRow("Wrote the weekly review").click({ button: "right" })
 await page.getByRole("menuitem", { name: "Mark as read" }).click()
 one = (await until(async () => { const e = (await api("GET", "inbox/events")).events.find((x) => x.title === "Wrote the weekly review"); return e?.read ? e : null }))
-check("Mark as read: read, drawn as read", !!one && (await evRow("Wrote the weekly review").getAttribute("data-unread")) === null, one)
+check("Mark as read: read, done", !!one && one.state === "done", one)
+await dealt.getByRole("button", { name: /^Done \d/ }).click()
 await page.locator("[data-inbox-view] [data-result]").first().click({ button: "right" })
 check("a result's right-click has Done", (await page.getByRole("menuitem", { name: "Done" }).count()) === 1)
 await page.keyboard.press("Escape")
@@ -213,7 +231,6 @@ await page.keyboard.press("Escape")
 await row("A field guide to tiling").getByRole("button", { name: "Done" }).click()
 check("Done: into Inbox/.archive/", !!(await until(() => read("Inbox/.archive/A field guide to tiling.md").includes("archived: true"))))
 // What's dealt with goes last, folded: open it, and Back to review brings one back (out of the archive).
-const dealt = page.locator("[data-inbox-view] [data-inbox-settled]")
 check("Done: last, folded", !!(await until(async () => (await dealt.getAttribute("data-inbox-settled")) === "closed")) &&
   (await page.locator("[data-inbox-view] section").last().getAttribute("data-inbox-settled")) !== null)
 await dealt.getByRole("button", { name: /^Done \d/ }).click()
@@ -248,13 +265,13 @@ const later = page.locator("[data-inbox-view] [data-inbox-snoozed]")
 await later.getByRole("button", { name: /^Snoozed \d/ }).click()
 const laterRow = later.locator("[data-snoozed]", { hasText: "A field guide to tiling" })
 check("Snoozed: listed, with when it comes back", !!(await until(() => laterRow.count())) && /Until tomorrow 8:00/.test(await laterRow.innerText()), await later.innerText().catch(() => ""))
-const evName = (await api("GET", "inbox/events")).events.find((e) => !e.gate && !e.snoozed)?.title
+const evName = (await api("GET", "inbox/events")).events.find((e) => !e.gate && !e.snoozed && e.state !== "done")?.title
 if (evName) {
   await noToasts()
   await evRow(evName).click({ button: "right" })
   await page.getByRole("menuitem", { name: "Snooze" }).dispatchEvent("click")
   await page.getByRole("menuitem", { name: /^In 1 hour/ }).dispatchEvent("click")
-  check("an event snoozed: read, under Snoozed", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.title === evName)?.snoozed > Date.now())) &&
+  check("an event snoozed: under Snoozed", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.title === evName)?.snoozed > Date.now())) &&
     !!(await until(() => later.locator("[data-snoozed]", { hasText: evName }).count())))
 }
 await wait(400)
@@ -301,31 +318,38 @@ await page.locator("[data-sonner-toast]", { hasText: /Marked “.+” done/ }).f
 check("Undo puts it back to review", !!(await until(() => read(`${reading}.md`).includes("status: new"))))
 await wait(500)
 
-// 8b. Only unread events, no "Show N earlier"; with show_read, read ones greyed, past 8 rows folded into it.
-for (let i = 1; i <= 10; i++) await api("POST", "inbox/events", { source: "backup", kind: "done", title: `Backup ${i} finished` })
-await api("POST", "inbox/events/read", {})
-await api("POST", "inbox/events", { source: "codex", kind: "waiting", title: "Codex is waiting" })
-// Kept unread (as if marked so by hand): the Inbox tab behind the panel would read it.
-await api("POST", "inbox/events/unread", { ids: [(await api("GET", "inbox/events")).events.find((e) => e.title === "Codex is waiting").id] })
+// 8b. What needs you always shows, read or not; messages and what agents work on after it, past 8 rows folded; done
+// ones never (read messages are done).
+await page.goto(`${B}#file/${enc(PAGE)}`)
+await wait(800)
 const prow = (sel = "") => page.locator(`aside [data-inbox-panel] [data-event]${sel}`)
-const fold = page.locator("aside [data-inbox-panel] [data-inbox-fold]")
-const total = (await api("GET", "inbox/events")).events.length
-const waiting = prow().filter({ hasText: "Codex is waiting" })
-check("by default only the unread event, no Show earlier", !!(await until(async () => (await waiting.count()) === 1 && (await prow().count()) === 1)) && (await fold.count()) === 0, [await waiting.count(), await prow().count(), await fold.count()])
+// (a session answered: its agent working on it)
+const busy = `qw${Date.now().toString(36)}`
+await api("POST", `inbox/hook?agent=claude&terminal=${busy}`, { hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission to use Bash", session_id: "qa-busy" })
+await api("POST", `inbox/hook?agent=claude&terminal=${busy}`, { hook_event_name: "UserPromptSubmit", session_id: "qa-busy" })
+await until(() => prow(`[data-state=working]`).count())
 const op = (loc) => loc.evaluate((el) => getComputedStyle(el).opacity)
-check("the unread event shows, not greyed", (await waiting.count()) === 1 && (await op(waiting)) === "1", await waiting.count())
-await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}4b-sidebar-unread-only.png` })
-await api("PATCH", "config/plugin/inbox", { show_read: true })
-check("show_read: the last day's read ones too, past 8 rows folded", !!(await until(async () => (await prow().count()) === 8 && (await fold.innerText().catch(() => "")) === `Show ${total - 8} earlier`)), [await prow().count(), await fold.innerText().catch(() => "")])
-check("read ones are greyed out", (await op(prow("[data-kind=done]").first())) === "0.5", await op(prow("[data-kind=done]").first()))
-await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}4c-sidebar-show-read.png` })
+check("what an agent works on is dimmed, what needs you not", (await op(prow("[data-state=working]").first())) === "0.5" && (await op(prow("[data-state=open][data-kind=session]").first())) === "1",
+  [await op(prow("[data-state=working]").first()), await op(prow("[data-state=open]").first())])
+for (let i = 1; i <= 10; i++) await api("POST", "inbox/events", { source: "backup", kind: "info", title: `Backup ${i} finished` })
+const fold = page.locator("aside [data-inbox-panel] [data-inbox-fold]")
+const live = async () => (await api("GET", "inbox/events")).events.filter((e) => e.state !== "done" && !(e.snoozed > Date.now()))
+const firstN = async () => Math.max((await live()).filter((e) => e.state === "open" && e.kind !== "info").length, 8)
+check("the panel: what needs you, then the rest up to 8 rows, the others behind Show N more", !!(await until(async () => (await prow().count()) === (await firstN()) &&
+  (await fold.innerText().catch(() => "")) === `Show ${(await live()).length - (await firstN())} more`)), [await prow().count(), await fold.innerText().catch(() => "")])
+await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}4b-sidebar-threads.png` })
 await fold.click()
-check("Show earlier: every event", !!(await until(async () => (await prow().count()) === total)), await prow().count())
+check("Show more: every one not done", !!(await until(async () => (await prow().count()) === (await live()).length)), await prow().count())
 check("then Show less", (await fold.innerText()) === "Show less")
 await fold.click()
-check("which folds them again", !!(await until(async () => (await prow().count()) === 8)), await prow().count())
-await api("PATCH", "config/plugin/inbox", { show_read: null })
-check("show_read off again: only the unread one", !!(await until(async () => (await prow().count()) === 1 && (await fold.count()) === 0)), await prow().count())
+await api("POST", "inbox/events/read", {})
+check("all read: the messages are done, what needs you still there", !!(await until(async () => (await prow("[data-kind=info]").count()) === 0 && (await prow("[data-state=open]").count()) >= 1)), await prow().count())
+const done1 = prow("[data-state=open][data-kind=session]").first()
+const doneId = await done1.getAttribute("data-event")
+await done1.hover()
+await done1.getByRole("button", { name: "Done" }).click()
+check("Done on a thread's row: out of the panel", !!(await until(async () => (await prow(`[data-event="${doneId}"]`).count()) === 0)) &&
+  (await api("GET", "inbox/events")).events.find((e) => e.id === doneId)?.state === "done")
 
 // 9. The block on a page.
 await page.goto(`${B}#file/${enc(PAGE)}`)

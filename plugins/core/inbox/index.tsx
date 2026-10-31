@@ -14,7 +14,7 @@ import type { InboxEvent, InboxItem } from "./types"
 
 /** The user is looking at what an agent's news is about, in a window in front: its terminal or session is the focused
  *  tab, or what it links to is on screen (a browser tab's ask). (Not a message meant to be seen: info, error.) */
-const watching = (e: InboxEvent) => (e.kind === "done" || e.kind === "waiting") && document.visibilityState === "visible" && document.hasFocus() &&
+const watching = (e: InboxEvent) => (e.kind === "session" || e.kind === "waiting") && document.visibilityState === "visible" && document.hasFocus() &&
   ([targetOf(e), viewOf(e)].includes(focusedTarget()) || viewOnScreen(targetOf(e) ?? ""))
 
 /** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a session's answer, a
@@ -33,7 +33,7 @@ function announce(e: InboxEvent, s: Settings) {
     if (s.toasts === false || watching(e) || getEvents().events.find((x) => x.id === e.id)?.read) return
     notify(toastText(e), { id: `inbox-${e.id}`, kind: e.kind === "error" ? "error" : undefined, action: to ? { label: "Open", run: () => openEvent(e) } : undefined })
   }
-  if (e.kind === "done" || e.kind === "waiting") setTimeout(toast, 800); else toast()
+  if (e.kind === "session" || e.kind === "waiting") setTimeout(toast, 800); else toast()
   if (s.notifications !== false && !document.hasFocus()) systemNotify(e.title, e.preview || e.body || "")?.then((clicked) => { if (clicked) openEvent(e) })
 }
 
@@ -74,7 +74,8 @@ function Background({ store }: { store: Store }) {
     }
     known.current = seen
   }, [review])
-  // What the user is looking at is read: an event whose terminal (or file) is the focused tab, in a window in front.
+  // What the user is looking at is read (seen, not done): an event whose terminal (or file) is the focused tab, in a
+  // window in front.
   useEffect(() => {
     const check = () => {
       const hit = getEvents().events.filter((e) => !e.read && watching(e))
@@ -94,11 +95,12 @@ function Preview() {
   return (
     <Panel title="Inbox" icon={InboxIcon} tint="var(--inbox)">
       <p className="text-[15px] leading-[20px] text-muted-foreground">
-        What your agents tell you, in one place. When a session of Claude Code or another coding agent needs you (it asks
-        something, wants an approval, or answered with something to read), its row says so, with a toast (and a system
-        notification, while the app is in the background); open it to read its answer and reply. A turn done with nothing
-        for you goes in quietly. Results to read later, like an agent's research or a clipped page, land in the Inbox folder,
-        to mark done (into Inbox/.archive/) or file away.
+        What your agents tell you, in one place. Each session of Claude Code or another coding agent is one thread: when it
+        needs you (it asks something, wants an approval, answered or reported with something to read), it's in the inbox
+        with a toast (and a system notification, while the app is in the background), and stays there until you mark it
+        done or reply and it finishes with nothing more for you. A turn done with nothing for you goes in quietly. Results
+        to read later, like an agent's research or a clipped page, land in the Inbox folder, to mark done (into
+        Inbox/.archive/) or file away.
       </p>
     </Panel>
   )

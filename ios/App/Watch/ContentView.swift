@@ -132,7 +132,7 @@ struct InboxView: View {
                 NavigationLink(value: e.id) { EventRow(event: e) }
             }
         }
-        .navigationTitle(link.unread > 0 ? "Inbox (\(link.unread))" : "Inbox")
+        .navigationTitle(link.needs > 0 ? "Inbox (\(link.needs))" : "Inbox")
         .navigationDestination(for: String.self) { id in EventView(link: link, id: id) }
         .overlay { if link.loading && link.events.isEmpty { ProgressView() } }
         .task { await link.refresh() }
@@ -152,12 +152,18 @@ struct EventRow: View {
                 Text(event.t, format: .relative(presentation: .named)).font(.caption2).foregroundStyle(.tertiary)
             }
         }
-        .opacity(event.read ? 0.6 : 1)
+        .opacity(event.state == "working" ? 0.6 : 1)
+    }
+
+    /// A session by where it stands (needs you, working, done), else its kind.
+    private var look: String {
+        event.kind != "session" ? event.kind : event.state == "working" ? "working" : event.state == "done" ? "done" : event.ask == "error" ? "error" : "waiting"
     }
 
     private var icon: String {
-        switch event.kind {
+        switch look {
         case "waiting": "questionmark.bubble.fill"
+        case "working": "ellipsis.circle.fill"
         case "done": "checkmark.circle.fill"
         case "error": "exclamationmark.circle.fill"
         default: "bell.fill"
@@ -165,7 +171,7 @@ struct EventRow: View {
     }
 
     private var tint: Color {
-        switch event.kind {
+        switch look {
         case "waiting": .orange
         case "done": .green
         case "error": .red
@@ -174,7 +180,7 @@ struct EventRow: View {
     }
 }
 
-/// One event, with its buttons: Approve and Deny for a permission, else a reply (dictated) to a session and Mark read.
+/// One event, with its buttons: Approve and Deny for a permission, else a reply (dictated) to a session, and Done.
 struct EventView: View {
     @ObservedObject var link: PhoneLink
     let id: String
@@ -203,8 +209,8 @@ struct EventView: View {
                             }
                             .disabled(busy)
                         }
-                        if !e.read {
-                            Button { act("read") } label: { Label("Mark read", systemImage: "envelope.open") }
+                        if e.state != "done" {
+                            Button { act("done") } label: { Label("Done", systemImage: "checkmark.circle") }
                                 .disabled(busy)
                         }
                     }

@@ -14,10 +14,10 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         ], intentIdentifiers: []),
         UNNotificationCategory(identifier: "reply", actions: [
             UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Your reply"),
-            UNNotificationAction(identifier: "read", title: "Mark read", options: []),
+            UNNotificationAction(identifier: "done", title: "Done", options: []),
         ], intentIdentifiers: []),
         UNNotificationCategory(identifier: "event", actions: [
-            UNNotificationAction(identifier: "read", title: "Mark read", options: []),
+            UNNotificationAction(identifier: "done", title: "Done", options: []),
         ], intentIdentifiers: []),
     ]
 
@@ -67,7 +67,7 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         switch response.actionIdentifier {
         case "approve": answer = "approve"
         case "deny": answer = "deny"
-        case "read": answer = "read"
+        case "done": answer = "done"
         case "reply":
             answer = "reply"
             text = (response as? UNTextInputNotificationResponse)?.userText
@@ -77,7 +77,7 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         do {
             _ = try await Self.answer(id, answer, text: text)
         } catch {
-            Self.say("Couldn't \(answer == "read" ? "mark it read" : answer == "reply" ? "send the reply" : answer): \(Servers.say(error))")
+            Self.say("Couldn't \(answer == "done" ? "mark it done" : answer == "reply" ? "send the reply" : answer): \(Servers.say(error))")
         }
     }
 
@@ -86,7 +86,7 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         var body: [String: Any] = ["id": id, "answer": answer]
         if let text { body["text"] = text }
         _ = try await Servers.call("POST", "ops/inbox.answer", body)
-        return answer == "approve" ? "Approved" : answer == "deny" ? "Denied" : answer == "reply" ? "Sent" : "Read"
+        return answer == "approve" ? "Approved" : answer == "deny" ? "Denied" : answer == "reply" ? "Sent" : answer == "done" ? "Done" : "Read"
     }
 
     /// A local notification: something the user asked for from a notification didn't happen.

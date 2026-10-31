@@ -1,5 +1,5 @@
 // Inbox: what agents tell the user. Events stay on this machine (iCloud would churn), shown with the other machines' as
-// one inbox; results are Inbox/ files. An agent's session is one event, there when it needs the user (needs.ts).
+// one inbox; results are Inbox/ files. A session is one thread (open, working, done), its report file its record.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -13,12 +13,13 @@ import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowSta
 import { judge, type Need, type Turn } from "./needs.ts"
 import * as push from "./push.ts"
 import { parseUntil, snoozed, snoozeMs, stampOf, whenText } from "./snooze.ts"
+import { isMessage, lists, waitsOnYou } from "./threads.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
 
 const FOLDER = "Inbox"
-const MAX = 200 // read events kept: unread ones stay until they're read or dismissed
+const MAX = 200 // done events kept: the rest stay until they're done
 const MERGE = 60_000 // the same thing again within this long updates the event
 const DAY = 86_400_000
 
@@ -71,33 +72,49 @@ export const latest = (r: Item) => {
   return back > at && !snoozed(back) ? back : at
 }
 
+/** Results as the inbox's lists read them (threads.ts). */
+type Listed = Item & { id: string; status: string; archived: boolean; snoozed: string | null; created: string | null; updated: string | null }
+const asResults = (items: Item[]) => items.map((r): Listed => ({ ...r, id: str(r.id), status: str(r.status), archived: isArchived(r),
+  snoozed: truthy(r.snoozed) ? str(r.snoozed) : null, created: truthy(r.created) ? str(r.created) : null, updated: truthy(r.updated) ? str(r.updated) : null }))
+
 /** Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this
  *  plugin is on. */
 plugin.provide("inbox:folder", () => plugin.vault.home("inbox") ?? FOLDER)
 
 // ---------- events, kept on this machine
 
+/** Where an event stands for the user: open (in the inbox: a session or an ask needs them, a message is to read),
+ *  working (they answered, its agent is on it) or done (dealt with: kept keep_days, under Done). */
+export type State = "open" | "working" | "done"
+const STATES: State[] = ["open", "working", "done"]
+
 export type InboxEvent = {
   id: string; t: number
   /** Who: a coding agent's name (claude, codex), or anything that posts ("vau", "backup"). */
   source: string
-  /** What: waiting (it needs the user), done, error, or info (anything else reads as info). An agent session's row is
-   *  waiting while it needs them, else done. */
+  /** What: session (a coding agent's session, one thread each), waiting (something asks the user: a permission the
+   *  server waits on, a browser's ask, a paused plugin), else a message (info, error, done...: news to read). */
   kind: string
+  state: State
   title: string; body?: string
-  /** What a click opens: a vault path, a view ("view:terminal/<id>"), a sheet ("detail:review") or a web address. */
+  /** What a click opens: a vault path, a view ("view:terminal/<id>"), a sheet ("detail:review") or a web address. A
+   *  session's report (Inbox/<Title>.md) is its record: the thread is listed in its place. */
   link?: string
   /** One of a kind: a new event with its source and key takes the place of the one before (Lessons' "cards due"). */
   key?: string
   /** The app's terminal it happened in, and the agent's session: a click goes there. */
   terminal?: string; session?: string
-  /** Why it needs the user (needs.ts' Need): permission (to run a tool: Approve and Deny answer it), question, auth,
-   *  plan, answer (its last message is for them to read), report (an Inbox/ result: link), error. */
+  /** Its host tells its state and answers it (inbox:session; agent-reply, agent-answer), not a terminal. */
+  host?: boolean
+  /** Why a session needs the user (needs.ts' Need): permission (to run a tool: Approve and Deny answer it), question,
+   *  auth, plan, answer (its last message is for them to read), report (an Inbox/ result: link), error. */
   ask?: string
   /** What a session asks, in its own words (its agent's "agent-asking"): picked from its sheet, or a reply. */
   questions?: Question[]
   /** Its body as one plain line, for what can't draw Markdown (the phone's widgets, the watch, push). */
   preview?: string
+  /** The user's last message in the turn that opened it (its start): a quiet turn after another of theirs closes it. */
+  turn?: string
   /** When it last told the user (a toast, the Mac's and the phone's notifications): set only when it may, so every app
    *  announces the same news once. */
   nt?: number
@@ -105,12 +122,14 @@ export type InboxEvent = {
    *  MCP asking to run what can run code here), and once answered, the answer. */
   gate?: boolean
   answer?: "approve" | "deny"
+  /** Seen: drawn plain rather than bold. Only a message is dealt with by it (done once read). */
   read?: boolean
   /** Marked unread by hand: the Inbox seen doesn't read it, only opening it or marking it read. */
   kept?: boolean
   /** Another machine's (Machines): its id there is `<id>@<machine>` here, its terminal too. */
   machine?: string; machineLabel?: string
-  /** Snoozed until then (ms): read till it comes back unread, on top, told again. News from its session wakes it. */
+  /** Snoozed until then (ms): out of the lists till it comes back unread, on top, told again. News from its session
+   *  wakes it. */
   snoozed?: number
 }
 
@@ -133,15 +152,15 @@ function list(): InboxEvent[] {
   try {
     const data = JSON.parse(fs.readFileSync(path.join(dir(), "events.json"), "utf8"))
     events = Array.isArray(data.events) ? data.events.filter((e: InboxEvent) => e && typeof e.id === "string") : []
-    if (data.v !== VERSION) { events = byThread(events!); save() }
+    if (data.v !== VERSION) { events = asThreads(Number(data.v) >= 2 ? events! : byThread(events!)); save() }
   } catch {
     events = []
   }
   return events!
 }
 
-/** events.json's shape: 2, one row per agent session. */
-const VERSION = 2
+/** events.json's shape: 3, every event with its state, a session's row its thread (kind session). */
+const VERSION = 3
 /** Events from before sessions were rows (one per turn: "Claude Code finished", "… is waiting for you", a report's), as
  *  one row per session: its newest, named after the session (the body those titles had) or the report. */
 export function byThread(es: InboxEvent[]): InboxEvent[] {
@@ -161,11 +180,23 @@ export function byThread(es: InboxEvent[]): InboxEvent[] {
   return out
 }
 
-/** Read ones go after keep_days, past the latest MAX read; an unread one stays until it's read or dismissed. */
+/** Version 2's events with their state: read had hidden one (dealt with), unread is open. A session's row is its
+ *  thread; a browser's session (its page's address) stays the message or ask it was. */
+export function asThreads(es: InboxEvent[]): InboxEvent[] {
+  return es.map((e) => {
+    if (STATES.includes(e.state)) return e
+    const session = !e.gate && (e.kind === "waiting" || e.kind === "done") && !!(e.terminal || e.session) && !/^https?:/.test(e.session ?? "")
+    const open = e.gate ? !e.answer : !!e.snoozed || (!e.read && !(session && e.kind === "done"))
+    const { kept, ...rest } = e
+    return { ...rest, kind: session ? "session" : e.kind, state: open ? "open" : "done", ...(open && kept ? { kept } : {}) } as InboxEvent
+  })
+}
+
+/** Done ones go after keep_days, past the latest MAX; open and working ones stay until they're done. */
 export function prune(es: InboxEvent[]) {
   const since = Date.now() - settings().keep * DAY
-  let read = 0
-  return es.filter((e) => !e.read || e.snoozed || (e.t >= since && ++read <= MAX))
+  let done = 0
+  return es.filter((e) => e.state !== "done" || (e.t >= since && ++done <= MAX))
 }
 
 function save() {
@@ -198,30 +229,39 @@ function current(es: InboxEvent[]): InboxEvent[] {
   })
 }
 
-/** A file moved here (a result done, filed or renamed): this machine's events about it follow it, and once it's
- *  archived (done) they're read, here and on the machine that keeps them, since it's dealt with. */
+/** The thread a result is the record of (a session's report): its event, not done, linking it, on any machine shown. */
+export const threadOf = (r: Item) => shown().find((e) => e.state !== "done" && fileOf(e.link) === `${r.id}.md`) ?? null
+
+/** A file moved here (a result done, filed or renamed): this machine's events about it follow it. Archived (done), its
+ *  thread is done too, here and on the machine that keeps it; brought back to review, it's open again. */
 plugin.onMove((from, to) => {
   if (!to) return
   const at = (link?: string) => { const f = fileOf(link); return f === from ? to : f?.startsWith(`${from}/`) ? to + f.slice(from.length) : null }
-  const done = inArchive(to) && !inArchive(from)
+  const done = inArchive(to) && !inArchive(from), back = inArchive(from) && !inArchive(to)
   let n = 0
-  const next = list().map((e) => { const l = at(e.link); return l ? (n++, done ? { ...readThere(e), link: l } : { ...e, link: l }) : e })
+  const next = list().map((e) => {
+    const l = at(e.link)
+    if (!l) return e
+    n++
+    return done ? { ...doneAs(e, true), link: l } : back && e.state === "done" ? { ...doneAs(e, false), link: l } : { ...e, link: l }
+  })
   if (n) changed(next)
   if (!done) return
-  const theirs = [...remotes.values()].flatMap((r) => r.events).filter((e) => !e.read && at(e.link)).map((e) => e.id)
+  const theirs = [...remotes.values()].flatMap((r) => r.events).filter((e) => e.state !== "done" && at(e.link)).map((e) => e.id)
   for (const [m, some] of byMachine(theirs)) {
-    if (m) void onMachine(m, "POST", "inbox/events/read?local=1", { ids: some }, (e) => (isOne(e, some) && !e.read ? readThere(e) : e)).catch(() => {})
+    if (m) void onMachine(m, "POST", "inbox/events/done?local=1", { ids: some }, (e) => (isOne(e, some) ? doneAs(e, true) : e)).catch(() => {})
   }
 })
 const unread = (local = false) => shown(local).filter((e) => !e.read).length
+/** What waits on the user, on every machine shown (or this one's): the badge's events. */
+const needing = (local = false) => shown(local).filter((e) => waitsOnYou(e) && !snoozed(e.snoozed)).length
 
 function changed(next: InboxEvent[]) {
-  // (an unread one isn't snoozed: news, or marked unread, brought it back)
-  events = prune(next.map((e) => (!e.read && e.snoozed ? (({ snoozed: _, ...rest }) => rest)(e) : e)))
+  events = prune(next)
   save()
   broadcast()
-  // The phone's agents widget shows who's waiting: only a change there reloads it.
-  const now = list().filter((e) => !e.read && e.kind === "waiting").map((e) => e.id).join()
+  // The phone's agents widget shows what waits on the user: only a change there reloads it.
+  const now = list().filter(waitsOnYou).map((e) => e.id).join()
   if (now !== waitingSeen) { waitingSeen = now; refreshWidgets() }
 }
 let waitingSeen = ""
@@ -234,10 +274,11 @@ const TERMINAL = /^[\w-]{1,64}(@[a-z0-9][a-z0-9-]{0,62})?$/
 export function eventOf(b: Item): Omit<InboxEvent, "id" | "t"> {
   const title = clip(b.title)
   if (!title) throw new HTTPError(400, "title: what happened, one line")
+  if (b.kind === "session") throw new HTTPError(400, "kind: a coding agent's session tells its state to inbox/sessions (vau docs inbox)")
   const e: Omit<InboxEvent, "id" | "t"> = {
     source: clip(b.source, 40).toLowerCase() || "vau",
     kind: /^[a-z][a-z-]{0,19}$/.test(str(b.kind)) ? str(b.kind) : "info",
-    title,
+    state: "open", title,
   }
   const body = str(b.body).trim()
   if (body) e.body = body
@@ -255,24 +296,27 @@ export function eventOf(b: Item): Omit<InboxEvent, "id" | "t"> {
 const ASKS = ["permission", "question", "auth", "plan", "answer", "report", "error"]
 const newId = (now: number) => `${now.toString(36)}-${crypto.randomBytes(3).toString("hex")}`
 
-/** Add an event (or update the same one, unread, from within a minute: a message sent twice). Returns it. */
+/** Add an event, open and unread (or update the same one, still open, from within a minute: a message sent twice).
+ *  Returns it. */
 function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
   const now = Date.now()
   const es = list().filter((e) => !given.key || !sameKey(e, given.source, given.key))
   // (a message, `vau notify`'s, only with the same words: a few told in a row from one terminal each show)
   const who = (e: Omit<InboxEvent, "id" | "t">) => `${e.session || e.terminal || ""}\0${e.title}`
-  const same = es.find((e) => !e.read && now - e.t < MERGE && e.source === given.source && e.kind === given.kind && who(e) === who(given))
+  const same = es.find((e) => e.state === "open" && now - e.t < MERGE && e.source === given.source && e.kind === given.kind && who(e) === who(given))
   const e: InboxEvent = same
-    ? { ...same, ...given, id: same.id, t: now, terminal: given.terminal ?? same.terminal, session: given.session ?? same.session, body: given.body ?? same.body, link: given.link ?? same.link }
+    ? { ...same, ...given, id: same.id, t: now, read: false, terminal: given.terminal ?? same.terminal, session: given.session ?? same.session, body: given.body ?? same.body, link: given.link ?? same.link }
     : { id: newId(now), t: now, ...given }
   if (e.body) e.preview = previewOf(e.body)
   return put(e, same ?? null, es, true)
 }
 
-/** Keep event `e` (in place of `old`, at the top of `es`), the user told of it when it's news and they may be (nt). */
+/** Keep event `e` (in place of `old`, at the top of `es`), the user told of it when it's news (it's open for them,
+ *  unread) and they may be (nt). News wakes what's snoozed. */
 function put(e: InboxEvent, old: InboxEvent | null, es: InboxEvent[], news: boolean): InboxEvent {
   if (e.read) delete e.kept
-  if (news && !e.read && !holdNow() && mayTell(old, e)) e.nt = e.t
+  if (news && e.state === "open") delete e.snoozed
+  if (news && e.state === "open" && !e.read && !holdNow() && mayTell(old, e)) e.nt = e.t
   changed([e, ...es.filter((x) => x !== old)])
   told(e)
   if (e.nt === e.t) pushed(e)
@@ -289,7 +333,7 @@ const TELL_GAP = 60_000, TELL_BURST = 6
 const toldAt: number[] = []
 function mayTell(old: InboxEvent | null, e: InboxEvent) {
   const now = Date.now()
-  if (old?.nt && !old.read && old.ask === e.ask && now - old.nt < TELL_GAP) return false
+  if (old?.nt && old.state === "open" && !old.read && !old.snoozed && old.ask === e.ask && now - old.nt < TELL_GAP) return false
   if (!(e.terminal || e.session) || e.gate) return true
   while (toldAt.length && now - toldAt[0] > 60_000) toldAt.shift()
   if (toldAt.length >= TELL_BURST) return false
@@ -309,12 +353,27 @@ function dropEvent(source: string, key: string) {
  *  to finish or ask something (`vau events --type inbox.event`, the op events.wait). */
 function told(e: InboxEvent) {
   try {
-    plugin.emit("inbox.event", { id: e.id, kind: e.kind, source: e.source, title: e.title, ...(e.terminal ? { terminal: e.terminal } : {}),
+    plugin.emit("inbox.event", { id: e.id, kind: e.kind, state: e.state, source: e.source, title: e.title, ...(e.terminal ? { terminal: e.terminal } : {}),
       ...(e.session ? { session: e.session } : {}), ...(e.link ? { link: e.link } : {}), ...(e.ask ? { ask: e.ask, body: e.body ?? "" } : {}) })
   } catch { /* not loaded by an App (a test calling it alone) */ }
 }
 
-const readThere = (e: InboxEvent): InboxEvent => { const { kept: _, ...rest } = e; return { ...rest, read: true } }
+/** `e` seen: a message is dealt with by it (done); a session or an ask stays open until it's done. */
+const readThere = (e: InboxEvent): InboxEvent => {
+  const { kept: _, ...rest } = e
+  return { ...rest, read: true, ...(isMessage(e) && e.state === "open" ? { state: "done" as const } : {}) }
+}
+/** `e` marked unread by hand (kept so), back if it was snoozed: a message read is open again. */
+const unreadThere = (e: InboxEvent): InboxEvent => {
+  const { snoozed: _, ...rest } = e
+  return { ...rest, read: false, kept: true, ...(isMessage(e) && !e.gate ? { state: "open" as const } : {}) }
+}
+/** `e` done (dealt with: no longer snoozed, nothing left to pick), or open again (`done` false: Back to inbox). */
+const doneAs = (e: InboxEvent, done: boolean): InboxEvent => {
+  if (!done) return e.state === "done" ? { ...e, state: "open" } : e
+  const { snoozed: _, kept: __, questions: ___, ...rest } = e
+  return { ...rest, state: "done", read: true }
+}
 
 /** Mark events read: these ids, or all (null). */
 function markRead(ids: Set<string> | null) {
@@ -327,47 +386,62 @@ function markRead(ids: Set<string> | null) {
 /** Mark events unread by hand (kept so). */
 function markUnread(ids: Set<string>) {
   let n = 0
-  const next = list().map((e) => (ids.has(e.id) && (e.read || !e.kept) ? (n++, { ...e, read: false, kept: true }) : e))
+  const next = list().map((e) => (ids.has(e.id) && (e.read || !e.kept) ? (n++, unreadThere(e)) : e))
   if (n) changed(next)
   return n
 }
 
-/** A permission an agent asks in a terminal here is read once it no longer waits ("terminal:waits"): answered anywhere,
- *  refused, or its terminal ended. Checked every few seconds, a new one left to show first. */
+/** Mark events done (or, `done` false, open again): these ids. */
+function markDone(ids: Set<string>, done = true) {
+  let n = 0
+  const next = list().map((e) => (ids.has(e.id) && (done ? e.state !== "done" : e.state === "done") ? (n++, doneAs(e, done)) : e))
+  if (n) changed(next)
+  return n
+}
+
+/** Set rows' state (and more: `patch`) quietly, as their session moved on: working is the user's answer, so it's read. */
+function moveOn(hit: InboxEvent[], state: State, patch: Partial<InboxEvent> = {}) {
+  if (!hit.length) return
+  const to = (e: InboxEvent): InboxEvent => { const { kept: _, ...rest } = state === "done" ? doneAs(e, true) : e; return { ...rest, state, read: true, ...patch } }
+  changed(list().map((e) => (hit.includes(e) ? to(e) : e)))
+  for (const e of list()) if (hit.some((h) => h.id === e.id)) told(e)
+}
+
+/** A permission asked in a terminal here that no longer waits ("terminal:waits") was answered: its agent goes on, or
+ *  its terminal is gone (done). Checked every few seconds, a new one left to show first. */
 const ASKED = 5000
 export async function stillWaiting(after = ASKED) {
   const waits = plugin.service("terminal:waits")
   if (!waits) return
-  const gone = new Set<string>()
+  const on: string[] = [], gone: string[] = []
   for (const e of list()) {
-    if (e.read || e.gate || e.kind !== "waiting" || e.ask !== "permission" || !e.terminal || e.terminal.includes("@") || Date.now() - e.t < after) continue
-    if (!(await waits(e.terminal, e.source))) gone.add(e.id)
+    if (e.state !== "open" || e.kind !== "session" || e.ask !== "permission" || !e.terminal || e.terminal.includes("@") || Date.now() - e.t < after) continue
+    if (await waits(e.terminal, e.source)) continue
+    ;(await plugin.ask("terminal:info", null, e.terminal).catch(() => null) ? on : gone).push(e.id)
   }
-  if (gone.size) markRead(gone)
+  moveOn(list().filter((e) => on.includes(e.id)), "working")
+  moveOn(list().filter((e) => gone.includes(e.id)), "done")
 }
 const waitTimer = setInterval(() => { if (plugin.loaded) void stillWaiting().catch(() => {}) }, ASKED)
 waitTimer.unref?.()
 plugin.onUnload(() => clearInterval(waitTimer))
 
-/** A session the user ended (End session, vau terminal end) was dealt with: its row is read. One that ended by itself
- *  (it crashed, or exited) keeps an answer still to read. */
+/** A terminal ended: what its agent worked on is done; one the user ended (End session) was dealt with, one that ended
+ *  by itself (crashed, exited) keeps what's to read. A report stays open: the reply resumes its session. */
 plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
-  if (ev.onPurpose !== true || typeof ev.id !== "string") return
-  const hit = list().filter((e) => !e.read && !e.gate && !e.machine && e.terminal === ev.id)
-  if (hit.length) markRead(new Set(hit.map((e) => e.id)))
+  if (typeof ev.id !== "string") return
+  moveOn(list().filter((e) => e.kind === "session" && !e.machine && e.terminal === ev.id &&
+    (e.state === "working" || (e.state === "open" && ev.onPurpose === true && e.ask !== "report"))), "done")
 })
 
 /** What an agent asks before it goes on: answered, it works again. */
 const BLOCKED = new Set(["permission", "question", "auth", "plan"])
 
-/** The agent's question was answered (it went from blocked back to working): its row, if it asked, is read. Not an
- *  answer it left: it may go on by itself (a background task ending), which isn't the user reading it. */
-function resolve(terminal: string, session: string) {
-  const hit = list().filter((e) => e.kind === "waiting" && BLOCKED.has(str(e.ask)) && (!e.read || e.questions) && ((terminal && e.terminal === terminal) || (session && e.session === session)))
-  if (!hit.length) return
-  // (its questions are answered: nothing to pick any more)
-  if (hit.some((e) => e.questions)) changed(list().map((e) => (hit.includes(e) && e.questions ? { ...e, questions: undefined } : e)))
-  markRead(new Set(hit.map((e) => e.id)))
+/** Its question answered (blocked, then working; `to` done: refused), or the user wrote to it (`user`): its open thread
+ *  is working. Not for an answer it left: it may go on by itself (a background task), which isn't the user's doing. */
+function resolve(terminal: string, session: string, user = false, to: State = "working") {
+  moveOn(list().filter((e) => e.kind === "session" && e.state === "open" && (user ? e.ask !== "report" : BLOCKED.has(str(e.ask))) &&
+    ((terminal && e.terminal === terminal) || (session && e.session === session))), to, { questions: undefined })
 }
 
 // ---------- live: /api/inbox/live (?local=1: this machine's events only, what another machine follows)
@@ -375,7 +449,7 @@ function resolve(terminal: string, session: string) {
 const watchers = new Map<WebSocket, boolean>() // socket -> this machine's events only
 let sendTimer: ReturnType<typeof setTimeout> | null = null
 
-const message = (local: boolean) => JSON.stringify({ t: "events", events: shown(local), unread: unread(local), hold: holdNow() })
+const message = (local: boolean) => JSON.stringify({ t: "events", events: shown(local), unread: unread(local), needs: needing(local), hold: holdNow() })
 
 let mineChanged = false
 /** Tell the watchers (within 30 ms). `mine`: this machine's events changed; else only the followed machines' did, which
@@ -536,12 +610,14 @@ async function owner(req: Request) {
   await plugin.ownerOnly(req, "the inbox")
 }
 
+/** The events, newest first (`open`: only what isn't done, as the phone's widgets and the watch list them). */
 plugin.route("GET", "inbox/events", async (req) => {
   if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Setup > Plugins)")
   const limit = req.query.all ? Infinity : Math.max(Math.trunc(Number(req.query.limit)) || 50, 1)
   const local = !!req.query.local
   if (!local) await others()
-  return { events: shown(local).slice(0, limit), unread: unread(local), hold: holdNow() }
+  const es = req.query.open ? shown(local).filter((e) => e.state !== "done") : shown(local)
+  return { events: es.slice(0, limit), unread: unread(local), needs: needing(local), hold: holdNow() }
 })
 
 plugin.route("POST", "inbox/events", async (req) => {
@@ -573,9 +649,23 @@ plugin.route("POST", "inbox/events/unread", async (req) => {
   const local = !!req.query.local
   for (const [m, some] of byMachine(ids.map(String))) {
     if (!m) markUnread(new Set(some))
-    else if (!local) await onMachine(m, "POST", "inbox/events/unread?local=1", { ids: some }, (e) => (isOne(e, some) ? { ...e, read: false, kept: true } : e))
+    else if (!local) await onMachine(m, "POST", "inbox/events/unread?local=1", { ids: some }, (e) => (isOne(e, some) ? unreadThere(e) : e))
   }
   return { unread: unread(local) }
+})
+
+/** Mark events done (dealt with), or open again (`done` false: Back to inbox). */
+plugin.route("POST", "inbox/events/done", async (req) => {
+  await owner(req)
+  const b = (req.body ?? {}) as Item
+  if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events are done")
+  const done = b.done !== false
+  const local = !!req.query.local
+  for (const [m, some] of byMachine(b.ids.map(String))) {
+    if (!m) markDone(new Set(some), done)
+    else if (!local) await onMachine(m, "POST", "inbox/events/done?local=1", { ids: some, done }, (e) => (isOne(e, some) ? doneAs(e, done) : e))
+  }
+  return { needs: needing(local) }
 })
 
 /** Snooze events until `until` (ms; null: back now). A permission the server waits on can't be: it'd wait unseen. */
@@ -593,13 +683,14 @@ plugin.route("POST", "inbox/events/snooze", async (req) => {
   return { unread: unread(local) }
 })
 
-/** `e` snoozed till `until` (read meanwhile), or woken (null: unread, on top, told again); null when it can't be. */
+/** `e` snoozed till `until` (out of the lists meanwhile), or woken (null: open, unread, on top, told again); null when
+ *  it can't be (a gate would wait unseen; what's done isn't to come back). */
 function snoozedAs(e: InboxEvent, until: number | null): InboxEvent | null {
-  if (e.gate) return null
-  if (until !== null) return { ...readThere(e), snoozed: until }
+  if (e.gate || e.state === "done") return null
+  if (until !== null) return { ...e, snoozed: until }
   if (!e.snoozed) return null
   const { snoozed: _, ...rest } = e
-  return { ...rest, read: false, t: Date.now() }
+  return { ...rest, state: "open", read: false, t: Date.now() }
 }
 
 /** Snooze these events, or (null) bring them back now: the user did, so it's no news. */
@@ -629,7 +720,7 @@ export async function wake() {
   const back = plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && r.snoozed && !toldBack.has(`${r.id}\0${r.snoozed}`) &&
     !snoozed(r.snoozed, now) && snoozeMs(r.snoozed) > now - 2 * WAKE)
   if (!back.length || !(await firstMachine())) return
-  for (const r of back) { toldBack.add(`${r.id}\0${r.snoozed}`); pushBack("Back in your inbox", str(r.title)) }
+  for (const r of back) { toldBack.add(`${r.id}\0${r.snoozed}`); if (!threadOf(r)) pushBack("Back in your inbox", str(r.title)) }
 }
 const wakeTimer = setInterval(() => { if (plugin.loaded && !plugin.isOff()) void wake().catch((e) => console.error("inbox: wake:", e)) }, WAKE)
 wakeTimer.unref?.()
@@ -670,7 +761,7 @@ async function holdEnds(now = Date.now()) {
   const results = (await firstMachine()) ? plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && !r.session && !r.terminal && stampMs(str(r.created)) >= from).length : 0
   const n = came.length + results, waiting = came.filter(waitsOnYou).length
   if (!n) return
-  const e = addEvent({ source: "inbox", kind: "info", title: `${what ? `During ${what}` : "While on hold"}: ${n} new${waiting ? `, ${waiting} waiting on you` : ""}` })
+  const e = addEvent({ source: "inbox", kind: "info", state: "open", title: `${what ? `During ${what}` : "While on hold"}: ${n} new${waiting ? `, ${waiting} waiting on you` : ""}` })
   if (e.nt === e.t && settings().push === "waiting") pushBack(e.title, undefined, { event: e.id })
 }
 
@@ -692,23 +783,26 @@ plugin.route("POST", "inbox/events/*/answer", async (req) => {
   const [bare, there] = splitMachine(req.arg(0))
   if (there) {
     // Its gate waits on that machine's server.
-    await onMachine(there, "POST", `inbox/events/${encodeURIComponent(bare)}/answer`, { answer }, (x) => (isOne(x, [bare]) ? { ...readThere(x), answer } : x))
+    await onMachine(there, "POST", `inbox/events/${encodeURIComponent(bare)}/answer`, { answer }, (x) => (isOne(x, [bare]) ? { ...doneAs(x, true), answer } : x))
     return { id: req.arg(0), answer }
   }
   const e = list().find((x) => x.id === bare)
   if (!e?.gate) throw new HTTPError(404, "no permission waits with that id")
   if (e.answer) throw new HTTPError(409, "it was answered already")
-  const done: InboxEvent = { ...readThere(e), answer }
+  const done: InboxEvent = { ...doneAs(e, true), answer }
   changed(list().map((x) => (x === e ? done : x)))
   for (const settle of [...gates.get(e.id) ?? []]) settle(answer)
   told(done)
   return { id: e.id, answer }
 })
 
+/** Forget every event (`done`: only the done ones), on every machine. */
 plugin.route("DELETE", "inbox/events", async (req) => {
   await owner(req)
-  changed([])
-  if (!req.query.local) await Promise.all([...remotes.keys()].map((m) => onMachine(m, "DELETE", "inbox/events?local=1", null, () => null).catch(() => {})))
+  const done = !!req.query.done
+  changed(done ? list().filter((e) => e.state !== "done") : [])
+  if (!req.query.local) await Promise.all([...remotes.keys()].map((m) => onMachine(m, "DELETE", `inbox/events?local=1${done ? "&done=1" : ""}`, null,
+    (e) => (done && e.state !== "done" ? e : null)).catch(() => {})))
   return { ok: true }
 })
 
@@ -735,15 +829,11 @@ function pushBack(title: string, body?: string, data?: { event: string }) {
 
 const apns = () => ((plugin.secrets().inbox ?? {}) as Item).apns as push.Apns ?? null
 
-/** What waits on the user: an agent's session that needs them (asking, its answer, its report), a server's question, a
- *  paused plugin; not news, an error or a session done with nothing for them. */
-export const waitsOnYou = (e: Pick<InboxEvent, "kind">) => e.kind === "waiting"
-
 /** The buttons a notification of `e` gets (Push.swift's categories): Approve and Deny for a permission it shows whole,
- *  Reply for a session's answer or question (typed back into it), else Mark read. */
+ *  Reply for a session's answer or question (typed back into it), else Done. */
 export function categoryOf(e: InboxEvent): push.Note["category"] {
-  if (e.ask === "permission" && (e.terminal || e.gate) && (e.body ?? "").length <= push.BODY_MAX) return "permission"
-  if (e.kind === "waiting" && (e.terminal || e.session) && !e.gate && e.ask !== "permission") return "reply"
+  if (e.ask === "permission" && (e.terminal || e.gate || e.host) && (e.body ?? "").length <= push.BODY_MAX) return "permission"
+  if (e.kind === "session" && e.ask !== "permission") return "reply"
   return "event"
 }
 
@@ -754,7 +844,7 @@ function pushed(e: InboxEvent) {
   if (e.read || mode === "off" || (mode === "waiting" && !waitsOnYou(e)) || !push.devices().length) return
   void push.send(apns(), {
     title: e.title, body: e.questions ? questionLine(e.questions, true) : e.preview || e.body, category: categoryOf(e),
-    thread: e.terminal || e.session || e.source, urgent: e.kind === "waiting" && BLOCKED.has(str(e.ask)),
+    thread: e.terminal || e.session || e.source, urgent: e.kind === "session" && BLOCKED.has(str(e.ask)),
     data: { event: e.id },
   }).then((r) => { if (r.failed.length) console.error(`inbox: push failed: ${r.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))
 }
@@ -800,8 +890,8 @@ plugin.route("POST", "inbox/push", async (req) => {
   return r
 })
 
-// ---------- agents' sessions: what each says it's doing (Terminal's stream, else a hook), one row each, there only
-// when it needs the user (it asks, or its turn ended with something for them: needs.ts), quiet otherwise
+// ---------- agents' sessions (Terminal's stream, a hook, or a host: inbox:session), one thread each: open when it needs
+// the user (it asks, or a turn ended with something for them: needs.ts), working once they answer, done when settled
 
 /** A change of an app terminal's state, as Terminal tells it (the service "inbox:state"; Terminal's StateChange). */
 export type StateChange = { terminal: string; agent: string; state: "idle" | "working" | "blocked" | "done" | "error"
@@ -809,8 +899,10 @@ export type StateChange = { terminal: string; agent: string; state: "idle" | "wo
 /** A change as the inbox hears it: an agent's own hook says its session, folder and last message; one outside the
  *  app's terminals has only its session. */
 export type Heard = Omit<StateChange, "terminal" | "at"> & { terminal?: string; session?: string; cwd?: string; text?: string; prompt?: string
-  /** An agent's own hook (`vau inbox hook`): it says a turn ended, or it asks, each time news. */
-  own?: boolean }
+  /** An agent's own hook (`vau inbox hook`) or host (inbox:session): it says a turn ended, or it asks, each time news. */
+  own?: boolean
+  /** What it asks, in its own words, and its name, when its host says them (else its agent's plugin is asked). */
+  questions?: Question[]; title?: string }
 
 /** Each session's last state (by terminal, else by session), and since when it works: its turn's start. */
 const states = new Map<string, { state: string; kind?: string; msg?: string; since: number }>()
@@ -858,20 +950,22 @@ export async function heard(h: Heard) {
   const now = Date.now()
   states.set(key, { state: h.state, kind: h.kind, msg: h.msg, since: h.state === "working" && was?.state !== "working" ? now : was?.since ?? now })
   if (states.size > 500) states.delete(states.keys().next().value!)
-  const who = { agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "" }
+  const who = { agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "", ...(h.from === "agent" && !h.terminal ? { host: true } : {}) }
+  if (h.title) name(who, h.title)
+  // (working after it asked: the user answered; after a prompt its own hook saw: the user wrote to it)
   if (h.state === "working") {
-    if (prev === "blocked" || own) resolve(who.terminal, who.session)
+    if (prev === "blocked" || own) resolve(who.terminal, who.session, own)
     return
   }
   if (h.state === "blocked") {
     const said = BLOCKED.has(str(h.kind)) ? str(h.kind) : "question"
-    const asking = await askingOf(who, said), ask = asking?.kind ?? said
-    await sessionRow(who, { kind: "waiting", ask, read: false, link: undefined, questions: asking?.kind === "question" ? asking.questions : undefined,
+    const asking: Asking | null = h.questions?.length ? { kind: "question", questions: h.questions } : await askingOf(who, said), ask = asking?.kind ?? said
+    await sessionRow(who, { state: "open", ask, read: false, link: undefined, questions: asking?.kind === "question" ? asking.questions : undefined,
       body: asking?.kind === "question" ? questionsText(asking.questions) : asking?.kind === "plan" ? asking.plan : h.msg || ASKING[ask] }, true, h.cwd)
     return
   }
   // Out of a question without working again: refused or interrupted, which the user did.
-  if (prev === "blocked" && h.state !== "error" && !own) return resolve(who.terminal, who.session)
+  if (prev === "blocked" && h.state !== "error" && !own) return resolve(who.terminal, who.session, false, "done")
   if (prev === "working" || own) await turnEnded(who, h, was?.since ?? now)
 }
 
@@ -902,7 +996,7 @@ export function questionLine(qs: Question[], lines = false) {
   return lines ? `${q.question}${more}\n${labels.map((l, i) => `${i + 1}. ${l}`).join("\n")}` : `${q.question} ${or(labels, q.multi ? "and" : "or")}${more}`.slice(0, 300)
 }
 
-type Who = { agent: string; terminal: string; session: string }
+type Who = { agent: string; terminal: string; session: string; host?: boolean }
 /** An agent's last turn as its plugin reads it (the service "agent-turn:<agent>"): the user's message, its last answer. */
 type Last = { session: string; prompt: string; text: string; at: number; final: boolean
   /** The session's own name, for an agent whose terminal isn't titled by it (Codex's thread name, else first prompt). */
@@ -918,24 +1012,29 @@ async function turnEnded(who: Who, h: Heard, since: number) {
     // (back to idle with no session to read: it was starting up, as Codex says it works while it does)
     if (!t && h.from === "osc7501" && h.state === "idle" && text === undefined && prompt === undefined) return
     if (t) { text ??= t.text; prompt ??= t.prompt; who = { ...who, session: who.session || t.session } }
-    if (t?.title && (who.terminal || who.session)) {
-      named.set(who.terminal || who.session, t.title)
-      if (named.size > 500) named.delete(named.keys().next().value!)
-    }
+    if (t?.title) name(who, t.title)
   }
   text = (text ?? h.msg ?? "").trim()
   // Its report (inbox.report) this turn is what it had to say: the row is the report's.
   const row = list().find(rowOf(who))
-  if (row?.ask === "report" && row.t >= since - 2000) return void endHanded(who.terminal)
+  if (row?.ask === "report" && row.state === "open" && row.t >= since - 2000) return void endHanded(who.terminal)
   const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string; truncated: boolean }>) | null
   const v = await judge({ prompt, text, error: h.state === "error" } satisfies Turn, sample)
   const body = text ? (text.length > BODY ? `${text.slice(0, BODY)}\n\n…` : text) : undefined
-  const now = list().find(rowOf(who))
-  if (v.needs) await sessionRow(who, { kind: "waiting", ask: v.why as Need, body, read: false, link: undefined, questions: undefined }, true, h.cwd)
-  else if (!now || now.read) await sessionRow(who, { kind: "done", ask: undefined, body, read: true, link: undefined, questions: undefined }, false, h.cwd)
+  const now = list().find(rowOf(who)), turn = turnOf(prompt)
+  if (v.needs) await sessionRow(who, { state: "open", ask: v.why as Need, body, read: false, link: undefined, questions: undefined, turn }, true, h.cwd)
+  else if (!now || !stillOpen(now, turn)) await sessionRow(who, { state: "done", ask: undefined, body, read: true, questions: undefined, turn: undefined }, false, h.cwd)
   else told(now) // (still to read: it stays as it was)
   endHanded(who.terminal)
 }
+
+/** A short key for the user's message a turn answered (the same message: the same turn going on). */
+const turnOf = (prompt?: string) => (prompt?.trim() ? crypto.createHash("sha1").update(prompt.trim()).digest("hex").slice(0, 12) : undefined)
+
+/** Whether open thread `e` still needs the user after a quiet turn (answering `turn`): what it left stays to read while
+ *  the same turn goes on (a background task); a new message from the user, or its ask gone, settles it. */
+export const stillOpen = (e: Pick<InboxEvent, "state" | "ask" | "turn">, turn?: string) =>
+  e.state === "open" && !BLOCKED.has(str(e.ask)) && (e.ask === "report" || !turn || !e.turn || turn === e.turn)
 
 /** The agent's last turn: once its transcript has this turn's final answer (OSC 7501's done comes before the agent has
  *  written it, so asked again for a few seconds), else this turn's latest words, else none. */
@@ -952,8 +1051,13 @@ async function lastTurn(who: Who, since: number, wantText: boolean): Promise<Las
 const rowOf = (k: Who) => (e: InboxEvent) => !e.gate && !e.machine && e.source === k.agent &&
   ((!!k.session && e.session === k.session) || (!!k.terminal && e.terminal === k.terminal))
 
-/** The name a session's agent gave it as its last turn ended (agent-turn's `title`), by terminal, else session. */
+/** The name a session's agent gave it as its last turn ended (agent-turn's `title`, or its host's), by terminal, else session. */
 const named = new Map<string, string>()
+function name(k: Who, title: string) {
+  if (!(k.terminal || k.session)) return
+  named.set(k.terminal || k.session, clip(title, 200))
+  if (named.size > 500) named.delete(named.keys().next().value!)
+}
 
 /** What the user knows a session by: the name its agent gave it, else its terminal's (Claude Code names it after the
  *  session), else its folder. */
@@ -969,8 +1073,8 @@ async function sessionRow(k: Who, patch: Partial<InboxEvent>, news: boolean, cwd
   const title = await sessionTitle(k, cwd)
   const es = list()
   const old = es.find(rowOf(k)) ?? null
-  const e = { ...(old ?? { id: newId(Date.now()) }), t: Date.now(), source: k.agent, title: title || old?.title || `${agentLabel(k.agent)} session`, ...patch,
-    ...(k.terminal ? { terminal: k.terminal } : {}), ...(k.session ? { session: k.session } : {}) } as InboxEvent
+  const e = { ...(old ?? { id: newId(Date.now()) }), t: Date.now(), source: k.agent, kind: "session", title: title || old?.title || `${agentLabel(k.agent)} session`, ...patch,
+    ...(k.terminal ? { terminal: k.terminal } : {}), ...(k.session ? { session: k.session } : {}), ...(k.host ? { host: true } : {}) } as InboxEvent
   if (e.questions) e.preview = questionLine(e.questions)
   else if (e.body) e.preview = previewOf(e.body)
   else delete e.preview
@@ -994,13 +1098,54 @@ function agentLabel(name: string) {
   return agentName(name) ?? (p ? str(p.manifest.name) : name ? name[0].toUpperCase() + name.slice(1) : "An agent")
 }
 
-/** Whether an agent's session (by its terminal, or its own session id) has a row that needs the user, unread: Terminal's
- *  list says so (its tab's dot, Terminals' first rows). */
-plugin.provide("inbox:needs", (terminal: string, session = "") => list().some((e) => !e.read && e.kind === "waiting" && !e.gate &&
+/** Whether an agent's session (by its terminal, or its own session id) has a thread that needs the user, unread:
+ *  Terminal's list says so (its tab's dot, Terminals' first rows). */
+plugin.provide("inbox:needs", (terminal: string, session = "") => list().some((e) => !e.read && e.kind === "session" && e.state === "open" &&
   ((!!terminal && e.terminal === terminal) || (!!session && e.session === session))))
 
 /** Terminal's stream of its terminals' states. */
 plugin.provide("inbox:state", (c: StateChange) => { track(heard(c)) })
+
+/** A session's state as its host tells it (an agent run outside a terminal, as the Agent SDK runs one): AGENTS.md's
+ *  "A session's state". The same as a hook's: a turn that ends is judged, a question needs the user. */
+export type SessionState = { agent: string; session: string; terminal?: string; state: "waiting" | "working" | "done" | "error"
+  ask?: string; text?: string; prompt?: string; title?: string; questions?: Question[]; cwd?: string }
+const HOST_STATES = { waiting: "blocked", working: "working", done: "done", error: "error" } as const
+
+/** A session's state as given (the API's body, a host's), checked, as the inbox hears it. Throws a 400 for a bad one. */
+export function sessionOf(b: Item): Heard {
+  const agent = clip(b.agent, 40).toLowerCase(), session = clip(b.session, 120)
+  const terminal = TERMINAL.test(str(b.terminal)) ? str(b.terminal) : ""
+  const state = HOST_STATES[str(b.state) as keyof typeof HOST_STATES]
+  if (!/^[a-z][\w-]*$/.test(agent)) throw new HTTPError(400, "agent: who runs it (claude, codex...)")
+  if (!session && !terminal) throw new HTTPError(400, "session: its id")
+  if (!state) throw new HTTPError(400, "state: waiting, working, done or error")
+  if (b.ask !== undefined && !BLOCKED.has(str(b.ask))) throw new HTTPError(400, "ask: what it waits on (permission, question, auth, plan)")
+  const qs = Array.isArray(b.questions) ? (b.questions as Item[]).filter((q) => str(q?.question) && Array.isArray(q.options)).map((q) => ({
+    question: clip(q.question, 500), ...(str(q.header) ? { header: clip(q.header, 60) } : {}), ...(q.multi === true ? { multi: true } : {}),
+    options: (q.options as Item[]).map((o) => ({ label: clip(o?.label, 200), ...(str(o?.description) ? { description: clip(o.description, 500) } : {}) })).filter((o) => o.label),
+  })) : []
+  return { agent, state, from: "agent", own: true, ...(session ? { session } : {}), ...(terminal ? { terminal } : {}),
+    ...(b.ask !== undefined ? { kind: str(b.ask) } : {}), ...(typeof b.text === "string" ? { text: b.text.trim() } : {}),
+    ...(typeof b.prompt === "string" ? { prompt: b.prompt } : {}), ...(str(b.title) ? { title: clip(b.title, 200) } : {}),
+    ...(state === "blocked" && str(b.text) ? { msg: clip(b.text, 300) } : {}), ...(qs.length ? { questions: qs } : {}), ...(str(b.cwd) ? { cwd: str(b.cwd) } : {}) }
+}
+
+/** Tell the inbox a session's state (SessionState): the thread it's in, once worked out (a turn's end is judged first). */
+plugin.provide("inbox:session", async (b: Item): Promise<InboxEvent | null> => {
+  const h = sessionOf(b)
+  const p = heard(h)
+  track(p)
+  await p
+  return list().find(rowOf({ agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "" })) ?? null
+})
+
+/** A session's state from a host outside this server (SessionState): answered at once, the thread worked out after. */
+plugin.route("POST", "inbox/sessions", async (req) => {
+  await owner(req)
+  track(heard(sessionOf((req.body ?? {}) as Item)))
+  return reply(202, { ok: true })
+}, { sync: false })
 
 /** An agent's own hook (`vau inbox hook`): its news; Terminal tells the rest ("inbox:state"). A terminal started before
  *  that has a state command posting here (`state`): its state file says it now. */
@@ -1023,33 +1168,44 @@ plugin.op({
   id: "inbox.list",
   cli: "inbox",
   mcp: "inbox",
-  summary: "What's new in the inbox: results to review (Inbox/, status new), and the agents' sessions that need the user (a question, an approval, an answer to read) and other events, newest first.",
-  help: `Results are files in Inbox/ the user hasn't reviewed yet. Events are kept on the machine they happened on (another
-machine's id ends in @<machine>) until read, then for a week, each with its id (inbox.read, inbox.answer, inbox.reply
-take it). A coding agent's session is one event: needs you (* unread) while it asks something or its last answer is
-for the user, else read, holding its last answer.
+  summary: "What's in the inbox: what needs the user (agents' sessions asking, answering or reporting; requests), results to review (Inbox/), what agents are working on since the user answered, and messages to read, newest first.",
+  help: `A coding agent's session is one thread, its report (a file in Inbox/) its record: open (needs you) while it asks
+something, its last answer or report is for the user, or it failed; working once they answer; done once a turn after
+ends with nothing for them, or they mark it done. Reading never settles a thread (* is unread); a message (vau notify)
+is done once read. Results are files in Inbox/ to review. Events are kept on the machine they happened on (another
+machine's id ends in @<machine>), done ones for keep_days, each with its id (inbox.done, inbox.answer, inbox.reply,
+inbox.snooze take it). done: the latest done ones too.
 
-  vau inbox`,
+  vau inbox
+  vau inbox --done`,
   kind: "read",
-  params: { limit: { type: "integer", minimum: 1, default: 20, description: "at most this many events" } },
-  run: async ({ limit }, ctx) => {
-    const [ev, items] = await Promise.all([ctx.api("GET", `inbox/events?limit=${limit}`), ctx.api("GET", "inbox")]) as [Item, Item[]]
-    const open = (items ?? []).filter((r) => r.status === "new" && !isArchived(r))
+  params: {
+    limit: { type: "integer", minimum: 1, default: 20, description: "at most this many in each list" },
+    done: { type: "boolean", description: "the latest done events too" },
+  },
+  run: async ({ limit, done }, ctx) => {
+    const [ev, items] = await Promise.all([ctx.api("GET", "inbox/events?all=1"), ctx.api("GET", "inbox")]) as [Item, Item[]]
+    // (a report whose thread is listed is that thread's: one row a session)
+    const l = lists(ev.events as InboxEvent[], asResults(items ?? []))
     const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
-    const later = (ev.events as InboxEvent[]).filter((e) => snoozed(e.snoozed))
-    return { results: open.filter((r) => !snoozed(r.snoozed)).map(row), events: (ev.events as InboxEvent[]).filter((e) => !later.includes(e)), unread: ev.unread,
-      snoozed: [...open.filter((r) => snoozed(r.snoozed)).map((r) => ({ ...row(r), until: str(r.snoozed) })),
-        ...later.map((e) => ({ id: e.id, title: e.title, until: stampOf(new Date(e.snoozed!)) }))] }
+    const cut = <T>(xs: T[]) => xs.slice(0, limit)
+    return { needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
+      snoozed: [...l.snoozed.results.map((r) => ({ ...row(r), until: str(r.snoozed) })),
+        ...l.snoozed.events.map((e) => ({ id: e.id, title: e.title, until: stampOf(new Date(e.snoozed!)) }))],
+      done: done ? cut(l.done.events) : l.done.events.length }
   },
   text: (r) => {
     const out: string[] = []
-    if (r.results.length) out.push("To review:", ...r.results.map((x: Item) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
-    if (r.events.length) {
-      out.push(`${out.length ? "\n" : ""}Events (${r.unread} unread):`,
-        ...r.events.map((e: InboxEvent) => `  ${localTime(e.t)}  ${e.read ? " " : "*"} ${e.title}${e.kind === "waiting" && e.ask ? ` [${NEEDS[e.ask] ?? e.ask}]` : ""}` +
-          `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`))
-    }
-    if (r.snoozed.length) out.push(`${out.length ? "\n" : ""}Snoozed:`, ...r.snoozed.map((x: Item) => `  until ${x.until}  ${x.path ?? `${x.title}  (${x.id})`}`))
+    const line = (e: InboxEvent) => `  ${localTime(e.t)}  ${e.read ? " " : "*"} ${e.title}${e.state === "open" && e.ask ? ` [${NEEDS[e.ask] ?? e.ask}]` : ""}` +
+      `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`
+    const list = (title: string, xs: string[]) => { if (xs.length) out.push(`${out.length ? "\n" : ""}${title}:`, ...xs) }
+    list("Needs you", r.needs.map(line))
+    list("To review", r.results.map((x: Item) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
+    list("Working on it", r.working.map(line))
+    list("Messages", r.messages.map(line))
+    list("Snoozed", r.snoozed.map((x: Item) => `  until ${x.until}  ${x.path ?? `${x.title}  (${x.id})`}`))
+    if (Array.isArray(r.done)) list("Done", r.done.map(line))
+    else if (r.done) out.push(`${out.length ? "\n" : ""}Done: ${r.done} (vau inbox --done lists them).`)
     return out.length ? out.join("\n") : "Nothing new."
   },
 })
@@ -1267,10 +1423,10 @@ two or three plain sentences, no jargon; the push says it too.
       r = await ctx.api("POST", "inbox", { title, body: [round, terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }) as Item
     }
     const file = `${r.id}.md`
-    // Its session's row is the report now, needing the user (it's what they sent it to do), linking the file.
-    const report = { kind: "waiting", ask: "report", title: str(r.title), body: tldr, link: file, read: false, questions: undefined }
+    // Its session's thread is the report now, needing the user (it's what they sent it to do), the file its record.
+    const report = { state: "open" as const, ask: "report", title: str(r.title), body: tldr, link: file, read: false, questions: undefined }
     if (terminal || session) await sessionRow({ agent: agent || "vau", terminal, session }, report, true)
-    else addEvent({ source: agent || "vau", ...report })
+    else addEvent({ source: agent || "vau", kind: "waiting", ...report })
     return { path: file, title: r.title, images, terminal: terminal || null, session: session || null, ...(prior ? { thread: true } : {}) }
   },
   text: (r) => `In the user's inbox: ${r.path}${r.thread ? " (added to this session's report before, as a thread)" : ""}.` + (r.terminal || r.session ? " Their reply comes back to this session" +
@@ -1338,8 +1494,8 @@ async function onOwner(ctx: OpCtx, e: InboxEvent, op: string, params: Item) {
 const EVENT_ID = /^[a-z0-9]{6,12}-[0-9a-f]{6}(@[a-z0-9][a-z0-9-]{0,62})?$/
 const sessionOfRow = (e: InboxEvent) => ({ terminal: e.terminal ?? "", session: e.session ?? "", agent: e.source })
 
-/** Answer a session's row: typed into its terminal, else its session resumed (or a new one told its last answer); the
- *  row is read, and follows the terminal that answers. */
+/** Answer a session's thread: its host takes it (agent-reply:<agent>), else it's typed into its terminal, else its
+ *  session resumed (or a new one told its last answer); the thread is working, and follows the terminal that answers. */
 async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   const line = text.trim().replace(/\s*\n\s*/g, " ")
   if (!line) throw new OpError("text: the reply")
@@ -1350,6 +1506,11 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   if (asks && e.questions?.length === 1 && !e.questions[0].multi) {
     if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     return { how: "type", terminal: (await pickIn(ctx, e, [line])).terminal }
+  }
+  const host = plugin.service(`agent-reply:${e.source}`) as ((session: string, text: string) => Promise<boolean>) | null
+  if (host && e.session && !how && await host(e.session, line)) {
+    moveOn(list().filter((x) => x.id === e.id), "working")
+    return { how: "host", terminal: e.terminal ?? null }
   }
   const plan = await replyPlan(sessionOfRow(e), typable(sessions), how)
   if (!plan) throw new OpError(`its terminal ${e.terminal} has ended and it names no session to resume`, 409)
@@ -1367,7 +1528,7 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
       `${plan.transcript ? ` Its transcript is \`${plan.transcript}\`: search it for what you need, don't read it whole.` : ""} ` +
       `Its last answer:\n\n${clip(e.body, 3000) || "(not kept)"}\n\nThe user's reply:) ${line}`)
   }
-  changed(list().map((x) => (x.id !== e.id ? x : { ...readThere(x), terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })))
+  moveOn(list().filter((x) => x.id === e.id), "working", { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
   return { how: plan.how, terminal: plan.to }
 }
 
@@ -1447,9 +1608,10 @@ message. Once it has ended, the session is resumed with it while the agent's pro
 or five minutes, after its last response): its whole context, cheap. Later, resuming would send the whole conversation
 again at full price, so a new session starts, told to read the report (or the session's last answer, and where its
 transcript is). Either runs in the background (no tab opens). how: resume or new, whatever the cache.
-A report: the reply is added to it, and it's marked done (into Inbox/.archive/) unless keep; it names the session
-answering it, whose next report goes on in it (back to new). A session's row: it's read, and the session's next answer
-comes back to it. A session on another of the Machines gets it through the app there.
+Its thread is then working (its agent has it) until that turn ends: with something for the user it's open again, else
+done. A report: the reply is added to it, and it's archived (into Inbox/.archive/, the thread its item) unless keep; it
+names the session answering it, whose next report goes on in it (back to new). A thread whose report it is takes it the
+same way. A session on another of the Machines gets it through the app there.
 
   vau inbox reply "Inbox/Sidebar scrollbar fixed.md" "Yes, ship it to the phone too"
   vau inbox reply lzk3p2-a1b2c3 "Use the second option"`,
@@ -1458,15 +1620,19 @@ comes back to it. A session on another of the Machines gets it through the app t
     to: { type: "string", required: true, description: "the report (Inbox/<Title>.md) or the session's event id (vau inbox lists them)" },
     text: { type: "string", required: true, description: "the reply" },
     how: { type: "string", enum: ["auto", "resume", "new"], description: "resume its session, or start a new one (default auto: by its cache)" },
-    keep: { type: "boolean", description: "a report: leave it new (not done)" },
+    keep: { type: "boolean", description: "a report: leave it new (not archived)" },
   },
   args: ["to", "text"],
   run: async (p, ctx) => {
-    const to = str(p.to).trim(), how = p.how === "auto" ? "" : str(p.how)
+    let to = str(p.to).trim()
+    const how = p.how === "auto" ? "" : str(p.how)
     if (EVENT_ID.test(to)) {
       const e = await eventFor(ctx, to)
-      if (e.machine) return onOwner(ctx, e, "inbox.reply", { to: splitMachine(e.id)[0], text: str(p.text), ...(how ? { how } : {}) })
-      return { to: e.id, ...(await replyToRow(ctx, e, str(p.text), how)), done: true }
+      if (e.machine) return onOwner(ctx, e, "inbox.reply", { to: splitMachine(e.id)[0], text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
+      // (a thread whose report it is: the reply goes on in the report, its record)
+      const rec = fileOf(e.link) ? resultAt(fileOf(e.link)!) : undefined
+      if (!rec || !(rec.terminal || rec.session)) return { to: e.id, ...(await replyToRow(ctx, e, str(p.text), how)), done: false }
+      to = `${rec.id}.md`
     }
     // One line for the agent (a newline typed into its terminal would send it early); the report keeps its lines.
     const lines = str(p.text).trim(), text = lines.replace(/\s*\n\s*/g, " ")
@@ -1506,46 +1672,66 @@ comes back to it. A session on another of the Machines gets it through the app t
     })
     // The report now names the session that answers it: its next report goes on in this file, and so do later replies.
     const next = { ...(plan.to !== terminal ? { terminal: plan.to } : {}), ...(plan.how === "new" ? { session: "" } : {}) }
+    let id = r.id
     if ((!p.keep && r.status !== "done") || Object.keys(next).length) {
-      await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { ...next, ...(!p.keep ? { status: "done" } : {}) })
+      id = str(((await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { ...next, ...(!p.keep ? { status: "done" } : {}) })) as Item)?.id) || id
     }
+    // Its thread is working on it (archiving its record made it done), on the terminal that answers.
+    moveOn(list().filter((e) => [`${r.id}.md`, `${id}.md`].includes(fileOf(e.link) ?? "")), "working",
+      { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
     return { to: `${r.id}.md`, terminal: plan.to, how: plan.how, done: !p.keep }
   },
-  text: (r) => `${r.how === "resume" ? "Resumed its session" : r.how === "new" ? "Started a new session" : "Sent"} in ${r.terminal}${r.done ? `; ${EVENT_ID.test(r.to) ? "it's read" : "the report is done"}` : ""}.`,
+  text: (r) => `${r.how === "resume" ? "Resumed its session" : r.how === "new" ? "Started a new session" : r.how === "host" ? "Sent to its session" : "Sent"}${r.terminal ? ` in ${r.terminal}` : ""}${r.done ? "; the report is archived, its thread working" : "; its thread is working"}.`,
 })
 
 plugin.op({
   id: "inbox.done",
   cli: "inbox done",
-  summary: "Mark a result in the inbox done: it's archived (into Inbox/.archive/), named anew when given a title.",
-  help: `What the user's Done does: the file moves into Inbox/.archive/, out of what's to review. An agent handed a voice
-note ends with it (not by editing its status: that leaves it in the inbox). With title, it's renamed too.
+  summary: "Mark something in the inbox done: a result is archived (into Inbox/.archive/, named anew when given a title); a thread or an event is done, out of the inbox (its report archived).",
+  help: `What the user's Done does. A result's file moves into Inbox/.archive/, out of what's to review: an agent handed a voice
+note ends with it (not by editing its status: that leaves it in the inbox); with title, it's renamed too. A session's
+thread (or any event, by its id) is done: out of what needs the user, kept under Done for keep_days, and its report, if
+it has one to review, archived. Reading never does this: only done (or the session moving on) settles a thread. undo
+brings it back: a result to review, a thread open again.
 
-  vau inbox done "Inbox/Remind me to call Alice about….md" --title "Call Alice about the trip"`,
+  vau inbox done "Inbox/Remind me to call Alice about….md" --title "Call Alice about the trip"
+  vau inbox done lzk3p2-a1b2c3
+  vau inbox done lzk3p2-a1b2c3 --undo`,
   kind: "write",
   params: {
-    path: { type: "string", format: "path", required: true, description: "the result (Inbox/<Title>.md)" },
-    title: { type: "string", description: "a better name for it, in a few words, in sentence case" },
+    item: { type: "string", required: true, description: "the result (Inbox/<Title>.md) or the event's id (vau inbox lists them)" },
+    title: { type: "string", description: "a result: a better name for it, in a few words, in sentence case" },
+    undo: { type: "boolean", description: "bring it back: a result to review, a thread or an event open again" },
   },
-  args: ["path"],
-  action: { on: ["inbox"], param: "path", label: "Mark done", icon: "check-check", menu: false },
+  args: ["item"],
+  action: { on: ["inbox"], param: "item", label: "Mark done", icon: "check-check", menu: false },
   run: async (p, ctx) => {
+    const item = str(p.item).trim(), back = p.undo === true
+    if (EVENT_ID.test(item)) {
+      const e = await eventFor(ctx, item)
+      await ctx.api("POST", "inbox/events/done", { ids: [e.id], done: !back })
+      // (its report to review goes with it: the thread was its item)
+      const rec = !back && fileOf(e.link) ? resultAt(fileOf(e.link)!) : undefined
+      if (rec && rec.status === "new" && !isArchived(rec)) await ctx.api("PUT", `inbox/${encodeURIComponent(rec.id)}`, { status: "done" })
+      return { id: e.id, title: e.title, done: !back }
+    }
     await plugin.vault.sync()
-    const r = resultAt(str(p.path).trim())
-    if (!r) throw new OpError(`no ${p.path} in the inbox`, 404)
+    const r = resultAt(item)
+    if (!r) throw new OpError(`no ${item} in the inbox`, 404)
     const title = str(p.title).replace(/\s+/g, " ").trim()
-    const done = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: "done", ...(title ? { title } : {}) }) as Item
-    return { path: `${done.id}.md` }
+    const done = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: back ? "new" : "done", ...(title ? { title } : {}) }) as Item
+    return { path: `${done.id}.md`, done: !back }
   },
-  text: (r) => `Done: ${r.path}.`,
+  text: (r) => (r.done ? `Done: ${r.path ?? r.title}.` : `Back in the inbox: ${r.path ?? r.title}.`),
+  did: (p) => ({ action: "save", text: `Marked ${quoted(p.item)} ${p.undo ? "not done" : "done"} in the inbox` }),
 })
 
 plugin.op({
   id: "inbox.snooze",
   cli: "inbox snooze",
   summary: "Snooze something in the inbox (a result, or an event): out of the way until a time, then back on top, told again.",
-  help: `What the user's Snooze does. A result keeps the time in its \`snoozed\` field (past, it's back on top); an event is read
-meanwhile, and news from its session brings it back early. until: tomorrow, evening, weekend, week (next Monday's
+  help: `What the user's Snooze does. A result keeps the time in its \`snoozed\` field (past, it's back on top); a thread or
+an event is out of the lists meanwhile (still open), and news from its session brings it back early. until: tomorrow, evening, weekend, week (next Monday's
 morning), a while (30m, 3h, 2d), a local time (2026-10-24 09:00), or now to bring it back.
 
   vau inbox snooze "Inbox/Plant care apps compared.md" --until tomorrow
@@ -1612,7 +1798,7 @@ hold on now, if any. label says what for ("Practice guitar"), in the line at its
 plugin.op({
   id: "inbox.read",
   cli: "inbox read",
-  summary: "Mark the inbox's events read: some by id (vau inbox lists them), or all.",
+  summary: "Mark the inbox's events read (seen: no longer bold), some by id (vau inbox lists them) or all. A message is done once read; a thread stays until it's done (inbox.done).",
   kind: "write",
   params: { ids: { type: "array", items: { type: "string" }, description: "the events' ids; none: every event" } },
   args: ["ids"],
@@ -1624,7 +1810,7 @@ plugin.op({
 plugin.op({
   id: "inbox.unread",
   cli: "inbox unread",
-  summary: "Mark events unread by hand: they stay unread when the Inbox is seen, until opened or marked read.",
+  summary: "Mark events unread by hand: they stay unread when the Inbox is seen, until opened or marked read (a message read is back in the inbox).",
   kind: "write",
   params: { ids: { type: "array", items: { type: "string" }, required: true, description: "the events' ids (vau inbox lists them)" } },
   args: ["ids"],
@@ -1639,25 +1825,28 @@ plugin.op({
 plugin.op({
   id: "inbox.clear",
   cli: "inbox clear",
-  summary: "Forget every event in the inbox (results in Inbox/ stay).",
+  summary: "Forget the inbox's events: every one, or only the done ones (results in Inbox/ stay).",
   kind: "destructive",
-  run: async (_p, ctx) => await ctx.api("DELETE", "inbox/events"),
-  text: () => "Forgot every event.",
-  did: () => ({ action: "delete", text: "Cleared the inbox's events" }),
+  params: { done: { type: "boolean", description: "only the done ones" } },
+  run: async ({ done }, ctx) => ({ ...(await ctx.api("DELETE", `inbox/events${done ? "?done=1" : ""}`)), done: !!done }),
+  text: (r) => (r.done ? "Forgot the done events." : "Forgot every event."),
+  did: ({ done }) => ({ action: "delete", text: done ? "Cleared the inbox's done events" : "Cleared the inbox's events" }),
 })
 
 plugin.op({
   id: "inbox.answer",
   cli: "inbox answer",
-  summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, pick answers to its questions, reply to a session that needs you, or read.",
+  summary: "Answer an event, as its notification's buttons do: approve or deny the permission an agent waits on, pick answers to its questions, reply to a session that needs you, mark it done, or read.",
   help: `approve and deny press the keys the agent's plugin gives for the question its terminal shows (Claude Code's
 permission: Enter, its first choice Yes, or Escape): for an agent asking permission in an app terminal (the event's ask
 is permission) while its terminal still shows the question, or a question the server waits on (an app's tool). reply
 (with text) is inbox.reply to its session (to a session asking one question, its answer). pick answers the questions it
 asks (the event's questions): picks, one per question, an option's number or name (several, comma-separated, in a
 multi-select), or text typed as its own answer. approve, deny and pick are the user's alone: only from the app or their
-phone, never an agent nor vau. read marks it read. Another machine's event is answered there, where its session runs; a
-bare id from a notification another machine sent is found too.
+phone, never an agent nor vau. Approved, denied, picked or replied to, a session's thread is working (its agent goes on);
+done marks it done (inbox.done), read only marks it read. A session run outside a terminal is answered by its host
+(agent-reply:<agent>, agent-answer:<agent>). Another machine's event is answered there, where its session runs; a bare
+id from a notification another machine sent is found too.
 
   vau inbox answer lzk3p2-a1b2c3 approve
   vau inbox answer lzk3p2-a1b2c3 pick --picks 2
@@ -1666,7 +1855,7 @@ bare id from a notification another machine sent is found too.
   kind: "write",
   params: {
     id: { type: "string", required: true, description: "the event's id (vau inbox lists them)" },
-    answer: { type: "string", enum: ["approve", "deny", "pick", "reply", "read"], required: true, description: "approve, deny, pick, reply or read" },
+    answer: { type: "string", enum: ["approve", "deny", "pick", "reply", "done", "read"], required: true, description: "approve, deny, pick, reply, done or read" },
     picks: { type: "array", items: { type: "string" }, description: "with pick: an answer for each question, in order" },
     text: { type: "string", description: "with reply: what to tell it" },
   },
@@ -1677,23 +1866,36 @@ bare id from a notification another machine sent is found too.
     if (((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") || answer === "pick") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     const bare = splitMachine(e.id)[0]
     if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}) })
-    if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await replyToRow(ctx, e, str(text))) }
-    if (answer === "pick") return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, (picks ?? []).map(str))) }
-    if (answer !== "read") {
-      if (e.gate) {
-        await ctx.api("POST", `inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
-        return { id: e.id, answer, title: e.title, terminal: null }
-      }
-      if (e.kind !== "waiting" || e.ask !== "permission" || !e.terminal) {
-        throw new OpError("only an agent asking permission in an app terminal can be approved or denied", 409)
-      }
-      if (e.read) throw new OpError("it was answered already", 409)
-      await ctx.api("POST", `terminals/${encodeURIComponent(e.terminal)}/answer`, { answer, agent: e.source })
+    if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.reply", { to: e.id, text: str(text) })) }
+    if (answer === "done") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.done", { item: e.id })) }
+    if (answer === "read") {
+      await ctx.api("POST", "inbox/events/read", { ids: [e.id] })
+      return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
     }
-    await ctx.api("POST", "inbox/events/read", { ids: [e.id] })
+    // (a session run outside a terminal: its host answers it)
+    const host = e.host && e.session ? plugin.service(`agent-answer:${e.source}`) as ((session: string, a: Item) => Promise<boolean>) | null : null
+    if (answer === "pick") {
+      if (!host) return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, (picks ?? []).map(str))) }
+      const qs = e.questions ?? []
+      if (!qs.length || e.state !== "open" || (picks ?? []).length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`, qs.length ? 400 : 409)
+      if (!(await host(e.session!, { picks: qs.map((q, i) => choiceOf(q, str(picks![i]))) }))) throw new OpError("its session no longer asks that", 409)
+      moveOn(list().filter((x) => x.id === e.id), "working")
+      return { id: e.id, answer, title: e.title, terminal: null }
+    }
+    if (e.gate) {
+      await ctx.api("POST", `inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
+      return { id: e.id, answer, title: e.title, terminal: null }
+    }
+    if (e.ask !== "permission" || e.kind === "info" || !(e.terminal || host)) throw new OpError("only an agent asking permission can be approved or denied", 409)
+    if (e.state !== "open") throw new OpError("it was answered already", 409)
+    if (host) {
+      if (!(await host(e.session!, { answer }))) throw new OpError("its session no longer asks that", 409)
+    } else await ctx.api("POST", `terminals/${encodeURIComponent(e.terminal!)}/answer`, { answer, agent: e.source })
+    // (its agent goes on, or stops at no)
+    moveOn(list().filter((x) => x.id === e.id), "working")
     return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
   },
-  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "reply" || r.answer === "pick" ? `Sent to ${r.terminal}.`
+  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "done" ? `Done: ${r.title}.` : r.answer === "reply" || r.answer === "pick" ? `Sent${r.terminal ? ` to ${r.terminal}` : ""}.`
     : `${r.answer === "approve" ? "Approved" : "Denied"}${r.terminal ? ` in ${r.terminal}` : `: ${r.title}`}.`),
 })
 
@@ -1823,8 +2025,8 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
 plugin.provide("inbox:event", (b: Item) => addEvent(eventOf(b)))
 /** Take away the event of this source and key (what it said isn't so anymore). */
 plugin.provide("inbox:drop", (source: string, key: string) => dropEvent(source, key))
-/** Mark the event of this source and key read (the core's notice of a paused plugin, once it's allowed again). */
-plugin.provide("inbox:read", (source: string, key: string) => markRead(new Set(list().filter((e) => sameKey(e, source, key)).map((e) => e.id))))
+/** Mark the event of this source and key done (the core's notice of a paused plugin, once it's allowed again). */
+plugin.provide("inbox:done", (source: string, key: string) => markDone(new Set(list().filter((e) => sameKey(e, source, key)).map((e) => e.id))))
 
 /** Who waits on a gate's answer, by its event's id (in memory: after a restart the answer is still on the event). */
 const gates = new Map<string, Set<(answer: "approve" | "deny") => void>>()
@@ -1864,16 +2066,18 @@ const stampAt = (s: unknown) => stampMs(str(s)) || 0
 plugin.block("inbox", (ctx) => {
   const o = ctx.options
   const nr = Number(o.results ?? 10), ne = Number(o.events ?? 5)
-  const results = plugin.vault.items("inbox").filter((r) => r.status === "new" && !isArchived(r) && !snoozed(r.snoozed)).slice(0, nr)
-  const es = plugin.isOff() ? [] : shown().filter((e) => !snoozed(e.snoozed)).slice(0, ne)
+  const l = lists(plugin.isOff() ? [] : shown(), asResults(plugin.vault.items("inbox")))
+  const results = l.review.slice(0, nr)
+  // (what needs the user first, then what agents work on, then messages)
+  const es = [...l.needs, ...l.working, ...l.messages].slice(0, ne)
   ctx.source(nr > 0 ? results : [])
   const parts: string[] = []
+  if (ne > 0 && es.length) {
+    parts.push(`From your agents:\n${bullets(es.map((e) => [fmtAgo(e.t), `${e.title}${e.preview || e.body ? `: ${clip(e.preview || e.body, 200)}` : ""}`,
+      waitsOnYou(e) ? "needs you" : e.state === "working" ? "working on it" : !e.read && "unread", e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")))}`)
+  }
   if (nr > 0 && results.length) {
     parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(stampAt(latest(r)))].filter(Boolean).join(" · ")))}`)
-  }
-  if (ne > 0 && es.length) {
-    parts.push(`Events:\n${bullets(es.map((e) => [fmtAgo(e.t), `${e.title}${e.preview || e.body ? `: ${clip(e.preview || e.body, 200)}` : ""}`,
-      !e.read && (e.kind === "waiting" ? "needs you" : "unread"), e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")))}`)
   }
   return [`## ${str(o.title) || "Inbox"}`, parts.length ? parts.join("\n\n") : "_Nothing new._"].join("\n\n")
 })

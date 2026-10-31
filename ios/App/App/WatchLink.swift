@@ -62,12 +62,13 @@ final class WatchLink: NSObject, WCSessionDelegate {
         do {
             switch m["do"] as? String {
             case "inbox":
-                let r = try await Servers.call("GET", "inbox/events?limit=30", from: "watch")
-                let events = (r["events"] as? [[String: Any]] ?? []).map { e in
+                let r = try await Servers.call("GET", "inbox/events?open=1&limit=30", from: "watch")
+                // (what's in the inbox: not what's done, nor snoozed)
+                let events = (r["events"] as? [[String: Any]] ?? []).filter { $0["state"] as? String != "done" && $0["snoozed"] == nil }.map { e in
                     // Only what a message carries (plist values: no JSON nulls).
-                    e.filter { ["id", "title", "body", "preview", "kind", "ask", "read", "t", "terminal", "session"].contains($0.key) && !($0.value is NSNull) }
+                    e.filter { ["id", "title", "body", "preview", "kind", "state", "ask", "read", "t", "terminal", "session", "host"].contains($0.key) && !($0.value is NSNull) }
                 }
-                return ["events": events, "unread": r["unread"] as? Int ?? 0]
+                return ["events": events, "unread": r["unread"] as? Int ?? 0, "needs": r["needs"] as? Int ?? 0]
             case "answer":
                 guard let id = m["id"] as? String, let answer = m["answer"] as? String else { return ["error": "Nothing to answer"] }
                 return ["ok": true, "text": try await Push.answer(id, answer, text: m["text"] as? String)]

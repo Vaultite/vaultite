@@ -1,9 +1,9 @@
-// An agent's session in the inbox, opened like a mail: what it asks or its last answer (Markdown), Approve and Deny for
-// a permission, and the reply that goes back into it (on the machine it runs on). Opening it reads it.
+// An agent's session in the inbox, opened like a mail: what it asks or its last answer, Approve and Deny, the reply back
+// into it (on its machine). Opening it reads it; only Done (or the session moving on) settles it.
 import { useEffect } from "react"
-import { Bot, Check, SquareTerminal, X } from "lucide-react"
-import { Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
-import { agentOf, answerable, answerAsk, getEvents, markRead, openSession, SESSION_DETAIL, useEvents } from "./events"
+import { Bot, Check, CheckCheck, RotateCcw, SquareTerminal, X } from "lucide-react"
+import { backDetail, Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
+import { agentOf, answerable, answerAsk, getEvents, markEventsDone, markRead, openSession, SESSION_DETAIL, useEvents } from "./events"
 import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
@@ -31,10 +31,17 @@ export function SessionSheet({ id }: { id: string }) {
   useEffect(() => { if (e && !e.read && !answerable(e)) markRead([e.id]) }, [e?.id, e?.t]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!e) return <Empty>This session is no longer in the inbox.</Empty>
   const name = agent?.label ?? (e.source ? e.source[0].toUpperCase() + e.source.slice(1) : "the agent")
-  const why = e.kind === "waiting" ? WHY[e.ask ?? ""] : ""
-  const sub = [why || "Done", name, e.machineLabel && `on ${e.machineLabel}`, fmtAgo(e.t)].filter(Boolean).join(" · ")
+  const why = e.state === "working" ? "Working on it" : e.state === "done" ? "Done" : WHY[e.ask ?? ""] ?? "Needs you"
+  const sub = [why, name, e.machineLabel && `on ${e.machineLabel}`, fmtAgo(e.t)].filter(Boolean).join(" · ")
   const asks = answerable(e)
-  const blocked = e.kind === "waiting" && BLOCKED.includes(e.ask ?? "")
+  const blocked = e.state === "open" && BLOCKED.includes(e.ask ?? "")
+  const done = (to: boolean) => {
+    haptic("medium")
+    void markEventsDone([e.id], to)
+    // (dealt with: the sheet goes, as a mail archived does)
+    if (to) backDetail()
+    notify(to ? `Done: “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void markEventsDone([e.id], !to) } })
+  }
   const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine })
   return (
     <div data-session-sheet={e.id} data-ask={e.ask ?? ""}>
@@ -43,7 +50,7 @@ export function SessionSheet({ id }: { id: string }) {
         ? <Questions e={{ ...e, questions: e.questions }} />
         : e.body
         ? <Markdown text={e.body} className="mb-5 break-words" />
-        : <Empty>{e.kind === "done" ? "It finished with nothing to say." : "It said nothing more."}</Empty>}
+        : <Empty>{e.state === "done" ? "It finished with nothing to say." : "It said nothing more."}</Empty>}
       {asks && (
         <div className="mb-5 flex gap-2">
           <Button look="primary" className="h-11 px-4 md:h-8" data-gate="approve" onClick={() => void answer(e, "approve")}><Check className="size-4" /> Approve</Button>
@@ -56,6 +63,14 @@ export function SessionSheet({ id }: { id: string }) {
         ? <Button look="quiet" className="h-11 px-3 md:h-8" onClick={() => void open().catch((err) => notifyError(err, "Couldn't open it"))}><SquareTerminal className="size-4" /> Open session</Button>
         : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])} back={() => openDetail(detailPath(SESSION_DETAIL, e.id))}
           placeholder={!e.questions ? undefined : e.questions.length === 1 && !e.questions[0].multi ? "Or answer in your own words" : "Or tell it something else instead"} />}
+      {/* (what needs you stays until it's dealt with: here, without replying) */}
+      {!asks && (
+        <div className="mt-3 flex">
+          {e.state === "done"
+            ? <Button look="quiet" className="h-11 px-3 md:h-8" data-session-done="undo" onClick={() => done(false)}><RotateCcw className="size-4" /> Back to inbox</Button>
+            : <Button look="quiet" className="h-11 px-3 md:h-8" data-session-done onClick={() => done(true)}><CheckCheck className="size-4" /> Mark done</Button>}
+        </div>
+      )}
     </div>
   )
 }

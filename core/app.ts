@@ -244,7 +244,7 @@ export class App {
     try { await this.notice({ source: "plugins", kind: "info", title, link: one ? `detail:plugin/${one.id}` : "view:plugins" }, "What's new") } catch { /* no window */ }
   }
 
-  private pausedTold = new Set<string>() // plugins whose paused notice is in the inbox, read once allowed again
+  private pausedTold = new Set<string>() // plugins whose paused notice is in the inbox, done once allowed again
 
   /** A plugin that changed after this machine allowed it stops until allowed again, its schedule too: say so once, in
    *  the inbox as waiting on the user, since a toast nobody saw lets a morning job go quiet for days. */
@@ -254,7 +254,7 @@ export class App {
     for (const id of this.pausedTold) {
       if (paused.some((p) => p.id === id)) continue
       this.pausedTold.delete(id)
-      service(this.on(), "inbox:read")?.("plugins", `paused:${id}`)
+      service(this.on(), "inbox:done")?.("plugins", `paused:${id}`)
     }
     for (const p of paused) {
       if (!vps.trust.tellPaused(p.id)) continue

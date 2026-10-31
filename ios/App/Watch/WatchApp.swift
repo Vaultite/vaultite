@@ -27,10 +27,10 @@ final class WatchDelegate: NSObject, WKApplicationDelegate, UNUserNotificationCe
             ], intentIdentifiers: []),
             UNNotificationCategory(identifier: "reply", actions: [
                 UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Your reply"),
-                UNNotificationAction(identifier: "read", title: "Mark read", options: []),
+                UNNotificationAction(identifier: "done", title: "Done", options: []),
             ], intentIdentifiers: []),
             UNNotificationCategory(identifier: "event", actions: [
-                UNNotificationAction(identifier: "read", title: "Mark read", options: []),
+                UNNotificationAction(identifier: "done", title: "Done", options: []),
             ], intentIdentifiers: []),
         ])
     }
@@ -41,7 +41,7 @@ final class WatchDelegate: NSObject, WKApplicationDelegate, UNUserNotificationCe
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard let id = response.notification.request.content.userInfo["event"] as? String,
-              ["approve", "deny", "read", "reply"].contains(response.actionIdentifier) else { return }
+              ["approve", "deny", "done", "reply"].contains(response.actionIdentifier) else { return }
         let text = (response as? UNTextInputNotificationResponse)?.userText
         if response.actionIdentifier == "reply", (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
         _ = await PhoneLink.shared.answer(id, response.actionIdentifier, text: text)

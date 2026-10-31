@@ -219,6 +219,14 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       if (conf && "order" in conf) set("plugins", Object.fromEntries(Object.entries(conf).filter(([k]) => k !== "order")))
     }),
   },
+  {
+    // The Inbox's show_read, from when reading an event took it out of the lists: what's listed is what isn't done now.
+    id: "inbox-show-read-out-2026-10",
+    run: (v) => eachSettings(v, (get, set) => {
+      const conf = get("plugins/inbox/data")
+      if (conf && "show_read" in conf) set("plugins/inbox/data", Object.fromEntries(Object.entries(conf).filter(([k]) => k !== "show_read")))
+    }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

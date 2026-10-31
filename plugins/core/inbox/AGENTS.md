@@ -17,9 +17,9 @@ snoozed: '2026-10-02 08:00:00'      # optional, set by Snooze: out of what's to 
 What it says, as Markdown.
 ````
 - Mark it done with `vau inbox done <path>`, not by editing `status` (that leaves the file in place): done is archived,
-  into `Inbox/.archive/`, and its events are read and link it there. A clip lands here with `inbox: true`.
+  into `Inbox/.archive/`. A clip lands here with `inbox: true`.
 - Snooze (`vau inbox snooze <path|event id> --until tomorrow`, or 3h, weekend, now...): out of the way until then, then
-  back on top, unread, and told again (toast, phone). A snoozed event is read meanwhile; news from its session wakes it.
+  back on top, unread, and told again (toast, phone). A snoozed thread stays open meanwhile; news from its session wakes it.
 - Hold (`vau inbox hold 30m --label "Practice guitar"`, or 07:30, off): nothing is told (toasts, the Mac's and the phone's
   notifications) until then, on every machine; what came is unread, summed up in one line when it ends.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
@@ -31,28 +31,42 @@ What it says, as Markdown.
   what's left; a new session may pick it up without your context. Report last: your terminal ends when that turn does.
   The user's reply is typed into your terminal if it still runs, else resumes your session while its prompt cache lasts,
   else starts a new one told to read the report; that session's next report goes on in the same file (one file per
-  exchange).
+  exchange). The report is your session's thread in the inbox (one row: the file is its record, not a second item).
 
-**Sessions**: each coding agent's session is one event, its row, kept on the machine it runs on (not in the vault).
-It's in the inbox only while it needs the user: it asks (a permission, a question, any dialog it shows, to sign in, a plan to approve), or
-its turn ended with something for them (a question, an answer to read, a failure: judged from its last message, by a
-small model when its words don't settle it), or its report (`vau inbox report`). Then it's unread (bold), with its last
-answer as Markdown, it toasts and goes to the phone and watch, and it's read once opened or replied to (`vau inbox
-reply <id> "<text>"`: typed into its session, resumed if it ended). A turn done with nothing for the user goes in
-quietly: the row keeps its last answer, read. Don't write "nothing needed from you" rules into prompts for this.
-**Events** (`vau notify`, a paused plugin, a server's question) matter for minutes, kept the same way: an unread one
-until it's read or dismissed, a read one for `keep_days` (the last 200). With Machines every app shows every machine's
-(another's id ends in `@<machine>`, and reading, answering or replying to it is done there; the machine whose session it
-is sends the push). Approve and Deny answer a permission an agent asks in an app terminal, or an app on the public MCP
-asking to run code here.
+**Threads**: each coding agent's session is one thread, its event (kept on the machine it runs on, not in the vault),
+with a `state`:
+- `open`, it needs the user: it asks (a permission, a question, any dialog it shows, to sign in, a plan to approve), its
+  turn ended with something for them (a question, an answer to read, a failure: judged from its last message, by a small
+  model when its words don't settle it), or it reported (`vau inbox report`). It's told then (toast, the phone and watch).
+- `working`: the user answered (a reply, Approve, a pick, a prompt in its terminal) and its agent is on it. Its next turn
+  ends open again when it has something for them, else done.
+- `done`: the user marked it done (`vau inbox done <id>`, which archives its report too), or a turn after their answer
+  ended with nothing for them, or they ended its terminal. Kept `keep_days` under Done (`vau inbox --done`).
+Read (bold or not) is only whether they've seen it: opening or reading a thread never settles it. A turn done with
+nothing for the user goes in quietly, done. Reply with `vau inbox reply <id> "<text>"` (typed into its session, resumed
+if it ended). Don't write "nothing needed from you" rules into prompts for this.
+**Events** are the rest, in the same list: `waiting` (something asks the user: a server's question, a browser's ask, a
+paused plugin) is open until done or answered; a message (`vau notify`: info, error) is done once read. With Machines
+every app shows every machine's (another's id ends in `@<machine>`, and reading, answering or replying to it is done
+there; the machine whose session it is sends the push). Approve and Deny answer a permission an agent asks in an app
+terminal, or an app on the public MCP asking to run code here.
 - Coding agents in the app's terminals report by themselves. Agents started elsewhere post through a hook (`vau` is
   the app's `bin/vau`, full path where it isn't on PATH):
   - Claude Code, `~/.claude/settings.json`: `"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "vau inbox
     hook claude"}]}], "Notification": [{"matcher": "permission_prompt|elicitation_dialog", "hooks": [{"type": "command",
     "command": "vau inbox hook claude"}]}]}`
   - Codex, `~/.codex/config.toml`: `notify = ["vau", "inbox", "hook", "codex"]`
-  - Anything else: `POST /api/inbox/events {"source", "kind": "waiting" | "done" | "error" | "info", "title", "body",
-    "link", "key"}` (this machine's owner only; a `key` replaces its source's event with that key, so a daily one doesn't
-    pile up).
+  - A message or an ask from anything else: `POST /api/inbox/events {"source", "kind": "waiting" | "error" | "info",
+    "title", "body", "link", "key"}` (this machine's owner only; a `key` replaces its source's event with that key, so a
+    daily one doesn't pile up).
+- **A session's state** from its host (an agent run outside a terminal, as the Agent SDK runs one): `POST
+  /api/inbox/sessions` (owner only; 202, worked out after), or in a plugin `plugin.ask("inbox:session", null, state)`
+  (resolves to its thread), with `{"agent", "session", "terminal"?, "state": "waiting" | "working" | "done" | "error",
+  "ask"?: "permission" | "question" | "auth" | "plan", "text"?, "prompt"?, "title"?, "questions"?, "cwd"?}`. waiting
+  is blocked on the user (`ask` why; `questions` as core/agents.ts' Question, else `text` says it); working, a turn
+  started; done or error, a turn ended (`text` its final message, `prompt` the user's last): judged as a hook's. Its
+  host answers it: a service `agent-reply:<agent>` `(session, text) => Promise<boolean>` takes replies, and
+  `agent-answer:<agent>` `(session, {answer: "approve" | "deny"} | {picks: Choice[]}) => Promise<boolean>` Approve, Deny
+  and picks (true: it took it).
 - Push needs Apple's push key (a .p8) in data/ and `"inbox": {"apns": {"key_id", "team_id", "key": "<file in data/>"}}`
   in data/config.json on the server's machine; the setting `push` says which events go.

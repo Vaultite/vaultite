@@ -1,17 +1,19 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
 import { agentsOn, canRunAgents, cell, del, detailPath, fetchMachines, get, getTabLayout, isDesktop, isViewOpen, notify, notifyError, onMachine, op, openAgent, openDetail, openFile, openView, post, splitMachine, type Agent, type TabLayout } from "@vaultite"
-import { snoozeMs } from "./snooze"
+import { snoozed, snoozeMs } from "./snooze"
+import { isMessage, waitsOnYou } from "./threads"
 import type { InboxEvent } from "./types"
 
 /** Nothing told till `until` (inbox.hold), on every machine. */
 export type Hold = { until: string; from: string; label?: string }
-export type Events = { events: InboxEvent[]; unread: number; ready: boolean; hold: Hold | null }
+/** `needs`: what waits on the user (waitsOnYou), not snoozed. */
+export type Events = { events: InboxEvent[]; unread: number; needs: number; ready: boolean; hold: Hold | null }
 /** The sheet of a permission the server waits on (Inbox.tsx's GateSheet): inbox-gate/<event id>. */
 export const GATE_DETAIL = "inbox-gate"
 /** The sheet of an agent's session (Session.tsx): its last answer or what it asks, the reply: inbox-session/<event id>. */
 export const SESSION_DETAIL = "inbox-session"
-const state = cell<Events>({ events: [], unread: 0, ready: false, hold: null })
+const state = cell<Events>({ events: [], unread: 0, needs: 0, ready: false, hold: null })
 const fresh = new Set<(e: InboxEvent) => void>()
 
 export const { get: getEvents, subscribe: subscribeEvents, use: useEvents } = state
@@ -22,8 +24,9 @@ export const heldNow = (h = state.get().hold) => (h && snoozeMs(h.until) > Date.
 export function onFresh(fn: (e: InboxEvent) => void) { fresh.add(fn); return () => { fresh.delete(fn) } }
 
 function set(events: InboxEvent[], hold = state.get().hold) {
-  state.set({ events, unread: events.filter((e) => !e.read).length, ready: true, hold })
+  state.set({ events, unread: events.filter((e) => !e.read).length, needs: events.filter((e) => waitsOnYou(e) && !snoozed(e.snoozed)).length, ready: true, hold })
 }
+
 
 // ---------- the socket
 
@@ -73,45 +76,56 @@ export function follow() {
 
 // ---------- changes
 
-/** Mark events read (no ids: every one). */
+/** Mark events read, seen (no ids: every one): a message is done by it, a thread stays until it's done. */
 export function markRead(ids?: string[]) {
   const want = ids ? new Set(ids) : null
   if (!getEvents().events.some((e) => !e.read && (!want || want.has(e.id)))) return
   const before = getEvents().events
-  set(getEvents().events.map((e) => (!e.read && (!want || want.has(e.id)) ? { ...e, read: true, kept: undefined } : e)))
+  set(getEvents().events.map((e) => (!e.read && (!want || want.has(e.id)) ? { ...e, read: true, kept: undefined, ...(isMessage(e) && e.state === "open" ? { state: "done" as const } : {}) } : e)))
   void post("inbox/events/read", ids ? { ids } : {}).catch(undo(before, "Couldn't mark it read"))
 }
 
-/** Mark events unread by hand: they stay so while the Inbox is seen, until opened or marked read. */
+/** Mark events unread by hand: they stay so while the Inbox is seen, until opened or marked read (a message read is
+ *  back in the inbox). */
 export function markUnread(ids: string[]) {
   const want = new Set(ids)
   const before = getEvents().events
-  set(getEvents().events.map((e) => (want.has(e.id) ? { ...e, read: false, kept: true } : e)))
+  set(getEvents().events.map((e) => (want.has(e.id) ? { ...e, read: false, kept: true, snoozed: undefined, ...(isMessage(e) && !e.gate ? { state: "open" as const } : {}) } : e)))
   void post("inbox/events/unread", { ids }).catch(undo(before, "Couldn't mark it unread"))
 }
 
-/** Snooze events till `until` (ms; read meanwhile), or bring them back now (null). A gate can't be: it'd wait unseen. */
+/** Mark events done (dealt with: a thread's report to review is archived with it), or open again (`done` false). */
+export function markEventsDone(ids: string[], done = true) {
+  const want = new Set(ids)
+  const before = getEvents().events
+  set(before.map((e) => (!want.has(e.id) ? e : done ? { ...e, state: "done" as const, read: true, kept: undefined, snoozed: undefined, questions: undefined }
+    : e.state === "done" ? { ...e, state: "open" as const } : e)))
+  return Promise.all(ids.map((id) => op("inbox.done", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't mark it done" : "Couldn't bring it back")(e); return false })
+}
+
+/** Snooze events till `until` (ms; out of the lists meanwhile), or bring them back now (null). A gate can't be: it'd
+ *  wait unseen; nor what's done. */
 export function snoozeEvents(ids: string[], until: number | null) {
   const want = new Set(ids)
   const before = getEvents().events
-  set(before.map((e) => (!want.has(e.id) || e.gate ? e : until !== null ? { ...e, read: true, kept: undefined, snoozed: until }
-    : e.snoozed ? { ...e, read: false, snoozed: undefined, t: Date.now() } : e)))
+  set(before.map((e) => (!want.has(e.id) || e.gate || e.state === "done" ? e : until !== null ? { ...e, snoozed: until }
+    : e.snoozed ? { ...e, state: "open" as const, read: false, snoozed: undefined, t: Date.now() } : e)))
   void post("inbox/events/snooze", { ids, until }).catch(undo(before, "Couldn't snooze it"))
 }
 
-/** Seeing the Inbox reads news, but not what the user marked unread, nor what waits on them: a session that needs them
- *  is read once opened or answered, as a mail is. */
+/** Seeing the Inbox reads its messages (they're done), but not what the user marked unread, nor a thread or an ask:
+ *  read only once opened, done only once dealt with. */
 export function markSeen() {
-  const ids = getEvents().events.filter((e) => !e.read && !e.kept && e.kind !== "waiting" && !answerable(e)).map((e) => e.id)
+  const ids = getEvents().events.filter((e) => !e.read && !e.kept && isMessage(e) && !snoozed(e.snoozed)).map((e) => e.id)
   if (ids.length) markRead(ids)
 }
 
 /** A permission waiting on an answer: one a server waits on (a gate), or an agent's in an app terminal, on any machine
  *  (answered there). */
-export const answerable = (e: InboxEvent) => (e.gate ? !e.answer : e.kind === "waiting" && e.ask === "permission" && !!e.terminal && !e.read)
+export const answerable = (e: InboxEvent) => e.state === "open" && (e.gate ? !e.answer : !isMessage(e) && e.ask === "permission" && !!(e.terminal || e.host))
 
-/** An agent's session's row (not a server's question or news): its sheet shows it, and it's replied to. */
-export const isSession = (e: InboxEvent) => !e.gate && !!(e.terminal || e.session) && (e.kind === "waiting" || e.kind === "done")
+/** An agent's session's thread (not a server's question or news): its sheet shows it, and it's replied to. */
+export const isSession = (e: InboxEvent) => e.kind === "session"
 
 /** A session's terminal if it still runs, else its session resumed in a new one: on the machine it ran on (a session
  *  is kept there). */
@@ -126,9 +140,10 @@ export async function openSession({ terminal = "", session = "", agent = "", mac
   else notify("Its terminal has ended, and it names no session to resume")
 }
 
-/** Answer a permission: a gate's server runs what was asked or refuses it; an agent's terminal gets the keys for it. */
+/** Answer a permission: a gate's server runs what was asked or refuses it (done); an agent's terminal gets the keys
+ *  for it (working: it goes on). */
 export async function answerAsk(e: InboxEvent, answer: "approve" | "deny") {
-  set(getEvents().events.map((x) => (x.id === e.id ? { ...x, answer, read: true, kept: undefined } : x)))
+  set(getEvents().events.map((x) => (x.id === e.id ? { ...x, answer, read: true, kept: undefined, state: e.gate ? "done" as const : "working" as const } : x)))
   try {
     if (e.gate) await post(`inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
     else await op("inbox.answer", { id: e.id, answer })
@@ -172,7 +187,8 @@ export function viewOf(e: InboxEvent): string | null {
   return null
 }
 
-/** Open what it's about (and mark it read, unless it's a permission still to answer: its sheet has the buttons). */
+/** Open what it's about, and mark it read (seen: a thread stays until it's done), unless it's a permission still to
+ *  answer: its sheet has the buttons. */
 export function openEvent(e: InboxEvent) {
   if (!answerable(e)) markRead([e.id])
   const to = targetOf(e)

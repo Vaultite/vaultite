@@ -39,7 +39,8 @@ enum Feed {
     /// `page`: the Today page, which a tap outside a routine opens. `off`: the server has no routines (Today is off there).
     struct Routines: Codable { let date: String; var page: String? = nil; let routines: [Routine]; var off: Bool? = nil }
 
-    /// An agent's session that needs the user (an unread `waiting` event), on any of the machines; `ask` permission with
+    /// An agent's session or an ask that needs the user (an open `session` or `waiting` event, read or not), on any of
+    /// the machines; `ask` permission with
     /// a terminal: Approve and Deny (answered on the machine it runs on). `preview`: its body as one plain line.
     struct Waiting: Codable, Hashable, Identifiable {
         let id: String
@@ -75,8 +76,10 @@ enum Feed {
 
     static func waiting() async -> ([Waiting]?, stale: Bool) {
         await kept("widget.waiting") {
-            let r = try await Servers.call("GET", "inbox/events?limit=50", from: "widget")
-            let events = (r["events"] as? [[String: Any]] ?? []).filter { $0["kind"] as? String == "waiting" && $0["read"] as? Bool != true }
+            let r = try await Servers.call("GET", "inbox/events?open=1&limit=50", from: "widget")
+            let events = (r["events"] as? [[String: Any]] ?? []).filter {
+                $0["state"] as? String == "open" && ["session", "waiting"].contains($0["kind"] as? String ?? "") && $0["snoozed"] == nil
+            }
             return try decode([Waiting].self, events)
         }
     }

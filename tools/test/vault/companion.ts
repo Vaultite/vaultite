@@ -423,7 +423,7 @@ export default async ($: VaultTest) => {
     // longer waits (here none runs, so at the first look).
     const t = await import("../../../plugins/core/terminal/plugin.ts")
     const ib = await import("../../../plugins/core/inbox/plugin.ts")
-    ib.plugin.emit("inbox.event", { id: "e-trust", kind: "waiting", source: "claude", title: "Claude Code is waiting for you", terminal: "claude-test0001",
+    ib.plugin.emit("inbox.event", { id: "e-trust", kind: "session", state: "open", source: "claude", title: "Claude Code is waiting for you", terminal: "claude-test0001",
       ask: "permission", body: "Trust this folder? It can read, edit and run files in it" })
     let [, s1] = await api("POST", "ops/companion.status", {})
     const asks = s1.agents.find((a: Any) => a.name === "Claude")?.asks

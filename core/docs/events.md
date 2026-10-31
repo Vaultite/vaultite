@@ -9,9 +9,10 @@ Every event is one JSON object: `{"type", "seq", "t" (ms since 1970), "cursor", 
 - `file.trashed` `{path}`: a file deleted through the API (it's in `.trash`).
 - `op.done` `{id, plugin, kind, who, params, ok, error, ms}`: a write operation ran (or failed): who asked
   (`{client, agent, label}`), a short summary of its parameters.
-- `inbox.event` `{id, kind, source, title, terminal?, session?, link?}`: something reached the user's inbox: an agent
-  finished (`done`) or is waiting for an answer (`waiting`), or a message (`info`, `error`: `vau notify`). How to
-  wait for another agent: `vau events.wait --types inbox.event --timeout 600`, then check its `terminal`.
+- `inbox.event` `{id, kind, state, source, title, terminal?, session?, link?, ask?}`: something reached the user's inbox
+  or moved on: an agent's session (`kind` session) needs them (`state` open, `ask` why), is working on their answer
+  (working) or is done; something asks them (waiting); or a message (`info`, `error`: `vau notify`). How to wait for
+  another agent: `vau events.wait --types inbox.event --timeout 600`, then check its `terminal` and `state`.
 - `terminal.ended` `{id, code, signal}`: a terminal's shell ended on this machine (closed, ended, or it died).
 - `terminal.agent-missing` `{id, agent}`: an agent's terminal found no such program (it isn't installed here).
 - `<plugin>.<name>`: a plugin's own (`plugin.emit`), named after the plugin.
