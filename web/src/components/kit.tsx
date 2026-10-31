@@ -305,7 +305,7 @@ export function Section({ title, children, className }: { title: ReactNode; chil
 
 /** A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip
  *  list); `onClick`: the whole row is a button with `value` and a chevron. Even room, so hairline-separated rows match. */
-export function SettingRow({ label, sub, stack, below, value, onClick, chevron = ChevronRight, children, ...rest }: {
+export function SettingRow({ label, sub, stack, below, value, onClick, chevron = ChevronRight, children, className, ...rest }: {
   label: ReactNode; sub?: ReactNode; stack?: boolean; below?: boolean; value?: ReactNode; onClick?: () => void; chevron?: LucideIcon | null; children?: ReactNode
 } & Omit<HTMLAttributes<HTMLElement>, "onClick">) {
   const Chevron = chevron
@@ -321,7 +321,7 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
       {onClick && Chevron && <Chevron aria-hidden className="-ml-1.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
     </>
   )
-  const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", dense && "md:min-h-10", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center")
+  const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", dense && "md:min-h-10", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center", className)
   return onClick
     ? <button type="button" onClick={onClick} {...rest} className={cn(cls, "cursor-pointer")}>{body}</button>
     : <div {...rest} className={cls}>{body}</div>

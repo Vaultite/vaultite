@@ -1,15 +1,15 @@
-// Settings > Appearance, in groups: colours (gallery under More…), the window, tabs, text (this device's sizes), a phone's
-// pull-down actions, snippets. Saved in appearance.json; rows off their default show a reset.
+// Settings > Appearance, in groups: colours (theme and style, the schemes in a strip, all under Show all), the window,
+// tabs, text (this device's sizes), a phone's pull-down actions, snippets. Saved in appearance.json.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
-import { onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
+import { canTranslucent, getTranslucency, onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
 import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { opensChoices, setOpens } from "@/core/launcher"
 import { getPrefs, setPrefs, usePrefs, type Animation, type Density, type Theme } from "@/core/prefs"
-import { DEFAULT_SCHEME, SCHEMES, schemeId } from "@/themes/schemes"
+import { SCHEMES } from "@/themes/schemes"
 import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
-import { coreSwitch } from "@/core/switches"
+import { coreSwitch, useSwitches } from "@/core/switches"
 import { SwitchRow } from "@/components/SwitchRow"
 import { cn, isDark } from "@/lib/utils"
 import { useDesktop } from "@/core/platform"
@@ -86,29 +86,16 @@ function SchemeGrid() {
   )
 }
 
-/** Settings' three tiles: the default (Gruvbox), the scheme in use (Classic while that's the default), and More…, which
- *  opens the gallery. The second tile changes its scheme and name, never its box. */
-function SchemePicker() {
+/** Every colour scheme as a window drawn in it, in a row that scrolls sideways (the app's, then the vault's themes);
+ *  Show all opens them as a grid, with the themes folder. */
+function SchemeStrip() {
   const { scheme } = usePrefs()
-  const second = scheme === DEFAULT_SCHEME ? "default" : scheme
-  return (
-    <div className="grid min-w-0 flex-1 grid-cols-3 gap-1 sm:w-[372px] sm:flex-none">
-      <div role="radiogroup" aria-label="Colour scheme" className="contents">
-        {[DEFAULT_SCHEME, second].map((id) => <Tile key={id} id={id} name={nameOf(id)} on={scheme === id} onClick={() => setPrefs({ scheme: id })} />)}
-      </div>
-      <button type="button" aria-label="More colour schemes" data-tip="Every colour scheme, and your vault's themes" onClick={() => openDetail("schemes")}
-        className="flex min-w-0 cursor-pointer flex-col rounded-[10px] p-1 text-left ring-2 ring-transparent transition-shadow hover:ring-border">
-        <div aria-hidden className="grid h-10 grid-cols-4 overflow-hidden rounded-[7px] border-[0.5px] border-border">
-          {["nord", "catppuccin", "rose-pine", "tokyo-night"].map((id) => (
-            <div key={id} data-scheme={id} className={cn("scheme-preview grid place-items-center bg-background", isDark() && "dark")}>
-              <span className="size-2 rounded-full bg-primary" />
-            </div>
-          ))}
-        </div>
-        <span className="flex h-6 items-center px-0.5 text-[13px] font-medium">More…</span>
-      </button>
-    </div>
-  )
+  const { themes } = useVaultAppearance()
+  const options = [
+    ...SCHEMES.map((s) => ({ value: s.id, label: s.name, tip: modeTip(s.only) ?? s.note })),
+    ...themes.filter((t) => !t.problem).map((t) => ({ value: `theme:${t.name}`, label: t.name, tip: [t.author && `By ${t.author}`, "a theme from your vault"].filter(Boolean).join(" · ") })),
+  ].map((o) => ({ ...o, picture: <WindowPicture scene="note" scheme={o.value} /> }))
+  return <PictureChoice<string> scroll label="Colour scheme" value={scheme} onChange={(id) => setPrefs({ scheme: id })} options={options} />
 }
 
 /** The gallery as a sheet (Settings' More…; the command "Change colour scheme…" is the palette's, SchemeChooser.tsx). */
@@ -212,17 +199,27 @@ export function AppearancePanel() {
     <div className="flex flex-col gap-6">
       <Section title="Colours">
         <Group>
-          {/* A scheme with one mode says so beside the label, on its line: it changes what the row says, never the layout. */}
-          <SettingRow below data-settings-row="theme" label={<>Theme{only && <span className="ml-2 align-top text-[13px] leading-[20px] text-muted-foreground">{nameOf(prefs.scheme)} is {only} only</span>}</>}>
-            <PictureChoice<Theme> label="Theme" value={prefs.theme} onChange={(theme) => setPrefs({ theme })}
-              options={THEMES.map((t) => ({ ...t, picture: themePicture(t.value) }))} />
+          {/* Theme and style side by side, the style wrapping under the theme where they don't fit. A scheme with one mode
+              says so beside the label, on its line: it changes what the row says, never the layout. */}
+          <div className="flex flex-wrap gap-x-10 gap-y-3 py-2">
+            <SettingRow below data-settings-row="theme" className="min-h-0 w-auto py-0" label={<>Theme{only && <span className="ml-2 text-[13px] leading-none text-muted-foreground">{nameOf(prefs.scheme)} is {only} only</span>}</>}>
+              <PictureChoice<Theme> label="Theme" value={prefs.theme} onChange={(theme) => setPrefs({ theme })}
+                options={THEMES.map((t) => ({ ...t, picture: themePicture(t.value) }))} />
+            </SettingRow>
+            <SettingRow below data-settings-row="translucent" className="min-h-0 w-auto py-0" label="Style">
+              <PictureChoice<"solid" | "glass"> label="Style" value={prefs.translucent ? "glass" : "solid"} onChange={(v) => setPrefs({ translucent: v === "glass" })}
+                options={[{ value: "solid", label: "Solid", picture: <WindowPicture scene="note" /> },
+                  { value: "glass", label: "Glass", picture: <WindowPicture scene="note" glass={prefs.translucentPages ? "pages" : "window"} /> }]} />
+            </SettingRow>
+          </div>
+          <Fold open={prefs.translucent}><GlassRows /></Fold>
+          <SettingRow below data-settings-row="scheme" label={
+            <span className="flex items-center justify-between gap-3">Colour scheme
+              <button type="button" onClick={() => openDetail("schemes")} data-schemes-all
+                className="-my-1 -mr-1.5 h-7 cursor-pointer rounded-[7px] px-1.5 text-[13px] text-primary hover:bg-foreground/[0.05]">Show all</button>
+            </span>}>
+            <SchemeStrip />
           </SettingRow>
-          <SettingRow stack label="Colour scheme" data-settings-row="scheme">
-            <WithReset on={schemeId(prefs.scheme) !== DEFAULT_SCHEME} onReset={() => setPrefs({ scheme: DEFAULT_SCHEME })} label="Reset colour scheme">
-              <SchemePicker />
-            </WithReset>
-          </SettingRow>
-          {["translucent", ...(prefs.translucent ? ["translucent-pages"] : [])].map(row)}
         </Group>
       </Section>
       <Section title="Window">
@@ -258,6 +255,27 @@ export function AppearancePanel() {
       <PullRows />
       <Snippets />
     </div>
+  )
+}
+
+/** Rows that unfold under a choice while it's chosen (Glass's): kept drawn, so they fold away again as smoothly. */
+function Fold({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div inert={!open} className={cn("grid transition-[grid-template-rows,opacity] duration-[var(--motion)] ease-[var(--ease-out)]", open ? "grid-rows-[1fr]" : "grid-rows-[0fr] opacity-0")}>
+      <div className="hairline min-h-0 overflow-hidden">{children}</div>
+    </div>
+  )
+}
+
+/** Glass's own rows: why the window stays solid here, if it does, and translucent pages. */
+function GlassRows() {
+  useSwitches()
+  const { why } = getTranslucency()
+  return (
+    <>
+      {(!canTranslucent || why) && <p className="py-2.5 text-[13px] leading-[18px] text-muted-foreground" data-glass-why>{coreSwitch("setting:translucent").sub?.()}</p>}
+      <SwitchRow s={coreSwitch("setting:translucent-pages")} />
+    </>
   )
 }
 

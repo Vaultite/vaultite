@@ -1179,6 +1179,8 @@ section[data-moving="up"] { z-index: 4; }
   [data-peek-shade], [data-peek-shade][data-shown], [data-view-bar], :root[data-typing] [data-view-bar] { transition: none; }
 }
 
+/* Settings' Glass picture: a desktop behind its window, in the scheme's colours. */
+.glass-desktop { background: linear-gradient(135deg, var(--blue), var(--purple) 55%, var(--orange)); }
 /* Translucent window (appearance `translucent`; core/appearance.ts sets data-translucent only while the desktop app's
    window has the system's blur under it): the chrome shows it in the scheme's own colours, what's read stays solid. */
 :root { --translucent-tint: 70%; } /* (more in light: its muted text over a dark desktop) */

@@ -46,6 +46,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Settings, regrouped**: it opens on Appearance (no General; version and updates are under Updates), its menu
   shows each section's icon on a coloured tile, Features is folded until opened and holds plugins' pages such as Apple
   Health, Appearance and Editor are in titled groups, and theme, density and new tabs are chosen by their picture.
+  Beside the theme, Style picks Solid or Glass (the translucent window), Glass unfolding its own options; every colour
+  scheme is a picture in one row that scrolls sideways, with Show all for the grid.
 - **Change fonts and the terminal cursor from the palette, previewed as you move**: Change text font…, Change interface
   font… and Change monospace font… show the whole app in the selected font until Enter keeps it (Esc goes back), as
   Change colour scheme… does. Terminals now use the monospace font too, and Terminal settings have the cursor's shape

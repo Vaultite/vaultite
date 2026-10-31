@@ -37,12 +37,13 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
   const page = await open(w, dark, "settings")
   await shot(page, `settings-${w}-${dark ? "dark" : "light"}`)
   if (w === 390 && !dark) {
-    // The scheme tiles at a phone's width: their Aa clear of the dots, the row flush under its label.
-    const fit = await page.$eval("[data-settings-row=scheme]", (row) => {
-      const label = row.getBoundingClientRect().left, tiles = [...row.querySelectorAll("[role=radio]")]
-      return { flush: Math.round(tiles[0].getBoundingClientRect().left - label), clear: tiles.every((t) => { const aa = t.querySelector(".scheme-preview > span")?.getBoundingClientRect(), dot = t.querySelector(".scheme-preview > span + span > span")?.getBoundingClientRect(); return !!aa && !!dot && aa.right <= dot.left }) }
+    // At a phone's width: the scheme strip flush under its label, and Style wrapped under Theme.
+    const fit = await page.evaluate(() => {
+      const row = document.querySelector("[data-settings-row=scheme]"), first = row.querySelector("[role=radio]")
+      const theme = document.querySelector("[data-settings-row=theme]").getBoundingClientRect(), style = document.querySelector("[data-settings-row=translucent]").getBoundingClientRect()
+      return { flush: Math.round(first.getBoundingClientRect().left - row.getBoundingClientRect().left), wrapped: style.top >= theme.bottom && Math.round(style.left) === Math.round(theme.left) }
     })
-    check("phone: the scheme tiles' Aa clear of their dots, flush under the label", fit.clear && fit.flush <= 12, fit)
+    check("phone: the scheme strip flush under its label, Style under Theme", Math.abs(fit.flush) <= 1 && fit.wrapped, fit)
   }
   if (w === 1440 && !dark) {
     check("no font size setting", !(await page.getByText("Font size", { exact: true }).count()) && !(await page.locator('input[type="range"]').count()))
@@ -54,19 +55,33 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     const at = ["Theme", "Colour scheme", "Density", "Sidebars", "File icons", "New tabs open", "Fonts", "Note text size", "CSS snippets"].map((t) => text.indexOf(t))
     check("in order: theme, colour scheme, density, sidebars, file icons, new tabs, fonts, CSS snippets", at.every((x, i) => x >= 0 && (!i || x > at[i - 1])), at)
     const radios = () => appearance.getByRole("radiogroup", { name: "Colour scheme" }).getByRole("radio").evaluateAll((els) => els.map((e) => `${e.getAttribute("aria-label")}${e.getAttribute("aria-checked") === "true" ? "*" : ""}`))
-    check("three tiles: Gruvbox (the default), Classic (in use), More…", (await radios()).join() === "Gruvbox,Classic*" && (await appearance.getByRole("button", { name: "More colour schemes" }).count()) === 1, await radios())
+    const strip = appearance.getByRole("radiogroup", { name: "Colour scheme" })
+    const all = 16 + themes.filter((t) => !t.problem).length
+    check("every scheme in one strip, Classic in use, and Show all", (await radios()).length === all && (await radios()).includes("Classic*") && (await appearance.locator("[data-schemes-all]").count()) === 1, await radios())
+    const sx = await strip.evaluate((el) => ({ scrolls: el.scrollWidth > el.clientWidth, left: Math.round(el.getBoundingClientRect().left), label: Math.round(el.closest("[data-settings-row]").getBoundingClientRect().left) }))
+    check("the strip scrolls sideways, its first picture under its label", sx.scrolls && Math.abs(sx.left + 12 - sx.label) <= 1, sx)
     await appearance.getByRole("radio", { name: "Gruvbox", exact: true }).click(); await page.waitForTimeout(500)
-    check("a tile picks its scheme", (await api("GET", "config/appearance")).scheme === "gruvbox")
-    await appearance.getByRole("button", { name: "More colour schemes" }).click(); await page.waitForTimeout(600)
-    check("More… opens the gallery", (await page.getByRole("dialog").getByRole("radio").count()) === 16 + themes.filter((t) => !t.problem).length)
+    check("a picture picks its scheme", (await api("GET", "config/appearance")).scheme === "gruvbox")
+    await appearance.locator("[data-schemes-all]").click(); await page.waitForTimeout(600)
+    check("Show all opens the gallery", (await page.getByRole("dialog").getByRole("radio").count()) === all)
     await page.getByRole("dialog").getByRole("radio", { name: "Nord", exact: true }).click(); await page.waitForTimeout(500)
     await page.keyboard.press("Escape"); await page.waitForTimeout(500)
-    check("the second tile is the scheme in use", (await radios()).join() === "Gruvbox,Nord*", await radios())
+    check("the strip follows the gallery's pick", (await radios()).includes("Nord*"), await radios())
+    // Style: Glass unfolds its own rows (translucent pages), Solid folds them away.
+    const pagesRow = appearance.locator('[data-settings-row="translucent-pages"]')
+    const shown = () => pagesRow.evaluate((el) => el.getBoundingClientRect().height > 0 && !el.closest("[inert]"))
+    check("solid: no translucent pages row", !(await shown()))
+    await appearance.getByRole("radio", { name: "Glass", exact: true }).click(); await page.waitForTimeout(600)
+    check("glass: translucent pages unfolds", (await api("GET", "config/appearance")).translucent === true && await shown())
+    await appearance.getByRole("radio", { name: "Solid", exact: true }).click(); await page.waitForTimeout(600)
+    check("solid again: it folds away", (await api("GET", "config/appearance")).translucent === false && !(await shown()))
     await set({}); await page.waitForTimeout(800)
     // Rows are even: every row of the list has the same room above and below what it draws (its label and its control).
-    const pads = await appearance.evaluate((sec) => [...sec.querySelector(".hairline").children].map((r) => {
+    // (a folded row, Glass's while Solid, has no room at all)
+    const pads = await appearance.evaluate((sec) => [...sec.querySelector(".hairline").children].filter((r) => r.getBoundingClientRect().height > 0).map((r) => {
       const row = r
-      const box = row.getBoundingClientRect(), kids = [...row.children].map((k) => k.getBoundingClientRect())
+      // (a sideways strip's padding only keeps its rings unclipped: its pictures are what it draws)
+      const box = row.getBoundingClientRect(), kids = [...row.children].map((k) => (k.matches("[data-picture-choice].overflow-x-auto") ? k.querySelector("[role=radio]") : k).getBoundingClientRect())
       return [Math.round(Math.min(...kids.map((k) => k.top)) - box.top), Math.round(box.bottom - Math.max(...kids.map((k) => k.bottom)))]
     }))
     check("every row has the same room above and below", pads.every(([a, b]) => a >= 7 && Math.abs(a - b) <= 1), pads)
