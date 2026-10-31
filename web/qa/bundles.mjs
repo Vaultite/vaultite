@@ -71,7 +71,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   check("applied: its guide is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Guides/How Browser works.md") && existsSync(`${FVAULT}/Guides/How Browser works.md`), await page.evaluate(() => location.hash))
   const s = settings(FVAULT)
   check("applied: Browser's panels, plugins, look and new tab", s.sidebars?.left?.join() === "pages:pages,tabs:tabs" && s.sidebars?.right?.join() === "backlinks:links" &&
-    ["glance", "web-viewer", "workspaces"].every((id) => s.plugins?.enabled?.includes(id)) && s.appearance?.tabBar === false && s.appearance?.tabTint === true &&
+    ["glance", "web-viewer", "workspaces"].every((id) => s.plugins?.enabled?.includes(id)) && s.appearance?.tabBar === false &&
     json(FVAULT, ".vaultite/newtab.json")?.opens === "switcher" && json(FVAULT, ".vaultite/plugins/tabs/data.json")?.archive_after === "12h", [s, json(FVAULT, ".vaultite/newtab.json")])
   await wait(1200)
   await shot(page, "after-browser-new-vault")
@@ -119,7 +119,7 @@ const want = {
   // (a value that's the app's default is written as no key: paneTitles is off by default)
   "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && !s.appearance.paneTitles && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
   // (Zen's floating panes go with it; Days' Home, an imported bundle's page, is unpinned)
-  "browser": (s) => s.sidebars.left.join() === "pages:pages,tabs:tabs" && s.appearance.tabTint === true && !s.appearance.snippets?.length && !s.pages.pinned.includes(`${PAGES}Home.md`),
+  "browser": (s) => s.sidebars.left.join() === "pages:pages,tabs:tabs" && !s.appearance.snippets?.length && !s.pages.pinned.includes(`${PAGES}Home.md`),
 }
 for (const id of Object.keys(want)) {
   await go(page, B, "bundles")

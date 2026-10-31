@@ -55,7 +55,6 @@ const APPEARANCE: Record<string, Setting> = {
   fileIcons: { about: "true or false: icons before file names: the tree, tabs, search and the quick switcher", parse: bool("fileIcons") },
   tabBar: { about: "true (default) or false: the tabs above each pane on desktop; off, each pane's bar shows only the tab on screen (switch with the Tabs panel or the keyboard)", parse: bool("tabBar") },
   paneTitles: { about: "false (default) or true: with tabBar off, a strip above each pane naming the tab on screen (tells splits apart); off, nothing above the pane", parse: bool("paneTitles") },
-  tabTint: { about: "true or false (default): the active tab takes a light wash of its colour (a web page's container)", parse: bool("tabTint") },
   dimPanes: { about: "true (default) or false: with the window split, the panes without the focus fade a little", parse: bool("dimPanes") },
   rails: { about: "true (default) or false: a hidden sidebar folds to its icon rail on desktop; off, it's gone, sliding back over the page while the pointer is at that edge of the window", parse: bool("rails") },
   peekShade: { about: "true or false (default): with rails off, the page dims a little behind a hidden sidebar slid in", parse: bool("peekShade") },

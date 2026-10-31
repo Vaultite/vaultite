@@ -69,7 +69,7 @@ export function siteIcon(url: string, color?: string): LucideIcon {
     c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => color
       ? <span className={`${className ?? ""} relative inline-grid`} data-container-tint>
           <SiteIcon url={page} className="size-full" />
-          <span className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />
+          <span data-container-line className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />
         </span>
       : <SiteIcon url={page} className={className} />) as unknown as LucideIcon
     components.set(key, c)
@@ -89,7 +89,7 @@ export function spinnerIcon(color?: string): LucideIcon {
           <circle cx="8" cy="8" r="6" stroke="currentColor" opacity={0.25} />
           <path d="M8 2a6 6 0 0 1 6 6" stroke="currentColor" />
         </svg>
-        {color && <span className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />}
+        {color && <span data-container-line className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />}
       </span>
     )) as unknown as LucideIcon
     spinners.set(key, c)

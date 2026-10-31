@@ -241,9 +241,9 @@ export type ViewDef = {
   /** What it shows is on screen in another form (a browser tab's live view: the tab itself): news about it isn't
    *  toasted. */
   onScreen?: (arg: string) => boolean
-  /** A colour its tab takes lightly while it's the active one, when the appearance setting `tabTint` is on (a web
-   *  page's container). */
-  tabTint?: (arg: string) => string | undefined
+  /** The colour its tab is marked with, active or not (a web page's container): a line along the tab's top in the tab
+   *  bar. */
+  tabColor?: (arg: string) => string | undefined
   /** A name for a new tab group of its tabs, when they all give the same one (a web page's site: "Github"); null: none. */
   groupName?: (arg: string) => string | null
   /** The arg is the view's own state (a search's query), changed with `ctx.setArg`: the view isn't drawn afresh when it

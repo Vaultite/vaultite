@@ -250,8 +250,8 @@ export default definePlugin({
         const { container, url } = splitArg(arg), c = containerById(container), color = c ? colorOf(c) : undefined
         return tab && loadingIn(tab) ? spinnerIcon(color) : url.startsWith("view-source:") ? FileCode2 : siteIcon(url, color)
       },
-      // (with appearance `tabTint`: the active tab in its container's colour, lightly)
-      tabTint: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
+      // (its container's line on the tab)
+      tabColor: (arg) => { const c = containerById(splitArg(arg).container); return c ? colorOf(c) : undefined },
       // (a new tab group of one site's pages is named after it)
       groupName: (arg) => siteName(splitArg(arg).url),
       full: true,

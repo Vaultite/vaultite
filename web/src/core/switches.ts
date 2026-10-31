@@ -1,6 +1,6 @@
 // On/off settings, declared once (a plugin's: a boolean in its manifest): Settings, its search, the palette, menus and
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
-import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, ListOrdered, ListTree, MousePointer2, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
 import { canTranslucent, getTranslucency, onTranslucency } from "@/core/appearance"
 import type { Command } from "@/core/commands"
 import { reload } from "@/core/data"
@@ -61,7 +61,6 @@ const CORE: SwitchDef[] = [
   { id: "setting:file-icons", name: "File icons", section: "appearance", icon: Shapes, ...pref("fileIcons") },
   { id: "setting:tab-bar", name: "Tab bar", section: "appearance", icon: PanelTop, words: "tabs", ...pref("tabBar") },
   { id: "setting:pane-titles", name: "Pane titles", section: "appearance", icon: Heading1, sub: () => "With the tab bar off, what's open shows above each pane", words: "tab bar title zen", ...pref("paneTitles") },
-  { id: "setting:tab-tint", name: "Tint the active tab", section: "appearance", icon: PaintBucket, sub: () => "In its colour, lightly: a web page's container", words: "tabs colour color container wash", ...pref("tabTint") },
   { id: "setting:dim-panes", name: "Dim inactive panes", section: "appearance", icon: SunDim, sub: () => "With the window split, the panes you're not in fade a little", words: "fade focus splits active", ...pref("dimPanes") },
   { id: "setting:rails", name: "Sidebar rails", section: "sidebars", icon: PanelLeftDashed, sub: () => "Off, a hidden sidebar slides in when the pointer reaches the window's edge", words: "rail icons compact zen hover edge sidebars", ...pref("rails") },
   { id: "setting:peek-shade", name: "Dim the page behind a sidebar", section: "sidebars", icon: SunDim, sub: () => "With rails off, while a hidden sidebar is slid in", words: "darken shade focus zen backdrop", ...pref("peekShade") },

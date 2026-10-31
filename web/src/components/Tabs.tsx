@@ -37,8 +37,9 @@ import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSel
 export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClassName?: string
   /** A dot on the icon (a view's `iconBadge`: a coding agent at work, waiting for you). */
   badge?: Dot
-  /** The colour the tab takes lightly while it's the active one, with appearance `tabTint` (a view's `tabTint`). */
-  wash?: string
+  /** The colour it's marked with, active or not (a view's `tabColor`: a web page's container): a line along the tab's
+   *  top in the bar, which stands in for the icon's own (`data-container-line`). */
+  color?: string
   /** A small button at its end (a view's `tabMark`: a page playing sound, its speaker). */
   mark?: TabMark }
 
@@ -453,9 +454,8 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
   startDrag(e, ids && ids.length > 1 ? { ...item, tabs: ids, label: `${ids.length} tabs` } : item, { touch: opts?.touch })
 }
 
-function TabItem({ tab, group, info, active, focused, only, icons, tint, menu, width, settling, close, line, hole }: { tab: Tab; group: string; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
-  /** Whether the active tab takes its colour (appearance `tabTint`). */
-  tint: boolean; menu: () => MenuItem[]
+function TabItem({ tab, group, info, active, focused, only, icons, menu, width, settling, close, line, hole }: { tab: Tab; group: string; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
+  menu: () => MenuItem[]
   /** In a tab group: the line under its tabs, in its colour, on to the next one unless it's the `last`. */
   line?: { color: string; last: boolean }
   /** Held at this width after a close (TabBar). */
@@ -470,10 +470,6 @@ function TabItem({ tab, group, info, active, focused, only, icons, tint, menu, w
   const dragging = item?.tab === tab.id || (picked && !!item?.tabs) || (!!tab.set && item?.tabset === tab.set)
   // (away from its bar, the tab held shows where it goes back to)
   const away = dragging && !hole && (item?.tab === tab.id || picked)
-  // (a light wash of its colour, lighter while its pane isn't the focused one: calm in either theme)
-  const wash = active && tint && info.wash && !(dragging && hole)
-    ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
-    : undefined
   return (
     <div ref={el} data-tab-id={tab.id} data-in-set={tab.set} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)}
@@ -481,10 +477,10 @@ function TabItem({ tab, group, info, active, focused, only, icons, tint, menu, w
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
         "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
         dragging && (hole ? "bg-foreground/[0.06] shadow-none ring-[0.5px] ring-border [&>button]:invisible" : away ? "[&>[data-tab-close]]:invisible [&>[data-tab-pin]]:invisible [&>[role=tab]]:opacity-40" : "opacity-40"))}
-      style={{ ...wash, ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : undefined) }} data-tab-wash={wash ? "" : undefined}>
+      style={width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : undefined}>
       <button type="button" role="tab" aria-selected={active}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
-        data-tip={item ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
+        data-tip={item ? undefined : info.label} data-tip-trunc className={cn("flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]", info.color && "[&_[data-container-line]]:hidden")}>
         {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
         {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.mark && "@max-[80px]/tab:hidden", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
@@ -505,6 +501,8 @@ function TabItem({ tab, group, info, active, focused, only, icons, tint, menu, w
         </button>
       )}
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
+      {/* (along the top: a tab group's line runs under) */}
+      {info.color && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: info.color }} />}
       {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px] transition-colors duration-(--motion)", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
     </div>
   )
@@ -542,7 +540,7 @@ export function viewInfo(to: string, disabled = getPrefs().disabled, tab?: strin
   const v = viewFor(to, disabled)
   return v ? { label: v.def.title(v.arg), icon: v.def.iconFor?.(v.arg, tab) ?? v.def.icon,
     iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on ? v.def.iconBadge?.(v.arg) : undefined,
-    wash: v.on ? v.def.tabTint?.(v.arg) : undefined, mark: v.on && tab ? v.def.tabMark?.(v.arg, tab) ?? undefined : undefined }
+    color: v.on ? v.def.tabColor?.(v.arg) : undefined, mark: v.on && tab ? v.def.tabMark?.(v.arg, tab) ?? undefined : undefined }
     : { label: to.slice(5), icon: SquareDashed }
 }
 
@@ -570,7 +568,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
   /** What the pane's state adds at the bar's end, before its handle (zoomed, floating). */
   extra?: ReactNode }) {
   const { tabs, active } = group
-  const prefs = usePrefs(), { fileIcons, paneTitles, tabTint } = prefs, tabBar = tabBarOn(prefs)
+  const prefs = usePrefs(), { fileIcons, paneTitles } = prefs, tabBar = tabBarOn(prefs)
   // Without tab bar or titles, a pane's top bar (a file's, the Browser's) is its title row (index.css): a right-click on
   // its empty part is the strip's menu.
   const closeKeys = useCommandKeys("pane:close", true)
@@ -715,7 +713,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const chip = s && <SetChip key={`set:${s.id}`} s={s} n={tabs.filter((x) => x.set === s.id).length} target={preview?.into === s.id} />
           if (own?.collapsed) return chip || null
-          const item = <TabItem key={t.id} tab={t} group={group.id} hole={!!preview} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
+          const item = <TabItem key={t.id} tab={t} group={group.id} hole={!!preview} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons}
             menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)}
             line={lineOf(t.id)} />
           return chip ? [chip, item] : item

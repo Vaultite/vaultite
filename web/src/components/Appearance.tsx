@@ -240,7 +240,7 @@ export function AppearancePanel() {
       <Section title="Tabs">
         <Group>
           <NewTabsRow />
-          {["tab-bar", ...(prefs.tabBar ? ["tab-tint"] : ["pane-titles"])].map(row)}
+          {["tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"])].map(row)}
         </Group>
       </Section>
       <Section title="Text">

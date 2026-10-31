@@ -12,7 +12,7 @@
   "snippets": [],
   "fileIcons": true,
   "tabBar": false,
-  "paneTitles": false, "tabTint": true, "dimPanes": true,
+  "paneTitles": false, "dimPanes": true,
   "rails": false, "peekShade": false, "typingFade": false, "translucent": false, "translucentPages": false,
   "lineNumbers": false,
   "statusBar": ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"],

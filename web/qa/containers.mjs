@@ -1,7 +1,7 @@
 // The Browser's containers in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
 // script serves on 127.0.0.1 (a cookie login): a tab in Work (persist:web-c-work) signed in, the same site in Personal
-// isn't, nor in no container; the bar shows the tab's container (a chip inside the address; the active tab tinted
-// with appearance tabTint); a site set to always open in Work goes there from a
+// isn't, nor in no container; the bar shows the tab's container (a chip inside the address; a line along every
+// container tab's top); a site set to always open in Work goes there from a
 // plain link; the container menu moves a tab to another and only chooses (every row led by its icon), containers are
 // added and deleted in Sites, deleting clearing its logins; switching web tabs is never see-through. A link from another
 // app opens in a web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
@@ -80,14 +80,8 @@ check("… the bar says Work", await until(async () => (await win.locator("[data
   await win.locator("[data-web-container]").evaluateAll((l) => l.map((e) => e.getAttribute("data-web-container"))))
 check("… the tab's icon has its colour", await until(async () => (await win.locator("[role=tab][aria-selected=true] [data-container-tint]").count()) === 1, 5000), await activeTab())
 check("… its chip inside the address", await win.locator("[data-web-page] [data-web-address-bar] [data-web-container=work]:visible").count() === 1, null)
-const look = path.join(VAULT, ".vaultite/appearance.json")
-const lookWas = fs.existsSync(look) ? fs.readFileSync(look, "utf8") : null
-const washed = () => win.locator("[data-tab-wash] [role=tab][aria-selected=true]").count()
-check("the active tab isn't tinted by default", (await washed()) === 0, null)
-fs.writeFileSync(look, JSON.stringify({ ...JSON.parse(lookWas ?? "{}"), tabTint: true }) + "\n")
-check("Tint the active tab (appearance tabTint): it takes its container's colour", await until(async () => (await washed()) === 1, 10000), null)
-if (lookWas === null) fs.rmSync(look); else fs.writeFileSync(look, lookWas)
-await until(async () => (await washed()) === 0, 10000)
+const lined = () => win.locator("[data-tab-id]:has([role=tab][aria-selected=true]) > [data-tab-color]").count()
+check("… a line in its colour along the tab's top", await until(async () => (await lined()) === 1, 5000), null)
 
 // ---------- Personal, and no container: not signed in ----------
 await open(`view:web/@personal/${SITE}/whoami?p`)

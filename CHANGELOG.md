@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   foot) opens above it instead of over it.
 - **The Sites panel's + opens a new tab** in the container it shows (New container is in its picker and its …); Touch
   ID and agent access sit as icons beside the picker instead of a line that read as a site.
+- **Container tabs carry their colour**: every web page tab in a container has a line in its colour along its top in
+  the tab bar (a tab group's runs under), whether it's the active one or not. Tint the active tab, which only washed
+  the active one, is gone from Appearance.
 - **Long titles fade out** at their end in tabs and sidebar rows, instead of ending in an ellipsis.
 - **Sidebar panels move like things you hold**: dragged by its heading, a panel lifts whole (a picture of it at its
   size, shadowed) while the others close up and make room at its height, in either sidebar; let go, it settles into its

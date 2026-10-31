@@ -47,8 +47,6 @@ export type Prefs = {
   tabBar: boolean
   /** With the tab bar off, a strip above each pane naming what's open; off, the pane starts at the window's top. */
   paneTitles: boolean
-  /** The active tab takes a light wash of the colour its view gives it (a web page's container). */
-  tabTint: boolean
   /** With more than one pane, those without the focus fade a little. */
   dimPanes: boolean
   /** A hidden sidebar folds to its icon rail; off, it's gone, sliding back over the page while the pointer is at its
