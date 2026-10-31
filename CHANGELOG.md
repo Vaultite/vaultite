@@ -19,8 +19,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the pane with its neighbour, ⌃⌥⌘ and the arrows move its divider, and ⌃⌘= evens every split out. Split left, Split
   up, Split along the longer side and Focus last pane are in the palette, and the pane commands in Window ▸ Panes.
   Vim's ⌃W J and K (and Space W J and K) move between panes above and below again.
-- **Dim inactive panes**: a switch in Appearance (`dimPanes`): with the window split, the panes you're not in fade a
-  little, cross-fading as the focus moves.
+- **Dim inactive panes**, on by default: a switch in Appearance (`dimPanes`): with the window split, the panes you're
+  not in fade a little, cross-fading as the focus moves.
 - **Animations**: a setting (Appearance, `animation` in appearance.json, the palette) for how things move: natural
   (springy, the default), snappy or off; one set of timings for every animation.
 - **Panes move, zoom and float**: splitting, closing, moving, evening out and resizing panes spring them to their new

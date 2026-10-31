@@ -12,7 +12,7 @@
   "snippets": [],
   "fileIcons": false,
   "tabBar": true,
-  "paneTitles": false, "tabTint": false, "dimPanes": false,
+  "paneTitles": false, "tabTint": false, "dimPanes": true,
   "rails": true, "peekShade": false, "typingFade": false, "translucent": false, "translucentPages": false,
   "lineNumbers": false,
   "statusBar": null,
