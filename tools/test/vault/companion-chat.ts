@@ -3,6 +3,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import type { Any, VaultTest } from "./harness.ts"
 import { waitFor } from "../lib.ts"
 
@@ -12,7 +13,7 @@ const HOOKS = path.join(import.meta.dirname, "chatd", "hooks.ts")
 
 /** A real chat keeper (chatd.ts, its own process) at `sock`, its SDK the stand-in (chatd/sdk.ts). */
 async function keeper(sock: string) {
-  const p = spawn(process.execPath, ["--import", HOOKS, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: process.env })
+  const p = spawn(process.execPath, ["--import", pathToFileURL(HOOKS).href, CHATD, sock, sock], { stdio: ["ignore", "ignore", "pipe"], env: process.env })
   let err = ""
   p.stderr!.on("data", (d) => { err += d })
   const up = await waitFor(() => new Promise<boolean>((r) => { const c = net.connect(sock); c.on("connect", () => { c.destroy(); r(true) }); c.on("error", () => r(false)) }), 10000, 100)
