@@ -530,11 +530,11 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     drain()
   })
 
-  // The window doesn't hear the pointer over the page: near its edges it's told, for a hidden sidebar to slide in
-  // (web/src/core/peek.ts), and once as it leaves them.
+  // The window doesn't hear the pointer over the page: near its edges it's told (web/src/core/peek.ts), and as it
+  // leaves them; never from a page out of sight (an agent's, parked at -40000, would be "at the left edge").
   let atEdge = false
   wc.on("before-mouse-event", (_e, m) => {
-    if (m.type !== "mouseMove" || p.player || p.full || p.win.isDestroyed()) return
+    if (m.type !== "mouseMove" || p.player || p.full || p.win.isDestroyed() || !shownNow(p)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
     const x = (b.x + m.x) / z, edge = x <= EDGE || x >= w / z - EDGE
     if (!edge && !atEdge) return

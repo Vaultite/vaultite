@@ -115,6 +115,17 @@ try {
     await wait(400)
     slid(side, "out", await recorded())
   }
+  // An agent's page, parked off the window, moved by its clicks: no edge of the window, so nothing slides in.
+  await fetch(`${origin}/api/ops/web-viewer.open`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "mcp", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify({ url: `${SITE}agent` }) })
+  const parked = await until(() => app.evaluate(({ BaseWindow }) => {
+    const w = BaseWindow.getAllWindows()[0], v = w.contentView.children.find((c) => c.webContents && c.webContents !== w.webContents && c.getBounds().x < -1000)
+    if (!v) return false
+    for (const x of [40, 5, 1]) v.webContents.sendInputEvent({ type: "mouseMove", x, y: 300 })
+    return true
+  }), 20000)
+  check("an agent's parked page is there", !!parked)
+  await wait(500)
+  check("an agent's moves in its parked page slide no sidebar in", (await peekOf("left")) === "false" && (await peekOf("right")) === "false", [await peekOf("left"), await peekOf("right")])
   console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 } finally {
   await app.close()
