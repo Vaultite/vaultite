@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The companion starts again in the desktop app**: its Claude sessions' keeper failed to start there (a package it
+  needs wasn't shipped), so an @ to it went unanswered; a check now catches a package the built app wouldn't ship.
 - **Menus from a button open where there's room**: one with no room under its button (the vault's, at the sidebar's
   foot) opens above it instead of over it.
 - **The Sites panel's + opens a new tab** in the container it shows (New container is in its picker and its …); Touch

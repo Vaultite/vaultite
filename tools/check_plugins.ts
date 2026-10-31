@@ -413,6 +413,37 @@ for (const f of walk(path.join(ROOT, "electron", "browser")).filter((f) => /\.(t
   for (const m of fs.readFileSync(f, "utf8").matchAll(/(?:from|import\(|require\()\s*["'](\.\.\/[^"']*)["']/g))
     problems.push(`${path.relative(ROOT, f)}: imports ${m[1]}: the engine imports nothing of the app's (setEngineHost)`)
 
+// The server and the app import only what the built app ships: `dependencies` and theirs, not peers or devDependencies
+// (zod, only the Agent SDK's peer, worked from source and was missing from the app: its chat keeper didn't start).
+{
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+  const shipped = new Set<string>(), todo = Object.keys(pkg.dependencies ?? {})
+  while (todo.length) {
+    const n = todo.pop()!
+    if (shipped.has(n)) continue
+    shipped.add(n)
+    try {
+      const p = JSON.parse(fs.readFileSync(path.join(ROOT, "node_modules", n, "package.json"), "utf8"))
+      todo.push(...Object.keys(p.dependencies ?? {}), ...Object.keys(p.optionalDependencies ?? {}))
+    } catch { /* not installed here */ }
+  }
+  // (the app is Electron, which the build runs on; the rest are its build's own scripts)
+  const BUILT = new Set(["electron", "builder-util", "@electron/fuses"])
+  const { builtinModules } = await import("node:module")
+  const runs = ["core", "plugins", "electron", "bin"].flatMap((d) => walk(path.join(ROOT, d))).concat(path.join(ROOT, "server.ts"))
+    .filter((f) => /\.(ts|mts|js|mjs|cjs)$/.test(f) && !/\.(test|d)\.ts$|\/(test|qa)\//.test(f))
+  for (const f of runs) {
+    const text = fs.readFileSync(f, "utf8")
+    for (const m of text.matchAll(/(?:^|[^.\w$])(?:import\s+(?!type\b)(?:[^"'`;]*?\sfrom\s*)?|import\s*\(\s*|require\s*\(\s*|export\s+(?!type\b)[^"'`;]*?\sfrom\s*)["']([^"'./][^"']*)["']/gm)) {
+      const spec = m[1], name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]
+      if (spec.includes("${") || spec.startsWith("node:") || builtinModules.includes(name) || /^@(vaultite|plugins)(\/|$)/.test(name) || shipped.has(name) || BUILT.has(name)) continue
+      // (`typeof import("x")` is a type: gone once it runs)
+      if (/typeof\s+$/.test(text.slice(Math.max(0, m.index - 12), m.index + m[0].indexOf("import")))) continue
+      problems.push(`${path.relative(ROOT, f)}:${text.slice(0, m.index).split("\n").length}: imports ${name}, which the built app doesn't ship: add it to package.json's dependencies`)
+    }
+  }
+}
+
 if (warnings.length) console.log(`Warnings (vault plugins: they still load):\n${warnings.join("\n")}\n`)
 console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared and drawn as text; every operation checked`)
 process.exit(problems.length ? 1 : 0)
