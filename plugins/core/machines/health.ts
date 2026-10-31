@@ -77,7 +77,7 @@ export async function sample(): Promise<Sample | null> {
   const t = Date.now()
   const [ps, mem] = await Promise.all([
     run("ps", ["-A", "-o", "pid=,pcpu=,time=,rss=,comm="]),
-    process.platform === "darwin" ? run("sysctl", ["-n", "hw.memsize", "vm.swapusage", "kern.memorystatus_vm_pressure_level", "kern.memorystatus_level"]).then(parseSysctl)
+    process.platform === "darwin" ? run("/usr/sbin/sysctl", ["-n", "hw.memsize", "vm.swapusage", "kern.memorystatus_vm_pressure_level", "kern.memorystatus_level"]).then(parseSysctl)
       : fs.promises.readFile("/proc/meminfo", "utf8").catch(() => "").then(parseMeminfo),
   ])
   const rows = parsePs(ps)
@@ -125,7 +125,7 @@ const when = (t: number) => { const d = new Date(t), p = (n: number) => String(n
 export function reportText(r: Report) {
   if (!r.now) return `${r.host}: no samples yet (one a minute while the server runs, on macOS and Linux).`
   const n = r.now
-  const out = [`${r.host} at ${when(n.t)}: load ${n.load.join(" ")} (${r.cores} cores), memory ${n.mem.pressure} (${n.mem.free}% free of ${gb(n.mem.total)}), swap ${gb(n.swap.used)}${n.swap.total ? ` of ${gb(n.swap.total)}` : ""}`,
+  const out = [`${r.host} at ${when(n.t)}: load ${n.load.join(" ")} (${r.cores} cores), memory ${n.mem.total ? `${n.mem.pressure} (${n.mem.free}% free of ${gb(n.mem.total)})` : "unread"}, swap ${gb(n.swap.used)}${n.swap.total ? ` of ${gb(n.swap.total)}` : ""}`,
     `Top now: ${[...n.procs].sort((a, b) => b.cpu - a.cpu).map((p) => `${p.name} (${p.pid}) ${p.cpu}% ${gb(p.rss)}`).join(", ")}`, ""]
   const since = (h: Hog) => `${h.first === r.from ? "since before " : "from "}${when(h.first)}${n.t - h.last < 2 * EVERY ? ", still now" : ` to ${when(h.last)}`}`
   out.push(`Since ${when(r.from!)} (${r.samples} sample${r.samples === 1 ? "" : "s"}, a minute apart):`)
