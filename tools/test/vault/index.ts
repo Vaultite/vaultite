@@ -73,6 +73,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "companion-chat", deps: ["pages", "claude-chat"] },
   { name: "share", deps: ["pages"] },
   { name: "cotype", deps: ["pages"] },
+  { name: "shared-pages", deps: ["pages"] },
   { name: "start", deps: ["pages"] },
   { name: "resilience", deps: ["pages"] },
   { name: "treewatch", deps: ["pages"] },

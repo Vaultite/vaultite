@@ -272,6 +272,45 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     },
   }
 
+  // Shared state: the page's JSON map, the same in every view of it, and who has it open (the app relays: sharing.ts).
+  let joined: Promise<any> | null = null
+  w.vau.shared = () => joined ??= new Promise((done) => {
+    const state: Record<string, unknown> = {}, subs: Record<string, ((...a: any[]) => void)[]> = { change: [], people: [], online: [] }
+    const fire = (ev: string, ...a: unknown[]) => subs[ev].forEach((f) => { try { f(...a) } catch (e) { console.error(e) } })
+    const copy = (v: unknown) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)))
+    const person = (p: any) => ({ ...p, color: `var(--vau-${p.tint})` })
+    let me = person({ id: "me", name: cfg.claude.name || "You", tint: "blue", me: true }), people = [me], online = false, live = !!top
+    const take = (values: Record<string, unknown>, by: string) => {
+      const keys = Object.keys(values).filter((k) => JSON.stringify(values[k] ?? null) !== JSON.stringify(state[k] ?? null))
+      for (const k of keys) { if (values[k] === null || values[k] === undefined) delete state[k]; else state[k] = values[k] }
+      if (keys.length) fire("change", copy(state), keys, by)
+    }
+    const room = {
+      get state() { return copy(state) }, get me() { return me }, get people() { return people }, get online() { return online },
+      get: (k: string) => copy(state[k]),
+      set: (k: string | Record<string, unknown>, v?: unknown) => {
+        const values: Record<string, unknown> = copy(k && typeof k === "object" ? k : { [k]: v ?? null })
+        for (const x of Object.keys(values)) values[x] ??= null
+        // (sent before the page hears it: a set its "change" makes goes after this one)
+        if (live) post({ type: "shared-set", values })
+        take(values, me.id)
+      },
+      on: (ev: string, f: (...a: any[]) => void) => { subs[ev]?.push(f); return () => { subs[ev] = subs[ev]?.filter((g) => g !== f) } },
+    }
+    const ready = () => { const d = done; done = () => {}; d(room) }
+    ;(heard.shared ??= []).push((d) => {
+      if (d.me) me = person(d.me)
+      if (d.state) take(Object.fromEntries([...Object.keys(state), ...Object.keys(d.state)].map((k) => [k, d.state[k] ?? null])), "")
+      if (d.set) take(d.set, d.by ?? "")
+      if (d.people) { people = d.people.map(person); fire("people", people) }
+      if (typeof d.online === "boolean" && d.online !== online) { online = d.online; fire("online", online) }
+      if (d.state) ready()
+    })
+    // (outside the app, or where it can't be shared: this view keeps it to itself)
+    if (live) ask("shared", {}).catch(() => { live = false; ready() })
+    setTimeout(ready, live ? 4000 : 0)
+  })
+
   // claude.ai's runtime: window.claude and window.storage.
   runtime({ ...cfg.claude, framed: !!top, path: cfg.path, title: () => document.title } as any, {
     ask, post, listen: (type, f) => { (heard[type] ??= []).push(f) },

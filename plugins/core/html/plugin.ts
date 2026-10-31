@@ -1,10 +1,12 @@
 // HTML pages' server side: pages served sandboxed at /v/ and CDN files at /cdn/ (plugin.serve, so nothing runs while
 // it's off), plus `text:html` and `looks:html`. An artifact is framed by a wrapper (frame=1 asks for the page itself).
+import crypto from "node:crypto"
 import fs from "node:fs"
-import { contentType, HTTPError, isOutside, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
+import { contentType, HTTPError, isOutside, OpError, outsidePath, Plugin, reply, Text, vaultPath } from "../../../core/plugins.ts"
 import type { Item, Vault } from "../../../core/vault.ts"
 import { ARTIFACT, artifactText, cdn, CSP, looks, moved, page, saveState, stat, WRAP_CSP, wrapper } from "./artifacts.ts"
 import { artifactIn, dataOf, movedData, publish, sampleGrant, sampleSocket, saveData, versionOf } from "./claude.ts"
+import { sharedPages } from "./shared.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -51,15 +53,18 @@ plugin.serve("cdn", async (req) => {
   }))
 })
 
-/** What a claude.ai artifact's runtime starts with: its data, version, whether it may ask Claude, the user's name. */
-function runtimeOf(rel: string) {
-  let name = ""
+/** The user's name, as ME.md has it ("" when it doesn't). */
+function ownerName() {
   try {
     const me = plugin.service("me:file") as (() => string) | null
     const fm = me ? plugin.vault.entries.get(me())?.fm : null
-    if (fm && typeof fm.name === "string") name = fm.name
-  } catch { /* no name */ }
-  return { data: dataOf(plugin.vault, rel), version: versionOf(plugin.vault, rel), name,
+    return fm && typeof fm.name === "string" ? fm.name : ""
+  } catch { return "" }
+}
+
+/** What a claude.ai artifact's runtime starts with: its data, version, whether it may ask Claude, the user's name. */
+function runtimeOf(rel: string) {
+  return { data: dataOf(plugin.vault, rel), version: versionOf(plugin.vault, rel), name: ownerName(),
     sample: typeof plugin.service("sample") === "function", sampleAllowed: plugin.allows(sampleGrant(rel)) }
 }
 
@@ -85,6 +90,43 @@ plugin.socket("artifact/sample", (ws) => sampleSocket(plugin, ws), {
   },
 })
 
+// Shared state (vau.shared()): a socket per view of a page; the user's devices are one person each.
+export const shared = sharedPages(() => plugin.vault)
+plugin.onUnload(() => shared.flush())
+const DEVICES: [RegExp, string][] = [[/iPhone/, "iPhone"], [/iPad/, "iPad"], [/Android/, "Android"], [/Macintosh/, "Mac"], [/Windows/, "Windows"], [/Linux|CrOS/, "Linux"]]
+plugin.socket("artifact/shared", (ws, req, { query }) => {
+  const rel = artifactIn(plugin.vault, query.path), ua = String(req.headers["user-agent"] ?? "")
+  const id = /^[a-z0-9]{8,32}$/.test(query.device ?? "") ? query.device : `w${crypto.randomUUID().slice(0, 8)}`
+  shared.join(ws, rel, { shown: rel, person: { id, name: ownerName() || "Owner", device: DEVICES.find(([re]) => re.test(ua))?.[1] } })
+}, { accept: (_req, { query }) => void artifactIn(plugin.vault, query.path) })
+
+/** An op's page: an artifact in the vault, else an OpError. */
+const pageOf = (p: unknown) => { try { return artifactIn(plugin.vault, p) } catch (e) { throw new OpError((e as Error).message) } }
+const pageParam = { type: "string", format: "path", required: true, description: "the page (.html), a vault path" } as const
+plugin.op({
+  id: "html.shared",
+  cli: "html shared",
+  summary: "A page's shared state (what vau.shared() keeps, the same for everyone who has it open) and who has it open now.",
+  help: "  vau html shared \"Music/Duel.html\"",
+  kind: "read",
+  params: { path: pageParam },
+  args: ["path"],
+  run: ({ path }) => shared.read(pageOf(path)),
+})
+plugin.op({
+  id: "html.shared-set",
+  cli: "html shared-set",
+  summary: "Set keys of a page's shared state (null deletes one): everyone who has it open sees them at once.",
+  help: "  vau html shared-set \"Music/Duel.html\" --values '{\"round\": 1}'",
+  kind: "write",
+  params: { path: pageParam, values: { type: "object", required: true, description: "the keys to set, each to a JSON value (null deletes it)" } },
+  args: ["path"],
+  run: ({ path, values }, ctx) => {
+    const rel = pageOf(path)
+    try { return { state: shared.set(rel, values, ctx.who.label) } } catch (e) { throw new OpError((e as Error).message) }
+  },
+})
+
 plugin.route("POST", "artifact/stat", (req) => stat(plugin.vault, obj(req.body)))
 plugin.route("PUT", "artifact/state", (req) => saveState(plugin.vault, obj(req.body)))
 
@@ -95,6 +137,7 @@ for (const ext of ["html", "htm"]) {
 
 plugin.onMove((from, to) => {
   movedData(plugin.vault, from, to)
+  shared.moved(from, to)
   moved(plugin.vault, from, to)
   if (to && plugin.allows(sampleGrant(from))) plugin.allow(sampleGrant(to))
 })

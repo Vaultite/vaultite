@@ -7,6 +7,12 @@ Markdown page can't do. The app runs them sandboxed: no network, no access to th
   works too. Read the data every time: don't copy it into the HTML, so the page never goes stale.
 - `vau.on("change", paths => ...)` redraws when a file it read changes (without it, the page reloads).
 - `localStorage` works and is kept in the vault (filters, a view); links open in the app or a new tab.
+- Shared, live state (a game, a board, an exercise for two): `const room = await vau.shared()`, the same in every view
+  of the page (the user's devices; later guests). `room.state` (JSON by key), `room.set(key, value)` or
+  `room.set({k: v})` (null deletes; each key is the last write's, so give each player keys of their own:
+  `answer:${room.me.id}`), `room.on("change", (state, keys, by) => ...)`. Who's here: `room.me`, `room.people`
+  (`{id, name, device, color}`), `room.on("people", ...)`; `room.online`. Kept in `.vaultite/artifacts/<page>.shared.json`;
+  agents read and set it with `vau html shared` and `vau html shared-set`.
 - Colours: follow the app's light and dark with `:root[data-theme="dark"]`, or use its colours, `var(--vau-background)`,
   `--vau-foreground`, `--vau-card`, `--vau-border`, `--vau-muted-foreground`, `--vau-blue`, `--vau-green`,
   `--vau-red`...

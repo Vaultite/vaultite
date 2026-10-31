@@ -2,6 +2,7 @@
 // A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { askBeforeOpening } from "./links.ts"
+import { joinShared, type SharedLink } from "./sharing.ts"
 import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange } from "@vaultite"
 
 // Every view of one artifact (here and in the app's other windows) hears the others' db and storage writes.
@@ -64,6 +65,9 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   // Sites the user said yes to opening from it, while this view is open (links.ts).
   const opened = useRef(new Set<string>()), listed = useRef(false)
   const asking = useRef(new Map<number, WebSocket>())
+  // The page's shared state (vau.shared()), joined while this load of it lasts.
+  const shared = useRef<SharedLink | null>(null)
+  useEffect(() => () => { shared.current?.close(); shared.current = null }, [url])
   useEffect(() => { declined.current = false }, [path])
 
   // The theme is read when the frame loads (no flash); later changes are sent to it.
@@ -127,6 +131,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
         }
         else if (typeof d.path === "string" && d.path && !isHidden(d.path) && !outside) openFile(d.path, { newTab: !page })
       } else if (d.type === "abort") asking.current.get(d.id)?.close()
+      else if (d.type === "shared-set" && d.values && typeof d.values === "object") shared.current?.set(d.values)
       else if (d.type === "ask") {
         if (outside) return reply(undefined, "a page from outside the vault can't read the vault")
         // (a shared folder's page, for its guest: it asks the app nothing)
@@ -178,6 +183,10 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
           const r = await postJson("api/artifact/data", { path, [d.op]: writes }).catch(() => null)
           if (!r?.ok) return reply(undefined, (await (r ? failed(r) : {})).error ?? "offline", "unavailable")
           tell(path, { type: d.op, writes }, forward)
+          reply(true)
+        } else if (d.op === "shared") {
+          shared.current?.close()
+          shared.current = joinShared(path, (m) => forward({ type: "shared", ...m }))
           reply(true)
         } else if (d.op === "publish") {
           const r = await postJson("api/artifact/publish", { path, html: args.html, version: args.version }).catch(() => null)
