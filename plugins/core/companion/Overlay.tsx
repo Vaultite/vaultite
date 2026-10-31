@@ -2,11 +2,11 @@
 // bar when it's nowhere, Status in index.tsx), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
-import { Check, Ellipsis, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, share, snippet, useMenuShowing } from "@vaultite"
+import { Check, Copy, Ellipsis, MessageSquarePlus, Pin, Trash2, UserRound, X } from "lucide-react"
+import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, runCommandById, seenArea, share, snippet, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { agentMenu } from "./session"
 import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -389,14 +389,42 @@ const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, 
 /** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
 export const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
 
-/** A margin card. Not open, a long one shows its first lines faded (a dot, where the margin's narrow); open, all of it. */
-const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: number; y: number; folded: boolean; open: boolean; cap: number
-  onHeight: (h: number) => void; onOpen: (open: boolean) => void }) {
+const CLOCK = { hour: "numeric", minute: "2-digit" } as const, DAY = { day: "numeric", month: "short" } as const, YEAR = { ...DAY, year: "numeric" } as const
+/** When, as a shared doc's comment says it: now, 5 min, 4:05 PM (today), Oct 30. */
+function when(t: number) {
+  const s = (Date.now() - t) / 1000, d = new Date(t), today = new Date()
+  if (s < 60) return "now"
+  if (s < 3600) return `${Math.floor(s / 60)} min`
+  if (d.toDateString() === today.toDateString()) return dateText(d, CLOCK)
+  return dateText(d, d.getFullYear() === today.getFullYear() ? DAY : YEAR)
+}
+
+/** Someone in a thread: their initial in their colour (as Presence draws faces), their name and when they wrote. */
+function Who({ name, tint, t, small, suffix }: { name: string; tint: string; t?: number; small?: boolean; suffix?: string }) {
+  return (
+    <div className={cn("flex min-w-0 flex-1 items-center", small ? "gap-1.5" : "gap-2")}>
+      <span aria-hidden className={cn("grid shrink-0 place-items-center rounded-full font-bold text-white", small ? "size-[18px] text-[9.5px]" : "size-6 text-[11px]")} style={{ background: tint }}>
+        {name === "You" ? <UserRound className={small ? "size-2.5" : "size-3.5"} strokeWidth={2.75} /> : name.charAt(0).toUpperCase()}
+      </span>
+      <div className={cn("min-w-0 flex-1 leading-tight", small && "flex items-baseline gap-1.5")}>
+        <div className="truncate text-[12.5px] font-semibold text-foreground">{name}{suffix && <span className="font-normal text-muted-foreground"> {suffix}</span>}</div>
+        {t ? <div className="shrink-0 text-[11.5px] text-muted-foreground" data-tip={fmtStamp(t)}>{when(t)}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+const BTN = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground [@media(pointer:coarse)]:size-9"
+
+/** A margin card, as a shared doc's comment: who and when, Resolve and a menu. Not open, it's its first words and how
+ *  many replies (a dot, where the margin's narrow); open, the whole thread and a box to reply. */
+const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, onHover }: { n: Note; x: number; y: number; folded: boolean; open: boolean; cap: number
+  /** (the minute: its times redrawn as they age) */ minute: number
+  onHeight: (h: number) => void; onOpen: (open: boolean) => void; onHover: (on: boolean) => void }) {
   const ref = useRef<HTMLElement | null>(null), keep = (el: HTMLElement | null) => { ref.current = el }
   const body = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState(false)
-  const writing = n.id === DRAFT
-  const [replying, setReplying] = useState(writing)
+  const writing = n.id === DRAFT, suggestion = n.kind === "suggestion"
   const [draft, setDraft] = useState("")
   const tint = threadTint(n), author = writing ? (share ? share.guest : "You") : authorOf(n)
   // (a guest closes only their own threads; the user, any)
@@ -407,8 +435,8 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }
     const b = body.current
     setMore(!open && !!b && b.scrollHeight > b.clientHeight + 2)
   })
-  const replies = n.replies?.length ?? 0, had = useRef(replies)
-  useEffect(() => { if (replies > had.current) body.current?.scrollTo({ top: body.current.scrollHeight }); had.current = replies }, [replies])
+  const replies = n.replies ?? [], had = useRef(replies.length)
+  useEffect(() => { if (replies.length > had.current) body.current?.scrollTo({ top: body.current.scrollHeight }); had.current = replies.length }, [replies.length])
   if (folded && !open) {
     return (
       <button ref={keep} type="button" aria-label={`${author}'s ${n.kind}`} data-companion-dot={n.id} className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full shadow"
@@ -421,56 +449,83 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen }
     const t = draft.trim()
     if (writing) return t ? comment(t) : startComment(null)
     if (t) answer(n.id, "reply", t)
-    setDraft(""); setReplying(false)
+    setDraft("")
   }
+  const words = n.text ?? n.replace ?? ""
+  const items = (): MenuItem[] => [
+    ...(words ? [{ label: "Copy text", icon: Copy, run: () => void copyText(words) }] : []),
+    ...(!share && n.by === "user" ? [{ label: "Delete", icon: Trash2, danger: true, sep: !!words, run: () => void confirmDialog({ title: "Delete this comment?", body: "It won't be kept with the resolved ones.", confirm: "Delete", danger: true })
+      .then((ok) => ok && answer(n.id, "reject")) }] : []),
+  ]
+  const replyTint = (r: Reply) => (r.by === "agent" ? (n.by ? tintOf(n.agent) : tint) : r.by === "guest" && r.name === n.agent ? tint : "var(--muted-foreground)")
   return (
-    <div ref={keep} data-companion-note={n.id} data-open={open || undefined} onPointerDown={() => !open && onOpen(true)} className="companion-pop pointer-events-auto absolute top-0 left-0 flex w-[212px] flex-col rounded-[10px] border border-border/60 bg-background pl-1.5 text-[13px] leading-snug shadow-md"
-      style={{ transform: `translate(${x}px, ${y}px)`, transition: "transform .25s ease-out", maxHeight: cap, zIndex: open ? 1 : undefined }}>
-      {/* (its colour as a straight bar clear of the rounded corners, not a border bent around them) */}
-      <span aria-hidden className="absolute inset-y-2.5 left-[3px] w-[3px] rounded-full" style={{ background: tint }} />
-      <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2 text-[11.5px] font-semibold text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate" style={{ color: inked(tint) }}>{author}{n.kind === "suggestion" ? " suggests" : ""}</span>
-        {(closes || writing) && <button type="button" aria-label={writing ? "Cancel" : n.kind === "suggestion" ? "Reject" : "Dismiss"} data-tip={writing ? "Cancel" : n.kind === "suggestion" ? `Reject (${keyHint("Escape")})` : "Dismiss"}
-          className="grid size-5 cursor-pointer place-items-center rounded hover:bg-foreground/[0.07]"
-          onClick={() => (writing ? startComment(null) : folded && n.kind === "comment" ? onOpen(false) : answer(n.id, n.kind === "suggestion" ? "reject" : "dismiss"))}>
-          <X className="size-3.5" />
+    <div ref={keep} data-companion-note={n.id} data-open={open || undefined} onPointerDown={(e) => !open && !(e.target as Element).closest("button") && onOpen(true)}
+      onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)} onContextMenu={writing ? undefined : menuFor(items)}
+      className={cn("companion-pop pointer-events-auto absolute top-0 left-0 flex w-[212px] flex-col rounded-[10px] border bg-background text-[13px] leading-snug transition-[transform,box-shadow,border-color] duration-[250ms] ease-out",
+        open ? "border-transparent shadow-[0_2px_6px_rgb(0_0_0/0.10),0_10px_28px_rgb(0_0_0/0.14)]" : "cursor-pointer border-border/70 shadow-[0_1px_2px_rgb(0_0_0/0.06)] hover:border-border")}
+      style={{ transform: `translate(${x}px, ${y}px)`, maxHeight: cap, zIndex: open ? 2 : undefined }}>
+      <div className="flex shrink-0 items-center gap-0.5 pt-2 pr-1.5 pl-2.5">
+        <Who name={author} tint={tint} t={writing ? undefined : n.t} suffix={suggestion ? "suggests" : undefined} />
+        {closes && !writing && <button type="button" aria-label={suggestion ? "Reject" : "Resolve"} data-tip={suggestion ? `Reject (${keyHint("Escape")})` : "Resolve"} className={BTN}
+          onClick={() => answer(n.id, suggestion ? "reject" : "dismiss")}>
+          {suggestion ? <X className="size-4" /> : <Check className="size-4" strokeWidth={2.25} />}
         </button>}
+        {!writing && items().length > 0 && <button type="button" aria-label="More" data-tip="More" className={BTN} onClick={(e) => menuBelow(e, items())}><Ellipsis className="size-4" /></button>}
       </div>
       {/* (open, one taller than the pane scrolls inside, its buttons kept in sight) */}
-      <div ref={body} className={cn("min-h-0", open ? "overflow-y-auto overscroll-contain [scrollbar-width:thin]" : "max-h-[84px] overflow-hidden", more && "companion-more")}>
-        {n.orphaned && <div className="px-2.5 pt-1 text-[12px] text-muted-foreground">Its text was removed</div>}
-        {n.text && <div className="px-2.5 pt-1 pb-2 text-foreground"><Markdown text={n.text} className="companion-md" /></div>}
-        {n.kind === "comment" && replies > 0 && (
-          <div className="px-2.5">
-            {n.replies!.map((r, i) => (
-              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><div className="text-[11.5px] font-semibold text-muted-foreground" style={r.by === "agent" ? { color: inked(tint) } : undefined}>{replyAuthor(n, r)}</div><Markdown text={r.text} className="companion-md" /></div>
-            ))}
+      <div ref={body} className={cn("min-h-0 px-2.5", open ? "overflow-y-auto overscroll-contain [scrollbar-width:thin]" : "max-h-[62px] overflow-hidden", more && "companion-more")}>
+        {n.orphaned && <div className="pt-1.5 text-[12px] text-muted-foreground">Its text was removed</div>}
+        {n.text && <div className="pt-1.5 text-foreground"><Markdown text={n.text} className="companion-md" /></div>}
+        {open && replies.map((r, i) => (
+          <div key={i} className="mt-2 border-t border-border/50 pt-2">
+            <Who small name={replyAuthor(n, r)} tint={replyTint(r)} t={r.t} />
+            <div className="mt-1"><Markdown text={r.text} className="companion-md" /></div>
           </div>
-        )}
+        ))}
       </div>
-      {more && <button type="button" className="-mt-1 shrink-0 cursor-pointer self-start px-2.5 pb-1 text-[12px] font-medium text-muted-foreground hover:text-foreground" onClick={() => onOpen(true)}>More</button>}
-      {n.kind === "suggestion" && (
-        <div className="flex shrink-0 gap-1.5 px-2.5 pb-2.5">
+      {!open && replies.length > 0 && <div className="shrink-0 px-2.5 pt-1 text-[12px] font-medium text-muted-foreground">{replies.length === 1 ? "1 reply" : `${replies.length} replies`}</div>}
+      {suggestion && (
+        <div className="flex shrink-0 gap-1.5 px-2.5 pt-2">
           <button type="button" className="flex h-7 cursor-pointer items-center gap-1 rounded-[7px] px-2.5 text-[12.5px] font-semibold text-white" style={{ background: tint }} onClick={() => void accept(n)}>
             <Check className="size-3.5" strokeWidth={2.5} />Accept<span className="opacity-70">{keyHint("Tab")}</span>
           </button>
         </div>
       )}
-      {n.kind === "comment" && (
-        <div className="shrink-0 px-2.5 pb-2">
-          {replying ? (
-            <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={writing ? "Comment" : "Reply"} aria-label={writing ? "Comment" : "Reply"} enterKeyHint="send"
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() } else if (e.key === "Escape") { if (writing) startComment(null); else setReplying(false) } }}
-              onBlur={() => !draft && (writing ? startComment(null) : setReplying(false))}
-              className="mt-1.5 h-7 w-full rounded-[6px] border border-border bg-transparent px-2 text-[13px] outline-none focus:border-foreground/30" />
-          ) : (
-            <button type="button" className="mt-1 cursor-pointer text-[12px] font-medium text-muted-foreground hover:text-foreground" onClick={() => setReplying(true)}>Reply</button>
+      {n.kind === "comment" && (open || writing) ? (
+        <div className="shrink-0 px-2.5 pt-2">
+          <input autoFocus={writing} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={writing ? "Comment" : "Reply"} aria-label={writing ? "Comment" : "Reply"} enterKeyHint="send"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() }
+              else if (e.key === "Escape") { e.preventDefault(); if (writing) startComment(null); else { setDraft(""); onOpen(false) } }
+            }}
+            onBlur={() => writing && !draft && startComment(null)}
+            className="h-7 w-full rounded-[6px] border border-border bg-transparent px-2 text-[13px] outline-none focus:border-foreground/30 [@media(pointer:coarse)]:h-10 [@media(pointer:coarse)]:text-[17px]" />
+          {(writing || draft) && (
+            <div className="flex justify-end gap-1 pt-1.5">
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => (writing ? startComment(null) : setDraft(""))}
+                className="h-6.5 cursor-pointer rounded-[6px] px-2 text-[12.5px] font-medium text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground">Cancel</button>
+              <button type="button" disabled={!draft.trim()} onClick={send}
+                className="h-6.5 cursor-pointer rounded-[6px] bg-primary px-2.5 text-[12.5px] font-semibold text-primary-foreground disabled:cursor-default disabled:opacity-50">{writing ? "Comment" : "Reply"}</button>
+            </div>
           )}
+          <div className="h-2.5" />
         </div>
-      )}
+      ) : <div className="h-2.5 shrink-0" />}
     </div>
   )
 }, sameProps)
+
+/** Add comment, in the margin level with a selection being made (as in a shared doc): it keeps the note's focus. */
+function AddComment({ x, y }: { x: number; y: number }) {
+  const keys = commandKeys("companion:comment")
+  return (
+    <button type="button" aria-label="Add comment" data-tip={`Add comment${keys ? ` (${keys})` : ""}`} data-companion-add onMouseDown={(e) => e.preventDefault()} onClick={() => runCommandById("companion:comment")}
+      className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-7 cursor-pointer place-items-center rounded-full border border-border/70 bg-background text-muted-foreground shadow-md hover:text-foreground"
+      style={{ transform: `translate(${x}px, ${y}px)`, zIndex: 3 }}>
+      <MessageSquarePlus className="size-4" />
+    </button>
+  )
+}
 
 const STYLE = `
 .companion-bob { animation: companion-bob 1.1s ease-in-out infinite; }
@@ -496,14 +551,27 @@ html[data-drawer] .companion-overlay { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-fade, .companion-dots i, .companion-seen { animation: none !important; transition: none !important; } }
 `
 
-type Placed = { n: Note; v: EditorView; x: number; y: number; folded: boolean; open?: boolean }
+/** nudge: how far right of where it opens it rests (the open one steps toward the text, as in a shared doc). */
+type Placed = { n: Note; v: EditorView; x: number; y: number; folded: boolean; nudge: number; open?: boolean }
 /** A thread's dot by its line, in the agent's colour (comments in the sidebar): a click opens it in the panel. */
 type Dot = { n: Note; x: number; y: number }
-type Pane = { id: number; top: number; bottom: number; under: number; cards: Placed[]; dots: Dot[] }
+type Pane = { id: number; top: number; bottom: number; under: number; cards: Placed[]; dots: Dot[]; add?: { x: number; y: number } }
 const paneIds = new WeakMap<Element, number>()
 let lastPane = 0
 let insets = new WeakMap<Element, { top: number; foot: number }>()
 const roomy = new Set<EditorView>()
+/** Add comment showed last frame (so a selection's end takes it away); a finger has the editor's menu instead. */
+let adding = false
+const coarse = matchMedia("(pointer: coarse)")
+/** The note being selected in, where comments may be added. */
+function selecting() {
+  if (coarse.matches || (share && share.role === "read")) return null
+  for (const v of views.keys()) {
+    const sel = v.state.selection.main
+    if (v.hasFocus && !sel.empty && (share?.role === "comment" || v.contentDOM.contentEditable === "true") && v.state.sliceDoc(sel.from, sel.to).trim()) return v
+  }
+  return null
+}
 
 /** What of a pane's scroller shows: under its bar (a phone's header), above the status bar (a phone's bar). */
 function shownOf(el: Element) {
@@ -533,6 +601,7 @@ export function Overlay() {
   const margin = useInMargin()
   const [, redraw] = useReducer((x: number) => x + 1, 0)
   const [popped, setPopped] = useState<string | null>(null)
+  const [hovered, setHovered] = useState<string | null>(null)
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())
   // (a cursor under the pointer, open or dragged stays where it is: nothing moves under the user's pointer)
@@ -549,14 +618,19 @@ export function Overlay() {
   }
   // The card open: the one clicked, else the one whose text the user's caret is in (as in a shared doc).
   useEffect(() => {
-    const down = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.("[data-companion-note], [data-companion-dot], [data-companion-gutter], [data-companion-thread]")) pick(null) }
+    // (its text clicked: that one)
+    const down = (e: PointerEvent) => {
+      const t = e.target as Element | null, mark = t?.closest?.<HTMLElement>("[data-companion-mark]")
+      if (mark) pick(mark.dataset.companionMark!)
+      else if (!t?.closest?.("[data-companion-note], [data-companion-dot], [data-companion-gutter], [data-companion-thread], [data-companion-add]")) pick(null)
+    }
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [])
   useEffect(() => {
     let frame = 0
     // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing)
-    const idle = () => { const st = getState(); return !st.draft && !roomy.size && (st.mode === "off" ? !st.notes.some((n) => n.by) : !st.notes.length && !st.agents.length) }
+    const idle = () => { const st = getState(); return !st.draft && !roomy.size && !adding && (st.mode === "off" ? !st.notes.some((n) => n.by) : !st.notes.length && !st.agents.length) && !selecting() }
     const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
@@ -582,7 +656,9 @@ export function Overlay() {
   // (off, the companion draws nothing of its own: people's threads still show)
   const off = s.mode === "off"
   const notes = [...(off ? s.notes.filter((n) => n.by) : s.notes), ...(s.draft ? [{ ...s.draft, id: DRAFT, kind: "comment", agent: "", by: share ? "guest" : "user", t: Date.now() } as Note] : [])]
-  if (off && !notes.length) return null
+  const sv = s.draft ? null : selecting()
+  adding = false
+  if (off && !notes.length && !sv) return null
 
   const cursors = (off ? [] : s.agents).map((a, i) => {
     const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name) ?? null
@@ -602,19 +678,25 @@ export function Overlay() {
   const panes = new Map<Element, Pane>()
   const perLine = new Map<string, number>()
   let caret: string | null = null
-  for (const n of notes) {
-    if (n.kind !== "comment" && n.kind !== "suggestion") continue
-    const v = n.path ? viewOf(n.path) : null
-    const pos = v ? posIn(v, n) : null
-    if (!v || pos === null) continue
+  const paneOf = (v: EditorView) => {
     // (a phone's page scrolls the window; a sheet is a modal dialog, drawn over the margin)
     const el = v.dom.closest("[data-pane]") ?? v.dom.closest("#main-scroll")
-    if (!el?.getClientRects().length) continue
+    if (!el?.getClientRects().length) return null
     let p = panes.get(el)
     if (!p) {
       if (!paneIds.has(el)) paneIds.set(el, ++lastPane)
       panes.set(el, p = { id: paneIds.get(el)!, ...shownOf(el), cards: [], dots: [] })
     }
+    return { el, p }
+  }
+  for (const n of notes) {
+    if (n.kind !== "comment" && n.kind !== "suggestion") continue
+    const v = n.path ? viewOf(n.path) : null
+    const pos = v ? posIn(v, n) : null
+    if (!v || pos === null) continue
+    const at = paneOf(v)
+    if (!at) continue
+    const { el, p } = at
     const box = el.getBoundingClientRect(), text = v.contentDOM.getBoundingClientRect()
     if (!margin && n.id !== DRAFT) {
       // (in the gutter left of the text; without room there, at the line's end. Several on one line side by side)
@@ -627,7 +709,7 @@ export function Overlay() {
     }
     const edge = box.right, right = text.right
     const folded = edge - right < MARGIN
-    p.cards.push({ n, v, x: folded ? Math.min(right + 4, edge - 26) : right + 10, y: topOf(v, pos), folded })
+    p.cards.push({ n, v, x: folded ? Math.min(right + 4, edge - 26) : right + 10, y: topOf(v, pos), folded, nudge: Math.max(0, Math.min(12, edge - right - MARGIN)) })
     if (!caret && v.hasFocus) {
       const doc = v.state.doc, head = doc.lineAt(v.state.selection.main.head).number
       if (head >= doc.lineAt(pos).number && head <= doc.lineAt(Math.min(doc.length, pos + (n.find?.length ?? 0))).number) caret = n.id
@@ -643,6 +725,7 @@ export function Overlay() {
     for (const c of p.cards) {
       c.open = c.n.id === open
       if (c.folded && c.open) { c.x -= 198; c.y += 24; fit(c) }
+      if (!c.open) c.x += c.nudge
     }
     // (top to bottom, none covering another: the open one by its line, the others moved off it)
     const stack = p.cards.filter((c) => !c.folded), f = stack.findIndex((c) => c.open)
@@ -656,14 +739,26 @@ export function Overlay() {
       rooms.current.set(c.v, Math.max(rooms.current.get(c.v) ?? 0, need))
     }
   }
+  // (a selection being made: Add comment in the margin, level with where it ends)
+  const sp = sv && paneOf(sv)
+  if (sv && sp) {
+    const sel = sv.state.selection.main, box = sp.el.getBoundingClientRect(), right = sv.contentDOM.getBoundingClientRect().right
+    const head = sel.head === sel.to && sv.state.doc.lineAt(sel.to).from === sel.to ? sel.to - 1 : sel.head, y = topOf(sv, head)
+    if (y >= sp.p.top && y <= sp.p.bottom - 28) { sp.p.add = { x: box.right - right < MARGIN ? Math.min(right + 4, box.right - 30) : right + 10, y: y - 2 }; adding = true }
+  }
+  // (the open and the hovered card's text lit more)
+  const lit = [...new Set([open, hovered])].filter((x): x is string => !!x).map((id) => `.cm-content .cm-companion-anchor[data-companion-mark="${CSS.escape(id)}"]`).join(", ")
+  const minute = Math.floor(Date.now() / 60000)
   const measured = (id: string, h: number) => { if (heights.current.get(id) !== h) { heights.current.set(id, h); requestAnimationFrame(redraw) } }
   return createPortal(
     <div className="companion-overlay" data-companion={s.connected ? "on" : "off"}>
       <style>{STYLE}</style>
+      {lit && <style>{`${lit} { background-color: color-mix(in srgb, var(--c) 38%, transparent); box-shadow: 0 1.5px 0 color-mix(in srgb, var(--c) 85%, transparent); }`}</style>}
       {[...panes.values()].map((p) => (
         <div key={p.id} className="pointer-events-none fixed inset-x-0 z-[54] overflow-hidden" style={{ top: p.top, height: Math.max(0, p.bottom - p.top) }}>
           {p.cards.map((c) => <Card key={c.n.id} n={c.n} x={c.x} y={c.y - p.top} folded={c.folded} open={!!c.open} cap={Math.max(120, p.bottom - p.top - 16)}
-            onHeight={(h) => measured(c.n.id, h)} onOpen={(o) => pick(o ? c.n.id : null)} />)}
+            minute={minute} onHeight={(h) => measured(c.n.id, h)} onOpen={(o) => pick(o ? c.n.id : null)} onHover={(on) => setHovered((h) => (on ? c.n.id : h === c.n.id ? null : h))} />)}
+          {p.add && <AddComment x={p.add.x} y={p.add.y - p.top} />}
           {p.dots.map((d) => <Gutter key={d.n.id} n={d.n} x={d.x} y={d.y - p.top} picked={s.picked === d.n.id} />)}
         </div>
       ))}

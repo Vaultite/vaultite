@@ -3,9 +3,9 @@
 import { closeCompletion, type Completion, type CompletionContext, completionStatus, selectedCompletion, startCompletion } from "@codemirror/autocomplete"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { capitalize, keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
+import { capitalize, keyHint, notifyError, op, pluginSettings, share, type EditorCtx } from "@vaultite"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, threadTint, tintOf, views } from "./live"
 import { nearest } from "./text"
 
 /** Its own changes: not the user's, so not said back as theirs. */
@@ -115,27 +115,40 @@ export function placeOf(doc: Text, n: { line?: number; find?: string }): { from:
   return { from: l.from, to: l.from }
 }
 
+/** A comment's text lit as in a shared doc, in its author's colour (the user's own: a highlighter's yellow). */
+const litOf = (n: Pick<Note, "by" | "tint" | "agent">) => (n.by === "user" ? "var(--yellow)" : threadTint(n as Note))
+
 function decorate(view: EditorView, path: string): DecorationSet {
-  const mine = getState().notes.filter((n) => n.path === path && n.kind !== "say")
-  if (!mine.length) return Decoration.none
+  const st = getState(), draft = st.draft?.path === path ? st.draft : null
+  const mine = st.notes.filter((n) => n.path === path && n.kind !== "say")
+  if (!mine.length && !draft) return Decoration.none
   const marks: { from: number; to: number; deco: Decoration }[] = []
-  const picked = getState().picked
+  const picked = st.picked
+  const doc = view.state.doc
+  // (a comment's text, else its line's words: Overlay lights the active and hovered one by data-companion-mark)
+  const anchor = (id: string, p: { from: number; to: number }, tint: string) => {
+    const line = doc.lineAt(p.from)
+    const r = p.to > p.from ? p : { from: line.from + (line.text.length - line.text.trimStart().length), to: line.to }
+    if (r.to > r.from) marks.push({ ...r, deco: Decoration.mark({ class: "cm-companion-anchor", attributes: { style: `--c: ${tint}`, "data-companion-mark": id } }) })
+    else marks.push({ from: line.from, to: line.from, deco: Decoration.line({ class: "cm-companion-line", attributes: { style: `--c: ${tint}` } }) })
+  }
+  if (draft) { const p = placeOf(doc, draft); if (p) anchor("draft", p, litOf({ by: share ? "guest" : "user", agent: share?.guest ?? "" })) }
   for (const n of mine) {
-    const p = placeOf(view.state.doc, n)
+    const p = placeOf(doc, n)
     if (!p) continue
     const style = `--c: ${tintOf(n.agent)}`
-    // (the thread picked in the panel or the margin: its text lit, as in a shared doc)
+    if (n.kind === "comment") { anchor(n.id, p, litOf(n)); continue }
+    // (the suggestion picked in the panel or the margin: its lines lit)
     if (n.id === picked) {
-      const a = view.state.doc.lineAt(p.from), b = view.state.doc.lineAt(p.to)
-      for (let l = a.number; l <= b.number; l++) marks.push({ from: view.state.doc.line(l).from, to: view.state.doc.line(l).from, deco: Decoration.line({ class: "cm-companion-picked", attributes: { style } }) })
+      const a = doc.lineAt(p.from), b = doc.lineAt(p.to)
+      for (let l = a.number; l <= b.number; l++) marks.push({ from: doc.line(l).from, to: doc.line(l).from, deco: Decoration.line({ class: "cm-companion-picked", attributes: { style } }) })
     }
     if (p.to === p.from) {
-      const line = view.state.doc.lineAt(p.from)
+      const line = doc.lineAt(p.from)
       marks.push({ from: line.from, to: line.from, deco: Decoration.line({ class: n.kind === "highlight" ? "cm-companion-hl-line" : "cm-companion-line", attributes: { style } }) })
       continue
     }
     if (n.kind === "highlight") marks.push({ ...p, deco: Decoration.mark({ class: "cm-companion-hl", attributes: { style } }) })
-    else if (n.kind === "comment") marks.push({ ...p, deco: Decoration.mark({ class: "cm-companion-anchor", attributes: { style } }) })
     else if (n.kind === "suggestion") {
       marks.push({ ...p, deco: Decoration.mark({ class: "cm-companion-del", attributes: { style } }) })
       if (n.replace) marks.push({ from: p.to, to: p.to, deco: Decoration.widget({ widget: new Ghost(n.replace, tintOf(n.agent)), side: 1 }) })
@@ -335,7 +348,7 @@ const theme = EditorView.baseTheme({
   "@media (prefers-reduced-motion: reduce)": { ".cm-companion-asked": { animation: "none" } },
   ".cm-companion-hl": { backgroundColor: "color-mix(in srgb, var(--c) 32%, transparent)", borderRadius: "3px", animation: "cm-companion-in .4s ease-out" },
   ".cm-companion-hl-line": { backgroundColor: "color-mix(in srgb, var(--c) 14%, transparent)" },
-  ".cm-companion-anchor": { textDecoration: "underline dotted var(--c)", textDecorationThickness: "2px", textUnderlineOffset: "4px" },
+  ".cm-companion-anchor": { backgroundColor: "color-mix(in srgb, var(--c) 18%, transparent)", borderRadius: "2px", transition: "background-color .2s, box-shadow .2s" },
   ".cm-companion-line": { boxShadow: "inset 2px 0 0 color-mix(in srgb, var(--c) 70%, transparent)" },
   ".cm-companion-picked": { backgroundColor: "color-mix(in srgb, var(--c) 13%, transparent)", transition: "background-color .3s" },
   ".cm-companion-del": { textDecoration: "line-through", textDecorationColor: "var(--c)", textDecorationThickness: "2px", opacity: ".6" },

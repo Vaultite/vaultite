@@ -20,7 +20,7 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   dismissed?: number
   /** The text it was on is gone: shown by its last line. */
   orphaned?: boolean }
-export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string }
+export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
 /** A comment being written (Add comment): where it goes. */
 export type Draft = { path: string; line: number; find?: string }
 /** Someone else in a note: their awareness id, name and colour (a CSS value). */

@@ -51,8 +51,8 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   dismissed?: number
   /** The text it was on is gone: shown by its last line, found again if the text comes back. */
   orphaned?: boolean }
-/** A word in a thread: the user's, its agent's, or a guest's (`name`). */
-export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string }
+/** A word in a thread: the user's, its agent's, or a guest's (`name`); when (older ones have none). */
+export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it; a drawing's scene as text. */
@@ -502,7 +502,7 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
   const n = notes.get(id)
   if (!n) return
   if (verdict === "reply" && text) {
-    n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT) }]
+    n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT), t: Date.now() }]
     broadcast({ t: "note", note: n })
     if (KEPT.has(n.kind) && n.path) save(n.path)
   } else {
@@ -1382,7 +1382,7 @@ it: with id (the comment's), your words join its thread.
       // (a word in a dismissed thread brings it back to the margin)
       const n = notes.get(p.id) ?? reopen(p.id)
       if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id}`, 404)
-      n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text) }]
+      n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text), t: Date.now() }]
       broadcast({ t: "note", note: n })
       save(n.path!)
       setAgent(name, { path: n.path, line: n.line, find: n.find, state: acting(name) })
@@ -1811,7 +1811,7 @@ plugin.provide("companion:guest", (ws: WebSocket, g: Guest) => {
       const c = personComment({ by: "guest", agent: g.name, share: g.id }, rel, { ...m, text })
       if (c) tell(g.id, `${g.name} commented on ${rel.split("/").pop()!.replace(/\.md$/i, "")}`, rel)
     } else if (m.t === "answer" && theirs && m.verdict === "reply" && text && (n.replies?.length ?? 0) < MAX_REPLIES) {
-      n.replies = [...(n.replies ?? []), { by: "guest", name: g.name, text }]
+      n.replies = [...(n.replies ?? []), { by: "guest", name: g.name, text, t: Date.now() }]
       broadcast({ t: "note", note: n })
       save(n.path!)
       tell(g.id, `${g.name} replied in ${n.path!.split("/").pop()!.replace(/\.md$/i, "")}`, n.path!)
