@@ -38,9 +38,13 @@ function readSoon(id: string) {
 }
 
 function keep(id: string) {
-  const value = cell<Data | null>(null)
+  // What's saved, and what's read: the same, but for a value a picker shows for now (`preview`).
+  const saved = cell<Data | null>(null), value = cell<Data | null>(null)
+  let over: Data | null = null
+  const show = () => { const s = saved.get(); value.set(over ? { ...(s ?? {}), ...over } : s) }
+  saved.subscribe(show)
   let reading: Promise<void> | null = null
-  const got = (d: unknown) => value.set(isObj<Data>(d) ? d : {}), failed = () => { if (!value.get()) value.set({}) }
+  const got = (d: unknown) => saved.set(isObj<Data>(d) ? d : {}), failed = () => { if (!saved.get()) saved.set({}) }
   const read = () => readSoon(id).then(got, failed)
   const start = () => {
     if (reading) return
@@ -50,21 +54,22 @@ function keep(id: string) {
   /** Write those keys (null removes one): shown at once, put back if the write fails. */
   const set = async (changes: Data) => {
     start()
-    const was = value.get() ?? {}, next = { ...was }
+    const was = saved.get() ?? {}, next = { ...was }
     for (const [k, v] of Object.entries(changes)) if (v === null || v === undefined) delete next[k]; else next[k] = v
-    value.set(next)
-    try { await patch(`config/plugin/${id}`, Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null]))) } catch (e) { value.set(was); throw e }
+    saved.set(next)
+    try { await patch(`config/plugin/${id}`, Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null]))) } catch (e) { saved.set(was); throw e }
   }
-  return { value, start, set, ready: () => { start(); return reading! } }
+  const preview = (keys: Data | null) => { start(); over = keys; show() }
+  return { value, start, set, preview, ready: () => { start(); return reading! } }
 }
 
-/** A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file
- *  changes. `get`/`use` answer {} until read (`use(true)`: null); `set` writes keys; `onChange` hears every change. */
+/** A plugin's settings (its data.json) as module state, one per plugin: read on first use and whenever the file changes.
+ *  `get`/`use` ({} until read; `use(true)`: null), `set`, `onChange`; `preview` shows keys, saved nowhere, until null. */
 export function pluginSettings<T extends object = Data>(id: string) {
   kept ??= new Map()
   let k = kept.get(id)
   if (!k) { k = keep(id); kept.set(id, k) }
-  const { value, start, set, ready } = k
+  const { value, start, set, preview, ready } = k
   function use(): T
   function use(loading: true): T | null
   function use(loading?: boolean) { start(); const v = value.use(); return (v ?? (loading ? null : EMPTY)) as T | null }
@@ -73,6 +78,7 @@ export function pluginSettings<T extends object = Data>(id: string) {
     use,
     set: set as (changes: { [K in keyof T]?: T[K] | null }) => Promise<void>,
     onChange: value.subscribe,
+    preview: preview as (keys: { [K in keyof T]?: T[K] } | null) => void,
     /** Settled once the file was first read. */
     ready,
   }

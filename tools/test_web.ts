@@ -1445,13 +1445,14 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("blocks: a missing text side reads as the description", B.fallbackText("Fake", decl) === "_(Fake: a made-up card; drawn in the app only)_")
 
   // A plugin's settings, declared like block options plus a label (core/blocks.ts SettingDecl).
-  const setting = { trigger: { type: "enum", values: ["auto", "hover"], default: "auto", label: "Show a preview", labels: { auto: "Auto" }, description: "when it shows" },
+  const setting = { trigger: { type: "enum", values: ["auto", "hover"], default: "auto", preview: true, label: "Show a preview", labels: { auto: "Auto" }, description: "when it shows" },
     delay: { type: "number", default: 500, min: 0, label: "Delay", description: "how long first, in ms" }, file: { type: "string", label: "File", description: "a file" } }
   check("settings: a sound declaration has no problems (a key named like a common block option too)", !B.settingDeclProblems(setting, "m").length, B.settingDeclProblems(setting, "m"))
   const badSettings = B.settingDeclProblems({ a: { type: "boolean", description: "x" }, b: { type: "enum", values: ["x"], labels: { y: "Y" }, label: "B", description: "x" },
-    c: { type: "number", default: "five", label: "C", description: "x" }, d: { type: "boolean", required: true, label: "D", description: "x" }, e: "nope" }, "m")
+    c: { type: "number", default: "five", label: "C", description: "x" }, d: { type: "boolean", required: true, label: "D", description: "x" }, e: "nope",
+    f: { type: "number", preview: true, label: "F", description: "x" } }, "m")
   check("settings: a declaration's own problems", ["setting 'a' needs a label", "setting 'b': labels names 'y'", "setting 'c': its default should be a number",
-    "setting 'd': a setting is never required", "setting 'e' must be an object"].every((w) => badSettings.some((b) => b.includes(w))), badSettings)
+    "setting 'd': a setting is never required", "setting 'e' must be an object", "setting 'f': preview is true, on an enum"].every((w) => badSettings.some((b) => b.includes(w))), badSettings)
   check("settings: not an object", B.settingDeclProblems([], "m")[0]?.includes("settings must be an object") && !B.settingDeclProblems(undefined, "m").length)
   check("settings: read from a manifest", Object.keys(B.settingsOf({ settings: setting })).join() === "trigger,delay,file" && !Object.keys(B.settingsOf({})).length)
   check("settings: the doc for AIs", B.settingsDoc("page-preview", setting as never).startsWith("Settings, `.vaultite/plugins/page-preview/data.json` (each optional; the plugin's settings in the app too):\n- `trigger` (one of auto, hover, default auto): when it shows")

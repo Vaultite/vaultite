@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -106,6 +106,18 @@ async function readClipboard(t: XTerm, sendFiles: (files: File[]) => void) {
 }
 
 const touchScreen = () => matchMedia("(pointer: coarse)").matches
+
+/** The app's monospace font (Settings' Monospace font, else the app's default), which terminals share with code. */
+const codeFont = () => getComputedStyle(document.documentElement).getPropertyValue("--font-code").trim() || "monospace"
+
+const settings = pluginSettings<{ cursor?: string; cursorBlink?: boolean }>("terminal")
+/** The cursor as the plugin's settings have it. Without the keyboard a block is an outline, the others keep their shape
+ *  (so the palette's picker shows them on a terminal behind it). */
+function cursor() {
+  const s = settings.get()
+  const style = s.cursor === "bar" || s.cursor === "underline" ? s.cursor : "block"
+  return { cursorStyle: style, cursorInactiveStyle: style === "block" ? "outline" : style, cursorBlink: s.cursorBlink !== false } as const
+}
 /** The keys a phone's keyboard lacks, as the terminal sends them. Arrows follow the program's cursor-keys mode. */
 const arrow = (t: XTerm, k: string) => (t.modes.applicationCursorKeysMode ? `\x1bO${k}` : `\x1b[${k}`)
 const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
@@ -179,8 +191,8 @@ function create(id: string): Live {
   const asked = askedAt(id), opening = span("terminal.open", { agent: agentOfTerminal(id)?.name ?? "shell", how: asked === undefined ? "shown" : "asked" }, asked)
   if (asked !== undefined) opening.mark("tab")
   const t = new XTerm({
-    fontFamily: "'SF Mono', ui-monospace, Menlo, 'DejaVu Sans Mono', 'Noto Sans Mono', 'Liberation Mono', 'Ubuntu Mono', monospace", fontSize: fontSize(textSize("terminal")), lineHeight: 1.15,
-    cursorBlink: true, scrollback: 10000, allowProposedApi: false, theme: theme(),
+    fontFamily: codeFont(), fontSize: fontSize(textSize("terminal")), lineHeight: 1.15,
+    ...cursor(), scrollback: 10000, allowProposedApi: false, theme: theme(),
     // Links go where notes' do (the Browser when it's on, ⌘-click the system browser); OSC 8 ones (ls, gh) too.
     linkHandler: { activate: (e, uri) => { if (/^https?:/i.test(uri)) openWebLink(uri, linkClick(e)) } },
   })
@@ -208,8 +220,13 @@ function create(id: string): Live {
     return e.type !== "keydown" || !(e.ctrlKey || e.metaKey || e.altKey)
       || (e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code)) || !appShortcut(e)
   })
-  // Recolour with the app: its scheme, light or dark, a theme or snippet.
-  const offLook = onLook(() => { t.options.theme = theme(); renderer() })
+  // Recolour with the app (its scheme, light or dark, a theme or snippet), and take its monospace font.
+  const offLook = onLook(() => {
+    t.options.theme = theme()
+    if (t.options.fontFamily !== codeFont()) { t.options.fontFamily = codeFont(); try { fit.fit() } catch { /* not laid out */ } }
+    renderer()
+  })
+  const offSettings = settings.onChange(() => Object.assign(t.options, cursor()))
 
   let ws: WebSocket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
   // WebGL: the DOM renderer lays out the whole app per new glyph (a first screen 150-500 ms late). The DOM one without
@@ -410,7 +427,7 @@ function create(id: string): Live {
       if (gone) return
       gone = true
       clearTimeout(timer); cancelAnimationFrame(wheelFrame)
-      offLook(); osc.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
+      offLook(); offSettings(); osc.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)
       document.removeEventListener("visibilitychange", onShown)

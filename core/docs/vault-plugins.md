@@ -48,7 +48,9 @@ only settings (`data.json`, `<name>.json`) is settings, not a plugin.
 - `settings`: its `data.json`'s keys, in the same words plus a `label` (sentence case), for an enum `labels`, and for a
   vault folder (a string, or a list of them) `"folder": true`, which the form picks from the vault's:
   `{"months": {"type": "number", "default": 3, "min": 1, "label": "Months shown", "description": "how many months the
-  summary covers"}}`. Its settings sheet draws them as a form; `default` is what it does when the key is left out.
+  summary covers"}}`. Its settings sheet draws them as a form; `default` is what it does when the key is left out. An
+  enum that only changes how something looks can take `"preview": true`: its palette picker shows each value as the
+  selection moves (`pluginSettings(id)` reads as that value meanwhile, saved nowhere), so follow `onChange`.
 
 **`plugin.ts`** (optional; the server, Node, TypeScript as-is: no enums, `import type` for types, imports name the
 `.ts` file): `import { Plugin } from "@vaultite/core/plugins.ts"`, `export const plugin = new Plugin(import.meta.url)`,

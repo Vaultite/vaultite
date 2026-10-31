@@ -1,4 +1,5 @@
-// The look: Change colour scheme previews as the selection moves (saved on Enter), and newtab.json's page on a new tab.
+// The look: Change colour scheme… and Change monospace font… preview as the selection moves (saved on Enter), and
+// newtab.json's page on a new tab.
 // WRITES appearance.json and newtab.json: throwaway only.
 //   node web/qa/looks.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -48,6 +49,26 @@ try {
   const picked = await scheme()
   await page.keyboard.press("Enter")
   check("Enter keeps it", await until(() => json("appearance").scheme === picked) && (await scheme()) === picked, [picked, json("appearance").scheme])
+
+  // A font's picker, the same way (the whole app's --font-code, terminals' too).
+  const codeFont = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--font-code"))
+  const before = await codeFont()
+  await command("Change monospace font")
+  check("the font picker lists this device's fonts", await until(async () => (await page.locator("[role=option]").count()) >= 2))
+  await page.keyboard.press("ArrowDown")
+  const font = await until(async () => { const f = await codeFont(); return f !== before ? f : null })
+  check("moving shows the app in the next font", !!font, font)
+  check("no font is saved while moving", !json("appearance").monoFont, json("appearance"))
+  await page.screenshot({ path: `${OUT}font-preview.png` })
+  await page.keyboard.press("Escape")
+  check("Esc goes back to the saved font", await until(async () => (await codeFont()) === before), await codeFont())
+  await command("Change monospace font")
+  await page.keyboard.press("ArrowDown")
+  await wait(300)
+  const pickedFont = await codeFont()
+  await page.keyboard.press("Enter")
+  check("Enter keeps the font", await until(() => !!json("appearance").monoFont && pickedFont.includes(json("appearance").monoFont)) && (await codeFont()) === pickedFont,
+    [pickedFont, json("appearance").monoFont])
 
   // The new tab's page: a dashboard drawn instead of the sections, live, and back.
   // (one of the vault's dashboards, the first listed; a page that isn't there leaves the sections)

@@ -1,5 +1,5 @@
-// A plugin's settings of a few values (an enum in its manifest), in the palette: "Show pinned pages as…" offers its
-// values in the chooser, the one in use checked; Mod+Enter opens it in Settings. On/off ones are core/switches.ts.
+// A plugin's enum settings in the palette: "Show pinned pages as…" offers its values, the one in use checked (shown as
+// the selection moves, with `preview`); Mod+Enter opens it in Settings. On/off ones are core/switches.ts.
 import type { Command } from "@/core/commands"
 import { choose } from "@/components/Chooser"
 import { notify, notifyError } from "@/core/notify"
@@ -22,6 +22,7 @@ export function choiceCommands(disabled = getPrefs().disabled): Command[] {
       choose({
         title: d.label, placeholder: `${d.label}…`, heading: d.description ? capitalize(d.description) : undefined, current: String(was),
         items: d.values!.map((v) => ({ id: String(v), label: valueLabel(d, v) })),
+        preview: d.preview ? (it) => s.preview(it ? { [key]: d.values!.find((x) => String(x) === it.id) } : null) : undefined,
         onPick: (it) => {
           const v = d.values!.find((x) => String(x) === it.id)
           if (v === undefined || v === was) return

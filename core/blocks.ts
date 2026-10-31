@@ -304,6 +304,9 @@ export function blocksDoc(decls: BlockDecls): string {
 /** A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip
  *  it). Choosing the `default` removes the key, so a vault only holds what the user chose. */
 export type SettingDecl = OptionDecl & { label: string; labels?: Record<string, string>; local?: boolean
+  /** An enum that only changes how something looks: its palette picker shows each value as the selection moves
+   *  (the plugin's settings read as that value meanwhile, saved nowhere). */
+  preview?: boolean
   /** A vault folder (a list: of them): the form picks from the vault's, or makes a new one. */
   folder?: boolean
   /** A list typed one item per line, for items that may hold commas (patterns). */
@@ -328,8 +331,9 @@ export function settingDeclProblems(settings: unknown, where: string): string[] 
   for (const [k, d] of Object.entries(settings)) {
     const at = `${where}: setting '${k}'`
     if (!isMap(d)) { out.push(`${at} must be an object with a type, a label and a description`); continue }
-    const { local, folder, lines, choices, ...opt } = d
+    const { local, folder, lines, choices, preview, ...opt } = d
     if (local !== undefined && typeof local !== "boolean") out.push(`${at}: local must be true or false`)
+    if (preview !== undefined && (preview !== true || !types(opt as OptionDecl).every((t) => t === "enum"))) out.push(`${at}: preview is true, on an enum`)
     if (folder !== undefined && (folder !== true || !types(opt as OptionDecl).every((t) => t === "string" || t === "list"))) out.push(`${at}: folder is true, on a string or a list`)
     if (lines !== undefined && (lines !== true || !types(opt as OptionDecl).every((t) => t === "list"))) out.push(`${at}: lines is true, on a list`)
     if (choices !== undefined && (typeof choices !== "string" || !/^[\w/-]+$/.test(choices) || !types(opt as OptionDecl).every((t) => t === "string"))) {

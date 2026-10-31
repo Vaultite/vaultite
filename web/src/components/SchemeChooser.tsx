@@ -1,7 +1,7 @@
-// The command "Change colour scheme": every scheme in the palette, the whole app shown in the selected one as the
+// The command "Change colour scheme…": every scheme in the palette, the whole app shown in the selected one as the
 // selection moves; Enter keeps it, Esc goes back. Settings' gallery (Appearance.tsx) is the other way in.
 import { choose } from "@/components/Chooser"
-import { getVaultAppearance, onlyMode, previewScheme } from "@/core/appearance"
+import { getVaultAppearance, onlyMode, previewLook } from "@/core/appearance"
 import { getPrefs, setPrefs } from "@/core/prefs"
 import { SCHEMES, schemeId } from "@/themes/schemes"
 import { cn, isDark } from "@/lib/utils"
@@ -25,7 +25,7 @@ export function chooseScheme() {
   ].map((it) => ({ ...it, icon: <Dots id={it.id} /> }))
   choose({
     title: "Change colour scheme", placeholder: "Colour scheme…", items, current: schemeId(getPrefs().scheme),
-    preview: (it) => previewScheme(it?.id ?? null),
+    preview: (it) => previewLook(it ? { scheme: it.id } : null),
     onPick: (it) => { void setPrefs({ scheme: it.id }) },
   })
 }

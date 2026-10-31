@@ -2,7 +2,7 @@
 // scroll, a phone's pull-down actions (on phones), fonts, text sizes (this device's), snippets. Saved in appearance.json; rows off their default show a reset.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
-import { DEFAULT_FONTS, onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
+import { onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
 import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { opensChoices, setOpens } from "@/core/launcher"
@@ -16,6 +16,7 @@ import { useDesktop } from "@/core/platform"
 import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
+import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
 import { Panel, ResetButton, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { errorText } from "@/core/notify"
 import { available, commandList, useCommandList } from "@/core/commands"
@@ -109,7 +110,7 @@ function SchemePicker() {
   )
 }
 
-/** The gallery as a sheet (Settings' More…; the command "Change colour scheme" is the palette's, SchemeChooser.tsx). */
+/** The gallery as a sheet (Settings' More…; the command "Change colour scheme…" is the palette's, SchemeChooser.tsx). */
 export function SchemeGallery() {
   return (
     <>
@@ -128,12 +129,6 @@ function FolderButton({ folder, label, className }: { folder: string; label: str
 }
 
 
-const FONTS = {
-  interfaceFont: { label: "Interface font", fallback: { name: "System font", css: DEFAULT_FONTS.ui } },
-  textFont: { label: "Text font", fallback: { name: "Interface font", css: "var(--font-sans)" } },
-  monoFont: { label: "Monospace font", fallback: { name: "System monospace", css: DEFAULT_FONTS.code }, mono: true },
-}
-
 /** A stacked row's control with its reset before it: the pair fills the line on a phone, sits at the end from sm up. */
 function WithReset({ on, onReset, label, children }: { on: boolean; onReset: () => void; label: string; children: ReactNode }) {
   return (
@@ -145,15 +140,14 @@ function WithReset({ on, onReset, label, children }: { on: boolean; onReset: () 
   )
 }
 
-function FontRow({ k }: { k: keyof typeof FONTS }) {
+function FontRow({ k }: { k: FontKey }) {
   const raw = usePrefs()[k]
   const value = typeof raw === "string" ? raw.trim() : ""
   const f = FONTS[k]
   return (
-    <SettingRow stack label={f.label}>
+    <SettingRow stack label={f.label} sub={f.sub}>
       <WithReset on={!!value} onReset={() => setPrefs({ [k]: "" })} label={`Reset ${f.label.toLowerCase()}`}>
-        <FontPicker value={value} onChange={(v) => setPrefs({ [k]: v })} label={f.label} fallback={f.fallback}
-          mono={"mono" in f} className="min-w-0 flex-1 sm:w-[220px] sm:flex-none" />
+        <FontPicker {...fontPicker(k, value)} className="min-w-0 flex-1 sm:w-[220px] sm:flex-none" />
       </WithReset>
     </SettingRow>
   )
@@ -162,7 +156,7 @@ function FontRow({ k }: { k: keyof typeof FONTS }) {
 /** The three fonts as one "Fonts" row saying which are set; it opens their pickers in a sheet. */
 function Fonts() {
   const prefs = usePrefs()
-  const names = [...new Set((Object.keys(FONTS) as (keyof typeof FONTS)[]).map((k) => (typeof prefs[k] === "string" ? prefs[k].trim() : "")).filter(Boolean))]
+  const names = [...new Set((Object.keys(FONTS) as FontKey[]).map((k) => (typeof prefs[k] === "string" ? prefs[k].trim() : "")).filter(Boolean))]
   return (
     <SettingRow label="Fonts" value={<span data-tip={names.join(", ") || undefined} data-tip-trunc>{names.length ? names.join(", ") : "Default"}</span>}
       onClick={() => openDetail("fonts")} data-fonts-open />
@@ -173,7 +167,7 @@ function Fonts() {
 export function FontsSheet() {
   return (
     <>
-      <SheetHead icon={Type} tint="var(--primary)" kicker="Appearance" title="Fonts" sub="Interface, text and code" />
+      <SheetHead icon={Type} tint="var(--primary)" kicker="Appearance" title="Fonts" sub="Interface, text, code and terminals" />
       <div className="hairline">
         <FontRow k="interfaceFont" />
         <FontRow k="textFont" />

@@ -6,7 +6,7 @@
   "name": "Graph view",
   "description": "The vault as a graph: files are dots, [[links]] the lines between them. Open it as a tab, see a file's neighbours in the sidebar, or put a local graph in any file.",
   "settings": {
-    "colorBy": { "type": "enum", "values": ["folder", "type", "none"], "default": "folder", "label": "Colour by", "labels": {"folder": "Folder", "type": "Type", "none": "None"}, "description": "what a dot's colour says when it's in none of the groups (none: grey)" },
+    "colorBy": { "type": "enum", "values": ["folder", "type", "none"], "default": "folder", "preview": true, "label": "Colour by", "labels": {"folder": "Folder", "type": "Type", "none": "None"}, "description": "what a dot's colour says when it's in none of the groups (none: grey)" },
     "groups": { "type": "list", "label": "Groups", "description": "the user's colour groups, first match wins: [{\"query\": \"tag:#work\", \"color\": \"blue\"}] (a search query; a colour gray, red, orange, yellow, green, teal, blue, indigo, purple or pink; \"hidden\": true leaves its files out)" },
     "search": { "type": "string", "default": "", "label": "Filter", "description": "the whole graph shows only the files this search matches (the search syntax: words, tag:#x, type:person, folder:Notes, [status:done]...); the graph's search box" },
     "tags": { "type": "boolean", "default": false, "label": "Show tags", "description": "tags are dots too, linked to the files that have them" },

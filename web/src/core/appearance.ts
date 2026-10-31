@@ -1,6 +1,6 @@
 // Appearance applied to the page: light or dark, colour scheme (themes/*.css or a vault theme), density, fonts and
 // snippets. The last ones applied are in localStorage so index.html applies them before this code loads.
-import { getPrefs, onPrefs } from "@/core/prefs"
+import { getPrefs, onPrefs, type Prefs } from "@/core/prefs"
 import { SCHEMES, schemeId } from "@/themes/schemes"
 import { signal } from "@/core/signal"
 import type { DesktopApi, Translucency } from "@/core/desktop"
@@ -93,19 +93,21 @@ export function onLook(fn: () => void): () => void {
   return () => { looks.delete(fn) }
 }
 
-// A scheme shown for now (the palette's picker, as the selection moves), saved nowhere.
-let previewing: string | null = null
-/** Shows `scheme` on the whole app without saving it; null goes back to the saved one. */
-export function previewScheme(scheme: string | null) {
-  if (previewing === scheme) return
-  previewing = scheme
+/** What a picker can show for now: a colour scheme, a font. */
+export type LookPreview = Partial<Pick<Prefs, "scheme" | "interfaceFont" | "textFont" | "monoFont">>
+// Shown for now (the palette's pickers, as the selection moves), saved nowhere.
+let previewing: LookPreview | null = null
+/** Shows those settings on the whole app without saving them; null goes back to the saved ones. */
+export function previewLook(look: LookPreview | null) {
+  if (JSON.stringify(previewing) === JSON.stringify(look)) return
+  previewing = look
   apply()
 }
 
 function apply() {
-  const p = getPrefs()
+  const p = { ...getPrefs(), ...previewing }
   const root = document.documentElement
-  const scheme = schemeId(previewing ?? str(p.scheme))
+  const scheme = schemeId(str(p.scheme))
   const only = onlyMode(scheme)
   const dark = only ? only === "dark" : p.theme === "dark" || (p.theme === "system" && system.matches)
   root.classList.toggle("dark", dark)

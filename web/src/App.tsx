@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Type } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { share } from "@/core/share"
 import { SharedWith } from "@/components/SharedWith"
@@ -77,6 +77,7 @@ import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remov
 import { cn, space, whenIdle } from "@/lib/utils"
 import { canGoSide, goSide } from "@/core/keylist"
 import { chooseScheme } from "@/components/SchemeChooser"
+import { chooseFont } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
 // The app's own pages, which few visits open: loaded when they are.
@@ -132,7 +133,7 @@ function sheet_(...a: Parameters<typeof detail_>): ReturnType<typeof detail_> {
 
 /** The core's own sheets, from their lazy chunks: by the path's kind ("bundle/": one with an id), its title and body. */
 const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.ReactNode]> = {
-  schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Change colour scheme"
+  schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Change colour scheme…"
   fonts: ["Fonts", () => <FontsSheet />], // Settings' Fonts row
   "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />], // a Settings section, where the pane is narrow
   hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
@@ -398,7 +399,10 @@ export default function App() {
     { id: "theme:system", name: "Use the system's light or dark theme", when: () => getPrefs().theme !== "system", run: () => setPrefs({ theme: "system" }), icon: SunMoon },
     { id: "scheme:gruvbox", name: "Use Gruvbox colours (the default)", when: () => getPrefs().scheme !== "gruvbox", run: () => setPrefs({ scheme: "gruvbox" }), icon: PaletteIcon },
     { id: "scheme:default", name: "Use Classic colours", when: () => getPrefs().scheme !== "default", run: () => setPrefs({ scheme: "default" }), icon: PaletteIcon },
-    { id: "scheme:choose", name: "Change colour scheme", run: chooseScheme, icon: PaletteIcon },
+    { id: "scheme:choose", name: "Change colour scheme…", run: chooseScheme, icon: PaletteIcon },
+    { id: "font:text", name: "Change text font…", words: "typeface notes", run: () => chooseFont("textFont"), icon: Type },
+    { id: "font:interface", name: "Change interface font…", words: "typeface ui", run: () => chooseFont("interfaceFont"), icon: Type },
+    { id: "font:mono", name: "Change monospace font…", words: "typeface code terminal", run: () => chooseFont("monoFont"), icon: Type },
     { id: "newtab:page", name: "Choose a page for new tabs…", run: chooseNewTabPage, icon: LayoutDashboard },
     { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
     { id: "sidebars:customize", name: "Customize sidebars", run: () => openDetail("sidebars"), icon: SlidersHorizontal },

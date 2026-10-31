@@ -76,7 +76,7 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     await page.evaluate(() => document.querySelector("#main-scroll")?.scrollTo(0, 99999)); await page.waitForTimeout(200)
     await shot(page, `settings-${w}-light-end`)
   }
-  // The gallery as a sheet (More…, the command "Change colour scheme")
+  // The gallery as a sheet (More…, the command "Change colour scheme…")
   await page.evaluate(() => { location.hash = "settings/schemes" }); await page.waitForTimeout(600)
   check(`the gallery's sheet at ${w}px: the same grid`, (await page.getByRole("dialog").getByRole("radio").count()) === 16 + themes.filter((t) => !t.problem).length)
   await shot(page, `gallery-${w}-${dark ? "dark" : "light"}`)

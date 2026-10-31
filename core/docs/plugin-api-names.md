@@ -437,7 +437,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginDef`
 - `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, away (with Delete), then the rest a group each, in…
 - `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on Setup's Plugins tab and the answers to its plugins' buttons.
-- `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file changes.
+- `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and whenever the file changes.
 - `PluginState`
 - `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).
 - `post(path, body)`
