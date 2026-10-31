@@ -173,6 +173,8 @@ export { AmbientButton } from "@/components/Ambient"
 export { CORNERS, useCornerDrag, type Corner } from "@/components/CornerCard"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
 export { Badged, Bar, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch, type Dot } from "@/components/kit"
+export { switchPreview, type Preview, type PreviewOption } from "@/components/SettingPreview"
+export { Frame } from "@/components/ChoicePictures"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
 export { useSheetGuard } from "@/components/DetailSheet"
 /** Buttons a sheet's content puts in its header, left of Close; and a tab's target drawn in a sheet (a glance). */

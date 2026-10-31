@@ -6,6 +6,7 @@ import { coreSwitch } from "@/core/switches"
 import { Group, ResetButton, Section, Segmented, SettingRow } from "@/components/kit"
 import { SwitchRow } from "@/components/SwitchRow"
 import { PluginSwitches } from "@/components/PluginSwitches"
+import { propertiesPreview } from "@/components/SettingPictures"
 
 /** A switch, with its way back to what the vault or Obsidian says (core/switches.ts). */
 const FlagRow = ({ row }: { row: string }) => <SwitchRow s={coreSwitch(`setting:${row}`)} />
@@ -21,7 +22,8 @@ export function EditorPanel({ store }: { store: Store }) {
         <Group>
           <FlagRow row="readable-line-length" />
           <FlagRow row="show-inline-title" />
-          <SettingRow stack label="Properties in document" sub="As text: their YAML at the top of the note while editing" data-settings-row="properties-in-document">
+          <SettingRow stack label="Properties in document" sub="As text: their YAML at the top of the note while editing" data-settings-row="properties-in-document"
+            preview={propertiesPreview(e.propertiesInDocument)}>
             <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
               <ResetButton on={editorSet("propertiesInDocument")} onClick={() => setEditor({ propertiesInDocument: null })} label="Reset properties in document" />
               <Segmented<PropertiesShown> label="Properties in document" value={e.propertiesInDocument} onChange={(v) => setEditor({ propertiesInDocument: v })}

@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings show what a setting changes**: hover a row (or reach its control with the keyboard) and a card beside it
+  shows small pictures of the window in your colours, Off and On side by side with the current one ringed (a choice of
+  three: the option under the pointer); behaviours like Fade the file bar while typing or Dim inactive panes play a
+  short loop. Clicking a picture sets it; Esc closes it. On a touch screen, the ⓘ beside a setting's name shows them
+  under its row. Plugins' settings rows can have them too (`SettingRow`'s `preview`).
 - **Machines record their health**: each server samples its machine once a minute (load, memory pressure, swap, the
   busiest processes), kept a week on that machine; `vau machines health --since 6h` says what has been hogging it and
   since when, and a process stuck at high CPU or memory staying critical for 10 minutes reaches the inbox.

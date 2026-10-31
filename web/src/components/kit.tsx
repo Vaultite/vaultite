@@ -1,10 +1,11 @@
 // Small building blocks shared by every page.
-import { createContext, useContext, useEffect, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { plain } from "@/core/data"
 import { haptic } from "@/core/haptics"
 import { copyText } from "@/core/richmd"
+import { Described, usePreview, type Preview } from "@/components/SettingPreview"
 
 /** The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the
  *  same frame (a view transition's picture takes it at once); one more render if it isn't in the page yet. */
@@ -304,27 +305,31 @@ export function Section({ title, children, className }: { title: ReactNode; chil
 }
 
 /** A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip
- *  list); `onClick`: the whole row is a button with `value` and a chevron. Even room, so hairline-separated rows match. */
-export function SettingRow({ label, sub, stack, below, value, onClick, chevron = ChevronRight, children, className, ...rest }: {
-  label: ReactNode; sub?: ReactNode; stack?: boolean; below?: boolean; value?: ReactNode; onClick?: () => void; chevron?: LucideIcon | null; children?: ReactNode
+ *  list); `onClick`: a button with `value` and a chevron; `preview`: pictures of what it changes (SettingPreview.tsx). */
+export function SettingRow({ label, sub, stack, below, value, onClick, chevron = ChevronRight, preview, children, className, ...rest }: {
+  label: ReactNode; sub?: ReactNode; stack?: boolean; below?: boolean; value?: ReactNode; onClick?: () => void; chevron?: LucideIcon | null; preview?: Preview; children?: ReactNode
 } & Omit<HTMLAttributes<HTMLElement>, "onClick">) {
   const Chevron = chevron
   const dense = useContext(DenseRows)
+  const ref = useRef<HTMLElement>(null)
+  const pv = usePreview(preview, ref, { said: !!sub })
   const body = (
     <>
       <div className="min-w-0 flex-1">
-        <div className={cn("text-[15px] leading-[20px]", dense && "md:text-[13px] md:leading-[18px]")}>{label}</div>
+        <div className={cn("text-[15px] leading-[20px]", dense && "md:text-[13px] md:leading-[18px]")}>{label}{pv?.button}</div>
         {sub && <div className={cn("text-[13px] leading-[18px] text-muted-foreground", dense && "md:text-[12px] md:leading-[16px]")}>{sub}</div>}
+        {pv && <span id={pv.desc} hidden>{preview!.text}</span>}
       </div>
       {value != null && <span className={cn("min-w-0 max-w-[50%] truncate text-right text-[14px] text-muted-foreground", dense && "md:text-[13px]")}>{value}</span>}
-      {children}
+      {pv ? <Described.Provider value={pv.desc}>{children}</Described.Provider> : children}
       {onClick && Chevron && <Chevron aria-hidden className="-ml-1.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
+      {pv?.inline}{pv?.card}
     </>
   )
-  const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", dense && "md:min-h-10", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center", className)
+  const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", dense && "md:min-h-10", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center", pv?.inline && "flex-wrap", className)
   return onClick
-    ? <button type="button" onClick={onClick} {...rest} className={cn(cls, "cursor-pointer")}>{body}</button>
-    : <div {...rest} className={cls}>{body}</div>
+    ? <button ref={ref as Ref<HTMLButtonElement>} type="button" onClick={onClick} {...rest} className={cn(cls, "cursor-pointer")}>{body}</button>
+    : <div ref={ref as Ref<HTMLDivElement>} {...pv?.props} {...rest} className={cls}>{body}</div>
 }
 
 /** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. */
@@ -332,11 +337,11 @@ export function Segmented<T extends string>({ value, options, onChange, label, b
   value: T; options: { value: T; label: string; icon?: LucideIcon; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
+    <div role="radiogroup" aria-label={label} aria-describedby={useContext(Described)} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
       {options.map((o) => {
         const on = o.value === value
         return (
-          <button key={o.value} type="button" role="radio" aria-checked={on} {...o.attrs} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
+          <button key={o.value} type="button" role="radio" aria-checked={on} data-option={o.value} {...o.attrs} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
             className={cn(
               "relative flex min-h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[7px] px-4 text-[13px] whitespace-nowrap transition-[background,box-shadow] duration-200",
               big && "max-md:min-h-10 max-md:text-[15px]",
@@ -353,7 +358,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, b
 /** A small switch in the app's accent colour. */
 export function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled}
+    <button type="button" role="switch" aria-checked={on} aria-label={label} aria-describedby={useContext(Described)} disabled={disabled}
       onClick={(e) => { e.stopPropagation(); haptic(); onChange(!on) }}
       className={cn(
         "relative h-[22px] w-[36px] shrink-0 cursor-pointer rounded-full transition-colors duration-200 disabled:cursor-default disabled:opacity-50",
@@ -403,7 +408,7 @@ export function ResetButton({ on, onClick, label }: { on: boolean; onClick: () =
 
 /** Inset grouped list, like iOS Settings (detail sheets). */
 export const Group = ({ children }: { children: ReactNode }) => (
-  <div className="rounded-[10px] bg-foreground/[0.04] px-3"><List>{children}</List></div>
+  <div data-setting-group className="rounded-[10px] bg-foreground/[0.04] px-3"><List>{children}</List></div>
 )
 
 /** A label and its value, in a Group. */

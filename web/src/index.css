@@ -1238,3 +1238,7 @@ html[data-translucent][data-translucent-pages] {
     -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%);
   }
 }
+
+/* A setting's preview card (components/SettingPreview.tsx): fades and grows in from its row; warm, it's there at once. */
+@keyframes preview-in { from { opacity: 0; scale: 0.96; } }
+[data-setting-preview][data-cold] .preview-card { animation: preview-in var(--motion) var(--ease-out); }

@@ -19,6 +19,7 @@ import { FontPicker } from "@/components/FontPicker"
 import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
 import { Group, ResetButton, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { PictureChoice, SystemPicture, WindowPicture, type Scene } from "@/components/ChoicePictures"
+import { animationPreview } from "@/components/SettingPictures"
 import { errorText } from "@/core/notify"
 import { available, commandList, useCommandList } from "@/core/commands"
 import { choose } from "@/components/Chooser"
@@ -228,7 +229,7 @@ export function AppearancePanel() {
             <PictureChoice<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })}
               options={[{ value: "compact", label: "Compact", picture: <WindowPicture scene="compact" /> }, { value: "comfortable", label: "Comfortable", picture: <WindowPicture scene="comfortable" /> }]} />
           </SettingRow>
-          <SettingRow stack label="Animations" data-settings-row="animation">
+          <SettingRow stack label="Animations" data-settings-row="animation" preview={animationPreview(prefs.animation)}>
             <Segmented<Animation> label="Animations" value={prefs.animation} onChange={(animation) => setPrefs({ animation })} className="w-full shrink-0 sm:w-[220px]"
               options={[{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }]} />
           </SettingRow>

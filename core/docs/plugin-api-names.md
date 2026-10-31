@@ -219,6 +219,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
+- `Frame({ mode, className, children })`: A picture's box, in the colour scheme in use (`mode`: light or dark, else the app's).
 - `freeName(t, folder, base, ext?)`: A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 1"...: Obsidian's rule).
 - `get(path)`
 - `getDefaultPlace()`
@@ -441,6 +442,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginState`
 - `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).
 - `post(path, body)`
+- `Preview`: A setting's preview, for SettingRow's `preview`: what each of its states looks like.
+- `PreviewOption`: One state of a setting and its picture (drawn in a `Frame`, to fill its box).
 - `PROP_TYPES`
 - `PropertyChip(p)`: The chip.
 - `propertyType(types, key)`: The type of `key`: declared (exactly, else in any case), else implied, else null (the value's own).
@@ -525,7 +528,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
 - `SettingDecls`
 - `SettingField({ k, d, value, set })`: One setting as a form row, by its declaration: what the sheet draws for each declared key, and a plugin's panel can use for settings kept elsewhere (File explorer's, in .vaultite/files.json).
-- `SettingRow({ label, sub, stack, below, value, onClick, chevron, children, className, … })`: A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip list); `onClick`: the whole row is a button with `value` and a chevron.
+- `SettingRow({ label, sub, stack, below, value, onClick, chevron, preview, children, className, … })`: A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip list); `onClick`: a button with `value` and a chevron; `preview`: pictures of what…
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
@@ -571,6 +574,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SwipeAction`: `removes`: it takes the row away (Done, Delete) at once, like Mail's, back if `run` fails or the row stays.
 - `SwipeRow({ actions, under, children, className, … })`: `actions`: asked for when a swipe starts (none: the row doesn't swipe), so rows that are never swiped make no buttons.
 - `Switch({ on, onChange, label, disabled })`: A small switch in the app's accent colour.
+- `switchPreview(text, …, value, set)`: A switch's preview: Off and On.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…
 - `Tab`
 - `TabDrop`: Where a dragged tab or file would land: a place in a tab bar (`set`: the tab group it joins there, null none), or a pane's edge or middle.

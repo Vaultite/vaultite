@@ -10,14 +10,20 @@ import { cn, isDark } from "@/lib/utils"
 /** What a window shows: a note, the rows at a density, a new tab's page, the quick switcher over a note, another view. */
 export type Scene = "note" | "compact" | "comfortable" | "page" | "switcher" | "view"
 
-const line = (w: string, cls = "bg-foreground/15") => <span className={cn("block h-[3px] shrink-0 rounded-full", cls)} style={{ width: w }} />
+/** A line of text, `w` wide. */
+export const line = (w: string, cls = "bg-foreground/15") => <span className={cn("block h-[3px] shrink-0 rounded-full", cls)} style={{ width: w }} />
+
+/** A window's three buttons. */
+export const Lights = ({ className }: { className?: string }) => (
+  <span className={cn("flex shrink-0 gap-[2px]", className)}>
+    {["red", "yellow", "green"].map((c) => <span key={c} className="size-[4px] rounded-full" style={{ background: `var(--${c})` }} />)}
+  </span>
+)
 
 function Sidebar({ gap, glass }: { gap: number; glass?: boolean }) {
   return (
     <div className={cn("flex w-[30%] shrink-0 flex-col px-[5px] pt-[5px]", glass ? "bg-[color-mix(in_srgb,var(--sidebar)_25%,transparent)]" : "bg-sidebar")} style={{ gap }}>
-      <span className="mb-[2px] flex gap-[2px]">
-        {["red", "yellow", "green"].map((c) => <span key={c} className="size-[4px] rounded-full" style={{ background: `var(--${c})` }} />)}
-      </span>
+      <Lights className="mb-[2px]" />
       {line("80%", "bg-primary/70")}{line("65%")}{line("75%")}{gap < 5 && <>{line("55%")}{line("70%")}{line("60%")}</>}
     </div>
   )
@@ -47,6 +53,18 @@ function Content({ scene }: { scene: Scene }) {
         <span className="block rounded-[2px] bg-primary/20 px-[2px] py-[1px]">{line("70%", "bg-primary/70")}</span>
         {line("55%")}{line("65%")}
       </div>
+    </div>
+  )
+}
+
+/** A picture's box, in the colour scheme in use (`mode`: light or dark, else the app's). */
+export function Frame({ mode, className, children }: { mode?: "light" | "dark"; className?: string; children: ReactNode }) {
+  const { scheme } = usePrefs()
+  const dark = mode ? mode === "dark" : isDark()
+  return (
+    <div aria-hidden data-scheme={scheme === "default" ? undefined : scheme}
+      className={cn("scheme-preview relative flex h-full w-full overflow-hidden bg-background text-foreground", dark && "dark", className)}>
+      {children}
     </div>
   )
 }
