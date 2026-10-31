@@ -357,7 +357,7 @@ try {
   while (Date.now() - t0 < MINUTES * 60000 && !aborted) {
     cycle++
     await editNotes(4, cycle * 5)
-    await command(cycle % 2 ? "Focus on the pane to the right" : "Focus on the pane to the left")
+    await command(cycle % 2 ? "Focus pane to the right" : "Focus pane to the left")
     await editNotes(2, cycle * 3 + 1)
     if (cycle % 2 === 0) await terminal(cycle)
     await wait(20000) // a pause: reading, live updates arriving

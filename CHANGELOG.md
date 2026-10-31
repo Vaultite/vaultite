@@ -6,6 +6,34 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Long titles fade out** at their end in tabs and sidebar rows, instead of ending in an ellipsis.
+- **Sidebar panels move like things you hold**: dragged by its heading, a panel lifts whole (a picture of it at its
+  size, shadowed) while the others close up and make room at its height, in either sidebar; let go, it settles into its
+  place, and Escape flies it home. Folding one closes it under its heading as the panels below follow, its chevron
+  turning; the other sidebar's toggle lights up as a place to drop it.
+- **Sidebars open and fold with a spring**: what's in one keeps its width and is uncovered by its edge instead of
+  squeezing, the panes and the status bar move in step, and a terminal takes its new size once, when they stop.
+- **Panes from the keyboard**: ⌘D splits right and ⇧⌘D down, in a note too (Delete paragraph moves to ⇧⌘⌫, today's
+  daily note to ⌥⌘D; ⌘D still bookmarks a web page and duplicates a file tree row). On a Mac, ⌃⌘ and the arrows focus
+  the pane that way (past the last one, the sidebar), ⌃⌘] and ⌃⌘[ the next and previous pane, ⌃⇧⌘ and the arrows swap
+  the pane with its neighbour, ⌃⌥⌘ and the arrows move its divider, and ⌃⌘= evens every split out. Split left, Split
+  up, Split along the longer side and Focus last pane are in the palette, and the pane commands in Window ▸ Panes.
+  Vim's ⌃W J and K (and Space W J and K) move between panes above and below again.
+- **Dim inactive panes**: a switch in Appearance (`dimPanes`): with the window split, the panes you're not in fade a
+  little, cross-fading as the focus moves.
+- **Animations**: a setting (Appearance, `animation` in appearance.json, the palette) for how things move: natural
+  (springy, the default), snappy or off; one set of timings for every animation.
+- **Panes move, zoom and float**: splitting, closing, moving, evening out and resizing panes spring them to their new
+  places (a new split pops in at its place, a closed pane shrinks away as its neighbours take its room). Zoom pane
+  (⌘⇧↩) fills the workspace with the focused pane for now, its accent unzoom button putting it back. Float pane (⌥⌘↩)
+  lifts a pane into a card over the others, moved by its bar and resized by its edges, kept over a reload; the same key,
+  its accent dock button or its handle dragged onto a pane docks it where it sits (unmoved, where it came from).
+- **Dragging tabs and panes**: a pane dragged by its handle lifts out as a small card of itself (its tabs and what
+  it shows) while it recedes where it was; let go, it lands in its new place from the card, or springs back if dropped
+  nowhere. A tab lifts out of its bar as itself, leaving its slot open where it would land; pulled off it, it's a card
+  with a picture of its page, its old slot faded with a return arrow, and dropped on a pane's edge its new pane lands
+  from the card. A pane's drop zone springs between its middle and halves, outlining where the pane goes. Tabs closed
+  in any way shrink away, new ones grow in, all with the animation setting's timings.
 - **Setup, beside a menu**: where the pane is wide, Your bundles, Get bundles, Your plugins (with its categories, a
   jump to each) and Get plugins are a menu as Settings', in place of two rows of tabs. Plugins show their icons on
   coloured tiles, their gear on hover; Your bundles opens on the bundle you're on (and what you changed since), and a

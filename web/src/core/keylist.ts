@@ -147,7 +147,7 @@ export function leaveList() {
   if (a instanceof HTMLElement) a.blur()
 }
 
-/** Moving between panes from the keyboard (Focus on the pane to the left...): out of a sidebar back to the pane, past
+/** Moving between panes from the keyboard (Focus pane to the left...): out of a sidebar back to the pane, past
  *  the last pane on a side into that side's sidebar, else to the pane on that side. Whether it can go that way now. */
 export function canGoSide(side: "left" | "right" | "top" | "bottom") {
   const inSide = sidebarOfFocus()

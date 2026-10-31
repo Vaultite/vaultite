@@ -50,7 +50,7 @@ const EDITOR: [string, string][] = [
   ["Unfold or fold everything", "Z Shift+R  ·  Z Shift+M"],
   ["Open the link under the cursor to the right", "Shift+K"],
   ["The leader's keys", "Space"],
-  ["Move between panes", "Ctrl+W H  ·  Ctrl+W L"],
+  ["Move between panes", "Ctrl+W H  ·  Ctrl+W J  ·  Ctrl+W K  ·  Ctrl+W L"],
   ["Back to reading (after i)", "Escape"],
 ]
 

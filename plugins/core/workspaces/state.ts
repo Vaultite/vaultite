@@ -196,10 +196,10 @@ function clear(n: number) {
 const VISIT = new Set(["back", "fwd", "from"])
 /** The tabs as saved in the vault: without what's kept for this visit. */
 const strip = (l: TabLayout): TabLayout => JSON.parse(JSON.stringify(l, (k, v) => (VISIT.has(k) ? undefined : v)))
-/** What devices share of a layout: the tabs, their places and the splits; not which tab each group shows or which
- *  group has the focus (each device's own), nor when a tab was seen (that rides along: tabsSeenSince). "" for none. */
+/** What devices share of a layout: the tabs, their places and the splits; not which tab each group shows, which group
+ *  has the focus or is zoomed (each device's own), nor when a tab was seen (that rides along: tabsSeenSince). "" for none. */
 const shape = (l: TabLayout | null | undefined) =>
-  !l || blankLayout(l) ? "" : JSON.stringify(l, (k, v) => (VISIT.has(k) || k === "active" || k === "focus" || k === "seen" ? undefined : v))
+  !l || blankLayout(l) ? "" : JSON.stringify(l, (k, v) => (VISIT.has(k) || k === "active" || k === "focus" || k === "zoom" || k === "seen" ? undefined : v))
 /** Each workspace's tabs as they were left in this visit, history and all. */
 const kept = new Map<number, TabLayout>()
 /** What this device saved lately: the file bringing one back is its own write coming round, not news. */

@@ -1,8 +1,8 @@
 // Splits: moving tabs and panes between groups and into new splits, opening at a place, focus and
 // dividers. The tree itself is core/layout.ts.
-import { beside, evened, inSet, mapGroups, mapTabs, moveOn, neighbourOf, newId, pastBlank, resized, setAt, shownTab, tidy, type Group, type Layout, type Side, type Tab, withoutTabs } from "../../../core/layout.ts"
+import { beside, evened, evenedAll, floated, inSet, layout, mapGroups, mapTabs, moveOn, neighbourOf, newId, nudged, pastBlank, resized, setAt, shownTab, swapped, tidy, type Group, type Layout, type Rect, type Side, type Tab, withoutTabs } from "../../../core/layout.ts"
 import { focusPane } from "@/core/focus"
-import { activeTab, focusGroup, getWorkspace, groupOfTab, groups, set, show, showActive, withGroup } from "@/core/workspace"
+import { activeTab, focusGroup, getWorkspace, groupOfTab, groups, onWorkspaceChange, quietly, set, show, showActive, withGroup } from "@/core/workspace"
 
 /** The tree without tab `id` (its group may be left empty: `set` tidies it away). */
 function pull(id: string): { root: Layout; tab: Tab } | null {
@@ -76,8 +76,9 @@ export function moveGroupTo(gid: string, target: string, where: Side | "center" 
     const sets = (x: Group) => (g.sets ? { sets: [...(x.sets ?? []), ...g.sets] } : {})
     set({ root: mapGroups(root, (x) => (x.id !== target ? x : pastBlank(x, { ...x, tabs: [...x.tabs.slice(0, at), ...g.tabs, ...x.tabs.slice(at)], active: g.active, ...sets(x) }))), focus: target })
   } else {
-    // The emptied original is tidied away by set; the moved one keeps its id.
-    set({ root: beside(tidy(root) ?? root, target, g, where), focus: g.id })
+    // The emptied original is tidied away by set; the moved one keeps its id (a floating one docks there).
+    const { float: _, ...moved } = g
+    set({ root: beside(tidy(root) ?? root, target, moved, where), focus: g.id })
   }
   showActive()
 }
@@ -194,7 +195,7 @@ export function placeTab(id: string, where: "before" | "after", ref: string, tab
 /** Move a tab (the active one by default) into a new split beside its group. */
 export function moveToSplit(side: Side, id = activeTab().id) {
   const g = groupOfTab(id)
-  if (g) moveTabTo(id, g.id, side)
+  if (g) { dockFirst(g.id); moveTabTo(id, g.id, side) }
 }
 
 /** Split a pane (Split right / Split down): the tab (the active one by default) opens again in a new
@@ -202,21 +203,36 @@ export function moveToSplit(side: Side, id = activeTab().id) {
 export function splitTab(side: Side, id = activeTab().id) {
   const from = groupOfTab(id)
   if (!from) return
+  dockFirst(from.id)
   const t = from.tabs.find((x) => x.id === id)!
   const tab: Tab = t.to.startsWith("view:") ? { id: newId(), to: "new" } : { ...t, id: newId() }
   const g: Group = { id: `g${newId()}`, tabs: [tab], active: tab.id }
+  const typing = document.activeElement?.closest("[data-pane]")
   set({ root: beside(getWorkspace().root, from.id, g, side), focus: g.id })
   show(tab.to, true)
+  if (typing) keysTo(g.id)
+}
+/** The keyboard into pane `gid` once its editor or terminal is drawn, as long as it has the focus; one with neither
+ *  leaves it nowhere, rather than typing into the pane left behind. */
+function keysTo(gid: string, tries = 30) {
+  requestAnimationFrame(() => {
+    if (getWorkspace().focus !== gid || focusPane(gid)) return
+    if (tries > 0) return keysTo(gid, tries - 1)
+    const a = document.activeElement
+    if (a instanceof HTMLElement && a.closest("[data-pane]")) a.blur()
+  })
 }
 
 /** `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
  *  `tabId`: the new tab's id (a desktop web page whose tab is gone comes back to the tab of that id). Returns its id. */
 export function openInSplit(to: string, side: "right" | "bottom" = "right", focusIt = true, tabId?: string): string {
   const { root, focus } = getWorkspace()
-  const right = neighbourOf(root, focus, side)
+  // (from a floating pane: beside the tiled one under it)
+  const at = isFloating(focus) ? under(focus) : focus
+  const right = neighbourOf(root, at, side)
   if (!right) {
     const id = tabId ?? newId(), g: Group = { id: `g${newId()}`, tabs: [{ id, to }], active: id }
-    set({ root: beside(root, focus, g, side), focus: focusIt ? g.id : focus })
+    set({ root: beside(root, at, g, side), focus: focusIt ? g.id : focus })
     if (focusIt) show(to, true)
     return id
   }
@@ -233,10 +249,40 @@ export const hasNeighbour = (side: Side) => !!neighbour(side)
 /** Move the focus to the group on that side (the keyboard way between panes). */
 export function focusSide(side: Side) {
   const g = neighbour(side)
-  if (!g) return
-  focusGroup(g.id)
-  // The keyboard goes there too: its editor or terminal.
-  focusPane(g.id)
+  if (g) focusOn(g.id)
+}
+// The keyboard goes there too: its editor or terminal.
+const focusOn = (gid: string) => { focusGroup(gid); focusPane(gid) }
+/** Focus the next pane (-1: the one before), left to right and top to bottom, round from the last to the first. */
+export function focusByOrder(by: 1 | -1) {
+  const gs = groups(), i = gs.findIndex((g) => g.id === getWorkspace().focus)
+  if (gs.length > 1) focusOn(gs[(i + by + gs.length) % gs.length].id)
+}
+// The pane focused before this one, for Focus last pane (tmux's last-pane).
+let lastFocus = "", nowFocus = getWorkspace().focus
+onWorkspaceChange(() => { const f = getWorkspace().focus; if (f !== nowFocus) { lastFocus = nowFocus; nowFocus = f } })
+export const hasLastPane = () => lastFocus !== getWorkspace().focus && groups().some((g) => g.id === lastFocus)
+export function focusLastPane() { if (hasLastPane()) focusOn(lastFocus) }
+
+/** Swap the focused pane with the one on that side (it keeps the focus). */
+export function movePane(side: Side) {
+  const g = neighbour(side), w = getWorkspace()
+  if (g) set({ ...w, root: swapped(w.root, w.focus, g.id) })
+}
+/** The workspace's box on screen (Workspace.tsx), to turn pixels into shares of it. */
+const box = () => document.querySelector("section[data-group]")?.parentElement?.getBoundingClientRect()
+/** Move the focused pane's divider on that side (else the other) that way by a step, as a drag would. */
+export function nudgePane(side: Side) {
+  const w = getWorkspace(), b = box(), across = side === "left" || side === "right" ? b?.width : b?.height
+  if (!across) return
+  // (the dividers' own least sizes: Workspace.tsx)
+  set({ ...w, root: nudged(w.root, w.focus, side, 48 / across, (side === "left" || side === "right" ? 200 : 120) / across) })
+}
+export const canNudge = (side: Side) => { const w = getWorkspace(); return nudged(w.root, w.focus, side, 0, 0) !== w.root }
+/** Split the focused pane across its longer side: right when it's wider than tall, else down. */
+export function splitToFit() {
+  const r = document.querySelector(`section[data-group="${CSS.escape(getWorkspace().focus)}"]`)?.getBoundingClientRect()
+  splitTab(r && r.height > r.width ? "bottom" : "right")
 }
 /** The tab's group has others (so it can move into a split of its own). */
 export const hasSiblings = (id: string) => (groupOfTab(id)?.tabs.length ?? 0) > 1
@@ -251,3 +297,78 @@ export function evenOut(splitId: string) {
   const w = getWorkspace()
   set({ ...w, root: evened(w.root, splitId) })
 }
+
+// ---------- zoom and floating panes (Workspace.zoom, Group.float) ----------
+
+const tiles = () => layout(getWorkspace().root).panes
+export const isZoomed = () => !!getWorkspace().zoom
+/** Whether pane `gid` (the focused one) can fill the workspace for now: it's tiled, beside others. */
+export const canZoom = (gid = getWorkspace().focus) => isZoomed() || (tiles().length > 1 && tiles().some((p) => p.group.id === gid))
+/** Pane `gid` fills the workspace, the others left under it; again (or another pane focused), it's back in its place. */
+export function zoomPane(gid = getWorkspace().focus) {
+  const w = getWorkspace()
+  if (!canZoom(gid)) return
+  set({ ...w, focus: gid, zoom: w.zoom === gid ? undefined : gid })
+}
+
+export const isFloating = (gid = getWorkspace().focus) => !!groups().find((g) => g.id === gid)?.float
+/** Whether pane `gid` can float: it's tiled, and others stay tiled. */
+export const canFloat = (gid = getWorkspace().focus) => tiles().length > 1 && tiles().some((p) => p.group.id === gid)
+/** The tiled pane under floating pane `gid`'s middle (the first if none). */
+function under(gid: string) {
+  const f = groups().find((g) => g.id === gid)?.float, t = tiles()
+  const inside = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h
+  return (f && t.find((p) => inside(p.rect, f.x + f.w / 2, f.y + f.h / 2)) || t[0])?.group.id ?? gid
+}
+/** Lift pane `gid` out of the tiling into a card over the workspace, at `rect` (by default a smaller one, centred on
+ *  the right as Rex's, clear of other floating panes); the others close the gap. */
+export function floatPane(gid = getWorkspace().focus, rect?: Rect) {
+  const w = getWorkspace(), tile = tiles().find((p) => p.group.id === gid)?.rect
+  if (!tile || !canFloat(gid)) return
+  set({ ...w, root: floated(w.root, gid, rect ?? cardOver(tile)), focus: gid })
+  lifted.set(gid, groups().find((g) => g.id === gid)!.float!)
+}
+/** Where each pane was floated to here: one docked from there, unmoved, goes back where it came from. */
+const lifted = new Map<string, Rect>()
+function cardOver(t: Rect): Rect {
+  const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
+  const w = clamp(t.w * 0.7, 0.32, 0.5), h = clamp(t.h * 0.7, 0.45, 0.7)
+  let x = 1 - w - 0.04, y = (1 - h) / 2
+  const others = groups().flatMap((g) => (g.float ? [g.float] : []))
+  for (let i = 0; i < 12 && others.some((o) => Math.abs(o.x - x) < 0.02 && Math.abs(o.y - y) < 0.02); i++) {
+    x = x + 0.03 > 1 - w ? 0 : x + 0.03; y = y + 0.03 > 1 - h ? 0 : y + 0.03
+  }
+  return { x, y, w, h }
+}
+/** Put floating pane `gid` back into the tiling: unmoved, where it came from; else nearest where it sits, as Rex does (its
+ *  own spot while over it, else the half of the tiled pane under its middle on the side that's nearest). */
+export function dockPane(gid = getWorkspace().focus) {
+  const w = getWorkspace(), f = groups().find((g) => g.id === gid)?.float
+  if (!f) return
+  const home = layout(floated(w.root, gid, null)).panes.find((p) => p.group.id === gid)?.rect
+  const cx = f.x + f.w / 2, cy = f.y + f.h / 2
+  const over = (r: Rect) => cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h
+  const at = tiles().find((p) => over(p.rect))
+  const was = lifted.get(gid)
+  lifted.delete(gid)
+  if (!at || (home && over(home)) || (was && JSON.stringify(was) === JSON.stringify(f))) return set({ ...w, root: floated(w.root, gid, null), focus: gid })
+  const r = at.rect, fx = (cx - r.x) / r.w, fy = (cy - r.y) / r.h
+  const [side] = ([["left", fx], ["right", 1 - fx], ["top", fy], ["bottom", 1 - fy]] as [Side, number][]).sort((a, b) => a[1] - b[1])[0]
+  moveGroupTo(gid, at.group.id, side)
+}
+/** Float the focused pane, or dock it if it floats (one key, as Rex's). */
+export const toggleFloat = () => (isFloating() ? dockPane() : floatPane())
+/** A floating pane moved or resized by hand: there at once. */
+export function placeFloat(gid: string, rect: Rect) {
+  const w = getWorkspace()
+  if (isFloating(gid)) quietly(() => set({ ...w, root: floated(w.root, gid, rect) }))
+}
+/** Before splitting a floating pane: it docks, so the split is in the tiling. */
+function dockFirst(gid: string) { if (isFloating(gid)) dockPane(gid) }
+
+/** Every split's parts back to equal (Even out panes). */
+export function evenOutAll() {
+  const w = getWorkspace()
+  set({ ...w, root: evenedAll(w.root) })
+}
+export const severalPanes = () => groups().length > 1

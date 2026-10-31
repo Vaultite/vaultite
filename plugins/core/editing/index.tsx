@@ -35,7 +35,7 @@ const blocks: [string, string, string][] = [
 ]
 
 export default definePlugin({
-  // Their keys only while the keyboard is in the note: ⌘D on a sidebar's row isn't the note's (the palette still offers them).
+  // Their keys only while the keyboard is in the note: ⌘L on a sidebar's row isn't the note's (the palette still offers them).
   commands: ([
     // (a coloured highlight, ==🟢text==, goes with its colour)
     ...marks.map(([id, name, m, keys]) => ({ id: `editor:toggle-${id}`, name, keys, when, run: run((e) => (m === "==" ? (v) => unhighlight(v) || e.toggleMark(m)(v) : e.toggleMark(m))) })),
@@ -51,7 +51,7 @@ export default definePlugin({
     { id: "editor:toggle-blockquote", name: "Toggle blockquote", when, run: run((e) => e.toggleQuote), icon: TextQuote },
     ...[1, 2, 3, 4, 5, 6].map((n) => ({ id: `editor:set-heading-${n}`, name: `Set as heading ${n}`, keys: [`Mod+Alt+${n}`], when, run: run((e) => e.setHeading(n)), icon: [Heading1, Heading2, Heading3, Heading4, Heading5, Heading6][n - 1] })),
     { id: "editor:set-heading-0", name: "Remove heading", keys: ["Mod+Alt+0"], when, run: run((e) => e.setHeading(0)), icon: Pilcrow },
-    { id: "editor:delete-paragraph", name: "Delete paragraph", keys: ["Mod+D"], when, run: run((e) => e.deleteParagraph), icon: Delete },
+    { id: "editor:delete-paragraph", name: "Delete paragraph", keys: ["Mod+Shift+Backspace"], when, run: run((e) => e.deleteParagraph), icon: Delete },
     { id: "editor:swap-line-up", name: "Move line up", keys: ["Alt+ArrowUp"], when, run: run((e) => e.lineUp), icon: ArrowUp },
     { id: "editor:swap-line-down", name: "Move line down", keys: ["Alt+ArrowDown"], when, run: run((e) => e.lineDown), icon: ArrowDown },
     ...blocks.map(([id, name, text]) => ({ id: `editor:${id}`, name, when, run: run((e) => e.insertBlock(text)) })),

@@ -121,6 +121,14 @@
    size that should follow it is in spacing units (`h-7`, `pl-[calc(--spacing(2)-0.5px)]`, `space(n)` in inline styles,
    `var(--spacing)` here); text sizes, icons given in px, hairlines and radii stay px. Compact is the default. */
 :root[data-density="comfortable"] { --spacing: 0.28125rem; }
+/* Motion (appearance `animation`; core/animation.ts reads the same for Web Animations): natural springs about 1% past
+   its place (Rex's: 0.25 s response, 0.82 damping), snappy is quicker and straight, off is instant. */
+:root {
+  --ease-out: cubic-bezier(0.2, 0, 0, 1); --motion-fast: 140ms; --motion: 220ms; --motion-spring: 295ms;
+  --spring: linear(0, 0.0155, 0.056, 0.1138, 0.1826, 0.2575, 0.3347, 0.4113, 0.4852, 0.5549, 0.6195, 0.6783, 0.7312, 0.7782, 0.8193, 0.855, 0.8856, 0.9115, 0.9331, 0.9511, 0.9657, 0.9774, 0.9867, 0.9938, 0.9992, 1.0031, 1.0059, 1.0076, 1.0086, 1.0089, 1.0088, 1.0084, 1.0077, 1.0069, 1.0059, 1.0049, 1.0038, 1.0028, 1.0018, 1.0009, 1);
+}
+:root[data-animation="snappy"] { --motion-fast: 90ms; --motion: 150ms; --motion-spring: 200ms; --spring: var(--ease-out); }
+:root[data-animation="off"] { --motion-fast: 0ms; --motion: 0ms; --motion-spring: 0ms; }
 /* A page of the sidebar's lists (SidebarRow, SidebarHeading, the panels: 13px text, h-7 rows), drawn a size up as one,
    so every section has the same text, rows and inset: a blank tab (NewTab), the Recent files and Terminals tabs.
    15px on computers; on phones 17px, rows 44px (its own spacing unit). `.size-up-bleed`, on what holds it (zoom would
@@ -210,6 +218,12 @@
   /* Dragging a Resizer: widths follow the pointer at once, and the cursor stays col-resize everywhere. */
   body[data-resizing], body[data-resizing] * { cursor: col-resize !important; user-select: none; }
   body[data-resizing="row"], body[data-resizing="row"] * { cursor: row-resize !important; }
+  /* (a floating pane moved by its bar, or resized by an edge or corner: Workspace.tsx) */
+  body[data-resizing="move"], body[data-resizing="move"] * { cursor: grabbing !important; }
+  body[data-resizing="ns"], body[data-resizing="ns"] * { cursor: ns-resize !important; }
+  body[data-resizing="ew"], body[data-resizing="ew"] * { cursor: ew-resize !important; }
+  body[data-resizing="nwse"], body[data-resizing="nwse"] * { cursor: nwse-resize !important; }
+  body[data-resizing="nesw"], body[data-resizing="nesw"] * { cursor: nesw-resize !important; }
   body[data-resizing] * { transition: none !important; }
   /* Loading (main.tsx, App.tsx): what the vault's state moves goes there at once, not with the transitions clicks get. */
   body[data-arriving] * { transition: none !important; }
@@ -219,8 +233,14 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
+  html[data-animation="off"] *, html[data-animation="off"] *::before, html[data-animation="off"] *::after { animation: none !important; transition: none !important; }
 }
 
+/* A label too long for its place fades out at its end, as Rex's and browsers' tabs do, instead of an ellipsis. */
+@utility fade-end {
+  overflow: hidden; white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 1.25rem), transparent);
+}
 @utility glass {
   background: var(--card);
   box-shadow: var(--glass-shadow);
@@ -440,11 +460,31 @@ html[data-dragging], html[data-dragging] * { cursor: grabbing !important; }
    targets with elementFromPoint). */
 html[data-dragging] [data-sonner-toaster], html[data-dragging] [data-sonner-toaster] * { pointer-events: none !important; }
 /* A list making way for what's dragged over it (core/slide.ts); after the drop it's already where it goes, so no slide. */
-html[data-dragging] [data-slide] { transition: transform 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms ease-out; }
+html[data-dragging] [data-slide] { transition: transform var(--motion) var(--ease-out), opacity var(--motion-fast) var(--ease-out); }
+/* A tab bar's tabs spring as they make way (its row's scrollbar is hidden: elsewhere, going a little past their place
+   would show a list's scrollbar for a moment). */
+html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--motion-spring), var(--motion-fast); transition-timing-function: var(--spring), var(--ease-out); }
+/* A pane dragged by its handle recedes where it was while its card is in hand (Tabs' DragGhost); let go, it's back at
+   once (its card lands on it, or it grows from the card into its new place: core/panemotion.ts). */
+section[data-lifted] { opacity: 0.45; scale: 0.985; transition: opacity var(--motion) var(--ease-out), scale var(--motion-spring) var(--spring); }
+/* What's dragged changes shape with the spring: a label or a tab becomes a small page over a pane's edge. */
+[data-drag-card] { interpolate-size: allow-keywords; transition: width var(--motion-spring) var(--spring), height var(--motion-spring) var(--spring), border-radius var(--motion) var(--ease-out), scale var(--motion) var(--ease-out); }
+/* A pane's drop zone (Workspace's DropZone) springs from the middle to a half and between halves. Out of flow and
+   contained, so moving its edges lays out nothing else. */
+.drop-zone {
+  contain: strict; transition: top var(--motion-spring) var(--spring), right var(--motion-spring) var(--spring), bottom var(--motion-spring) var(--spring), left var(--motion-spring) var(--spring), opacity var(--motion-fast) var(--ease-out);
+  @starting-style { opacity: 0; }
+}
 /* Where what comes from elsewhere would land (its INCOMING), the same soft gap in every list. */
 @layer components {
   [data-slide="incoming"] { pointer-events: none; border-radius: 6px; background: color-mix(in srgb, var(--foreground) 6%, transparent); }
 }
+
+/* An open sidebar's content is laid out at its open width (App.tsx's --sidebar-open) whatever the sidebar's width while
+   it opens: its edge uncovers it, nothing squeezes and reflows each frame. (Its padding and edge take 4 units; the vault's
+   bar runs edge to edge.) */
+aside[data-side]:not([data-collapsed]) > :not(nav, [data-lights-ghost]) { min-width: calc(var(--sidebar-open) - var(--spacing) * 4); }
+aside[data-side]:not([data-collapsed]) > nav { min-width: calc(var(--sidebar-open) - 0.5px); }
 
 /* The icon rail (SidebarPanels): a thin line between its groups of icons (the header's items, then each panel's), none
    around a group that draws nothing there (a panel with nothing to show, a header item drawing nothing: Workspaces before
@@ -1046,9 +1086,9 @@ html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [d
 [data-lights-ghost] > i:nth-child(3) { --light: color(display-p3 0.396 0.769 0.4); --light-rim: color(display-p3 0.169 0.663 0.18); }
 html[data-window-inactive] [data-lights-ghost] > i { --light: rgb(35 35 35); --light-rim: rgb(45 45 45); mix-blend-mode: plus-lighter; }
 @media (prefers-color-scheme: light) { html[data-window-inactive] [data-lights-ghost] > i { mix-blend-mode: difference; } }
-/* In step with the panes sliding (Workspace: transition-[left] duration-200 ease-out), so the first tab never passes
+/* In step with the panes sliding (Workspace: transition-[left,right] on the spring), so the first tab never passes
    under the lights while the sidebar opens or folds. */
-html[data-electron] [data-corner] > [role="tablist"] { transition: padding-left 200ms cubic-bezier(0, 0, 0.2, 1); }
+html[data-electron] [data-corner] > [role="tablist"] { transition: padding-left var(--motion-spring) var(--spring); }
 /* Folded to its rail, the lights are wider than it: the rail's top row looks like the tab bar beside it (one title bar),
    and its edge starts under that row instead of running between the lights. */
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) aside[data-side=left][data-collapsed] { border-right-width: 0; }
@@ -1071,7 +1111,7 @@ html[data-electron][data-platform=win32]:not([data-fullscreen]):not([data-right-
 html[data-electron][data-platform=win32][data-no-rails]:not([data-fullscreen]):not([data-right-sidebar]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--window-controls, 138px) + 8px); }
 html[data-electron][data-platform=win32][data-right-rail]:not([data-fullscreen]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--window-controls, 138px) - var(--spacing)); }
 html[data-electron][data-platform=win32]:not([data-fullscreen]):is(:not([data-right-sidebar]), [data-right-rail]) [data-right-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
-html[data-electron][data-platform=win32] [data-right-corner] > [role="tablist"] { transition: padding-right 200ms cubic-bezier(0, 0, 0.2, 1); }
+html[data-electron][data-platform=win32] [data-right-corner] > [role="tablist"] { transition: padding-right var(--motion-spring) var(--spring); }
 
 /* Phones: a drawer (components/PhoneDrawer.tsx) is swiped closed sideways from anywhere on it. touch-action stops at
    the nearest scroller, so every element in it says so, or the panels' scroller would hand a sideways swipe to the
@@ -1112,6 +1152,24 @@ html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(-
 [data-peek-shade] { background: rgb(0 0 0 / 0.08); opacity: 0; transition: opacity 120ms ease-in; }
 .dark [data-peek-shade] { background: rgb(0 0 0 / 0.4); }
 [data-peek-shade][data-shown] { opacity: 1; transition: opacity 280ms ease-out 140ms; }
+
+/* A pane moving (core/panemotion.ts): its plate shown under it, the one the user moved over the others. Zoomed and
+   floating panes keep their own z-index (inline). */
+[data-plate][data-moving] { visibility: visible; z-index: 1; }
+section[data-moving] { z-index: 2; }
+[data-plate][data-moving="up"] { z-index: 3; }
+section[data-moving="up"] { z-index: 4; }
+/* A floating pane dragged by its bar: lifted, a bigger shadow (the ring kept). */
+[data-plate] { transition: box-shadow var(--motion-fast) var(--ease-out); }
+[data-plate][data-dragging] { box-shadow: 0 0 0 0.5px var(--border), 0 24px 64px -12px rgb(0 0 0 / 0.45), 0 4px 14px -4px rgb(0 0 0 / 0.25); }
+/* Split, the panes without the focus fade a little (appearance `dimPanes`): their text toward the page, their surface a
+   shade darker, cross-fading as the focus moves. Above what a pane draws, under a drop's zone (z-20). */
+[data-pane-body]::after {
+  content: ""; position: absolute; inset: 0; z-index: 19; pointer-events: none; opacity: 0;
+  background: color-mix(in srgb, var(--background) 90%, black); transition: opacity var(--motion-fast) var(--ease-out);
+}
+:root[data-dim-panes] section[data-group]:not([data-focused]) > [data-pane-body]::after { opacity: 0.3; }
+:root.dark[data-dim-panes] section[data-group]:not([data-focused]) > [data-pane-body]::after { opacity: 0.38; }
 
 /* Typing in a file (appearance `typingFade`, core/typing.ts): the bars above files fade, slower than they come back. */
 [data-view-bar] { transition: opacity 160ms ease-out; }

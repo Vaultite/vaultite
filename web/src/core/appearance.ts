@@ -115,11 +115,13 @@ function apply() {
   else root.dataset.scheme = scheme
   if (p.density === "comfortable") root.dataset.density = "comfortable"
   else delete root.dataset.density
+  root.dataset.animation = p.animation === "snappy" || p.animation === "off" ? p.animation : "natural"
   // What index.html puts in place before the app's code has loaded (no flash of the other theme): "system" when it
   // follows the system's, which the page checks itself.
   askTranslucent(p.translucent)
   // (only read under data-translucent: pages show the desktop only while the chrome does)
   root.toggleAttribute("data-translucent-pages", p.translucent && p.translucentPages)
+  root.toggleAttribute("data-dim-panes", p.dimPanes)
   const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "",
     ...(translucency.on ? { translucent: true, ...(p.translucentPages ? { pages: true } : {}) } : {}) }
   if (previewing === null) try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }

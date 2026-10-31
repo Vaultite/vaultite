@@ -6,7 +6,7 @@ import { onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/
 import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { opensChoices, setOpens } from "@/core/launcher"
-import { getPrefs, setPrefs, usePrefs, type Density, type Theme } from "@/core/prefs"
+import { getPrefs, setPrefs, usePrefs, type Animation, type Density, type Theme } from "@/core/prefs"
 import { DEFAULT_SCHEME, SCHEMES, schemeId } from "@/themes/schemes"
 import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
 import { coreSwitch } from "@/core/switches"
@@ -17,7 +17,7 @@ import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
-import { Group, ResetButton, Section, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { Group, ResetButton, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { PictureChoice, SystemPicture, WindowPicture, type Scene } from "@/components/ChoicePictures"
 import { errorText } from "@/core/notify"
 import { available, commandList, useCommandList } from "@/core/commands"
@@ -231,9 +231,13 @@ export function AppearancePanel() {
             <PictureChoice<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })}
               options={[{ value: "compact", label: "Compact", picture: <WindowPicture scene="compact" /> }, { value: "comfortable", label: "Comfortable", picture: <WindowPicture scene="comfortable" /> }]} />
           </SettingRow>
+          <SettingRow stack label="Animations" data-settings-row="animation">
+            <Segmented<Animation> label="Animations" value={prefs.animation} onChange={(animation) => setPrefs({ animation })} className="w-full shrink-0 sm:w-[220px]"
+              options={[{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }]} />
+          </SettingRow>
           <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
             onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
-          {["file-icons", "typing-fade"].map(row)}
+          {["file-icons", "typing-fade", "dim-panes"].map(row)}
         </Group>
       </Section>
       <Section title="Tabs">

@@ -31,7 +31,7 @@ export function Tooltips() {
       if (el.hasAttribute("data-tip-trunc")) {
         // Its label, or any part of it (a site and its account), cut off; a label hidden altogether, like a narrow
         // tab's, counts as cut off.
-        const ts = [...el.querySelectorAll<HTMLElement>(".truncate")], t = ts[0] ?? (el as HTMLElement)
+        const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? (el as HTMLElement)
         if (t.getClientRects().length && !(ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth)) return
       }
       const r = el.getBoundingClientRect()

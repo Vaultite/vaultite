@@ -485,9 +485,11 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       return lines.join("\n")
     } })
     let frame = 0
+    // (while the panes slide to a sidebar's new edge, once they stop: its shell redraws for every size it's given)
+    const refit = () => { frame = requestAnimationFrame(() => (document.documentElement.hasAttribute("data-panes-sliding") ? refit() : l.refit())) }
     const ro = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => l.refit())
+      refit()
     })
     ro.observe(el)
 

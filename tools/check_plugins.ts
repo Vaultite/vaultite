@@ -154,6 +154,27 @@ function titleProblems(file: string, rel: string): string[] {
 }
 for (const d of [path.join(ROOT, "web", "src"), PLUGINS]) for (const f of walk(d)) if (f.endsWith(".tsx")) problems.push(...titleProblems(f, path.relative(ROOT, f)))
 
+// A command named by id (a key map's, the menu bar's, runCommandById) is one: a typo'd id binds nothing, silently. Only
+// ids of a namespace the app has (a vault plugin's are its own); an id made from a template matches it.
+{
+  const srcs = [path.join(ROOT, "web", "src"), PLUGINS].flatMap((d) => walk(d)).filter((f) => /\.tsx?$/.test(f) && !f.endsWith(".d.ts"))
+  const ids = new Set<string>(), made: RegExp[] = []
+  for (const f of srcs) {
+    const src = fs.readFileSync(f, "utf8")
+    for (const m of src.matchAll(/\bid:\s*"([\w-]+:[\w:-]+)"/g)) ids.add(m[1])
+    for (const m of src.matchAll(/\bid:\s*`([\w-]+:[^`$]*\$\{[^`]+)`/g)) made.push(new RegExp(`^${m[1].replace(/\$\{[^}]+\}/g, "[\\w:-]+")}$`))
+  }
+  const spaces = new Set([...ids].map((id) => id.split(":")[0]))
+  for (const f of [...srcs, path.join(ROOT, "electron", "menu.ts")]) {
+    const src = fs.readFileSync(f, "utf8"), rel = path.relative(ROOT, f)
+    const named = [/\b(?:runCommandById|runCommandId|offeredCommand|commandKeys|useCommandKeys|firstKeys|cmd|radio)\("([\w-]+:[\w:-]+)"/g, /^\s*"([\w-]+:[\w:-]+)":\s*\[/gm]
+    for (const re of named) for (const m of src.matchAll(re)) {
+      if (!spaces.has(m[1].split(":")[0]) || ids.has(m[1]) || made.some((r) => r.test(m[1]))) continue
+      problems.push(`${rel}:${src.slice(0, m.index).split("\n").length}: '${m[1]}' isn't a command's id (no command has it)`)
+    }
+  }
+}
+
 // A block drawn for another plugin is declared with `by`, its `by` option taking those that draw it.
 for (const [b, ps] of drawers) if (!decls[b]?.by) problems.push(`plugins/core/${ps[0]}/manifest.json: draws '${b}', which no app plugin declares with \`by\``)
 

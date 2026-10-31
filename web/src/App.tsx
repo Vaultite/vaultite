@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Search, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Type } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { share } from "@/core/share"
 import { SharedWith } from "@/components/SharedWith"
@@ -16,7 +16,8 @@ import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
 import { activeTab, askRename, canClosePane, closePane, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { restTab } from "@/core/workspace"
-import { hasSiblings, moveTabBy, moveToSplit, splitTab } from "@/core/splits"
+import { canNudge, evenOutAll, focusByOrder, focusLastPane, hasLastPane, hasNeighbour, hasSiblings, severalPanes, movePane, moveTabBy, moveToSplit, nudgePane, splitTab, splitToFit, canFloat, canZoom, isFloating, isZoomed, toggleFloat, zoomPane } from "@/core/splits"
+import { Maximize2, PictureInPicture2 } from "lucide-react"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "../../core/layout.ts"
 import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedirect, takeScroll } from "@/core/nav"
@@ -104,6 +105,8 @@ const DRAW: Record<AppPage["id"], (store: Store, to: string, tab: Tab | null) =>
   settings: (store) => <Suspense><Settings store={store} /></Suspense>,
 }
 const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
+/** A default key only on a Mac (⌃⌘: off one, Ctrl is ⌘ and these would take an editor's own keys). */
+const mac = (k: string) => (isMac ? [k] : undefined)
 /** The sidebar: open (its edge drags between these px widths, double-click resets) or an icon rail (RAIL: in spacing
  *  units, so it follows density; `railPx` is what it measures now). */
 const SIDEBAR = { min: 200, max: 480, default: 240 }
@@ -335,13 +338,38 @@ export default function App() {
       run: () => { if (isDesktop()) document.querySelector<HTMLElement>("[data-sidebar-toggle=right]")?.click(); else openDrawer(drawerOut() === "right" ? null : "right") }, icon: PanelRight,
       nameWhenOn: "Hide right sidebar", on: () => (isDesktop() ? document.querySelector("[data-sidebar-toggle=right]")?.getAttribute("aria-expanded") === "true" : drawerOut() === "right") },
     { id: "tab:new", name: "Open new tab", keys: desktopApp ? ["Mod+T"] : undefined, when: isDesktop, run: () => openNewTab(), icon: Plus },
-    { id: "split:right", name: "Split right", keys: ["Mod+Alt+\\"], when: isDesktop, run: () => splitTab("right"), icon: Columns2 },
-    { id: "split:down", name: "Split down", when: isDesktop, run: () => splitTab("bottom"), icon: Rows2 },
+    // ⌘D and ⇧⌘D as Rex and Ghostty have them, in every pane: an editor's ⌘D (Delete paragraph) moved. Only what's
+    // more particular keeps ⌘D: a focused web page bookmarks, a file tree row duplicates (they have a `when`).
+    { id: "split:right", name: "Split right", keys: ["Mod+D", "Mod+Alt+\\"], desktop: true, run: () => splitTab("right"), icon: Columns2 },
+    { id: "split:down", name: "Split down", keys: ["Mod+Shift+D"], desktop: true, run: () => splitTab("bottom"), icon: Rows2 },
+    { id: "split:left", name: "Split left", desktop: true, run: () => splitTab("left"), icon: Columns2 },
+    { id: "split:up", name: "Split up", desktop: true, run: () => splitTab("top"), icon: Rows2 },
+    { id: "split:fit", name: "Split along the longer side", desktop: true, words: "best fit", run: splitToFit, icon: LayoutPanelLeft },
     { id: "split:move-right", name: "Move current tab to new split right", when: () => isDesktop() && hasSiblings(activeTab().id), run: () => moveToSplit("right"), icon: SquareSplitHorizontal },
     { id: "split:move-down", name: "Move current tab to new split down", when: () => isDesktop() && hasSiblings(activeTab().id), run: () => moveToSplit("bottom"), icon: SquareSplitVertical },
-    ...([["left", "to the left"], ["right", "to the right"], ["top", "above"], ["bottom", "below"]] as const).map(([side, where]) => (
-      // Past the last pane on a side: into that side's sidebar, and from a sidebar back to the pane (core/keylist.ts).
-      { id: `split:focus-${side}`, name: `Focus on the pane ${where}`, when: () => isDesktop() && canGoSide(side), run: () => goSide(side), icon: Focus })),
+    // A pane filling the workspace for now (Ghostty's and tmux's zoom), or floating over it, docked where it sits (Rex's).
+    { id: "pane:zoom", name: "Zoom pane", keys: ["Mod+Shift+Enter"], when: () => isDesktop() && canZoom(), run: () => zoomPane(), icon: Maximize2, nameWhenOn: "Unzoom pane", on: isZoomed },
+    { id: "pane:float", name: "Float pane", keys: ["Mod+Alt+Enter"], when: () => isDesktop() && (canFloat() || isFloating()), run: toggleFloat, icon: PictureInPicture2,
+      nameWhenOn: "Dock pane", on: () => isFloating() },
+    // Past the last pane on a side: into that side's sidebar, and from a sidebar back to the pane (core/keylist.ts).
+    // The panes' keys are ⌃⌘ on a Mac (⌥⌘← and → are Back and Forward, Obsidian's); off one, none take what's typed.
+    { id: "split:focus-left", name: "Focus pane to the left", keys: mac("Mod+Ctrl+ArrowLeft"), when: () => isDesktop() && canGoSide("left"), run: () => goSide("left"), icon: Focus },
+    { id: "split:focus-right", name: "Focus pane to the right", keys: mac("Mod+Ctrl+ArrowRight"), when: () => isDesktop() && canGoSide("right"), run: () => goSide("right"), icon: Focus },
+    { id: "split:focus-top", name: "Focus pane above", keys: mac("Mod+Ctrl+ArrowUp"), when: () => isDesktop() && canGoSide("top"), run: () => goSide("top"), icon: Focus },
+    { id: "split:focus-bottom", name: "Focus pane below", keys: mac("Mod+Ctrl+ArrowDown"), when: () => isDesktop() && canGoSide("bottom"), run: () => goSide("bottom"), icon: Focus },
+    { id: "pane:focus-next", name: "Focus next pane", keys: mac("Mod+Ctrl+]"), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(1), icon: Focus },
+    { id: "pane:focus-previous", name: "Focus previous pane", keys: mac("Mod+Ctrl+["), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(-1), icon: Focus },
+    { id: "pane:focus-last", name: "Focus last pane", words: "recent back", when: () => isDesktop() && hasLastPane(), run: focusLastPane, icon: Focus },
+    // Moving one swaps it with its neighbour, as Rex does; resizing moves its divider that way, as Ghostty does.
+    { id: "pane:move-left", name: "Move pane left", keys: mac("Mod+Ctrl+Shift+ArrowLeft"), when: () => isDesktop() && hasNeighbour("left"), words: "swap", run: () => movePane("left"), icon: MoveLeft },
+    { id: "pane:move-right", name: "Move pane right", keys: mac("Mod+Ctrl+Shift+ArrowRight"), when: () => isDesktop() && hasNeighbour("right"), words: "swap", run: () => movePane("right"), icon: MoveRight },
+    { id: "pane:move-up", name: "Move pane up", keys: mac("Mod+Ctrl+Shift+ArrowUp"), when: () => isDesktop() && hasNeighbour("top"), words: "swap", run: () => movePane("top"), icon: MoveUp },
+    { id: "pane:move-down", name: "Move pane down", keys: mac("Mod+Ctrl+Shift+ArrowDown"), when: () => isDesktop() && hasNeighbour("bottom"), words: "swap", run: () => movePane("bottom"), icon: MoveDown },
+    { id: "pane:resize-left", name: "Resize pane left", keys: mac("Mod+Ctrl+Alt+ArrowLeft"), when: () => isDesktop() && canNudge("left"), words: "divider grow shrink", run: () => nudgePane("left"), icon: MoveHorizontal },
+    { id: "pane:resize-right", name: "Resize pane right", keys: mac("Mod+Ctrl+Alt+ArrowRight"), when: () => isDesktop() && canNudge("right"), words: "divider grow shrink", run: () => nudgePane("right"), icon: MoveHorizontal },
+    { id: "pane:resize-up", name: "Resize pane up", keys: mac("Mod+Ctrl+Alt+ArrowUp"), when: () => isDesktop() && canNudge("top"), words: "divider grow shrink", run: () => nudgePane("top"), icon: MoveVertical },
+    { id: "pane:resize-down", name: "Resize pane down", keys: mac("Mod+Ctrl+Alt+ArrowDown"), when: () => isDesktop() && canNudge("bottom"), words: "divider grow shrink", run: () => nudgePane("bottom"), icon: MoveVertical },
+    { id: "pane:even-out", name: "Even out panes", keys: mac("Mod+Ctrl+="), when: () => isDesktop() && severalPanes(), words: "balance equal sizes splits", run: evenOutAll, icon: Columns3 },
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
@@ -418,6 +446,7 @@ export default function App() {
     // A choice of two, like the theme: the one not in use is offered (the menu bar's radio items).
     { id: "density:compact", name: "Use compact density", when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },
     { id: "density:comfortable", name: "Use comfortable density", when: () => getPrefs().density !== "comfortable", run: () => setPrefs({ density: "comfortable" }), icon: UnfoldVertical },
+    ...(["natural", "snappy", "off"] as const).map((animation) => ({ id: `animation:${animation}`, name: animation === "off" ? "Turn animations off" : `Use ${animation} animations`, when: () => getPrefs().animation !== animation, run: () => setPrefs({ animation }), icon: Sparkles })),
     // "Properties in document": the two not in use, so hidden properties can be brought back from anywhere.
     { id: "properties:visible", name: "Show properties in notes", when: () => editorSettings().propertiesInDocument !== "visible", run: () => showPropertiesAs("visible"), icon: Tags },
     { id: "properties:hidden", name: "Hide properties in notes", when: () => editorSettings().propertiesInDocument !== "hidden", run: () => showPropertiesAs("hidden"), icon: EyeOff },
@@ -504,12 +533,12 @@ export default function App() {
       <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && !leftIn} onContextMenu={menuFor(panelMenu)}
         className={cn(
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
-          "transition-[width] duration-200 ease-out md:flex",
+          "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
           hideLeft && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-        )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }}>
+        )} style={{ "--sidebar-open": `${sidebarPx(sidebarWidth)}px`, ...(hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }) } as React.CSSProperties}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
-        <div data-titlebar onContextMenu={menuFor(headerMenu)} className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !leftOpen && "pointer-events-none opacity-0")}>
+        <div data-titlebar onContextMenu={menuFor(headerMenu)} className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-(--motion)", !leftOpen && "pointer-events-none opacity-0")}>
           {store && desktop && leftOpen && header.map(({ key, item }) => (
             <div key={key} data-header-item={key} className="flex min-w-0 shrink-0 items-center"><Guard what="This item"><Drawn draw={() => item.render({ store, open: true, file: filePath, tab: targetOf(tab) })} /></Guard></div>
           ))}
@@ -557,9 +586,9 @@ export default function App() {
           onContextMenu={menuFor(() => panelMenu(undefined, "right"))}
           className={cn(
             "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-2 pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
-            "transition-[width] duration-200 ease-out md:flex",
+            "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
             hideRight && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-          )} style={hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }}>
+          )} style={{ "--sidebar-open": `${sidebarPx(rightSidebarWidth)}px`, ...(hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }) } as React.CSSProperties}>
           {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -600,13 +629,13 @@ export default function App() {
       {/* (the left one: hidden without a rail, it slides in and out with the sidebar; a click there keeps the sidebar open) */}
       {!popout && (
         <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
-          className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "left" && "pointer-events-none") : undefined}
+          className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "left" && "pointer-events-none") : undefined}
           style={hideLeft ? peekRider("left", leftIn, sidebarPx(sidebarWidth)) : undefined} />
       )}
       {desktop && !popout && (
         <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
           onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
-          className={!rails && !rightOpen ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "right" && "pointer-events-none") : undefined}
+          className={!rails && !rightOpen ? cn("z-50 transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "right" && "pointer-events-none") : undefined}
           style={!rails && !rightOpen ? peekRider("right", peek === "right", sidebarPx(rightSidebarWidth)) : undefined} />
       )}
 

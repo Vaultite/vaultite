@@ -98,6 +98,8 @@ export function placeAt(x: number, y: number, el: Element | null, files = false)
   }
   const body = el?.closest<HTMLElement>("[data-pane-body]")
   if (!body || (files && el?.closest("[data-drops]"))) return null
+  // A floating pane has no edges to split: a drop on it goes in it.
+  if (groups().find((x) => x.id === body.dataset.paneBody)?.float) return { group: body.dataset.paneBody!, where: "center" }
   const r = body.getBoundingClientRect()
   const fx = (x - r.left) / r.width, fy = (y - r.top) / r.height
   // The outer quarter on each side splits; the rest (the middle half) moves the tab (opens the file) into the pane.

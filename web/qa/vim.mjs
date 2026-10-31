@@ -110,6 +110,8 @@ check(":e opens a file by name", await until(async () => (await tabFile()).inclu
 await lineEl("The other page").click(); await page.keyboard.press("Escape")
 await page.keyboard.type(":vs"); await page.keyboard.press("Enter")
 check(":vs splits right", await until(async () => await page.locator("[data-pane]").count() === 2))
+// (the keyboard goes into the new pane's editor once it's drawn, Vim's keys there once its extensions are in)
+check("...the keyboard goes with it", await until(() => page.evaluate(() => !!document.activeElement?.closest("section[data-focused] .cm-vimMode"))))
 await page.keyboard.type(":q"); await page.keyboard.press("Enter")
 check(":q closes the tab (and its pane)", await until(async () => await page.locator("[data-pane]").count() === 1))
 
@@ -131,6 +133,14 @@ const left = await paneOf()
 await page.keyboard.press("Control+w"); await page.keyboard.press("l"); await wait(600)
 const right = await paneOf()
 check("Ctrl+W H and Ctrl+W L move between panes", panes.length === 2 && left && right && left !== right)
+// Ctrl+W J and K: below and above (:sp).
+await page.keyboard.type(":sp"); await page.keyboard.press("Enter"); await wait(1500)
+const below = await paneOf()
+await page.keyboard.press("Control+w"); await page.keyboard.press("k"); await wait(600)
+const above = await paneOf()
+await page.keyboard.press("Control+w"); await page.keyboard.press("j"); await wait(600)
+check("Ctrl+W K and Ctrl+W J move between panes above and below", !!above && above !== below && (await paneOf()) === below, [above, below])
+await page.keyboard.type(":q"); await page.keyboard.press("Enter"); await wait(1000)
 await page.keyboard.type(":q"); await page.keyboard.press("Enter"); await wait(1000)
 
 // The vimrc maps keys, and runs again when it changes.

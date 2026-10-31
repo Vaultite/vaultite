@@ -42,6 +42,12 @@ const drawn = (side = "left") => page.$$eval(`aside[data-side=${side}] [data-sid
 const making = () => page.$(`${L} [data-sidebar-body][data-drop-preview]`).then((e) => !!e)
 const gapY = () => page.$eval(`${L} [data-sidebar-body] > [data-slide=incoming]`, (e) => e.getBoundingClientRect().top).catch(() => null)
 const ghost = () => page.$eval("[data-drag-ghost]", (e) => e.textContent).catch(() => "")
+/** The lifted panel's picture (components/panelMotion.ts): its box, and whether the panel itself is hidden meanwhile. */
+const lifted = (k) => page.evaluate((k) => {
+  const g = document.querySelector(`[data-panel-ghost='${k}']`)?.firstElementChild, el = document.querySelector(`aside [data-sidebar-body] > [data-panel='${k}']`)
+  const r = g?.getBoundingClientRect()
+  return { ghost: r ? { w: Math.round(r.width), h: Math.round(r.height) } : null, hidden: !!el && (getComputedStyle(el).visibility === "hidden" || getComputedStyle(el).opacity === "0") }
+}, k)
 /** Drag from an element to (x, y); `during` looks while over the target (before the drop); `cancel`: Escape, no drop. */
 async function dragTo(from, x, y, during, cancel) {
   // (from where it settles: a tab just opened slides in)
@@ -230,9 +236,12 @@ try {
   check("...drawn so", (await shown()).join() === "search:search,terminal:sessions,pages:pages,files:files", await shown())
 
   // ---------- reorder: up ----------
-  const t = await edges("terminal:sessions")
-  seen = await dragTo(head("files:files"), 120, t.top + 3, async () => { await page.screenshot({ path: `${OUT}2-make-way.png` }); return { drawn: await drawn() } })
+  const t = await edges("terminal:sessions"), fb = await box(panel("files:files"))
+  seen = await dragTo(head("files:files"), 120, t.top + 3, async () => { await page.screenshot({ path: `${OUT}2-make-way.png` }); return { drawn: await drawn(), ...(await lifted("files:files")) } })
   check("Files dragged up (above Terminals' middle): drawn under Search", seen.drawn === "search:search,files:files,terminal:sessions,pages:pages", seen)
+  check("...the whole panel lifts: its picture as wide as it, taller than a heading (a tall one cut short), the panel itself hidden",
+    !!seen.ghost && Math.abs(seen.ghost.w - fb.width) <= 6 && seen.ghost.h > 60 && seen.ghost.h <= Math.max(fb.height, 160) + 4 && seen.hidden, [seen, fb])
+  check("...settled: its picture gone, the panel shown", !!(await until(async () => !(await page.$("[data-panel-ghost]")) && !(await lifted("files:files")).hidden)))
   check("dropped: under Search", !!(await until(async () => (await saved()) === "search:search|files:files|terminal:sessions|pages:pages")), await saved())
 
   // ---------- its own place: nothing makes way ----------
@@ -267,6 +276,7 @@ try {
 
   // ---------- folding, and the empty space below the last panel ----------
   await clickHead("files:files")
+  check("...it closes under its heading (a copy of what it drew, clipped), then the copy goes", !!(await page.$(`${body} > [data-fold-shade]`)) && !!(await until(async () => !(await page.$(`${body} > [data-fold-shade]`)), 2000)))
   check("a heading clicked: Files folds to it", !!(await until(async () => !!(await page.$(`${panel("files:files")}[data-collapsed]`)) && !(await visible(`${panel("files:files")} [role=tree]`)))))
   check("...saved as collapsed", !!(await until(async () => (await saved()) === "pages:pages|search:search|files:files!|terminal:sessions")), await saved())
   const bb = await box(body), lastEnd = (await edges("terminal:sessions")).bottom
@@ -282,8 +292,10 @@ try {
   await clickHead("terminal:sessions")
   await until(async () => (await saved()).includes("terminal:sessions!"))
   const rt = await box("[data-sidebar-toggle=right]")
-  seen = await dragTo(head("terminal:sessions"), ...mid(rt), async () => ({ hint: await ghost(), lit: await page.$eval("[data-sidebar-toggle=right]", (e) => e.className.includes("ring-primary")) }))
+  seen = await dragTo(head("terminal:sessions"), ...mid(rt), async () => ({ hint: await ghost(), lit: await page.$eval("[data-sidebar-toggle=right]", (e) => e.className.includes("ring-primary")),
+    leftLit: await page.$eval("[data-sidebar-toggle='']", (e) => e.className.includes("ring-primary")), pages: (await edges("pages:pages")).top, gone: (await edges("terminal:sessions")).top }))
   check("over the right toggle: lit, 'To the right sidebar'", seen.lit && seen.hint.includes("To the right sidebar"), seen)
+  check("...its own sidebar's toggle isn't (nothing to go to), and the left closes up where it was", !seen.leftLit && near(seen.pages, seen.gone), seen)
   check("dropped: Terminals in the right sidebar, unfolded, the sidebar open", !!(await until(async () => (await shown("right")).join() === "terminal:sessions")) &&
     !(await page.$(`${R}[data-collapsed]`)) && !(await page.$(`${panel("terminal:sessions", "right")}[data-collapsed]`)), await shown("right"))
   check("...saved", (await saved("right")) === "terminal:sessions" && (await saved()) === "search:search|files:files|pages:pages", [await saved(), await saved("right")])

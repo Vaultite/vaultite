@@ -810,7 +810,8 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   g.localStorage = { getItem: () => null, setItem() {} }
   g.addEventListener = () => {}
   g.requestAnimationFrame = () => 0
-  g.document = { addEventListener() {}, activeElement: null }
+  g.document = { addEventListener() {}, activeElement: null, querySelector: () => null }
+  g.CSS = { escape: (s: string) => s, supports: () => false }
   g.dispatchEvent = () => true
   g.HashChangeEvent = class { type: string; constructor(type: string) { this.type = type } }
   const ws: Any = await web("core/workspace.ts")
@@ -832,6 +833,24 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("closing: a pane left with no tabs closes, the focus going to the pane after it, else before it",
     left?.focus === "gC" && left.root.kids.map((k: Any) => k.id).join() === "gA,gC" && lay.withoutTabsIn({ ...three, focus: "gC" }, new Set(["c"]))?.focus === "gB"
     && lay.withoutTabsIn(three, new Set(["a", "b", "c"])) === null, left)
+  // Panes from the keyboard: [A | [B / C]] with A a quarter wide.
+  const grid: Any = { id: "s", dir: "row", sizes: [0.25, 0.75], kids: [P("gA", ["a"], "a"), { id: "c", dir: "col", sizes: [0.5, 0.5], kids: [P("gB", ["b"], "b"), P("gC", ["c"], "c")] }] }
+  const ids = (n: Any): string => (n.kids ? `[${n.kids.map(ids).join(n.dir === "row" ? " | " : " / ")}]` : n.id)
+  const sw = lay.swapped(grid, "gA", "gC")
+  check("panes: swapping two puts each in the other's place, the same objects, the sizes staying with the places",
+    ids(sw) === "[gC | [gB / gA]]" && sw.kids[0] === grid.kids[1].kids[1] && sw.sizes.join() === "0.25,0.75" && lay.swapped(grid, "gA", "gX") === grid, ids(sw))
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-9
+  const r1 = lay.nudged(grid, "gA", "right", 0.05, 0.1), r2 = lay.nudged(grid, "gA", "left", 0.05, 0.1)
+  check("panes: resizing moves the divider on that side that way (by a share of the whole), else the one on the other side",
+    near(r1.sizes[0], 0.3) && near(r2.sizes[0], 0.2) && near(lay.nudged(grid, "gB", "left", 0.05, 0.1).sizes[0], 0.2), [r1.sizes, r2.sizes])
+  const r3 = lay.nudged(grid, "gB", "bottom", 0.075, 0.1), r4 = lay.nudged(grid, "gC", "bottom", 0.075, 0.1)
+  check("panes: … in the split it's in, the step a share of the whole (its split is the whole height here); its neighbour's edge too",
+    near(r3.kids[1].sizes[0], 0.575) && near(r4.kids[1].sizes[0], 0.575) && near(lay.nudged(grid, "gB", "top", 0.075, 0.1).kids[1].sizes[0], 0.425), [r3.kids[1].sizes, r4.kids[1].sizes])
+  check("panes: … never past a part's least size, and nothing without a divider that way",
+    near(lay.nudged(grid, "gA", "left", 0.5, 0.1).sizes[0], 0.1) && lay.nudged(P("g", ["a"], "a"), "g", "left", 0.05, 0.1).id === "g"
+    && lay.nudged(grid, "gA", "top", 0.05, 0.1) === grid)
+  const evAll = lay.evenedAll({ ...grid, kids: [grid.kids[0], { ...grid.kids[1], sizes: [0.8, 0.2] }] })
+  check("panes: evening them out makes every split's parts equal", evAll.sizes.join() === "0.5,0.5" && evAll.kids[1].sizes.join() === "0.5,0.5", evAll)
   type T = { id: string; to: string }
   const one = (tabs: T[], active: string) => ws.replaceWorkspace({ root: { id: "g0", tabs, active }, focus: "g0" })
   const two = (left: T[], right: T[], focus: "gL" | "gR") => ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.5, 0.5],
@@ -901,6 +920,14 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tabs: a tab moved into a pane whose blank tab shows takes its place", tabs() === "file:a.md | file:b.md *", tabs())
   two([A], [B, N], "gL"); sp.moveGroupTo("gL", "gR", "center")
   check("tabs: a pane moved into one whose blank tab shows takes its place", tabs() === "file:b.md,file:a.md *", tabs())
+  const C0 = { id: "c0", to: "file:c.md" }
+  ws.replaceWorkspace({ root: { id: "s0", dir: "row", sizes: [0.3, 0.3, 0.4], kids: [{ id: "gL", tabs: [A], active: "a" }, { id: "gM", tabs: [B], active: "b" }, { id: "gR", tabs: [C0], active: "c0" }] }, focus: "gL" })
+  sp.movePane("right")
+  check("panes: moving one swaps it with its neighbour that way, keeping the focus", tabs() === "file:b.md | file:a.md * | file:c.md" && ws.getWorkspace().root.sizes.join() === "0.3,0.3,0.4", tabs())
+  sp.focusByOrder(1); const f1 = ws.getWorkspace().focus; sp.focusByOrder(1); const f2 = ws.getWorkspace().focus; sp.focusByOrder(-1)
+  check("panes: the next and previous pane go in order, round from the last to the first", f1 === "gR" && f2 === "gM" && ws.getWorkspace().focus === "gR", [f1, f2])
+  sp.focusLastPane(); const was = ws.getWorkspace().focus; sp.focusLastPane()
+  check("panes: Focus last pane goes back to the one before, and again to where it was", was === "gM" && ws.getWorkspace().focus === "gR" && sp.hasLastPane(), was)
 
   const F = { id: "f", to: "file:Inbox/x.md" }
   one([A, F, B], "f"); ws.closeFileTabs("Inbox/x.md")
@@ -1097,6 +1124,69 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   one([A], "a"); ws.closePane()
   check("close pane: not the only one", tree() === "a" && !ws.canClosePane(), tree())
 
+  // Zoom (Workspace.zoom) and floating panes (Group.float): out of the tiling, their spot kept for docking back.
+  const fl = { x: 0.05, y: 0.1, w: 0.3, h: 0.5 }
+  const row3 = (fB?: Any) => ({ id: "s0", dir: "row", sizes: [0.25, 0.5, 0.25], kids: [P("gA", ["a"], "a"), { ...P("gB", ["b"], "b"), ...(fB ? { float: fB } : {}) }, P("gC", ["c"], "c")] })
+  const lo = lay.layout(row3(fl)), w2 = (r: Any) => r.w.toFixed(2)
+  check("float: out of the tiling, the tiled ones share its room as they shared theirs; one divider between them",
+    lo.panes.map((p: Any) => `${p.group.id}:${w2(p.rect)}`).join() === "gA:0.50,gC:0.50" && lo.floats[0]?.group.id === "gB" && JSON.stringify(lo.floats[0].rect) === JSON.stringify(fl)
+    && lo.dividers.length === 1 && lo.dividers[0].i === 0 && lo.dividers[0].at.toFixed(2) === "0.50", lo)
+  const rs = lay.resized(row3(fl), "s0", 0, 0.3, 0.05), ev = lay.evened(rs, "s0")
+  check("float: a divider dragged or evened out moves the tiled ones only; it keeps its share for docking",
+    lay.layout(rs).panes.map((p: Any) => w2(p.rect)).join() === "0.30,0.70" && rs.sizes[1] === 0.5 && lay.layout(ev).panes.map((p: Any) => w2(p.rect)).join() === "0.50,0.50" && ev.sizes[1] === 0.5,
+    [rs.sizes, ev.sizes])
+  check("float: docked, back in its spot at its share", JSON.stringify(lay.floated(row3(fl), "gB", null)) === JSON.stringify(row3()))
+  check("float: a saved one is kept inside the workspace; one that isn't a place is dropped",
+    JSON.stringify(lay.clean({ ...P("g", ["a"], "a"), float: { x: 0.9, y: -1, w: 0.5, h: 2 } }).float) === JSON.stringify({ x: 0.5, y: 0, w: 0.5, h: 1 })
+    && lay.clean({ ...P("g", ["a"], "a"), float: { x: "1" } }).float === undefined)
+  check("float: directional focus from it goes to the tiled pane past its edge", lay.neighbourOf(row3({ ...fl, x: 0.1 }), "gB", "right")?.id === "gC"
+    && lay.neighbourOf(row3(fl), "gB", "left") === null)
+  const settle = (w: Any) => lay.settled(w)
+  check("settled: with every pane floating they dock; a zoom only on the focused pane, tiled, beside others",
+    !lay.leaves(settle({ root: { ...P("g", ["a"], "a"), float: fl }, focus: "g" }).root).some((g: Any) => g.float)
+    && settle({ root: row3(), focus: "gA", zoom: "gC" }).zoom === undefined && settle({ root: row3(), focus: "gA", zoom: "gA" }).zoom === "gA"
+    && settle({ root: row3(fl), focus: "gB", zoom: "gB" }).zoom === undefined && settle({ root: P("g", ["a"], "a"), focus: "g", zoom: "g" }).zoom === undefined)
+  const floats = () => ws.groups().filter((g: Any) => g.float).map((g: Any) => g.id).join()
+  ws.replaceWorkspace({ root: row3(), focus: "gB" })
+  const flat = tree()
+  sp.floatPane()
+  check("float pane: the focused one floats over where it was, focused, its tabs still the workspace's", floats() === "gB" && ws.getWorkspace().focus === "gB"
+    && ws.groups().length === 3 && lay.layout(ws.getWorkspace().root).panes.length === 2 && !sp.canFloat("gB") && sp.isFloating(), floats())
+  sp.placeFloat("gB", { x: 0.6, y: 0.2, w: 0.3, h: 0.4 })
+  check("float pane: moved by hand, it stays put; dock pane puts it back as it was", ws.groups()[1].float.x === 0.6 && (sp.dockPane(), floats() === "" && tree() === flat), tree())
+  sp.floatPane("gB")
+  check("float pane: centred on the right", ws.groups()[1].float.x + ws.groups()[1].float.w > 0.9 && Math.abs(ws.groups()[1].float.y + ws.groups()[1].float.h / 2 - 0.5) < 1e-9, ws.groups()[1].float)
+  sp.placeFloat("gB", { x: 0.02, y: 0.02, w: 0.2, h: 0.2 }); sp.toggleFloat()
+  check("dock pane: away from its spot, it docks into the nearest half of the pane under it (near the top: the top half)",
+    tree() === "row(col(b:0.50 a:0.50):0.50 c:0.50)" && ws.getWorkspace().focus === "gB", tree())
+  ws.replaceWorkspace({ root: row3(), focus: "gB" })
+  sp.toggleFloat()
+  check("float pane: the same command docks it", sp.isFloating() && (sp.toggleFloat(), !sp.isFloating() && tree() === flat), tree())
+  sp.floatPane("gB"); ws.focusGroup("gA"); sp.floatPane("gA")
+  check("float pane: several at once, but not the last tiled one", floats() === "gA,gB" && !sp.canFloat("gC"), floats())
+  ws.closePane("gC"); ws.closePane("gA")
+  check("float pane: the last tiled one closed, a floating one docks", floats() === "" && tree() === "b", tree())
+  ws.replaceWorkspace({ root: row3(fl), focus: "gB" }); sp.moveGroupTo("gB", "gC", "left")
+  check("float pane: dragged onto a pane's edge, it docks there, the other panes as they were", floats() === "" && tree() === "row(a:0.50 b:0.25 c:0.25)", tree())
+  ws.replaceWorkspace({ root: { ...row3(fl), sizes: [0.2, 0.4, 0.2, 0.2], kids: [...row3(fl).kids, P("gD", ["d"], "d")] }, focus: "gC" }); ws.closePane("gC")
+  check("float pane: a tiled one closed beside it leaves its room to the tiled one before", lay.layout(ws.getWorkspace().root).panes.map((p: Any) => w2(p.rect)).join() === "0.67,0.33",
+    lay.layout(ws.getWorkspace().root).panes)
+  ws.replaceWorkspace({ root: row3(fl), focus: "gB" }); sp.splitTab("right")
+  check("float pane: split, it docks first", !lay.leaves(ws.getWorkspace().root).some((g: Any) => g.float) && lay.layout(ws.getWorkspace().root).panes.length === 4, tree())
+  ws.replaceWorkspace({ root: row3(), focus: "gB" }); sp.zoomPane()
+  check("zoom: the focused pane fills the workspace, the others still there", ws.getWorkspace().zoom === "gB" && sp.isZoomed() && ws.groups().length === 3)
+  sp.zoomPane()
+  check("zoom: again, it's back", !sp.isZoomed())
+  sp.zoomPane(); ws.focusGroup("gA")
+  check("zoom: another pane focused, it's back", !sp.isZoomed())
+  sp.zoomPane(); sp.splitTab("right")
+  check("zoom: a split, it's back", !sp.isZoomed())
+  ws.replaceWorkspace({ root: row3(), focus: "gB" }); sp.zoomPane(); ws.openTab("file:z.md")
+  check("zoom: a tab opened in it stays zoomed; one opened in another pane behind leaves it be", sp.isZoomed() && (sp.openInSplit("file:y.md", "right", false), sp.isZoomed()))
+  ws.closePane("gB")
+  check("zoom: closed, it's gone", !sp.isZoomed() && !("zoom" in ws.getWorkspace()))
+  ws.replaceWorkspace({ root: row3(), focus: "gB", zoom: "gB" })
+  check("zoom: a saved one comes back; one of a pane that isn't focused doesn't", sp.isZoomed() && (ws.replaceWorkspace({ root: row3(), focus: "gA", zoom: "gB" }), !sp.isZoomed()))
   // Search tabs: the tab focused last first; the ones closed lately listed, the latest first, and reopened where they were.
   while (ws.canReopenTab()) ws.reopenTab()
   const now = Date.now

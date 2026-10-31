@@ -15,8 +15,8 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}splits-${name}.png` })
 
-/** Every pane: its group, box, tab labels, active tab, and whether it has the focus. */
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => {
+/** Every pane, once they're still (core/panemotion.ts): its group, box, tab labels, active tab, and whether it has the focus. */
+const panes = () => page.waitForFunction(() => !document.getAnimations().some((a) => a.id === "pane-motion")).then(() => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => {
   const r = s.getBoundingClientRect()
   return {
     id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),
@@ -24,7 +24,7 @@ const panes = () => page.evaluate(() => [...document.querySelectorAll("section[a
     active: s.querySelector("[role=tab][aria-selected=true]")?.innerText.trim(),
     focused: !!s.querySelector("#main-scroll"),
   }
-}).sort((a, b) => a.x - b.x || a.y - b.y))
+}).sort((a, b) => a.x - b.x || a.y - b.y)))
 const focusedPane = async () => (await panes()).find((p) => p.focused)
 const cmd = async (name) => {
   await openPalette(page); await wait(250)
@@ -76,12 +76,12 @@ const right = ps.filter((p) => p.x === ps[1].x)
 check("Split down: the right pane stacked in two", ps.length === 3 && right.length === 2 && right[1].y > right[0].y, ps)
 check("...the lower one focused", right[1].focused, ps)
 await shot("three")
-await cmd("Focus on the pane to the left")
-check("Focus on the pane to the left", (await focusedPane())?.x === ps[0].x, await panes())
-await cmd("Focus on the pane to the right")
-check("Focus on the pane to the right", (await focusedPane())?.x === right[0].x)
-await cmd("Focus on the pane below")
-check("Focus on the pane below", (await focusedPane())?.y === right[1].y)
+await cmd("Focus pane to the left")
+check("Focus pane to the left", (await focusedPane())?.x === ps[0].x, await panes())
+await cmd("Focus pane to the right")
+check("Focus pane to the right", (await focusedPane())?.x === right[0].x)
+await cmd("Focus pane below")
+check("Focus pane below", (await focusedPane())?.y === right[1].y)
 
 // ---------- dividers ----------
 const vsep = page.locator("[role=separator][aria-label=\"Resize the split\"][aria-orientation=vertical]")

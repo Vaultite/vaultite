@@ -92,7 +92,8 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   `github`, `flexoki`, `amethyst`, `paper`, or
   `theme:<Name>` for a downloaded theme in `.vaultite/themes/<Name>/` or `.obsidian/themes/<Name>/` (as downloaded:
   `manifest.json`, `theme.css`; only its colours carry over; `GET /api/themes` lists them).
-- `density`: `compact` (default) | `comfortable`. `sidebarScroll`: `panels` (default: each panel scrolls in its own
+- `density`: `compact` (default) | `comfortable`. `animation`: `natural` (default, springy) | `snappy` | `off`.
+  `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).
   `panelDividers`: true | false (default), a line between the sidebars' panels. `quickTextSize`: true | false
   (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size.
@@ -101,6 +102,7 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard). Vertical tabs are both: `tabBar` false and
   `tabs:tabs` at the top of the left sidebar (Show tabs in the sidebar does it, Show tabs on top undoes it). `paneTitles`: false (default) | true: with the tab bar off, that bar names the tab on screen; off, nothing is above a pane: a file's bar (or the Browser's) is its title row.
   `tabTint`: true | false (default): the active tab takes a light wash of its colour (a web page's container).
+  `dimPanes`: true | false (default): with the window split, the panes without the focus fade a little (web pages in the desktop app stay as they are).
   `rails`: true (default) | false: off, a hidden sidebar has no icon rail and slides in while the pointer is at its edge; `peekShade`: true | false (default), the page dims a little behind it. `typingFade`: true | false (default): the bars above files fade while typing, back when the pointer moves or at Escape. `translucent`: true | false (default): in the Mac and Windows 11 apps the desktop shows through the sidebars, tab bar and status bar, blurred, in the scheme's colours (`--translucent-tint`, 70% in light, 60% in dark, how much), pages solid; solid with Reduce transparency. `translucentPages`: true | false (default): with `translucent`, pages too (notes, terminals, canvases, the graph, the app's own pages) show the desktop, less than the chrome (`--translucent-page-tint`, 88% in light, 82% in dark); web pages, PDFs, images and video stay solid. `lineNumbers`: true | false (default), line numbers beside a file's text while editing
   it (code files always have them). `statusBar`: the desktop status bar's items, in order: the app's own (`core:view`,
   `core:words`, `core:characters`) and plugins' (`["terminal:agents", "core:view", "core:words", "token-count:tokens"]`;

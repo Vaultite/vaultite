@@ -26,12 +26,17 @@ export type Group = { id: string; tabs: Tab[]; active: string
   /** Its tabs side by side, sliding over each other with their titles on spines. */
   stacked?: boolean
   /** Its tab groups, in the order their tabs are. */
-  sets?: TabSet[] }
+  sets?: TabSet[]
+  /** Floating over the workspace at this place (shares of it), out of the tiling: its spot in the tree is kept, empty,
+   *  so docking it puts it back where it came from. */
+  float?: Rect }
 /** Groups (or splits) side by side ("row": a vertical divider between them) or stacked ("col"); `sizes` are their
  *  shares, adding up to 1. */
 export type Split = { id: string; dir: "row" | "col"; kids: Layout[]; sizes: number[] }
 export type Layout = Group | Split
-export type Workspace = { root: Layout; focus: string }
+export type Workspace = { root: Layout; focus: string
+  /** The pane filling the workspace for now (tmux's zoom), the others left as they are under it: the focused one. */
+  zoom?: string }
 /** Where a new split goes, beside a group. */
 export type Side = "left" | "right" | "top" | "bottom"
 
@@ -55,7 +60,7 @@ export const blankGroup = (id = `g${newId()}`): Group => { const t = newId(); re
 const THIN = 0.05
 
 /** The tree without empty groups, splits of one, or a split inside another going the same way (its parts join it). A
- *  part gone leaves its room to its neighbour (beside's undo); one too thin to use comes back at an even share. */
+ *  part gone leaves its room to its tiled neighbour (beside's undo); one too thin to use comes back at an even share. */
 export function tidy(n: Layout | null): Layout | null {
   if (!n) return null
   if (!isSplit(n)) return n.tabs.length ? n : null
@@ -64,12 +69,14 @@ export function tidy(n: Layout | null): Layout | null {
   n.kids.forEach((k, i) => {
     const t = tidy(k)
     const s = n.sizes[i] > 0 ? n.sizes[i] : 1 / n.kids.length
-    if (!t) { if (sizes.length) sizes[sizes.length - 1] += s; else left += s; return }
+    // (a floating one's room was the tiled ones' already: they keep their shares)
+    if (!t && !tiled(k)) return
+    if (!t) { const j = kids.findLastIndex(tiled); if (j >= 0) sizes[j] += s; else left += s; return }
     const at = sizes.length
     if (isSplit(t) && t.dir === n.dir) t.kids.forEach((x, j) => { kids.push(x); sizes.push(s * t.sizes[j]) })
     else { kids.push(t); sizes.push(s) }
-    sizes[at] += left
-    left = 0
+    const j = kids.findIndex((x, m) => m >= at && tiled(x))
+    if (j >= 0) { sizes[j] += left; left = 0 }
   })
   if (kids.length < 2) return kids[0] ?? null
   const sum = sizes.reduce((a, b) => a + b, 0)
@@ -97,7 +104,15 @@ export function clean(n: unknown): Layout | null {
   const tabs = (Array.isArray(x.tabs) ? x.tabs : []).flatMap((t) => (okTab(t) ? [okHistory(t)] : []))
   const active = tabs.some((t) => t.id === x.active) ? x.active! : tabs[0]?.id
   const sets = (Array.isArray(x.sets) ? x.sets : []).flatMap((s) => (okSet(s) ? [{ id: s.id, name: s.name.slice(0, 80), color: s.color, ...(s.collapsed === true ? { collapsed: true } : {}) }] : []))
-  return tabs.length && active ? fixSets({ id: String(x.id), tabs, active, ...(x.stacked === true ? { stacked: true } : {}), ...(sets.length ? { sets } : {}) }) : null
+  const float = okFloat(x.float)
+  return tabs.length && active ? fixSets({ id: String(x.id), tabs, active, ...(x.stacked === true ? { stacked: true } : {}), ...(sets.length ? { sets } : {}), ...(float ? { float } : {}) }) : null
+}
+/** A saved float's place, kept inside the workspace; null if it isn't one. */
+function okFloat(r: unknown): Rect | null {
+  const o = r as Partial<Rect> | null
+  if (!o || typeof o !== "object" || ![o.x, o.y, o.w, o.h].every((n) => typeof n === "number" && Number.isFinite(n))) return null
+  const w = Math.min(1, Math.max(0.05, o.w!)), h = Math.min(1, Math.max(0.05, o.h!))
+  return { x: Math.min(1 - w, Math.max(0, o.x!)), y: Math.min(1 - h, Math.max(0, o.y!)), w, h }
 }
 const okSet = (s: unknown): s is TabSet => !!s && typeof s === "object" && typeof (s as TabSet).id === "string" && !!(s as TabSet).id
   && typeof (s as TabSet).name === "string" && isColor((s as TabSet).color)
@@ -205,30 +220,40 @@ export function putBack(n: Layout, g: Group, { next, dir, after, share }: Spot):
   return null
 }
 
-/** Where each group sits, as shares of the workspace (x, y, width, height from 0 to 1), and the dividers between
- *  the parts of each split: `at` is where the divider is, `rect` the split's own box. */
+/** Where each group sits, as shares of the workspace (x, y, width, height from 0 to 1), floating ones in `floats`; the
+ *  dividers between the tiled parts of each split: `at` where it is, `rect` the split's box, `i` the tiled part before. */
 export type Rect = { x: number; y: number; w: number; h: number }
 export type Divider = { split: Split; i: number; rect: Rect; at: number }
 export function layout(root: Layout) {
-  const panes: { group: Group; rect: Rect }[] = [], dividers: Divider[] = []
+  const panes: { group: Group; rect: Rect }[] = [], dividers: Divider[] = [], floats: { group: Group; rect: Rect }[] = []
   const walk = (n: Layout, r: Rect) => {
     if (!isSplit(n)) return void panes.push({ group: n, rect: r })
+    const { at, total } = tiledIn(n)
     let off = 0
-    n.kids.forEach((k, i) => {
-      const s = n.sizes[i]
-      walk(k, n.dir === "row" ? { ...r, x: r.x + off * r.w, w: s * r.w } : { ...r, y: r.y + off * r.h, h: s * r.h })
+    at.forEach((j, i) => {
+      const s = n.sizes[j] / total
+      walk(n.kids[j], n.dir === "row" ? { ...r, x: r.x + off * r.w, w: s * r.w } : { ...r, y: r.y + off * r.h, h: s * r.h })
       off += s
-      if (i < n.kids.length - 1) dividers.push({ split: n, i, rect: r, at: off })
+      if (i < at.length - 1) dividers.push({ split: n, i, rect: r, at: off })
     })
   }
-  walk(root, { x: 0, y: 0, w: 1, h: 1 })
-  return { panes, dividers }
+  if (tiled(root)) walk(root, { x: 0, y: 0, w: 1, h: 1 })
+  for (const g of leaves(root)) if (g.float) floats.push({ group: g, rect: g.float })
+  return { panes, dividers, floats }
+}
+/** Whether any of `n` is tiled (not every group in it floating). */
+export const tiled = (n: Layout): boolean => (isSplit(n) ? n.kids.some(tiled) : !n.float)
+/** A split's tiled parts (their indexes) and the room they have together. */
+function tiledIn(n: Split) {
+  const at = n.kids.flatMap((k, j) => (tiled(k) ? [j] : []))
+  return { at, total: at.reduce((a, j) => a + n.sizes[j], 0) || 1 }
 }
 
-/** The group beside `from` on that side (the one most in line with it), if any. */
+/** The group beside `from` on that side (the one most in line with it), if any; from a floating one, the tiled
+ *  ones past its edge. */
 export function neighbourOf(root: Layout, from: string, side: Side) {
-  const { panes } = layout(root)
-  const cur = panes.find((p) => p.group.id === from)
+  const { panes, floats } = layout(root)
+  const cur = panes.find((p) => p.group.id === from) ?? floats.find((p) => p.group.id === from)
   if (!cur) return null
   const c = cur.rect, e = 1e-6
   const mid = (r: Rect) => (side === "left" || side === "right" ? r.y + r.h / 2 : r.x + r.w / 2)
@@ -241,25 +266,82 @@ export function neighbourOf(root: Layout, from: string, side: Side) {
   return near[0]?.group ?? null
 }
 
-/** Part `i` of split `splitId` ends at `at` (a share of the split), each part at least `min` wide. */
+/** Tiled part `i` of split `splitId` ends at `at` (a share of the split), each part at least `min` wide. */
 export function resized(root: Layout, splitId: string, i: number, at: number, min: number): Layout {
   const fix = (n: Layout): Layout => {
     if (!isSplit(n)) return n
     if (n.id !== splitId) return { ...n, kids: n.kids.map(fix) }
-    const before = n.sizes.slice(0, i).reduce((a, b) => a + b, 0), pair = n.sizes[i] + n.sizes[i + 1]
+    const { at: js, total } = tiledIn(n)
+    if (i + 1 >= js.length) return n
+    const share = (j: number) => n.sizes[j] / total
+    const before = js.slice(0, i).reduce((a, j) => a + share(j), 0), pair = share(js[i]) + share(js[i + 1])
     const a = Math.min(pair - min, Math.max(min, at - before))
     if (a <= 0 || pair - a <= 0) return n
     const sizes = [...n.sizes]
-    sizes[i] = a; sizes[i + 1] = pair - a
+    sizes[js[i]] = a * total; sizes[js[i + 1]] = (pair - a) * total
     return { ...n, sizes }
   }
   return fix(root)
 }
-/** That split's parts back to equal. */
+/** That split's tiled parts back to equal (a floating one keeps its share, for when it docks). */
 export function evened(root: Layout, splitId: string): Layout {
-  const fix = (n: Layout): Layout => !isSplit(n) ? n
-    : n.id === splitId ? { ...n, sizes: n.kids.map(() => 1 / n.kids.length) } : { ...n, kids: n.kids.map(fix) }
+  const fix = (n: Layout): Layout => {
+    if (!isSplit(n)) return n
+    if (n.id !== splitId) return { ...n, kids: n.kids.map(fix) }
+    const { at, total } = tiledIn(n)
+    return { ...n, sizes: n.sizes.map((s, j) => (at.includes(j) ? total / at.length : s)) }
+  }
   return fix(root)
+}
+/** Every split's parts back to equal. */
+export const evenedAll = (n: Layout): Layout => (isSplit(n) ? { ...n, sizes: n.kids.map(() => 1 / n.kids.length), kids: n.kids.map(evenedAll) } : n)
+
+/** Groups `a` and `b` in each other's place (the same objects, so neither pane remounts). */
+export function swapped(root: Layout, a: string, b: string): Layout {
+  const ga = leaves(root).find((g) => g.id === a), gb = leaves(root).find((g) => g.id === b)
+  if (!ga || !gb || a === b) return root
+  return mapGroups(root, (g) => (g.id === a ? gb : g.id === b ? ga : g))
+}
+
+/** The divider along group `gid`'s edge on `side`, if it has one there (only one can be: tidy joins splits that go
+ *  the same way). */
+function edgeOf(root: Layout, gid: string, side: Side): Divider | null {
+  const { panes, dividers } = layout(root)
+  const c = panes.find((p) => p.group.id === gid)?.rect
+  if (!c) return null
+  const row = side === "left" || side === "right", e = 1e-6
+  const edge = side === "left" ? c.x : side === "right" ? c.x + c.w : side === "top" ? c.y : c.y + c.h
+  return dividers.find(({ split, rect: r, at }) => (split.dir === "row") === row && (row
+    ? Math.abs(r.x + at * r.w - edge) < e && r.y < c.y + c.h - e && r.y + r.h > c.y + e
+    : Math.abs(r.y + at * r.h - edge) < e && r.x < c.x + c.w - e && r.x + r.w > c.x + e)) ?? null
+}
+/** Group `gid`'s divider on `side` (else the one on the other side) moved that way by `by`, each part at least `min`
+ *  (both shares of the whole layout, across that way): a pane resized from the keyboard, as a terminal's splits are. */
+export function nudged(root: Layout, gid: string, side: Side, by: number, min: number): Layout {
+  const back: Record<Side, Side> = { left: "right", right: "left", top: "bottom", bottom: "top" }
+  const d = edgeOf(root, gid, side) ?? edgeOf(root, gid, back[side])
+  if (!d) return root
+  const span = d.split.dir === "row" ? d.rect.w : d.rect.h
+  return resized(root, d.split.id, d.i, d.at + ((side === "right" || side === "bottom" ? by : -by) / span), min / span)
+}
+
+// ---------- zoom and floating panes ----------
+
+/** Group `gid` floating at `rect` (shares of the workspace), or docked back into its spot (null). */
+export const floated = (root: Layout, gid: string, rect: Rect | null): Layout => mapGroups(root, (g) => {
+  if (g.id !== gid) return g
+  const { float: _, ...rest } = g
+  return rect ? { ...rest, float: okFloat(rect)! } : rest
+})
+/** `w` as it must be: some pane tiled (with none, the floating ones dock), and the zoom only on the focused pane, while
+ *  it's tiled and has others beside it. Unchanged, `w` itself. */
+export function settled(w: Workspace): Workspace {
+  const root = tiled(w.root) ? w.root : mapGroups(w.root, (g) => { const { float: _, ...rest } = g; return rest })
+  const tiles = layout(root).panes
+  const zoom = w.zoom && w.zoom === w.focus && tiles.length > 1 && tiles.some((p) => p.group.id === w.zoom) ? w.zoom : undefined
+  if (root === w.root && zoom === w.zoom) return w
+  const { zoom: _, ...rest } = w
+  return { ...rest, root, ...(zoom ? { zoom } : {}) }
 }
 
 // ---------- tab groups (TabSet): runs of a pane's tabs ----------

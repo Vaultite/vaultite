@@ -1,19 +1,22 @@
 // Tabs (desktop): a bar per group; drag a tab to reorder, onto another bar, or onto a pane (an edge
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, PencilLine, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, Maximize2, Minimize2, MousePointerClick, GripVertical, PictureInPicture2, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, Undo2, Ungroup, X, type LucideIcon, PencilLine } from "lucide-react"
 import type { Store } from "@/core/data"
-import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, onDrag, onDragEnd, startDrag, useDrag, useDragItem, useDropHit, type Drag, type DragItem } from "@/core/drag"
+import { slideFrom, timing } from "@/core/animation"
+import { landFrom } from "@/core/panemotion"
+import { snapshot } from "@/core/snapshot"
 import { stem } from "@/core/files"
 import { askRename, canClosePane, closePane, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
-import { moveTabsTo, hasSiblings, moveToSplit, splitTab } from "@/core/splits"
+import { canFloat, canZoom, dockPane, floatPane, moveTabsTo, hasSiblings, moveToSplit, splitTab, zoomPane } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { leaves, vaultPath, type Group, type Tab, type TabSet } from "../../../core/layout.ts"
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToSet, allSets, closeSet, colorSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet } from "@/core/tabsets"
-import { foldSetMoving, useGrowIn } from "@/core/tabfold"
+import { foldSetMoving, useGrowIn, useShrinkOut } from "@/core/tabfold"
 import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
@@ -79,7 +82,19 @@ function ownItems(tab: Tab, last: boolean, count: number): MenuItem[] {
     ...(isPopout() ? [{ label: "Move to main window", icon: AppWindow, run: () => moveToMain([tab.id]), disabled: !hasMainWindow() }] : []),
     withVariant({ label: "Move to new window", icon: AppWindow, run: () => popOut(tab.id, true), disabled: blank },
       { label: "Open in new window", icon: AppWindow, run: () => popOut(tab.id), disabled: blank }),
+    ...paneItems(groupOfTab(tab.id)),
     ...tabItems(tab),
+  ]
+}
+
+/** A pane's own place: floating over the others or docked, filling the workspace for now or not. */
+function paneItems(g: Group | undefined): MenuItem[] {
+  if (!g) return []
+  const zoomed = getWorkspace().zoom === g.id
+  return [
+    ...(g.float ? [{ label: "Dock pane", icon: PictureInPicture2, run: () => dockPane(g.id) }]
+      : canFloat(g.id) ? [{ label: "Float pane", icon: PictureInPicture2, run: () => floatPane(g.id) }] : []),
+    ...(zoomed || canZoom(g.id) && !g.float ? [{ label: zoomed ? "Unzoom pane" : "Zoom pane", icon: zoomed ? Minimize2 : Maximize2, run: () => zoomPane(g.id) }] : []),
   ]
 }
 
@@ -152,7 +167,7 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
       {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
       <SetLabel s={s} n={n} target={target} className="max-w-40" />
       {/* The line under the group's tabs starts here (each tab carries it on). */}
-      {!s.collapsed && <span aria-hidden data-set-line={s.id} className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full transition-colors duration-200" style={{ background: c }} />}
+      {!s.collapsed && <span aria-hidden data-set-line={s.id} className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full transition-colors duration-(--motion)" style={{ background: c }} />}
     </div>
   )
 }
@@ -162,7 +177,7 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
 export function SetLabel({ s, n, target, className }: { s: TabSet; n: number; target?: boolean; className?: string }) {
   const c = colorVar(s.color)
   return (
-    <span data-set-label {...(s.name ? {} : { role: "img", "aria-label": setName(s) })} className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center gap-1 text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-200",
+    <span data-set-label {...(s.name ? {} : { role: "img", "aria-label": setName(s) })} className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center gap-1 text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-(--motion)",
       s.name || s.collapsed ? "h-5 rounded-[6px] px-1.5" : "size-3.5 rounded-[4px]", className)}
       style={{ ["--tint" as string]: c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
       {s.name && <span className="min-w-0 truncate">{s.name}</span>}
@@ -257,32 +272,136 @@ export function tabCardMenu(tab: Tab, count: number, groups: MenuItem[] = []): M
 
 // ---------- dragging tabs (and files from the sidebar: the same drops) ----------
 
-/** The dragged tab or file, following the pointer (drawn above the sidebar): drawn again when what it shows changes,
- *  moved without React on every move. */
+/** How the dragged thing is drawn: a tab lifted out of its bar (its own look, held where it was grabbed), a pane as a
+ *  small card of itself, or a label by the pointer (a file, a panel). It lifts `from` a place, goes back `home`. */
+type Look = { kind: "tab" | "pane" | "pill"; grab: { x: number; y: number }; w: number; h: number; from?: DOMRect; home?: DOMRect; k?: number; section?: HTMLElement
+  /** A pane's tab on screen. */
+  active?: string
+  /** A tab's page as drawn (shown or kept) and its pane's size: copied into its card once it's pulled off the bars. */
+  page?: { el: HTMLElement; w: number; h: number } }
+/** A pane's card at most this big (px); held where it would become a pane (a pane's edge), anything is a small page. */
+const CARD = { w: 340, h: 230 }, PAGE = { w: 216, h: 136 }
+/** A tab pulled off the bars: a card this wide, its title over a picture of its page (at most this tall). */
+const TAB_CARD = { w: 240, h: 170 }
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
+
+function lookOf(item: DragItem | null, d: Drag | null): Look {
+  const o = d?.origin
+  if (!item || !o || d.finger || item.drawn) return { kind: "pill", grab: { x: -10, y: -10 }, w: 0, h: 0 }
+  const section = item.group ? document.querySelector<HTMLElement>(`section[data-group="${item.group}"]`) : null
+  const r = section?.getBoundingClientRect()
+  if (section && r?.width && r.height) {
+    const k = Math.min(1, CARD.w / r.width, CARD.h / r.height)
+    const active = leaves(getWorkspace().root).find((g) => g.id === item.group)?.active
+    return { kind: "pane", grab: { x: (o.x - r.left) * k, y: (o.y - r.top) * k }, w: r.width * k, h: r.height * k, from: r, home: r, k, section, active }
+  }
+  if (item.from === "tab") {
+    const w = Math.min(o.rect.width, 240)
+    const el = item.tab && !item.tabs ? document.querySelector<HTMLElement>(`[data-tab-body="${item.tab}"]`) : null
+    const box = el?.closest("[data-pane-body]")?.getBoundingClientRect()
+    // (a page too big to copy at once, a long note read whole, shows as a sketch of one)
+    const page = el && box?.width && box.height && el.getElementsByTagName("*").length < 6000 ? { el, w: box.width, h: box.height } : undefined
+    return { kind: "tab", grab: { x: clamp(o.x - o.rect.left, 0, w), y: clamp(o.y - o.rect.top, 0, o.rect.height) }, w, h: o.rect.height, from: o.rect, home: o.rect, page }
+  }
+  return { kind: "pill", grab: { x: -10, y: -10 }, w: 0, h: 0, home: o.rect }
+}
+
+/** A dropped tab slides into its slot from where its picture was let go (`from`), once it's drawn there. */
+function landTab(id: string, from: DOMRect) {
+  requestAnimationFrame(() => {
+    const t = [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${id}"]`)].find((e) => e.offsetParent)
+    if (t) slideFrom(t, from, "spring")
+  })
+}
+
+/** The dragged tab, pane or file, following the pointer (drawn above the sidebar): drawn again when what it shows
+ *  changes, moved without React on every move. Let go somewhere it can't go, it springs back where it came from. */
 export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
-  const item = useDragItem()
+  const live = useDragItem()
+  // (after the drag, still drawn while it goes back, or `into` the tab it became in another pane's bar)
+  const [back, setBack] = useState<{ item: DragItem; into?: string } | null>(null)
+  const item = live ?? back?.item ?? null
   const hint = useDrag((d) => d?.hit?.hint), hit = useDrag((d) => !!d?.hit), finger = useDrag((d) => !!d?.finger)
   const overPanes = useDrag((d) => d?.hit?.target === PANES)
+  const zone = useDrag((d) => (d?.hit?.target === PANES && (d.hit.data as Drop).kind === "pane" ? (d.hit.data as Drop & { kind: "pane" }).zone : null))
   const { fileIcons } = usePrefs()
-  const el = useRef<HTMLDivElement>(null)
+  const el = useRef<HTMLDivElement>(null), card = useRef<HTMLDivElement>(null), shot = useRef<HTMLDivElement>(null)
+  // (measured once a drag, as it lifts)
+  const look = useMemo(() => lookOf(item, getDrag()), [item]), lookRef = useRef(look)
+  useEffect(() => { lookRef.current = look }, [look])
+  // A tab pulled off the bars (over a pane, or nothing) is a card of itself; anything else held where it would become a
+  // pane (a pane's edge) is a small page.
+  const shape = finger || back ? null : look.kind === "tab" ? (!hit || zone ? "card" : null) : look.kind === "pill" && zone && zone !== "center" ? "page" : null
+  const thumb = look.page ? Math.min(TAB_CARD.h, (TAB_CARD.w * look.page.h) / look.page.w) : PAGE.h - 28
+  const size = shape === "card" ? { w: TAB_CARD.w, h: 28 + thumb } : shape === "page" ? PAGE : null
+  // (what it was over as it was let go: what drop.ts answered last)
+  const last = useRef({ panes: false, split: false })
+  useEffect(() => { if (live) last.current = { panes: overPanes, split: !!zone && zone !== "center" } }, [live, overPanes, zone])
   // Over an open sheet (a modal <dialog>) it's placed inside it.
   const sheet = item ? [...document.querySelectorAll<HTMLElement>("dialog[open]")].pop() ?? null : null
   useLayoutEffect(() => {
     const g = el.current
-    if (!g) return
-    // Near the window's right edge it goes left of the pointer; a finger's goes above it (a finger covers what's under).
-    // (moved by a transform: no layout a move)
+    if (!g || !live) return
+    // A label goes by the pointer: near the window's right edge left of it, a finger's above it (a finger covers
+    // what's under). A tab or a pane stays held where it was grabbed. (moved by a transform: no layout a move)
     const follow = () => {
       const d = getDrag()
       if (!d) return
       const o = sheet?.getBoundingClientRect() ?? { left: 0, top: 0 }
-      const x = d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) : d.x > innerWidth - 280 ? d.x - 10 - g.offsetWidth : d.x + 10
-      g.style.transform = `translate(${x - o.left}px, ${(d.finger ? d.y - 64 : d.y + 10) - o.top}px)`
+      let x = look.kind !== "pill" ? d.x - look.grab.x : d.finger ? Math.max(8, Math.min(d.x - 32, innerWidth - 268)) : d.x > innerWidth - 280 ? d.x - 10 - g.offsetWidth : d.x + 10
+      let y = look.kind !== "pill" ? d.y - look.grab.y : d.finger ? d.y - 64 : d.y + 10
+      // (a card kept in the window, as big as it's becoming)
+      if (look.kind !== "pill" || size) {
+        x = clamp(x, 4, innerWidth - (size ?? look).w - 4)
+        y = clamp(y, 4, innerHeight - (size ?? look).h - 4)
+      }
+      g.style.transform = `translate(${x - o.left}px, ${y - o.top}px)`
     }
     follow()
     return onDrag(follow)
-  }, [item, sheet, finger, hint])
-  if (!item || item.drawn) return null
+  }, [live, look, sheet, finger, hint, size?.w, size?.h, overPanes])
+  // Lifted: a pane shrinks from its place into its card (a copy of it), a tab rises out of its bar.
+  useLayoutEffect(() => {
+    const c = card.current
+    if (!live || !c) return
+    setBack(null)
+    const of = look.section ?? look.page?.el
+    if (of && shot.current) {
+      const s = snapshot(of, { light: "[data-tab-bar]" })
+      shot.current.replaceChildren(s.host)
+      s.settle()
+    }
+    if (look.from) slideFrom(c, look.from, "spring", true)
+  }, [live, look])
+  // Let go (told just before the drop is done): on a pane's edge, the pane (a tab's new one) grows from its card into
+  // its place; into a pane, a pane's card goes into its tab there; a tab slides into its slot; nowhere, back it goes.
+  useEffect(() => onDragEnd((e) => {
+    const c = card.current, { item: it } = e
+    if (!c || !e.origin || it.drawn || e.away) return
+    if (!e.dropped) { setBack({ item: it }); return }
+    const from = c.getBoundingClientRect(), { panes, split } = last.current
+    if (!panes) return
+    // (back to itself before it moves: what's drawn of it on the way isn't faded)
+    lookRef.current.section?.removeAttribute("data-lifted")
+    if (it.group) { if (split) landFrom(it.group, from); else setBack({ item: it, into: lookRef.current.active }) }
+    else if (it.tab) { if (split) landFrom(it.tab, from); else landTab(it.tab, from) }
+  }), [])
+  useLayoutEffect(() => {
+    if (!back) return
+    const { item: it, into } = back, c = card.current, t = timing(into ? "base" : "spring")
+    const tab = look.kind === "tab" ? [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${it.tab}"]`)].find((e) => e.offsetParent) : null
+    const home = into ? [...document.querySelectorAll<HTMLElement>(`[data-tab-bar] [data-tab-id="${into}"]`)].find((e) => e.offsetParent)?.getBoundingClientRect()
+      : tab?.getBoundingClientRect() ?? (look.kind === "pane" ? look.section?.getBoundingClientRect() : look.home)
+    if (!c || !home || !t.duration) { setBack(null); return }
+    // (back home whole, a label just fading there; into a tab, fading as it goes in)
+    const now = c.getBoundingClientRect(), scale = look.kind !== "pill"
+    const to = `translate(${home.left - now.left}px, ${home.top - now.top}px) scale(${scale ? home.width / now.width : 1}, ${scale ? home.height / now.height : 1})`
+    const a = c.animate([{ transformOrigin: "0 0", transform: "none", opacity: 1 }, { transformOrigin: "0 0", transform: to, opacity: scale && !into ? 1 : 0 }], { ...t, fill: "forwards" })
+    a.finished.then(() => setBack(null), () => {})
+    return () => a.cancel()
+  }, [back, look])
+  // (a sidebar panel draws its own card, but over the panes it shows as the tab it would open)
+  if (!item || (item.drawn && !(item.to && overPanes))) return null
   const i: TabInfo = item.paths || item.tabs ? { label: item.label ?? "", icon: item.tabs ? Layers : Files }
     : item.folder ? { label: item.path!.split("/").pop()!, icon: Folder }
     : item.newtab ? { label: item.label ?? item.newtab.key, icon: item.newtab.list === "actions" ? MousePointerClick : LayoutList }
@@ -296,12 +415,32 @@ export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
     : item.from === "row" && !item.to ? { label: item.label ?? item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: FileText }
     : info({ id: "", to: item.to ?? "new" })
   return createPortal(
-    <div ref={el} aria-hidden data-drag-ghost
-      className={cn("pointer-events-none fixed top-0 left-0 flex max-w-[260px] items-center gap-1.5 bg-card shadow-lg ring-[0.5px] ring-border will-change-transform",
-        finger ? "z-[70] h-10 rounded-[10px] px-3 text-[15px]" : "z-50 h-7 rounded-[6px] px-2 text-[13px]", !hit && "opacity-60")}>
-      {fileIcons && <i.icon className={cn(finger ? "size-[18px] shrink-0" : "size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} />}
-      <span className="min-w-0 truncate font-medium">{i.label}</span>
-      {hint && <span className="shrink-0 text-muted-foreground">{hint}</span>}
+    <div ref={el} aria-hidden data-drag-ghost data-drag-look={look.kind} data-drag-shape={shape ?? undefined}
+      className={cn("pointer-events-none fixed top-0 left-0 transition-opacity duration-(--motion-fast) will-change-transform", finger ? "z-[70]" : "z-50", !hit && (!back || look.kind === "pill") && "opacity-60")}>
+      {look.kind === "pane" ? (
+        <div ref={card} className="relative overflow-hidden rounded-[10px] bg-background shadow-2xl ring-[0.5px] ring-border" style={{ width: look.w, height: look.h }}>
+          {/* The pane as it looks, scaled down into its card. */}
+          <div ref={shot} className="absolute top-0 left-0 origin-top-left" style={{ width: look.from!.width, height: look.from!.height, transform: `scale(${look.k})` }} />
+          <span className="sr-only">{i.label}</span>
+          {/* What a drop there does that isn't seen in a pane ("Move pane to workspace 3"), on the card. */}
+          {hint && <span className="absolute inset-x-2 bottom-2 mx-auto w-fit max-w-full truncate rounded-[6px] bg-card px-2 py-1 text-[12px] font-medium shadow-md ring-[0.5px] ring-border">{hint}</span>}
+        </div>
+      ) : (
+        <div ref={card} data-drag-card className={cn("flex max-w-[260px] flex-col overflow-hidden bg-card shadow-lg ring-[0.5px] ring-border",
+          finger ? "h-10 rounded-[10px] text-[15px]" : "h-7 rounded-[6px] text-[13px]", size && "rounded-[10px] shadow-xl")}
+          style={{ width: size?.w ?? (look.kind === "tab" ? look.w : undefined), height: size?.h, scale: look.kind === "tab" && !size && !back ? "1.03" : undefined }}>
+          <div className={cn("flex shrink-0 items-center gap-1.5", finger ? "h-10 px-3" : "h-7 px-2")}>
+            {fileIcons && <i.icon className={cn(finger ? "size-[18px] shrink-0" : "size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} />}
+            <span className="min-w-0 truncate font-medium">{i.label}</span>
+            {hint && <span className="shrink-0 text-muted-foreground">{hint}</span>}
+          </div>
+          {/* Its page under its title: a tab's, scaled down into the card, or a sketch of one. */}
+          <div aria-hidden className="relative flex-1 overflow-hidden border-t-[0.5px] border-border bg-background">
+            {look.page ? <div ref={shot} className="absolute top-0 left-0 origin-top-left" style={{ width: look.page.w, height: look.page.h, transform: `scale(${TAB_CARD.w / look.page.w})` }} />
+              : <div className="space-y-1.5 p-3"><div className="h-1.5 w-3/4 rounded-full bg-foreground/[0.08]" /><div className="h-1.5 w-11/12 rounded-full bg-foreground/[0.08]" /><div className="h-1.5 w-1/2 rounded-full bg-foreground/[0.08]" /></div>}
+          </div>
+        </div>
+      )}
     </div>,
     sheet ?? document.body,
   )
@@ -314,20 +453,25 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
   startDrag(e, ids && ids.length > 1 ? { ...item, tabs: ids, label: `${ids.length} tabs` } : item, { touch: opts?.touch })
 }
 
-function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, settling, close, line }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
+function TabItem({ tab, group, info, active, focused, only, icons, tint, menu, width, settling, close, line, hole }: { tab: Tab; group: string; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
   /** Whether the active tab takes its colour (appearance `tabTint`). */
   tint: boolean; menu: () => MenuItem[]
   /** In a tab group: the line under its tabs, in its colour, on to the next one unless it's the `last`. */
   line?: { color: string; last: boolean }
   /** Held at this width after a close (TabBar). */
-  width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void }) {
+  width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void
+  /** Dragged over its own bar: lifted out, it leaves its slot empty where it would land. */
+  hole: boolean }) {
   const item = useDragItem()
   const picked = useSelected(TABS, tab.id)
   const el = useRef<HTMLDivElement>(null)
   useGrowIn(el, tab)
+  useShrinkOut(el, tab.id, group)
   const dragging = item?.tab === tab.id || (picked && !!item?.tabs) || (!!tab.set && item?.tabset === tab.set)
+  // (away from its bar, the tab held shows where it goes back to)
+  const away = dragging && !hole && (item?.tab === tab.id || picked)
   // (a light wash of its colour, lighter while its pane isn't the focused one: calm in either theme)
-  const wash = active && tint && info.wash
+  const wash = active && tint && info.wash && !(dragging && hole)
     ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
     : undefined
   return (
@@ -335,15 +479,16 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
-        "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", dragging && "opacity-50")}
-      style={{ ...wash, ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex 160ms ease-out" } : undefined) }} data-tab-wash={wash ? "" : undefined}>
+        "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]",
+        dragging && (hole ? "bg-foreground/[0.06] shadow-none ring-[0.5px] ring-border [&>button]:invisible" : away ? "[&>[data-tab-close]]:invisible [&>[data-tab-pin]]:invisible [&>[role=tab]]:opacity-40" : "opacity-40"))}
+      style={{ ...wash, ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : undefined) }} data-tab-wash={wash ? "" : undefined}>
       <button type="button" role="tab" aria-selected={active}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
         data-tip={item ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
         {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
         {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.mark && "@max-[80px]/tab:hidden", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
-        <span className={cn("min-w-0 truncate", icons && "@max-[80px]/tab:hidden", active && focused ? "font-medium text-foreground" : active ? "font-medium text-muted-foreground" : "text-muted-foreground")}>{info.label}</span>
+        <span className={cn("min-w-0 flex-1 fade-end", icons && "@max-[80px]/tab:hidden", active && focused ? "font-medium text-foreground" : active ? "font-medium text-muted-foreground" : "text-muted-foreground")}>{info.label}</span>
         {info.mark && <IconAction action={info.mark} className="ml-auto @max-[80px]/tab:ml-0"><info.mark.icon className={cn("size-3.5 shrink-0", !info.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={info.mark.tint ? { color: info.mark.tint } : undefined} /></IconAction>}
       </button>
       {/* A pinned tab's pin, where the X goes: a click unpins it. */}
@@ -359,7 +504,8 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
           <X className="size-3.5" strokeWidth={2} />
         </button>
       )}
-      {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px] transition-colors duration-200", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
+      {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
+      {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px] transition-colors duration-(--motion)", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
     </div>
   )
 }
@@ -418,9 +564,11 @@ export function tabMenuOf(id: string): MenuItem[] {
 }
 
 /** On top of its group's pane, so it never moves when a tab's page is narrower or wider than another's. */
-export function TabBar({ group, focused, info, alone }: { group: Group; focused: boolean; info: (t: Tab) => TabInfo
+export function TabBar({ group, focused, info, alone, extra }: { group: Group; focused: boolean; info: (t: Tab) => TabInfo
   /** The only group (its single blank tab can't be closed). */
-  alone: boolean }) {
+  alone: boolean
+  /** What the pane's state adds at the bar's end, before its handle (zoomed, floating). */
+  extra?: ReactNode }) {
   const { tabs, active } = group
   const prefs = usePrefs(), { fileIcons, paneTitles, tabTint } = prefs, tabBar = tabBarOn(prefs)
   // Without tab bar or titles, a pane's top bar (a file's, the Browser's) is its title row (index.css): a right-click on
@@ -490,7 +638,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
     setHeld(null)
     setSettling(true)
     clearTimeout(settle.current)
-    settle.current = window.setTimeout(() => setSettling(false), 200)
+    settle.current = window.setTimeout(() => setSettling(false), timing("base").duration + 20)
   }
   useEffect(() => { if (held && held.count !== tabs.length) release() }, [held, tabs.length])
   useEffect(() => () => clearTimeout(settle.current), [])
@@ -532,7 +680,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
         className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
         {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
         <div className="h-full min-w-0 flex-1" />
-        <div className="relative z-10 mt-0.5 flex self-start">{closer}{handle}</div>
+        <div className="relative z-10 mt-0.5 flex self-start">{extra}{closer}{handle}</div>
       </div>
     )
   }
@@ -543,12 +691,12 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
     return (
       <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => paneTopMenu(group))}
         className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
-        <div data-pane-title
-          className={cn("flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]", item?.group === group.id && "opacity-50")}>
+        <div data-pane-title className="flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]">
           {fileIcons && <Badged on={i.badge}><i.icon className={cn("size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} /></Badged>}
           <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>
           {tabs.length > 1 && <span className="shrink-0 text-tertiary">{tabs.length} tabs</span>}
         </div>
+        {extra}
         {closer}
         {handle}
       </div>
@@ -561,13 +709,13 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
-        className={cn("edge-fade-x relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", item?.group === group.id && "opacity-50")}>
+        className="edge-fade-x relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const chip = s && <SetChip key={`set:${s.id}`} s={s} n={tabs.filter((x) => x.set === s.id).length} target={preview?.into === s.id} />
           if (own?.collapsed) return chip || null
-          const item = <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
+          const item = <TabItem key={t.id} tab={t} group={group.id} hole={!!preview} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
             menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)}
             line={lineOf(t.id)} />
           return chip ? [chip, item] : item
@@ -584,6 +732,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
           </div>
         )}
       </div>
+      {extra}
       {/* The pane's handle: drag it to move the whole pane (all its tabs). Shown while the pointer is over the bar. */}
       {handle}
     </div>

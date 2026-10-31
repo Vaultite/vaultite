@@ -26,6 +26,9 @@ const appearance = await fetch(new URL("/api/config/appearance", B)).then((r) =>
 const setDensity = (density) => fetch(new URL("/api/config/appearance", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...appearance, density }) })
 
 const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
+/** Terminal resizes sent (core/sliding.ts). */
+let resizes = 0
+page.on("websocket", (ws) => ws.on("framesent", (f) => { if (typeof f.payload === "string" && f.payload.includes('"t":"resize"')) resizes++ }))
 const panels = () => page.$$eval("aside [data-panel]", (els) => els.map((e) => e.getAttribute("data-panel")))
 try {
   // (Links, the backlinks panel, stays off here: web/qa/links.mjs checks it.)
@@ -65,6 +68,13 @@ try {
   check("row lit", await until(async () => (await row.getAttribute("class")).includes("font-medium")), await row.getAttribute("class"))
   await wait(800)
   await page.screenshot({ path: `${OUT}2-terminal.png` })
+  // The sidebar folded and opened: the panes slide to its edge, and the terminal takes its new size once they stop
+  // (core/sliding.ts), not every frame (its shell would redraw for each).
+  resizes = 0
+  await page.keyboard.press("ControlOrMeta+Backslash"); await wait(900)
+  const slid = await page.evaluate(() => !document.documentElement.hasAttribute("data-panes-sliding"))
+  await page.keyboard.press("ControlOrMeta+Backslash"); await wait(900)
+  check("the sidebar folded and opened: the terminal resized once each way, after the panes stopped", slid && resizes >= 1 && resizes <= 2, { resizes, slid })
 
   // Opt-in plugins' panels, put in the sidebar: on, they show; off, one by one, they go without a reload.
   const OPT_IN = ["activity:feed", "web-viewer:web-pages"]
@@ -217,13 +227,14 @@ try {
     })
     check(`${density}: tree rows ${6.5 * u}px, sidebar rows ${7 * u}px`, g.tree === 6.5 * u && g.row === 7 * u, g)
     check(`${density}: headings, row icons and chevrons on one line, ${3.5 * u}px in`, g.xs.every((v) => v === 3.5 * u), g.xs)
-    await page.keyboard.press("ControlOrMeta+Backslash"); await wait(400)
+    // (once it's done folding: its width springs there)
+    await page.keyboard.press("ControlOrMeta+Backslash"); await wait(100); await until(() => page.evaluate(() => !document.querySelector("aside").getAnimations().length))
     const r = await page.evaluate(() => {
       const a = document.querySelector("aside").getBoundingClientRect(), i = document.querySelector("aside [data-pin] svg").getBoundingClientRect()
       return { rail: a.width, icon: i.left + i.width / 2 - a.left }
     })
     check(`${density}: the rail is ${11 * u}px, its icons centred`, r.rail === 11 * u && r.icon === r.rail / 2, r)
-    await page.keyboard.press("ControlOrMeta+Backslash"); await wait(400)
+    await page.keyboard.press("ControlOrMeta+Backslash"); await wait(100); await until(() => page.evaluate(() => !document.querySelector("aside").getAnimations().length))
   }
 
   // End it from the panel (its … , End session last): its tab closes and the list empties.

@@ -1,12 +1,11 @@
 // Tabs move as a browser's: a group folds by its tabs shrinking into its chip and opens by them growing out; new tabs
-// grow in, the panel's closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
+// grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, type RefObject } from "react"
-import { closeTab, groups, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
+import { closeTab, groupOfTab, groups, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
 import { foldSet, setById } from "@/core/tabsets"
+import { moves, timing } from "@/core/animation"
 
-const MS = 200
-const EASE = "cubic-bezier(.3, 0, .2, 1)"
-const still = () => typeof matchMedia !== "function" || matchMedia("(prefers-reduced-motion: reduce)").matches || typeof document.documentElement.animate !== "function"
+const still = () => !moves()
 
 /** Along the bar (x) or down the panel (y): by where it's drawn. */
 const axisOf = (el: HTMLElement) => (el.closest("[data-tab-bar]") ? "x" : "y")
@@ -25,7 +24,8 @@ function squeeze(el: HTMLElement, out: boolean): Animation {
   const full = x ? { minWidth: `${r.width}px`, maxWidth: `${r.width}px`, marginRight: "0px", opacity: 1 } : { height: `${r.height}px`, marginBottom: "0px", opacity: 1 }
   const none = x ? { minWidth: "0px", maxWidth: "0px", marginRight: `${-gap}px`, opacity: 0 } : { height: "0px", marginBottom: `${-gap}px`, opacity: 0 }
   el.style.clipPath = x ? "inset(-4px 0)" : "inset(0 -8px)"
-  const a = el.animate(out ? [full, none] : [none, full], { duration: MS, easing: EASE, fill: out ? "forwards" : "none" })
+  // (going, straight out; coming, with the spring: nothing that leaves bounces)
+  const a = el.animate(out ? [full, none] : [none, full], { ...timing(out ? "base" : "spring"), fill: out ? "forwards" : "none" })
   const done = () => { el.style.clipPath = "" }
   a.addEventListener("cancel", done)
   if (!out) a.addEventListener("finish", done)
@@ -49,7 +49,7 @@ export function foldSetMoving(id: string) {
   // (its chevron turns and its line goes as it starts, not when it's done)
   for (const h of document.querySelectorAll(`[data-set-chip="${id}"], [data-set-row="${id}"]`)) h.setAttribute("aria-expanded", "false")
   const lines = [...document.querySelectorAll<HTMLElement>(`[data-set-line="${id}"]`)]
-  const moving = [...els.map((e) => squeeze(e, true)), ...lines.map((l) => l.animate([{ opacity: 1 }, { opacity: 0 }], { duration: MS, easing: EASE, fill: "forwards" }))]
+  const moving = [...els.map((e) => squeeze(e, true)), ...lines.map((l) => l.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing("base"), fill: "forwards" }))]
   Promise.allSettled(moving.map((a) => a.finished)).then(() => {
     folding.delete(id)
     foldSet(id, true)
@@ -85,6 +85,28 @@ export function useGrowIn(ref: RefObject<HTMLElement | null>, tab: { id: string;
     const a = squeeze(el, false)
     return () => a.cancel()
   }, [])  // (on its first drawing only)
+}
+
+/** A tab bar's tab that goes (closed, or moved to another pane) shrinks away where it was, however it went (its X, a
+ *  shortcut, Close others): a copy of it, as React takes it out, so the tabs after it slide over instead of jumping. */
+export function useShrinkOut(ref: RefObject<HTMLElement | null>, id: string, group: string) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    return () => {
+      // (still in its group: drawn again elsewhere in the bar, as into a tab group; or folded away, already shrunk)
+      if (!el?.isConnected || still() || replacingWorkspace() || groupOfTab(id)?.id === group) return
+      const w = el.getBoundingClientRect().width
+      if (w < 1) return
+      const copy = el.cloneNode(true) as HTMLElement
+      for (const a of ["data-tab-id", "data-slide", "data-select-key", "data-in-set", "data-selected"]) copy.removeAttribute(a)
+      copy.querySelector("[data-tab-return]")?.remove()
+      copy.inert = true
+      // (its own width while it's beside the original, gone once React has taken that out)
+      Object.assign(copy.style, { pointerEvents: "none", flex: `0 0 ${w}px` })
+      el.after(copy)
+      squeeze(copy, true).finished.then(() => copy.remove(), () => copy.remove())
+    }
+  }, [ref, id, group])
 }
 
 /** Close a tab from a list of them (the Tabs panel): its row shrinks away, then it closes. */

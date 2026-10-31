@@ -48,8 +48,10 @@ export type DragItem = {
   drawn?: boolean
 }
 type Hit = { target: string; data: unknown; hint?: string; weak?: boolean }
-/** `finger`: a touch drag (its picture goes above the finger, where it can be seen). */
-export type Drag = { item: DragItem; x: number; y: number; hit: Hit | null; finger?: boolean }
+/** `finger`: a touch drag (its picture goes above the finger, where it can be seen). `origin`: where it was pressed and
+ *  the pressed element's box then (what's dragged lifts from there, and goes back there if it isn't dropped). */
+export type Drag = { item: DragItem; x: number; y: number; hit: Hit | null; finger?: boolean; origin?: Origin }
+export type Origin = { x: number; y: number; rect: DOMRect }
 
 let drag: Drag | null = null
 const subs = signal()
@@ -66,6 +68,12 @@ export const useDragItem = () => subs.use(() => drag?.item ?? null)
 export const useDragging = () => subs.use(() => !!drag)
 /** Call `fn` on every move (and the drag's start and end), outside React: what follows the pointer itself. */
 export const onDrag = (fn: () => void) => subs.subscribe(fn)
+/** How a drag ended: `dropped` on a target, or let go clear of the window and taken there (`away`: a tab torn off). */
+export type DragEnd = { item: DragItem; x: number; y: number; origin?: Origin; dropped: boolean; away: boolean }
+const ends = new Set<(e: DragEnd) => void>()
+/** Hear how each drag ends, before anything is drawn again (a drop: just before it's done): what lands where it was
+ *  dropped, or goes back where it came from. */
+export const onDragEnd = (fn: (e: DragEnd) => void) => { ends.add(fn); return () => { ends.delete(fn) } }
 
 /** A finger holds something it picked up (dragged or not yet). */
 let fingerHolds = false
@@ -241,7 +249,7 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
   if (e.pointerType === "touch") { if (touch) pickUp(e, item); return }
   const el = e.currentTarget as HTMLElement, x0 = e.clientX, y0 = e.clientY, id = e.pointerId
   let end: ReturnType<typeof lift> | null = null
-  let last: PointerEvent | null = null
+  let last: PointerEvent | null = null, origin: Origin | undefined
   const move = (ev: PointerEvent) => {
     if (ev.pointerId !== id) return
     last = ev
@@ -249,9 +257,10 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
       if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return
       // Captured, so the drag goes on over frames (artifacts, terminals) and outside the window.
       try { el.setPointerCapture(id) } catch { /* already gone */ }
+      origin = { x: x0, y: y0, rect: el.getBoundingClientRect() }
       end = lift(item)
     }
-    setDrag({ item, x: ev.clientX, y: ev.clientY, hit: hitAt(item, ev.clientX, ev.clientY) })
+    setDrag({ item, x: ev.clientX, y: ev.clientY, hit: hitAt(item, ev.clientX, ev.clientY), origin })
   }
   // A link or an image inside would start the browser's own drag.
   const native = (ev: DragEvent) => ev.preventDefault()
@@ -263,8 +272,11 @@ export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, ite
     setDrag(null)
     for (const t of targets.values()) t.end?.()
     const out = !!last && (last.clientX < 0 || last.clientY < 0 || last.clientX >= innerWidth || last.clientY >= innerHeight)
+    const told = (dropped: boolean, away: boolean) => { if (end && last) for (const f of ends) f({ item, x: last.clientX, y: last.clientY, origin, dropped, away }) }
+    // (told of a drop just before it's done: what lands says where from before the layout changes)
+    if (drop && hit) told(true, false)
     end?.(drop ? hit : null)
-    if (drop && end && !hit && out) outside?.(item, { x: last!.screenX, y: last!.screenY })
+    if (!(drop && hit)) told(false, !!(drop && end && out && outside?.(item, { x: last!.screenX, y: last!.screenY })))
   }
   const up = (ev: PointerEvent) => { if (ev.pointerId === id) stop(true) }
   const cancel = (ev: PointerEvent) => { if (ev.pointerId === id) stop(false) }

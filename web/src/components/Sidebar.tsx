@@ -4,7 +4,7 @@ import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef
 import { createPortal } from "react-dom"
 import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
-import { edgeScroller, getDrag, onDrag, startDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
@@ -23,6 +23,7 @@ import { cn, space } from "@/lib/utils"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
+import { foldPanel, liftedHeight, settle } from "@/components/panelMotion"
 
 import { PanelFold, SidebarHeading } from "@/components/SidebarHeading"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
@@ -80,9 +81,16 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     dropped(item)
   }, { hint: () => intoHint(side), end: edge.stop })
 
-  // Dragged over, the panels make way for the one dragged (its dividers out of the way meanwhile).
-  const making = hit && ctx.open && panels.length ? hit.order : null
+  // Dragged over, the panels make way for the one dragged (its dividers out of the way meanwhile); one of its own over
+  // the other sidebar, they close up where it was.
+  const over = useDrag((d) => d?.hit?.target ?? null)
+  const mine = item?.from === "panel" ? item.panel : undefined
+  const other = side === "left" ? "right" : "left"
+  const leaving = !!mine && (over === `${PANELS}:${other}` || over === `toggle:${other}`) && panels.some((p) => p.key === mine)
+  const making = hit && ctx.open && panels.length ? hit.order : leaving && ctx.open ? panels.map((p) => p.key).filter((k) => k !== mine) : null
   useSlide(box, making, "y")
+  // A panel let go flies into its place (components/panelMotion.ts), once it's drawn there.
+  useLayoutEffect(settle)
 
   const [flying, setFlying] = useState<string | null>(null)
   useEffect(() => { if (ctx.open) setFlying(null) }, [ctx.open])
@@ -127,15 +135,16 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
               const handle = t.closest<HTMLElement>("[data-panel-handle]")
               if (handle && (!control || control.hasAttribute("data-panel-handle"))) {
                 // A phone's drawer: a finger holds the heading to pick it up (a plain touch scrolls or folds it).
-                startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined }, { touch: true })
+                // A computer's lifts the whole panel (panelMotion.ts); a finger's carries its name.
+                startDrag(e, { from: "panel", panel: key, label: handle.dataset.heading || panel.heading || panel.title, to: panel.view ? `view:${panel.view}` : undefined, drawn: !ctx.phone }, { touch: true })
               }
             }}
-            className={cn("flex shrink-0 flex-col pb-1", item?.panel === key && "opacity-50")}>
+            className={cn("flex shrink-0 flex-col pb-1", item?.panel === key && (item.drawn ? "invisible" : "opacity-50"))}>
             {/* Its own box (each panel scrolling in its own: the height usePanelLayout gives it), around what it draws
                 (measured: the most it's given). Scrolling as one, both are plain. */}
             <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto [scrollbar-width:thin]")}>
               <div data-panel-content className="flex shrink-0 flex-col">
-                <PanelFold.Provider value={{ collapsed: folded, toggle: () => togglePanelCollapsed(key) }}>
+                <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)) }}>
                   {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...ctx, panel: key })}</SidebarHeading>}
                   <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...ctx, panel: key })} /></Guard>
                 </PanelFold.Provider>
@@ -161,8 +170,9 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
           Drag panels here
         </div>
       )}
-      {/* Where one from the other sidebar, or a pane's tab, would go: a heading's room. */}
-      {making?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} data-slide-fixed className="absolute inset-x-1 top-0 h-7" />}
+      {/* Where one from the other sidebar would go: room as tall as its picture, as in its own; a pane's tab, a heading's
+          room, shaded. */}
+      {making?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} data-slide-fixed className={cn("absolute inset-x-1 top-0 h-7", liftedHeight() && "bg-transparent")} style={{ height: liftedHeight() }} />}
     </div>
     </SidebarSide.Provider>
   )
@@ -176,8 +186,8 @@ function emptyRoomOf(at: EventTarget, body: HTMLElement | null) {
   return el && !el.dataset.collapsed ? el.dataset.panel : undefined
 }
 
-/** A sidebar's toggle: click opens or folds it; a panel dropped on it goes to that sidebar,
- *  so the right sidebar needs no room before it has panels. Outlined while a panel is dragged; `empty` dims it. */
+/** A sidebar's toggle: click opens or folds it; a panel dropped on it goes to that sidebar, so the right sidebar needs
+ *  no room before it has panels. Outlined while another's panel is dragged, lit under it; `empty` dims it. */
 export function SidebarToggle({ side, open, empty, onClick, className, style }: { side: Side; open: boolean; empty?: boolean; onClick: () => void; className?: string; style?: CSSProperties }) {
   const el = useRef<HTMLButtonElement>(null)
   const item = useDragItem()
@@ -195,13 +205,14 @@ export function SidebarToggle({ side, open, empty, onClick, className, style }: 
   // (as its command says it: Show / Hide, like View > Hide Sidebar)
   const name = side === "left" ? "left sidebar" : "right sidebar"
   const keys = useCommandKeys(side === "left" ? "sidebar:toggle" : "sidebar:toggle-right", true)
-  const dragging = !!item && !!draggedPanel(item)
+  const carried = item && draggedPanel(item)
+  const dragging = !!carried && sideOf(carried) !== side
   return (
     <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick} style={style}
       aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
-      className={cn("fixed top-[calc(env(safe-area-inset-top)+--spacing(1.5))] z-30 hidden size-7 cursor-pointer place-items-center rounded-[5px] transition-colors hover:bg-foreground/[0.06] hover:text-foreground md:grid",
+      className={cn("fixed top-[calc(env(safe-area-inset-top)+--spacing(1.5))] z-30 hidden size-7 cursor-pointer place-items-center rounded-[5px] transition-[color,background-color,box-shadow,scale] duration-(--motion-fast) ease-(--ease-out) hover:bg-foreground/[0.06] hover:text-foreground md:grid",
         side === "left" ? "left-2" : "right-2",
-        hit ? "bg-primary/15 text-primary ring-1 ring-primary" : dragging ? "text-primary ring-1 ring-primary/40" : empty ? "text-tertiary" : "text-muted-foreground", className)}>
+        hit ? "scale-110 bg-primary/15 text-primary ring-1 ring-primary" : dragging ? "bg-primary/[0.06] text-primary ring-1 ring-primary/40" : empty ? "text-tertiary" : "text-muted-foreground", className)}>
       <Icon className="size-[18px]" strokeWidth={1.75} />
     </button>
   )
@@ -370,7 +381,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
       </Badged>}
       {/* (on the left, where hovering the row doesn't move it: the … and X come in on the right) */}
       {open && mark && <IconAction action={mark} className="-ml-1"><mark.icon className={cn("size-3.5 shrink-0", !mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={mark.tint ? { color: mark.tint } : undefined} /></IconAction>}
-      <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>
+      <span className={cn("min-w-0 flex-1 fade-end transition-opacity duration-(--motion)", !open && "opacity-0")}>{label}</span>
       {open && children}
       {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
     </a>

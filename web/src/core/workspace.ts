@@ -2,7 +2,7 @@
 // with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
 import { backDetail, hashChanged, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
-import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
+import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, settled, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
 import { signal } from "@/core/signal"
 
 const enc = encodeURIComponent
@@ -41,7 +41,7 @@ function load(): Workspace {
     // Before splits: { tabs, active }.
     else if (t && okGroup({ id: "g0", tabs: t.tabs!, active: t.active! })) root = { id: "g0", tabs: t.tabs!, active: t.active! }
     if (root && startedFresh) return fresh(root)
-    if (root) { const gs = leaves(root); return { root, focus: gs.some((g) => g.id === t!.focus) ? t!.focus : gs[0].id } }
+    if (root) { const gs = leaves(root), focus = gs.some((g) => g.id === t!.focus) ? t!.focus : gs[0].id; return settled({ root, focus, zoom: t!.zoom }) }
   } catch { /* private mode */ }
   unsaved = true
   return { root: blankGroup("g0"), focus: "g0" }
@@ -66,7 +66,10 @@ const changed = signal()
 export function set(next: Workspace) {
   const was = shownTab(focused())?.id ?? ""
   const root = stamped(tidy(fixAllSets(next.root)) ?? blankGroup(), state.root)
-  state = { root, focus: focusAfter(state.root, root, next.focus) }
+  // (a zoom outlives changes that leave the focus on its pane: settled drops it otherwise)
+  state = settled({ root, focus: focusAfter(state.root, root, next.focus), zoom: "zoom" in next ? next.zoom : state.zoom })
+  quietNow = replacing || quiet > 0
+  if (leaves(root).find((g) => g.id === state.focus)?.float) raised = [...raised.filter((id) => id !== state.focus), state.focus]
   try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
   const now = activeTab().id
   if (now !== was) { if (!kin(was, now)) openers.clear(); if (lastChild?.opener !== now) lastChild = null; leftTab(was) }
@@ -74,6 +77,14 @@ export function set(next: Workspace) {
   changed.notify()
 }
 export const getWorkspace = () => state
+let quiet = 0, quietNow = false
+/** Run `fn`, its layout changes drawn at once rather than moving there (a divider or a floating pane dragged). */
+export function quietly<T>(fn: () => T): T { quiet++; try { return fn() } finally { quiet-- } }
+/** Whether the latest change is drawn at once (quietly, or a whole layout put in place). */
+export const layoutQuiet = () => quietNow
+/** Floating panes focused, the last one latest: the one drawn on top. */
+let raised: string[] = []
+export const floatOrder = (ids: string[]) => [...ids.filter((id) => !raised.includes(id)), ...raised.filter((id) => ids.includes(id))]
 export const useWorkspace = () => changed.use(() => state)
 /** Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged). */
 export const onWorkspaceChange = changed.subscribe
@@ -88,6 +99,7 @@ export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) 
   let root = w ? tidy(clean(w.root)) : null
   let gs = root ? leaves(root) : []
   let focus = gs.some((g) => g.id === w!.focus) ? w!.focus! : gs[0]?.id
+  let zoom = w?.zoom
   if (root && opts.merge) {
     const had = new Map(groups().map((g) => [g.id, g]))
     const tabs = new Map(groups().flatMap((g) => g.tabs).map((t) => [t.id, t]))
@@ -104,9 +116,10 @@ export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) 
     })
     gs = leaves(root)
     if (gs.some((g) => g.id === state.focus)) focus = state.focus
+    zoom = state.zoom
   }
   replacing = true
-  try { set(root ? { root, focus } : { root: { id: "g0", tabs: [], active: "" }, focus: "g0" }) } finally { replacing = false }
+  try { set(root ? { root, focus, zoom } : { root: { id: "g0", tabs: [], active: "" }, focus: "g0", zoom: undefined }) } finally { replacing = false }
   showActiveUnder()
 }
 

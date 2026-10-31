@@ -341,7 +341,7 @@ export function StatusBar() {
     <>
       <div ref={leftRef} role="status" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
         style={{ maxWidth: LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
-        className="fixed left-(--left-sidebar,0px) bottom-0 z-20 transition-[left] duration-200 ease-out hidden h-7 items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
+        className="fixed left-(--left-sidebar,0px) bottom-0 z-20 transition-[left] duration-(--motion-spring) ease-(--spring) hidden h-7 items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
         <div ref={leftRowRef} data-status-row className="flex min-w-0 items-center gap-2">
           <div ref={leftItemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
             {left.els}
@@ -350,7 +350,7 @@ export function StatusBar() {
         </div>
       </div>
       <div ref={barRef} role="status" aria-label="Status bar" data-status-bar style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
-        className="fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
+        className="fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-(--motion-spring) ease-(--spring) hidden h-7 items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
         <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
           {more}
           <div ref={itemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">

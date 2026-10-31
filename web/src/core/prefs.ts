@@ -12,6 +12,8 @@ export type Theme = "system" | "light" | "dark"
  *  themes/schemes.ts), or "theme:<Name>", an Obsidian theme in the vault's .vaultite/themes/ (or .obsidian/themes/). */
 type Scheme = string
 export type Density = "compact" | "comfortable"
+/** How things move (core/animation.ts): springy, quick and straight, or not at all. */
+export type Animation = "snappy" | "natural" | "off"
 /** How a sidebar with more than fits scrolls: each panel in its own box, under dividers that set their heights
  *  ("panels"), or the whole sidebar as one ("sidebar"). */
 type SidebarScroll = "panels" | "sidebar"
@@ -21,6 +23,7 @@ export type Prefs = {
   theme: Theme; scheme: Scheme; sidebar: boolean; disabled: string[]
   /** Compact (the default sizes) or comfortable (everything spaced out a little). */
   density: Density
+  animation: Animation
   sidebarScroll: SidebarScroll
   /** A hairline between the sidebars' panels (off: only the space between them, a divider showing on hover). */
   panelDividers: boolean
@@ -46,6 +49,8 @@ export type Prefs = {
   paneTitles: boolean
   /** The active tab takes a light wash of the colour its view gives it (a web page's container). */
   tabTint: boolean
+  /** With more than one pane, those without the focus fade a little. */
+  dimPanes: boolean
   /** A hidden sidebar folds to its icon rail; off, it's gone, sliding back over the page while the pointer is at its
    *  edge of the window. */
   rails: boolean

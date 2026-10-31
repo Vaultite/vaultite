@@ -1,6 +1,6 @@
 // A sidebar panel's heading, on its own so the file tree (which the sidebar imports) can use it too.
 import { createContext, useContext } from "react"
-import { ChevronDown, ChevronRight, Ellipsis } from "lucide-react"
+import { ChevronRight, Ellipsis } from "lucide-react"
 import { coarse } from "@/core/haptics"
 import { HeadingButton } from "@/components/Button"
 import { rightClickBelow } from "@/components/ContextMenu"
@@ -22,13 +22,13 @@ export function SidebarHeading({ title, open, children, aside, className }: {
   const fold = useContext(PanelFold)
   if (!open) return null
   const f = fold
-  const Chevron = f?.collapsed ? ChevronRight : ChevronDown
   const label = (
     <span role={f ? "button" : undefined} tabIndex={f ? 0 : undefined} aria-expanded={f ? !f.collapsed : undefined}
       onKeyDown={f ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); f.toggle(e) } } : undefined}
       className="flex min-w-0 items-center gap-0.5 rounded-[3px] text-[12px] font-semibold text-muted-foreground focus-visible:text-foreground">
       <span className="truncate">{title}</span>
-      {f && <Chevron aria-hidden data-fold={f.collapsed ? "collapsed" : "open"} className={cn("size-3.5 shrink-0 transition-opacity", !f.collapsed && "opacity-0 group-hover/head:opacity-100 group-has-focus-visible/head:opacity-100")} strokeWidth={2.25} />}
+      {/* (one chevron turning as the panel folds and opens) */}
+      {f && <ChevronRight aria-hidden data-fold={f.collapsed ? "collapsed" : "open"} className={cn("size-3.5 shrink-0 [transition:opacity_var(--motion-fast)_var(--ease-out),rotate_var(--motion-fast)_var(--ease-out)]", !f.collapsed && "rotate-90 opacity-0 group-hover/head:opacity-100 group-has-focus-visible/head:opacity-100")} strokeWidth={2.25} />}
     </span>
   )
   const head = {
