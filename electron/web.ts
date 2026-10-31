@@ -435,7 +435,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
     popupOf(p, child)
   })
 
-  const changed = () => sendState(p)
+  // (its media pausing as it closes comes after its view let go of its contents)
+  const changed = () => { if (p.view.webContents && !wc.isDestroyed()) sendState(p) }
   revive(wc, undefined, () => { p.crashed = true; changed() })
   wc.on("did-start-loading", () => { p.error = undefined; p.crashed = false; changed() })
   // A certificate this Mac doesn't trust: refused, as Chrome does, unless the user chose to go on to that host with that very
@@ -1826,9 +1827,12 @@ const raised = new WeakMap<AppWindow, Raise>()
 
 /** A page into the window: over the others, under the window's page while that's raised. */
 function addPage(win: AppWindow, view: WebContentsView) {
-  const at = raised.get(win) ? win.contentView.children.indexOf(win.view) : -1
-  if (at >= 0) win.contentView.addChildView(view, at)
-  else win.contentView.addChildView(view)
+  const kids = win.contentView.children, at = raised.get(win) ? kids.indexOf(win.view) : -1
+  if (at < 0) return win.contentView.addChildView(view)
+  // (one already in it, from parking, moves to that index counted without it: from below the window's page, one less,
+  // else it went over the window's page and took the clicks meant for what's drawn there)
+  const was = kids.indexOf(view)
+  win.contentView.addChildView(view, was >= 0 && was < at ? at - 1 : at)
 }
 
 function raise(win: AppWindow, how: Raise) {

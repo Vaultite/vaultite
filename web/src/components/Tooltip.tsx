@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
-type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "right" }
+type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left" | "right" }
 
 const DELAY = 450
 const WARM = 500 // after one hides, the next shows without waiting for this long
@@ -36,9 +36,9 @@ export function Tooltips() {
       }
       const r = el.getBoundingClientRect()
       const want = el.getAttribute("data-tip-side")
-      const side: Tip["side"] = want === "right" ? "right" : want === "top" || r.bottom + 44 > innerHeight ? "top" : "bottom"
+      const side: Tip["side"] = want === "right" || want === "left" ? want : want === "top" || r.bottom + 44 > innerHeight ? "top" : "bottom"
       shown = true
-      setTip(side === "right" ? { text, x: r.right + 8, y: r.top + r.height / 2, side }
+      setTip(side === "right" || side === "left" ? { text, x: side === "right" ? r.right + 8 : r.left - 8, y: r.top + r.height / 2, side }
         : { text, x: r.left + r.width / 2, y: side === "bottom" ? r.bottom + 8 : r.top - 8, side })
     }
     const over = (e: PointerEvent) => {
@@ -77,16 +77,16 @@ function Bubble({ tip }: { tip: Tip }) {
   // Keep it on screen: slide the label, not the arrow.
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el || tip.side === "right") return setShift(0)
+    if (!el || tip.side === "right" || tip.side === "left") return setShift(0)
     const w = el.offsetWidth
     const left = tip.x - w / 2
     setShift(left < 8 ? 8 - left : left + w > innerWidth - 8 ? innerWidth - 8 - (left + w) : 0)
   }, [tip])
-  const place = tip.side === "right"
-    ? { left: tip.x, top: tip.y, transform: "translateY(-50%)" }
+  const place = tip.side === "right" || tip.side === "left"
+    ? { left: tip.x, top: tip.y, transform: tip.side === "left" ? "translate(-100%, -50%)" : "translateY(-50%)" }
     : { left: tip.x + shift, top: tip.y, transform: `translate(-50%, ${tip.side === "top" ? "-100%" : "0"})` }
-  const arrow = tip.side === "right"
-    ? { left: -4, top: "50%", marginTop: -4 }
+  const arrow = tip.side === "right" || tip.side === "left"
+    ? { [tip.side === "right" ? "left" : "right"]: -4, top: "50%", marginTop: -4 }
     : { left: `calc(50% - ${shift}px - 4px)`, [tip.side === "top" ? "bottom" : "top"]: -4 }
   return (
     <div ref={ref} role="tooltip" style={place}

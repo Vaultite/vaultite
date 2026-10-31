@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Clicks reach what the app draws over a web page again**: an agent's page opened as a tab could come back over the
+  app (a sidebar slid in, a menu), taking clicks meant for it; right sidebar tooltips show to its left.
 - **Notes stay put when the phone's keyboard comes up**: the line you tap stays where your finger put it (or moves just
   enough to clear the keyboard and the editing keys), a table cell or field low on the screen comes into sight, and
   leaving a field for the text no longer jumps the page. While reading, Ask, Comment and the editing commands act on
