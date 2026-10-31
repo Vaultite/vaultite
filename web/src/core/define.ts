@@ -229,6 +229,9 @@ export type ViewDef = {
   /** The tab's label. It may read live data the plugin keeps (a terminal's session name): call `viewsChanged()` (the
    *  plugin API) when that changes, and every tab is drawn again. */
   title: (arg: string) => string
+  /** It has a name of its own that Rename tab… changes (a terminal's session): its `name`, the `auto` one and `set` ("":
+   *  back to auto); null: not now (not listed yet). Unset: the tab keeps the name. */
+  rename?: (arg: string) => { name: string; auto: string; set: (name: string) => Promise<void> } | null
   /** Classes for its tab's icon, after its own (a status: a colour, a pulse), like a sidebar row's `iconClassName`. */
   iconClass?: (arg: string) => string | undefined
   /** Its tab's icon colour (a CSS colour, like a file's tint: a coding agent's own). */

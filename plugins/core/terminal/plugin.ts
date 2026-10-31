@@ -374,6 +374,14 @@ function startedOn(id: string, rel: string) {
   try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(noteFile(id), rel) } catch { /* only this run knows */ }
 }
 
+/** The name the user gave a session (terminal.rename), kept beside its state: it goes before what its program titles it. */
+const nameFile = (id: string) => `${stateFile(id)}.name`
+const names = new Map<string, string | null>()
+function nameOf(id: string) {
+  if (!names.has(id)) { let n: string | null = null; try { n = fs.readFileSync(nameFile(id), "utf8") || null } catch { /* none */ } names.set(id, n) }
+  return names.get(id) ?? undefined
+}
+
 /** Terminal `id`'s state may have changed: the list hears it, and the Inbox ("inbox:state") does once it has. */
 function stateChanged(id: string) {
   listChanged()
@@ -422,8 +430,8 @@ async function askShown(id: string, agent: string) {
 
 /** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */
 function forgetState(id: string) {
-  for (const f of [stateFile(id), oscMark(id), noteFile(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
-  osc.delete(id); asking.delete(id); notes.delete(id); waits.delete(id)
+  for (const f of [stateFile(id), oscMark(id), noteFile(id), nameFile(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
+  osc.delete(id); asking.delete(id); notes.delete(id); names.delete(id); waits.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
 }
@@ -947,6 +955,8 @@ type Listed = { id: string; agent: string | null; process: string; busy: boolean
   needs?: true
   /** The note it was started on (terminal.run). */
   note?: string
+  /** The name the user gave it (terminal.rename). */
+  name?: string
   /** Its agent isn't installed here (the shell found no such program). */
   missing?: true
   machine?: string; machineLabel?: string; backend?: string; external?: boolean
@@ -1011,6 +1021,7 @@ async function readList(): Promise<Listed[]> {
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
         ...(state && shows ? { state, ...(now?.kind ? { kind: now.kind } : {}), ...(now?.msg ? { msg: now.msg } : {}) } : {}),
         ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
+        ...(nameOf(x.id) ? { name: nameOf(x.id) } : {}),
         ...(stateOf(x.id) === MISSING ? { missing: true as const } : {}),
         ...(x.external ? { external: true } : {}) })
     }
@@ -1208,6 +1219,21 @@ plugin.route("POST", "terminals/*", async (req) => {
   return { id, started: true, agent: agentOf(id)?.name ?? null }
 }, { lock: false })
 
+/** Name a session (terminal.rename): its tabs, Terminals and agents' list show it; "" gives back what its program
+ *  titles it. */
+plugin.route("POST", "terminals/*/name", async (req) => {
+  await owner(req)
+  const id = localId(req)
+  await mustRun(id)
+  const name = typeof req.body?.name === "string" ? req.body.name.replace(/[\s\p{Cc}]+/gu, " ").trim().slice(0, 80) : ""
+  fs.mkdirSync(STATES, { recursive: true })
+  if (name) fs.writeFileSync(nameFile(id), name)
+  else fs.rmSync(nameFile(id), { force: true })
+  names.set(id, name || null)
+  listChanged()
+  return { id, name: name || null }
+}, { lock: false })
+
 /** Answer the question an agent terminal shows (approve or deny) with the keys its agent declares (`agent`: whose, for
  *  one run by hand in a plain shell); 409 when it shows none. */
 plugin.route("POST", "terminals/*/answer", async (req) => {
@@ -1257,7 +1283,7 @@ plugin.route("DELETE", "terminals/*", async (req) => {
 /** Every backend's shells: shell pid -> {id, title} (a second ago at most). */
 const shellPids = () => plugin.memo(1, async function shellPids() {
   const map = new Map<number, { id: string; title?: string }>()
-  for (const b of backends()) for (const x of await b.list().catch(() => [] as Shell[])) if (x.pid && !x.spare) map.set(x.pid, { id: x.id, title: titleOf(x.title ?? "") })
+  for (const b of backends()) for (const x of await b.list().catch(() => [] as Shell[])) if (x.pid && !x.spare) map.set(x.pid, { id: x.id, title: nameOf(x.id) ?? titleOf(x.title ?? "") })
   return map
 })
 
@@ -1283,9 +1309,9 @@ plugin.provide("terminal:of-pids", async (pids: number[]) => {
   return null
 })
 
-/** A terminal's id and title (a Claude Code session's name), whether something runs in it and its agent's session id,
- *  or null when it isn't running. */
+/** A terminal's id and title (the user's name for it, else a Claude Code session's), whether something runs in it and
+ *  its agent's session id, or null when it isn't running. */
 plugin.provide("terminal:info", async (id: string) => {
   const s = (await localList()).find((x) => x.id === id)
-  return s ? { id: s.id, title: s.title, busy: s.busy, ...(s.session ? { session: s.session } : {}) } : null
+  return s ? { id: s.id, title: s.name ?? s.title, busy: s.busy, ...(s.session ? { session: s.session } : {}) } : null
 })

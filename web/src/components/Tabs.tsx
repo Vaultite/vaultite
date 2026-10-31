@@ -2,7 +2,7 @@
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Blocks, Columns2, Columns3, Files, Globe, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, PencilLine, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { edgeScroller, getDrag, onDrag, startDrag, useDrag, useDragItem, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
@@ -14,6 +14,7 @@ import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToSet, allSets, closeSet, colorSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet } from "@/core/tabsets"
 import { foldSetMoving, useGrowIn } from "@/core/tabfold"
+import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
 import { INCOMING, useSlide } from "@/core/slide"
@@ -68,6 +69,8 @@ function ownItems(tab: Tab, last: boolean, count: number): MenuItem[] {
     { label: "Close all", run: () => closeTabs("all", tab.id) },
     // ("Pin tab", as its command: the file's own Pin, under More file actions, pins it to the sidebar)
     tab.pinned ? { label: "Unpin tab", icon: PinOff, sep: true, run: () => togglePinTab(tab.id) } : { label: "Pin tab", icon: Pin, sep: true, run: () => togglePinTab(tab.id) },
+    // (a file's Rename is with its own items, below)
+    ...(!vaultPath(tab.to) && canRenameTab(tab) ? [{ label: "Rename tab…", icon: PencilLine, run: () => renameTab(tab.id) }] : []),
     ...setItems([tab.id]),
     withVariant({ label: "Split right", icon: Columns2, run: () => splitTab("right", tab.id) },
       { label: "Move to new split right", icon: Columns2, run: () => moveToSplit("right", tab.id), disabled: !siblings }),
@@ -369,6 +372,14 @@ export function useTabInfo(store: Store | null, pageInfo: (id: string) => TabInf
   return (t: Tab): TabInfo => infoOf(t, store, disabled, pageInfo)
 }
 function infoOf(t: Tab, store: Store | null, disabled: string[], pageInfo: (id: string) => TabInfo | null): TabInfo {
+  const own = shownInfo(t, store, disabled, pageInfo)
+  return t.name && !namesItself(t.to, disabled) ? { ...own, label: t.name } : own
+}
+/** What the tab shows names itself, so a name the tab was given doesn't show: a vault file, a view with a name of its own
+ *  (a terminal's session). */
+export const namesItself = (to: string, disabled = getPrefs().disabled) =>
+  !!vaultPath(to) || (to.startsWith("view:") && !!viewFor(to, disabled)?.def.rename)
+function shownInfo(t: Tab, store: Store | null, disabled: string[], pageInfo: (id: string) => TabInfo | null): TabInfo {
   if (t.to === "new") return { label: "New tab", icon: SquareDashed }
   if (t.to.startsWith("file:")) {
     const path = t.to.slice(5)
@@ -396,6 +407,8 @@ export const setPageInfo = (fn: (id: string) => TabInfo | null) => { pageInfoOf 
 export const useTabLabels = (store: Store | null) => useTabInfo(store, (id) => pageInfoOf(id))
 /** The same outside a render (what the quick switcher finds). */
 export const tabLabel = (t: Tab, store: Store | null) => infoOf(t, store, getPrefs().disabled, pageInfoOf)
+/** Its label without the name it was given: what it shows calls itself. */
+export const shownLabel = (t: Tab, store: Store | null) => shownInfo(t, store, getPrefs().disabled, pageInfoOf).label
 /** A tab's right-click menu, the one its bar has. */
 export function tabMenuOf(id: string): MenuItem[] {
   const g = leaves(getWorkspace().root).find((x) => x.tabs.some((t) => t.id === id))

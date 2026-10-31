@@ -14,6 +14,9 @@ export type Tab = { id: string; to: string
   home?: string
   /** The tab group it's in (one of its pane's `sets`). */
   set?: string
+  /** The name the user gave it (Rename tab), shown for what has no name of its own: not a file, nor a view that keeps
+   *  its own (a terminal's session). */
+  name?: string
   /** When it was last on screen (ms, to the minute), stamped while tabs archive themselves (Tabs' setting). */
   seen?: number }
 /** A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by
@@ -102,10 +105,11 @@ const okTab = (t: unknown): t is Tab => !!t && typeof t === "object" && typeof (
 const strings = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x === "string")
 function okHistory(t: Tab): Tab {
   if ((t.back === undefined || strings(t.back)) && (t.fwd === undefined || strings(t.fwd)) && (t.from === undefined || typeof t.from === "string")
-    && (t.set === undefined || (typeof t.set === "string" && !!t.set)) && (t.home === undefined || (typeof t.home === "string" && !!t.home))) return t
-  const { back, fwd, from, set, home, ...rest } = t
+    && (t.set === undefined || (typeof t.set === "string" && !!t.set)) && (t.home === undefined || (typeof t.home === "string" && !!t.home))
+    && (t.name === undefined || (typeof t.name === "string" && !!t.name))) return t
+  const { back, fwd, from, set, home, name, ...rest } = t
   return { ...rest, ...(strings(back) ? { back } : {}), ...(strings(fwd) ? { fwd } : {}), ...(typeof from === "string" ? { from } : {}),
-    ...(typeof set === "string" && set ? { set } : {}), ...(typeof home === "string" && home ? { home } : {}) }
+    ...(typeof set === "string" && set ? { set } : {}), ...(typeof home === "string" && home ? { home } : {}), ...(typeof name === "string" && name ? { name } : {}) }
 }
 
 /** Every group changed by `fn`. */

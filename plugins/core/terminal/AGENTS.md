@@ -28,6 +28,9 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
 - `vau terminal` lists this machine's sessions (with an agent's own session id, when it says) and the tabs showing
   them, and opens, resumes (a Claude Code session by its title too), reads (`screen`), types into (`send`) and ends
   them; `vau terminal tidy` closes the tabs of agents' sessions that are gone.
+- A session can be named (Rename tab… on its tab, `vau terminal rename <id> "<name>"`: terminal.rename; without an id,
+  the one you run in): its tabs on every device, its Terminals row and `vau terminal` show the name before what its
+  program titles it, until it's cleared (an empty name) or the session ends.
 - `vau terminal run <file>` (terminal.run) hands a file to an agent in a new terminal, told its path and to do what it
   asks (`prompt`, `agent`, `account`; `command`: a shell command instead), here or on another machine (`machine`).
   With the Inbox on it works alone in the background and ends with a report there. Dispatch's buttons and vault

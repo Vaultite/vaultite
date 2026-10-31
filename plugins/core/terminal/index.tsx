@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
-import { agentIn, current, dotOf, endForGood, getSessions, iconOf, labelOf, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
+import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
 import { AskBox, openAsk } from "./AskBox"
@@ -89,6 +89,8 @@ export default definePlugin({
         const on = s?.machineLabel ?? (arg.includes("@") ? arg.slice(arg.indexOf("@") + 1) : "")
         return on ? `${label} · ${on}` : label
       },
+      // Its name is the session's, on every device and in agents' list (Rename tab…).
+      rename: (arg) => { const s = sessionById(arg); return s ? { name: labelOf(s), auto: autoLabel(s), set: (n) => nameSession(arg, n) } : null },
       iconClass: (arg) => { const s = sessionById(arg); return s ? stateClass(s) : undefined },
       iconTint: (arg) => { const s = sessionById(arg); return s ? tintOf(s) : agentOfTerminal(arg)?.tint },
       iconBadge: (arg) => { const s = sessionById(arg); return !!s && dotOf(s) },
@@ -149,7 +151,7 @@ export default definePlugin({
       return {
         id: `terminal-${s.id}`, title: label, kind: "Terminal", icon: a?.icon ?? SquareTerminal, tint: tintOf(s, a) ?? "var(--muted-foreground)",
         meta: [a && label !== a.label && a.label, about(s, a)].filter(Boolean).join(" · "),
-        to: `view:terminal/${s.id}`, text: [a?.label, s.process, s.machineLabel].filter(Boolean).join(" "), recent: s.started, weight: 7,
+        to: `view:terminal/${s.id}`, text: [a?.label, s.process, s.machineLabel, s.name && autoLabel(s, a)].filter(Boolean).join(" "), recent: s.started, weight: 7,
       }
     }),
   },

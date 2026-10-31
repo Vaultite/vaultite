@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, openView, parseTerminal, type Agent, type Dot } from "@vaultite"
+import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type Dot } from "@vaultite"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
 // registers itself here while it's mounted.
@@ -35,6 +35,8 @@ export { terminalId as newId } from "@vaultite"
 /** A session as /api/terminals lists it: `agent`, the coding agent its id names (codex-<id>), or null; `machine` and
  *  `machineLabel`, another machine's (its id ends in @<machine>). */
 export type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string
+  /** The name the user gave it (Rename tab…, terminal.rename): before what its program titles it. */
+  name?: string
   /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
    *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
   state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
@@ -67,7 +69,22 @@ export function agentIn(s: Session, agents: Agent[] = agentsOn()): Agent | null 
   if (own && (!s.process || s.process === "node" || SHELLS.has(s.process) || own.process?.includes(s.process))) return own
   return agents.find((a) => a.process?.includes(s.process)) ?? null
 }
-export const labelOf = (s: Session, a = agentIn(s)) => (a ? s.title || a.label : s.process && !SHELLS.has(s.process) ? s.process : "Terminal")
+export const labelOf = (s: Session, a = agentIn(s)) => s.name || autoLabel(s, a)
+/** What it's called without a name of the user's: its agent's title, what runs in it, or just "Terminal". */
+export const autoLabel = (s: Session, a = agentIn(s)) => (a ? s.title || a.label : s.process && !SHELLS.has(s.process) ? s.process : "Terminal")
+
+/** Name session `id` (Rename tab…), "" for its automatic name: shown at once, kept by the server (terminal.rename). */
+export async function nameSession(id: string, name: string) {
+  const was = sessionById(id), clean = name.replace(/\s+/g, " ").trim()
+  const swap = (s: Session | null) => { if (s && now.list) put({ list: now.list.map((x) => (x.id === id ? s : x)) }) }
+  swap(was && { ...was, name: clean || undefined })
+  try {
+    await op("terminal.rename", { id, name: clean })
+  } catch (e) {
+    swap(was)
+    notifyError(e, "Couldn't rename the terminal")
+  }
+}
 /** Something besides the shell runs in it (an agent, a server, vim, a script like `mo`): ending it would kill that. The
  *  server says (`busy`: it checks the terminal's foreground group); an older one, only by the program's name. */
 export const busy = (s: Session) => s.busy ?? (!!s.process && !SHELLS.has(s.process))

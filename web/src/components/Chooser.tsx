@@ -27,6 +27,10 @@ export type Choose<C extends Choice = Choice> = {
   current?: string
   /** An item for what's typed when no item is called exactly that (a name that isn't listed), after the matches. */
   other?: (typed: string) => C | null
+  /** What the field holds at first, selected: a name to edit (Rename tab…). */
+  typed?: string
+  /** Enter with the field empty and nothing listed (a name cleared: back to the automatic one). */
+  onBlank?: () => void
   /** A row's label drawn another way (a font in itself); `marks` are the matched letters (see `Marked`). */
   label?: (item: C, marks: number[]) => ReactNode
   /** The selected item as the selection moves, to show it for now (a colour scheme on the whole app); null once the
@@ -82,7 +86,7 @@ answerUi("choose", (m, ended) => new Promise((done) => {
 }))
 
 function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
-  const [q, setQ] = useState("")
+  const [q, setQ] = useState(c.typed ?? "")
   useEffect(() => () => c.preview?.(null), [c])
   const items = useMemo(() => {
     const query = q.trim()
@@ -92,11 +96,15 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
     return extra ? [...hits, { ...extra, marks: [] as number[] }] : hits
   }, [c, q])
   const start = Math.max(0, c.items.findIndex((it) => it.id === c.current))
+  // (nothing to pick from, only what's typed: a field, with no list to move in)
+  const field = !c.items.length && !!c.other
   return (
-    <Palette label={c.title} placeholder={c.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose} start={start} onSelect={c.preview}
-      onPick={(it) => { if (!it) return; show(null); c.onPick(it) }} heading={c.heading}
+    <Palette label={c.title} placeholder={c.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose} start={start} onSelect={c.preview} select={!!c.typed}
+      onPick={(it) => {
+        if (it) { show(null); c.onPick(it) } else if (!q.trim() && c.onBlank) { show(null); c.onBlank() }
+      }} heading={c.heading}
       empty={c.empty ?? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Nothing matches "{q.trim()}".</p>}
-      hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ["Escape", "to dismiss"]]}
+      hints={field ? [["Enter", "to confirm"], ["Escape", "to cancel"]] : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ["Escape", "to dismiss"]]}
       row={(h) => (
         <>
           {h.icon && <span className="flex size-5 shrink-0 items-center justify-center">{iconOf(h.icon)}</span>}

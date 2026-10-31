@@ -11,6 +11,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Change colour scheme… does. Terminals now use the monospace font too, and Terminal settings have the cursor's shape
   (block, bar or underline, "Terminal cursor…" in the palette, shown on the terminal as you move) and Blink the terminal
   cursor. Show pinned pages as… and the graph's Colour by… preview the same way.
+- **Name your tabs**: Rename tab… in the palette (and a tab's right-click) turns the palette into a field holding its
+  name. A file is renamed, a terminal's session gets a name every device and agent sees (`vau terminal rename`), and a
+  web page or view keeps the name on its tab; an empty name brings back the automatic one. Rename tab group… and Add
+  current tab to group… (pick a group, or type a new one's name) work the same way.
 - **Delegation**: a coding agent hands a task to another as its subagent (`vau delegate codex "Review this diff"`, MCP's
   `delegate`): Claude Code as a chat in the app, Codex or OpenCode in a terminal, waiting for its answer (with the files
   it changed) or carrying on while its result comes back as a message. Each subagent is its own inbox thread, "from"

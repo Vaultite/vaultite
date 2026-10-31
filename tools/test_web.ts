@@ -1045,6 +1045,13 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tab groups: a tab moved into another pane's middle joins no group", runs() === "b | a(Both),c(Both),d", runs())
   const saved = JSON.parse(JSON.stringify(ws.getWorkspace())); ws.replaceWorkspace(saved)
   check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "b | a(Both),c(Both),d", runs())
+  // A tab's own name (Rename tab): set, trimmed, kept through a reload, and taken off by an empty one.
+  ws.nameTab("b", "  Reading   list ")
+  const named = lay.clean(JSON.parse(JSON.stringify(ws.groups()[0])))
+  ws.nameTab("b", " ")
+  const bad = lay.clean({ id: "g9", active: "n", tabs: [{ id: "n", to: "new", name: 42 }] })
+  check("tab names: kept as one line, read back, cleared by an empty name, a bad one dropped", named.tabs[0].name === "Reading list"
+    && !("name" in ws.groups()[0].tabs[0]) && !("name" in bad.tabs[0]), [named.tabs[0], ws.groups()[0].tabs[0], bad.tabs[0]])
   // An agent's web tabs, each in its task's tab group, with the focus in that group's pane (an ask shown there): the pane
   // keeps its size (a pane made for each and emptied again halved it, till it drew nothing).
   const shares = () => ws.getWorkspace().root.sizes?.map((x: number) => x.toFixed(2)).join(",")

@@ -24,7 +24,8 @@ import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
 import { backgrounds, detailFor, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, shownHeaderItems, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
-import { leaveSet, makeSet } from "@/core/tabsets"
+import { leaveSet } from "@/core/tabsets"
+import { canRenameTab, chooseTabGroup, renameTab, renameTabGroup } from "@/core/tabnames"
 import { canReopen, reopenLatest } from "@/core/tabarchive"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
@@ -58,7 +59,7 @@ import { SearchPalette } from "@/components/SearchPalette"
 import { openNewTab } from "@/core/launcher"
 import { Workspace } from "@/components/Workspace"
 import { Resizer } from "@/components/Resizer"
-import { DragGhost, editSet, setPageInfo, useTabInfo, type TabInfo } from "@/components/Tabs"
+import { DragGhost, setPageInfo, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { useLingeringSheet, zooms } from "@/core/motion"
 import { closeSwitcher } from "@/core/phoneTabs"
 import { PhoneTab, TabSwitcher } from "@/components/TabSwitcher"
@@ -355,7 +356,10 @@ export default function App() {
     // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).
     { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
       icon: PanelLeft, nameWhenOn: "Show tabs on top", on: () => tabsInSidebar() },
-    { id: "tab:group", name: "Add current tab to new group", when: isDesktop, run: () => { const id = makeSet([activeTab().id]); if (id) editSet(id) }, icon: GroupIcon },
+    // (the palette as a field: what the name belongs to is what the tab shows, core/tabnames.tsx)
+    { id: "tab:rename", name: "Rename tab…", when: () => canRenameTab(activeTab()), run: () => renameTab(), icon: PencilLine },
+    { id: "tab:group", name: "Add current tab to group…", when: isDesktop, run: chooseTabGroup, icon: GroupIcon },
+    { id: "tab:rename-group", name: "Rename tab group…", when: () => isDesktop() && !!activeTab().set, run: renameTabGroup, icon: PencilLine },
     { id: "tab:ungroup", name: "Remove current tab from group", when: () => isDesktop() && !!activeTab().set, run: () => leaveSet([activeTab().id]), icon: Ungroup },
     // A window of its own (a pop-out): no sidebars, its own tabs.
     { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activeTab().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },

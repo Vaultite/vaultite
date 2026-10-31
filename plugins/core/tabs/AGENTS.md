@@ -33,6 +33,12 @@ at once, then New tab in group, Ungroup and Close group. A new group opens it. T
 empty `name` is allowed (the chip is just its colour). A group's tabs are always together; one with no tabs left is
 gone, and the tab on screen is never in a folded group (showing one opens it).
 
+**Names**: Rename tab… (the palette, or a tab's right-click) names what the tab shows: a file is renamed (links follow),
+a terminal's session is named (terminal.rename), and anything else (a web page, a view) keeps the name on the tab, its
+`name` (`{"id": "t4", "to": "view:web/…", "name": "Docs"}`), shown in place of its title wherever it's drawn. An empty name
+gives back the automatic one. Rename tab group… and Add current tab to group… (a group there is, or a new one named as
+typed) do the same for groups.
+
 Change them in the user's window with `vau tabs` (tabs.list: its tabs and groups), `vau tabs group <tabs...> --name
 --color` (tabs.group: a new group, or `--group <id>` to add to one or rename, recolour or fold it with `--collapsed`)
 and `vau tabs ungroup` (tabs.ungroup: `--group <id>`, or tabs to take out of theirs). Tabs are named by id, by what they

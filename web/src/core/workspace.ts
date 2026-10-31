@@ -419,13 +419,19 @@ export function togglePinTab(id: string) {
   if (!g) return
   set(withGroup(g.id, (x) => mapTabs(x, id, (t) => { const { pinned, home, ...rest } = t; return pinned ? rest : { ...rest, pinned: true, home: t.to } })))
 }
+/** Name a tab (Tab.name: Rename tab), or "" to give it back the name of what it shows. */
+export function nameTab(id: string, name: string) {
+  const g = groupOfTab(id), clean = name.replace(/\s+/g, " ").trim().slice(0, 80)
+  if (!g) return
+  set(withGroup(g.id, (x) => mapTabs(x, id, (t) => { const { name: _, ...rest } = t; return clean ? { ...rest, name: clean } : rest })))
+}
 /** ⌘W on a pinned tab, as Arc's: the pane shows the next tab, and one with a page of its own here (a web page) ends it
  *  and goes back to its `home`, as a fresh tab that loads it when shown; others (a note, a terminal) stay as they are. */
 export function restTab(id: string) {
   const g = groupOfTab(id), t = g?.tabs.find((x) => x.id === id)
   if (!g || !t) return
   const ended = t.to.startsWith("view:") && !!onClosed?.(t.to, t.id, false, false)
-  const next: Tab = ended ? { id: newId(), to: t.home ?? t.to, pinned: true, ...(t.home ? { home: t.home } : {}), ...(t.set ? { set: t.set } : {}) } : t
+  const next: Tab = ended ? { id: newId(), to: t.home ?? t.to, pinned: true, ...(t.home ? { home: t.home } : {}), ...(t.set ? { set: t.set } : {}), ...(t.name ? { name: t.name } : {}) } : t
   const active = g.tabs.length > 1 ? withoutTabs(g, new Set([id])).active : next.id
   set(withGroup(g.id, (x) => ({ ...x, tabs: x.tabs.map((y) => (y.id === id ? next : y)), active })))
   showActiveUnder()

@@ -1,12 +1,12 @@
 // Terminal's operations (`vau terminal`), through the plugin's own routes, Workspaces' and the user's window, so they
 // can do what the routes allow and nothing more.
 import { startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/agents.ts"
-import { byUser, fmtAgo, OpError, type OpCtx, type Plugin, quoted } from "../../../core/plugins.ts"
+import { byUser, fmtAgo, type Machine, MACHINE_CLIENT, OpError, type OpCtx, type Plugin, quoted, splitMachine } from "../../../core/plugins.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
 type Session = { id: string; agent: string | null; process: string; clients: number; started: number; title?: string; state?: string; kind?: string; needs?: boolean; note?: string; backend?: string
-  session?: string }
+  session?: string; name?: string }
 type TabAt = { workspace: number; tab: string }
 
 /** An id that starts a new agent's session (`claude-k3j2h1g0`): a tab of one that's gone offers a new one, never
@@ -62,6 +62,21 @@ export async function show(ctx: OpCtx, to: string, split: "right" | "down" | nul
   }
 }
 
+/** Op `id` run on machine `machine` (Machines) with `body`: its server checks its owner again. Passed on once only. */
+async function passOn(plugin: Plugin, ctx: OpCtx, machine: string, id: string, body: object): Promise<Any> {
+  const m = await plugin.ask<Machine | null>("machines:machine", null, machine)
+  if (!m || m.self) throw new OpError(`no machine '${machine}' to ask (Machines lists them)`, 404)
+  if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
+  if (!m.online) throw new OpError(`${m.label} is offline`, 502)
+  const r = await fetch(`${m.url}/api/ops/${id}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }).catch(() => null)
+  if (!r) throw new OpError(`${m.label} doesn't answer`, 502)
+  const out = await r.json().catch(() => ({})) as Any
+  if (r.status === 404 && !out.id) throw new OpError(`${m.label} runs an older Vaultite, without ${id}`, 409)
+  if (!r.ok) throw new OpError(`${m.label}: ${out.error || `answered ${r.status}`}`, r.status)
+  return out
+}
+
 /** A terminal id as given (or a tab's address), this machine's. */
 function localId(raw: string) {
   const x = raw.trim().replace(/^view:terminal\//, "")
@@ -97,7 +112,7 @@ shell's (a new shell when shown). The others: vau terminal open|resume|screen|se
       return { sessions: ss.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone }
     },
     text: (r) => {
-      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.needs ? ", needs you" : ""})` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${fmtAgo(s.started, { short: true })} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
+      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""}${s.needs ? ", needs you" : ""})` : ""}${s.name ? `  named "${s.name}"` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}${s.note ? `  on ${s.note}` : ""}  ${fmtAgo(s.started, { short: true })} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
       const gone = (r.gone as { id: string; tabs: TabAt[]; agent: boolean }[]).map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
       return (rows.length ? rows.join("\n") : "(no terminal sessions on this machine)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "")
     },
@@ -224,6 +239,35 @@ days); several are listed. Other agents: their session's id.
     },
     text: (r, p) => `Typed into ${r.id}${p.text ? `: ${p.text.length > 60 ? `${p.text.slice(0, 60)}…` : p.text}` : ""}${r.enter ? " (Enter)" : ""}.`,
     did: ({ id, text }) => ({ action: "run", text: `Typed ${quoted(text, 60)} into the terminal ${id}` }),
+  })
+
+  plugin.op({
+    owner: "the terminal",
+    id: "terminal.rename",
+    cli: "terminal rename",
+    summary: "Name a terminal's session (its tabs, Terminals and this list show it, before its program's title); an empty name takes it back. Without an id, your own.",
+    help: `The name is the session's, kept by the server while it runs: every device's tab shows it, as Rename tab… in the
+app names it. Another machine's terminal (id@machine) is named there.
+
+  vau terminal rename claude-k3j2h1g0 "Release notes"
+  vau terminal rename --name "Fixing the sidebar"
+  vau terminal rename k3j2h1g0 ""`,
+    kind: "write",
+    lock: false,
+    params: {
+      id: { type: "string", env: "VAULTITE_TERMINAL", description: "the terminal's id (vau terminal lists them); left out, the one you run in (VAULTITE_TERMINAL)" },
+      name: { type: "string", default: "", description: "its name, at most 80 characters; empty: back to what its program titles it" },
+    },
+    args: ["id", "name"],
+    run: async ({ id, name }, ctx) => {
+      if (!id) throw new OpError("which terminal? give its id (vau terminal lists them): you don't run in one of the app's")
+      const [own, machine] = splitMachine(id.trim().replace(/^view:terminal\//, ""))
+      if (!machine) return await ctx.api("POST", `terminals/${encodeURIComponent(own)}/name`, { name: name ?? "" })
+      const out = await passOn(plugin, ctx, machine, "terminal.rename", { id: own, name: name ?? "" })
+      return { ...out, id: `${own}@${machine}` }
+    },
+    text: (r) => (r.name ? `Named ${r.id} "${r.name}".` : `${r.id} goes by its program's title again.`),
+    did: ({ id, name }) => ({ action: "ui", text: name ? `Named the terminal ${id ?? ""} ${quoted(name, 60)}` : `Took the name off the terminal ${id ?? ""}` }),
   })
 
   plugin.op({
