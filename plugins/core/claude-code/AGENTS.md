@@ -11,6 +11,8 @@ has run in it). Name them, keep one private (its usage counts; no titles, folder
 Chat sessions: Claude Code run by the app itself (the Agent SDK, the account's own login), not in a terminal: `vau chat
 start "<prompt>"` (`--cwd`, `--account`, `--model`, `--effort`, `--mode`, `--open`), `vau chat send <id> "<text>"` (resumes
 one that ended), `vau chat read <id>`, `vau chat list`, `vau chat interrupt|stop <id>`, `vau chat set <id> --model opus`.
-Each is a normal session (`claude --resume <id>` opens it in a terminal), drawn in `view:claude-session/<id>`; what it
+It starts in auto mode unless `--mode` or the account's `permissions.defaultMode` says otherwise, and a resume keeps the
+mode it had. Each is a normal session (`claude --resume <id>` opens it in a terminal, except a plugin's that runs now with
+the tools it serves, the companion's), drawn in `view:claude-session/<id>`; what it
 asks (a permission, questions, a plan) waits in its tab and the inbox for the user, never for an agent (`vau chat answer`
 is theirs).

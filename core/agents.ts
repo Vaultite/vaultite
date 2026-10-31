@@ -430,11 +430,10 @@ export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: A
 
 /** `s` as one word of a shell command. */
 export const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
+/** What a terminal shows instead of running its agent (`text`, why not), then a plain shell. */
+export const agentRefusal = (text: string): AgentCommand => ({ command: `printf '%s\\n' ${shellQuote(text)}`, argv: ["cmd.exe", "/d", "/c", "echo", text], cwd: null })
 /** A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell. */
-export const notOnThisMachine = (agent: string, id: string): AgentCommand => {
-  const text = `There's no ${agent} session ${id} on this machine to resume.`
-  return { command: `printf '%s\\n' ${shellQuote(text)}`, argv: ["cmd.exe", "/d", "/c", "echo", text], cwd: null }
-}
+export const notOnThisMachine = (agent: string, id: string): AgentCommand => agentRefusal(`There's no ${agent} session ${id} on this machine to resume.`)
 
 // ---------- conversations (a session's view tab)
 

@@ -47,7 +47,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Claude Code in a chat tab**: "New Claude Code chat" (and "Open Claude Code in an account or on a machine…") runs a
   session in the app rather than a terminal, through the Agent SDK on your own Claude Code login: answers stream in as
   Markdown, tool calls fold, permissions, questions and plans are answered right in it (and from the inbox and your
-  phone), with Stop and model, effort and permission-mode pickers. It keeps working while the app or server restarts (a
+  phone), with Stop and model, effort and permission-mode pickers (the mode first, in a word on a phone). Sessions start
+  in auto mode unless your Claude Code settings' defaultMode says otherwise, and a resumed one keeps its mode. It keeps working while the app or server restarts (a
   turn cut off by a reboot goes on by itself), another machine's sessions open the same way, its edits show in Activity,
   every session's tab is its chat (one started in a terminal carries on there once that ends), Open in terminal resumes it
   in Claude Code, and the inbox's replies and voice notes go straight into chat sessions. `vau chat` drives them.
@@ -55,7 +56,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the other Claude names are chat sessions now. What you do reaches them the moment it happens (asks that come while
   one is busy go together as it finishes), they answer with their own tools instead of shell commands, their cursor
   shows them reading or thinking while they really are, and they keep going through a server restart. Show its session
-  opens its chat; Codex and OpenCode companions stay in terminals.
+  opens its chat (not a terminal, where it would lose its tools); Codex and OpenCode companions stay in terminals.
 - **Agents' sessions stay in the inbox until they're dealt with**: each session is one thread that needs you (it asks,
   answered, reported or failed), then shows its agent working once you reply, and leaves only when you mark it done or
   it finishes with nothing more for you; opening or reading it no longer makes it disappear. A report is its session's

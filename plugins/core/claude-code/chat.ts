@@ -389,7 +389,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     // (its own session and agent, so `vau inbox report` from it names them: it has no terminal)
     const env = { ...await envFor(a), CLAUDE_CODE_SESSION_ID: id, VAULTITE_AGENT: "claude" }
     return { id, resume: o.resume, cwd: o.cwd || plugin.vault.path, env, claude: claudeBin(), account: a.id, by: o.by ?? "app",
-      ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), ...(o.mode ? { mode: o.mode } : {}),
+      ...(o.model ? { model: o.model } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode || modeDefault(a.id),
       append: [chatContext(), o.append].filter(Boolean).join("\n\n"), ...(o.title ? { title: o.title } : {}),
       ...(o.tools?.length ? { tools: o.tools.map(({ name, description, schema }) => ({ name, description, schema })) } : {}),
       ...(o.allowed?.length ? { allowed: o.allowed } : {}), ...(o.denied?.length ? { denied: o.denied } : {}), ...(o.inbox === false ? { quiet: true } : {}) }
@@ -421,7 +421,14 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const o = { ...owned.get(id), ...given }
     const said = text.trim()
     if (!said) throw new OpError("text: what to say")
-    if (hosted.has(id) && hosted.get(id)!.state !== "error") return await ask("send", { id, text: said }) as { uuid: string; answered?: string }
+    if (hosted.has(id) && hosted.get(id)!.state !== "error") {
+      // (chosen in a tab that didn't know it ran yet: applied before what it's told)
+      const s = hosted.get(id)!
+      const change = { ...(given.model && given.model !== s.model ? { model: given.model } : {}), ...(given.effort && given.effort !== s.effort ? { effort: given.effort } : {}),
+        ...(given.mode && given.mode !== s.mode ? { mode: given.mode } : {}) }
+      if (Object.keys(change).length) await ask("set", { id, ...change })
+      return await ask("send", { id, text: said }) as { uuid: string; answered?: string }
+    }
     const why = await busyElsewhere(id)
     if (why) throw new OpError(why, 409)
     const f = d.sessionFile(id)
@@ -430,7 +437,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const t = await readTitle(id)
     const was = hosted.get(id)
     const { s } = await ask("start", { spec: await specFor(id, { ...o, resume: true, cwd: o.cwd || t?.cwd || "",
-      model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode }, f.account), prompt: said }) as { s: Summary }
+      model: o.model || was?.model || undefined, effort: o.effort || (was?.effort || undefined) as Effort | undefined, mode: o.mode || was?.mode || kept[id]?.mode }, f.account), prompt: said }) as { s: Summary }
     if (hosted.get(id) === was) hosted.set(id, s)
     return { uuid: "", resumed: true }
   }
@@ -439,6 +446,13 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const s = hosted.get(id)
     if (!s) throw new OpError(`session ${id} isn't running in the app (vau chat list)`, 404)
     return s
+  }
+
+  /** The plugin driving session `id` with the tools it serves (the companion), or "": run in a terminal, it would
+   *  have none of them, and its plugin would lose it. */
+  function drivenBy(id: string) {
+    const k = kept[id]
+    return owned.get(id)?.tools?.length || k?.tools ? (hosted.get(id)?.by || k?.by || "a plugin") : ""
   }
 
   /** Answer what session `id` asks (its newest ask, or `askId`). */
@@ -501,6 +515,18 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     return { entries: list.slice(start, end), start, total: list.length }
   }
 
+  /** The permission mode an account's sessions start in when none is chosen: its settings' defaultMode (Claude Code's
+   *  own setting, as a terminal's claude starts in), else auto. */
+  function modeDefault(account: string): Mode {
+    const a = d.accounts().find((x) => x.id === account)
+    try {
+      const st = a ? JSON.parse(fs.readFileSync(path.join(a.dir, "settings.json"), "utf8")) as { permissions?: { defaultMode?: unknown } } : null
+      const m = st?.permissions?.defaultMode
+      if (MODES.includes(m as Mode)) return m as Mode
+    } catch { /* none set */ }
+    return "auto"
+  }
+
   /** The effort an account's sessions run at when none is chosen: its settings' for the model, else its own. */
   function effortDefault(account: string, model = "") {
     const a = d.accounts().find((x) => x.id === account)
@@ -519,7 +545,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     const f = d.sessionFile(id)
     const account = s?.account || f?.account.id || ""
     return { t: "hello", id, s, title: t?.title ?? "", cwd: s?.cwd || t?.cwd || "", account, model: t?.model ?? "", effort: effortDefault(account, s?.model || t?.model),
-      history: page(t?.list ?? []), live, tui: s ? null : await d.tuiOf(id), found: !!(s || t) }
+      history: page(t?.list ?? []), live, tui: s ? null : await d.tuiOf(id), found: !!(s || t), driven: drivenBy(id) }
   }
 
   plugin.socket("claude-code/chat/*", async (ws, req, { wild }) => {
@@ -577,7 +603,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     await plugin.ownerOnly(req, "Claude Code's chat")
     const m = d.models()
     return { models: m.models, efforts: m.efforts, modes: MODES.map((id) => ({ id, label: MODE_LABELS[id] })),
-      accounts: d.accounts().filter((a) => !a.private).map((a) => ({ id: a.id, label: a.label, effort: effortDefault(a.id) })),
+      accounts: d.accounts().filter((a) => !a.private).map((a) => ({ id: a.id, label: a.label, effort: effortDefault(a.id), mode: modeDefault(a.id) })),
       folders: (await d.folders()).slice(0, 12), vault: plugin.vault.path, home: HOME }
   }, { sync: false })
 
@@ -628,7 +654,7 @@ export function chats(plugin: Plugin, d: ChatDeps) {
 claude --resume <id> in a terminal opens the same conversation. account: one of Claude Code's accounts (its config
 folders; vau chat start --help lists none: GET /api/claude-code/accounts); cwd: the folder it works in (the vault by
 default); model (sonnet, opus, haiku, fable or a full id), effort (low to max) and mode (default, acceptEdits, plan,
-auto, dontAsk, bypassPermissions). open: show its tab (an agent's opens behind the user's, with a toast).
+auto, dontAsk, bypassPermissions; none: the account's permissions.defaultMode, else auto). open: show its tab (an agent's opens behind the user's, with a toast).
 
   vau chat start "Fix the flaky upload test" --cwd ~/code/lighthouse --model sonnet
   vau chat start "Plan the release" --mode plan --open`,
@@ -638,7 +664,7 @@ auto, dontAsk, bypassPermissions). open: show its tab (an agent's opens behind t
       account: { type: "string", description: "the Claude Code account to run in (default: default)" },
       model: { type: "string", description: "sonnet, opus, haiku, fable, or a model's full id" },
       effort: { type: "string", enum: EFFORTS, description: "how hard it thinks" },
-      mode: { type: "string", enum: MODES, description: "its permission mode (default: Claude Code's setting)" },
+      mode: { type: "string", enum: MODES, description: "its permission mode (default: the account's permissions.defaultMode, else auto)" },
       open: { type: "boolean", description: "open its chat tab in the user's window" },
     },
     args: ["prompt"],
@@ -761,6 +787,8 @@ plan sent back, what to change. mode: the permission mode after an approved plan
 
   return {
     hosted: (id: string) => hosted.has(id),
+    /** The plugin whose tools session `id` runs with while it runs here, or "". */
+    driving: (id: string) => (hosted.has(id) ? drivenBy(id) : ""),
     askingNow, turnNow,
     /** A plugin's sessions (the companion's): resumed as started (its tools...); `serve` gives them again after a
      *  restart; `on` hears each state (null: its process ended, idle a while: the next message resumes it). */

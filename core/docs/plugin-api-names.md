@@ -925,6 +925,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
 - `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), its efforts, least first, and the permission modes it's held to…
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
+- `agentRefusal(text)`: What a terminal shows instead of running its agent (`text`, why not), then a plain shell.
 - `agentSession(k, v?)`: Whether variable `k` (=`v`) is a coding agent's own session's, which nothing it starts should inherit (Claude Code's tools also get GIT_EDITOR=true, so git never waits on an editor).
 - `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell (AgentCommand).
 - `AgentState`: A terminal's agent as the Terminals panel shows it.

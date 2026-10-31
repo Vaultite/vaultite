@@ -13,7 +13,7 @@ type Summary = { id: string; state: "starting" | "working" | "waiting" | "idle" 
   mode: Mode; at: number; asks: string[]; error?: string }
 type Ask = Extract<Entry, { k: "ask" }>
 type Tool = Extract<Entry, { k: "tool" }>
-type Options = { models: { id: string; label: string }[]; efforts: string[]; modes: { id: Mode; label: string }[]; accounts: { id: string; label: string; effort: string }[]
+type Options = { models: { id: string; label: string }[]; efforts: string[]; modes: { id: Mode; label: string }[]; accounts: { id: string; label: string; effort: string; mode: Mode }[]
   folders: string[]; vault: string; home: string }
 
 /** A chat tab's arg before its session exists. */
@@ -49,16 +49,20 @@ function modelLabel(model: string, o: Options | null) {
   return [...words.map((w) => w[0]?.toUpperCase() + w.slice(1)), nums.join(".")].join(" ").trim() || "Default model"
 }
 const EFFORT: Record<string, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" }
+/** The modes' words on a phone, where the composer's chips share one line. */
+const MODE_SHORT: Partial<Record<Mode, string>> = { default: "Ask", acceptEdits: "Edits", plan: "Plan", auto: "Auto", bypassPermissions: "Bypass" }
 const seconds = (ms: number) => (ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} s` : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`)
 
 // ---------- the session, live: its socket's hello, then each change, merged by id
 
 type Live = { ready: boolean; found: boolean; s: Summary | null; title: string; cwd: string; account: string; model: string; effort: string; tui: string | null
+  /** The plugin driving it with the tools it serves (the companion), or "": it can't go to a terminal. */
+  driven: string
   entries: Entry[]; start: number; refused?: string }
 
 function useChat(id: string) {
   const map = useRef(new Map<string, Entry>())
-  const [live, setLive] = useState<Live>({ ready: false, found: true, s: null, title: "", cwd: "", account: "", model: "", effort: "", tui: null, entries: [], start: 0 })
+  const [live, setLive] = useState<Live>({ ready: false, found: true, s: null, title: "", cwd: "", account: "", model: "", effort: "", tui: null, driven: "", entries: [], start: 0 })
   const meta = useRef(live)
   useEffect(() => {
     if (!id || id === NEW) return
@@ -74,7 +78,7 @@ function useChat(id: string) {
         if (m.t === "hello") {
           map.current = new Map([...(m.history as { entries: Entry[] }).entries, ...(m.live as Entry[])].map((e) => [e.id, e]))
           meta.current = { ready: true, found: !!m.found, s: m.s as Summary | null, title: String(m.title ?? ""), cwd: String(m.cwd ?? ""), account: String(m.account ?? ""), model: String(m.model ?? ""), effort: String(m.effort ?? ""),
-            tui: (m.tui as string | null) ?? null, entries: [], start: (m.history as { start: number }).start }
+            tui: (m.tui as string | null) ?? null, driven: String(m.driven ?? ""), entries: [], start: (m.history as { start: number }).start }
           nameTab(id, meta.current.title)
         } else if (m.t === "put") {
           const e = m.e as Entry
@@ -227,6 +231,7 @@ function Head({ id, fresh, title, c, o }: { id: string; fresh: boolean; title: s
   const model = c.s?.model || c.model
   const where = [c.cwd && base(c.cwd), model && modelLabel(model, o), o && o.accounts.length > 1 && o.accounts.find((a) => a.id === c.account)?.label].filter(Boolean)
   const toTerminal = async () => {
+    if (!c.ready) return
     if (c.tui) { const to = `terminal/${onMachine(c.tui, splitMachine(id)[1])}`; return openView(to, { newTab: !isViewOpen(to) }) }
     if (c.s && (c.s.state === "working" || c.s.state === "waiting")) {
       const ok = await confirmDialog({ title: "Open it in a terminal?", body: "Claude is working on it here. Opening it in a terminal stops what it's doing; the conversation goes on there.", confirm: "Stop and open" })
@@ -250,10 +255,13 @@ function Head({ id, fresh, title, c, o }: { id: string; fresh: boolean; title: s
         {family && <Kinfolk f={family} />}
       </div>
       <div className="flex shrink-0 items-center gap-1 pt-0.5">
-        <Button look="quiet" size="small" className="max-md:size-11 max-md:px-0" onClick={() => void toTerminal()} aria-label={c.tui ? "Show its terminal" : "Open in terminal"}
-          data-tip={c.tui ? "It runs in a terminal" : "Resume it in Claude Code in a terminal"} data-open-terminal>
-          <SquareTerminal className="size-4 max-md:size-5" strokeWidth={2} /><span className="max-md:hidden">{c.tui ? "Show terminal" : "Open in terminal"}</span>
-        </Button>
+        {/* (a plugin's session that runs here has tools no terminal serves: taking it there would end it for its plugin) */}
+        {!(c.driven && c.s) && (
+          <Button look="quiet" size="small" className="max-md:size-11 max-md:px-0" disabled={!c.ready} onClick={() => void toTerminal()} aria-label={c.tui ? "Show its terminal" : "Open in terminal"}
+            data-tip={c.tui ? "It runs in a terminal" : "Resume it in Claude Code in a terminal"} data-open-terminal>
+            <SquareTerminal className="size-4 max-md:size-5" strokeWidth={2} /><span className="max-md:hidden">{c.tui ? "Show terminal" : "Open in terminal"}</span>
+          </Button>
+        )}
         <button type="button" aria-label="More" onClick={more} className="grid size-7 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-11">
           <Ellipsis className="size-4 max-md:size-5" />
         </button>
@@ -570,7 +578,8 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
         keep("")
         setArg(r.id)
       } else {
-        await op("claude-code.chat-send", { id, text: said, ...(c.s ? {} : next) })
+        // (a choice made before the tab heard it runs goes with it: the server applies it either way)
+        await op("claude-code.chat-send", { id, text: said, ...next })
         keep("")
         setNext({})
       }
@@ -587,6 +596,7 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
   /** A choice changed: a new chat's is kept for the next one; a running session's changes it now. */
   const choose = (p: Picks) => {
     if (fresh) return save({ ...saved, ...p })
+    if (!c.ready) return
     if (!c.s) return setNext((n) => ({ ...n, ...p }))
     void op("claude-code.chat-set", { id, ...p }).catch((e) => notifyError(e, "Couldn't change it"))
   }
@@ -597,7 +607,9 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
   const model = picks.model ? modelLabel(picks.model, o) : "Default model"
   // (none chosen: what the session runs at, as Claude Code says, else its account's settings)
   const effort = picks.effort || (fresh ? o?.accounts.find((a) => a.id === (saved.account ?? "default"))?.effort ?? o?.accounts[0]?.effort : c.effort) || ""
-  const mode = o?.modes.find((m) => m.id === (picks.mode ?? "default"))?.label ?? "Ask for permissions"
+  // (none chosen: the account's default, auto unless its settings say otherwise)
+  const modeId: Mode = picks.mode ?? o?.accounts.find((a) => a.id === (fresh ? saved.account ?? "default" : c.account))?.mode ?? o?.accounts[0]?.mode ?? "auto"
+  const mode = o?.modes.find((m) => m.id === modeId)?.label ?? "Auto mode"
   const account = o && o.accounts.length > 1 ? o.accounts.find((a) => a.id === (picks.account ?? c.account))?.label ?? o.accounts[0]?.label : ""
   const folder = fresh ? (saved.cwd || o?.vault || "") : ""
   const placeholder = blocked ? (c.tui !== null ? "It runs in a terminal: answer it there" : "Nothing to reply to") : pending?.kind === "permission" ? "Tell Claude what to do instead…"
@@ -610,15 +622,18 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
           className="max-h-[40dvh] min-h-12 w-full resize-none overflow-y-auto bg-transparent px-4 pt-3 pb-1 text-[15px] leading-[22px] outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed max-md:text-[17px] max-md:leading-[24px]" />
         <div className="flex items-center gap-0.5 px-2 pb-2">
           <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+            {/* (first: what's changed mid-session, whole on a phone however far the rest scroll) */}
+            <Chip label="Permission mode" onClick={(e) => menu(e, (o?.modes ?? []).filter((m) => m.id !== "dontAsk").map((m) => ({ label: m.label, checked: m.id === modeId,
+              danger: m.id === "bypassPermissions", run: () => choose({ mode: m.id }) })))}>
+              <span className={cn(modeId === "bypassPermissions" && "text-[var(--red)]", modeId === "plan" && "text-[var(--teal)]")}>
+                <span className="max-md:hidden">{mode}</span><span className="md:hidden">{MODE_SHORT[modeId] ?? mode}</span>
+              </span>
+            </Chip>
             {fresh && account && <Chip label="Account" onClick={(e) => menu(e, (o?.accounts ?? []).map((a) => ({ label: a.label, checked: a.label === account, run: () => choose({ account: a.id }) })))}>{account}</Chip>}
             {fresh && <Chip label="Folder" onClick={(e) => menu(e, folderItems(o, folder, (cwd) => choose({ cwd })))}><Folder className="size-3.5 shrink-0" />{base(folder) || "Folder"}</Chip>}
             <Chip label="Model" onClick={(e) => menu(e, [{ label: "Default model", checked: !picks.model, run: () => choose({ model: undefined }) },
               ...(o?.models ?? []).map((m) => ({ label: m.label, checked: m.id === picks.model || modelLabel(picks.model ?? "", o).startsWith(m.label), run: () => choose({ model: m.id }) }))])}>{model}</Chip>
             <Chip label="Effort" onClick={(e) => menu(e, (o?.efforts ?? []).map((x) => ({ label: EFFORT[x] ?? x, checked: x === effort, run: () => choose({ effort: x }) })))}>{effort ? `${EFFORT[effort] ?? effort} effort` : "Default effort"}</Chip>
-            <Chip label="Permission mode" onClick={(e) => menu(e, (o?.modes ?? []).filter((m) => m.id !== "dontAsk").map((m) => ({ label: m.label, checked: m.id === (picks.mode ?? "default"),
-              danger: m.id === "bypassPermissions", run: () => choose({ mode: m.id }) })))}>
-              <span className={cn(picks.mode === "bypassPermissions" && "text-[var(--red)]", picks.mode === "plan" && "text-[var(--teal)]")}>{mode}</span>
-            </Chip>
           </div>
           {working && !text.trim() ? (
             <button type="button" aria-label="Stop" data-tip="Stop (Esc)" onClick={stop} data-stop

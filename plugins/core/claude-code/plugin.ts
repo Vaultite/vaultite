@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
-  limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
+  limitWindow, type Live, type SampleAsk, agentRefusal, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
@@ -514,6 +514,10 @@ function hooks({ state, report, stateHook, reportUrl }: Pick<AgentStart, "state"
 const FLAGS = new Set(["--resume", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--permission-mode", "--"])
 plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> => {
   const { resume, context, profile, prompt, dark, allow, model, effort, mode, wsl } = start
+  // (a plugin's session that runs now, the companion's, stays: a terminal would have none of the tools it serves, and
+  // taking it over ends it for that plugin)
+  const driver = resume ? chat.driving(resume) : ""
+  if (driver) return agentRefusal(`This is ${driver === "companion" ? "the companion's" : `the ${driver} plugin's`} Claude Code session, running in the app with tools only the app serves: open it in its chat tab, or stop it there first to resume it here.`)
   // (inside WSL its sessions and accounts are the distro's own, not these)
   const found = resume && !wsl ? sessionFile(resume, true) : null
   if (resume && !found && !wsl) return notOnThisMachine("Claude Code", resume)

@@ -88,6 +88,13 @@ export default async ($: VaultTest) => {
       !!(await waitFor(async () => (await claude())?.state === "watching", 3000, 50)), [entries, await claude()])
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion chat: status names its session as a chat's", r.sessions.some((s: Any) => s.id === id && s.chat), r.sessions)
+    check("companion chat: it runs in auto mode", (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.find((s: Any) => s.id === id)?.mode === "auto")
+
+    // Resumed in a terminal it would have none of its tools, and the companion would lose it: refused, it goes on.
+    const resumeIt = $.app.plugins.find((p: Any) => p.id === "claude-code")!.services["agent:claude"] as (s: Any) => Promise<Any>
+    const refused = await resumeIt({ resume: id })
+    check("companion chat: its session isn't resumed in a terminal while it runs, and goes on", /the companion's Claude Code session/.test((refused?.argv ?? []).join(" ")) &&
+      !(refused.argv ?? []).includes("--resume") && (await api("POST", "ops/claude-code.chat-list", {}))[1].sessions.some((s: Any) => s.id === id), refused)
 
     // An ask is its message; the say it calls is relayed to the server and drawn by its cursor.
     c.addMoment({ kind: "ask", path: "Notes/Chat.md", line: 3, text: 'call say {"text":"Hello from a tool","path":"Notes/Chat.md","find":"Alice"}' })

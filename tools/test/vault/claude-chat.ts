@@ -121,6 +121,7 @@ export default async ($: VaultTest) => {
       o.systemPrompt?.preset === "claude_code" && /Vaultite's chat/.test(o.systemPrompt.append) && o.settingSources?.includes("project") && sdk.runs[0].said[0].text === "Say hello" &&
       o.env.CLAUDE_CODE_SESSION_ID === id && o.env.VAULTITE_AGENT === "claude" && !!o.hooks?.PostToolUse?.length,
       { ...o, env: o?.env?.CLAUDE_CONFIG_DIR, canUseTool: undefined })
+    check("chat start: the mode asked is the one it runs in", o?.permissionMode === "default" && host.list().find((s) => s.id === id)?.mode === "default", o?.permissionMode)
     check("chat: the effort Claude Code applies is the session's, till one is chosen", host.list().find((s) => s.id === id)?.effort === "medium", host.list())
     let row = (await rows()).find((e) => e.session === id)
     check("chat: a turn that ended goes to the inbox through its session intake, done when nothing's for the user, its host's",
@@ -201,6 +202,12 @@ export default async ($: VaultTest) => {
     ;[, b] = await api("POST", "ops/claude-code.chat-set", { id, model: "opus", effort: "high" })
     check("chat: interrupted, it's idle again; the model and effort change in place", st === 200 && !!back && sdk.runs[0].model === "opus" &&
       sdk.runs[0].efforts.includes("high") && b.model === "opus" && b.effort === "high", [st, b])
+    // A mode chosen in a tab that didn't know it ran yet comes with the message: set, then said.
+    ;[st] = await api("POST", "ops/claude-code.chat-send", { id, text: "Now in auto", mode: "auto" })
+    await waitFor(() => sdk.runs[0].said.at(-1)?.text === "Now in auto", 3000, 50)
+    check("chat send: a mode given with a message to a running session is set first", st === 200 && sdk.runs[0].mode === "auto" &&
+      host.list().find((s) => s.id === id)?.mode === "auto" && sdk.runs.length === 1, [st, sdk.runs[0].mode])
+    await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 3000, 50)
     // The inbox's services for a session with no terminal: a reply, an answer.
     const reply = cc.services["agent-reply:claude"] as (s: string, t: string) => Promise<boolean>
     const answerIt = cc.services["agent-answer:claude"] as (s: string, a: Any) => Promise<boolean>
@@ -231,6 +238,7 @@ export default async ($: VaultTest) => {
     await waitFor(() => sdk.runs[1]?.said.length, 3000, 50)
     check("chat: stopped, a message resumes the same session in its folder", st === 200 && b.resumed && sdk.runs[1]?.options.resume === id &&
       !sdk.runs[1].options.sessionId && sdk.runs[1].options.cwd === VAULT && sdk.runs[1].said[0].text === "Are you there?", [st, b, sdk.runs[1]?.options.resume])
+    check("chat: resumed, it runs in the mode it had", sdk.runs[1]?.options.permissionMode === "auto", sdk.runs[1]?.options.permissionMode)
     ;[st, b] = await api("POST", "ops/claude-code.chat-read", { id })
     check("chat read: its transcript and the live turn, merged by id (the first message once)", b.entries.filter((e: Any) => e.text === "Say hello").length === 1 &&
       b.entries.some((e: Any) => e.text === "Are you there?"), b.entries)
@@ -247,6 +255,21 @@ export default async ($: VaultTest) => {
     if (b.path) fs.rmSync(path.join(VAULT, b.path), { force: true })
     check("voice note: handed to a new chat session, not a terminal", st === 200 && /^[0-9a-f-]{36}$/.test(voiced ?? "") &&
       sdk.runs.some((r: Any) => r.options.sessionId === voiced && /water the plants/.test(r.said[0]?.text ?? "")), b)
+
+    // No mode asked: the account's permissions.defaultMode, else auto.
+    check("chat start: none asked, it starts in auto", sdk.runs.find((r: Any) => r.options.sessionId === voiced)?.options.permissionMode === "auto",
+      sdk.runs.find((r: Any) => r.options.sessionId === voiced)?.options.permissionMode)
+    {
+      const at = path.join(CLAUDE_DIR, "settings.json"), had = fs.existsSync(at) ? fs.readFileSync(at, "utf8") : null
+      fs.writeFileSync(at, JSON.stringify({ ...(had ? JSON.parse(had) : {}), permissions: { defaultMode: "acceptEdits" } }))
+      try {
+        const [, s1] = await api("POST", "ops/claude-code.chat-start", { cwd: VAULT })
+        const [, opts] = await api("GET", "claude-code/chat/options")
+        check("chat start: none asked, the account's own defaultMode, which the tab shows", sdk.runs.find((r: Any) => r.options.sessionId === s1.id)?.options.permissionMode === "acceptEdits" &&
+          opts.accounts?.[0]?.mode === "acceptEdits", [sdk.runs.at(-1)?.options.permissionMode, opts.accounts])
+        host.stop(s1.id)
+      } finally { if (had === null) fs.rmSync(at); else fs.writeFileSync(at, had) }
+    }
 
     // The keeper dies mid-turn (a reboot, a crash): the next one takes the turn up again, once.
     const [, slow] = await api("POST", "ops/claude-code.chat-start", { prompt: "Something slow", cwd: VAULT })
