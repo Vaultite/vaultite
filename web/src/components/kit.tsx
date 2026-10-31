@@ -1,5 +1,5 @@
 // Small building blocks shared by every page.
-import { useEffect, useState, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { plain } from "@/core/data"
@@ -69,10 +69,34 @@ export function Badged({ on, tag, children }: { on?: Dot; tag?: string; children
 
 export const Logo = ({ className }: { className?: string; strokeWidth?: number }) => <img src="icon.svg" alt="" className={className} />
 
+/** Rows at the size of the desktop's own settings windows (13px), from md up: Settings' pages beside its menu. */
+export const DenseRows = createContext(false)
+
+/** An icon on a rounded square of its colour, as System Settings draws its sections. */
+export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon: LucideIcon | typeof Logo; tint: string; className?: string; iconClassName?: string }) {
+  if (Icon === Logo) return <Logo className={cn("size-5 shrink-0", className)} />
+  return (
+    <span aria-hidden data-icon-tile style={{ "--tint": tint } as CSSProperties}
+      className={cn("on-tint grid size-5 shrink-0 place-items-center rounded-[5px] bg-[var(--tint)] bg-linear-to-b from-white/20 to-transparent shadow-[inset_0_0_0_0.5px_rgb(0_0_0/0.12)]", className)}>
+      <Icon className={cn("size-[13px]", iconClassName)} strokeWidth={2.25} />
+    </span>
+  )
+}
+
 /** No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new). */
 export function SheetHead({ icon: Icon, tint, kicker, title, sub, children }: {
   icon: LucideIcon | typeof Logo; tint: string; kicker?: ReactNode; title: ReactNode; sub?: ReactNode; children?: ReactNode
 }) {
+  if (useContext(DenseRows) && kicker === undefined) return (
+    <div className="mb-5 flex items-center gap-2.5">
+      <IconTile icon={Icon} tint={tint} className="size-7 rounded-[7px]" iconClassName="size-[17px]" />
+      <div className="min-w-0">
+        <h2 id="sheet-title" className="text-[17px] leading-[22px] font-semibold break-words">{title}</h2>
+        {sub && <p className="text-[12px] leading-[16px] text-muted-foreground">{sub}</p>}
+      </div>
+      {children}
+    </div>
+  )
   return (
     <div className="mb-5">
       {kicker !== undefined && (
@@ -273,7 +297,7 @@ export function List({ children }: { children: ReactNode }) {
 export function Section({ title, children, className }: { title: ReactNode; children: ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <div className="mb-1 text-[13px] font-semibold text-muted-foreground">{title}</div>
+      <div className={cn("mb-1 text-[13px] font-semibold", useContext(DenseRows) ? "px-1 md:mb-1.5" : "text-muted-foreground")}>{title}</div>
       {children}
     </div>
   )
@@ -285,18 +309,19 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
   label: ReactNode; sub?: ReactNode; stack?: boolean; below?: boolean; value?: ReactNode; onClick?: () => void; chevron?: LucideIcon | null; children?: ReactNode
 } & Omit<HTMLAttributes<HTMLElement>, "onClick">) {
   const Chevron = chevron
+  const dense = useContext(DenseRows)
   const body = (
     <>
       <div className="min-w-0 flex-1">
-        <div className="text-[15px] leading-[20px]">{label}</div>
-        {sub && <div className="text-[13px] leading-[18px] text-muted-foreground">{sub}</div>}
+        <div className={cn("text-[15px] leading-[20px]", dense && "md:text-[13px] md:leading-[18px]")}>{label}</div>
+        {sub && <div className={cn("text-[13px] leading-[18px] text-muted-foreground", dense && "md:text-[12px] md:leading-[16px]")}>{sub}</div>}
       </div>
-      {value != null && <span className="min-w-0 max-w-[50%] truncate text-right text-[14px] text-muted-foreground">{value}</span>}
+      {value != null && <span className={cn("min-w-0 max-w-[50%] truncate text-right text-[14px] text-muted-foreground", dense && "md:text-[13px]")}>{value}</span>}
       {children}
       {onClick && Chevron && <Chevron aria-hidden className="-ml-1.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
     </>
   )
-  const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center")
+  const cls = cn("flex min-h-12 w-full gap-3 py-2 text-left", dense && "md:min-h-10", below ? "flex-col items-stretch" : stack ? "flex-col items-stretch sm:flex-row sm:items-center" : "items-center")
   return onClick
     ? <button type="button" onClick={onClick} {...rest} className={cn(cls, "cursor-pointer")}>{body}</button>
     : <div {...rest} className={cls}>{body}</div>
@@ -304,7 +329,7 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
 
 /** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. */
 export function Segmented<T extends string>({ value, options, onChange, label, big, className }: {
-  value: T; options: { value: T; label: string; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
+  value: T; options: { value: T; label: string; icon?: LucideIcon; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
 }) {
   return (
     <div role="radiogroup" aria-label={label} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
@@ -313,11 +338,11 @@ export function Segmented<T extends string>({ value, options, onChange, label, b
         return (
           <button key={o.value} type="button" role="radio" aria-checked={on} {...o.attrs} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
             className={cn(
-              "relative min-h-8 flex-1 cursor-pointer rounded-[7px] px-4 text-[13px] whitespace-nowrap transition-[background,box-shadow] duration-200",
+              "relative flex min-h-8 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-[7px] px-4 text-[13px] whitespace-nowrap transition-[background,box-shadow] duration-200",
               big && "max-md:min-h-10 max-md:text-[15px]",
               on ? "bg-card font-semibold shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)] dark:bg-[var(--segment-on)]" : "font-medium text-foreground/80",
             )}>
-            {o.label}
+            {o.icon && <o.icon aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />}{o.label}
           </button>
         )
       })}

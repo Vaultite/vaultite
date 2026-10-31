@@ -1,5 +1,5 @@
-// Settings > Appearance: theme, colour scheme (gallery under More…), density, icons, line numbers, sidebar
-// scroll, a phone's pull-down actions (on phones), fonts, text sizes (this device's), snippets. Saved in appearance.json; rows off their default show a reset.
+// Settings > Appearance, in groups: colours (gallery under More…), the window, tabs, text (this device's sizes), a phone's
+// pull-down actions, snippets. Saved in appearance.json; rows off their default show a reset.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
 import { onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
@@ -17,7 +17,8 @@ import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
-import { Panel, ResetButton, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { Group, ResetButton, Section, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { PictureChoice, SystemPicture, WindowPicture, type Scene } from "@/components/ChoicePictures"
 import { errorText } from "@/core/notify"
 import { available, commandList, useCommandList } from "@/core/commands"
 import { choose } from "@/components/Chooser"
@@ -200,40 +201,59 @@ function TextSizeRow({ kind, label, sub }: { kind: string; label: string; sub?: 
   )
 }
 
+const THEMES: { value: Theme; label: string }[] = [{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]
+const themePicture = (t: Theme, scene: Scene = "note") => t === "system" ? <SystemPicture scene={scene} /> : <WindowPicture scene={scene} mode={t} />
+
 export function AppearancePanel() {
   const prefs = usePrefs()
   const only = onlyMode(prefs.scheme)
+  const row = (k: string) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />
   return (
-    <Panel>
-      <div className="hairline">
-        {/* A scheme with one mode says so beside the label, on its line: it changes what the row says, never the layout. */}
-        <SettingRow stack data-settings-row="theme" label={<>Theme{only && <span className="ml-2 align-top text-[13px] leading-[20px] text-muted-foreground">{nameOf(prefs.scheme)} is {only} only</span>}</>}>
-          <Segmented<Theme> label="Theme" value={prefs.theme} onChange={(theme) => setPrefs({ theme })} className="w-full shrink-0 sm:w-[220px]"
-            options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} />
-        </SettingRow>
-        <SettingRow stack label="Colour scheme" data-settings-row="scheme">
-          <WithReset on={schemeId(prefs.scheme) !== DEFAULT_SCHEME} onReset={() => setPrefs({ scheme: DEFAULT_SCHEME })} label="Reset colour scheme">
-            <SchemePicker />
-          </WithReset>
-        </SettingRow>
-        <SettingRow stack label="Density" data-settings-row="density">
-          <Segmented<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })} className="w-full shrink-0 sm:w-[220px]"
-            options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
-        </SettingRow>
-        {["translucent", ...(prefs.translucent ? ["translucent-pages"] : []), "file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"])].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
-        <NewTabsRow />
-        {["typing-fade", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
-        <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
-          onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
-        <PullRows />
-        <Fonts />
-        {textSizeKinds(prefs.disabled).map(([kind, k]) => (
-          <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
-        ))}
-        <SwitchRow s={coreSwitch("setting:quick-text-size")} />
-      </div>
+    <div className="flex flex-col gap-6">
+      <Section title="Colours">
+        <Group>
+          {/* A scheme with one mode says so beside the label, on its line: it changes what the row says, never the layout. */}
+          <SettingRow below data-settings-row="theme" label={<>Theme{only && <span className="ml-2 align-top text-[13px] leading-[20px] text-muted-foreground">{nameOf(prefs.scheme)} is {only} only</span>}</>}>
+            <PictureChoice<Theme> label="Theme" value={prefs.theme} onChange={(theme) => setPrefs({ theme })}
+              options={THEMES.map((t) => ({ ...t, picture: themePicture(t.value) }))} />
+          </SettingRow>
+          <SettingRow stack label="Colour scheme" data-settings-row="scheme">
+            <WithReset on={schemeId(prefs.scheme) !== DEFAULT_SCHEME} onReset={() => setPrefs({ scheme: DEFAULT_SCHEME })} label="Reset colour scheme">
+              <SchemePicker />
+            </WithReset>
+          </SettingRow>
+          {["translucent", ...(prefs.translucent ? ["translucent-pages"] : [])].map(row)}
+        </Group>
+      </Section>
+      <Section title="Window">
+        <Group>
+          <SettingRow below label="Density" data-settings-row="density">
+            <PictureChoice<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })}
+              options={[{ value: "compact", label: "Compact", picture: <WindowPicture scene="compact" /> }, { value: "comfortable", label: "Comfortable", picture: <WindowPicture scene="comfortable" /> }]} />
+          </SettingRow>
+          <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
+            onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
+          {["file-icons", "typing-fade"].map(row)}
+        </Group>
+      </Section>
+      <Section title="Tabs">
+        <Group>
+          <NewTabsRow />
+          {["tab-bar", ...(prefs.tabBar ? ["tab-tint"] : ["pane-titles"])].map(row)}
+        </Group>
+      </Section>
+      <Section title="Text">
+        <Group>
+          <Fonts />
+          {textSizeKinds(prefs.disabled).map(([kind, k]) => (
+            <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
+          ))}
+          {["quick-text-size", "line-numbers"].map(row)}
+        </Group>
+      </Section>
+      <PullRows />
       <Snippets />
-    </Panel>
+    </div>
   )
 }
 
@@ -243,9 +263,9 @@ function NewTabsRow() {
   const choices = opensChoices()
   const value = choices.some((c) => c.value === newTab.opens) ? newTab.opens ?? "" : ""
   return (
-    <SettingRow stack label="New tabs open" data-settings-row="new-tabs">
-      <Segmented<string> label="New tabs open" value={value} onChange={(v) => void setOpens(v || null)} className="w-full shrink-0 sm:w-[320px]"
-        options={choices.map((c) => ({ value: c.value ?? "", label: c.label }))} />
+    <SettingRow below label="New tabs open" data-settings-row="new-tabs">
+      <PictureChoice<string> label="New tabs open" value={value} onChange={(v) => void setOpens(v || null)}
+        options={choices.map((c) => ({ value: c.value ?? "", label: c.label, picture: <WindowPicture scene={!c.value ? "page" : c.value === "switcher" ? "switcher" : "view"} /> }))} />
     </SettingRow>
   )
 }
@@ -267,11 +287,17 @@ function PullRows() {
     },
   })
   if (desktop) return null
-  return PULL_SLOTS.map((label, i) => {
-    const c = byId.get(ids[i])
-    return <SettingRow key={label} label={label} value={c ? pullLabel(c) : ids[i]}
-      onClick={() => pick(i)} data-settings-row={`pull-${i}`} />
-  })
+  return (
+    <Section title="Pull-down actions">
+      <Group>
+        {PULL_SLOTS.map((label, i) => {
+          const c = byId.get(ids[i])
+          return <SettingRow key={label} label={label} value={c ? pullLabel(c) : ids[i]}
+            onClick={() => pick(i)} data-settings-row={`pull-${i}`} />
+        })}
+      </Group>
+    </Section>
+  )
 }
 
 /** CSS snippets, the end of Appearance: the vault's .vaultite/snippets/*.css (and an Obsidian vault's), a switch each, and New snippet. */
@@ -292,30 +318,28 @@ function Snippets() {
     openFile(out.path)
   }
   return (
-    <section aria-label="CSS snippets" className="border-t-[0.5px] border-border pt-2">
-      <div className="mb-1 text-[15px] leading-[20px]">CSS snippets</div>
-      <div className="hairline">
-        {snippets.map((s) => (
-          <div key={s.name} className="flex min-h-11 items-center gap-3 py-1">
-            {s.path.startsWith(`${SNIPPETS_FOLDER}/`)
-              ? <button type="button" onClick={() => openFile(s.path)} data-tip="Edit"
-                className="min-w-0 flex-1 cursor-pointer truncate text-left text-[15px] hover:text-primary">{s.name}</button>
+    <section aria-label="CSS snippets">
+      <Section title="CSS snippets">
+        <Group>
+          {snippets.map((s) => (
+            <SettingRow key={s.name} label={s.path.startsWith(`${SNIPPETS_FOLDER}/`)
+              ? <button type="button" onClick={() => openFile(s.path)} data-tip="Edit" className="max-w-full cursor-pointer truncate text-left hover:text-primary">{s.name}</button>
               // (Obsidian's, in .obsidian/snippets: the app never writes there)
-              : <span className="min-w-0 flex-1 truncate text-[15px]">{s.name} <span className="text-muted-foreground">· Obsidian</span></span>}
-            <Switch on={enabled.includes(s.name)} onChange={(v) => toggle(s.name, v)} label={`${s.name} snippet`} />
-          </div>
-        ))}
-      </div>
-      {!snippets.length && <p className="text-[14px] text-muted-foreground">No snippets yet.</p>}
-      <form className="mt-3 flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); create() }}>
-        <input value={name} onChange={(e) => { setName(e.target.value); setError("") }} placeholder="New snippet name" aria-label="New snippet name" spellCheck={false}
-          className="h-8 min-w-0 flex-1 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[14px] outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/60" />
-        <button type="submit" disabled={!name.trim()} className="flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-[7px] px-2 text-[14px] text-primary hover:bg-foreground/[0.05] disabled:cursor-default disabled:opacity-40">
-          <Plus className="size-4" strokeWidth={2} />New snippet
-        </button>
-      </form>
-      {error && <p className="mt-1 text-[13px] text-[var(--red)]">{error}</p>}
-      {canOpenHere() && <FolderButton folder={SNIPPETS_FOLDER} label="Open snippets folder" />}
+              : <span className="truncate">{s.name} <span className="text-muted-foreground">· Obsidian</span></span>}>
+              <Switch on={enabled.includes(s.name)} onChange={(v) => toggle(s.name, v)} label={`${s.name} snippet`} />
+            </SettingRow>
+          ))}
+          <form className="flex min-h-10 items-center gap-2 py-1.5" onSubmit={(e) => { e.preventDefault(); create() }}>
+            <input value={name} onChange={(e) => { setName(e.target.value); setError("") }} placeholder={snippets.length ? "New snippet name" : "No snippets yet: name a new one"} aria-label="New snippet name" spellCheck={false}
+              className="h-8 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground md:text-[13px]" />
+            <button type="submit" disabled={!name.trim()} className="flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[7px] px-2 text-[13px] text-primary hover:bg-foreground/[0.05] disabled:cursor-default disabled:opacity-40">
+              <Plus className="size-4" strokeWidth={2} />New snippet
+            </button>
+          </form>
+        </Group>
+      </Section>
+      {error && <p className="mt-1 px-1 text-[13px] text-[var(--red)]">{error}</p>}
+      {canOpenHere() && <FolderButton folder={SNIPPETS_FOLDER} label="Open snippets folder" className="mt-1 h-7 text-[13px]" />}
     </section>
   )
 }

@@ -1,10 +1,10 @@
 // Settings' shell, as System Settings is: a menu with its search on top (what it finds takes the menu's place), beside
 // what's picked, each scrolling on its own. Narrow, the page is the menu (a pick opens a sheet). Plugins scrolls the same.
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type UIEvent } from "react"
-import type { LucideIcon } from "lucide-react"
+import { ChevronRight, type LucideIcon } from "lucide-react"
 import { usePane } from "@/core/pane"
 import { cn } from "@/lib/utils"
-import { FilterField, PageHeader } from "@/components/kit"
+import { FilterField, IconTile, PageHeader } from "@/components/kit"
 import { SidebarRow } from "@/components/Sidebar"
 
 type Attrs = Record<`data-${string}`, string | undefined>
@@ -15,6 +15,8 @@ export type RailItem = {
   count?: number
   /** Above it: a heading (Features), or only some space. */
   heading?: string; gap?: boolean
+  /** Its heading folds what's under it, to the next heading or space. */
+  fold?: { open: boolean; toggle: () => void }
   attrs?: Attrs
 }
 
@@ -38,18 +40,58 @@ type Rail = [(el: HTMLDivElement | null) => void, boolean]
 
 const heading = (t: string) => <div className="px-1.5 pt-4 pb-1 text-[12px] font-semibold text-muted-foreground">{t}</div>
 
-/** The menu's rows, at the sidebar's sizes: the rail where wide, Settings' page where narrow. */
-export function RailMenu({ label, items, active, pick, ...rest }: { label: string; items: RailItem[]; active: string | null; pick: (id: string) => void } & Attrs) {
+/** A heading that folds its rows, saying how many it holds. */
+function FoldHeading({ label, fold, count }: { label: string; fold: NonNullable<RailItem["fold"]>; count: number }) {
   return (
-    <nav aria-label={label} className="flex flex-col gap-px" {...rest}>
-      {items.map((it) => (
-        <Fragment key={it.id}>
-          {it.heading ? heading(it.heading) : it.gap && <div className="pt-3" />}
-          <SidebarRow icon={it.icon} tint={it.tint} label={it.label} open active={active === it.id} onClick={() => pick(it.id)} {...it.attrs}>
-            {it.count !== undefined && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.count}</span>}
-          </SidebarRow>
-        </Fragment>
-      ))}
+    <button type="button" aria-expanded={fold.open} onClick={fold.toggle} data-rail-fold={label}
+      className="group/fold mt-3 flex h-7 cursor-pointer items-center gap-1 rounded-[5px] px-1.5 text-[12px] font-semibold text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
+      <span className="flex-1 text-left">{label}</span>
+      {!fold.open && <span className="font-normal tabular-nums">{count}</span>}
+      <ChevronRight aria-hidden className={cn("size-3.5 shrink-0 transition-transform duration-150", fold.open && "rotate-90")} strokeWidth={2.5} />
+    </button>
+  )
+}
+
+/** How many rows a heading at `i` holds: to the next heading or space. */
+function rowsFrom(items: RailItem[], i: number) {
+  let n = 1
+  while (i + n < items.length && !items[i + n].heading && !items[i + n].gap) n++
+  return n
+}
+
+/** Icons on tiles of their colour (Settings' menu), memoised per icon and colour so rows keep their component. */
+const tiles = new Map<string, LucideIcon>()
+const tileOf = (icon: LucideIcon, tint: string): LucideIcon => {
+  const key = `${icon.displayName ?? icon.name}|${tint}`
+  let t = tiles.get(key)
+  if (!t) { t = (() => <IconTile icon={icon} tint={tint} />) as unknown as LucideIcon; tiles.set(key, t) }
+  return t
+}
+
+/** The menu's rows, at the sidebar's sizes: the rail where wide, Settings' page where narrow. `tiles`: each icon on a
+ *  tile of its colour, as System Settings' menu. */
+export function RailMenu({ label, items, active, pick, tiles: tiled, ...rest }: { label: string; items: RailItem[]; active: string | null; pick: (id: string) => void; tiles?: boolean } & Attrs) {
+  let folded = false
+  return (
+    <nav aria-label={label} className={cn("flex flex-col gap-px", tiled && "[&_[data-keyrow]]:h-8")} {...rest}>
+      {items.map((it, i) => {
+        if (it.heading || it.gap) folded = !!it.fold && !it.fold.open
+        else if (folded) return null
+        const head = it.fold && it.heading
+          ? <FoldHeading label={it.heading} fold={it.fold} count={rowsFrom(items, i)} />
+          : it.heading ? heading(it.heading) : it.gap && <div className="pt-3" />
+        const icon = tiled && it.icon ? tileOf(it.icon, it.tint ?? "var(--primary)") : it.icon
+        return (
+          <Fragment key={it.id}>
+            {head}
+            {!folded && (
+              <SidebarRow icon={icon} tint={tiled ? undefined : it.tint} label={it.label} open active={active === it.id} onClick={() => pick(it.id)} {...it.attrs}>
+                {it.count !== undefined && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.count}</span>}
+              </SidebarRow>
+            )}
+          </Fragment>
+        )
+      })}
     </nav>
   )
 }

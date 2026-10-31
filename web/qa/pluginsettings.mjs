@@ -5,6 +5,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { qa, until, wait } from "./lib/qa.mjs"
 import { setAsideWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 
+/** Settings' section under Features, unfolding it first (it starts folded). */
+async function feature(page, id) {
+  const fold = page.locator('[data-rail-fold="Features"]')
+  if ((await fold.getAttribute("aria-expanded")) === "false") await fold.click()
+  await page.locator(`[data-settings-nav="${id}"]`).click()
+}
+
+
 const { args: [B, VAULT, OUT = "/tmp/pluginsettings-shots/"], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const file = (rel) => `${VAULT}/${rel}`
@@ -67,13 +75,18 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
-    check("Settings: Your setup, then its sections, and no Bundles or Plugins of its own", (await page.locator("[data-settings-setup]").count()) === 1 &&
-      ["general", "appearance", "editor", "hotkeys"].every((id, i) => nav[i] === id) && !nav.includes("plugins") && !nav.includes("bundles"), nav)
+    check("Settings: Your setup, then its sections (Appearance first, no General), and no Bundles or Plugins of its own", (await page.locator("[data-settings-setup]").count()) === 1 &&
+      ["appearance", "editor", "hotkeys"].every((id, i) => nav[i] === id) && nav.includes("updates") && !nav.includes("general") && !nav.includes("plugins") && !nav.includes("bundles"), nav)
+    check("Settings: opens on Appearance", await page.locator('[data-settings-section="appearance"]').count() === 1)
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
       !(await page.locator("main [data-workspace-settings], main [data-pinned-settings]").count()), text)
     await shot(page, "1-settings-desktop")
     const tall = await page.evaluate(() => document.querySelector("[data-settings] [data-rail-pane]").scrollHeight)
-    check("Features: the app's own plugins that have settings", text.includes("Features") && await page.locator('[data-settings-nav="plugin:search"]').count() === 1 &&
+    const fold = page.locator('[data-rail-fold="Features"]')
+    check("Features: folded, saying how many", (await fold.getAttribute("aria-expanded")) === "false" && /\d/.test(await fold.innerText()) &&
+      await page.locator('[data-settings-nav="plugin:search"]').count() === 0)
+    await fold.click()
+    check("Features: the app's own plugins that have settings", (await fold.getAttribute("aria-expanded")) === "true" && await page.locator('[data-settings-nav="plugin:search"]').count() === 1 &&
       await page.locator('[data-settings-nav="plugin:files"]').count() === 1)
     check("...not one with nothing to set", await page.locator('[data-settings-nav="plugin:outline"]').count() === 0)
     check("...nor one that can be switched (a gear away on Plugins)", !(await page.locator('[data-settings-nav="plugin:web-viewer"], [data-settings-nav="plugin:logs"], [data-settings-nav="plugin:workspaces"]').count()))
@@ -182,7 +195,7 @@ try {
     await closeSheet(page)
 
     // A long choice unfolds in place: Search field's sort.
-    await page.locator('[data-settings-nav="plugin:search"]').click()
+    await feature(page, "plugin:search")
     const ss = page.locator('[data-settings-section="plugin:search"] [data-plugin-settings-sheet="search"]')
     await until(() => ss.count(), 4000)
     await ss.locator("[data-setting=sort] > button").click(); await wait(200)
@@ -202,8 +215,8 @@ try {
     await closeSheet(page)
 
     // File explorer: Show hidden files is here (Features); the tree follows.
-    await go(page, "settings"); await until(() => page.locator('[data-settings-nav="plugin:files"]').count(), 4000)
-    await page.locator('[data-settings-nav="plugin:files"]').click()
+    await go(page, "settings"); await until(() => page.locator("[data-settings-list]").count(), 4000)
+    await feature(page, "plugin:files")
     const fs_ = page.locator('[data-settings-section="plugin:files"] [data-plugin-settings-sheet="files"]')
     await until(() => fs_.count(), 4000)
     await fs_.locator("[data-setting=showHidden] [role=switch]").click()
@@ -296,7 +309,7 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     await wait(500)
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
-    const navRow = await page.$eval("[data-settings-nav=general]", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), text: Math.round(parseFloat(getComputedStyle(e).fontSize) * (parseFloat(getComputedStyle(e.closest("[data-size-up]") ?? e).zoom) || 1)) } })
+    const navRow = await page.$eval("[data-settings-nav=appearance]", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), text: Math.round(parseFloat(getComputedStyle(e).fontSize) * (parseFloat(getComputedStyle(e.closest("[data-size-up]") ?? e).zoom) || 1)) } })
     check("phone: Settings' rows a finger tall, 17px, as the phone's other lists", navRow.h >= 44 && navRow.text === 17, navRow)
     await page.locator("[data-settings-setup]").click()
     check("phone: Your setup goes to Setup's page, on Bundles", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))

@@ -11,6 +11,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   pulling a page down past its top fills a ring round the action and runs it only once full (a longer pull, and a flick
   through it does nothing); strips that scroll sideways (the editing keys, tabs, chips) and sidebars fade at an edge
   while there's more past it; a pasted picture shows at once, without waiting for the server to notice the file.
+- **Settings, regrouped**: it opens on Appearance (no General; version and updates are under Updates), its menu
+  shows each section's icon on a coloured tile, Features is folded until opened and holds plugins' pages such as Apple
+  Health, Appearance and Editor are in titled groups, and theme, density and new tabs are chosen by their picture.
 - **Change fonts and the terminal cursor from the palette, previewed as you move**: Change text font…, Change interface
   font… and Change monospace font… show the whole app in the selected font until Enter keeps it (Esc goes back), as
   Change colour scheme… does. Terminals now use the monospace font too, and Terminal settings have the cursor's shape

@@ -706,6 +706,17 @@ export function tintOfPlugin(id: string) {
   return t ? `var(--${t})` : "var(--primary)"
 }
 
+const CATEGORY_TINTS: Record<string, string> = {
+  navigation: "blue", writing: "orange", life: "green", health: "pink", "ai-apps": "purple", agents: "indigo", formats: "teal",
+}
+/** A plugin's colour on a tile (Settings' menu, its settings' head): its own, else its category's, so a list of them
+ *  reads apart. */
+export function tileTint(id: string) {
+  const own = tintOfPlugin(id)
+  if (own !== "var(--primary)") return own
+  return `var(--${CATEGORY_TINTS[categoryOf(pluginById(id)?.category).id] ?? "gray"})`
+}
+
 /** The detail sheet for a path ("person/People%2FAlice%20Park"), from whichever enabled plugin handles that kind. */
 export function detailFor(path: string, disabled: string[]) {
   const [kind, ...rest] = path.split("/")

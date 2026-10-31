@@ -9,7 +9,7 @@ import { folderList, openFile, readFile } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { afterSheets } from "@/core/nav"
 import { notifyError } from "@/core/notify"
-import { isEnabled, names, setSwitch, tintOfPlugin } from "@/core/plugins"
+import { isEnabled, names, setSwitch, tileTint } from "@/core/plugins"
 import { pluginSettings, revealRow, settingsFile, takeGoingTo, valueLabel } from "@/core/pluginSettings"
 import { grantsOf, setGrant } from "@/core/grants"
 import { usePrefs } from "@/core/prefs"
@@ -50,7 +50,7 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
   }, [plugin.id])
   return (
     <div data-plugin-settings-sheet={plugin.id}>
-      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} title={plugin.name} />
+      <SheetHead icon={plugin.icon} tint={tileTint(plugin.id)} title={plugin.name} />
       {!on && (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">
           <span className="flex-1 text-[15px] text-muted-foreground">{blocked.length ? `Off: it needs ${names(blocked)}` : "Off"}</span>
