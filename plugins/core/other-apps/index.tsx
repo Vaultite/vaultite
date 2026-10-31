@@ -40,8 +40,8 @@ export default definePlugin({
     editor: (s) => {
       const o = settings(s)
       if (!o) return undefined
-      const { spellcheck, useTab, tabSize, autoPairBrackets, autoPairMarkdown, readableLineLength, propertiesInDocument } = o
-      return { spellcheck, useTab, tabSize, autoPairBrackets, autoPairMarkdown, readableLineLength, propertiesInDocument }
+      const { spellcheck, useTab, tabSize, autoPairBrackets, autoPairMarkdown, readableLineLength, propertiesInDocument, defaultView, editingMode } = o
+      return { spellcheck, useTab, tabSize, autoPairBrackets, autoPairMarkdown, readableLineLength, propertiesInDocument, defaultView, editingMode }
     },
   },
 })

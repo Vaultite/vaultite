@@ -259,7 +259,6 @@ async function interactions(B, page, cdp, net, phone, subjects) {
   out.pages = combine(pages)
 
   // A note in the editor (live preview on both), then typing at its end.
-  await page.evaluate(() => { localStorage.setItem("vaultite.fileMode", "live") })
   const note = subjects.note
   out.openNote = await step(page, cdp, net,
     () => page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, note),

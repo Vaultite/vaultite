@@ -55,9 +55,9 @@ export default async ($: VaultTest) => {
   write(".obsidian/app.json", JSON.stringify({ newFileLocation: "folder", newFileFolderPath: "Inbox/", attachmentFolderPath: "./assets", useMarkdownLinks: true, theme: "moonstone" }))
   ;[, s] = await api("GET", "state")
   check("obsidian: .obsidian/app.json's settings that apply are in the state", same(s.obsidian, { newFileLocation: "folder", newFileFolderPath: "Inbox", attachmentFolderPath: "./assets", useMarkdownLinks: true }) && hadObsidian === null, [hadObsidian, s.obsidian])
-  write(".obsidian/app.json", JSON.stringify({ spellcheck: false, useTab: false, tabSize: 2, autoPairBrackets: false, readableLineLength: false, propertiesInDocument: "source", autoPairMarkdown: "yes", strictLineBreaks: true }))
+  write(".obsidian/app.json", JSON.stringify({ spellcheck: false, useTab: false, tabSize: 2, autoPairBrackets: false, readableLineLength: false, propertiesInDocument: "source", autoPairMarkdown: "yes", strictLineBreaks: true, defaultViewMode: "preview", livePreview: false }))
   ;[, s] = await api("GET", "state")
-  check("obsidian: its editor settings are in the state (only well-formed ones)", same(s.obsidian, { spellcheck: false, useTab: false, autoPairBrackets: false, readableLineLength: false, tabSize: 2, propertiesInDocument: "source" }), s.obsidian)
+  check("obsidian: its editor settings are in the state (only well-formed ones)", same(s.obsidian, { spellcheck: false, useTab: false, autoPairBrackets: false, readableLineLength: false, tabSize: 2, propertiesInDocument: "source", defaultView: "reading", editingMode: "source" }), s.obsidian)
   {
     const [c] = await api("POST", "ops/settings.set", { name: "editor", values: { useTab: true } })
     ;[, s] = await api("GET", "state")

@@ -1,62 +1,70 @@
-// What file views share: the view (reading, live preview or source), each tab its own as in Obsidian, so ⌘E switches
-// only the tab in front (keeping its place: beforeMode); and what the status bar shows (usePublish).
+// What file views share: the view (reading, live preview or source), each tab its own as in Obsidian from Settings'
+// defaults (editor.json), so ⌘E switches only the tab in front (beforeMode); and what the status bar shows (usePublish).
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
 import { BookOpen, Code2, Pencil, type LucideIcon } from "lucide-react"
 import type { MenuItem } from "@/components/ContextMenu"
 import type { FileHead } from "@/core/define"
+import { editorSettings, useEditorSettings, type EditingMode } from "@/core/editorPrefs"
 import { isDesktop } from "@/core/platform"
 import { usePane } from "@/core/pane"
 import { signal } from "@/core/signal"
 
 export type Mode = "read" | "live" | "source"
-/** The view last picked, which a tab takes until one is picked in it. */
-const MODE_KEY = "vaultite.fileMode"
-const EDIT_KEY = "vaultite.editMode"
-/** Each tab's view, by tab id ("" outside tabs: a sheet), the last ones picked (TABS_KEPT). */
-const TABS_KEY = "vaultite.tabModes"
+/** A tab's view and the editing view ⌘E takes it back to from reading. */
+type TabView = { mode: Mode; edit: EditingMode }
+/** Each tab's, by tab id ("" outside tabs: a sheet), the last ones picked (TABS_KEPT). */
+const TABS_KEY = "vaultite.tabViews"
 const TABS_KEPT = 100
 const stored = (k: string) => { try { return localStorage.getItem(k) } catch { return null } }
+// (the views before Settings had defaults: the last one picked on this device, which new tabs took)
+try { for (const k of ["vaultite.fileMode", "vaultite.editMode", "vaultite.tabModes"]) localStorage.removeItem(k) } catch { /* private mode */ }
 const isMode = (v: unknown): v is Mode => v === "read" || v === "live" || v === "source"
-const storedMode = (): Mode => {
-  const v = stored(MODE_KEY)
-  return isMode(v) ? v : isDesktop() ? "live" : "read"
+const isEdit = (v: unknown): v is EditingMode => v === "live" || v === "source"
+/** Whether a new tab opens a note in reading, by Settings (unset: on phones). */
+export const opensReading = () => (editorSettings().defaultView ?? (isDesktop() ? "editing" : "reading")) === "reading"
+const fresh = (): TabView => {
+  const edit = editorSettings().editingMode
+  return { mode: opensReading() ? "read" : edit, edit }
 }
 function storedTabs() {
-  const out = new Map<string, Mode>()
-  try { for (const [k, v] of Object.entries(JSON.parse(stored(TABS_KEY) ?? "{}"))) if (isMode(v)) out.set(k, v) } catch { /* hand-broken: none */ }
+  const out = new Map<string, TabView>()
+  try {
+    for (const [k, v] of Object.entries(JSON.parse(stored(TABS_KEY) ?? "{}") as Record<string, Partial<TabView>>))
+      if (isMode(v?.mode) && isEdit(v.edit)) out.set(k, { mode: v.mode, edit: v.edit })
+  } catch { /* hand-broken: none */ }
   return out
 }
-let last_: Mode | null = null
-let tabs_: Map<string, Mode> | null = null
+let tabs_: Map<string, TabView> | null = null
 const tabs = () => (tabs_ ??= storedTabs())
 const modeSubs = new Set<() => void>()
 /** Called with a tab's next view before it draws it (its file notes where its reader is). */
 export const beforeMode = new Set<(m: Mode, tab: string) => void>()
-/** A tab's view: one picked in it, else the last one picked anywhere, from then on its own. */
-function modeOf(tab: string): Mode {
-  let m = tabs().get(tab)
-  if (!m) { m = (last_ ??= storedMode()); tabs().set(tab, m) }
-  return m
+/** A tab's view: one picked in it, else Settings' defaults as it first showed, from then on its own. */
+function viewOf(tab: string): TabView {
+  let v = tabs().get(tab)
+  if (!v) { v = fresh(); tabs().set(tab, v) }
+  return v
 }
 function setMode(tab: string, m: Mode) {
-  if (m === modeOf(tab)) return
+  const was = viewOf(tab)
+  if (m === was.mode) return
   for (const f of beforeMode) f(m, tab)
   const t = tabs()
   t.delete(tab)
-  t.set(tab, m)
-  last_ = m
-  try {
-    localStorage.setItem(MODE_KEY, m)
-    if (m !== "read") localStorage.setItem(EDIT_KEY, m)
-    localStorage.setItem(TABS_KEY, JSON.stringify(Object.fromEntries([...t].slice(-TABS_KEPT))))
-  } catch { /* private mode */ }
+  t.set(tab, { mode: m, edit: m === "read" ? was.edit : m })
+  try { localStorage.setItem(TABS_KEY, JSON.stringify(Object.fromEntries([...t].slice(-TABS_KEPT)))) } catch { /* private mode */ }
   for (const f of modeSubs) f()
 }
 /** Another window on this device switched a tab's (one of the same workspace). */
 const otherWindow = (e: StorageEvent) => {
   if (e.key !== TABS_KEY) return
   const next = storedTabs()
-  for (const [tab, m] of next) if (tabs().get(tab) !== m) { for (const f of beforeMode) f(m, tab); tabs().set(tab, m) }
+  for (const [tab, v] of next) {
+    const was = tabs().get(tab)
+    if (was?.mode === v.mode && was.edit === v.edit) continue
+    if (was?.mode !== v.mode) for (const f of beforeMode) f(v.mode, tab)
+    tabs().set(tab, v)
+  }
   for (const f of modeSubs) f()
 }
 function subscribeMode(f: () => void) {
@@ -64,11 +72,14 @@ function subscribeMode(f: () => void) {
   if (modeSubs.size === 1) addEventListener("storage", otherWindow)
   return () => { modeSubs.delete(f); if (!modeSubs.size) removeEventListener("storage", otherWindow) }
 }
-/** The view of the tab this is drawn in, and how to change it (that tab's only). */
-export function useMode(): [Mode, (m: Mode) => void, string] {
+/** The view of the tab this is drawn in, how to change it (that tab's only), its id, and the editing view it goes back
+ *  to from reading. */
+export function useMode(): [Mode, (m: Mode) => void, string, EditingMode] {
   const tab = usePane().tab ?? ""
+  useEditorSettings() // (a tab not shown yet opens in the defaults as they are then)
   const set = useCallback((m: Mode) => setMode(tab, m), [tab])
-  return [useSyncExternalStore(subscribeMode, () => modeOf(tab)), set, tab]
+  const v = useSyncExternalStore(subscribeMode, () => viewOf(tab))
+  return [v.mode, set, tab, v.edit]
 }
 export const VIEWS: { value: Mode; label: string }[] = [
   { value: "read", label: "Reading view" }, { value: "live", label: "Live preview" }, { value: "source", label: "Source mode" },
@@ -77,8 +88,6 @@ export const VIEWS: { value: Mode; label: string }[] = [
 export const SOURCE_VIEWS = VIEWS.filter((v) => v.value !== "live")
 /** Code and plain text: only their source. */
 export const CODE_VIEWS = VIEWS.filter((v) => v.value === "source")
-/** The editing view to go back to from reading. */
-export const editMode = (): Mode => (stored(EDIT_KEY) === "source" ? "source" : "live")
 export const MODES: Record<Mode, { label: string; icon: LucideIcon }> = {
   read: { label: "reading", icon: BookOpen },
   live: { label: "editing", icon: Pencil },

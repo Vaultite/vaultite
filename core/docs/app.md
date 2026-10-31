@@ -81,6 +81,9 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `readableLineLength`: true (default: a note's lines stop at `--line-width`) | false (the pane's width).
 - `propertiesInDocument`: `visible` (default: Properties above the text, reading too) | `hidden` | `source` (the
   frontmatter as text in live preview).
+- `defaultView`: `editing` | `reading`: the view a new tab opens a note in (unset: editing on desktop, reading on
+  phones). `editingMode`: `live` (default: live preview) | `source`: a new tab's editing view, and the one leaving
+  reading goes back to. Each tab keeps the view picked in it (this device only).
 - `showInlineTitle`: true (default: the file's name as a title at the top of every file, editable while editing) |
   false (only in the tab and the path bar; a sheet keeps it). Not read from Obsidian's.
 

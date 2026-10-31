@@ -8,7 +8,8 @@ sets that mean the same thing here (and never writes `.obsidian/`):
   go: `/`, `./`, `./sub` or a folder) and `userIgnoreFilters` (excluded files); `templates.json`'s `folder`,
   `dateFormat`, `timeFormat` (Templates); `daily-notes.json`'s `folder`, `format`, `template` (Daily notes).
 - The editor's `spellcheck`, `useTab`, `tabSize`, `autoPairBrackets`, `autoPairMarkdown`, `readableLineLength` and
-  `propertiesInDocument`: what `.vaultite/editor.json` doesn't set (`vau docs app`).
+  `propertiesInDocument`, `defaultViewMode` (`source`: editing, `preview`: reading) as `defaultView`, and `livePreview`
+  (false: source mode) as `editingMode`: what `.vaultite/editor.json` doesn't set (`vau docs app`).
 - `appearance.json`: the defaults of `.vaultite/appearance.json` (`vau docs app`): `theme` (`obsidian` dark,
   `moonstone` light, `system`), `cssTheme` as the scheme, `enabledCssSnippets`, and the three fonts; `.obsidian/themes/`
   and `.obsidian/snippets/` are listed beside the vault's own. Its accent colour and text size have no match here.

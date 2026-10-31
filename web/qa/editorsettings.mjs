@@ -1,8 +1,8 @@
 // The editor as Obsidian's: live preview's Markdown under the cursor only, Settings > Editor (editor.json, defaults
 // never written), aliases, ⌘E. WRITES a "Qa editor" folder and editor.json: throwaway server only.
 //   node web/qa/editorsettings.mjs <base url> <vault path>
-import { existsSync, readFileSync, rmSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { openPalette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const json = { "Content-Type": "application/json" }
 const write = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: json, body: JSON.stringify({ path, text, base: null }) })
@@ -21,7 +21,7 @@ await write(NOTE, `---\ntype: note\nstage: draft\n---\n\n# Heading one\n\n${INLI
 await write(TYPING, "---\ntype: note\n---\n\n")
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
-await ctx.addInitScript(() => { try { localStorage.setItem("vaultite.fileMode", "live"); localStorage.setItem("vaultite.editMode", "live"); localStorage.removeItem("vaultite.tabModes") } catch { /* about:blank */ } })
+await ctx.addInitScript(() => { try { localStorage.removeItem("vaultite.tabViews") } catch { /* about:blank */ } })
 const page = watch(await ctx.newPage())
 const ed = () => globalThis.__vaultite.modules["@vaultite"].currentEditor()
 const open = async (path) => {
@@ -94,6 +94,9 @@ check("reading view shows the properties, read-only", await props.count() === 1 
 await page.keyboard.press("ControlOrMeta+e"); await wait(600)
 
 // ---------- Settings > Editor ----------
+/** A click in Settings from outside its rows: a row's preview card (aimed at, as a jumping pointer seems to) would be
+ *  over the next row. */
+const tap = async (loc) => { await page.mouse.move(2, 2); await wait(450); await loc.click() }
 const settings = async () => { await page.goto("about:blank"); await page.goto(`${B}#settings`); await page.locator('[data-settings-nav="editor"]').click(); await page.locator("[data-settings-row=spellcheck]").waitFor({ timeout: 15000 }); await wait(300) }
 await settings()
 check("Settings has an Editor panel", await page.getByText("Editor", { exact: true }).count() >= 1)
@@ -133,11 +136,11 @@ await fresh()
 
 // Changed in Settings: written key by key; the editor follows.
 await settings()
-await page.locator("[data-settings-row=spellcheck] [role=switch]").click(); await wait(300)
-await page.locator("[data-settings-row=indent] [role=radio]", { hasText: "2 spaces" }).click(); await wait(300)
-await page.locator("[data-settings-row=auto-pair-brackets] [role=switch]").click(); await wait(300)
-await page.locator("[data-settings-row=readable-line-length] [role=switch]").click(); await wait(300)
-await page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "Hidden" }).click(); await wait(500)
+await tap(page.locator("[data-settings-row=spellcheck] [role=switch]")); await wait(300)
+await tap(page.locator("[data-settings-row=indent] [role=radio]", { hasText: "2 spaces" })); await wait(300)
+await tap(page.locator("[data-settings-row=auto-pair-brackets] [role=switch]")); await wait(300)
+await tap(page.locator("[data-settings-row=readable-line-length] [role=switch]")); await wait(300)
+await tap(page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "Hidden" })); await wait(500)
 check("only what changed is written", JSON.stringify(editorJson()) === JSON.stringify({ spellcheck: false, useTab: false, tabSize: 2, autoPairBrackets: false, readableLineLength: false, propertiesInDocument: "hidden" }), editorJson())
 await open(TYPING)
 check("spellcheck off", await page.locator(".file-view .cm-content").first().getAttribute("spellcheck") === "false")
@@ -161,14 +164,14 @@ await page.keyboard.press("ControlOrMeta+e"); await wait(600)
 check("…and reading", await props.count() === 0)
 await page.keyboard.press("ControlOrMeta+e"); await wait(600)
 await settings()
-await page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "As text" }).click(); await wait(500)
+await tap(page.locator("[data-settings-row=properties-in-document] [role=radio]", { hasText: "As text" })); await wait(500)
 await open(NOTE)
 check("properties as source: the frontmatter in the text", await props.count() === 0 && (await page.locator(".file-view .cm-content").first().textContent()).includes("stage: draft"))
 await cursor("stage: draft", 12); await page.keyboard.type("y"); await wait(1500)
 check("…typed into, saved as the file's frontmatter", /\nstage: drafty\n[\s\S]*---\n\n# Heading one/.test(await read(NOTE)), (await read(NOTE)).slice(0, 60))
 await settings()
 for (const row of ["spellcheck", "indent", "auto-pair-brackets", "readable-line-length", "properties-in-document"]) {
-  await page.locator(`[data-settings-row=${row}] [data-reset-default]`).click(); await wait(300)
+  await tap(page.locator(`[data-settings-row=${row}] [data-reset-default]`)); await wait(300)
 }
 check("reset takes the keys out again", JSON.stringify(editorJson() ?? {}) === "{}", editorJson())
 
@@ -181,6 +184,41 @@ await page.keyboard.press("ControlOrMeta+e"); await wait(800)
 const modes = await page.evaluate(() => [...document.querySelectorAll("[data-pane]")].map((p) => !!p.querySelector(".cm-content[contenteditable=true]")))
 check("⌘E switched only the focused pane to reading", modes.filter((x) => !x).length === 1 && modes.filter(Boolean).length === 1, modes)
 await page.screenshot({ path: "/tmp/editorsettings-panes.png" })
+
+// ---------- Default view and editing mode: Settings', for every device; each tab its own after ----------
+await freshDesk()
+// (in the focused pane: the split above may still be there)
+const sourceShown = async () => (await page.locator("[data-focused] .file-view:not([data-kept] *) .vau-editor.is-source").count()) > 0
+const editing = async () => (await page.locator("[data-focused] .file-view:not([data-kept] *) .cm-content[contenteditable=true]").count()) > 0
+await settings()
+await tap(page.locator("[data-settings-row=editing-mode] [role=radio]", { hasText: "Source mode" })); await wait(500)
+check("default editing mode: source mode, in editor.json", editorJson()?.editingMode === "source", editorJson())
+await open(OTHER)
+check("a new tab opens in source mode", await sourceShown())
+await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+check("…⌘E reads", !(await editing()))
+await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+check("…and goes back to source mode", await sourceShown())
+await openPalette(page); await page.keyboard.type("Create new note"); await wait(300); await page.keyboard.press("Enter")
+check("a new note opens in source mode", await until(async () => (await page.locator(".file-view .vau-editor.is-source").count()) > 0 && /Untitled/.test(await page.evaluate(() => location.hash))), await page.evaluate(() => location.hash))
+await page.keyboard.press("Escape")
+await settings()
+await tap(page.locator("[data-settings-row=default-view] [role=radio]", { hasText: "Reading" })); await wait(500)
+await open(NOTE).catch(() => {})
+check("default view reading: a new tab reads", !(await editing()))
+await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+check("…⌘E edits in the default editing mode", await sourceShown())
+await settings()
+for (const row of ["default-view", "editing-mode"]) { await tap(page.locator(`[data-settings-row=${row}] [data-reset-default]`)); await wait(300) }
+check("…reset takes them out again", JSON.stringify(editorJson() ?? {}) === "{}", editorJson())
+// Unset here, Obsidian's: livePreview false is source mode.
+const hadObsidian = existsSync(`${VAULT}/.obsidian`)
+mkdirSync(`${VAULT}/.obsidian`, { recursive: true })
+const appJson = `${VAULT}/.obsidian/app.json`, hadApp = existsSync(appJson) ? readFileSync(appJson, "utf8") : null
+writeFileSync(appJson, JSON.stringify({ livePreview: false }))
+await wait(1500); await open(NOTE)
+check("Obsidian's livePreview: false opens in source mode", await sourceShown())
+if (hadApp !== null) writeFileSync(appJson, hadApp); else if (hadObsidian) rmSync(appJson); else rmSync(`${VAULT}/.obsidian`, { recursive: true, force: true })
 
 await freshDesk()
 done()

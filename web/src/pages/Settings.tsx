@@ -186,6 +186,8 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     ...textSizeKinds(disabled).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),
     { ...row("snippets", "CSS snippets", "Appearance", 'section[aria-label="CSS snippets"]'), words: "styles custom" },
+    { ...row("default-view", "Default view for new tabs", "Editor", '[data-settings-row="default-view"]', "Editing or reading"), words: "reading view preview open new note tab mode" },
+    { ...row("editing-mode", "Default editing mode", "Editor", '[data-settings-row="editing-mode"]', "Live preview or source mode"), words: "source mode live preview markdown raw view" },
     { ...row("properties-in-document", "Properties in document", "Editor", '[data-settings-row="properties-in-document"]', "Visible, hidden or source"), words: "frontmatter yaml metadata" },
     { ...row("indent", "Indent", "Editor", '[data-settings-row="indent"]', "Tab or spaces"), words: "tabs spaces tab size" },
     // (every switch: the app's, and plugins switched on and off here, Vim keys; File explorer's are its plugin's, below)

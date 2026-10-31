@@ -2,7 +2,7 @@
 // back, a change of view, a load. Read-only, but opens tabs a workspace keeps: throwaway server. --phone: 390x844.
 //   node web/qa/stability.mjs <base url> [--json out.json] [--file Dashboards/Design.md] [--note "Notes/..."] [--verbose]
 import { writeFileSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
+import { qa, viewsAt, wait } from "./lib/qa.mjs"
 const { browser } = await qa(import.meta.url)
 
 const args = process.argv.slice(2)
@@ -142,7 +142,8 @@ async function suite(file, label) {
   const page = await ctx.newPage()
   page.on("pageerror", (e) => console.log(`page error: ${e.message}`))
   // Load: a fresh page on the file, in reading view.
-  await page.addInitScript(() => { try { localStorage.setItem("vaultite.fileMode", "read"); localStorage.removeItem("vaultite.tabModes") } catch {} })
+  await viewsAt(base)("read")
+  await page.addInitScript(() => { try { localStorage.removeItem("vaultite.tabViews") } catch {} })
   await page.goto(`${base}${hash(file)}`)
   await page.waitForSelector("#main-scroll article, #main-scroll main, article.file-view")
   if (STEPS.includes("load")) await measure(page, `${label}: load`, null, async () => {}, 2500)
@@ -190,5 +191,6 @@ async function suite(file, label) {
 const h = await suite(FILE, FILE.split("/").pop().replace(/\.md$/, ""))
 if (VERBOSE) console.log(`(${FILE}: ${h}px to scroll)`)
 if (NOTE) await suite(NOTE, NOTE.split("/").pop().replace(/\.md$/, ""))
+await viewsAt(base)(null)
 await browser.close()
 if (OUT) writeFileSync(OUT, JSON.stringify(results, null, 2))

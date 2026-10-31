@@ -135,7 +135,6 @@ async function session() {
     ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }
     : { viewport: { width: 1440, height: 900 } })
   await ctx.addInitScript(INIT)
-  await ctx.addInitScript(() => localStorage.setItem("vaultite.fileMode", "live"))
   const page = await ctx.newPage()
   const cdp = await ctx.newCDPSession(page)
   await cdp.send("Performance.enable")

@@ -3,7 +3,7 @@
 //   node web/qa/artifacts.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { qa, until, wait, SHOTS as OUT } from "./lib/qa.mjs"
+import { qa, until, viewsAt, wait, SHOTS as OUT } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const temp = (p) => [realpathSync("/tmp"), realpathSync(tmpdir())].some((t) => realpathSync(p).startsWith(t + "/"))
 if (!temp(VAULT)) { console.error("artifacts: the vault must be a throwaway one in a temporary folder"); process.exit(2) }
@@ -132,7 +132,8 @@ if (plain) {
 
 // A note with both embedded, being read.
 await page.goto(`${B}#file/${enc("QA/QA note.md")}`)
-await page.evaluate(() => { localStorage.setItem("vaultite.fileMode", "read"); localStorage.removeItem("vaultite.tabModes") })
+await viewsAt(B)("read")
+await page.evaluate(() => { localStorage.removeItem("vaultite.tabViews") })
 await page.reload()
 await wait(2000)
 f = await frameOf(page)
@@ -180,4 +181,5 @@ check("an artifact can't navigate itself to another site", !away.length, away)
 const text = await (await fetch(`${B}api/render?path=${enc("QA/QA note.md")}`)).text()
 check("render: artifact and table as text", text.includes("Reads: `QA/QA table.csv`") && text.includes("| 2026-01-01 | -5.20 | Coffee, large |"), text.slice(0, 400))
 
+await viewsAt(B)(null)
 await done()

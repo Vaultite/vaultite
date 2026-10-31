@@ -15,7 +15,6 @@ const stamp = `Pasted image ${new Date().getFullYear()}`
 const disk = () => readFileSync(NOTE, "utf8")
 try {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, colorScheme: "dark", permissions: ["clipboard-read", "clipboard-write"] })
-  await ctx.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${enc(`${DIR}/Menu.md`)}`)
   await page.waitForSelector("[data-pane] .cm-content", { timeout: 15000 })

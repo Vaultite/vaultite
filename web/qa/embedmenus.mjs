@@ -27,7 +27,6 @@ try {
   // the embeds have their heights)
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 2000 }, colorScheme: "dark" })
   // (in every frame: a PDF's has no localStorage)
-  await ctx.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${enc(`${DIR}/Embeds.md`)}`)
   await page.waitForSelector("[data-pane] .vau-editor [data-embed-menu] audio", { timeout: 15000 })

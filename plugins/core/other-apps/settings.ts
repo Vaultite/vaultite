@@ -19,6 +19,9 @@ export type ObsidianSettings = {
   autoPairMarkdown?: boolean
   readableLineLength?: boolean
   propertiesInDocument?: "visible" | "hidden" | "source"
+  /** Its "Default view for new tabs" (defaultViewMode) and "Default editing mode" (livePreview), as the app names them. */
+  defaultView?: "editing" | "reading"
+  editingMode?: "live" | "source"
 }
 
 const cache = new WeakMap<Vault, { mtime: number; value: ObsidianSettings | null }>()
@@ -44,6 +47,8 @@ export function obsidianSettings(vault: Vault): ObsidianSettings | null {
   for (const k of ["spellcheck", "useTab", "autoPairBrackets", "autoPairMarkdown", "readableLineLength"] as const) if (typeof raw[k] === "boolean") out[k] = raw[k]
   if (Number.isInteger(raw.tabSize) && raw.tabSize >= 1 && raw.tabSize <= 8) out.tabSize = raw.tabSize
   if (["visible", "hidden", "source"].includes(raw.propertiesInDocument)) out.propertiesInDocument = raw.propertiesInDocument
+  if (raw.defaultViewMode === "source" || raw.defaultViewMode === "preview") out.defaultView = raw.defaultViewMode === "source" ? "editing" : "reading"
+  if (typeof raw.livePreview === "boolean") out.editingMode = raw.livePreview ? "live" : "source"
   cache.set(vault, { mtime, value: out })
   return out
 }

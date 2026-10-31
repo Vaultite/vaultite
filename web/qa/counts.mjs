@@ -35,7 +35,6 @@ const HOOK = () => {
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(HOOK)
-await ctx.addInitScript(() => localStorage.setItem("vaultite.fileMode", "live"))
 const page = await ctx.newPage()
 const put = (path, text) => fetch(new URL("/api/file", B), { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
 await put(OTHER, "A note no tab shows.\n")

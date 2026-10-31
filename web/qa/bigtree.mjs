@@ -38,7 +38,7 @@ const HOOK = () => {
     onCommitFiberRoot(_id, root) { try { if (root.current.alternate) walk(root.current) } catch {} } }
 }
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
-await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } localStorage.setItem("vaultite.fileMode", "live") })
+await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 await ctx.addInitScript(HOOK)
 const page = watch(await ctx.newPage(), { console: true })
 const tree = page.locator("aside [role=tree]").first()

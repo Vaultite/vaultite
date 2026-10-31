@@ -2,7 +2,7 @@
 // row, clear of the text and the fold chevrons. WRITES "Qa numbers" and appearance: throwaway server only.
 //   node web/qa/linenumbers.mjs <base url> <vault path> [out dir]
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
-import { SHOTS, apiAt, qa } from "./lib/qa.mjs"
+import { SHOTS, apiAt, qa, viewsAt } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = `${SHOTS}linenumbers/`], browser, check, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const DIR = "Qa numbers"
@@ -57,8 +57,8 @@ const measure = () => {
 async function surface(name, { w, file, mode, size }) {
   const mobile = w < 768 && w !== 600
   const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile, colorScheme: "dark" })
-  await ctx.addInitScript(([m, size]) => {
-    localStorage.setItem("vaultite.fileMode", m); localStorage.setItem("vaultite.editMode", m); localStorage.removeItem("vaultite.tabModes")
+  await viewsAt(B)(mode)
+  await ctx.addInitScript(([, size]) => {
     // A note text size (a CSS zoom on the note): this device's pref.
     if (size) { const p = JSON.parse(localStorage.getItem("vaultite.prefs") ?? "{}"); localStorage.setItem("vaultite.prefs", JSON.stringify({ ...p, device: { ...p.device, "textSize:note": size } })) }
   }, [mode, size])
@@ -115,5 +115,6 @@ for (const [w, tag] of [[1200, "desktop"], [600, "narrow"], [390, "phone"]]) {
 await surface("desktop-live-110", { w: 1200, file: "Numbers.md", mode: "live", size: 110 })
 await browser.close()
 await api("PUT", "config/appearance", saved)
+await viewsAt(B)(null)
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 await done()

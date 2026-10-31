@@ -94,6 +94,10 @@ export const apiAt = (base, headers = {}) => async (method, p, body) => {
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text()
 }
 
+/** New tabs' view, from Settings (.vaultite/editor.json; null: the default again). */
+export const viewsAt = (base) => (mode) => apiAt(base)("POST", "ops/settings.set", { name: "editor", values: mode
+  ? { defaultView: mode === "read" ? "reading" : "editing", editingMode: mode === "source" ? "source" : "live" } : { defaultView: null, editingMode: null } })
+
 /** Opens the command palette: ⌘P, or Ctrl+P off a Mac, where a focused terminal keeps Ctrl+letters for its shell
  *  (plugins/core/terminal/Terminal.tsx), so it's left first, as a user there clicks out of it. */
 export async function openPalette(page) {

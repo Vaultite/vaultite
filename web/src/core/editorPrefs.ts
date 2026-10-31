@@ -4,14 +4,16 @@ import { getStore, type Store } from "@/core/data"
 import { vaultEditor } from "@/core/conventions"
 import { notify } from "@/core/notify"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
-import { EDITOR, EDITOR_KEYS, type EditorSettings, type PropertiesShown } from "../../../core/editor.ts"
+import { EDITOR, EDITOR_KEYS, type EditingMode, type EditorSettings, type NoteView, type PropertiesShown } from "../../../core/editor.ts"
 
-export type { EditorSettings, PropertiesShown }
+export type { EditingMode, EditorSettings, NoteView, PropertiesShown }
 
 /** A value of the right shape for `key`, or undefined (a hand-edited file's `"tabSize": "big"` is ignored). */
 function editorValue<K extends keyof EditorSettings>(key: K, v: unknown): EditorSettings[K] | undefined {
   const d = EDITOR[key]
   if (key === "propertiesInDocument") return (v === "visible" || v === "hidden" || v === "source" ? v : undefined) as EditorSettings[K] | undefined
+  if (key === "defaultView") return (v === "editing" || v === "reading" ? v : undefined) as EditorSettings[K] | undefined
+  if (key === "editingMode") return (v === "live" || v === "source" ? v : undefined) as EditorSettings[K] | undefined
   if (key === "tabSize") return (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 8 ? v : undefined) as EditorSettings[K] | undefined
   return (typeof v === typeof d ? v : undefined) as EditorSettings[K] | undefined
 }
@@ -47,6 +49,10 @@ export function setEditor(changes: { [K in keyof EditorSettings]?: EditorSetting
 export const PROPERTIES_SHOWN: { value: PropertiesShown; label: string }[] = [
   { value: "visible", label: "Visible" }, { value: "hidden", label: "Hidden" }, { value: "source", label: "As text" },
 ]
+
+/** "Default view for new tabs" and "Default editing mode" as Settings names their choices. */
+export const NOTE_VIEWS: { value: NoteView; label: string }[] = [{ value: "editing", label: "Editing" }, { value: "reading", label: "Reading" }]
+export const EDITING_MODES: { value: EditingMode; label: string }[] = [{ value: "live", label: "Live preview" }, { value: "source", label: "Source mode" }]
 
 /** Set "Properties in document"; hiding them takes away the panel it was chosen from, so it offers Undo. */
 export function showPropertiesAs(v: PropertiesShown) {

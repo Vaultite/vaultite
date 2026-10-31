@@ -1,6 +1,8 @@
 // The editor's settings (editor.json) and their defaults, one list for the app (web/src/core/editorPrefs.ts) and the
 // server (core/bundles.ts: a bundle setting one to its default removes the key). No Node: both use it.
 export type PropertiesShown = "visible" | "hidden" | "source"
+export type NoteView = "editing" | "reading"
+export type EditingMode = "live" | "source"
 export type EditorSettings = {
   /** The browser's spelling check in notes. */
   spellcheck: boolean
@@ -18,10 +20,14 @@ export type EditorSettings = {
   propertiesInDocument: PropertiesShown
   /** The file's name as a title at the top of the page; off, it's only in the tab and the path bar. */
   showInlineTitle: boolean
+  /** The view a new tab opens a note in; null: editing on desktop, reading on phones. */
+  defaultView: NoteView | null
+  /** The editing view of a new tab, which ⌘E goes back to from reading until the tab picks the other. */
+  editingMode: EditingMode
 }
 
 export const EDITOR: EditorSettings = {
   spellcheck: true, useTab: true, tabSize: 4, autoPairBrackets: true, autoPairMarkdown: true, readableLineLength: true,
-  propertiesInDocument: "visible", showInlineTitle: true,
+  propertiesInDocument: "visible", showInlineTitle: true, defaultView: null, editingMode: "live",
 }
 export const EDITOR_KEYS = Object.keys(EDITOR) as (keyof EditorSettings)[]

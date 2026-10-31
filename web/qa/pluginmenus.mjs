@@ -42,7 +42,6 @@ export default definePlugin({
 
 try {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
-  await ctx.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
   const page = watch(await ctx.newPage())
   const items = () => page.locator("[role=menu] [role=menuitem]").allTextContents()
   const close = async () => { await page.keyboard.press("Escape"); await wait(150) }
@@ -120,7 +119,6 @@ try {
 
   // A phone: a finger held on the image (its tab, its embed), and the header's … menu.
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
-  await phone.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
   const p = watch(await phone.newPage())
   const cdp = await phone.newCDPSession(p)
   const hold = async (loc, what) => {

@@ -15,7 +15,6 @@ const saved = (want) => until(() => disk().includes(want), 4000)
 const EMOJI = /[🔴🟠🟡🟢🔵🟣]/u
 try {
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 760 }, deviceScaleFactor: 2, colorScheme: "light" })
-  await ctx.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${enc(`${DIR}/Colours.md`)}`)
   await page.waitForSelector("[data-pane] .cm-content", { timeout: 15000 })

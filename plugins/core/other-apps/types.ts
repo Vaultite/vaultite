@@ -13,6 +13,9 @@ export type ObsidianSettings = {
   autoPairMarkdown?: boolean
   readableLineLength?: boolean
   propertiesInDocument?: "visible" | "hidden" | "source"
+  /** Its "Default view for new tabs" (defaultViewMode) and "Default editing mode" (livePreview), as the app names them. */
+  defaultView?: "editing" | "reading"
+  editingMode?: "live" | "source"
 }
 
 declare module "@vaultite" {

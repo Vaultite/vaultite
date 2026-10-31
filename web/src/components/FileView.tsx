@@ -58,7 +58,7 @@ import type { EditorApi } from "@/editor/Editor"
 import { Editor } from "@/editor/lazy"
 import type { PreviewConfig } from "@/editor/livePreview"
 
-import { beforeMode, CODE_VIEWS, editMode, MODES, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
+import { beforeMode, CODE_VIEWS, MODES, opensReading, SOURCE_VIEWS, useMode, usePublish, viewItems, VIEWS, type Mode } from "@/components/fileState"
 import { fmLines, keepPlace, lineAtTop, partLineAt, revealProps, spotOf, useTextFocus, type Spot } from "@/components/filePlace"
 import { share } from "@/core/share"
 
@@ -386,13 +386,13 @@ function Missing({ path, pane }: { path: string; pane: boolean }) {
 
 function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileText; pane: boolean; onGone: () => void }) {
   const path = initial.path
-  const [saved, setSaved, tabId] = useMode()
+  const [saved, setSaved, tabId, tabEdit] = useMode()
   const wideSheet = useWideSheet()
-  // A note just made with New note opens in editing, with its name selected.
+  // A note just made with New note opens in editing (its tab's: live preview or source), with its name selected.
   const [fresh] = useState(() => takeNew(path))
   // Just renamed from its title: still editing (and on to the text if Enter did it).
   const [kept] = useState(() => takeRenamed(path))
-  const [override, setOverride] = useState<Mode | null>(fresh ? "live" : kept?.mode ?? null)
+  const [override, setOverride] = useState<Mode | null>(fresh && saved === "read" ? tabEdit : kept?.mode ?? null)
   const first = splitFm(initial.text)
   const [fm, setFm] = useState(first.fm)
   const { disabled } = usePrefs()
@@ -423,7 +423,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // (a drawing whose plugin is off is JSON text: code)
   const code = !format && (kind === "code" || kind === "other" || (kind === "json" && !isJson(path)))
   const drawn = dash || readOnlyDrawn
-  const mode = override ?? (drawn ? "read" : format ? (isDesktop() ? "live" : "read") : saved)
+  const [opensRead] = useState(opensReading)
+  const mode = override ?? (drawn ? "read" : format ? (opensRead ? "read" : "live") : saved)
   const pick = useCallback((m: Mode) => { if (drawn || code || format) { setOverride(m); return } setOverride(null); setSaved(m) }, [setSaved, drawn, code, format])
   // Hidden files are nobody's notes, so no plugin draws them; the trash and the app's generated copies can be read, not
   // changed.
@@ -431,7 +432,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Their editing is their source: no live preview to pick (it would only glitch into source).
   const shown: Mode = code ? "source" : readOnlyDrawn && mode === "live" ? "source" : mode
   const views = code ? CODE_VIEWS : readOnlyDrawn ? SOURCE_VIEWS : VIEWS
-  const edit: Mode = code || readOnlyDrawn ? "source" : format ? "live" : editMode()
+  const edit: Mode = code || readOnlyDrawn ? "source" : format ? "live" : tabEdit
   // JSON (a plugin's settings, a notebook, a canvas) saves as typed, with a note while it doesn't parse.
   const strict = json || notebook || !!format?.json
   // The body is `cur`: typing redraws nothing here (the status bar and the JSON check follow it: onTyped); a change

@@ -17,7 +17,7 @@ import {
 } from "@/core/bundles"
 import { copyText } from "@/core/richmd"
 import { closeDetail, openDetail, replaceDetail } from "@/core/nav"
-import { PROPERTIES_SHOWN } from "@/core/editorPrefs"
+import { EDITING_MODES, NOTE_VIEWS, PROPERTIES_SHOWN } from "@/core/editorPrefs"
 import { errorText, notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
 import { PLUGINS, pluginById, switchedOn, tintOfPlugin, usePlugins } from "@/core/plugins"
@@ -965,7 +965,7 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
           <Panel title="Settings" icon={Settings2}>
             {/* (a key it takes out is the default again: said by its value) */}
             {plan.editor.map((c) => <Setting key={`editor.${c.key}`} pick={pick} id={c.change} label={EDITOR_NAMES[c.key] ?? c.key} from={c.from ?? EDITOR_VALUES[c.key]}
-              to={c.to ?? EDITOR_VALUES[c.key]} labels={c.key === "propertiesInDocument" ? PROPERTIES_LABELS : undefined} />)}
+              to={c.to ?? EDITOR_VALUES[c.key]} labels={EDITOR_LABELS[c.key]} />)}
             {plan.settings.map((s) => {
               const pl = pluginById(s.plugin)
               const decl = pl?.settingsDecls?.[s.key]
@@ -1000,11 +1000,13 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
 const EDITOR_NAMES: Record<string, string> = {
   propertiesInDocument: "Properties in document", showInlineTitle: "Show inline title", readableLineLength: "Readable line length", spellcheck: "Spellcheck",
   autoPairBrackets: "Auto-pair brackets", autoPairMarkdown: "Auto-pair Markdown", useTab: "Indent with tabs", tabSize: "Tab size",
+  defaultView: "Default view for new tabs", editingMode: "Default editing mode",
 }
 const EDITOR_VALUES: Record<string, unknown> = EDITOR
 /** What a new tab opens, as Settings names it (opensChoices). */
 const OPENS: Record<string, string> = { switcher: "Quick switcher", "view:web": "Web page" }
-const PROPERTIES_LABELS = Object.fromEntries(PROPERTIES_SHOWN.map((x) => [x.value, x.label]))
+const labelsOf = (xs: { value: string; label: string }[]) => Object.fromEntries(xs.map((x) => [x.value, x.label]))
+const EDITOR_LABELS: Record<string, Record<string, string>> = { propertiesInDocument: labelsOf(PROPERTIES_SHOWN), defaultView: labelsOf(NOTE_VIEWS), editingMode: labelsOf(EDITING_MODES) }
 const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons", opens: "New tabs open" }
 const APPEARANCE: Record<string, string> = {
   theme: "Theme", scheme: "Colour scheme", density: "Density", animation: "Animations", fileIcons: "File icons", tabBar: "Tab bar", paneTitles: "Pane titles", dimPanes: "Dim inactive panes", rails: "Sidebar rails", peekShade: "Dim the page behind a sidebar", typingFade: "Fade the file bar while typing", translucent: "Translucent window", translucentPages: "Translucent pages", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", statusBarLeft: "Status bar left corner", fileBar: "File top bar", sidebarHeader: "Sidebar header", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",

@@ -19,7 +19,6 @@ const text = () => readFileSync(NOTE, "utf8")
 const waitText = async (want) => { for (let i = 0; i < 30 && !want(text()); i++) await wait(100); return text() }
 try {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 900 }, colorScheme: "dark" })
-  await ctx.addInitScript(() => { localStorage.setItem("vaultite.editMode", "live") })
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${encodeURIComponent(`${DIR}/Pictures.md`)}`)
   await page.waitForSelector(".vau-editor .cm-image-wrap img", { timeout: 10000 })
