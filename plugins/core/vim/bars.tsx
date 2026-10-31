@@ -7,16 +7,16 @@ import { go, search } from "./find"
 import { setLayer } from "./layer"
 import { focusedRoot } from "./scroll"
 
-/** Where a bar goes: along the bottom of the focused pane (or an open sheet), else of the window; above the status bar
- *  where that's drawn over the pane's foot. */
+/** Where a bar goes: along the bottom of the focused pane (or an open sheet), else of the window; above the status bar's
+ *  corners where they're drawn over the pane's foot. */
 function useSpot() {
   const [spot, setSpot] = useState<{ left: number; width: number; bottom: number }>({ left: 0, width: innerWidth, bottom: 0 })
   useLayoutEffect(() => {
     const el = focusedRoot()
     const box = (el?.closest("[data-pane-body]") ?? el)?.getBoundingClientRect()
     if (!box) return
-    const status = el?.closest("dialog") ? null : document.querySelector("[data-status-bar]")?.getBoundingClientRect()
-    const under = status && status.height && status.left < box.right && status.right > box.left && status.top < box.bottom ? status.top : box.bottom
+    const corners = el?.closest("dialog") ? [] : [...document.querySelectorAll("[data-status-bar]")].map((c) => c.getBoundingClientRect())
+    const under = Math.min(box.bottom, ...corners.filter((c) => c.height && c.left < box.right && c.right > box.left && c.top < box.bottom).map((c) => c.top))
     setSpot({ left: box.left, width: box.width, bottom: Math.max(0, innerHeight - under) })
   }, [])
   return spot

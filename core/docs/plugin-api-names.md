@@ -562,7 +562,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `startMap(ml, box, zoom, fail, onLoad)`: A map in `box` as the app draws one: no rotation or tilt, the attribution folded to its "i", the scheme's colours followed.
 - `startSelecting(list)`: Start a phone's select mode in a list with nothing picked yet (a list's own Select button).
 - `Stat({ label, value, unit, hint })`
-- `StatusItem`: Drawn in the desktop status bar for the focused file: before its view and counts (Vim's mode), or `after` them (Token count).
+- `StatusItem`: Drawn in the desktop status bar for the focused file: before its view and counts (its properties), or `after` them (Token count).
 - `stem(path)`: A file's name as the app shows it: without .md, or the extension of a page a plugin draws (an artifact's .html, a table's .csv: named like notes, FileFormat.page); other files keep theirs.
 - `stepTextSize(kind, step)`: One step bigger (1), smaller (-1), or back to 100% (0).
 - `Store`: The store every block, detail and panel gets: the state without the settings, which the app applies itself.

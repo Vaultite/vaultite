@@ -16,6 +16,7 @@
   "lineNumbers": false,
   "statusBar": ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"],
   "statusBarMore": [],
+  "statusBarLeft": null,
   "fileBar": null,
   "sidebarHeader": ["workspaces:numbers"],
   "pullActions": null

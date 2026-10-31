@@ -592,16 +592,21 @@ function showPanelsOf(p: Plugin) {
 }
 
 /** A plugin was turned on: its status bar items (not ambient ones marked `hidden`) join a saved list: an ambient one
- *  before the file's items, a file's before the app's own (or last: `after`). */
+ *  before the file's items (in the left corner if it asks), a file's before the app's own (or last: `after`). */
 function showBarItemsOf(p: Plugin) {
-  const { statusBar, disabled } = getPrefs()
+  const { statusBar, statusBarLeft, disabled } = getPrefs()
   if (!statusBar) return
   const file = new Set(statusItems(disabled).map((x) => x.key))
-  let list = statusBar
+  let list = statusBar, left = statusBarLeft
   const add = (key: string, before: string | null) => { if (!list.includes(key)) list = placeKey(list, key, before) }
-  for (const [name, x] of Object.entries(p.ambient ?? {})) if (!x.hidden) add(`${p.id}:${name}`, list.find((k) => k.startsWith("core:") || file.has(k)) ?? null)
+  for (const [name, x] of Object.entries(p.ambient ?? {})) {
+    const key = `${p.id}:${name}`
+    if (x.hidden || list.includes(key)) continue
+    add(key, list.find((k) => k.startsWith("core:") || file.has(k)) ?? null)
+    if (x.left && left) left = [...left, key]
+  }
   for (const [name, x] of Object.entries(p.status ?? {})) add(`${p.id}:${name}`, x.after ? null : list.find((k) => k.startsWith("core:")) ?? null)
-  if (list !== statusBar) void setPrefs({ statusBar: list })
+  if (list !== statusBar) void setPrefs({ statusBar: list, ...(left !== statusBarLeft ? { statusBarLeft: left } : {}) })
 }
 
 /** What the plugins that are on draw in one place (`slot`: its items by name), left to right by their `sort`. */

@@ -1,10 +1,10 @@
-import { useEffect, useSyncExternalStore } from "react"
-import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, MousePointer2, Power, SquareTerminal } from "lucide-react"
+import { useEffect, useLayoutEffect, useSyncExternalStore } from "react"
+import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal } from "lucide-react"
 import { choose, cn, currentEditor, definePlugin, editAt, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { connect, getState, liveAgents, type Note, sendMoment, setGuest, startComment, subscribe, viewOf } from "./live"
-import { follow, Overlay } from "./Overlay"
+import { bump, connect, getState, liveAgents, type Note, sendMoment, setGuest, startComment, subscribe, viewOf } from "./live"
+import { Arrow, follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
 import { modeItem, MODES, setMode, showSession } from "./session"
 import { offerThreads } from "./threads"
@@ -47,12 +47,18 @@ function addComment() {
 }
 const COMMENT = { id: "companion:comment", name: "Add comment", label: "Comment", keys: ["Mod+Alt+M"], run: addComment, icon: MessageSquarePlus }
 
-/** The status bar's companion: its pointer in its colour (who's around shows on the note), and its menu. */
+/** The status bar's companion: where its agents rest, an arrow each in its colour (the main one, then up to two more at
+ *  work), which their cursors glide out of to where their attention is and back into (Overlay's home); and its menu. */
 function Status() {
   const s = useSyncExternalStore(subscribe, getState)
   const a = s.agents.find((x) => x.name.toLowerCase() === s.name.toLowerCase())
   const tint = s.mode === "off" ? undefined : `var(--${a?.tint ?? "orange"})`
   const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "watching" ? null : a.state
+  const others = s.mode === "off" ? [] : liveAgents().filter((x) => x.name !== a?.name).slice(0, HOMES - 1)
+  const arrows = [{ name: a?.name ?? s.name, tint, busy: a?.state === "thinking" }, ...others.map((x) => ({ name: x.name, tint: `var(--${x.tint})`, busy: x.state === "thinking" }))]
+  // (the cursors find their homes as these come and go)
+  const homes = arrows.map((x) => x.name).join()
+  useLayoutEffect(() => bump(), [homes])
   const items = (): MenuItem[] => [
     modeItem(true),
     ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
@@ -60,13 +66,19 @@ function Status() {
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },
     { label: "Restart its session", icon: Power, run: () => void op("companion.stop").then(() => setMode(s.mode === "off" ? "quiet" : s.mode)) },
   ]
+  const tip = [`${s.name}, companion${word ? `: ${word}` : ""}`, ...others.map((x) => `${x.name}: ${x.state === "watching" ? "idle" : x.state}`)].join(", ")
   return (
-    <button type="button" onClick={(e) => menuAbove(e, items())} aria-label={`${s.name}, companion`} data-tip={`${s.name}, companion${word ? `: ${word}` : ""}`} data-tip-side="top"
-      data-companion-status className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06]">
-      <MousePointer2 className={cn("size-3.5", a?.state === "thinking" && "animate-pulse")} strokeWidth={2.25} style={tint ? { color: tint, fill: tint } : undefined} />
+    <button type="button" onClick={(e) => menuAbove(e, items())} aria-label={`${s.name}, companion`} data-tip={tip} data-tip-side="top"
+      data-companion-status className="relative size-6 shrink-0 cursor-pointer rounded-[5px] hover:bg-foreground/[0.06]">
+      {arrows.map((x, i) => (
+        <Arrow key={x.name} data-companion-home={x.name} tint={x.tint} size={16} className={cn("absolute top-[4px]", x.busy && "animate-pulse")}
+          style={{ left: 4 + (i - (arrows.length - 1) / 2) * 5, zIndex: arrows.length - i }} />
+      ))}
     </button>
   )
 }
+/** How many agents rest in the status bar's companion, side by side (more rest in the window's corner). */
+const HOMES = 3
 
 const isThread = (n: Note) => n.kind === "comment" || n.kind === "suggestion"
 
@@ -96,7 +108,7 @@ function Background() {
 export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
   background: () => <Background />,
-  ambient: share ? undefined : { status: { title: "Companion", sort: 25, render: () => <Status /> } },
+  ambient: share ? undefined : { status: { title: "Companion", sort: 25, left: true, render: () => <Status /> } },
   fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   // (its key is threads.ts' PANEL)
   sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads"], flyout: { icon: ConversationsIcon, width: 320 },

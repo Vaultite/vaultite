@@ -1,5 +1,5 @@
-// The agents over the whole app: each one's cursor gliding to where its attention is (parked by the status bar when
-// it's nowhere), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
+// The agents over the whole app: each one's cursor gliding to where its attention is (docked in its arrow in the status
+// bar when it's nowhere, Status in index.tsx), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Ellipsis, Pin, X } from "lucide-react"
@@ -11,8 +11,9 @@ import { agentMenu } from "./session"
 import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
 
-/** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it. */
-type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean }
+/** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
+ *  docked: at its arrow in the status bar (x, y: the arrow's corner), where it rests unseen, the arrow standing for it. */
+type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean }
 /** A cursor's place as drawn: what it looked at, its place among them (home's), its step in a stack; held, it stays
  *  there (offset by dx, dy: where it was dropped). */
 type Place = { at: Target; i: number; shift: number; dx: number; dy: number }
@@ -52,15 +53,29 @@ function rowOf(path: string): Spot | null {
   const el = rows.find(seen) ?? rows.find((e) => !e.closest("[data-pin-tree]")) ?? rows[0]
   if (!el) return null
   const r = el.getBoundingClientRect(), c = seenArea(el)
+  // (scrolled out of sight inside a folder, whose own clip is then past the list's: the list's edge)
+  if (c.bottom - c.top < 12) {
+    let s = el.parentElement
+    while (s && !(s.scrollHeight > s.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(s).overflowY))) s = s.parentElement
+    const list = s && seenArea(s), b = s?.getBoundingClientRect()
+    if (list && b) Object.assign(c, { top: Math.max(list.top, b.top), bottom: Math.min(list.bottom, b.bottom) })
+  }
   if (c.bottom - c.top < 12 || c.right - c.left < 12) return null
   const x = Math.max(c.left + 4, Math.min(c.right - 24, r.left + Math.min(r.width - 24, 120)))
   const y = Math.max(c.top + 2, Math.min(c.bottom - 24, r.top + 4))
   return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40) }
 }
 
-function home(i: number): Spot {
+/** Where an agent with nowhere to be rests: its arrow in the status bar, else (the bar's companion hidden, a phone) in the
+ *  window's corner. */
+function home(a: Agent, i: number): Spot {
+  const el = document.querySelector(`[data-companion-home="${CSS.escape(a.name)}"]`)
+  const r = el?.getClientRects().length ? el.getBoundingClientRect() : null
+  if (r?.width) return { x: r.left, y: r.top, parked: true, low: true, docked: true }
   return { x: window.innerWidth - 150 - i * 90, y: window.innerHeight - 70, parked: true, low: true }
 }
+/** The status bar's arrows' size to the cursor's (Arrow: the same shape, 16px of 20). */
+export const DOCK_SCALE = 0.8
 
 /** The end of the row `pos` is on (a long line wraps into several), at most `to`. */
 function rowEnd(v: EditorView, pos: number, to: number) {
@@ -85,16 +100,17 @@ function spotOf(a: Agent, i: number, held = false): Spot | null {
   }
   const v = a.path ? viewOf(a.path) : null
   const pos = v ? posIn(v, a) : null
-  if (!v || pos === null) return (a.path && rowOf(a.path)) || home(i)
+  if (!v || pos === null) return (a.path && rowOf(a.path)) || home(a, i)
   const line = v.state.doc.lineAt(pos)
   const c = coords(v, a.find ? rowEnd(v, Math.min(line.to, pos + a.find.length), line.to) : line.to, -1)
   return { x: Math.min(c.box.right - 40, c.x + 28), y: c.y, low: c.y + FLAG > c.box.bottom }
 }
 
-function Arrow({ tint }: { tint: string }) {
+/** An agent's arrow: its cursor (20px), and smaller its place in the status bar. */
+export function Arrow({ tint, size = 20, className, ...rest }: { tint?: string; size?: number; className?: string } & React.SVGProps<SVGSVGElement>) {
   return (
-    <svg width="20" height="20" viewBox="0 0 20 20" className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]">
-      <path d="M3 2.5 L16.5 9.2 L10.3 10.9 L7.6 16.8 Z" fill={tint} stroke="white" strokeWidth="1.6" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 20 20" className={className ?? "drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)]"} {...rest}>
+      <path d="M3 2.5 L16.5 9.2 L10.3 10.9 L7.6 16.8 Z" fill={tint ?? "none"} stroke={tint ? "white" : "currentColor"} strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -264,6 +280,8 @@ const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, 
     return () => removeEventListener("pointerdown", down, true)
   }, [open, fan, setOpen])
   if (spot.drawn && !said && !a.asks) return null
+  // (resting at home, it's its arrow in the status bar: it fades as it lands there, and shows again as it leaves)
+  const docked = !!spot.docked && !drag && !open && !fan && !said && !a.asks && !typed && !menued
   const enter = (e: React.PointerEvent) => { if (e.pointerType !== "touch") setHover(true) }
   // Click: the popover. Drag (a finger: hold first), then drop on text: "look at this".
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -305,8 +323,10 @@ const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, 
   return (
     <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
-      style={{ transform: `translate(${at.x - 3}px, ${at.y - 2}px)`, transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
-        opacity: idle && !hover && !open && !fan ? 0.55 : 1, zIndex: open || drag || fan ? 57 : many ? 56 : undefined }}>
+      data-docked={docked || undefined}
+      style={{ transform: docked ? `translate(${at.x}px, ${at.y}px) scale(${DOCK_SCALE})` : `translate(${at.x - 3}px, ${at.y - 2}px)`, transformOrigin: "0 0",
+        transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), ${docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
+        opacity: docked ? 0 : idle && !hover && !open && !fan ? 0.55 : 1, visibility: docked ? "hidden" : undefined, zIndex: open || drag || fan ? 57 : many ? 56 : undefined }}>
       {!spot.drawn && <>
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")}>
         <Arrow tint={tint} />
@@ -567,7 +587,8 @@ export function Overlay() {
   })
   // (cursors on the same spot, as in a shared doc: side by side, one flag, "Perf +1", fanning out into each of them)
   for (const c of cursors) {
-    const top = c.spot && cursors.find((o) => o !== c && o.spot && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
+    // (docked ones each have their own arrow, side by side in the status bar: no stack)
+    const top = c.spot && !c.spot.docked && cursors.find((o) => o !== c && o.spot && !o.spot.docked && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
     if (top) { c.under = true; top.with.push(c.a); c.shift = top.with.length }
   }
   for (const c of cursors) if (c.held) c.shift = c.held.shift

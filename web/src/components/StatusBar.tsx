@@ -1,5 +1,5 @@
-// The status bar (desktop, bottom right): one list of items, ambient ones and those for the focused file (its view and
-// counts: usePublish), each hidden by right-click or the palette, dragged along it or into its tray (core/statusbar.ts).
+// The status bar (desktop): ambient items and the focused file's (usePublish) in two corners, as in Vim: left the user's
+// (Vim's mode, the companion), right the file's. Hidden by right-click or the palette, dragged between them (core/statusbar.ts).
 import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { Ellipsis, PanelBottom } from "lucide-react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
@@ -15,7 +15,7 @@ import { kindOf } from "@/core/filekinds"
 import { usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
 import { useFileTab } from "@/core/workspace"
 import { getPrefs, usePrefs } from "@/core/prefs"
-import { barShown, barShows, type BarItem, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
+import { barShown, barShows, type BarItem, type BarPlace, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { cn } from "@/lib/utils"
 
@@ -24,8 +24,10 @@ import { cn } from "@/lib/utils"
 const LONG = 32 * 1024
 /** Past this, the counts are made in a worker: a 16 MB note's take seconds. */
 const BIG = 1 << 20
-/** The bar and its tray stop short of the left sidebar (and the right one, which the bar sits against). */
-const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px) - 12px)"
+/** The right corner and its tray stop short of the left corner (`--status-left`, its width) and the left sidebar; the
+ *  left corner takes at most half the room. */
+const MAX_WIDTH = "calc(100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px) - var(--status-left, 0px) - 12px)"
+const LEFT_MAX_WIDTH = "calc((100vw - var(--left-sidebar, 0px) - var(--right-sidebar, 0px)) / 2 - 6px)"
 
 /** Right-click on the bar: which items it shows (a hidden one ticked again goes back to its default place). */
 const barMenu = () => {
@@ -103,13 +105,16 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
 }
 
 const KEPT_ITEMS = "vaultite.statusbar.items", KEPT_SETUP = "vaultite.statusbar.setup"
+/** The more button's entry among the kept widths (a file's, as what fills its tray is): shown last load, it shows
+ *  while the file's items come. */
+const MORE = "core:more"
 /** How long at most the app's load holds the bar's room for what's still to come. */
 const LOAD_HOLD = 8000
 /** The items' widths at the last load, in the bar's order; a file's own marked (older loads': unknown, so held). */
 type Kept = [key: string, width: number, file?: 1][]
 /** Last load's room, held while the app loads so nothing moves: each item's until it draws (a file's until the file
  *  comes). Ends for good at another file, a new `setup` (a bundle) or LOAD_HOLD. Null: nothing held. */
-function useLoadHolds(bar: RefObject<HTMLElement | null>, row: RefObject<HTMLElement | null>, path: string, setup: string): Kept | null {
+function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTMLElement | null>[], path: string, setup: string): Kept | null {
   const [drawn, redraw] = useState(0)
   const st = useRef<{ kept: Kept; setup: string; first: string | null; done: boolean; drawn: Set<string> } | null>(null)
   if (!st.current) {
@@ -128,18 +133,18 @@ function useLoadHolds(bar: RefObject<HTMLElement | null>, row: RefObject<HTMLEle
     if (h.done) return
     const t = setTimeout(() => { h.done = true; redraw((n) => n + 1) }, LOAD_HOLD)
     // An item lets go of its room once it draws.
-    const r = row.current, mo = r && new MutationObserver(() => {
-      const now = h.kept.filter(([k]) => !h.drawn.has(k) && r.querySelector(`[data-status-key="${CSS.escape(k)}"]:not(:empty)`))
+    const rs = rows.flatMap((r) => (r.current ? [r.current] : [])), mo = new MutationObserver(() => {
+      const now = h.kept.filter(([k]) => !h.drawn.has(k) && rs.some((r) => r.querySelector(`[data-status-key="${CSS.escape(k)}"]:not(:empty)`)))
       if (!now.length) return
       for (const [k] of now) h.drawn.add(k)
       redraw((n) => n + 1)
     })
-    mo?.observe(r!, { childList: true, subtree: true, characterData: true })
-    return () => { clearTimeout(t); mo?.disconnect() }
-  }, [row, h, h.done])
+    for (const r of rs) mo.observe(r, { childList: true, subtree: true, characterData: true })
+    return () => { clearTimeout(t); mo.disconnect() }
+  }, [h, h.done]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const el = bar.current, r = row.current
-    if (!el || !r) return
+    const els = bars.flatMap((b) => (b.current ? [b.current] : [])), rs = rows.flatMap((r) => (r.current ? [r.current] : []))
+    if (!els.length || !rs.length) return
     let saving: ReturnType<typeof setTimeout> | undefined
     const save = () => {
       clearTimeout(saving)
@@ -147,13 +152,15 @@ function useLoadHolds(bar: RefObject<HTMLElement | null>, row: RefObject<HTMLEle
         // (not before the vault's plugins came: their items aren't drawn yet)
         if (!vaultPluginsIn()) return save()
         // (as drawn without what's held: an item drawing nothing is kept as 0, holding no room)
-        const slots = [...r.querySelectorAll<HTMLElement>("[data-status-key]")], mins = slots.map((x) => x.style.minWidth)
+        const slots = rs.flatMap((r) => [...r.querySelectorAll<HTMLElement>("[data-status-key]")]), mins = slots.map((x) => x.style.minWidth)
         for (const x of slots) x.style.minWidth = ""
         const items: Kept = slots.map((x) => {
           const w = x.matches(":empty") ? 0 : x.getBoundingClientRect().width
           return x.hasAttribute("data-ambient") ? [x.dataset.statusKey!, w] : [x.dataset.statusKey!, w, 1]
         })
         slots.forEach((x, i) => { x.style.minWidth = mins[i] })
+        const more = els.map((b) => b.querySelector<HTMLElement>("[data-status-more]")).find((m) => m?.offsetWidth)
+        if (more) items.push([MORE, more.getBoundingClientRect().width, 1])
         try {
           localStorage.setItem(KEPT_ITEMS, JSON.stringify(items))
           localStorage.setItem(KEPT_SETUP, setup)
@@ -162,10 +169,10 @@ function useLoadHolds(bar: RefObject<HTMLElement | null>, row: RefObject<HTMLEle
       }, 2000)
     }
     const ro = new ResizeObserver(save)
-    for (const c of [el, r]) ro.observe(c)
+    for (const c of [...els, ...rs]) ro.observe(c)
     save()
     return () => { clearTimeout(saving); ro.disconnect() }
-  }, [bar, row, path, setup])
+  }, [path, setup]) // eslint-disable-line react-hooks/exhaustive-deps
   // (the same list until an item draws: the bar's items are drawn again only when it changes)
   return useMemo(() => (h.done ? null : h.kept.filter(([k]) => !h.drawn.has(k))), [h, h.done, drawn])
 }
@@ -194,11 +201,12 @@ const steady = (x: BarItem) => x.key === "core:words" || x.key === "core:charact
 
 export function StatusBar() {
   const s = statusSubs.use(() => status_)
-  const { disabled, enabled, statusBar, statusBarMore, density, interfaceFont, snippets } = usePrefs()
+  const { disabled, enabled, statusBar, statusBarMore, statusBarLeft, density, interfaceFont, snippets } = usePrefs()
   // What the bar's width depends on but the file: a change lets go of the widths held for the setup before.
-  const setup = JSON.stringify([statusBar, statusBarMore, disabled, enabled, density, interfaceFont, snippets])
+  const setup = JSON.stringify([statusBar, statusBarMore, statusBarLeft, disabled, enabled, density, interfaceFont, snippets])
   const plugins = usePluginsVersion() // (a vault plugin's code arriving)
-  const bar = useMemo(() => barShown(disabled, statusBar), [disabled, enabled, statusBar, plugins])
+  const bar = useMemo(() => barShown(disabled, statusBar, statusBarLeft), [disabled, enabled, statusBar, statusBarLeft, plugins])
+  const leftKeys = useMemo(() => new Set(bar.left), [bar])
   useBarCommands(bar.all)
   // Counted after the keystroke is on screen: a long note's count takes a few milliseconds. The file comes late with
   // its text, so a file just opened is never measured (useSteady) with the last one's counts.
@@ -220,18 +228,26 @@ export function StatusBar() {
   // The items: the tucked ones in the tray, the rest in the bar, but those that don't fit, which the tray shows too.
   // A file's are there only while one is focused.
   const barRef = useRef<HTMLDivElement>(null), rowRef = useRef<HTMLDivElement>(null), itemsRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
+  const leftRef = useRef<HTMLDivElement>(null), leftRowRef = useRef<HTMLDivElement>(null), leftItemsRef = useRef<HTMLDivElement>(null)
   // (a file's items are held only on a file's tab: on a view or a new tab no file comes, and their room stayed empty)
-  const loading = useLoadHolds(barRef, rowRef, path, setup), fileTab = useFileTab()
+  const loading = useLoadHolds([barRef, leftRef], [rowRef, leftRowRef], path, setup), fileTab = useFileTab()
   const held = useMemo(() => (fileTab ? loading : loading?.filter(([, , file]) => !file) ?? null), [loading, fileTab])
   const drawable = useMemo(() => bar.shown.filter((x) => x.ambient || open || held?.some(([k, w]) => k === x.key && w > 0)), [bar, open, held])
   const inBar = useMemo(() => drawable.filter((x) => !statusBarMore.includes(x.key)), [drawable, statusBarMore])
+  const inLeft = useMemo(() => inBar.filter((x) => leftKeys.has(x.key)), [inBar, leftKeys])
+  const inRight = useMemo(() => inBar.filter((x) => !leftKeys.has(x.key)), [inBar, leftKeys])
   const [tray, setTray] = useState(false)
   const dragged = useDrag((d) => d?.item.status)
-  // (the more button shows while one is tucked or dragged, else only when the fit leaves one out)
-  const pinned = statusBarMore.some((k) => drawable.some((x) => x.key === k)) || !!dragged
-  const over = useFit(rowRef, inBar.map((x) => x.key), pinned)
-  const inTray = drawable.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
-  const { barHit, trayHit } = useBarDrops(barRef, itemsRef, trayRef, bar.keys, inTray.map((x) => x.key), statusBarMore)
+  // (what the left corner leaves out goes in the right one's tray; its more button shows while one is tucked, dragged or
+  // left out of either corner)
+  const overLeft = useFit(leftRowRef, inLeft.map((x) => x.key), false)
+  // (shown last load, it holds its place until the file's items come and the fit says)
+  const moreHeld = !open && !!held?.some(([k]) => k === MORE)
+  const pinned = statusBarMore.some((k) => drawable.some((x) => x.key === k)) || !!dragged || overLeft.length > 0 || moreHeld
+  const overRight = useFit(rowRef, inRight.map((x) => x.key), pinned)
+  const inTray = drawable.filter((x) => statusBarMore.includes(x.key) || overLeft.includes(x.key) || overRight.includes(x.key))
+  const { barHit, leftHit, trayHit } = useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }, bar.keys, inTray.map((x) => x.key), statusBarMore)
+  useLeftWidth(leftRef, barRef)
   const trayOpen = tray && inTray.length > 0
   useEffect(() => {
     if (!trayOpen) return
@@ -277,23 +293,30 @@ export function StatusBar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fileSlots = useMemo(() => new Map(inBar.filter((x) => !x.ambient).map((x) => [x.key, open ? slot(x, fileDraw(x), "bar", holdOf(x.key))
     : <span key={x.key} aria-hidden data-status-coming data-fit={fitRank(x)} className="shrink-0" style={{ width: holdOf(x.key) }} />])), [inBar, held, dragged, open, late, counts, fileHead, fileText])
-  // In one row, a line where the ambient items meet the file's (shown only between two that show something: index.css).
-  const els: ReactNode[] = [], seps: string[] = []
-  let kind = ""
-  for (const x of withComing(inBar, held, bar.all.map((a) => a.key))) {
-    const k = "coming" in x || x.ambient ? "ambient" : "file"
-    if (kind && k !== kind) {
-      seps.push(`sep:${els.length}`)
-      els.push(<span key={`sep-${els.length}`} aria-hidden data-status-sep data-slide={`sep:${els.length}`} className="shrink-0 pl-1"><span className="block h-3.5 w-px bg-border" /></span>)
+  // In each corner's row, a line where the ambient items meet the file's (shown only between two that show something:
+  // index.css). Those still to come go where they were, in their corner.
+  const known = [...bar.all.map((a) => a.key), MORE]
+  const row = (items: BarItem[], kept: Kept | null) => {
+    const els: ReactNode[] = [], seps: string[] = []
+    let kind = ""
+    for (const x of withComing(items, kept, known)) {
+      const k = "coming" in x || x.ambient ? "ambient" : "file"
+      if (kind && k !== kind) {
+        seps.push(`sep:${els.length}`)
+        els.push(<span key={`sep-${els.length}`} aria-hidden data-status-sep data-slide={`sep:${els.length}`} className="shrink-0 pl-1"><span className="block h-3.5 w-px bg-border" /></span>)
+      }
+      kind = k
+      els.push("coming" in x ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} /> : (k === "ambient" ? ambientSlots : fileSlots).get(x.key))
     }
-    kind = k
-    els.push("coming" in x ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} /> : (k === "ambient" ? ambientSlots : fileSlots).get(x.key))
+    return { els, seps }
   }
-  // Dragged over, the bar's items and the tray's make way for the one dragged; its lines go where the kinds meet then
+  const right = row(inRight, held && held.filter(([k]) => !leftKeys.has(k))), left = row(inLeft, held && held.filter(([k]) => leftKeys.has(k)))
+  // Dragged over, a corner's items and the tray's make way for the one dragged; its lines go where the kinds meet then
   // (left out, one would give up its room and the items past it would shift).
   const ambient = (key: string) => !!bar.all.find((x) => x.key === (key === INCOMING ? dragged : key))?.ambient
-  const barOrder = barHit?.order && barHit.order.flatMap((key, i, all) => (i && ambient(key) !== ambient(all[i - 1]) ? [seps.shift() ?? "", key] : [key])).filter(Boolean)
-  useSlide(itemsRef, barOrder ?? null, "x")
+  const withSeps = (hit: Gap | null, seps: string[]) => hit?.order?.flatMap((key, i, all) => (i && ambient(key) !== ambient(all[i - 1]) ? [seps.shift() ?? "", key] : [key])).filter(Boolean) ?? null
+  useSlide(itemsRef, withSeps(barHit, [...right.seps]), "x")
+  useSlide(leftItemsRef, withSeps(leftHit, [...left.seps]), "x")
   useSlide(trayRef, trayHit?.order ?? null, "wrap")
   const gap = (g: Gap | null) => g?.order?.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-5 shrink-0" />
   // (always there, the fit showing it: drawn again only when it changes, not on each keystroke)
@@ -312,21 +335,47 @@ export function StatusBar() {
       {gap(trayHit)}
     </div>
   )
-  // (its row holds what's in line, so what it leaves out is measured without the tray over it; with nothing to show,
-  // the bar is a faint corner to right-click: index.css)
+  // (a row holds what's in line, so what it leaves out is measured without the tray over it; with nothing to show, the
+  // right corner is a faint one to right-click, the left one gone but as a place to drop: index.css)
   return (
-    <div ref={barRef} role="status" aria-label="Status bar" data-status-bar style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
-      className="fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
-      <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
-        {more}
-        <div ref={itemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
-          {els}
-          {gap(barHit)}
+    <>
+      <div ref={leftRef} role="status" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
+        style={{ maxWidth: LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
+        className="fixed left-(--left-sidebar,0px) bottom-0 z-20 transition-[left] duration-200 ease-out hidden h-7 items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
+        <div ref={leftRowRef} data-status-row className="flex min-w-0 items-center gap-2">
+          <div ref={leftItemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
+            {left.els}
+            {gap(leftHit)}
+          </div>
         </div>
       </div>
-      {trayBox}
-    </div>
+      <div ref={barRef} role="status" aria-label="Status bar" data-status-bar style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
+        className="fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
+        <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
+          {more}
+          <div ref={itemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
+            {right.els}
+            {gap(barHit)}
+          </div>
+        </div>
+        {trayBox}
+      </div>
+    </>
   )
+}
+
+/** The left corner's width on the right one (`--status-left`), which stops short of it: set as the page lays itself out,
+ *  never drawn again for it. */
+function useLeftWidth(left: RefObject<HTMLElement | null>, right: RefObject<HTMLElement | null>) {
+  useLayoutEffect(() => {
+    const l = left.current, r = right.current
+    if (!l || !r) return
+    const set = (w: number) => r.style.setProperty("--status-left", `${Math.ceil(w)}px`)
+    set(l.getBoundingClientRect().width)
+    const ro = new ResizeObserver(([e]) => set(e.borderBoxSize[0]?.inlineSize ?? 0))
+    ro.observe(l)
+    return () => ro.disconnect()
+  }, [left, right])
 }
 
 /** Each item's palette commands: show or hide it, and show them all. */
@@ -341,30 +390,41 @@ function useBarCommands(all: BarItem[]) {
   ], [all.map((x) => `${x.key}\t${x.title}`).join("\n")])
 }
 
-/** The bar and its tray (with the more button) as drop targets for its items: in the bar, where it lands among them;
- *  in the tray or onto the button, tucked there (onto the button: last). */
-function useBarDrops(barRef: RefObject<HTMLElement | null>, itemsRef: RefObject<HTMLElement | null>, trayRef: RefObject<HTMLElement | null>,
-  keys: string[], trayKeys: string[], tucked: string[]) {
+type Refs = Record<"barRef" | "itemsRef" | "leftRef" | "leftItemsRef" | "trayRef", RefObject<HTMLElement | null>>
+
+/** The bar's corners and its tray (with the more button) as drop targets for its items: in a corner, where it lands
+ *  among them; in the tray or onto the button, tucked there (onto the button: last). */
+function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }: Refs, keys: string[], trayKeys: string[], tucked: string[]) {
   // A drop after the tray's last item goes before what follows that one in the bar's order.
   const afterTray = (key: string) => {
     const rest = keys.filter((k) => k !== key), end = trayKeys.filter((k) => k !== key).at(-1)
     return end ? rest[rest.indexOf(end) + 1] ?? null : rest[0] ?? null
   }
   const slots = (box: HTMLElement) => [...box.querySelectorAll<HTMLElement>(":scope > [data-status-key]")].filter((el) => el.offsetWidth)
-  useDropTarget<Gap>("status:bar", (item, x, y, el) => {
-    const bar = barRef.current, box = itemsRef.current
+  // A corner: over it, or just past its open end (it grows that way for the one dragged in).
+  const corner = (side: "left" | "right") => (item: { status?: string }, x: number, y: number, el: Element | null): Gap | null => {
+    const bar = (side === "left" ? leftRef : barRef).current, box = (side === "left" ? leftItemsRef : itemsRef).current
     if (!item.status || !bar || !box || el?.closest("[data-status-tray], [data-status-more]")) return null
     const b = bar.getBoundingClientRect(), f = box.getBoundingClientRect()
-    if (x < f.left - 24 || x > b.right || y < b.top - 24 || y > b.bottom) return null
-    // (measured without the gap one from the tray opens: the bar grows to the left for it, so its items would move under
-    // a still pointer and the slot be the next one)
+    if (side === "right" ? x < f.left - 24 || x > b.right : x < b.left || x > Math.max(b.right, f.right + 24)) return null
+    if (y < b.top - 24 || y > b.bottom) return null
+    // (measured without the gap one from elsewhere opens: the corner grows for it, so its items would move under a still
+    // pointer and the slot be the next one)
     const coming = box.querySelector<HTMLElement>(`:scope > [data-slide="${INCOMING}"]`)
     if (coming) coming.style.display = "none"
     const at = slots(box), { order, before, same } = reorder(at.map((el) => el.dataset.statusKey!), [item.status], slotAt(box, at, x, y, "x"))
     if (coming) coming.style.display = ""
-    // (where it is already: nothing to do)
-    return same ? null : { before, order }
-  }, (item, g) => moveBarItem(item.status!, g.before, false))
+    // (where it is already: nothing to do; `before` is in the corner's order, so its end is just after its last)
+    return same ? null : { before: before ?? afterLast(at.map((el) => el.dataset.statusKey!), item.status), order }
+  }
+  // The end of a corner: before what follows its last item in the bar's order (the other corner's items don't matter).
+  const afterLast = (corner: string[], key: string) => {
+    const rest = keys.filter((k) => k !== key), end = corner.filter((k) => k !== key).at(-1)
+    return end ? rest[rest.indexOf(end) + 1] ?? null : null
+  }
+  const drop = (place: BarPlace) => (item: { status?: string }, g: Gap) => moveBarItem(item.status!, g.before, place)
+  useDropTarget<Gap>("status:bar", corner("right"), drop("right"))
+  useDropTarget<Gap>("status:left", corner("left"), drop("left"))
   useDropTarget<Gap>("status:more", (item, x, y, el) => {
     if (!item.status) return null
     const tray = trayRef.current
@@ -374,8 +434,8 @@ function useBarDrops(barRef: RefObject<HTMLElement | null>, itemsRef: RefObject<
       return same && tucked.includes(item.status) ? null : { before: before ?? afterTray(item.status), order }
     }
     return el?.closest("[data-status-more]") ? { before: afterTray(item.status) } : null
-  }, (item, g) => moveBarItem(item.status!, g.before, true))
-  return { barHit: useDropHit<Gap>("status:bar"), trayHit: useDropHit<Gap>("status:more") }
+  }, drop("tray"))
+  return { barHit: useDropHit<Gap>("status:bar"), leftHit: useDropHit<Gap>("status:left"), trayHit: useDropHit<Gap>("status:more") }
 }
 
 /** The file's view; clicked, its views (three, or reading and source), the current one checked. */

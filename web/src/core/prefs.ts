@@ -66,6 +66,8 @@ export type Prefs = {
   statusBar: string[] | null
   /** Those of them kept in the bar's tray (its "more" button) whatever room there is. */
   statusBarMore: string[]
+  /** Those of them drawn in the bar's left corner (Vim's mode, the companion); null: the items that ask for it. */
+  statusBarLeft: string[] | null
   /** The plugins' items in a file's top bar, in order ("companion:presence"); null: by their `sort`. One docked in a
    *  sidebar is a panel there (sidebars.json) instead. */
   fileBar: string[] | null
@@ -109,9 +111,9 @@ type File = keyof typeof FILES
 const WHOLE = { sidebars: "sidebars" } as const
 
 /** Whether a saved value has its default's shape (a list of names, a number, a flag): a settings file edited by hand to
- *  `"disabled": null` would otherwise stop the app on every load. `statusBar`, `fileBar`, `sidebarHeader` and `pullActions` may be null. */
+ *  `"disabled": null` would otherwise stop the app on every load. `statusBar`, `statusBarLeft`, `fileBar`, `sidebarHeader` and `pullActions` may be null. */
 function fits(k: keyof Prefs, v: unknown) {
-  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "fileBar" || k === "sidebarHeader" || k === "pullActions"
+  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "statusBarLeft" || k === "fileBar" || k === "sidebarHeader" || k === "pullActions"
   if (Array.isArray(d) || nullable) return (v === null && nullable) || (Array.isArray(v) && v.every((x) => typeof x === "string"))
   if (d === null) return v === null || (typeof v === "object" && !Array.isArray(v))
   if (typeof d === "number") return typeof v === "number" && Number.isFinite(v)

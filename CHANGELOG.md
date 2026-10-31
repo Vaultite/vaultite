@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The status bar has two corners, as in Vim**: bottom left what's about you (Vim's mode, the companion), bottom right
+  the file's items; drag one between them. Vim's mode stays there as you click around, dimmed while the keyboard is
+  elsewhere, so nothing beside it shifts. The companion's cursor rests in its arrow there, gliding out to where it
+  works and back, instead of floating over the page's corner.
 - **Translucent pages**: with a translucent window, notes, terminals, canvases, the graph and the app's own pages can
   show the desktop too, more lightly than the sidebars so they still read; web pages, PDFs, images and video stay
   solid. A switch under Translucent window in Appearance, and the Full glass bundle.

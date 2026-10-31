@@ -557,10 +557,12 @@ dialog { --vau-panel-bottom: 0px; }
 /* Its line where the ambient items meet the file's, only between two that show something. */
 [data-status-sep] { display: none; }
 :is([data-status-key]:not(:empty), [data-status-coming], [data-hold]):not([data-fit-out]) ~ [data-status-sep]:has(~ :is([data-status-key]:not(:empty), [data-status-coming], [data-hold]):not([data-fit-out])) { display: block; }
-/* Showing nothing, the bar is a faint corner of its height, its outline on hover: right-click brings items back. */
-[data-status-bar]:not(:has([data-status-items] > :is([data-status-key]:not(:empty), [data-status-coming], [data-hold]):not([data-fit-out]), [data-status-more]:not([data-fit-out]))) {
+/* Showing nothing, the bar is a faint corner of its height, its outline on hover: right-click brings items back. The
+   left corner is gone then, but while an item is dragged: a place to drop it. */
+[data-status-bar]:not(:has([data-status-items] > :is([data-status-key]:not(:empty), [data-status-coming], [data-hold], [data-slide]):not([data-fit-out]), [data-status-more]:not([data-fit-out]))) {
   background: transparent; border-color: transparent; min-width: calc(var(--spacing) * 10);
-  &:hover { border-color: var(--color-border); }
+  &:hover, &[data-drop] { border-color: var(--color-border); }
+  &[data-status-left]:not([data-dragging]) { display: none; }
 }
 .vau-editor .cm-editor .cm-panels-bottom { padding-bottom: var(--vau-panel-bottom, 0px); }
 /* What a find lights where it can't mark the text (a drawn table, a page: core/findText.ts), as its matches in text. */

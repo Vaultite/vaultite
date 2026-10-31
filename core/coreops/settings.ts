@@ -64,6 +64,8 @@ const APPEARANCE: Record<string, Setting> = {
     about: "the desktop status bar's items, in order: the app's own (core:view, core:words, core:characters) and plugins' as <plugin>:<name> (inbox:new, terminal:agents, vim:mode, token-count:tokens): a JSON list or names separated by commas; [] for none (an empty corner, right-click to bring them back)", parse: names },
   statusBarMore: {
     about: "those of statusBar's items kept in the status bar's tray (its more button) whatever room there is: a JSON list or names separated by commas", parse: names },
+  statusBarLeft: {
+    about: "those of statusBar's items drawn in the status bar's left corner, by the left sidebar (vim:mode, companion:status); the rest are in its right corner: a JSON list or names separated by commas; [] for none; unset: the items that ask for it", parse: names },
   fileBar: {
     about: "the plugins' items in a file's top bar, in order, as <plugin>:<name> (companion:presence, provenance:origin): a JSON list or names separated by commas; ones left out follow by their default place", parse: names },
   sidebarHeader: {

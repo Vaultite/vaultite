@@ -106,7 +106,9 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
   `core:words`, `core:characters`) and plugins' (`["terminal:agents", "core:view", "core:words", "token-count:tokens"]`;
   unset: every default one; `[]`: none, the bar a faint corner). Right-click the bar for the list, drag one to move it;
   the palette shows or hides each. `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
-  fit). `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
+  fit). `statusBarLeft`: those of them in the bar's left corner, by the left sidebar, as Vim draws its mode
+  (`["companion:status", "vim:mode"]`; unset: the items that ask for it, Vim's mode and the companion); the rest are in
+  its right corner, the file's. Drag one from corner to corner. `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
   unset: their default places); one dragged into a sidebar (or Move to sidebar) is a panel there, in `sidebars.json`.
   `sidebarHeader`: the plugins' items in the left sidebar's header, in order (`["workspaces:numbers"]`; unset: every one;
   `[]`: none). Right-click the header to show or hide each.

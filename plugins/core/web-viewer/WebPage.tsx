@@ -41,12 +41,13 @@ function Elsewhere({ url }: { url: string }) {
   )
 }
 
-/** Where in the box the page goes: above the status bar where that's drawn over the pane's foot (laid over it, the page
- *  would hide the bar, and the bar over the page would raise the window over it the whole time). */
+/** Where in the box the page goes: above the status bar's corners where they're drawn over the pane's foot (laid over
+ *  one, the page would hide it, and one over the page would raise the window over it the whole time). */
 function pageArea(r: DOMRect) {
-  const bar = document.querySelector("[data-status-bar]")?.getBoundingClientRect()
-  if (!bar?.height || bar.left >= r.right || bar.right <= r.left || bar.top >= r.bottom || bar.bottom <= r.top) return r
-  return new DOMRect(r.left, r.top, r.width, Math.max(0, bar.top - r.top))
+  const over = [...document.querySelectorAll("[data-status-bar]")].map((el) => el.getBoundingClientRect())
+    .filter((bar) => bar.height && bar.left < r.right && bar.right > r.left && bar.top < r.bottom && bar.bottom > r.top)
+  if (!over.length) return r
+  return new DOMRect(r.left, r.top, r.width, Math.max(0, Math.min(...over.map((bar) => bar.top)) - r.top))
 }
 
 const http = (u: string) => /^https?:\/\//i.test(u)

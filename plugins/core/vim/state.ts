@@ -42,19 +42,32 @@ export const appKeys = () => deviceOn() && settings.get().app !== false
 /** Space as the leader. */
 export const leaderOn = () => deviceOn() && settings.get().leader !== false
 
-/** The mode of the editor that has the keyboard ("normal", "insert", "visual", "visual line", "replace"), or null when
- *  no Vim editor has it. */
-let mode: string | null = null
+/** The mode of the editor that had the keyboard last ("normal", "insert", "visual", "visual line", "replace"): kept
+ *  while the keyboard is elsewhere, so the status bar's chip stays put as the user clicks around. */
+let mode = "normal"
 /** The keys typed so far in that editor (d2...). */
 let keys = ""
-export function setEditorMode(m: string | null, k = "") {
-  if (m === mode && k === keys) return
+/** Whether that editor has the keyboard now. */
+let focused = false
+export function setEditorMode(m: string, k = "") {
+  if (m === mode && k === keys && focused) return
   mode = m
   keys = k
+  focused = true
+  emit()
+}
+/** The keyboard left the Vim editors; `closed`: the one it was in is gone, and a new one starts in normal mode. */
+export function leftEditor(closed = false) {
+  const m = closed ? "normal" : mode
+  if (!focused && m === mode && !keys) return
+  mode = m
+  keys = ""
+  focused = false
   emit()
 }
 export const useEditorMode = () => useSyncExternalStore(subscribe, () => mode)
 export const useEditorKeys = () => useSyncExternalStore(subscribe, () => keys)
+export const useEditorFocused = () => useSyncExternalStore(subscribe, () => focused)
 
 /** A file switched from reading to editing with `i`: Escape in normal mode there switches back. */
 let peek: string | null = null

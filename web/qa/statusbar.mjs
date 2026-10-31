@@ -1,5 +1,6 @@
-// The desktop status bar never reaches the left sidebar nor wraps (the rest goes to its tray), and its items drag and
-// hide. WRITES appearance.json (put back) and .vaultite/plugins/qa-long (removed): throwaway server only.
+// The desktop status bar never reaches the left sidebar nor wraps (the rest goes to its tray), its items drag and hide,
+// and its left corner holds Vim's mode still as the keyboard comes and goes, items dragging to it and back.
+// WRITES appearance.json (put back) and .vaultite/plugins/qa-long (removed): throwaway server only.
 //   node web/qa/statusbar.mjs <base url> <vault path>
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -10,6 +11,8 @@ const B = B0.endsWith("/") ? B0 : `${B0}/`
 const api = apiAt(B)
 const look = await api("GET", "config/appearance")
 const P = "Qa status bar.md"
+// The right corner, the file's (the left one, the user's: LEFT).
+const RIGHT = "[data-status-bar]:not([data-status-left])", LEFT = "[data-status-left]"
 await api("POST", "file", { path: P, text: "# Status bar\n\nSome words to count.\n" })
 // Every ambient item on, in a known order (the routines chip shows with a routine due, the inbox's with a new item).
 await api("POST", "ops/inbox.add", { title: "Qa status bar", body: "An item for the bar." })
@@ -28,13 +31,13 @@ try {
   await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
   const page = watch(await ctx.newPage(), { console: true })
   await page.goto(`${B}#file/${encodeURIComponent(P)}`)
-  const bar = page.locator("[data-status-bar]")
+  const bar = page.locator(RIGHT)
   await until(async () => (await bar.locator("[data-status-key='qa-long:long']").count()) > 0 && /word/.test(await bar.innerText()), 15000)
   const keys = () => bar.locator("[data-status-items] > [data-ambient]").evaluateAll((els) =>
     els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))
   const clear = () => page.evaluate(() => {
     const side = document.querySelector("aside[data-side=left]").getBoundingClientRect().right
-    return document.querySelector("[data-status-bar]").getBoundingClientRect().left - side
+    return document.querySelector("[data-status-bar]:not([data-status-left])").getBoundingClientRect().left - side
   })
   // (settled: an item fetching its data, Claude's limits, comes a moment later)
   let shown = await keys()
@@ -116,7 +119,7 @@ try {
   for (let w = 1280; w >= 780; w -= 50) {
     await page.setViewportSize({ width: w, height: 800 }); await wait(250)
     lines.push(await page.evaluate((w) => {
-      const bar = document.querySelector("[data-status-bar]"), row = bar.querySelector("[data-status-row]")
+      const bar = document.querySelector("[data-status-bar]:not([data-status-left])"), row = bar.querySelector("[data-status-row]")
       // (a text on two lines draws two boxes)
       const texts = document.createTreeWalker(row, NodeFilter.SHOW_TEXT), two = [], range = document.createRange()
       for (let t = texts.nextNode(); t; t = texts.nextNode()) {
@@ -170,19 +173,49 @@ try {
   await until(async () => (await bar.locator("[data-status-key]").count()) === 0)
   await wait(300)
   const corner = await page.evaluate(() => {
-    const el = document.querySelector("[data-status-bar]"), r = el.getBoundingClientRect(), cs = getComputedStyle(el)
+    const el = document.querySelector("[data-status-bar]:not([data-status-left])"), r = el.getBoundingClientRect(), cs = getComputedStyle(el)
     return { w: r.width, h: r.height, right: innerWidth - r.right, bottom: innerHeight - r.bottom, bg: cs.backgroundColor, border: cs.borderTopColor }
   })
   const clear_ = (c) => c === "transparent" || /rgba\(.*,\s*0\)$/.test(c)
   check("nothing shown: no bar drawn, a corner of its height left", corner.h >= 27 && corner.w >= 36 && corner.bottom <= 1 && clear_(corner.bg) && clear_(corner.border), corner)
   await page.mouse.move(1280 - 10, 800 - 10); await wait(200)
-  check("…its outline on hover", !clear_(await page.evaluate(() => getComputedStyle(document.querySelector("[data-status-bar]")).borderTopColor)))
+  check("…its outline on hover", !clear_(await page.evaluate(() => getComputedStyle(document.querySelector("[data-status-bar]:not([data-status-left])")).borderTopColor)))
   await page.screenshot({ path: `${SHOTS}statusbar-5-empty.png`, clip: { x: 1080, y: 740, width: 200, height: 60 } })
   await page.mouse.click(1280 - 10, 800 - 10, { button: "right" }); await wait(300)
   await page.getByRole("menuitem", { name: "Show all", exact: true }).click(); await wait(300)
   check("…whose right-click shows them all again", !!(await until(async () => (await look_()).filter((k) => k.startsWith("core:")).length === 3 && (await words.count()) === 1)), await look_())
+
+  // 8. The left corner, by the left sidebar: Vim's mode and the companion. The mode stays (dimmed) as the keyboard
+  // leaves the note for the bar, so nothing in either corner moves.
+  await api("POST", "ops/plugin.enable", { id: "vim" })
+  await api("PATCH", "config/appearance", { statusBar: ["companion:status", "vim:mode", "core:view", "core:words", "core:characters"], statusBarLeft: null })
+  const left = page.locator(LEFT)
+  await until(async () => (await left.locator("[data-vim-mode]").count()) === 1 && (await left.locator("[data-companion-status]").count()) === 1, 15000)
+  const spot = await page.evaluate(() => {
+    const side = document.querySelector("aside[data-side=left]").getBoundingClientRect().right, r = document.querySelector("[data-status-left]").getBoundingClientRect()
+    return { gap: r.left - side, bottom: innerHeight - r.bottom }
+  })
+  check("left corner: against the left sidebar, at the bottom", Math.abs(spot.gap) <= 1 && spot.bottom <= 1, spot)
+  const places = () => page.evaluate(() => [...document.querySelectorAll("[data-status-key]")].filter((e) => e.offsetWidth)
+    .map((e) => `${e.dataset.statusKey}@${Math.round(e.getBoundingClientRect().left)}`).join(" "))
+  await page.locator(".cm-content").first().click(); await wait(300)
+  const inNote = { mode: await left.locator("[data-vim-mode]").getAttribute("data-vim-mode"), focused: await left.locator("[data-vim-mode][data-focused]").count(), at: await places() }
+  await bar.locator("[data-status-key='core:words']").click(); await wait(300)
+  const onBar = { mode: await left.locator("[data-vim-mode]").getAttribute("data-vim-mode"), focused: await left.locator("[data-vim-mode][data-focused]").count(), at: await places() }
+  check("in the note: the mode shows, lit", inNote.mode === "normal" && inNote.focused === 1, inNote)
+  check("the keyboard on the bar: the mode stays, dimmed, nothing moved", onBar.mode === "normal" && onBar.focused === 0 && onBar.at === inNote.at, { inNote, onBar })
+  await page.screenshot({ path: `${SHOTS}statusbar-6-corners.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
+  // An item dragged from the right corner to the left one's end, and back.
+  const w = await box(`${RIGHT} [data-status-key="core:words"]`), l = await box(`${LEFT} [data-status-items]`)
+  await drag({ x: w.x + w.width / 2, y: w.y + w.height / 2 }, { x: l.x + l.width + 10, y: l.y + l.height / 2 })
+  check("dragged to the left corner: there, saved", (await left.locator("[data-status-key='core:words']").count()) === 1
+    && !!(await until(async () => (await api("GET", "config/appearance")).statusBarLeft?.includes("core:words"))), await api("GET", "config/appearance"))
+  const w2 = await box(`${LEFT} [data-status-key="core:words"]`), v = await box(`${RIGHT} [data-status-key="core:view"]`)
+  await drag({ x: w2.x + w2.width / 2, y: w2.y + w2.height / 2 }, { x: v.x + v.width - 2, y: v.y + v.height / 2 })
+  check("…and back to the right one", (await bar.locator("[data-status-key='core:words']").count()) === 1
+    && !!(await until(async () => !(await api("GET", "config/appearance")).statusBarLeft?.includes("core:words"))), await api("GET", "config/appearance"))
 } finally {
-  await api("PATCH", "config/appearance", { statusBar: look.statusBar ?? null, statusBarMore: look.statusBarMore ?? [] })
+  await api("PATCH", "config/appearance", { statusBar: look.statusBar ?? null, statusBarMore: look.statusBarMore ?? [], statusBarLeft: look.statusBarLeft ?? null })
   await api("POST", "ops/plugin.disable", { id: "qa-long" })
   rmSync(LONG, { recursive: true, force: true })
   for (const f of [P, "Inbox/Qa status bar.md"]) await fetch(`${B}api/file?path=${encodeURIComponent(f)}`, { method: "DELETE" })

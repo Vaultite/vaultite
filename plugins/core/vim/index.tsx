@@ -120,7 +120,7 @@ export default definePlugin({
     "Ctrl+W": "Windows", "G": "Go to",
   },
   details: { [app.KEYS_DETAIL]: { title: () => "Vim keys", render: () => <app.KeysSheet /> } },
-  status: { mode: { title: "Vim mode", sort: 0, render: () => <ModeChip /> } },
+  ambient: { mode: { title: "Vim mode", sort: 30, left: true, render: () => <ModeChip /> } },
   background: Background,
   settingsPanel: () => <VimSettings />,
   settingsSearch: [

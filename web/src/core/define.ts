@@ -392,10 +392,10 @@ export type FileHead = { path: string; fm: Record<string, unknown>; type: string
  *  text: an image), as typed (each change redraws it, a moment after the keystroke). */
 export type OpenFile = FileHead & { text: string }
 
-/** Drawn in the desktop status bar for the focused file: before its view and counts (Vim's mode), or `after` them
+/** Drawn in the desktop status bar for the focused file: before its view and counts (its properties), or `after` them
  *  (Token count). The user can hide or move it (appearance `statusBar`). Nothing when render answers null. */
 export type StatusItem = {
-  /** Its name in the bar's menu and the palette ("Vim mode"): the plugin's name unless set. A plugin's status and
+  /** Its name in the bar's menu and the palette ("Token count"): the plugin's name unless set. A plugin's status and
    *  ambient items share their names' keys, so they differ. */
   title?: string
   render: (file: OpenFile) => ReactNode
@@ -414,6 +414,8 @@ export type AmbientItem = {
   sort?: number
   /** Off until the user turns it on. */
   hidden?: boolean
+  /** In the bar's left corner until the user moves it: what's about the user rather than the file (Vim's mode). */
+  left?: boolean
 }
 
 /** Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title

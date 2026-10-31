@@ -6,7 +6,7 @@ import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirro
 import { beginKeys, followLink, getStore, isMac, linksIn, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
 import { EX } from "./ex"
 import { applyVimrc, editorOpen } from "./vimrc"
-import { deviceOn, leaderOn, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
+import { deviceOn, leaderOn, leftEditor, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
 
 type VimModule = typeof import("@replit/codemirror-vim")
 export type Vim = VimModule["Vim"]
@@ -229,13 +229,16 @@ const theme = EditorView.theme({
   "& .cm-foldPlaceholder": { background: "var(--muted)", border: "none", color: "var(--muted-foreground)", padding: "0 4px", borderRadius: "4px" },
 })
 
+/** The editor that had the keyboard last: closed, the status bar's mode goes back to normal. */
+let lastView: EditorView | null = null
+
 /** The editor that has the keyboard tells the status bar its mode and the keys typed so far. */
 function tracker(cm: CM) {
   const view = viewOf(cm)
   const tell = () => {
     if (!view.hasFocus) return
     const v = cm.state.vim
-    setEditorMode(v ? (v.mode ?? (v.insertMode ? "insert" : v.visualMode ? "visual" : "normal")) : null, v?.status ?? "")
+    setEditorMode(v ? (v.mode ?? (v.insertMode ? "insert" : v.visualMode ? "visual" : "normal")) : "normal", v?.status ?? "")
   }
   cm.on("vim-mode-change", (e) => {
     if (cm.state.vim) cm.state.vim.mode = e.mode + (e.subMode ? (e.subMode === "linewise" ? " line" : " block") : "")
@@ -288,9 +291,10 @@ async function vimParts(): Promise<Extension> {
     theme,
     ViewPlugin.define((view) => {
       const cm = getCM(view) as unknown as CM | null
-      const tell = cm ? tracker(cm) : () => {}
+      const track = cm ? tracker(cm) : () => {}
+      const tell = () => { lastView = view; track() }
       if (cm) { editorOpen(cm, true); void applyVimrc(cm) }
-      const blur = () => setTimeout(() => { if (!document.activeElement?.closest(".cm-editor")) setEditorMode(null) }, 0)
+      const blur = () => setTimeout(() => { if (!document.activeElement?.closest(".cm-editor")) leftEditor() }, 0)
       view.contentDOM.addEventListener("focus", tell)
       view.contentDOM.addEventListener("blur", blur)
       return {
@@ -298,7 +302,7 @@ async function vimParts(): Promise<Extension> {
           view.contentDOM.removeEventListener("focus", tell)
           view.contentDOM.removeEventListener("blur", blur)
           if (cm) editorOpen(cm, false)
-          if (view.hasFocus) setEditorMode(null)
+          if (view.hasFocus || lastView === view) { lastView = null; leftEditor(true) }
         },
       }
     }),

@@ -1,7 +1,7 @@
-// What Vim draws in the app's own places: its mode and pending keys in the status bar, and its settings panel.
+// What Vim draws in the app's own places: its mode and pending keys in the status bar's left corner, and its settings panel.
 import { ChevronRight } from "lucide-react"
-import { capitalize, Group, openDetail, Segmented, SettingRow, Switch } from "@vaultite"
-import { changeSettings, deviceKeys, setDeviceKeys, settings, useDeviceOn, useEditorKeys, useEditorMode, VIMRC, type DeviceKeys } from "./state"
+import { capitalize, cn, Group, openDetail, Segmented, SettingRow, Switch } from "@vaultite"
+import { changeSettings, deviceKeys, setDeviceKeys, settings, useDeviceOn, useEditorFocused, useEditorKeys, useEditorMode, VIMRC, type DeviceKeys } from "./state"
 import { openVimrc } from "./vimrc"
 
 const MODES: Record<string, { label: string; color: string }> = {
@@ -13,15 +13,18 @@ const MODES: Record<string, { label: string; color: string }> = {
   replace: { label: "Replace", color: "var(--red)" },
 }
 
-/** The status bar's Vim mode, while a Vim editor has the keyboard. */
+/** The status bar's Vim mode: the last editor's, dimmed while the keyboard is elsewhere (as its cursor goes hollow), and
+ *  always there while Vim's keys are on, so nothing beside it moves as the user clicks around. Its keys follow it. */
 export function ModeChip() {
+  const on = useDeviceOn()
   const mode = useEditorMode()
   const keys = useEditorKeys()
-  if (!mode) return null
+  const focused = useEditorFocused()
+  if (!on) return null
   const m = MODES[mode] ?? { label: capitalize(mode), color: "var(--muted-foreground)" }
   return (
-    <span className="flex items-center gap-1.5" data-vim-mode={mode}>
-      <span className="rounded-[4px] px-1.5 py-px text-[11px] font-semibold"
+    <span className="flex items-center gap-1.5" data-vim-mode={mode} data-focused={focused || undefined}>
+      <span className={cn("min-w-[52px] rounded-[4px] px-1.5 py-px text-center text-[11px] font-semibold transition-opacity duration-150", !focused && "opacity-55")}
         style={{ color: m.color, background: `color-mix(in oklab, ${m.color} 14%, transparent)` }}>{m.label}</span>
       {keys && <span className="font-mono text-[11px] text-foreground">{keys}</span>}
     </span>
