@@ -42,7 +42,7 @@ export function SessionSheet({ id }: { id: string }) {
     if (to) backDetail()
     notify(to ? `Done: “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void markEventsDone([e.id], !to) } })
   }
-  const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine })
+  const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine, host: e.host })
   return (
     <div data-session-sheet={e.id} data-ask={e.ask ?? ""}>
       <SheetHead icon={agent?.icon ?? Bot} tint={agent?.tint ?? "var(--inbox)"} kicker="Inbox" title={e.title} sub={sub} />

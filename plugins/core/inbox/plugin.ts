@@ -684,9 +684,9 @@ plugin.route("POST", "inbox/events/snooze", async (req) => {
 })
 
 /** `e` snoozed till `until` (out of the lists meanwhile), or woken (null: open, unread, on top, told again); null when
- *  it can't be (a gate would wait unseen; what's done isn't to come back). */
+ *  it can't be (a gate or a permission would wait unseen; what's done isn't to come back). */
 function snoozedAs(e: InboxEvent, until: number | null): InboxEvent | null {
-  if (e.gate || e.state === "done") return null
+  if (e.gate || e.state === "done" || (until !== null && e.state === "open" && e.ask === "permission")) return null
   if (until !== null) return { ...e, snoozed: until }
   if (!e.snoozed) return null
   const { snoozed: _, ...rest } = e
@@ -902,7 +902,9 @@ export type Heard = Omit<StateChange, "terminal" | "at"> & { terminal?: string; 
   /** An agent's own hook (`vau inbox hook`) or host (inbox:session): it says a turn ended, or it asks, each time news. */
   own?: boolean
   /** What it asks, in its own words, and its name, when its host says them (else its agent's plugin is asked). */
-  questions?: Question[]; title?: string }
+  questions?: Question[]; title?: string
+  /** Its thread's id, when its host names it (inbox:session's `thread`). */
+  thread?: string }
 
 /** Each session's last state (by terminal, else by session), and since when it works: its turn's start. */
 const states = new Map<string, { state: string; kind?: string; msg?: string; since: number }>()
@@ -950,7 +952,8 @@ export async function heard(h: Heard) {
   const now = Date.now()
   states.set(key, { state: h.state, kind: h.kind, msg: h.msg, since: h.state === "working" && was?.state !== "working" ? now : was?.since ?? now })
   if (states.size > 500) states.delete(states.keys().next().value!)
-  const who = { agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "", ...(h.from === "agent" && !h.terminal ? { host: true } : {}) }
+  const who: Who = { agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "", ...(h.from === "agent" && !h.terminal ? { host: true } : {}),
+    ...(h.thread ? { thread: h.thread } : {}) }
   if (h.title) name(who, h.title)
   // (working after it asked: the user answered; after a prompt its own hook saw: the user wrote to it)
   if (h.state === "working") {
@@ -996,7 +999,9 @@ export function questionLine(qs: Question[], lines = false) {
   return lines ? `${q.question}${more}\n${labels.map((l, i) => `${i + 1}. ${l}`).join("\n")}` : `${q.question} ${or(labels, q.multi ? "and" : "or")}${more}`.slice(0, 300)
 }
 
-type Who = { agent: string; terminal: string; session: string; host?: boolean }
+type Who = { agent: string; terminal: string; session: string; host?: boolean
+  /** Its thread's id, when its host names it (a fork or a resume gave the session a new id). */
+  thread?: string }
 /** An agent's last turn as its plugin reads it (the service "agent-turn:<agent>"): the user's message, its last answer. */
 type Last = { session: string; prompt: string; text: string; at: number; final: boolean
   /** The session's own name, for an agent whose terminal isn't titled by it (Codex's thread name, else first prompt). */
@@ -1049,7 +1054,7 @@ async function lastTurn(who: Who, since: number, wantText: boolean): Promise<Las
 }
 
 const rowOf = (k: Who) => (e: InboxEvent) => !e.gate && !e.machine && e.source === k.agent &&
-  ((!!k.session && e.session === k.session) || (!!k.terminal && e.terminal === k.terminal))
+  ((!!k.thread && e.id === k.thread) || (!k.thread && ((!!k.session && e.session === k.session) || (!!k.terminal && e.terminal === k.terminal))))
 
 /** The name a session's agent gave it as its last turn ended (agent-turn's `title`, or its host's), by terminal, else session. */
 const named = new Map<string, string>()
@@ -1108,7 +1113,7 @@ plugin.provide("inbox:state", (c: StateChange) => { track(heard(c)) })
 
 /** A session's state as its host tells it (an agent run outside a terminal, as the Agent SDK runs one): AGENTS.md's
  *  "A session's state". The same as a hook's: a turn that ends is judged, a question needs the user. */
-export type SessionState = { agent: string; session: string; terminal?: string; state: "waiting" | "working" | "done" | "error"
+export type SessionState = { agent: string; session: string; terminal?: string; thread?: string; state: "waiting" | "working" | "done" | "error"
   ask?: string; text?: string; prompt?: string; title?: string; questions?: Question[]; cwd?: string }
 const HOST_STATES = { waiting: "blocked", working: "working", done: "done", error: "error" } as const
 
@@ -1125,7 +1130,8 @@ export function sessionOf(b: Item): Heard {
     question: clip(q.question, 500), ...(str(q.header) ? { header: clip(q.header, 60) } : {}), ...(q.multi === true ? { multi: true } : {}),
     options: (q.options as Item[]).map((o) => ({ label: clip(o?.label, 200), ...(str(o?.description) ? { description: clip(o.description, 500) } : {}) })).filter((o) => o.label),
   })) : []
-  return { agent, state, from: "agent", own: true, ...(session ? { session } : {}), ...(terminal ? { terminal } : {}),
+  const thread = /^[a-z0-9]{6,12}-[0-9a-f]{6}$/.test(str(b.thread)) ? str(b.thread) : ""
+  return { agent, state, from: "agent", own: true, ...(session ? { session } : {}), ...(terminal ? { terminal } : {}), ...(thread ? { thread } : {}),
     ...(b.ask !== undefined ? { kind: str(b.ask) } : {}), ...(typeof b.text === "string" ? { text: b.text.trim() } : {}),
     ...(typeof b.prompt === "string" ? { prompt: b.prompt } : {}), ...(str(b.title) ? { title: clip(b.title, 200) } : {}),
     ...(state === "blocked" && str(b.text) ? { msg: clip(b.text, 300) } : {}), ...(qs.length ? { questions: qs } : {}), ...(str(b.cwd) ? { cwd: str(b.cwd) } : {}) }
@@ -1137,7 +1143,7 @@ plugin.provide("inbox:session", async (b: Item): Promise<InboxEvent | null> => {
   const p = heard(h)
   track(p)
   await p
-  return list().find(rowOf({ agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "" })) ?? null
+  return list().find(rowOf({ agent: h.agent, terminal: h.terminal ?? "", session: h.session ?? "", ...(h.thread ? { thread: h.thread } : {}) })) ?? null
 })
 
 /** A session's state from a host outside this server (SessionState): answered at once, the thread worked out after. */
@@ -1319,7 +1325,7 @@ export const typable = (sessions: Live[]) => (id: string) => !!id && sessions.so
 
 /** Where a reply to a report goes: typed into its terminal still running (`live`: typable); else its session resumed while
  *  the prompt cache lasts (cheap), else a new session told to read the report. `want`: resume or new, whatever the cache. */
-type Plan = { how: "type" | "resume" | "new"; to: string; ago: number | null; ttl: number | null; transcript: string }
+type Plan = { how: "type" | "resume" | "new" | "host"; to: string; ago: number | null; ttl: number | null; transcript: string; account?: string }
 async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Promise<Plan | null> {
   const terminal = str(r.terminal), session = str(r.session), agent = str(r.agent) || agentOfTerminal(terminal)
   const resume = session && agent ? resumeTerminalId(agent, session) : ""
@@ -1336,7 +1342,7 @@ async function replyPlan(r: Item, live: (id: string) => boolean, want = ""): Pro
   const account = /^[a-z0-9]{1,32}$/.test(named) && named !== "default" ? named : ""
   const fresh = agent ? newTerminalId(agentIn(agent, account)) : ""
   if (resume && want !== "new" && (want === "resume" || cached !== false)) return { how: "resume", to: resume, ...known }
-  if (fresh) return { how: "new", to: fresh, ...known }
+  if (fresh) return { how: "new", to: fresh, ...known, ...(account ? { account } : {}) }
   return null
 }
 
@@ -1523,13 +1529,21 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
     if (atPrompt(sessions.find((s) => s.id === plan.to)?.state)) await submit(ctx, plan.to, line)
     else await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: line, enter: true })
   } else if (plan.how === "resume") await startAgent(ctx, plan.to, line)
-  else {
-    await startAgent(ctx, plan.to, `(The user replies to the last answer of an earlier session; you start without its context.` +
-      `${plan.transcript ? ` Its transcript is \`${plan.transcript}\`: search it for what you need, don't read it whole.` : ""} ` +
-      `Its last answer:\n\n${clip(e.body, 3000) || "(not kept)"}\n\nThe user's reply:) ${line}`)
-  }
-  moveOn(list().filter((x) => x.id === e.id), "working", { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
-  return { how: plan.how, terminal: plan.to }
+  const started = plan.how !== "new" ? null : await startNew(ctx, e.source, plan, `(The user replies to the last answer of an earlier session; you start ` +
+    `without its context.${plan.transcript ? ` Its transcript is \`${plan.transcript}\`: search it for what you need, don't read it whole.` : ""} ` +
+    `Its last answer:\n\n${clip(e.body, 3000) || "(not kept)"}\n\nThe user's reply:) ${line}`)
+  moveOn(list().filter((x) => x.id === e.id), "working", started ?? { terminal: plan.to })
+  return { how: plan.how, terminal: started ? started.terminal ?? null : plan.to }
+}
+
+/** Start a new session for a reply (plan `new`): its agent's host starts a chat when it has one ("agent-chat-new:<agent>":
+ *  {prompt, account?} -> {id}), else a terminal runs it. What the thread follows: its terminal, or its session (hosted). */
+async function startNew(ctx: OpCtx, agent: string, plan: Plan, prompt: string): Promise<Pick<InboxEvent, "terminal" | "session" | "host">> {
+  const chat = plugin.service(`agent-chat-new:${agent}`) as ((a: Item) => Promise<{ id: string } | null>) | null
+  const made = chat ? await chat({ prompt, ...(plan.account ? { account: plan.account } : {}), by: ctx.who.label }) : null
+  if (made?.id) return { terminal: undefined, session: made.id, host: true }
+  await startAgent(ctx, plan.to, prompt)
+  return { terminal: plan.to, session: undefined }
 }
 
 /** One question's answer as given: an option's number or name (several, comma-separated, in a multi-select), else
@@ -1646,22 +1660,28 @@ same way. A session on another of the Machines gets it through the app there.
     const alive = (id: string) => !!id && sessions.some((s) => s.id === id)
     const at = await elsewhere(r, alive)
     if (at) return onSessionMachine(ctx, at, "inbox.reply", { to: `${r.id}.md`, text: str(p.text), ...(how ? { how } : {}), ...(p.keep ? { keep: true } : {}) })
-    const plan = await replyPlan(r, typable(sessions), how)
-    if (!plan) throw new OpError(`its terminal ${terminal} has ended and the report has no session to resume`, 409)
     const again = "when it's done, report again with vau inbox report"
+    // (a session its host runs takes it there: agent-reply:<agent>, false when it runs in a terminal)
+    const host = session && !how && !typable(sessions)(terminal) ? plugin.service(`agent-reply:${agent}`) as ((s: string, t: string) => Promise<boolean>) | null : null
+    const hosted = !!host && await host(session, `(A reply to your report ${r.id}.md; ${again}) ${text}`)
+    const plan: Plan | null = hosted ? { how: "host", to: terminal, ago: null, ttl: null, transcript: "" } : await replyPlan(r, typable(sessions), how)
+    if (!plan) throw new OpError(`its terminal ${terminal} has ended and the report has no session to resume`, 409)
+    let started: Pick<InboxEvent, "terminal" | "session" | "host"> | null = null
     if (plan.how === "type") {
       const said = `(A reply to your report ${r.id}.md; ${again}) ${text}`
       // (at its prompt: sent and checked; while it works, the message waits in its queue)
       if (atPrompt(sessions.find((s) => s.id === plan.to)?.state)) await submit(ctx, plan.to, said)
       else await ctx.api("POST", `terminals/${encodeURIComponent(plan.to)}/send`, { text: said, enter: true })
-    } else {
+    } else if (plan.how !== "host") {
       const said = plan.how === "resume" ? `(A reply to your report ${r.id}.md; ${again}) ${text}`
         : `(A reply to the report \`${r.id}.md\`, which an earlier session wrote: you start without its context.) Read the ` +
           `report first: what was asked, what was done, what's left.${plan.transcript ? ` That session's transcript is ` +
           `\`${plan.transcript}\`: search it for a detail the report doesn't give, don't read it whole.` : ""} Then do what ` +
           `the reply asks, and ${again}. The user's reply: ${text}`
-      await startAgent(ctx, plan.to, said)
-      hand(plan.to)
+      if (plan.how === "resume") await startAgent(ctx, plan.to, said)
+      else started = await startNew(ctx, agent, plan, said)
+      // (a terminal handed the reply ends once it reports again; a host's chat stays)
+      if (!started?.host) hand(plan.to)
     }
     const quoted = lines.split(/\r?\n/).map((l) => `> ${l}`.trimEnd()).join("\n")
     const now = new Date()
@@ -1671,15 +1691,16 @@ same way. A session on another of the Machines gets it through the app there.
       return at < 0 ? `${body.replace(/\n*$/, "")}\n\n${note}` : body.slice(0, at) + note + body.slice(at)
     })
     // The report now names the session that answers it: its next report goes on in this file, and so do later replies.
-    const next = { ...(plan.to !== terminal ? { terminal: plan.to } : {}), ...(plan.how === "new" ? { session: "" } : {}) }
+    const answering = started ? started.terminal ?? "" : plan.to
+    const next = { ...(answering !== terminal ? { terminal: answering } : {}), ...(plan.how === "new" ? { session: started?.session ?? "" } : {}) }
     let id = r.id
     if ((!p.keep && r.status !== "done") || Object.keys(next).length) {
       id = str(((await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { ...next, ...(!p.keep ? { status: "done" } : {}) })) as Item)?.id) || id
     }
     // Its thread is working on it (archiving its record made it done), on the terminal that answers.
     moveOn(list().filter((e) => [`${r.id}.md`, `${id}.md`].includes(fileOf(e.link) ?? "")), "working",
-      { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
-    return { to: `${r.id}.md`, terminal: plan.to, how: plan.how, done: !p.keep }
+      started ?? { terminal: plan.to, ...(plan.how === "new" ? { session: undefined } : {}) })
+    return { to: `${r.id}.md`, terminal: answering || null, how: plan.how, done: !p.keep }
   },
   text: (r) => `${r.how === "resume" ? "Resumed its session" : r.how === "new" ? "Started a new session" : r.how === "host" ? "Sent to its session" : "Sent"}${r.terminal ? ` in ${r.terminal}` : ""}${r.done ? "; the report is archived, its thread working" : "; its thread is working"}.`,
 })
@@ -1967,7 +1988,10 @@ const LONG_VOICE = 1500
  *  as it starts (typed in at its prompt, a fresh TUI could drop the start of it). */
 async function dispatch(ctx: OpCtx, agent: string, file: string, text: string): Promise<string> {
   const id = newTerminalId(agent)
-  await startAgent(ctx, id, DISPATCH(file, text))
+  const parsed = parseTerminal(id)
+  // (its host starts a chat when it has one: agent-chat-new, as a reply's new session)
+  const made = await startNew(ctx, parsed?.agent ?? agent, { how: "new", to: id, ago: null, ttl: null, transcript: "", ...(parsed?.profile ? { account: parsed.profile } : {}) }, DISPATCH(file, text))
+  if (made.host) return made.session!
   hand(id)
   return id
 }

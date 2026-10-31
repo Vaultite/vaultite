@@ -61,12 +61,15 @@ terminal, or an app on the public MCP asking to run code here.
     daily one doesn't pile up).
 - **A session's state** from its host (an agent run outside a terminal, as the Agent SDK runs one): `POST
   /api/inbox/sessions` (owner only; 202, worked out after), or in a plugin `plugin.ask("inbox:session", null, state)`
-  (resolves to its thread), with `{"agent", "session", "terminal"?, "state": "waiting" | "working" | "done" | "error",
+  (resolves to its thread), with `{"agent", "session", "terminal"?, "thread"?, "state": "waiting" | "working" | "done" | "error",
   "ask"?: "permission" | "question" | "auth" | "plan", "text"?, "prompt"?, "title"?, "questions"?, "cwd"?}`. waiting
   is blocked on the user (`ask` why; `questions` as core/agents.ts' Question, else `text` says it); working, a turn
-  started; done or error, a turn ended (`text` its final message, `prompt` the user's last): judged as a hook's. Its
-  host answers it: a service `agent-reply:<agent>` `(session, text) => Promise<boolean>` takes replies, and
-  `agent-answer:<agent>` `(session, {answer: "approve" | "deny"} | {picks: Choice[]}) => Promise<boolean>` Approve, Deny
-  and picks (true: it took it).
+  started; done or error, a turn ended (`text` its final message, `prompt` the user's last): judged as a hook's. A
+  thread's id is its own: `thread` (its event id) names it when the session's id changed (a fork, a resume), and the
+  thread follows the new one. Without a terminal its thread is `host: true`: its host answers it, a service
+  `agent-reply:<agent>` `(session, text) => Promise<boolean>` taking replies, `agent-answer:<agent>` `(session, {answer:
+  "approve" | "deny"} | {picks: Choice[]}) => Promise<boolean>` Approve, Deny and picks (true: it took it), and
+  `agent-chat-new:<agent>` `({prompt, account?, by?}) => Promise<{id} | null>` starting a new session where a reply
+  would start a terminal (its cache gone) or a voice note is dispatched. A permission it asks can't be snoozed.
 - Push needs Apple's push key (a .p8) in data/ and `"inbox": {"apns": {"key_id", "team_id", "key": "<file in data/>"}}`
   in data/config.json on the server's machine; the setting `push` says which events go.

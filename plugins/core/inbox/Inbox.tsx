@@ -11,7 +11,7 @@ import {
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
@@ -102,7 +102,7 @@ const unInbox = async (p: string) => { await setProperty(p, "status", undefined)
  *  they're on top); the result being read gives its tab to the next one, as Done does. Undo puts each as it was. */
 export function snoozeKeys(keys: string[], at: Date | null) {
   const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && open(r))
-  const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && !e.gate && e.state !== "done")
+  const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && (at ? snoozable(e) : !!e.snoozed))
   const reading = at && results.find((r) => currentFile() === pathOf(r))
   const next = reading ? nextToReview(reading, results) : undefined
   const now = at ?? new Date()
@@ -181,7 +181,7 @@ function selectionItems(store: Store, keys: string[]): MenuItem[] {
   if (fresh.length) out.push({ label: "File to…", icon: FolderInput, run: () => askMoveMany(fresh.map(pathOf), { before: unInbox }) })
   // (what's snoozed is in the Snoozed list: picked there, it comes back)
   const later = [...results.filter((r) => open(r) && snoozed(r.snoozed)).map(resultKey), ...live.filter((e) => snoozed(e.snoozed)).map(eventKey)]
-  const soon = [...fresh.map(resultKey), ...live.filter((e) => !e.gate && !snoozed(e.snoozed)).map(eventKey)]
+  const soon = [...fresh.map(resultKey), ...live.filter((e) => snoozable(e) && !snoozed(e.snoozed)).map(eventKey)]
   if (soon.length) out.push(snoozeMenu(soon))
   if (later.length) out.push({ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys(later, null) })
   if (dealt.length) out.push({ label: "Back to review", icon: RotateCcw, run: () => void markManyDone(dealt, false) })
@@ -208,7 +208,7 @@ const eventSwipe = (e: InboxEvent): SwipeAction[] => e.state === "done"
   ? [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([eventKey(e)], null), removes: true }]
   : [
     ...(!e.read ? [{ label: "Read", icon: MailOpen, run: () => markRead([e.id]) }] : []),
-    ...(!e.gate ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([eventKey(e)]) }] : []),
+    ...(snoozable(e) ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([eventKey(e)]) }] : []),
     { label: "Done", icon: Check, run: () => markManyEventsDone([e]), removes: true },
   ]
 
@@ -239,15 +239,15 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   shownNew
     ? { label: "Mark as read", icon: MailOpen, run: () => { markRead([e.id]); touched?.(e.id) } }
     : { label: "Mark as unread", icon: Mail, run: () => markUnread([e.id]) },
-  ...(e.gate || e.state === "done" ? [] : [snoozeMenu([eventKey(e)])]),
+  ...(snoozable(e) ? [snoozeMenu([eventKey(e)])] : []),
   e.state === "done"
     ? { label: "Back to inbox", icon: RotateCcw, sep: true, run: () => markManyEventsDone([e], false) }
     : { label: "Done", icon: Check, sep: true, run: () => { markManyEventsDone([e]); touched?.(e.id) } },
   ...(e.state === "done" ? [{ label: "Delete", icon: Trash2, run: () => void forget(e.id) }] : []),
 ]
 
-/** What a reply to it is kept under (drafts.ts): a report's path, else the session's id. */
-const draftKey = (e: InboxEvent) => { const t = targetOf(e); return t?.startsWith("file:") ? t.slice(5) : e.id }
+/** What a reply to it is kept under (drafts.ts): its id, the thread's, whether it links its report or not. */
+const draftKey = (e: InboxEvent) => e.id
 
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return "" } }
 

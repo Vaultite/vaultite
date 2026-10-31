@@ -4,7 +4,7 @@ import { useEffect, useState, type KeyboardEvent } from "react"
 import { MessageSquareReply, PencilLine, SquareTerminal } from "lucide-react"
 import { Button, cn, keyHint, notify, notifyError, op, openFile, Panel, parseTerminal, usePane, type BlockCtx } from "@vaultite"
 import { draftOf, hasDraft, keepDraft, sendDraft, sendingOf, useHasDraft, useSending } from "./drafts"
-import { openSession } from "./events"
+import { openSession, useEvents } from "./events"
 
 const field = "w-full resize-y rounded-[7px] border-[0.5px] border-border bg-background px-2.5 py-1.5 text-[17px] leading-[22px] outline-none focus:border-primary md:text-[14px] md:leading-[20px]"
 // (a phone's 44px target)
@@ -57,17 +57,17 @@ function PlanLine({ plan, how, setHow }: { plan: Plan | null; how: "resume" | "n
   )
 }
 
-/** A reply box for `to` (a report's path, or a session's event id): `kept`, how many replies it has kept (a report's),
- *  so what was sent shows until it's there; `sent`, what happens once it went; `back`, what shows it again. */
-export function ReplyBox({ to, name, kept = 0, open, sent: done, back, placeholder = "Answer its questions, or ask for more" }: {
-  to: string; name: string; kept?: number; open: () => Promise<void>; sent?: () => void; back?: () => void; placeholder?: string
+/** A reply box for `to` (a report's path, or a thread's id), its draft under `draft` (its thread's id, else `to`):
+ *  `kept`, replies it kept (a report's), shown till there; `sent`, what follows it; `back`, what shows it again. */
+export function ReplyBox({ to, draft: key = to, name, kept = 0, open, sent: done, back, placeholder = "Answer its questions, or ask for more" }: {
+  to: string; draft?: string; name: string; kept?: number; open: () => Promise<void>; sent?: () => void; back?: () => void; placeholder?: string
 }) {
   // (the stored draft is the reply until the server has it: in flight, the box is empty and waits)
-  const flying = useSending(to)
-  const [text, setDraft] = useState(() => (sendingOf(to) === null ? draftOf(to) : ""))
-  const setText = (t: string) => { setDraft(t); keepDraft(to, t) }
+  const flying = useSending(key)
+  const [text, setDraft] = useState(() => (sendingOf(key) === null ? draftOf(key) : ""))
+  const setText = (t: string) => { setDraft(t); keepDraft(key, t) }
   // Once a send settles, the box shows what's stored: nothing when it went, the reply again when it didn't.
-  useEffect(() => { if (flying === null) setDraft(draftOf(to)) }, [flying, to])
+  useEffect(() => { if (flying === null) setDraft(draftOf(key)) }, [flying, key])
   // The reply just sent, shown at once until it's kept (the agent is reached first, which takes a moment).
   const [sent, setSent] = useState<{ text: string; had: number } | null>(null)
   const [plan, setPlan] = useState<Plan | null>(null)
@@ -75,9 +75,9 @@ export function ReplyBox({ to, name, kept = 0, open, sent: done, back, placehold
   const { hidden } = usePane()
   useEffect(() => {
     if (hidden) return
-    shown.set(to, (shown.get(to) ?? 0) + 1)
-    return () => leave(to, back)
-  }, [to, hidden]) // eslint-disable-line react-hooks/exhaustive-deps
+    shown.set(key, (shown.get(key) ?? 0) + 1)
+    return () => leave(key, back)
+  }, [key, hidden]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (sent && kept > sent.had) setSent(null) }, [sent, kept])
   useEffect(() => {
     let live = true
@@ -88,12 +88,12 @@ export function ReplyBox({ to, name, kept = 0, open, sent: done, back, placehold
   }, [to])
   const send = async () => {
     const said = text.trim()
-    if (!said || sent || sendingOf(to) !== null) return
+    if (!said || sent || sendingOf(key) !== null) return
     setSent({ text: said, had: kept })
     setDraft("")
     try {
-      const out = await sendDraft(to, said, () => op<{ how: string }>("inbox.reply", { to, text: said, ...(how ? { how } : {}) }))
-      if (!out) { setSent(null); setDraft(draftOf(to)); return }
+      const out = await sendDraft(key, said, () => op<{ how: string }>("inbox.reply", { to, text: said, ...(how ? { how } : {}) }))
+      if (!out) { setSent(null); setDraft(draftOf(key)); return }
       notify(out.how === "resume" ? "Resumed its session with your reply" : out.how === "new" ? "Started a new session with your reply" : `Sent to ${name}`)
       if (done) { setSent(null); done() }
     } catch (e) {
@@ -106,7 +106,7 @@ export function ReplyBox({ to, name, kept = 0, open, sent: done, back, placehold
   }
   const showing = sent?.text ?? flying
   return (
-    <Panel title={`Reply to ${name}`} icon={MessageSquareReply} tint="var(--inbox)" action={<DraftTag to={to} />}>
+    <Panel title={`Reply to ${name}`} icon={MessageSquareReply} tint="var(--inbox)" action={<DraftTag to={key} />}>
       {showing && (
         <div className="mb-2 rounded-[7px] border-[0.5px] border-border bg-foreground/[0.03] px-2.5 py-1.5" data-reply-sending>
           <div className="text-[13px] font-medium text-muted-foreground">Sending…</div>
@@ -130,11 +130,14 @@ export function ReplyBox({ to, name, kept = 0, open, sent: done, back, placehold
 
 export function ReplyBlock({ store, path, body }: BlockCtx) {
   const r = store.inbox?.find((x) => `${x.id}.md` === path)
+  // (its draft is its thread's, as on the thread's row: one draft, wherever it's typed)
+  const thread = useEvents().events.find((e) => e.link?.replace(/^file:/, "") === path)?.id
+  useEffect(() => { if (thread && hasDraft(path) && !hasDraft(thread)) { keepDraft(thread, draftOf(path)); keepDraft(path, "") } }, [thread, path])
   const terminal = r?.terminal ?? "", session = r?.session ?? ""
   if (!r || !(terminal || session)) {
     return <p className="text-[15px] text-muted-foreground md:text-[13px]">A reply box, for an agent's report: what's typed here goes back into its session.</p>
   }
   const agent = r.agent || parseTerminal(terminal)?.agent || ""
-  return <ReplyBox to={path} name={r.from || "the agent"} kept={replies(body)} back={() => openFile(path)}
-    open={() => openSession({ terminal, session, agent, machine: r.machine ?? "" })} />
+  return <ReplyBox to={path} draft={thread ?? path} name={r.from || "the agent"} kept={replies(body)} back={() => openFile(path)}
+    open={() => openSession({ terminal, session, agent, machine: r.machine ?? "", host: !terminal })} />
 }

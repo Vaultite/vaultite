@@ -626,8 +626,26 @@ export default async ($: VaultTest) => {
       const bad = [await api("POST", "inbox/sessions", { agent: "sdk", state: "done" }), await api("POST", "inbox/sessions", { agent: "sdk", session: "x", state: "sleeping" }),
         await api("POST", "inbox/sessions", { agent: "sdk", session: "x", state: "waiting", ask: "coffee" })]
       check("POST inbox/sessions: its id, a state it knows and an ask it knows are needed", bad.every(([code]) => code === 400), bad)
-      delete inbox.services["agent-reply:sdk"]; delete inbox.services["agent-answer:sdk"]
+      const forked = await host({ agent: "sdk", session: "sdk-1-fork", thread: e.id, state: "done", prompt: "Fork it", text: "Forked. Which branch should the fork track?" })
+      check("inbox:session: a thread named by its host (a fork's new session id) is that thread, following the new session",
+        forked?.id === e.id && forked.session === "sdk-1-fork" && forked.state === "open" && (await rows()).filter((x) => x.source === "sdk" && x.session?.startsWith("sdk-1")).length === 1, forked)
+      const perm = await host({ agent: "sdk", session: "sdk-3", state: "waiting", ask: "permission", text: "Delete the old branch?" })
+      await api("POST", "inbox/events/snooze", { ids: [perm.id], until: Date.now() + 3_600_000 })
+      check("a permission asked isn't snoozed: it would wait unseen", !(await rows()).find((x) => x.id === perm.id)?.snoozed)
+      await api("DELETE", `inbox/events/${perm.id}`)
+      inbox.services["agent-chat-new:sdk"] = async (a: Any) => { got.push(["new", a.prompt.slice(0, 20)]); return { id: "sdk-new-1" } }
+      ;[st, b] = await api("POST", "ops/inbox.reply", { to: e.id, text: "Track main", how: "new" })
+      const moved = (await rows()).find((x) => x.id === e.id)
+      check("a reply in a new session: its host starts a chat (agent-chat-new), the thread following it", st === 200 && b.how === "new" && got.at(-1)?.[0] === "new" &&
+        moved?.session === "sdk-new-1" && moved.host === true && !moved.terminal && moved.state === "working", [st, b, moved])
+      await api("POST", "ops/inbox.report", { title: "Hosted report", work: "fix", tldr: "Done it.", summary: "x", session: "sdk-rep", agent: "sdk" })
+      ;[st, b] = await api("POST", "ops/inbox.reply", { to: "Inbox/Fix done · Hosted report.md", text: "Thanks, ship it" })
+      const rt = (await rows()).find((x) => x.session === "sdk-rep")
+      check("a reply to a hosted session's report: its host takes it, the report archived, its thread working", st === 200 && b.how === "host" &&
+        /^\["sdk-rep","\(A reply to your report/.test(JSON.stringify(got.at(-1))) && exists("Inbox/.archive/Fix done · Hosted report.md") && rt?.state === "working", [st, b, rt])
+      delete inbox.services["agent-reply:sdk"]; delete inbox.services["agent-answer:sdk"]; delete inbox.services["agent-chat-new:sdk"]
       await api("DELETE", `inbox/events/${e.id}`)
+      if (rt) await api("DELETE", `inbox/events/${rt.id}`)
     }
     {
       // A notice done by its source (inbox:done: a paused plugin allowed again), and the done ones cleared.

@@ -103,12 +103,14 @@ export function markEventsDone(ids: string[], done = true) {
   return Promise.all(ids.map((id) => op("inbox.done", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't mark it done" : "Couldn't bring it back")(e); return false })
 }
 
-/** Snooze events till `until` (ms; out of the lists meanwhile), or bring them back now (null). A gate can't be: it'd
- *  wait unseen; nor what's done. */
+/** Whether it can be snoozed: not a gate nor a permission asked (they'd wait unseen), nor what's done. */
+export const snoozable = (e: InboxEvent) => !e.gate && e.state !== "done" && !(e.state === "open" && e.ask === "permission")
+
+/** Snooze events till `until` (ms; out of the lists meanwhile), or bring them back now (null). */
 export function snoozeEvents(ids: string[], until: number | null) {
   const want = new Set(ids)
   const before = getEvents().events
-  set(before.map((e) => (!want.has(e.id) || e.gate || e.state === "done" ? e : until !== null ? { ...e, snoozed: until }
+  set(before.map((e) => (!want.has(e.id) || e.gate || e.state === "done" || (until !== null && !snoozable(e)) ? e : until !== null ? { ...e, snoozed: until }
     : e.snoozed ? { ...e, state: "open" as const, read: false, snoozed: undefined, t: Date.now() } : e)))
   void post("inbox/events/snooze", { ids, until }).catch(undo(before, "Couldn't snooze it"))
 }
@@ -127,12 +129,14 @@ export const answerable = (e: InboxEvent) => e.state === "open" && (e.gate ? !e.
 /** An agent's session's thread (not a server's question or news): its sheet shows it, and it's replied to. */
 export const isSession = (e: InboxEvent) => e.kind === "session"
 
-/** A session's terminal if it still runs, else its session resumed in a new one: on the machine it ran on (a session
- *  is kept there). */
-export async function openSession({ terminal = "", session = "", agent = "", machine = "" }: { terminal?: string; session?: string; agent?: string; machine?: string }) {
+/** A session's terminal if it still runs, else its session resumed in a new one, or (`host`: run outside a terminal)
+ *  its agent's session view: on the machine it ran on (a session is kept there). */
+export async function openSession({ terminal = "", session = "", agent = "", machine = "", host = false }: { terminal?: string; session?: string; agent?: string; machine?: string; host?: boolean }) {
   const ms = await fetchMachines()
   const [bare, at] = splitMachine(terminal)
   const there = at || (machine && ms.some((m) => m.id === machine && !m.self) ? machine : "")
+  const view = agentsOn().find((a) => a.name === agent)?.session
+  if (host && session && view) { openView(`view:${view}/${onMachine(session, there)}`, { newTab: true }); return }
   // (whether it still runs: as the machine it runs on lists its terminals)
   const { sessions } = await get<{ sessions: { id: string }[] }>(there ? `machines/${encodeURIComponent(there)}/terminals/sessions` : "terminals/sessions")
   if (bare && sessions.some((s) => s.id === bare)) openView(`terminal/${onMachine(bare, there)}`, { newTab: true })
