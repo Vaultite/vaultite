@@ -220,6 +220,8 @@ function freeName(dir: string, name: string) {
 const ACTIVATION_MS = 5000
 /** How near the window's left or right edge (CSS px) a page's pointer is told to the window. */
 const EDGE = 12
+/** How near its own top (CSS px) a page's pointer is told to the window (a hidden page bar). */
+const TOP = 4
 const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
 const canBack = (p: Page) => !p.blankBehind && p.view.webContents.navigationHistory.canGoBack()
@@ -532,10 +534,13 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
 
   // The window doesn't hear the pointer over the page: near its edges it's told (web/src/core/peek.ts), and as it
   // leaves them; never from a page out of sight (an agent's, parked at -40000, would be "at the left edge").
-  let atEdge = false
+  let atEdge = false, atTop = false
   wc.on("before-mouse-event", (_e, m) => {
+    if (m.type === "mouseLeave" && atTop) { atTop = false; tell(p.win, { type: "top", id: p.id, at: false }) }
     if (m.type !== "mouseMove" || p.player || p.full || p.win.isDestroyed() || !shownNow(p)) return
     const z = p.win.webContents.getZoomFactor(), b = p.view.getBounds(), [w] = p.win.getContentSize()
+    const top = m.y / z <= TOP
+    if (top !== atTop) { atTop = top; tell(p.win, { type: "top", id: p.id, at: top }) }
     const x = (b.x + m.x) / z, edge = x <= EDGE || x >= w / z - EDGE
     if (!edge && !atEdge) return
     atEdge = edge

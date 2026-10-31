@@ -207,6 +207,8 @@ export type WebEvent =
   | { type: "close"; tab: string }
   /** The pointer moved over a page near the window's left or right edge, or just left there (window CSS px). */
   | { type: "pointer"; x: number; y: number }
+  /** The pointer reached page `id`'s top edge (`at`), or left it: a hidden page bar slides in. */
+  | { type: "top"; id: number; at: boolean }
   | { type: "focus"; id: number }
   | { type: "clip"; id: number }
   | { type: "block"; id: number; x: number; y: number }

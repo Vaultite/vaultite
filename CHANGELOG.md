@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The Browser's page bar can hide**: right-click it (or its … menu, or the palette) for Hide page bar, and the page
+  fills its tab; the bar slides over it while the pointer rests at the page's top, while you type in the address (⌘L)
+  and on a new tab. With the tab bar off and the sidebars on hover, a page fills the window.
 - **The companion starts again in the desktop app**: its Claude sessions' keeper failed to start there (a package it
   needs wasn't shipped), so an @ to it went unanswered; a check now catches a package the built app wouldn't ship.
 - **Menus from a button open where there's room**: one with no room under its button (the vault's, at the sidebar's

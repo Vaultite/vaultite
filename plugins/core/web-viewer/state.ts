@@ -27,6 +27,8 @@ export type Settings = {
   unstyled?: string[]
   /** Whether a page opened as a player goes full screen, on a Space of its own (the default), or is a window. */
   playerFullScreen?: boolean
+  /** The bar above each page: "shown" (the default), or "hidden" till the pointer reaches the page's top (WebPage.tsx). */
+  pageBar?: "shown" | "hidden"
 }
 
 /** Its settings (data.json), live. */

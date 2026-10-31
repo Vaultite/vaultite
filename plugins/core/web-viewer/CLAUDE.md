@@ -39,3 +39,6 @@
   leaves only from the user's act in this window (`web:seal`, never a server call), sealed for the other app's key
   (electron/browser/sealed.ts); that app takes it as `remote:take`, which adds a login and reads none. Never add a
   `remote:` call that answers a cookie or signs out: anything on the tailnet that reaches a server could ask it.
+- The page bar hidden (`pageBar`, pagebar.ts) lies over the box, slid out: out, it covers the page's top, so the window
+  is raised over the page (layers.ts) and hears the pointer leave it. The window never hears the pointer over a page:
+  electron/web.ts tells when it's at the page's top (`top`), as it tells the window's edges for the sidebars.

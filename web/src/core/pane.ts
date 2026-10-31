@@ -16,13 +16,13 @@ export const usePaneHasTopBar = (group: string) =>
 /** How far a top bar keeps from what's fixed over the window's corners. */
 const CLEAR = 8
 
-/** A view's top bar (ViewBar, the Browser's): without a tab bar it's its pane's title row (Tabs.tsx), and it makes room
- *  for what's fixed over the window's corners (the sidebars' toggles, a Mac's traffic lights). */
-export function usePaneTopBar(ref: RefObject<HTMLElement | null>) {
+/** A view's top bar (ViewBar, the Browser's): without a tab bar its pane's title row (Tabs.tsx; not with `title` false,
+ *  one sliding over the view), clear of what's fixed over the window's corners (sidebar toggles, a Mac's lights). */
+export function usePaneTopBar(ref: RefObject<HTMLElement | null>, title = true) {
   const { group, hidden } = usePane()
   // (before the paint, so the tab bar takes its place in the same frame)
   useLayoutEffect(() => {
-    if (!group || hidden || !ref.current) return
+    if (!group || hidden || !ref.current || !title) return
     barred.set(group, (barred.get(group) ?? 0) + 1)
     changed()
     return () => {
@@ -30,7 +30,7 @@ export function usePaneTopBar(ref: RefObject<HTMLElement | null>) {
       if (n) barred.set(group, n); else barred.delete(group)
       changed()
     }
-  }, [ref, group, hidden])
+  }, [ref, group, hidden, title])
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || hidden) return

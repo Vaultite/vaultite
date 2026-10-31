@@ -2,7 +2,7 @@
 // tabs, bookmarks, history) over the native page. What's typed is the tab's draft (drafts.ts), kept on leaving the field.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { ArrowRight, Search, Star, X } from "lucide-react"
-import { closeTab, cn, getTabLayout, isMac, openMenu, panesOf, selectTab, useStore, webPages, type WebPageInfo } from "@vaultite"
+import { closeTab, cn, getTabLayout, isMac, openMenu, panesOf, selectTab, useStore, webPages, type MenuItem, type WebPageInfo } from "@vaultite"
 import { addressOf, guessedHttps, hostOf, searchUrl } from "./address"
 import { matchBookmarks, type Bookmark } from "./bookmarks"
 import { argOf, colorOf, containerById, containerOfProfile } from "./containers"
@@ -41,9 +41,11 @@ async function openTabs(): Promise<OpenTab[]> {
   })
 }
 
-export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inputRef, onGo, onTurn, onTarget, onLeave }: {
+export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inputRef, onGo, onTurn, onTarget, onLeave, more }: {
   /** The page's address (what shows while not edited). */
   url: string
+  /** The bar's own items, at the foot of the field's menu (the field is most of the bar). */
+  more?: () => MenuItem[]
   /** This tab's id: it isn't offered as a tab to switch to. */
   tab: string
   /** It has no page yet (a new tab): switching to another tab from it closes it. */
@@ -210,6 +212,7 @@ export function AddressBar({ url, tab, blank, draft, setDraft, lead, trail, inpu
         { label: "Paste", disabled: !clip, run: () => put(clip) },
         { label: words ? "Paste and search" : "Paste and go", disabled: !to, run: () => { if (to) go(to, "typed", "here", guessedHttps(t)) } },
         { label: "Select all", sep: true, run: () => { el.focus(); el.select() } },
+        ...(more?.() ?? []).map((it, i) => (i ? it : { ...it, sep: true })),
       ])
     })
   }
