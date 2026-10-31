@@ -1,5 +1,5 @@
 // Settings' previews: hovering a row shows pictures of what it changes (after a wait, then at once to the next row),
-// keyboard focus too, Esc closes; the ring follows the switch; a picture clicked sets it; still with reduced motion; on
+// keyboard focus too, Esc closes; at the row's switch, gliding row to row; the ring follows the switch; a picture clicked sets it; still with reduced motion; on
 // a touch screen, a button shows them under the row. WRITES appearance.json and editor.json: throwaway server only.
 //   node web/qa/settingpreview.mjs <base url> [out dir]
 import fs from "node:fs"
@@ -54,10 +54,16 @@ await setLook({ fileIcons: true, typingFade: false })
   const sw = await row(page, "file-icons").getByRole("switch").boundingBox()
   check("it covers neither its row nor its switch", c.y >= r.y + r.height - 1 || c.y + c.height <= r.y + 1, { r, c })
   check("coming down the rows: above its row, out of the way", c.y + c.height <= r.y + 1, { r, c })
-  check("…nor the switches under it", c.x + c.width < sw.x, { c, sw })
+  check("…at its switch: the card's end just past the switch's", Math.abs(c.x + c.width - (sw.x + sw.width)) <= 16, { c, sw })
   check("it plays its row's description to a screen reader", await row(page, "file-icons").getByRole("switch").evaluate((el) => document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent ?? "").then((t) => /icons/.test(t)))
   await hover(page, "typing-fade"); await wait(60)
   check("warm: the next row's shows at once", (await cardFor(page)) === "typing-fade", await cardFor(page))
+  check("…gliding over from where the last one was", /top/.test(await card(page).evaluate((e) => e.style.transition)), await card(page).evaluate((e) => e.style.transition))
+  await wait(450)
+  {
+    const [cg, rg] = [await card(page).locator(".preview-card").boundingBox(), await row(page, "typing-fade").boundingBox()]
+    check("…to its own row", Math.abs(cg.y + cg.height - rg.y) <= 8 || Math.abs(cg.y - (rg.y + rg.height)) <= 8, { cg, rg })
+  }
   // (into the card: through the gap between them)
   const c2 = await card(page).locator(".preview-card").boundingBox()
   const r2 = await row(page, "typing-fade").boundingBox()
@@ -120,6 +126,10 @@ await setLook({ fileIcons: true, typingFade: false })
   const page = await open({ w: 2400, h: 1000 })
   await hover(page, "tab-bar"); await until(() => shown(page), 1500)
   check("a wide pane: the card beside the column of rows", (await card(page).getAttribute("data-side")) === "right", await card(page).getAttribute("data-side"))
+  {
+    const [cw, sw] = [await card(page).locator(".preview-card").boundingBox(), await row(page, "tab-bar").getByRole("switch").boundingBox()]
+    check("…level with its switch", Math.abs(cw.y + cw.height / 2 - (sw.y + sw.height / 2)) <= 2, { cw, sw })
+  }
   await shot(page, "tab-bar", "beside-tab-bar")
   await page.mouse.move(5, 5); await wait(700)
   await page.evaluate(() => { location.hash = "settings/sidebars" }); await page.locator("[data-customize-sidebars]").waitFor(); await wait(600)
