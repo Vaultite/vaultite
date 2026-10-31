@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react"
 import { currentFile, devicePref, get, getStore, phoneFiles, put, rawUrl } from "@vaultite"
 import { AUDIO, VIDEO, type Chapter, type Mark, type Place } from "./shelves"
+import { steady } from "./steady"
 
 /** `from`: the note it was started in (the mini player goes back there). */
 export type Now = { path: string; el: HTMLMediaElement; video: boolean; from?: string }
@@ -267,6 +268,7 @@ function wire(el: HTMLMediaElement, path: string, video: boolean) {
     tick()
     if (Date.now() - (lastSaved.get(el) ?? 0) > 30_000) { savePlace(path, el); position(el) }
   })
+  steady(el, path)
 }
 
 // Leaving the page (another app, the phone locked, the tab closed): keep the place. In the iPhone app a video playing
