@@ -1,17 +1,21 @@
-// The player in a file's tab and in notes: the browser's own controls (scrubbing, full screen, AirPlay) on the one
-// element now.ts hands around, with what they lack under it: skips, speed, captions, picture in picture.
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react"
-import { ArrowDownToLine, Captions, Check, CircleCheck, PictureInPicture2, RotateCcw, RotateCw } from "lucide-react"
-import { cn, kindIcon, menuBelow, phoneFiles, rawUrl, type PlayerProps } from "@vaultite"
-import { keep, keptOf, unkeep, useKept } from "./phone"
-import { BACK, captionsOf, FORWARD, getNow, homeOf, pictureOf, presenting, release, setSlot, speed, SPEEDS, take, titleOf, useTick } from "./now"
+// The player in a file's tab and in notes, on the one element now.ts hands around: a sound's tab is Full.tsx; elsewhere
+// the browser's own controls, with what they lack under them (skips, speed, captions, picture in picture, bookmarks).
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { Captions, FileText, PictureInPicture2 } from "lucide-react"
+import { cn, openFile, phoneFiles, type PlayerProps } from "@vaultite"
+import { btn, icon, Keep, MarkButton, Skip, SpeedButton } from "./Buttons"
+import { Book, Full } from "./Full"
+import { artOf, BACK, captionsOf, FORWARD, getNow, homeOf, presenting, release, setSlot, take, useMeta, useTick } from "./now"
 
-// A view shows the browser's own controls on it (the mini player hides them).
-const hold = (div: HTMLElement, m: HTMLMediaElement) => { m.controls = true; div.append(m) }
+// A view shows the browser's own controls on it (the mini player hides them). `home`: a view, holding it in its slot.
+const hold = (home: HTMLElement, m: HTMLMediaElement) => {
+  m.controls = true
+  ;(home.querySelector<HTMLElement>("[data-player-slot]") ?? home).append(m)
+}
 const captionsOn = { get: () => localStorage.getItem("vau:player:captions") === "1", set: (on: boolean) => localStorage.setItem("vau:player:captions", on ? "1" : "0") }
 
 export function Player({ path, video, place, height, v, onDuration, onFail }: PlayerProps) {
-  const slot = useRef<HTMLDivElement>(null)
+  const root = useRef<HTMLDivElement>(null)
   const [el, setEl] = useState<HTMLMediaElement | null>(null)
   const [sound, setSound] = useState(!video)
   const fail = useRef(onFail), dur = useRef(onDuration)
@@ -19,7 +23,7 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
   dur.current = onDuration
 
   useLayoutEffect(() => {
-    const div = slot.current!
+    const div = root.current!
     const m = take(path, video, v)
     if (!presenting(m)) hold(div, m)
     setEl(m)
@@ -50,42 +54,39 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
     }
   }, [path, video, v])
 
-  const pic = pictureOf(path)
+  useMeta(path)
+  const full = sound && place === "page"
+  const art = artOf(path)
   const box = place === "fill" ? "size-full" : place === "page" ? "max-h-[75vh]" : ""
+  // (one tree whatever it shows, so the slot holding the element is never remade)
   return (
-    <div className={cn("flex flex-col", place === "fill" ? "size-full justify-center" : place === "page" && "mx-auto w-full max-w-3xl", sound && place === "page" && "max-w-md py-6")} data-player={path}>
-      {sound && (pic ? <img src={rawUrl(pic)} alt="" draggable={false} className={cn("mx-auto mb-3 aspect-square rounded-[10px] object-cover", place === "page" ? "w-56" : "w-28")} />
-        : place === "page" ? <Art path={path} /> : null)}
-      <div ref={slot} data-player-slot
+    <div ref={root} className={cn("flex flex-col", place === "fill" ? "size-full justify-center" : place === "page" && "mx-auto w-full max-w-3xl", full && "max-w-none")} data-player={path}>
+      {full ? el && <Full el={el} path={path} />
+        : sound && art && <img src={art} alt="" draggable={false} className="mx-auto mb-3 aspect-square w-28 rounded-[10px] object-cover" />}
+      <div data-player-slot hidden={full}
         className={cn("w-full [&>audio]:w-full [&>video]:block [&>video]:w-full [&>video]:bg-black/90", place === "fill" ? "[&>video]:size-full [&>video]:object-contain" : video && !sound && "[&>video]:max-h-[75vh]", box,
-          !sound && place === "page" && "[&>video]:rounded-[10px]", sound && "px-3", sound && place === "page" && "px-0")}
+          !sound && place === "page" && "[&>video]:rounded-[10px]", sound && "px-3")}
         style={height && video && !sound ? { height } : undefined} />
-      {place !== "fill" && el && <Controls el={el} path={path} video={video && !sound} center={sound && place === "page"} />}
+      {!full && place !== "fill" && el && <Controls el={el} path={path} video={video && !sound} mark={place === "page"} />}
+      {!full && place === "page" && el && <VideoBook el={el} path={path} />}
     </div>
   )
 }
 
-function Art({ path }: { path: string }) {
-  const Icon = kindIcon(path)
-  return (
-    <div className="mb-4 flex flex-col items-center">
-      <Icon className="size-14 text-muted-foreground" strokeWidth={1.25} />
-      <p className="mt-3 text-[17px] font-semibold break-all">{titleOf(path)}</p>
-    </div>
-  )
+function VideoBook({ el, path }: { el: HTMLMediaElement; path: string }) {
+  const cs = useMeta(path)?.chapters ?? []
+  return <Book el={el} path={path} cs={cs} className="mt-4 px-1.5" />
 }
 
-const btn = "inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-1 rounded-[8px] px-2 text-[15px] font-medium text-muted-foreground tabular-nums hover:bg-foreground/[0.06] hover:text-foreground md:h-8 md:min-w-8 md:text-[13px] aria-pressed:text-primary"
-
-export function Controls({ el, path, video, center }: { el: HTMLMediaElement; path: string; video: boolean; center?: boolean }) {
+export function Controls({ el, path, video, mark }: { el: HTMLMediaElement; path: string; video: boolean; mark?: boolean }) {
   useTick(el)
+  const cs = useMeta(path)?.chapters ?? []
+  const from = getNow()?.el === el ? getNow()!.from : undefined
   const tracks = video && captionsOf(path).length > 0
   const [cc, setCc] = useState(captionsOn.get())
   useEffect(() => { const t = el.textTracks[0]; if (t) t.mode = cc ? "showing" : "hidden" }, [el, cc])
   const pip = video && (document.pictureInPictureEnabled || "webkitSetPresentationMode" in el)
   const skip = (s: number) => { el.currentTime = Math.max(0, Math.min(el.duration || Infinity, el.currentTime + s)) }
-  const speeds = (e: MouseEvent) => menuBelow(e, SPEEDS.map((r) => ({ label: `${r}×`, icon: el.playbackRate === r ? Check : undefined, checked: el.playbackRate === r,
-    run: () => { el.playbackRate = r; speed.set(r) } })))
   const togglePip = () => {
     const v = el as HTMLVideoElement & { webkitSetPresentationMode?: (m: string) => void; webkitPresentationMode?: string }
     if (document.pictureInPictureElement === v) void document.exitPictureInPicture()
@@ -95,40 +96,14 @@ export function Controls({ el, path, video, center }: { el: HTMLMediaElement; pa
   const items: ReactNode[] = [
     <button key="back" type="button" className={btn} onClick={() => skip(-BACK)} data-tip={`Back ${BACK} seconds`} aria-label={`Back ${BACK} seconds`}><Skip back /></button>,
     <button key="fwd" type="button" className={btn} onClick={() => skip(FORWARD)} data-tip={`Forward ${FORWARD} seconds`} aria-label={`Forward ${FORWARD} seconds`}><Skip /></button>,
-    <button key="speed" type="button" className={cn(btn, "min-w-12")} onClick={speeds} data-tip="Speed" aria-label={`Speed: ${el.playbackRate}×`}>{el.playbackRate}×</button>,
-    tracks && <button key="cc" type="button" className={btn} aria-pressed={cc} onClick={() => { captionsOn.set(!cc); setCc(!cc) }} data-tip="Captions" aria-label="Captions"><Captions className="size-5 md:size-4" strokeWidth={2} /></button>,
+    <SpeedButton key="speed" el={el} />,
+    tracks && <button key="cc" type="button" className={btn} aria-pressed={cc} onClick={() => { captionsOn.set(!cc); setCc(!cc) }} data-tip="Captions" aria-label="Captions"><Captions className={icon} strokeWidth={2} /></button>,
+    mark && el.duration >= 60 && <MarkButton key="mark" el={el} path={path} cs={cs} />,
+    mark && from && <button key="note" type="button" className={btn} onClick={() => openFile(from)} aria-label="Open note" data-tip="Open note"><FileText className={icon} strokeWidth={2} /></button>,
     phoneFiles && <Keep key="keep" path={path} />,
-    pip && <button key="pip" type="button" className={btn} onClick={togglePip} data-tip="Picture in picture" aria-label="Picture in picture"><PictureInPicture2 className="size-5 md:size-4" strokeWidth={2} /></button>,
+    pip && <button key="pip" type="button" className={btn} onClick={togglePip} data-tip="Picture in picture" aria-label="Picture in picture"><PictureInPicture2 className={icon} strokeWidth={2} /></button>,
   ]
-  return <div className={cn("flex items-center gap-0.5 px-1.5 py-1", center && "justify-center")} data-player-controls>{items}</div>
-}
-
-/** Download to this iPhone, to play without the server; how far it's got; kept. */
-function Keep({ path }: { path: string }) {
-  const k = keptOf(useKept(), path)
-  if (k?.done) return (
-    <button type="button" className={cn(btn, "text-primary")} aria-label="On this iPhone" data-tip="On this iPhone"
-      onClick={(e) => menuBelow(e, [{ label: "Remove from this iPhone", danger: true, run: () => void unkeep(path) }])}>
-      <CircleCheck className="size-5 md:size-4" strokeWidth={2} />
-    </button>
-  )
-  if (k && !k.error) return <span className={btn} aria-label="Downloading">{k.size ? `${Math.floor((k.got / k.size) * 100)}%` : "…"}</span>
-  return (
-    <button type="button" className={btn} onClick={() => keep(path)} aria-label={k?.error ? `Download again (${k.error})` : "Download to this iPhone"} data-tip="Download to this iPhone">
-      <ArrowDownToLine className="size-5 md:size-4" strokeWidth={2} />
-    </button>
-  )
-}
-
-/** The skip icons with their seconds in them, as podcast apps draw them. */
-function Skip({ back }: { back?: boolean }) {
-  const Icon = back ? RotateCcw : RotateCw
-  return (
-    <span className="relative grid place-items-center">
-      <Icon className="size-6 md:size-5" strokeWidth={1.75} />
-      <span className="absolute text-[8px] font-bold md:text-[7px]">{back ? BACK : FORWARD}</span>
-    </span>
-  )
+  return <div className="flex items-center gap-0.5 px-1.5 py-1" data-player-controls>{items}</div>
 }
 
 /** For the mini player and the queue: the element playing now, if it's this file's. */

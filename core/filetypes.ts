@@ -14,7 +14,7 @@ add("code", "html htm csv txt text log py pyi ts tsx mts cts js jsx mjs cjs yaml
   "webmanifest map mdx markdown base")
 add("image", "png jpg jpeg gif webp svg avif bmp ico heic heif")
 add("pdf", "pdf")
-add("audio", "mp3 m4a aac wav ogg oga opus flac")
+add("audio", "mp3 m4a m4b aac wav ogg oga opus flac")
 add("video", "mp4 m4v mov webm ogv")
 add("binary", "xlsx xls xlsm numbers pages key docx doc pptx ppt odt ods odp rtf zip gz tgz bz2 xz 7z rar tar dmg pkg iso app " +
   "exe dll so dylib o a class jar pyc whl sqlite sqlite3 db parquet feather npy npz pkl pickle h5 ttf otf woff woff2 psd ai " +
@@ -68,7 +68,7 @@ export function contentType(path: string) {
 const TYPES: Record<string, string> = {
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
   svg: "image/svg+xml", pdf: "application/pdf", heic: "image/heic", md: "text/plain; charset=utf-8",
-  txt: "text/plain; charset=utf-8", mp3: "audio/mpeg", m4a: "audio/mp4", mp4: "video/mp4",
+  txt: "text/plain; charset=utf-8", mp3: "audio/mpeg", m4a: "audio/mp4", m4b: "audio/mp4", mp4: "video/mp4",
   html: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8",
   css: "text/css; charset=utf-8", json: "application/json", webmanifest: "application/manifest+json",
   ico: "image/x-icon", woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", map: "application/json",

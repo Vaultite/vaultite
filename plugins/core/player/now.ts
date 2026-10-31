@@ -1,8 +1,8 @@
-// What's playing: one media element at a time, moved (never remade) between the note showing it, the mini player and a
-// hidden park, so it keeps playing as you go elsewhere. Also the lock screen's controls and where you stopped.
+// What's playing: one media element, moved (never remade) between the views showing it, the mini player and a hidden
+// park, so it plays on as you go elsewhere. Also the lock screen, where you stopped, bookmarks, chapters, sleep timer.
 import { useSyncExternalStore } from "react"
 import { currentFile, devicePref, get, getStore, phoneFiles, put, rawUrl } from "@vaultite"
-import { AUDIO, VIDEO, type Place } from "./shelves"
+import { AUDIO, VIDEO, type Chapter, type Mark, type Place } from "./shelves"
 
 /** `from`: the note it was started in (the mini player goes back there). */
 export type Now = { path: string; el: HTMLMediaElement; video: boolean; from?: string }
@@ -56,15 +56,54 @@ export function savePlace(path: string, el: HTMLMediaElement, extra: { done?: bo
   lastSaved.set(el, Date.now())
   const d = el.duration, t = el.currentTime
   const done = extra.done ?? (t >= d - Math.min(30, d * 0.05) ? true : undefined)
-  places = { ...places, [path]: { t: done && extra.done === undefined ? 0 : t, d: Math.round(d), at: Date.now(), ...(done ? { done } : {}) } }
+  const marks = places[path]?.marks
+  places = { ...places, [path]: { t: done && extra.done === undefined ? 0 : t, d: Math.round(d), at: Date.now(), ...(done ? { done } : {}), ...(marks ? { marks } : {}) } }
   for (const f of placeSubs) f()
   put("player/places", { path, t, d, ...extra }).catch(() => {})
 }
 export function markDone(path: string, done: boolean) {
   const p = places[path]
-  places = { ...places, [path]: { t: done ? 0 : p?.t ?? 0, d: p?.d, at: Date.now(), ...(done ? { done } : {}) } }
+  places = { ...places, [path]: { t: done ? 0 : p?.t ?? 0, d: p?.d, at: Date.now(), ...(done ? { done } : {}), ...(p?.marks ? { marks: p.marks } : {}) } }
   for (const f of placeSubs) f()
   put("player/places", { path, t: done ? 0 : p?.t ?? 0, done }).catch(() => {})
+}
+
+/** Its bookmarks, all of them, shown at once and then sent. */
+export function setMarks(path: string, marks: Mark[]) {
+  const sorted = [...marks].sort((a, b) => a.t - b.t)
+  places = { ...places, [path]: { ...(places[path] ?? { t: 0, at: Date.now() }), marks: sorted } }
+  for (const f of placeSubs) f()
+  put("player/marks", { path, marks: sorted }).catch(() => {})
+}
+
+// ---------- what the file says about itself: title, author, chapters, cover (plugin.ts reads them)
+
+export type Meta = { title: string | null; artist: string | null; chapters: Chapter[]; cover: boolean }
+const metas = new Map<string, Meta>()
+const metaSubs = new Set<() => void>()
+const asked = new Set<string>()
+const LONG = /\.(mp3|m4a|m4b|aac|mp4|m4v|mov)$/i
+function askMeta(path: string) {
+  if (asked.has(path) || !LONG.test(path)) return
+  asked.add(path)
+  get<Meta>(`player/meta?path=${encodeURIComponent(path)}`).then((m) => {
+    metas.set(path, m)
+    for (const f of metaSubs) f()
+    if (now?.path === path) session(now.el, path)
+  }, () => asked.delete(path))
+}
+export const metaOf = (path: string) => { askMeta(path); return metas.get(path) ?? null }
+export const useMeta = (path: string) => useSyncExternalStore((f) => { metaSubs.add(f); askMeta(path); return () => { metaSubs.delete(f) } }, () => metas.get(path) ?? null)
+export const chaptersOf = (path: string) => metaOf(path)?.chapters ?? []
+/** The chapter playing at `t`, by index (-1 before the first). */
+export const chapterAt = (cs: Chapter[], t: number) => { let i = -1; cs.forEach((c, k) => { if (c.t <= t + 0.25) i = k }); return i }
+/** Where chapter `i` ends: the next one's start, else the end. */
+export const chapterEnd = (cs: Chapter[], i: number, d: number) => cs[i + 1]?.t ?? d
+/** To the previous chapter (its start, or the one before if this one began moments ago) or the next. */
+export function stepChapter(el: HTMLMediaElement, cs: Chapter[], by: 1 | -1) {
+  const i = chapterAt(cs, el.currentTime)
+  if (by > 0) { if (cs[i + 1]) el.currentTime = cs[i + 1].t; return }
+  el.currentTime = i > 0 && el.currentTime - cs[i].t < 3 ? cs[i - 1].t : Math.max(0, cs[i]?.t ?? 0)
 }
 
 // ---------- files next to it: captions and a picture
@@ -75,6 +114,12 @@ const base = (path: string) => path.replace(/\.[^./]+$/, "")
 export const captionsOf = (path: string) => others().filter((f) => f.path.startsWith(base(path) + ".") && /\.([a-z]{2,3}(-[\w]+)?\.)?vtt$/i.test(f.path)).map((f) => f.path)
 /** Its picture (a video's thumbnail, an episode's artwork): `Talk.jpg` beside `Talk.mp4`. */
 export const pictureOf = (path: string) => others().find((f) => /\.(jpe?g|png|webp)$/i.test(f.path) && base(f.path) === base(path))?.path ?? null
+/** Its artwork's address: the picture beside it, else the cover inside it (an audiobook's). */
+export function artOf(path: string) {
+  const pic = pictureOf(path)
+  if (pic) return rawUrl(pic)
+  return metas.get(path)?.cover ? `api/player/cover?path=${encodeURIComponent(path)}` : null
+}
 export const titleOf = (path: string) => path.split("/").pop()!.replace(/\.[^.]+$/, "")
 /** What it's called where it's shown (the mini player, the lock screen): the note it was started in and who it's from
  *  (an inbox result's: the show, the site), else the file's name and folder. */
@@ -82,7 +127,9 @@ export function labelOf(n: Pick<Now, "path" | "from">) {
   const id = n.from?.replace(/\.md$/i, "")
   const r = id ? ((getStore() as { inbox?: { id: string; title: string; from: string }[] } | null)?.inbox ?? []).find((x) => x.id === id) : null
   if (r) return { title: r.title, by: r.from }
-  return { title: id ? id.split("/").pop()! : titleOf(n.path), by: n.path.split("/").slice(-2, -1)[0] ?? "" }
+  const m = metas.get(n.path)
+  if (m?.title) return { title: m.title, by: m.artist ?? "" }
+  return { title: id ? id.split("/").pop()! : titleOf(n.path), by: m?.artist ?? n.path.split("/").slice(-2, -1)[0] ?? "" }
 }
 export const isVideo = (path: string) => VIDEO.test(path)
 export const isMedia = (path: string) => VIDEO.test(path) || AUDIO.test(path)
@@ -162,6 +209,7 @@ export function release(el: HTMLMediaElement) {
 /** The mini player's ✕: stop, remember the place, and let go of it (a view still showing it keeps it). */
 export function stop() {
   if (!now) return
+  setSleep(null)
   const { el, path } = now
   el.pause()
   savePlace(path, el)
@@ -179,15 +227,26 @@ export function playFile(path: string, from?: string) {
   void el.play().catch(() => {})
 }
 
+// Smart rewind: back a little after a pause, more the longer it was, so a book picks up mid-thought (audio of 10 minutes
+// or more; a seek in between means you chose the spot).
+const pausedAt = new WeakMap<HTMLMediaElement, number>()
+const rewindFor = (ms: number) => (ms < 30_000 ? 0 : ms < 300_000 ? 5 : ms < 3_600_000 ? 10 : 20)
+const rewinds = (el: HTMLMediaElement) => !(el instanceof HTMLVideoElement) && el.duration >= 600
+
 function wire(el: HTMLMediaElement, path: string, video: boolean) {
   let restored = false
+  askMeta(path)
   el.addEventListener("loadedmetadata", () => {
     if (restored) return
     restored = true
     const p = places[path]
-    if (p && !p.done && p.t > 5 && p.t < el.duration - 10) el.currentTime = p.t
+    if (p && !p.done && p.t > 5 && p.t < el.duration - 10) el.currentTime = Math.max(0, p.t - (rewinds(el) ? rewindFor(Date.now() - p.at) : 0))
   })
+  el.addEventListener("seeking", () => pausedAt.delete(el))
   el.addEventListener("play", () => {
+    const at = pausedAt.get(el)
+    pausedAt.delete(el)
+    if (at && rewinds(el)) { const back = rewindFor(Date.now() - at); if (back) el.currentTime = Math.max(0, el.currentTime - back) }
     if (now?.el !== el) {
       if (now) { now.el.pause(); const old = now.el; now = null; if (orphan(old)) release(old) }
       const here = currentFile()
@@ -197,12 +256,14 @@ function wire(el: HTMLMediaElement, path: string, video: boolean) {
     session(el, path)
     tick()
   })
-  el.addEventListener("pause", () => { savePlace(path, el); tick(); position(el) })
+  el.addEventListener("pause", () => { if (!el.ended) pausedAt.set(el, Date.now()); savePlace(path, el); tick(); position(el) })
   el.addEventListener("seeked", () => { savePlace(path, el); position(el) })
   el.addEventListener("ended", () => { savePlace(path, el, { done: true }); tick() })
   el.addEventListener("ratechange", () => { if (el.playbackRate !== speed.get()) speed.set(el.playbackRate); tick(); position(el) })
   el.addEventListener("durationchange", tick)
   el.addEventListener("timeupdate", () => {
+    sleepCheck(el)
+    retitle(el, path)
     tick()
     if (Date.now() - (lastSaved.get(el) ?? 0) > 30_000) { savePlace(path, el); position(el) }
   })
@@ -256,16 +317,50 @@ export function watchAway() {
   }
 }
 
+// ---------- the sleep timer: stops it after some minutes or at the end of the chapter (this window's, not saved)
+
+export type Sleep = { until: number } | { chapter: true } | null
+let sleep: Sleep = null
+let sleepTimer: ReturnType<typeof setTimeout> | undefined
+let sleepChapter = -1 // (the chapter it was in when the timer was set)
+const sleepSubs = new Set<() => void>()
+export const useSleep = () => useSyncExternalStore((f) => { sleepSubs.add(f); return () => { sleepSubs.delete(f) } }, () => sleep)
+export function setSleep(s: Sleep) {
+  sleep = s
+  sleepChapter = -1
+  clearTimeout(sleepTimer)
+  if (s && "until" in s) sleepTimer = setTimeout(() => sleepCheck(now?.el), s.until - Date.now() + 50)
+  for (const f of sleepSubs) f()
+}
+function sleepCheck(el: HTMLMediaElement | undefined) {
+  if (!sleep || !el || now?.el !== el) return
+  if ("until" in sleep) { if (Date.now() >= sleep.until) { el.pause(); setSleep(null) } return }
+  const cs = chaptersOf(now.path), i = chapterAt(cs, el.currentTime)
+  if (sleepChapter < 0) sleepChapter = i
+  else if (i !== sleepChapter) { el.pause(); el.currentTime = cs[i]?.t ?? el.currentTime; sleepChapter = -1; setSleep(null) }
+}
+
 // ---------- the lock screen, Control Center, headphones and the keyboard's media keys
+
+// With chapters, the lock screen names the chapter, and the book under it.
+let titled = ""
+function retitle(el: HTMLMediaElement, path: string) {
+  const cs = chaptersOf(path)
+  if (!cs.length || now?.el !== el) return
+  const key = `${path}#${chapterAt(cs, el.currentTime)}`
+  if (key !== titled) session(el, path)
+}
 
 function session(el: HTMLMediaElement, path: string) {
   const ms = navigator.mediaSession
   if (!ms) return
-  const pic = pictureOf(path)
+  const art = artOf(path), cs = chaptersOf(path), i = chapterAt(cs, el.currentTime)
+  titled = `${path}#${i}`
   try {
     const { title, by } = labelOf({ path, from: now?.from })
-    ms.metadata = new MediaMetadata({ title, artist: by, album: "Vaultite",
-      artwork: pic ? [{ src: new URL(rawUrl(pic), location.href).href }] : [] })
+    const chapter = cs[i]?.title
+    ms.metadata = new MediaMetadata({ title: chapter || title, artist: chapter ? title : by, album: chapter ? by : "Vaultite",
+      artwork: art ? [{ src: new URL(art, location.href).href }] : [] })
   } catch { /* no MediaMetadata */ }
   const on = (a: MediaSessionAction, f: MediaSessionActionHandler | null) => { try { ms.setActionHandler(a, f) } catch { /* not this one */ } }
   on("play", () => void el.play())
@@ -274,6 +369,9 @@ function session(el: HTMLMediaElement, path: string) {
   on("seekforward", (d) => { el.currentTime = Math.min(el.duration || Infinity, el.currentTime + (d.seekOffset ?? FORWARD)) })
   on("seekto", (d) => { if (d.seekTime !== undefined) el.currentTime = d.seekTime })
   on("stop", () => stop())
+  // (headphones' double and triple press; the lock screen keeps its skips)
+  on("nexttrack", cs.length ? () => stepChapter(el, chaptersOf(path), 1) : null)
+  on("previoustrack", cs.length ? () => stepChapter(el, chaptersOf(path), -1) : null)
   position(el)
 }
 function position(el: HTMLMediaElement) {

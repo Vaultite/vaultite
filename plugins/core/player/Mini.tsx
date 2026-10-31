@@ -1,10 +1,10 @@
 // The mini player: what's playing while no view of it is in sight, above the phone's bar or in a corner between the
-// sidebars (dragged to another, like picture in picture). A video plays in it; a tap goes back to the note it came from.
+// sidebars (dragged to another, like picture in picture). A video plays in it; a tap opens the full player.
 import { useEffect, useLayoutEffect, useRef } from "react"
 import { Pause, Play, X } from "lucide-react"
-import { CORNERS, cn, kindIcon, openFile, rawUrl, useCornerDrag, useDesktop, useScopedState, type Corner } from "@vaultite"
+import { CORNERS, cn, kindIcon, openFile, useCornerDrag, useDesktop, useScopedState, type Corner } from "@vaultite"
 import { sendOfflinePlaces } from "./phone"
-import { BACK, clock, FORWARD, homeOf, loadPlaces, pictureOf, labelOf, presenting, shown, stop, useNow, useTick, useVersion, watchAway } from "./now"
+import { artOf, BACK, chapterAt, clock, FORWARD, homeOf, loadPlaces, labelOf, presenting, shown, stop, useMeta, useNow, useTick, useVersion, watchAway } from "./now"
 
 export function MiniPlayer() {
   useVersion()
@@ -25,8 +25,9 @@ export function MiniPlayer() {
 
 function Bar({ desktop, corner, setCorner }: { desktop: boolean; corner: Corner; setCorner: (c: Corner) => void }) {
   const now = useNow()!
-  const { el, path, video, from } = now
+  const { el, path, video } = now
   useTick(el)
+  const cs = useMeta(path)?.chapters ?? []
   const box = useRef<HTMLDivElement>(null)
   // A video nothing else draws plays here; a view of it that comes back takes it again (Player.tsx).
   useLayoutEffect(() => {
@@ -36,13 +37,14 @@ function Bar({ desktop, corner, setCorner }: { desktop: boolean; corner: Corner;
     }
   })
   const drag = useCornerDrag(corner, setCorner)
-  const pic = pictureOf(path)
+  const pic = artOf(path)
   const Icon = kindIcon(path)
   const label = labelOf(now)
   const pct = el.duration ? (el.currentTime / el.duration) * 100 : 0
   const back = () => { el.currentTime = Math.max(0, el.currentTime - BACK) }
   const fwd = () => { el.currentTime = Math.min(el.duration || Infinity, el.currentTime + FORWARD) }
-  const open = () => openFile(from ?? path)
+  const open = () => openFile(path)
+  const chapter = cs[chapterAt(cs, el.currentTime)]?.title
   const b = "grid size-11 shrink-0 cursor-pointer place-items-center rounded-full text-foreground hover:bg-foreground/[0.06] md:size-8"
   const inMini = video && !homeOf(el)
   return (
@@ -53,11 +55,11 @@ function Bar({ desktop, corner, setCorner }: { desktop: boolean; corner: Corner;
       {desktop && inMini && <div ref={box} onClick={open} className="aspect-video w-full cursor-pointer bg-black [&>video]:size-full [&>video]:object-contain [&>video]:pointer-events-none" />}
       <div className={cn("flex items-center gap-2", desktop ? "h-11 px-2" : "h-[60px] px-2")}>
         {!desktop && inMini ? <div ref={box} onClick={open} className="h-11 w-[78px] shrink-0 cursor-pointer overflow-hidden rounded-[8px] bg-black [&>video]:size-full [&>video]:object-cover [&>video]:pointer-events-none" />
-          : !inMini || !desktop ? (pic ? <img src={rawUrl(pic)} alt="" draggable={false} onClick={open} className="size-11 shrink-0 cursor-pointer rounded-[8px] object-cover md:size-8 md:rounded-[6px]" />
+          : !inMini || !desktop ? (pic ? <img src={pic} alt="" draggable={false} onClick={open} className="size-11 shrink-0 cursor-pointer rounded-[8px] object-cover md:size-8 md:rounded-[6px]" />
             : <button type="button" onClick={open} className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-[8px] bg-foreground/[0.06] md:size-8"><Icon className="size-5 text-muted-foreground md:size-4" strokeWidth={2} /></button>) : null}
         <button type="button" onClick={open} className="min-w-0 flex-1 cursor-pointer text-left">
           <div className="truncate text-[15px] font-medium md:text-[13px]">{label.title}</div>
-          <div className="truncate text-[13px] text-muted-foreground tabular-nums md:text-[12px]">{clock(el.currentTime)}{el.duration ? ` / ${clock(el.duration)}` : ""}{label.by ? ` · ${label.by}` : ""}</div>
+          <div className="truncate text-[13px] text-muted-foreground tabular-nums md:text-[12px]">{clock(el.currentTime)}{el.duration ? ` / ${clock(el.duration)}` : ""}{chapter || label.by ? ` · ${chapter || label.by}` : ""}</div>
         </button>
         {!desktop ? null : <button type="button" className={b} onClick={back} aria-label={`Back ${BACK} seconds`} data-tip={`Back ${BACK} seconds`}><span className="text-[11px] font-semibold">−{BACK}</span></button>}
         <button type="button" className={b} onClick={() => (el.paused ? void el.play() : el.pause())} aria-label={el.paused ? "Play" : "Pause"}>

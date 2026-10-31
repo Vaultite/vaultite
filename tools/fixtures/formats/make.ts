@@ -1,7 +1,8 @@
 /**
  * Made-up Office files and books for the tests (tools/test_vault.ts): the smallest .docx, .pptx and .epub that hold
  * what their plugins read as text (headings, lists, tables, slides in the deck's order, speaker notes, chapters in the
- * spine's order), and a real .xlsx written by SheetJS. Nothing about anyone.
+ * spine's order), a real .xlsx written by SheetJS, and audiobooks' tags (an .m4b's atoms, an .mp3's ID3: title, author,
+ * chapters, cover). Nothing about anyone.
  */
 import { createRequire } from "node:module"
 import { zipFiles } from "../../../plugins/core/ai-import/zip.ts"
@@ -71,4 +72,41 @@ export function xlsx(): Buffer {
   X.utils.book_append_sheet(book, budget, "Budget")
   X.utils.book_append_sheet(book, X.utils.aoa_to_sheet([["Visitor", "Day"], ["Bob Lee", "Monday"]]), "Visitors")
   return X.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer
+}
+
+// ---------- audiobooks: only their tags (no sound), as the player's meta.ts reads them
+
+const COVER = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9])
+const box = (type: string, ...body: Buffer[]) => { const b = Buffer.concat(body); const h = Buffer.alloc(8); h.writeUInt32BE(8 + b.length); h.write(type, 4, "latin1"); return Buffer.concat([h, b]) }
+const u32 = (n: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b }
+const item = (type: string, kind: number, value: Buffer) => box(type, box("data", u32(kind), u32(0), value))
+
+/** An .m4b's moov: iTunes tags (title, author, a JPEG cover) and Nero's chapter list. */
+export function m4b(): Buffer {
+  const chapters: [number, string][] = [[0, "Opening"], [61.5, "The storm"], [3725, "Morning"]]
+  const chpl = Buffer.concat([Buffer.from([1, 0, 0, 0, 0, 0, 0, 0, chapters.length]), ...chapters.map(([t, title]) => {
+    const b = Buffer.alloc(9); b.writeBigUInt64BE(BigInt(Math.round(t * 1e7))); b[8] = Buffer.byteLength(title)
+    return Buffer.concat([b, Buffer.from(title)])
+  })])
+  const ilst = box("ilst", item("©nam", 1, Buffer.from("The keeper's log")), item("©ART", 1, Buffer.from("Alice Park")), item("covr", 13, COVER))
+  const meta = box("meta", u32(0), box("hdlr", Buffer.alloc(25)), ilst)
+  return Buffer.concat([box("ftyp", Buffer.from("M4B "), u32(0)), box("moov", box("udta", box("chpl", chpl), meta)), box("mdat", Buffer.alloc(16))])
+}
+
+/** An .mp3's ID3v2.3 tag: title, author (UTF-16), a cover and CHAP frames with their TIT2, then a frame of silence. */
+export function mp3(): Buffer {
+  const frame = (id: string, body: Buffer) => { const h = Buffer.alloc(10); h.write(id, 0, "latin1"); h.writeUInt32BE(body.length, 4); return Buffer.concat([h, body]) }
+  const text = (s: string) => Buffer.concat([Buffer.from([3]), Buffer.from(s)])
+  const chap = (id: string, ms: number, end: number, title: string) => {
+    const times = Buffer.alloc(16); times.writeUInt32BE(ms); times.writeUInt32BE(end, 4); times.writeInt32BE(-1, 8); times.writeInt32BE(-1, 12)
+    return frame("CHAP", Buffer.concat([Buffer.from(id + "\0", "latin1"), times, frame("TIT2", text(title))]))
+  }
+  const frames = Buffer.concat([
+    frame("TIT2", text("The keeper's log")),
+    frame("TPE1", Buffer.concat([Buffer.from([1, 0xff, 0xfe]), Buffer.from("Alice Park", "utf16le")])),
+    frame("APIC", Buffer.concat([Buffer.from([0]), Buffer.from("image/jpeg\0", "latin1"), Buffer.from([3]), Buffer.from("\0"), COVER])),
+    chap("ch1", 90_000, 200_000, "The storm"), chap("ch0", 0, 90_000, "Opening"),
+  ])
+  const size = frames.length, head = Buffer.from([0x49, 0x44, 0x33, 3, 0, 0, (size >> 21) & 0x7f, (size >> 14) & 0x7f, (size >> 7) & 0x7f, size & 0x7f])
+  return Buffer.concat([head, frames, Buffer.from([0xff, 0xfb, 0x90, 0x64]), Buffer.alloc(413)])
 }

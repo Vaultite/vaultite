@@ -54,6 +54,27 @@ export default async ($: VaultTest) => {
     ;[, hits] = await api("GET", "search?q=beacon")
     check("search: finds a slide's text", hits.some((h: Any) => h.path === "Shelf/Pitch.pptx"), hits)
 
+    // Audiobooks: what the player reads from a file's tags (chapters, title, cover), and bookmarks kept beside the place.
+    const { readMeta } = await import("../../../plugins/core/player/meta.ts")
+    fs.writeFileSync(path.join(VAULT, "Shelf/Log.m4b"), fx.m4b())
+    fs.writeFileSync(path.join(VAULT, "Shelf/Log.mp3"), fx.mp3())
+    const audiobook = readMeta(path.join(VAULT, "Shelf/Log.m4b"))
+    check("m4b: title, author, cover and Nero chapters", audiobook.title === "The keeper's log" && audiobook.artist === "Alice Park" && audiobook.cover?.mime === "image/jpeg" &&
+      JSON.stringify(audiobook.chapters) === JSON.stringify([{ t: 0, title: "Opening" }, { t: 61.5, title: "The storm" }, { t: 3725, title: "Morning" }]), audiobook)
+    const tag = readMeta(path.join(VAULT, "Shelf/Log.mp3"))
+    check("mp3: ID3 title, UTF-16 author, the picture, CHAP frames in time order", tag.title === "The keeper's log" && tag.artist === "Alice Park" && tag.cover?.bytes.length === 9 &&
+      tag.chapters.map((c) => `${c.t} ${c.title}`).join("|") === "0 Opening|90 The storm", tag)
+    let m: Any
+    ;[code, m] = await api("GET", "player/meta?path=Shelf/Log.m4b")
+    check("player/meta: chapters, and whether there's a cover", code === 200 && m.chapters.length === 3 && m.cover === true && m.artist === "Alice Park", m)
+    ;[code] = await api("GET", "player/meta?path=Shelf/Lease.docx")
+    check("player/meta: only audio and video", code === 400, code)
+    ;[code] = await api("PUT", "player/places", { path: "Shelf/Log.m4b", t: 120, d: 4000 })
+    ;[code, m] = await api("PUT", "player/marks", { path: "Shelf/Log.m4b", marks: [{ t: 3000, note: " The lamp " }, { t: 62.4 }, { t: -1 }] })
+    check("player/marks: sorted, rounded, trimmed, the place kept", code === 200 && JSON.stringify(m.place.marks) === JSON.stringify([{ t: 62 }, { t: 3000, note: "The lamp" }]) && m.place.t === 120, m)
+    ;[, m] = await api("PUT", "player/places", { path: "Shelf/Log.m4b", t: 150, d: 4000 })
+    check("player/places: a new place keeps the bookmarks", m.place.t === 150 && m.place.marks?.length === 2, m)
+
     // Outside the vault: nothing until allowed; then its info (and, in server.ts, its bytes).
     const out = path.join(tmp, "elsewhere", "Plan.pdf")
     fs.mkdirSync(path.dirname(out), { recursive: true })

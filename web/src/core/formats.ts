@@ -29,7 +29,7 @@ export function embedParts(target: string): { name: string; sub?: string } {
 }
 
 /** What the core embeds itself: PDFs, audio and video. */
-const CORE = /^(pdf|mp3|m4a|aac|wav|ogg|oga|opus|flac|mp4|m4v|mov|webm|ogv)$/i
+const CORE = /^(pdf|mp3|m4a|m4b|aac|wav|ogg|oga|opus|flac|mp4|m4v|mov|webm|ogv)$/i
 const LINE = /^!\[\[([^\]|#\n]+?\.([A-Za-z0-9]+))(#[^\]|\n]*)?(?:\|(\d+))?\]\][ \t]*$/
 
 const extOf = (path: string) => /\.([A-Za-z0-9]+)$/.exec(path)?.[1].toLowerCase() ?? ""

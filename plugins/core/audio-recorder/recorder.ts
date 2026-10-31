@@ -285,7 +285,7 @@ export async function transcribe(audio: string, note?: string) {
   }
 }
 
-const AUDIO = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|webm|weba|aiff?|caf)$/i
+const AUDIO = /\.(mp3|m4a|m4b|aac|wav|ogg|oga|opus|flac|webm|weba|aiff?|caf)$/i
 export const isAudio = (path: string) => AUDIO.test(path)
 
 /** The audio files a note embeds (vault paths). */

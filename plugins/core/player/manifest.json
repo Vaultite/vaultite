@@ -4,7 +4,7 @@
   "category": "formats",
   "alwaysOn": true,
   "name": "Player",
-  "description": "Audio and video keep playing as you go elsewhere in the app, in a mini player and on the lock screen, and pick up where you stopped on any device; with skips, speed, captions and picture in picture. Times in a note play from there, and the queue lists what the inbox holds to watch, listen to and read.",
+  "description": "Audio and video keep playing as you go elsewhere in the app, in a mini player and on the lock screen, and pick up where you stopped on any device; with skips, speed, captions and picture in picture. A sound's own tab is a full player: cover, chapters (inside .m4b and .mp3 files), bookmarks, a sleep timer. Times in a note play from there, and the queue lists what the inbox holds to watch, listen to and read.",
   "enhances": [
     "inbox",
     "books"

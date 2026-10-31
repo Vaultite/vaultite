@@ -14,7 +14,7 @@ import { embedsAudio, paragraphs, type Segment, textParagraphs, withTranscript }
 
 export const plugin = new Plugin(import.meta.url)
 
-const AUDIO = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac|webm|weba|mp4|m4v|mov|aiff?|caf)$/i
+const AUDIO = /\.(mp3|m4a|m4b|aac|wav|ogg|oga|opus|flac|webm|weba|mp4|m4v|mov|aiff?|caf)$/i
 const HOME = os.homedir()
 
 type Transcriber =

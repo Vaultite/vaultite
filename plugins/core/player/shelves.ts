@@ -2,11 +2,14 @@
 // sides (no Node, no React).
 
 export type Shelf = "watch" | "listen" | "read"
-/** Where you stopped in a file: seconds in, its length, when (ms), and whether it's finished. */
-export type Place = { t: number; d?: number; at: number; done?: boolean }
+/** Where you stopped in a file: seconds in, its length, when (ms), whether it's finished, and its bookmarks. */
+export type Place = { t: number; d?: number; at: number; done?: boolean; marks?: Mark[] }
+/** A bookmark: seconds in, and what you noted there. */
+export type Mark = { t: number; note?: string }
+export type Chapter = { t: number; title: string }
 
 export const VIDEO = /\.(mp4|m4v|mov|webm|ogv)$/i
-export const AUDIO = /\.(mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i
+export const AUDIO = /\.(mp3|m4a|m4b|aac|wav|ogg|oga|opus|flac)$/i
 
 /** The first audio or video a note embeds (`![[talk.mp4]]`), as written. */
 export function mediaIn(body: string): string | null {
