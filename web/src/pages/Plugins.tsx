@@ -327,7 +327,7 @@ export function Plugins({ store, view, onView }: { store: Store; view?: Tab; onV
   }
   const openFilter = (e: MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect(), items = tab === "get" ? getMenu : menu
-    openMenu({ x: r.left, y: r.bottom + 4 }, items(), false, items)
+    openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, items(), false, items)
   }
   const chips: { id: keyof Filters; label: string }[] = [
     ...(filters.status !== "all" ? [{ id: "status" as const, label: STATUSES[filters.status] }] : []),

@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Menus from a button open where there's room**: one with no room under its button (the vault's, at the sidebar's
+  foot) opens above it instead of over it.
+- **The Sites panel's + opens a new tab** in the container it shows (New container is in its picker and its …); Touch
+  ID and agent access sit as icons beside the picker instead of a line that read as a site.
 - **Long titles fade out** at their end in tabs and sidebar rows, instead of ending in an ellipsis.
 - **Sidebar panels move like things you hold**: dragged by its heading, a panel lifts whole (a picture of it at its
   size, shadowed) while the others close up and make room at its height, in either sidebar; let go, it settles into its

@@ -56,8 +56,11 @@ export function commandItems(...ids: string[]): MenuItem[] {
   })
 }
 
+/** Where a menu opens: `y` its top (bottom when `up`); `flip`, from a button: its bottom (top when `up`) on the button's
+ *  other side, where it goes when it doesn't fit, not pushed over the button. */
+export type MenuAt = { x: number; y: number; flip?: number }
 /** `up`: the menu's bottom sits at `at` (above a button at the bottom of the window). */
-type Open = { at: { x: number; y: number }; items: MenuItem[]; up?: boolean
+type Open = { at: MenuAt; items: MenuItem[]; up?: boolean
   /** The items again (after a `keep` item changed something). */
   again?: () => MenuItem[] } | null
 
@@ -67,7 +70,7 @@ const set = (o: Open) => { open = o; subs.notify() }
 /** Phones: rows, text and icons like the phone's More menu (44px, 17px, 20px); desktop: 28px, 13px, 16px. */
 const icon = "size-5 shrink-0 md:size-4"
 
-export function openMenu(at: { x: number; y: number }, items: MenuItem[], up = false, again?: () => MenuItem[]) {
+export function openMenu(at: MenuAt, items: MenuItem[], up = false, again?: () => MenuItem[]) {
   if (!items.length) return
   if (!open) release = holdFocus()
   set({ at, items, up, again })
@@ -224,7 +227,7 @@ function watchHolds() {
 /** For a … button: the menu under it. */
 export const menuBelow = (e: MouseEvent, items: MenuItem[]) => {
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  openMenu({ x: r.left, y: r.bottom + 4 }, items)
+  openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, items)
 }
 /** For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows. */
 export const rightClickBelow = (e: MouseEvent) => {
@@ -236,7 +239,7 @@ export const rightClickBelow = (e: MouseEvent) => {
 export const menuAbove = (e: MouseEvent, items: MenuItem[]) => {
   e.preventDefault(); e.stopPropagation()
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  openMenu({ x: r.left, y: r.top - 4 }, items, true)
+  openMenu({ x: r.left, y: r.top - 4, flip: r.bottom + 4 }, items, true)
 }
 
 const typing = (t: EventTarget | null) =>
@@ -259,7 +262,7 @@ export function ContextMenus() {
   return o ? createPortal(<Menu key={`${o.at.x},${o.at.y}`} at={o.at} items={o.items} up={o.up} again={o.again} />, document.body) : null
 }
 
-function Menu({ at, items, up, again }: { at: { x: number; y: number }; items: MenuItem[]; up?: boolean; again?: () => MenuItem[] }) {
+function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: boolean; again?: () => MenuItem[] }) {
   usePageLock()
   useEffect(() => {
     // Escape closes the menu (a submenu handles its own first); so does the window changing size. Only the menu: the
@@ -318,7 +321,7 @@ function found(items: MenuItem[], q: string): Found[] {
 /** One level of a menu, at a point or beside the item that opened it. Phones have no room beside: a submenu takes the
  *  menu's place, with a Back row. Arrows move; → opens a submenu, ← or Escape closes one. */
 function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
-  items: MenuItem[]; at?: { x: number; y: number }; up?: boolean
+  items: MenuItem[]; at?: MenuAt; up?: boolean
   /** A submenu: the rect of the item it belongs to. */
   beside?: DOMRect
   /** The whole menu's items again (the top level's), after a `keep` item changed something: a `keep` item in a
@@ -370,6 +373,9 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     } else {
       x = at!.x
       y = up ? at!.y - r.height : at!.y
+      // (no room on its side and room on the other: it opens there, as a native menu does, not over what opened it)
+      const f = at!.flip
+      if (f !== undefined && (up ? y < 8 && f + r.height <= innerHeight - 8 : y + r.height > innerHeight - 8 && f - r.height >= 8)) y = up ? f : f - r.height
     }
     setPos({ x: Math.max(8, Math.min(x, innerWidth - r.width - 8)), y: Math.max(8, Math.min(y, innerHeight - r.height - 8)) })
   }, [at, up, beside, items, trail])

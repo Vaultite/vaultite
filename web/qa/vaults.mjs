@@ -29,7 +29,11 @@ try {
   check("a file dropped on a folder is uploaded there", String(up.text).includes("Dropped in a browser."), up)
 
   // The vault menu: Manage vaults opens the sheet.
-  await page.locator("aside nav[aria-label=App] button[aria-haspopup=menu]").click()
+  const vaultButton = page.locator("aside nav[aria-label=App] button[aria-haspopup=menu]")
+  await vaultButton.click()
+  // (at the sidebar's foot, with no room under it: it opens above, not pushed over the button)
+  const [btn, menu] = [await vaultButton.boundingBox(), await page.locator("[role=menu]").boundingBox()]
+  check("the vault menu opens beside its button, not over it", !!btn && !!menu && (menu.y >= btn.y + btn.height || menu.y + menu.height <= btn.y), [btn, menu])
   await page.getByText("Manage vaults").click()
   await page.waitForSelector("text=Open folder as vault")
   check("the sheet is headed Vaults, with the app's mark", await page.locator("#sheet-title").textContent() === "Vaults" && await page.locator("img[src='icon.svg']").count() === 1)

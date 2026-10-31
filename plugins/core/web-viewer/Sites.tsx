@@ -272,16 +272,19 @@ function accountIcon(site: string, avatar?: string): LucideIcon {
   return c
 }
 
-/** What's set on a container beyond its sites, in a line (only when something is): Touch ID, agents. A click: its options. */
+/** What's set on a container beyond its sites (Touch ID, agents), as icons beside its picker: a tip says which, a click
+ *  its options. Not a row: under the heading, a row read as one of its sites. */
 function About({ c }: { c: Container }) {
   const can = useCanLock()
   const agents = agentsSay(c)
   if (!c.lock && !agents) return null
+  const says = [c.lock && "Locked with Touch ID", agents].filter(Boolean).join(" · ")
   return (
     <button type="button" onClick={(e) => menuBelow(e, containerItems(c, can))} data-web-container-about={c.id}
-      className="mb-0.5 flex h-6 min-w-0 cursor-pointer items-center gap-3 rounded-[5px] pl-1.5 text-left text-[12px] text-tertiary hover:bg-foreground/[0.05] hover:text-muted-foreground">
-      {c.lock && <span className="flex items-center gap-1.5"><Fingerprint aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />Touch ID</span>}
-      {agents && <span className="flex min-w-0 items-center gap-1.5"><Bot aria-hidden className="size-3.5 shrink-0" strokeWidth={2} /><span className="truncate">{agents}</span></span>}
+      aria-label={says} data-tip={says}
+      className="flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded-[4px] px-1 text-tertiary hover:bg-foreground/[0.08] hover:text-muted-foreground">
+      {c.lock && <Fingerprint aria-hidden className="size-3.5" strokeWidth={2} />}
+      {agents && <Bot aria-hidden className="size-3.5" strokeWidth={2} />}
     </button>
   )
 }
@@ -297,7 +300,7 @@ export function sitesPanelMenu(): MenuItem[] {
 const containersNow = () => containersOf(settings.get())
 
 /** The sidebar's Sites panel: one set of logins' sites, picked on the heading's right (this workspace's, or a container's). */
-export function SitesPanel({ open, openPage }: Pick<SidebarCtx, "open"> & { openPage: Open }) {
+export function SitesPanel({ open, openPage, newTab }: Pick<SidebarCtx, "open"> & { openPage: Open; newTab?: (container: string | null) => void }) {
   const [pickedId, pick] = useScopedState<string | null>(PICKED, null)
   const own = useOwnLogins()
   const containers = useContainers()
@@ -313,7 +316,8 @@ export function SitesPanel({ open, openPage }: Pick<SidebarCtx, "open"> & { open
     { label: "New container…", icon: Plus, sep: true, run: add },
     { label: "Manage containers…", icon: Settings2, run: manageContainers },
   ])
-  const picker = webPages?.sites && (
+  const picker = webPages?.sites && (<>
+    {inside && <About c={inside} />}
     <button type="button" onClick={menu} onContextMenu={inside ? menuFor(() => containerItems(inside, can)) : undefined}
       aria-label={`Sites in ${logins.name}`} data-tip="Whose logins" data-web-logins={logins.container ?? ""}
       className="flex h-5 max-w-[60%] min-w-0 cursor-pointer items-center gap-1.5 rounded-[4px] px-1.5 text-[11px] font-medium text-tertiary hover:bg-foreground/[0.08] hover:text-muted-foreground">
@@ -321,14 +325,15 @@ export function SitesPanel({ open, openPage }: Pick<SidebarCtx, "open"> & { open
       <span className="truncate">{logins.name}</span>
       <ChevronsUpDown aria-hidden className="-mx-0.5 size-3 shrink-0" strokeWidth={2.25} />
     </button>
-  )
+  </>)
   return (
     <div className="flex shrink-0 flex-col" data-web-sites-panel>
       <SidebarHeading title="Sites" open={open} aside={picker}>
-        {webPages?.sites && <HeadingButton icon={Plus} label="New container" onClick={add} data-web-new-container="" />}
+        {/* (a new tab is what's done here often; a new container is rare, in … and the picker) */}
+        {webPages?.sites && newTab && <HeadingButton icon={Plus} label={`New tab in ${logins.name}`} onClick={() => newTab(inside?.id ?? null)} data-web-new-tab="" />}
       </SidebarHeading>
       {webPages?.sites
-        ? <>{inside && <About c={inside} />}<SiteList key={logins.prof} logins={logins} look="sidebar" openPage={openPage} /></>
+        ? <SiteList key={logins.prof} logins={logins} look="sidebar" openPage={openPage} />
         : <p className="px-1.5 py-1 text-[13px] leading-[18px] text-tertiary">Sites and their logins are in Vaultite's desktop app.</p>}
     </div>
   )

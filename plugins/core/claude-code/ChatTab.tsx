@@ -602,7 +602,7 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
   }
   const menu = (e: MouseEvent, items: MenuItem[]) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    openMenu({ x: r.left, y: r.top - 4 }, items.map((it) => ({ ...it, run: () => { it.run(); setTimeout(() => field.current?.focus({ preventScroll: true }), 0) } })), true)
+    openMenu({ x: r.left, y: r.top - 4, flip: r.bottom + 4 }, items.map((it) => ({ ...it, run: () => { it.run(); setTimeout(() => field.current?.focus({ preventScroll: true }), 0) } })), true)
   }
   const model = picks.model ? modelLabel(picks.model, o) : "Default model"
   // (none chosen: what the session runs at, as Claude Code says, else its account's settings)

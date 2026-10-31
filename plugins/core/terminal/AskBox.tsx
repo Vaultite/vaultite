@@ -125,7 +125,7 @@ function Box({ close }: { close: () => void }) {
   const menuUnder = async (e: MouseEvent, build: () => Promise<MenuItem[]> | MenuItem[]) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const items = (await build()).map((it) => ({ ...it, run: () => { it.run(); setTimeout(() => field.current?.focus(), 0) } }))
-    openMenu({ x: r.left, y: r.bottom + 4 }, items)
+    openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, items)
   }
   const whoMenu = () => Promise.all(agentsOn().filter((a) => !machine || machines?.find((m) => m.id === machine)?.plugins?.includes(a.plugin))
     .map(async (a): Promise<MenuItem[]> => {

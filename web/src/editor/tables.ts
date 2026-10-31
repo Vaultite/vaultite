@@ -518,7 +518,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     const [a, h] = row ? wholeRow(i) : wholeCol(i)
     select(a, h)
     const b = g.getBoundingClientRect()
-    openMenu({ x: b.left, y: b.bottom + 4 }, row ? rowMenu(i) : colMenu(i))
+    openMenu({ x: b.left, y: b.bottom + 4, flip: b.top - 4 }, row ? rowMenu(i) : colMenu(i))
   }
   for (const [g, row] of [[rowGrip, true], [colGrip, false]] as const) {
     // (the cell being edited keeps the keyboard until the grip's click picks)

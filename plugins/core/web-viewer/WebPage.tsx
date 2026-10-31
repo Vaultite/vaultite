@@ -366,7 +366,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const list = h.entries.filter((x) => (dir < 0 ? x.i < h.at : x.i > h.at))
     if (dir < 0) list.reverse()
     const r = el.getBoundingClientRect()
-    openMenu({ x: r.left, y: r.bottom + 4 }, [
+    openMenu({ x: r.left, y: r.bottom + 4, flip: r.top - 4 }, [
       ...list.slice(0, 15).map((x): MenuItem => ({ label: x.title || x.url, icon: siteIcon(x.url), run: () => void web.go(id, "go-to", String(x.i)) })),
       { label: "Show full history", icon: History, sep: list.length > 0, run: () => openView("web-history", { newTab: true }) },
     ])

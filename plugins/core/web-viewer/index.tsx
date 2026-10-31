@@ -314,7 +314,7 @@ export default definePlugin({
   ...switcherSearch(openPage),
   sidebar: {
     "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
-      menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} /> },
+      menu: sitesPanelMenu, render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} newTab={askAddress} /> },
   },
   webLink: (url, { newTab, front, out }) => {
     if (!webPages || out || !linksInViewer()) return false

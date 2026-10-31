@@ -127,7 +127,7 @@ export const snoozeItems = (keys: string[]): MenuItem[] => [
 const snoozeMenu = (keys: string[], icon = true): MenuItem => ({ label: "Snooze", ...(icon ? { icon: Clock } : {}), run: () => {}, items: snoozeItems(keys) })
 /** The choices as a menu under a button, or under a swiped row. */
 const snoozeBelow = (keys: string[]) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); menuBelow(e, snoozeItems(keys)) }
-const snoozeAtRow = (keys: string[]) => (row?: DOMRect) => openMenu({ x: row ? row.left + 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3 }, snoozeItems(keys))
+const snoozeAtRow = (keys: string[]) => (row?: DOMRect) => openMenu({ x: row ? row.left + 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3, flip: row ? row.top - 4 : undefined }, snoozeItems(keys))
 
 /** The sheet's own time (Pick a time…): any time to come, tomorrow morning to start. */
 export const SNOOZE_DETAIL = "inbox-snooze"

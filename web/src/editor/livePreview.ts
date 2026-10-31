@@ -1162,7 +1162,7 @@ class HighlightSwatch extends WidgetType {
     el.addEventListener("click", (e) => {
       e.preventDefault(); e.stopPropagation()
       const b = el.getBoundingClientRect()
-      openMenu({ x: b.left, y: b.bottom + 4 }, highlightItems(view, view.posAtDOM(el)))
+      openMenu({ x: b.left, y: b.bottom + 4, flip: b.top - 4 }, highlightItems(view, view.posAtDOM(el)))
     })
     return el
   }

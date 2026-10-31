@@ -182,7 +182,7 @@ await win.locator("[data-web-sites-view] [data-web-new-container]:visible").clic
 await win.keyboard.type("Travel"); await win.keyboard.press("Enter")
 check("New container in Sites: it's added", await until(async () => settingsFile().includes("\"travel\""), 5000), settingsFile())
 
-// ---------- the Sites panel: + adds a container and shows its sites ----------
+// ---------- the Sites panel: its picker adds a container, + opens a new tab in the one shown ----------
 const bars = path.join(VAULT, ".vaultite/sidebars.json")
 fs.writeFileSync(bars, JSON.stringify({ ...JSON.parse(fs.existsSync(bars) ? fs.readFileSync(bars, "utf8") : "{}"), right: ["web-viewer:web-pages"] }) + "\n")
 const panel = win.locator("[data-web-sites-panel]:visible")
@@ -193,12 +193,16 @@ const picks = await win.locator("[role=menu] [role^=menuitem]").allInnerTexts()
 check("… its picker: every set of logins, New container, Manage containers", ["Work", "New container", "Manage containers"].every((w) => picks.some((r) => r.startsWith(w))), picks)
 await shot("sites-panel-picker")
 await win.keyboard.press("Escape")
-await panel.hover()
-await panel.locator("[data-web-new-container]").click()
+await panel.locator("[data-web-logins]").click()
+await win.locator("[role=menu] [role^=menuitem]", { hasText: "New container" }).click()
 await win.keyboard.type("Errands"); await win.keyboard.press("Enter")
-check("… + adds a container and shows it", await until(async () => settingsFile().includes("\"errands\"") && (await panel.locator("[data-web-logins]").innerText()) === "Errands", 5000),
+check("… New container adds one and shows it", await until(async () => settingsFile().includes("\"errands\"") && (await panel.locator("[data-web-logins]").innerText()) === "Errands", 5000),
   await panel.locator("[data-web-logins]").innerText().catch(() => ""))
 await shot("sites-panel")
+await panel.hover()
+await panel.locator("[data-web-new-tab]").click()
+check("… + opens a new tab in it", await until(async () => (await win.locator("[data-web-container=errands]:visible").count()) === 1, 10000),
+  await win.locator("[data-web-container]:visible").evaluateAll((els) => els.map((e) => e.getAttribute("data-web-container"))))
 
 // ---------- a container that needs Touch ID ----------
 await open(`view:web/@personal/${SITE}/whoami?locked`)
