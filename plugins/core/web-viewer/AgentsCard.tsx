@@ -64,7 +64,7 @@ function Card({ pages }: { pages: AgentPage[] }) {
     return () => ro.disconnect()
   }, [drag.ref])
   return (
-    <div role="region" aria-label="Agents in the browser" data-floats data-agents-card={open ? "open" : "closed"} {...drag}
+    <div role="region" aria-label="Agents in the browser" data-agents-card={open ? "open" : "closed"} {...drag}
       onKeyDown={(e) => { if (e.key === "Escape") showAgentsCard(false) }}
       className={cn("glass-strong fixed z-[19] w-[340px] max-w-[calc(100vw-2rem)] touch-none overflow-hidden rounded-[12px] shadow-lg select-none",
         "transition-[left,right] duration-200 ease-out data-dragging:cursor-grabbing data-dragging:shadow-2xl data-dragging:transition-none", CORNERS[at])}

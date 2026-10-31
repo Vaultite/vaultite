@@ -8,6 +8,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **HTML pages can share live state**: `vau.shared()` gives a page a JSON map that's the same, live, in every view of
   it on any device, and who has it open; a page made for two (a game, a drill) plays across the user's devices.
+- **Browser tabs come back after quitting**: quitting the desktop app closed every web page tab, as if each page had
+  closed itself; they're kept now, as a browser's are.
+- **What floats over a web page takes only its own clicks**: with the mini player, a peeking sidebar or a floating pane
+  over a page, the rest of the page can be clicked, scrolled and dragged in again, with its own cursor; only a menu,
+  a dialog or a drag still takes every click there.
 - **Settings show what a setting changes**: hover a row (or reach its control with the keyboard) and a card beside it
   shows small pictures of the window in your colours, Off and On side by side with the current one ringed (a choice of
   three: the option under the pointer); behaviours like Fade the file bar while typing or Dim inactive panes play a

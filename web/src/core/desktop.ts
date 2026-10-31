@@ -177,8 +177,8 @@ export type WebPages = {
   /** Claude Code on the web's sessions in the profiles named, read with their logins once `read` (the user's yes), told
    *  from now on as `cloud` events, news as `session` ones. Older builds take nothing and answer the sessions. */
   cloud?: (want: { profiles: string[]; read: boolean; hidden: string[] }) => Promise<CloudState | CloudSession[]>
-  /** The window drawn over its pages while something of it covers one (null: under them again): "app" takes the pointer
-   *  (a menu, the palette), "through" leaves it to the pages (a toast, a tooltip), passed on with `pointer`. */
+  /** The window over its pages while something covers one (null: under them): "app" takes the pointer (a menu, a drag),
+   *  "through" leaves what lands on a page to it (beside a toast, the mini player), passed on with `pointer`. */
   raise: (how: "app" | "through" | null) => Promise<unknown>
   /** The app's background (#rrggbb): what a new page shows till its first page comes in. Older builds don't have it. */
   look?: (background: string) => Promise<unknown>
@@ -210,6 +210,9 @@ export type WebEvent =
   /** The pointer reached page `id`'s top edge (`at`), or left it: a hidden page bar slides in. */
   | { type: "top"; id: number; at: boolean }
   | { type: "focus"; id: number }
+  /** Page `id`'s cursor changed (Electron's name: "pointer", "text"...), shown over it while the window lets the pointer
+   *  through. Older builds don't tell it. */
+  | { type: "cursor"; id: number; cursor: string }
   | { type: "clip"; id: number }
   | { type: "block"; id: number; x: number; y: number }
   | { type: "address"; id: number }

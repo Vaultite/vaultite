@@ -1,8 +1,9 @@
 // The window over its pages (electron/appwindow.ts): raised while anything of it covers a page, see-through behind
-// each page so the live page shows there, and passing the pointer on to a page while only toasts or tooltips cover it.
+// each so the live page shows there, passing the pointer on where nothing of it is (but under a menu, dialog or drag).
 import { webPages } from "@vaultite"
 
-/** What covers a page: something that takes the pointer ("app"), only what lets it through, or nothing (null). */
+/** What covers a page: something that takes every click over it ("app": a menu, a dialog, a drag), only what lets the
+ *  rest through ("through": a toast, the mini player, a sidebar peeking over it), or nothing (null). */
 export type Cover = "app" | "through" | null
 
 const covers = new Map<number, Cover>()
@@ -31,8 +32,8 @@ export const popupOpen = () => [...document.querySelectorAll(POPUPS)].some((p) =
 /** How far apart the hit tests along the page's edges are, and how many across its inside. */
 const EDGE_STEP = 64, INSIDE = 4
 
-/** Whether anything of the app taking the pointer is over the page ("app"); a companion's cursor, the status bar, toasts
- *  never count. Hit tests are costly: popups where they are, the edges (what slides in), a few inside. */
+/** What's over the page: a popup or a drag takes every click there ("app": a click beside a menu only closes it), else
+ *  each its own ("through"). Toasts, the status bar never count. Hit tests: popups where they are, the edges, a few inside. */
 export function hitCover(box: HTMLElement, r: DOMRect): Cover {
   if ("dragging" in document.documentElement.dataset) return "app"
   // (8px in from the edges: the dividers beside a pane, the sidebar's edge, a split's, reach a few pixels into it)
@@ -56,10 +57,10 @@ export function hitCover(box: HTMLElement, r: DOMRect): Cover {
   // Along the edges, then a few across the inside.
   const steps = (from: number, to: number, n: number) => Array.from({ length: n + 1 }, (_, i) => from + ((to - from) * i) / n)
   const xs = steps(L, R, Math.max(1, Math.ceil((R - L) / EDGE_STEP))), ys = steps(T, B, Math.max(1, Math.ceil((B - T) / EDGE_STEP)))
-  for (const x of xs) if (over(hit(x, T)) || over(hit(x, B))) return "app"
-  for (const y of ys.slice(1, -1)) if (over(hit(L, y)) || over(hit(R, y))) return "app"
-  for (const x of steps(L, R, INSIDE).slice(1, -1)) for (const y of steps(T, B, INSIDE).slice(1, -1)) if (over(hit(x, y))) return "app"
-  return slides(box, new DOMRect(L, T, R - L, B - T)) ? "app" : null
+  for (const x of xs) if (over(hit(x, T)) || over(hit(x, B))) return "through"
+  for (const y of ys.slice(1, -1)) if (over(hit(L, y)) || over(hit(R, y))) return "through"
+  for (const x of steps(L, R, INSIDE).slice(1, -1)) for (const y of steps(T, B, INSIDE).slice(1, -1)) if (over(hit(x, y))) return "through"
+  return slides(box, new DOMRect(L, T, R - L, B - T)) ? "through" : null
 }
 
 /** A transition of only a colour: it moves nothing. */
@@ -123,8 +124,18 @@ export function moved(e: Event, box: HTMLElement): Change {
   return e.target instanceof Element ? changeAt(e.target, box) : null
 }
 
-/** The pointer over a page's box while the window lets it through, passed on to the page. */
+/** Electron's cursor names (Chromium's: "pointer" is the arrow, "hand" CSS's pointer) that are CSS's too; the rest, a
+ *  site's own image among them, show the arrow. */
+const CURSORS = new Set(["crosshair", "text", "wait", "help", "e-resize", "n-resize", "ne-resize", "nw-resize",
+  "s-resize", "se-resize", "sw-resize", "w-resize", "ns-resize", "ew-resize", "nesw-resize", "nwse-resize", "col-resize", "row-resize",
+  "move", "vertical-text", "cell", "context-menu", "alias", "progress", "copy", "none", "not-allowed", "zoom-in", "zoom-out", "grab", "grabbing"])
+const RENAMED: Record<string, string> = { hand: "pointer", nodrop: "no-drop" }
+export const cssCursor = (c: unknown) => (typeof c !== "string" ? "" : RENAMED[c] ?? (CURSORS.has(c) ? c : ""))
+
+/** The pointer over a page's box while the window lets it through, passed on to the page, and the page's cursor shown
+ *  there. A press in the page keeps the pointer till it's let go, as a real one does (a drag out over the mini player). */
 export function passPointer(box: HTMLElement, id: () => number | null, area: () => DOMRect) {
+  let held = 0
   const send = (e: MouseEvent, type: "mouseMove" | "mouseDown" | "mouseUp" | "mouseLeave" | "mouseWheel") => {
     const page = id()
     if (raised !== "through" || page === null) return
@@ -132,10 +143,18 @@ export function passPointer(box: HTMLElement, id: () => number | null, area: () 
     void webPages?.pointer(page, { type, x: e.clientX - r.left, y: e.clientY - r.top, button: (["left", "middle", "right"] as const)[e.button] ?? "left",
       clickCount: e.detail || 1, dx: e instanceof WheelEvent ? e.deltaX : 0, dy: e instanceof WheelEvent ? e.deltaY : 0 }).catch(() => {})
   }
-  const on: [string, (e: MouseEvent) => void][] = [["mousemove", (e) => send(e, "mouseMove")], ["mousedown", (e) => send(e, "mouseDown")],
-    ["mouseup", (e) => send(e, "mouseUp")], ["mouseleave", (e) => send(e, "mouseLeave")], ["wheel", (e) => send(e, "mouseWheel")]]
-  for (const [ev, fn] of on) box.addEventListener(ev, fn as EventListener, { passive: true })
-  return () => { for (const [ev, fn] of on) box.removeEventListener(ev, fn as EventListener) }
+  const inBox = (e: Event) => e.target instanceof Node && box.contains(e.target)
+  const bit = (e: MouseEvent) => 1 << e.button
+  const on: [EventTarget, string, (e: MouseEvent) => void][] = [
+    [box, "mousedown", (e) => { if (raised === "through") held |= bit(e); send(e, "mouseDown") }],
+    [window, "mousemove", (e) => { if (held || inBox(e)) send(e, "mouseMove") }],
+    [window, "mouseup", (e) => { if (held & bit(e) || inBox(e)) { held &= ~bit(e); send(e, "mouseUp") } }],
+    [box, "mouseleave", (e) => { if (!held) send(e, "mouseLeave") }],
+    [box, "wheel", (e) => send(e, "mouseWheel")]]
+  for (const [at, ev, fn] of on) at.addEventListener(ev, fn as EventListener, { passive: true })
+  // (the box is under the page but while the window's over it: its cursor is then the one macOS shows)
+  const off = webPages?.on((m) => { if (m.type === "cursor" && m.id === id()) box.style.cursor = cssCursor(m.cursor) })
+  return () => { for (const [at, ev, fn] of on) at.removeEventListener(ev, fn as EventListener); off?.(); box.style.cursor = "" }
 }
 
 // ---------- the hole: only backgrounds are cut, never what's drawn over the page ----------

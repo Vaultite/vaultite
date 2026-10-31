@@ -73,6 +73,7 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
   }
   // A drag isn't a click on what it started on (the note, a button).
   const onClickCapture = (e: MouseEvent) => { if (dragged.current) { dragged.current = false; e.stopPropagation(); e.preventDefault() } }
-  return { ref: card, onPointerDown, onClickCapture }
+  // (over a Browser page it takes only its own clicks: the page gets the rest, web-viewer's layers.ts)
+  return { ref: card, onPointerDown, onClickCapture, "data-floats": "" }
 }
 

@@ -458,6 +458,8 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) { changed(); keepPast(p) } })
   wc.on("page-title-updated", () => { changed(); keepPast(p) })
   wc.on("dom-ready", () => tellGlance(wc))
+  // (the window's page shows it while it's over this one, passing it the pointer: layers.ts)
+  wc.on("cursor-changed", (_e, cursor) => tell(p.win, { type: "cursor", id: p.id, cursor }))
   // (its sound changed: told now, and again when a quiet stretch ends it)
   const sounded = () => {
     clearTimeout(p.hush)
@@ -716,8 +718,12 @@ function unload(wc: WebContents) {
   return gone.finally(() => clearTimeout(hard))
 }
 
-/** Before the app quits: every page unloaded, as its tab's close would. */
-export const unloadPages = () => { if (pastTimer) savePasts(); return Promise.all([...pages.values()].map((p) => unload(p.view.webContents))).then(() => {}) }
+/** Before the app quits: every page unloaded, as its tab's close would, its tab kept (closing: not a close by its own
+ *  script, which closes its tab too), so the tabs come back at the next launch, as a browser's do. */
+export const unloadPages = () => {
+  if (pastTimer) savePasts()
+  return Promise.all([...pages.values()].map((p) => { p.closing = true; return unload(p.view.webContents) })).then(() => {})
+}
 
 /** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
  *  one in a player is on screen, whatever its tab, and an agent's is never let go (browser/agent.ts). */
