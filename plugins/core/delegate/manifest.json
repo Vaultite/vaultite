@@ -1,0 +1,15 @@
+{
+  "id": "delegate",
+  "icon": "git-fork",
+  "category": "agents",
+  "offByDefault": true,
+  "name": "Delegation",
+  "description": "Coding agents hand tasks to each other: Claude Code asks Codex for a second opinion, or starts a few sessions on parallel work, and waits for their answers or carries on. Each subagent is its own thread in the inbox, shown with the session that started it; it never gets more permissions than that one, and what it asks permission for comes to you.",
+  "forAgents": "Another coding agent as your subagent (a second opinion from Codex, a parallel task): `delegate.start`.",
+  "runsOnServer": true,
+  "requires": ["inbox"],
+  "enhances": ["claude-code", "codex", "opencode", "terminal"],
+  "settings": {
+    "agents_answer": { "type": "boolean", "default": true, "label": "Agents answer their subagents", "description": "an agent may answer the questions its subagents ask (never their permissions, which only you answer); off, those questions wait for you in the inbox" }
+  }
+}

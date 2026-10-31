@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, programOf, type AgentMeter, type AgentModels, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
-  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn } from "../../../core/agents.ts"
+  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn, type PermissionMode } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
@@ -327,7 +327,7 @@ async function session(id: string) {
 plugin.provide("agent-turn:codex", async (terminal: string, session = "") => {
   const id = session || (terminal ? (await live(true)).find((l) => l.terminal === terminal)?.id ?? "" : "")
   const t = id ? await transcript(id) : null
-  return t ? { session: id, title: scan.names.get(id) || t.talk.head.title, ...lastTurn(t.talk.entries) } : null
+  return t ? { session: id, title: scan.names.get(id) || t.talk.head.title, ...lastTurn(t.talk.entries), done: t.talk.done } : null
 })
 
 /** Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session
@@ -339,15 +339,52 @@ plugin.provide("agent-meters:codex", async (): Promise<AgentMeter[]> =>
 
 /** `codex`, or `codex resume <id>` in its folder, with the model given. No context or hooks: any `-c` makes it run without
  *  its shared background server (it reads AGENTS.md itself), which only an effort (no flag) or commands allowed cost. */
-plugin.provide("agent:codex", async ({ resume, prompt, wsl, model, effort, allow }: AgentStart): Promise<AgentCommand> => {
+plugin.provide("agent:codex", async ({ resume, prompt, wsl, model, effort, allow, mode }: AgentStart): Promise<AgentCommand> => {
   // (inside WSL its sessions are the distro's own)
   const t = resume && !wsl ? await transcript(resume) : null
   if (resume && !t && !wsl) return notOnThisMachine("Codex", resume)
   // (commands to run unasked, vau's: they reach the app's server, which its sandbox's network, off by default, blocks;
   // it takes no list of commands)
-  const how = [...(model ? ["-m", model] : []), ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []), ...(allow?.length ? ["-c", "sandbox_workspace_write.network_access=true"] : [])]
+  const how = [...(model ? ["-m", model] : []), ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []), ...(allow?.length ? ["-c", "sandbox_workspace_write.network_access=true"] : []),
+    ...(mode ? SANDBOX[mode] : [])]
   const argv = ["codex", ...(resume ? ["resume", ...how, resume, ...(prompt ? [prompt] : [])] : [...how, ...(prompt ? ["--", prompt] : [])])]
   return { command: argv.map((x, i) => (i && !["resume", "--", "-m", "-c"].includes(x) ? shellQuote(x) : x)).join(" "), argv, cwd: t?.talk.head.cwd || null }
+})
+
+/** Claude Code's permission modes as Codex's sandbox and approvals: plan only reads, default asks before it writes,
+ *  acceptEdits writes in its folder (asking for the rest), auto has its reviewer approve, bypass is everything. */
+const SANDBOX: Record<PermissionMode, string[]> = {
+  plan: ["-s", "read-only", "-a", "never"], dontAsk: ["-s", "read-only", "-a", "never"], default: ["-s", "read-only", "-a", "on-request"],
+  acceptEdits: ["-s", "workspace-write", "-a", "on-request"], auto: ["-s", "workspace-write", "--approve-for-me"],
+  bypassPermissions: ["--dangerously-bypass-approvals-and-sandbox"],
+}
+
+/** A turn's approvals and sandbox as the permission mode they come to: full access is bypass (asking first: auto),
+ *  writing in its folder is acceptEdits (with the reviewer, or never asking: auto), read-only is default (never: plan). */
+export function modeOf(approval: string, sandbox: string, reviewer = ""): PermissionMode | null {
+  if (sandbox === "danger-full-access") return approval === "never" ? "bypassPermissions" : "auto"
+  if (sandbox === "workspace-write") return approval === "never" || reviewer === "auto_review" ? "auto" : "acceptEdits"
+  if (sandbox === "read-only") return approval === "never" ? "plan" : "default"
+  return null
+}
+
+/** The mode a session runs in now, from its last turn's sandbox and approvals (the service "agent-mode:codex"): what a
+ *  subagent it delegates to may have at most. The session in `terminal` when `session` isn't given; null: unknown. */
+plugin.provide("agent-mode:codex", async (terminal: string, session = ""): Promise<PermissionMode | null> => {
+  const id = session || (terminal ? (await live(true)).find((l) => l.terminal === terminal)?.id ?? "" : "")
+  const file = id ? await sessionFile(id) : null
+  if (!file) return null
+  let text = ""
+  try {
+    const fd = fs.openSync(file, "r"), size = fs.fstatSync(fd).size, n = Math.min(size, 1 << 20), buf = Buffer.alloc(n)
+    fs.readSync(fd, buf, 0, n, size - n)
+    fs.closeSync(fd)
+    text = buf.toString("utf8")
+  } catch { return null }
+  const line = text.split("\n").reverse().find((l) => l.includes('"turn_context"'))
+  let c: Item = {}
+  try { c = JSON.parse(line ?? "").payload ?? {} } catch { return null }
+  return modeOf(String(c.approval_policy ?? ""), String((c.sandbox_policy as Item | undefined)?.type ?? ""), String(c.approvals_reviewer ?? ""))
 })
 
 /** The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take. */
@@ -356,7 +393,8 @@ plugin.provide("agent-models:codex", (): AgentModels => {
   try { list = (JSON.parse(fs.readFileSync(path.join(CODEX, "models_cache.json"), "utf8")).models ?? []).filter((m: Item) => m.visibility === "list" && typeof m.slug === "string") } catch { /* none yet */ }
   const efforts = (m: Item) => (Array.isArray(m.supported_reasoning_levels) ? m.supported_reasoning_levels.map((l: Item) => String(l.effort)) : [])
   return { models: sortBy(list, (m) => Number(m.priority) || 0).map((m) => ({ id: String(m.slug), label: modelName(String(m.slug)) })),
-    efforts: list.length ? efforts(list[0]).filter((e: string) => list.every((m) => efforts(m).includes(e))) : ["low", "medium", "high", "xhigh"] }
+    efforts: list.length ? efforts(list[0]).filter((e: string) => list.every((m) => efforts(m).includes(e))) : ["low", "medium", "high", "xhigh"],
+    modes: Object.keys(SANDBOX) as PermissionMode[] }
 })
 
 /** Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC

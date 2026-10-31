@@ -22,6 +22,51 @@ export const sessionTitle = (id: string) => getEvents().events.find((e) => e.id 
 const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answerAsk(e, a)).then(
   () => notify(a === "approve" ? "Approved" : "Denied"), (err) => notifyError(err, "Couldn't answer it"))
 
+/** Whether thread `x` is session `p` (by its terminal, else its session id). */
+const isSession = (p: { terminal?: string; session?: string }, x: InboxEvent) => x.kind === "session" && !x.machine &&
+  ((!!p.terminal && x.terminal === p.terminal) || (!!p.session && x.session === p.session))
+const STATE: Record<string, string> = { open: "Needs you", working: "Working", done: "Done" }
+
+/** Who delegated this session its task (its thread, else its session), and the subagents it delegated to. */
+function Lineage({ e }: { e: InboxEvent }) {
+  const { events } = useEvents()
+  const agents = useAgents()
+  const from = e.parent ? events.find((x) => x.id !== e.id && isSession(e.parent!, x)) : undefined
+  const kids = events.filter((x) => x.id !== e.id && x.parent && isSession(x.parent, e))
+  if (!e.parent && !kids.length) return null
+  const toParent = () => {
+    if (from) return openDetail(detailPath(SESSION_DETAIL, from.id))
+    void openSession({ terminal: e.parent!.terminal, session: e.parent!.session, agent: e.parent!.agent, host: !e.parent!.terminal }).catch((err) => notifyError(err, "Couldn't open it"))
+  }
+  return (
+    <div className="mb-5 flex flex-col gap-3" data-lineage>
+      {e.parent && (
+        <p className="text-[13px] text-muted-foreground max-md:text-[15px]">
+          Delegated by <button type="button" data-lineage-parent className="cursor-pointer font-medium text-foreground/80 underline decoration-foreground/20 underline-offset-2 hover:decoration-foreground/60" onClick={toParent}>{from?.title ?? e.parent.title}</button>
+        </p>
+      )}
+      {kids.length > 0 && (
+        <section>
+          <h3 className="mb-1 text-[13px] font-medium text-muted-foreground max-md:text-[15px]">Subagents</h3>
+          <div className="-mx-2 flex flex-col">
+            {kids.map((k) => {
+              const a = agentOf(k, agents), Icon = a?.icon ?? Bot
+              return (
+                <button key={k.id} type="button" data-lineage-child={k.id} onClick={() => openDetail(detailPath(SESSION_DETAIL, k.id))}
+                  className="flex min-h-8 cursor-pointer items-center gap-2 rounded-[6px] px-2 text-left hover:bg-foreground/[0.04] max-md:min-h-11">
+                  <Icon className="size-4 shrink-0" style={{ color: a?.tint }} />
+                  <span className="min-w-0 flex-1 truncate text-[14px] max-md:text-[17px]">{k.title}</span>
+                  <span className={k.state === "open" ? "shrink-0 text-[13px] font-medium text-foreground/80" : "shrink-0 text-[13px] text-muted-foreground"}>{STATE[k.state]}</span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
 export function SessionSheet({ id }: { id: string }) {
   const e = useEvents().events.find((x) => x.id === id)
   // (every render calls the same hooks: the event shows up once the inbox loads)
@@ -55,6 +100,7 @@ export function SessionSheet({ id }: { id: string }) {
           </div>
         )}
       </SheetHead>
+      <Lineage e={e} />
       {e.questions && blocked
         ? <Questions e={{ ...e, questions: e.questions }} />
         : e.body

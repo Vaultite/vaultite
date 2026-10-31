@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, type Asking, type Choice, type Question, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
-  type Usage, lastTurn, parseTerminal } from "../../../core/agents.ts"
+  type Usage, lastTurn, parseTerminal, PERMISSION_MODES, type PermissionMode } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
@@ -511,9 +511,9 @@ function hooks({ state, report, stateHook, reportUrl }: Pick<AgentStart, "state"
 
 /** `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile
  *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
-const FLAGS = new Set(["--resume", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--"])
+const FLAGS = new Set(["--resume", "--append-system-prompt", "--settings", "--allowedTools", "--model", "--effort", "--permission-mode", "--"])
 plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> => {
-  const { resume, context, profile, prompt, dark, allow, model, effort, wsl } = start
+  const { resume, context, profile, prompt, dark, allow, model, effort, mode, wsl } = start
   // (inside WSL its sessions and accounts are the distro's own, not these)
   const found = resume && !wsl ? sessionFile(resume, true) : null
   if (resume && !found && !wsl) return notOnThisMachine("Claude Code", resume)
@@ -529,7 +529,8 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
   // (Bash(...) and PowerShell(...): without Git Bash, Windows' Claude Code runs commands with its PowerShell tool)
   const allowed = allow?.flatMap((x) => [`Bash(${x}:*)`, ...(process.platform === "win32" && !wsl ? [`PowerShell(${x}:*)`] : [])])
   const args = [...(resume ? ["--resume", resume] : []), ...(context ? ["--append-system-prompt", context] : []), ...(settings ? ["--settings", JSON.stringify(settings)] : []),
-    ...(allowed?.length ? ["--allowedTools", ...allowed] : []), ...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : []), ...(prompt ? ["--", prompt] : [])]
+    ...(allowed?.length ? ["--allowedTools", ...allowed] : []), ...(model ? ["--model", model] : []), ...(effort ? ["--effort", effort] : []),
+    ...(mode ? ["--permission-mode", mode] : []), ...(prompt ? ["--", prompt] : [])]
   return {
     command: [...Object.entries(env).map(([k, v]) => `${k}=${shellQuote(v)}`), "claude", ...args.map((x) => (FLAGS.has(x) ? x : shellQuote(x)))].join(" "),
     argv: ["claude", ...args], env, cwd,
@@ -538,8 +539,19 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
 
 /** The models a session may run, by the aliases --model takes (each its family's latest), and its efforts. */
 const models = (): AgentModels => ({ models: ["sonnet", "opus", "haiku", "fable"].map((id) => ({ id, label: modelName(id) })),
-  efforts: ["low", "medium", "high", "xhigh", "max"] })
+  efforts: ["low", "medium", "high", "xhigh", "max"], modes: [...PERMISSION_MODES] })
 plugin.provide("agent-models:claude", models)
+
+/** The permission mode a session runs in now (the service "agent-mode:claude": what a subagent it delegates to may have at
+ *  most): the chat's, else its transcript's last. The session in `terminal` when `session` isn't given; null: unknown. */
+plugin.provide("agent-mode:claude", async (terminal: string, session = ""): Promise<PermissionMode | null> => {
+  const sid = session || await sessionIn(terminal)
+  const hosted = sid ? chat.api.list().find((s) => s.id === sid) : undefined
+  if (hosted) return hosted.mode
+  const found = sid ? sessionFile(sid, true) : null, t = found && tail(found.file)
+  const said = t ? [...t.text.matchAll(/"permissionMode":"(\w+)"/g)].at(-1)?.[1] : undefined
+  return PERMISSION_MODES.find((m) => m === said) ?? null
+})
 
 /** Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question
  *  can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now. */
@@ -560,10 +572,11 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
  *  reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
   const now = !terminal && session ? chat.turnNow(session) : null
-  if (now) return now
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null
   const t = found ? await transcript(found.file) : null
+  // (a chat's turn as its keeper says it, the files from its transcript)
+  if (now) return { ...now, files: t ? lastTurn(t.talk.entries).files : [] }
   return t ? { session: sid, ...lastTurn(t.talk.entries) } : null
 })
 

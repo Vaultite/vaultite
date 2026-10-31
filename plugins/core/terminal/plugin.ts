@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentCommand, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, agentSession, MODEL_NAME, PERMISSION_MODES, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, vauShims, writeWslVau, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
@@ -558,7 +558,8 @@ async function agentRun(id: string, prompt: string | null, dark: boolean | null,
       ...(kind === "wsl" ? { wsl: true } : {}),
       profile: a.profile, prompt, dark, ...how } satisfies AgentStart)
     if (!run || typeof run.command !== "string" || !run.command) return null
-    let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : null
+    // (a resumed session's own folder, else the one it was asked to start in)
+    let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : how.cwd || null
     try { if (cwd && !fs.statSync(cwd).isDirectory()) cwd = null } catch { cwd = null }
     if (!native) return { command: markMissing(run.command, there(stateFile(id)), kind === "wsl" ? "sh" : sh), cwd }
     const bash = Array.isArray(run.argv) && run.argv.length ? null : gitBash()
@@ -1198,7 +1199,11 @@ plugin.route("POST", "terminals/*", async (req) => {
   const prompt = typeof req.body?.prompt === "string" && req.body.prompt.trim() ? req.body.prompt : null
   const allow = Array.isArray(req.body?.allow) ? req.body.allow.filter((a: unknown): a is string => typeof a === "string" && /^[\w .:/-]+$/.test(a)) : null
   const word = (v: unknown) => (typeof v === "string" && MODEL_NAME.test(v) ? v : null)
-  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort) }).finally(() => starting.delete(id)))
+  const mode = PERMISSION_MODES.find((m) => m === req.body?.mode) ?? null
+  const cwd = typeof req.body?.cwd === "string" && path.isAbsolute(req.body.cwd) ? req.body.cwd : null
+  if (cwd && !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new HTTPError(404, `there's no folder ${cwd}`)
+  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort), mode, cwd })
+    .finally(() => starting.delete(id)))
   await starting.get(id)!
   return { id, started: true, agent: agentOf(id)?.name ?? null }
 }, { lock: false })

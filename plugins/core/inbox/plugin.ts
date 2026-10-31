@@ -131,6 +131,8 @@ export type InboxEvent = {
   /** Snoozed until then (ms): out of the lists till it comes back unread, on top, told again. News from its session
    *  wakes it. */
   snoozed?: number
+  /** The session that delegated this one its task (Delegation), by its name then: the thread says "from" it. */
+  parent?: { title: string; agent: string; terminal?: string; session?: string }
 }
 
 /** This vault's folder here: <LOCAL>/inbox/<vault key>/ (made when an event is saved). */
@@ -958,6 +960,8 @@ export async function heard(h: Heard) {
   // (working after it asked: the user answered; after a prompt its own hook saw: the user wrote to it)
   if (h.state === "working") {
     if (prev === "blocked" || own) resolve(who.terminal, who.session, own)
+    // (a subagent's thread is there from its start, working for the session that delegated it)
+    if (!list().some(rowOf(who)) && (await lineageOf(who))?.parent) await sessionRow(who, { state: "working", read: true }, false, h.cwd)
     return
   }
   if (h.state === "blocked") {
@@ -1023,9 +1027,16 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   // Its report (inbox.report) this turn is what it had to say: the row is the report's.
   const row = list().find(rowOf(who))
   if (row?.ask === "report" && row.state === "open" && row.t >= since - 2000) return void endHanded(who.terminal)
+  const body = text ? (text.length > BODY ? `${text.slice(0, BODY)}\n\n…` : text) : undefined
+  // A subagent's turn is its parent's to read; a session whose subagents still work hears from them, so it's on it.
+  const line = await lineageOf(who)
+  if (line?.consumes || line?.waits) {
+    await sessionRow(who, { state: line.consumes ? "done" : "working", ask: line.consumes && h.state === "error" ? "error" : undefined, body, read: true, questions: undefined,
+      turn: line.consumes ? undefined : turnOf(prompt) }, false, h.cwd)
+    return void endHanded(who.terminal)
+  }
   const sample = plugin.service("sample") as ((a: SampleAsk) => Promise<{ text: string; truncated: boolean }>) | null
   const v = await judge({ prompt, text, error: h.state === "error" } satisfies Turn, sample)
-  const body = text ? (text.length > BODY ? `${text.slice(0, BODY)}\n\n…` : text) : undefined
   const now = list().find(rowOf(who)), turn = turnOf(prompt)
   if (v.needs) await sessionRow(who, { state: "open", ask: v.why as Need, body, read: false, link: undefined, questions: undefined, turn }, true, h.cwd)
   else if (!now || !stillOpen(now, turn)) await sessionRow(who, { state: "done", ask: undefined, body, read: true, questions: undefined, turn: undefined }, false, h.cwd)
@@ -1073,13 +1084,29 @@ async function sessionTitle(k: Who, cwd?: string) {
   return str(term?.title).replace(/^[^\p{L}\p{N}]+/u, "").trim() || (cwd ? path.basename(cwd) : "")
 }
 
+/** Where a session stands among delegated tasks (the service "delegate:lineage"): who delegated it its task, and
+ *  whether that one waits on this turn; how many of its own subagents still work, which will tell it when they're done. */
+type Lineage = { parent: { agent: string; terminal?: string; session?: string; task: string } | null; consumes: boolean; waits: number }
+const lineageOf = (k: Who) => plugin.ask<Lineage | null>("delegate:lineage", null, k.agent, k.terminal, k.session)
+
+/** A subagent's parent, by the name of its own thread (else what its session is called), and its task's title. */
+async function parentOf(k: Who): Promise<{ parent: InboxEvent["parent"]; task: string } | null> {
+  const p = (await lineageOf(k))?.parent
+  if (!p) return null
+  const them: Who = { agent: p.agent, terminal: p.terminal ?? "", session: p.session ?? "" }
+  const title = list().find(rowOf(them))?.title || await sessionTitle(them) || `${agentLabel(p.agent)} session`
+  return { parent: { title, agent: p.agent, ...(p.terminal ? { terminal: p.terminal } : {}), ...(p.session ? { session: p.session } : {}) }, task: p.task }
+}
+
 /** Session `k`'s row, made or changed (`patch`; undefined takes a field away), at the top; `news`: the user is told. */
 async function sessionRow(k: Who, patch: Partial<InboxEvent>, news: boolean, cwd?: string) {
-  const title = await sessionTitle(k, cwd)
+  const line = await parentOf(k), parent = line?.parent
+  // (a subagent is called by its task until its agent names it)
+  const title = (line?.task && !named.has(k.terminal || k.session) ? line.task : "") || await sessionTitle(k, cwd)
   const es = list()
   const old = es.find(rowOf(k)) ?? null
   const e = { ...(old ?? { id: newId(Date.now()) }), t: Date.now(), source: k.agent, kind: "session", title: title || old?.title || `${agentLabel(k.agent)} session`, ...patch,
-    ...(k.terminal ? { terminal: k.terminal } : {}), ...(k.session ? { session: k.session } : {}), ...(k.host ? { host: true } : {}) } as InboxEvent
+    ...(k.terminal ? { terminal: k.terminal } : {}), ...(k.session ? { session: k.session } : {}), ...(k.host ? { host: true } : {}), ...(parent ? { parent } : {}) } as InboxEvent
   if (e.questions) e.preview = questionLine(e.questions)
   else if (e.body) e.preview = previewOf(e.body)
   else delete e.preview

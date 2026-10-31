@@ -84,7 +84,8 @@ export default async ($: VaultTest) => {
       const models = (await import("../../../core/plugins.ts")).service(app.plugins, "agent-models:codex")!()
       fs.rmSync(path.join(CODEX_DIR, "models_cache.json"))
       check("codex agent: the models its picker lists, in its order, and the efforts all take", JSON.stringify(models) ===
-        JSON.stringify({ models: [{ id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-6-luna", label: "GPT-6 Luna" }], efforts: ["low", "medium", "high"] }), models)
+        JSON.stringify({ models: [{ id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-6-luna", label: "GPT-6 Luna" }], efforts: ["low", "medium", "high"],
+          modes: ["plan", "dontAsk", "default", "acceptEdits", "auto", "bypassPermissions"] }), models)
     }
     // Today's tokens: a session written now, and a fork of it replaying the same counts (counted once); the same total
     // again (a rate limit update) doesn't count.

@@ -4,7 +4,7 @@ import { truncate, type Entry, type Head, type Said, type Tool, toolSummary } fr
 
 /** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
 export const WANTED = ['"item_completed"', '"user_message"', '"agent_message"', '"function_call', '"custom_tool_call', '"local_shell_call"',
-  '"session_meta"', '"turn_context"']
+  '"session_meta"', '"turn_context"', '"task_started"', '"task_complete"']
 
 const PICK = ["description", "command", "cmd", "file_path", "path", "pattern", "url", "query", "prompt", "uri", "name"]
 /** One line saying what a tool call did: "git status", "src/app.ts", "retry in src". */
@@ -73,6 +73,8 @@ export class Conversation {
   head: Head = { title: "", cwd: "", model: "", first: "", last: "", branch: "" }
   /** The file's own session: a forked one starts with its parent's session_meta, which isn't its own. */
   id: string
+  /** Its last turn ended (task_complete after its task_started): what says so before Codex spoke OSC 7501. */
+  done = false
   // A paginated file also logs the model's raw tool calls as response items: once it's known, those are left out.
   private paginated = false
   private tools = new Map<string, Tool>()
@@ -119,7 +121,8 @@ export class Conversation {
     }
     if (at && (d.type === "event_msg" || d.type === "response_item")) { this.head.first ||= at; this.head.last = at }
     if (d.type === "event_msg") {
-      if (p.type === "item_completed" && p.item && typeof p.item === "object") {
+      if (p.type === "task_started" || p.type === "task_complete") this.done = p.type === "task_complete"
+      else if (p.type === "item_completed" && p.item && typeof p.item === "object") {
         this.paginated = true
         const it = p.item
         if (it.type === "UserMessage") this.said("user", userText(it.content), at)

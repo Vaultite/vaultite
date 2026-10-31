@@ -35,7 +35,7 @@ export default async ($: VaultTest) => {
     {
       const ins = String(r.result.instructions)
       check("mcp: the instructions are the plugins' lines that are on, an op's id said as its tool", ins.includes("- `ME.md` is the user") && ins.includes("`remember`") && !ins.includes("people.remember") &&
-        ins.includes("`.vaultite/AGENTS.md` is the vault's rules") && !ins.includes("People/") && ins.length < 1500, ins)
+        ins.includes("`.vaultite/AGENTS.md` is the vault's rules") && !ins.includes("People/") && ins.length < 1600, ins)
       const was = vault.config("plugins")
       await api("PUT", "config/plugins", { ...was, enabled: was.enabled.filter((id: string) => id !== "activity") })
       const off = String((await rpc("initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } })).result.instructions)
@@ -60,7 +60,7 @@ export default async ($: VaultTest) => {
     check("mcp: the tools from before the operations are ops now, once each; ops and call last", ["search", "read", "render", "list", "query", "write_note", "write_log", "add_timeline", "remember", "clip", "inbox_add"].every((n) => names.includes(n))
       && new Set(names).size === names.length && same(names.slice(-2), ["ops", "call"]), names)
     check("mcp: every tool has a schema, a description and its hints", listed.every((t) => t.inputSchema.type === "object" && t.description.length > 40 && typeof t.annotations.readOnlyHint === "boolean"), listed.filter((t) => t.description.length <= 40).map((t) => t.name))
-    check("mcp: hints from the op's kind (read only; a write isn't destructive; call may be)", listed.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort().join() === "actions,browser_read,browser_screenshot,browser_snapshot,browser_tabs,browser_wait,calendar,chat_list,chat_read,choose,docs,events_wait,history,inbox,links,list,ops,query,read,read_version,render,search,tags"
+    check("mcp: hints from the op's kind (read only; a write isn't destructive; call may be)", listed.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort().join() === "actions,browser_read,browser_screenshot,browser_snapshot,browser_tabs,browser_wait,calendar,chat_list,chat_read,choose,delegate_list,delegate_status,docs,events_wait,history,inbox,links,list,ops,query,read,read_version,render,search,tags"
       && listed.find((t) => t.name === "open").annotations.destructiveHint === false && listed.find((t) => t.name === "call").annotations.destructiveHint === true, listed.map((t) => [t.name, t.annotations]))
     const fake = { id: "lantern.clear", plugin: "lantern", summary: "Clear the lantern's log: every line goes.", help: "", kind: "destructive" as const, params: { type: "object" as const, properties: {} }, args: [], cli: null, mcp: "lantern_clear", result: null, owner: null, action: null }
     check("mcp: a destructive op is destructiveHint, titled by its summary's first clause", same(toolOf(fake).annotations, { readOnlyHint: false, destructiveHint: true }) && toolOf(fake).title === "Clear the lantern's log", toolOf(fake))

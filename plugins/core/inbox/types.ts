@@ -57,6 +57,8 @@ export type InboxEvent = {
   machine?: string; machineLabel?: string
   /** Snoozed until then (ms): out of the lists till it comes back, unread on top. */
   snoozed?: number
+  /** The session that delegated this one its task, by its name then (its own thread, if any, by its terminal or session). */
+  parent?: { title: string; agent: string; terminal?: string; session?: string }
 }
 
 declare module "@vaultite" {

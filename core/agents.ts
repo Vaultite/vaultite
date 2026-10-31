@@ -379,7 +379,16 @@ export type AgentStart = {
    *  null: its own default. */
   model?: string | null
   effort?: string | null
+  /** How much it may do without asking (PermissionMode), for an agent whose "agent-models" lists it in `modes`, which
+   *  maps it to its own flags; null: its own setting. */
+  mode?: PermissionMode | null
+  /** The folder a new session starts in (a resumed one runs in its own); null: the vault's. */
+  cwd?: string | null
 }
+/** How much a session may do without asking the user, in Claude Code's words, least first (dontAsk: only what its
+ *  rules allow, never asking). Other agents map them to theirs (Codex: its sandbox and approvals). */
+export const PERMISSION_MODES = ["plan", "dontAsk", "default", "acceptEdits", "auto", "bypassPermissions"] as const
+export type PermissionMode = typeof PERMISSION_MODES[number]
 /** What an "agent:<name>" service answers: its line for a POSIX shell, run in `cwd`; `argv` and `env` start it where that
  *  can't run (PowerShell, cmd), else Git Bash runs `command` there. */
 export type AgentCommand = { command: string; cwd?: string | null; argv?: string[]; env?: Record<string, string> }
@@ -396,10 +405,10 @@ export type Choice = number[] | string
  *  when none can run here (an app serving no port: a test's). */
 export type AgentChatNew = (o: { prompt: string; account?: string; cwd?: string; by?: string }) => Promise<{ id: string } | null>
 /** How a session is started, besides its id and first prompt. */
-export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
+export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort" | "mode" | "cwd">
 /** What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes
- *  it), and its efforts, least first. */
-export type AgentModels = { models: { id: string; label: string }[]; efforts: string[] }
+ *  it), its efforts, least first, and the permission modes it's held to (AgentStart's `mode`; none: it takes none). */
+export type AgentModels = { models: { id: string; label: string }[]; efforts: string[]; modes?: PermissionMode[] }
 
 /** What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's
  *  claude.sample). It answers SampleAnswer, or throws an Error with `code` (a claude.sample error code). */
@@ -435,17 +444,31 @@ export type Said = { kind: "user" | "assistant"; text: string; at: string }
 export type Entry = Said | Tool
 export type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
 
-/** A conversation's latest turn: the user's last message, the agent's last answer after it ("" while none), when (ms,
- *  else 0), and if it's final (no tool call after it). What an agent's service "agent-turn:<agent>" answers. */
-export function lastTurn(entries: Entry[]): { prompt: string; text: string; at: number; final: boolean } {
-  let prompt = "", text = "", at = 0, final = true
+/** A conversation's latest turn (what "agent-turn:<agent>" answers): the user's last message, the agent's last answer
+ *  after it ("" while none), when (ms, else 0), if it's final (no tool call after it), and the files its edits changed. */
+export function lastTurn(entries: Entry[]): { prompt: string; text: string; at: number; final: boolean; files: string[] } {
+  let prompt = "", text = "", at = 0, final = true, from = 0
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i]
     if (e.kind === "tool" && !text) final = false
     else if (e.kind === "assistant" && !text) { text = e.text; at = Date.parse(e.at) || 0 }
-    else if (e.kind === "user") { prompt = e.text; break }
+    else if (e.kind === "user") { prompt = e.text; from = i; break }
   }
-  return { prompt, text, at, final: final && !!text }
+  return { prompt, text, at, final: final && !!text, files: changedFiles(entries.slice(from)) }
+}
+
+/** The files `entries`' edits changed, in order: Claude Code's Edit, Write and NotebookEdit (their input's path),
+ *  Codex's file changes (a line per file: "update ~/src/app.ts"). */
+export function changedFiles(entries: Entry[]): string[] {
+  const out = new Set<string>()
+  for (const e of entries) {
+    if (e.kind !== "tool" || e.error || !/^(Edit|MultiEdit|Write|NotebookEdit)$/.test(e.name)) continue
+    // (its input may be cut short: read the path, not the JSON)
+    const m = /"(?:file_path|notebook_path)":\s*"((?:[^"\\]|\\.)+)"/.exec(e.input)
+    if (m) out.add(m[1].replace(/\\(.)/g, "$1"))
+    else for (const c of e.input.matchAll(/^(?:add|update|delete) ([~/].*)$/gm)) out.add(c[1].replace(/^~(?=\/)/, HOME))
+  }
+  return [...out]
 }
 
 /** Long texts cut short: a view is for reading a conversation back, not for the raw data. */

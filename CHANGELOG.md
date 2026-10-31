@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Delegation**: a coding agent hands a task to another as its subagent (`vau delegate codex "Review this diff"`, MCP's
+  `delegate`): Claude Code as a chat in the app, Codex or OpenCode in a terminal, waiting for its answer (with the files
+  it changed) or carrying on while its result comes back as a message. Each subagent is its own inbox thread, "from"
+  the session that started it (shown in its sheet and chat tab, with that session's subagents); it never gets more
+  permissions than its parent, its permission asks come to you, and Cancel stops it and everything it started.
 - **The container menu names who's signed in while you type**: typing gmail.com names each container's Google account
   (gmail.com, youtu.be and twitter.com count as Google's, YouTube's and X's logins), and a menu opened before the
   logins were listed fills them in as they answer, rather than showing none.

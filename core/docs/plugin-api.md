@@ -166,6 +166,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-asks:codex` (codex): Its dialogs, seen on its screen, by their last lines: Approve and Deny press these keys, and before 0.163 (no OSC 7501, no hooks) they're its only blocked state. Folder trust, its default Trust; a command or edits, Yes, Esc No.
 - `agent-meters:claude` (claude-code)
 - `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
+- `agent-mode:claude` (claude-code): The permission mode a session runs in now (the service "agent-mode:claude": what a subagent it delegates to may have at most): the chat's, else its transcript's last. The session in `terminal` when `session` isn't given; null: unknown.
+- `agent-mode:codex` (codex): The mode a session runs in now, from its last turn's sandbox and approvals (the service "agent-mode:codex"): what a subagent it delegates to may have at most. The session in `terminal` when `session` isn't given; null: unknown.
 - `agent-model:claude-code` (claude-code)
 - `agent-models:claude` (claude-code)
 - `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
@@ -176,6 +178,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `companion:who` (companion): The agent whose session runs in app terminal `terminal`, as Provenance names who wrote a line: its name, colour, and the model and effort it was started with; null when it's no companion's.
 - `companion:guest` (companion): A guest's app's socket (the share's gateway checked who and what): their threads, and what they say in them.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
+- `delegate:lineage` (delegate)
 - `fence:<…>` (genui, chart, base): genui; query
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
 - `geocode` (people): A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place.

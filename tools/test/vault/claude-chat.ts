@@ -7,7 +7,7 @@ import { waitFor } from "../lib.ts"
 
 /** A stand-in for the Agent SDK's query: it answers each message by what it says ("permission", "question", "plan",
  *  "slow"), streaming its answer, and keeps what it was given and answered. */
-function fakeSdk() {
+export function fakeSdk() {
   const runs: Any[] = []
   const query = ({ prompt, options }: Any) => {
     const out: Any[] = []

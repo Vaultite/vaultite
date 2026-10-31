@@ -181,7 +181,48 @@ function Welcome() {
   )
 }
 
+type Kin = { id: string; agent: string; title: string; state: string; link: string | null }
+type Family = { parent: { title: string; link: string | null } | null; children: Kin[] }
+const KIN_STATE: Record<string, string> = { working: "Working", waiting: "Waiting", done: "Done", error: "Failed", cancelled: "Cancelled" }
+const AGENT_NAME: Record<string, string> = { claude: "Claude", codex: "Codex", opencode: "OpenCode" }
+
+/** Who delegated this session its task and the subagents it delegated to (Delegation's, when it's on), read again as
+ *  its state changes and, while a subagent works, now and then. */
+function useFamily(id: string, state: string) {
+  const [f, setF] = useState<Family | null>(null)
+  useEffect(() => {
+    if (!id || id === NEW) return
+    let gone = false
+    const read = () => void op<Family>("delegate.list", { of: splitMachine(id)[0] }).then((r) => { if (!gone) setF(r.parent || r.children.length ? r : null) }, () => {})
+    read()
+    const t = setInterval(() => { if (document.visibilityState === "visible" && f?.children.some((k) => k.state === "working" || k.state === "waiting")) read() }, 10_000)
+    return () => { gone = true; clearInterval(t) }
+  }, [id, state, f?.children.map((k) => k.state).join()]) // eslint-disable-line react-hooks/exhaustive-deps
+  return f
+}
+
+function Kinfolk({ f }: { f: Family }) {
+  const go = (link: string | null) => { if (link) openView(link.replace(/^view:/, ""), { newTab: !isViewOpen(link.replace(/^view:/, "")) }) }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground max-md:text-[15px]" data-family>
+      {f.parent && <span>Delegated by <button type="button" data-family-parent className="cursor-pointer font-medium text-foreground/80 underline decoration-foreground/20 underline-offset-2 hover:decoration-foreground/60"
+        onClick={() => go(f.parent!.link)}>{f.parent.title}</button></span>}
+      {f.children.length > 0 && <span className="flex flex-wrap items-center gap-1">
+        Subagents
+        {f.children.map((k) => (
+          <button key={k.id} type="button" data-family-child={k.id} onClick={() => go(k.link)} data-tip={`${AGENT_NAME[k.agent] ?? k.agent}: ${k.title}`}
+            className="flex h-6 max-w-[220px] cursor-pointer items-center gap-1.5 rounded-[6px] bg-foreground/[0.05] px-2 text-foreground/80 hover:bg-foreground/[0.09] max-md:h-8">
+            <span className="truncate">{AGENT_NAME[k.agent] ?? k.agent} · {k.title}</span>
+            <span className={cn("shrink-0", k.state === "working" || k.state === "waiting" ? "text-tertiary" : "text-muted-foreground")}>{KIN_STATE[k.state] ?? k.state}</span>
+          </button>
+        ))}
+      </span>}
+    </div>
+  )
+}
+
 function Head({ id, fresh, title, c, o }: { id: string; fresh: boolean; title: string; c: ReturnType<typeof useChat>; o: Options | null }) {
+  const family = useFamily(fresh ? "" : id, c.s?.state ?? "")
   if (fresh) return null
   const model = c.s?.model || c.model
   const where = [c.cwd && base(c.cwd), model && modelLabel(model, o), o && o.accounts.length > 1 && o.accounts.find((a) => a.id === c.account)?.label].filter(Boolean)
@@ -206,6 +247,7 @@ function Head({ id, fresh, title, c, o }: { id: string; fresh: boolean; title: s
       <div className="min-w-0 flex-1">
         <h1 className="text-[22px] leading-[28px] font-semibold tracking-tight text-balance break-words max-md:hidden">{title || " "}</h1>
         {where.length > 0 && <div className="mt-1 truncate text-[13px] max-md:mt-2 text-muted-foreground max-md:text-[15px]" data-tip={c.cwd ? home(c.cwd, o?.home) : undefined} data-tip-trunc>{where.join(" · ")}</div>}
+        {family && <Kinfolk f={family} />}
       </div>
       <div className="flex shrink-0 items-center gap-1 pt-0.5">
         <Button look="quiet" size="small" className="max-md:size-11 max-md:px-0" onClick={() => void toTerminal()} aria-label={c.tui ? "Show its terminal" : "Open in terminal"}

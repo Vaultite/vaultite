@@ -272,6 +272,10 @@ function EventIcon({ e, className }: { e: InboxEvent; className: string }) {
 const WHY: Record<string, string> = { permission: "Asks permission", question: "Asks you", auth: "Sign in", plan: "Plan to approve", report: "Report", error: "Failed" }
 const standing = (e: InboxEvent) => (e.state === "working" ? "Working on it" : e.state === "open" && e.kind !== "info" ? WHY[e.ask ?? ""] ?? "" : "")
 
+/** A subagent's parent as its own thread is called now (it may have been named since), else as it was then. */
+const parentTitle = (e: InboxEvent) => getEvents().events.find((x) => x.kind === "session" && !x.machine &&
+  ((!!e.parent!.terminal && x.terminal === e.parent!.terminal) || (!!e.parent!.session && x.session === e.parent!.session)))?.title ?? e.parent!.title
+
 const iconButton = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground max-md:size-9"
 
 // ---------- the button in the sidebar's header
@@ -482,10 +486,10 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
           <span className={cn("line-clamp-2 text-[15px] leading-[20px]", !read && "font-semibold")}>{e.title}</span>
-          {(e.body || e.machineLabel || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
+          {(e.body || e.machineLabel || e.parent || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
             className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />
-            {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{(line || e.machineLabel) && " · "}</span>}
-            {[whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
+            {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{(line || e.machineLabel || e.parent) && " · "}</span>}
+            {[e.parent && `from ${parentTitle(e)}`, whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>}
       </button>

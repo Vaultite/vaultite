@@ -923,7 +923,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentHow`: How a session is started, besides its id and first prompt.
 - `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
 - `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
-- `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), and its efforts, least first.
+- `AgentModels`: What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes it), its efforts, least first, and the permission modes it's held to…
 - `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
 - `agentSession(k, v?)`: Whether variable `k` (=`v`) is a coding agent's own session's, which nothing it starts should inherit (Claude Code's tools also get GIT_EDITOR=true, so git never waits on an editor).
 - `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell (AgentCommand).
@@ -932,6 +932,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `argvOf(args, valued, maybe?)`: A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the next word for those in `valued`, and for those in `maybe` when it isn't an option;…
 - `Asking`: What a session waits on the user for, as it said it (the service "agent-asking:<name>"): questions, or a plan.
 - `buildCache(keep?)`: The last few things built (conversations), by key: `make` runs again only when the key's `version` changed.
+- `changedFiles(entries)`: The files `entries`' edits changed, in order: Claude Code's Edit, Write and NotebookEdit (their input's path), Codex's file changes (a line per file: "update ~/src/app.ts").
 - `Choice`: A question's answer: its options' numbers (from 1), or text typed as its own answer.
 - `codingAgent(plugin, a)`: A coding agent's routes and blocks; it answers which accounts an `account` option names.
 - `CodingAgent`: A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of.
@@ -949,7 +950,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `jsonLines(bin, args, o)`: Talks to `bin` in JSON lines over stdio: `first` sent, then `hear` gets each message read (`send` more, `done` with the answer).
 - `JsonlScan`: An agent's JSONL transcripts under `dirs`, read as they grow (at most every 5 s; all again once asked for older days): `line` hears each new line with its file's state (`fresh`, again when the…
 - `KNOWN_AGENTS`: The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its writes say they came from (default its id), how it calls itself (an MCP…
-- `lastTurn(entries)`: A conversation's latest turn: the user's last message, the agent's last answer after it ("" while none), when (ms, else 0), and if it's final (no tool call after it).
+- `lastTurn(entries)`: A conversation's latest turn (what "agent-turn:<agent>" answers): the user's last message, the agent's last answer after it ("" while none), when (ms, else 0), if it's final (no tool call after…
 - `limitRows(windows)`: A plan's limits, one line each: how much is used and when it renews.
 - `Limits`: A plan's limits as an agent reads them: where from, when, and each window.
 - `limitWindow(id, label, minutes, used, resets, now)`: A plan limit's window at `now` (epoch s; `resets` too): one that renewed since it was read is unused.
@@ -960,6 +961,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `numberOf(v)`: A number as stored, else 0.
 - `parseJson(v)`: A JSON text's value (its bytes too), or null.
 - `parseTerminal(id)`: The agent terminal `id` runs, in which account, the session it resumes and the machine it's on; null: a shell.
+- `PERMISSION_MODES`: How much a session may do without asking the user, in Claude Code's words, least first (dontAsk: only what its rules allow, never asking).
+- `PermissionMode`
 - `priceList(table, sep?)`: A price table's entry for a model: the longest key it starts with (after `sep`, so "gpt-5" isn't "gpt-5.1"'s).
 - `processes()`: Every process on this machine: its pid, start (epoch ms) and command line.
 - `programOf(command)`: A command line's program by its name (no folder, no Windows .exe: "codex"), and the rest of the line.

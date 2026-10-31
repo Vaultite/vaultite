@@ -25,6 +25,8 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
       const session: import("./protocol.ts").Session = { client: null }
       /** The ops whose answers are pictures too, as the catalog said last. */
       let pictured = new Set<string>()
+      /** Each op's parameters filled from this environment when not given (VAULTITE_TERMINAL...), as vau fills them. */
+      let envs = new Map<string, [string, string][]>()
       /** The server's API as the client, each call told to Activity as `mcp <tool>`; its errors are the tool's. Unless one
        *  was named, each call finds the server again: the desktop app's vault may open after the client started this. */
       const as = (agent: string | null, tool: string) => {
@@ -44,11 +46,14 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
         tools: async () => {
           const entries = await as(session.client?.agent ?? null, "tools/list")("GET", "ops") as import("../../../core/plugins.ts").OpEntry[]
           pictured = new Set(entries.filter((e) => e.image).map((e) => e.id))
+          envs = new Map(entries.map((e) => [e.id, Object.entries(e.params.properties ?? {}).flatMap(([k, s]) => (s.env ? [[k, s.env] as [string, string]] : []))]))
           return toolsOf(entries)
         },
         ctx: (client: Client, tool: string) => {
           const call = as(client.agent, tool)
-          return { client, op: async (id: string, params: Record<string, unknown>) => {
+          return { client, op: async (id: string, given: Record<string, unknown>) => {
+            const params = { ...given }
+            for (const [k, v] of envs.get(id) ?? []) if (params[k] === undefined && c.env[v]) params[k] = c.env[v]
             // (an op whose answer is a picture too, a screenshot: both)
             if (!pictured.has(id)) return String(await call("POST", `ops/${encodeURIComponent(id)}?as=text`, params) ?? "")
             const r = await call("POST", `ops/${encodeURIComponent(id)}?as=answer`, params) as { text?: unknown; image?: { data: string; mimeType: string } } | null
