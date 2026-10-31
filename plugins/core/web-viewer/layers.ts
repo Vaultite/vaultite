@@ -59,7 +59,36 @@ export function hitCover(box: HTMLElement, r: DOMRect): Cover {
   for (const x of xs) if (over(hit(x, T)) || over(hit(x, B))) return "app"
   for (const y of ys.slice(1, -1)) if (over(hit(L, y)) || over(hit(R, y))) return "app"
   for (const x of steps(L, R, INSIDE).slice(1, -1)) for (const y of steps(T, B, INSIDE).slice(1, -1)) if (over(hit(x, y))) return "app"
-  return null
+  return slides(box, new DOMRect(L, T, R - L, B - T)) ? "app" : null
+}
+
+/** A transition of only a colour: it moves nothing. */
+const COLOUR = /color|shadow|outline|fill|stroke/
+/** Whether something moving or fading (a sidebar sliding in or out) is over `r` now or where it stops: the window is
+ *  raised for its whole run. By its box, not hit tests: what slides out is already inert, and what slides in not there yet. */
+function slides(box: HTMLElement, r: DOMRect) {
+  const runs = new Map<Element, Animation[]>(), holding: Animation[] = []
+  for (const a of document.getAnimations()) {
+    const t = a.effect instanceof KeyframeEffect ? a.effect.target : null, end = a.effect?.getComputedTiming().endTime
+    if (!t || a.playState !== "running" || typeof end !== "number" || !Number.isFinite(end)) continue
+    if (a instanceof CSSTransition && COLOUR.test(a.transitionProperty)) continue
+    // (what holds the page moves it, never covers it: a pane resizing)
+    if (t.contains(box)) holding.push(a)
+    else if (!box.contains(t) && !t.closest(NEVER) && changeAt(t, box) === "hits") runs.set(t, [...(runs.get(t) ?? []), a])
+  }
+  if (!runs.size) return false
+  const crosses = (at: DOMRect) => [...runs.keys()].some((t) => { const b = t.getBoundingClientRect(); return b.width > 0 && b.height > 0 && !!overlap(b, at) })
+  if (crosses(r)) return true
+  // Where they stop, against where the page will be: each looked at just before its end (at it, it would finish and say
+  // so), then put back unseen.
+  const now = box.getBoundingClientRect(), all = [...runs.values()].flat().concat(holding), was = all.map((a) => a.currentTime)
+  try {
+    for (const a of all) a.currentTime = (a.effect!.getComputedTiming().endTime as number) - 0.01
+    const b = box.getBoundingClientRect()
+    return crosses(new DOMRect(r.left + b.left - now.left, r.top + b.top - now.top, r.width + b.width - now.width, r.height + b.height - now.height))
+  } finally {
+    all.forEach((a, i) => { a.currentTime = was[i] ?? 0 })
+  }
 }
 
 /** Whether only what lets the pointer through is over the page ("through"): tooltips and toasts, found by where they are
@@ -85,9 +114,12 @@ export function matters(r: MutationRecord, box: HTMLElement): Change {
   if (c || !t || box.contains(t) || t.closest("[data-status-bar]")) return c
   return r.type === "childList" && [...r.addedNodes].some((n) => n instanceof HTMLElement && getComputedStyle(n).position === "fixed") ? "hits" : null
 }
-/** The same for a transition or animation that ended: what slid in is looked at where it stopped (never a colour's). */
+/** The events `moved` reads. */
+export const SLIDES = ["transitionrun", "transitionend", "transitioncancel", "animationstart", "animationend", "animationcancel"]
+/** The same for a transition or animation that started or ended: what slides is looked at where it goes (`slides`) and
+ *  again where it stopped (never a colour's). */
 export function moved(e: Event, box: HTMLElement): Change {
-  if (e instanceof TransitionEvent && /color|shadow|outline|fill|stroke/.test(e.propertyName)) return null
+  if (e instanceof TransitionEvent && COLOUR.test(e.propertyName)) return null
   return e.target instanceof Element ? changeAt(e.target, box) : null
 }
 

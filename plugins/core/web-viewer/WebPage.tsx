@@ -8,7 +8,7 @@ import {
   type MenuItem, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
-import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, popupOpen, sameRect, setCover, setHole, type Change, type Cover } from "./layers"
+import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, popupOpen, sameRect, setCover, setHole, SLIDES, type Change, type Cover } from "./layers"
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
@@ -264,10 +264,10 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     ro.observe(el)
     const mo = new MutationObserver((rs) => { for (const m of rs) { if (dirty === "hits") return; touch(matters(m, el)) } })
     mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] })
-    // (something sliding over it is looked at where it stops)
-    const ended = (e: Event) => { if (dirty !== "hits") touch(moved(e, el)) }
+    // (something sliding over it is looked at as it starts, where it goes, and where it stops)
+    const slid = (e: Event) => { if (dirty !== "hits") touch(moved(e, el)) }
     const all = () => touch()
-    for (const ev of ["transitionend", "animationend"]) document.addEventListener(ev, ended, true)
+    for (const ev of SLIDES) document.addEventListener(ev, slid, true)
     addEventListener("resize", all)
     document.addEventListener("visibilitychange", all)
     // (and now and then where it is, for a move nothing above announces)
@@ -281,7 +281,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       clearTimeout(raf)
       ro.disconnect()
       mo.disconnect()
-      for (const ev of ["transitionend", "animationend"]) document.removeEventListener(ev, ended, true)
+      for (const ev of SLIDES) document.removeEventListener(ev, slid, true)
       removeEventListener("resize", all)
       document.removeEventListener("visibilitychange", all)
       clearInterval(tick)
