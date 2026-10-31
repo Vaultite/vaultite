@@ -10,6 +10,7 @@ import { currentEditor, keysInEditor } from "@/core/editors"
 import { desktop as desktopApp, otherVaults } from "@/core/desktop"
 import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
 import { useTypingFade } from "@/core/typing"
+import { keepTypingInSight } from "@/core/sight"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
@@ -456,6 +457,7 @@ export default function App() {
   // The traffic lights go with the sidebar they sit in.
   usePeekLights(hideLeft, peek)
   useTypingFade(desktop && typingFade)
+  useEffect(() => keepTypingInSight(), [])
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
   useLayoutEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])

@@ -16,6 +16,7 @@ import { codeStyle, indentOf, languageFor, ownIndent } from "./languages"
 import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, previewConfig, textStart, type PreviewConfig } from "./livePreview"
 import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
+import { followReader, sightMargins } from "./sight"
 import { blockOptionSource } from "./blockOptions"
 import { highlightSource, optionDot } from "./highlights"
 import { optionGlyph, optionTrail, pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
@@ -26,6 +27,7 @@ import { getPrefs } from "@/core/prefs"
 import type { SlashItem } from "@/core/define"
 import type { LinkClick } from "@/core/links"
 import { docChanged, registerDoc } from "@/core/anchors"
+import { textChanged } from "@/core/anchor"
 import { registerEditor } from "@/core/editors"
 import { runShortcut } from "@/core/commands"
 import { textChanges, type Clash } from "@/core/merge"
@@ -321,8 +323,9 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         },
       }),
       floatingTooltips ? tooltips({ parent: tooltipHost() }) : [],
-      EditorView.updateListener.of((u) => traceUpdate(u, docPath ?? label ?? "")),
+      EditorView.updateListener.of((u) => { traceUpdate(u, docPath ?? label ?? ""); if (u.docChanged) textChanged(u.view, u.changes) }),
     ]
+    const sight = [sightMargins, followReader]
     // (as this tab's editor of the file was left, its history with it, when it went: editor/kept.ts)
     const keepAs = keep ? keptKey(tab, keep) : null
     let restored = false
@@ -340,7 +343,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         selection: hides ? EditorSelection.cursor(bodyStart(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
         extensions: language !== undefined ? [
           Prec.highest(plugged.current.of([])),
-          leaving, history(), conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
+          leaving, sight, history(), conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
           lang.current.of([]), syntaxHighlighting(codeStyle),
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
@@ -350,7 +353,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
         ] : code ? [
           Prec.highest(plugged.current.of([])),
-          leaving, history(), conflicts, indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
+          leaving, sight, history(), conflicts, indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
           code === "json" ? [jsonLang(), syntaxHighlighting(jsonStyle)] : code === "html" ? [htmlLang(), syntaxHighlighting(htmlStyle)] : [],
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
@@ -360,7 +363,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
         ] : [
           Prec.highest(fenceMenu), Prec.highest(plugged.current.of([])),
-          leaving, history(), conflicts,
+          leaving, sight, history(), conflicts,
           EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged() }),
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
           prose.current.of(writing(settings, doc)),

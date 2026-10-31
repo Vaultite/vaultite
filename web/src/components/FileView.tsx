@@ -508,7 +508,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // (the cursor put back where it was left, as the file opens: a line asked for wins over it, before or after)
   const putBack = useRef<(() => void) | null>(null)
   const tookLine = useRef(false)
-  const toLine = useCallback((line: number, find?: string, from?: DrawnLine) => {
+  const toLine = useCallback((line: number, find?: string, from?: DrawnLine, col = 0) => {
     if (ro || hidden) return
     tookLine.current = true
     putBack.current?.(); putBack.current = null
@@ -527,7 +527,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       }
     }
     const fm = fmLines(cur.current)
-    focusText([Math.max(0, line - fm), 0, find], { hold: from && { line: Math.max(0, from.line - fm), y: from.y }, there })
+    focusText([Math.max(0, line - fm), col, find], { hold: from && { line: Math.max(0, from.line - fm), y: from.y }, there })
   }, [ro, hidden, pick, edit, focusText])
   const articleEl = useCallback(() => article.current, [])
   useEditAt(path, articleEl, toLine)

@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, MousePointer2, Power, SquareTerminal } from "lucide-react"
-import { choose, cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
+import { choose, cn, currentEditor, definePlugin, editAt, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
 import { connect, getState, liveAgents, type Note, sendMoment, setGuest, startComment, subscribe, viewOf } from "./live"
@@ -28,8 +28,11 @@ function ask(agent?: string) {
   }
   const line = v.state.doc.lineAt(sel.head), mention = `@${getState().name.toLowerCase()} `
   const at = line.text.trim() ? line.to : line.from, insert = line.text.trim() ? `\n${mention}` : mention
-  v.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input" })
-  v.focus()
+  const reading = v.contentDOM.contentEditable !== "true", y = reading ? v.coordsAtPos(line.from)?.top : undefined
+  v.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input", scrollIntoView: !reading })
+  if (!reading) return v.focus()
+  // (reading: the note goes into editing on that line, the line read kept where it shows)
+  editAt(path, v.state.doc.lineAt(at + insert.length).number - 1, { col: mention.length, ...(y === undefined ? {} : { from: { line: line.number - 1, y } }) })
 }
 
 setGuest(share)

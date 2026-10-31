@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Notes stay put when the phone's keyboard comes up**: the line you tap stays where your finger put it (or moves just
+  enough to clear the keyboard and the editing keys), a table cell or field low on the screen comes into sight, and
+  leaving a field for the text no longer jumps the page. While reading, Ask, Comment and the editing commands act on
+  the lines you're reading, not where the caret was last; Ask from reading opens editing right there.
 - **A full player for audiobooks and podcasts**: a sound's tab (and a tap on the mini player) shows its cover, a
   scrubber, big skips and the chapters inside .m4b and .mp3 files (with the lock screen naming the chapter), plus
   bookmarks with notes, a sleep timer (minutes or the end of the chapter) and a short rewind after a pause.

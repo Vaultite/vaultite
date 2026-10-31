@@ -67,6 +67,6 @@ export default definePlugin({
   }]),
   fileMenu: (path) => (/\.md$/i.test(path) && !path.startsWith(".")
     ? [{ label: "Add photo", icon: ImagePlus, section: coarse() ? "actions" : "more", run: () => void addPhotos(path) }] : []),
-  editor: () => { void load(); return Promise.all([import("./menu"), import("./margin")]).then(([m, k]) => [m.editorMenu, k.keysMargin]) },
+  editor: () => { void load(); return import("./menu").then((m) => m.editorMenu) },
   background: () => <NoteKeys />,
 })

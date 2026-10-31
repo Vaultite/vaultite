@@ -704,7 +704,7 @@ function editOf(view: EditorView, find: () => Cand | null, bar: HTMLElement, own
     const was = drawnTop(view, x)
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.line(x.a).to), scrollIntoView: was === null, userEvent: "select" })
     view.focus()
-    if (was !== null) keepOnScreen(view, () => lineTop(view, x.from), was)
+    if (was !== null) keepOnScreen(view, x.from, (p) => lineTop(view, p), was)
   })
   return {
     bar,
@@ -736,7 +736,7 @@ function doneEditing(view: EditorView) {
   if (x.b >= doc.lines) view.dispatch({ changes: { from: at, insert: "\n" }, selection: EditorSelection.cursor(at + 1), userEvent: "input" })
   else view.dispatch({ selection: EditorSelection.cursor(at), userEvent: "select" })
   view.focus()
-  keepOnScreen(view, () => drawnTop(view, x), was)
+  keepOnScreen(view, x.from, (p) => drawnTop(view, { ...x, from: p }), was)
 }
 
 /** The top on screen of the line at `pos` (of the block drawn there: its widget). */

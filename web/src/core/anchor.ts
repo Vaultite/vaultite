@@ -1,5 +1,6 @@
 // Scroll anchoring for a page of cards: Safari has none and Chrome anchors inside a card, so here the anchor is the
 // first whole card on screen, and the page is scrolled back by however far it moved. And holding one thing in place.
+import type { ChangeDesc } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import { trace } from "@/core/trace"
 import { scrollingBox } from "@/lib/utils"
@@ -113,12 +114,19 @@ export function holdPlace(box: HTMLElement | null, off: () => number | null, opt
   return stop
 }
 
-/** Keep what `top()` finds in an editor (a y on screen) at `at`, in sight, while the text around it settles (blocks
- *  drawn anew above it); `there`: once it's first in place. */
-export function keepOnScreen(view: EditorView, top: () => number | null, at: number, there?: () => void) {
+const changing = new WeakMap<EditorView, Set<(c: ChangeDesc) => void>>()
+/** An editor's text changed (Editor.tsx tells every change): what holds a place in it follows. */
+export function textChanged(view: EditorView, c: ChangeDesc) { for (const f of changing.get(view) ?? []) f(c) }
+
+/** Keep what's at `pos` in an editor (`top`: where it's drawn, a y on screen) at `at`, in sight, while the text around
+ *  it settles (blocks drawn anew above it, the server stamping the frontmatter); `there`: once it's first in place. */
+export function keepOnScreen(view: EditorView, pos: number, top: (pos: number) => number | null, at: number, there?: () => void) {
+  const follow = (c: ChangeDesc) => { pos = c.mapPos(pos, 1) }
+  const all = changing.get(view) ?? new Set()
+  changing.set(view, all.add(follow))
   // (its pane even when the text doesn't overflow it yet: an editor just drawn grows as its blocks come)
   const pane = view.dom.closest<HTMLElement>("[data-pane]")
   const box = scrollingBox(view.dom) ?? (pane && /auto|scroll/.test(getComputedStyle(pane).overflowY) ? pane : null), y = inSight(box, at)
-  return holdPlace(box, () => { const t = top(); return t === null ? null : t - y },
-    { measure: (read, write) => view.requestMeasure({ read, write }), gone: () => !view.dom.isConnected, there })
+  return holdPlace(box, () => { const t = top(pos); return t === null ? null : t - y },
+    { measure: (read, write) => view.requestMeasure({ read, write }), gone: () => !view.dom.isConnected, there, done: () => all.delete(follow) })
 }

@@ -165,6 +165,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dropTab(item, d)`: Drop `item` there: a pane or a tab moves, a file opens in a new tab (or its tab in that bar moves there).
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
 - `Editable({ value, set, placeholder, className, children })`: A value a block shows that can be changed in place (a person's context): click, type, Enter.
+- `editAt(path, line, opts?)`: Open a file in editing (its view may be on its way), the cursor at a 0-based line counting frontmatter (`col` in it, or `find` selected there), scrolled to; `from`: a line (numbered the same) on…
 - `EditorCtx`: Which editor a plugin's editor extensions go into: a note (Markdown, live preview or source), a code file, or other text (JSON, an artifact's HTML, a CSV's source); `path`: its file, when it's one.
 - `EditorExtension`: CodeMirror extensions it adds to the editor (Vim), before the editor's own keymaps so its keys win.
 - `editorMenuItems(view)`: What the plugins that are on add to this editor's right-click menu (`editorMenu`).

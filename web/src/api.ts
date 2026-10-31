@@ -140,7 +140,7 @@ export { linksIn, type LinkSpan } from "../../core/links.ts"
 /** A link's right-click menu, the same wherever one is drawn: open it, copy it, and (`edit`) change it where it's written. */
 export { linkItems, openLinkMenu, type LinkEdit } from "@/components/LinkMenu"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
-export { openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
+export { editAt, openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, keysInEditor, selectAllIn, selectedText, type OpenEditor } from "@/core/editors"
 export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 // Highlight colours (==🟢text==): the class each draws with (hl-<colour>), and colouring one in an editor.

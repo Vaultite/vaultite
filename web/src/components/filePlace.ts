@@ -3,6 +3,7 @@
 import { useCallback } from "react"
 import type { EditorApi } from "@/editor/Editor"
 import { holdPlace, keepOnScreen } from "@/core/anchor"
+import { lineInSight, wholly } from "@/core/sight"
 import { scrollingBox } from "@/lib/utils"
 import type { Mode } from "@/components/fileState"
 
@@ -26,21 +27,6 @@ export function revealProps(article: HTMLElement | null) {
 // ---------- the cursor into the text ----------
 // Switching to editing puts the cursor in the text (Vim: normal mode), so the keyboard goes on without a click.
 
-/** The first line wholly in sight in an editor scrolled by `box`. */
-function lineInSight(v: EditorApi["view"], box: HTMLElement | null) {
-  const top = box ? box.getBoundingClientRect().top : 0
-  const h = Math.max(0, top - v.documentTop)
-  let b = v.lineBlockAtHeight(h)
-  if (b.top + v.documentTop < top - 2 && b.to < v.state.doc.length) b = v.lineBlockAt(b.to + 1)
-  return b.from
-}
-
-/** Whether `pos`'s line is wholly in sight in an editor scrolled by `box`. */
-function wholly(v: EditorApi["view"], box: HTMLElement | null, pos: number) {
-  const b = v.lineBlockAt(pos), r = box?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight }
-  return v.documentTop + b.top >= r.top - 1 && v.documentTop + b.bottom <= r.bottom + 1
-}
-
 /** The cursor just put on the first line in sight follows it while the page settles (the place held as the editor
  *  measures its new heights moves it a little), until the reader acts, moves the cursor, or a second has passed. */
 function followSight(api: EditorApi, box: HTMLElement | null, pos: number) {
@@ -48,8 +34,8 @@ function followSight(api: EditorApi, box: HTMLElement | null, pos: number) {
   let at = pos
   const on = () => {
     if (!v.dom.isConnected || v.state.selection.main.head !== at) return end()
-    if (wholly(v, box, at)) return
-    const next = api.offBlocks(lineInSight(v, box))
+    if (wholly(v, at)) return
+    const next = api.offBlocks(lineInSight(v))
     if (next !== null && next !== at) v.dispatch({ selection: { anchor: (at = next) } })
   }
   const timer = setTimeout(() => end(), 1000)
@@ -94,7 +80,7 @@ export function useTextFocus(editor: { current: { api: EditorApi; source: boolea
       const box = scrollingBox(article.current)
       // (A cursor out of sight would be scrolled to by the first key, and CodeMirror keeps its line drawn, which moves
       // the page under the reader as the lines between are measured: the first line in sight instead.)
-      const seen = (pos: number) => wholly(v, box, pos)
+      const seen = (pos: number) => wholly(v, pos)
       // (an editor back as its tab left it keeps its own selection, a range too, when that's in sight: editor/kept.ts)
       if (!reveal && ed.api.restored && seen(v.state.selection.main.head)) { v.contentDOM.focus({ preventScroll: true }); return }
       let pos: number | null = null
@@ -110,14 +96,14 @@ export function useTextFocus(editor: { current: { api: EditorApi; source: boolea
           // (held while it settles: blocks above it drawn late, a block's Markdown shown where it was drawn)
           const n = hold ? hold.line + above + 1 : 0, held = n >= 1 && n <= doc.lines ? doc.line(n).from : null
           const r = box?.getBoundingClientRect() ?? { top: 0, height: innerHeight }
-          keepOnScreen(v, () => v.documentTop + v.lineBlockAt(held ?? line.from).top, held !== null ? hold!.y : r.top + r.height / 3, there)
+          keepOnScreen(v, held ?? line.from, (p) => v.documentTop + v.lineBlockAt(p).top, held !== null ? hold!.y : r.top + r.height / 3, there)
           return
         }
         if (!seen(pos)) pos = null
       }
       // Never into a drawn block (a ```block-person fence at the top): it would show its Markdown until a click elsewhere.
       const inSight = pos === null
-      pos = ed.api.offBlocks(pos ?? lineInSight(v, box))
+      pos = ed.api.offBlocks(pos ?? lineInSight(v))
       if (pos === null) return
       v.dispatch({ selection: { anchor: pos } })
       v.contentDOM.focus({ preventScroll: true })
