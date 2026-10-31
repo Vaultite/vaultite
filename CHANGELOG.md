@@ -14,8 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   shows where it will open (⌥↓ changes it), ⌘T goes to the site it completes, `nas:5000` and `.local` names open, ⌘L
   works from anywhere, and the search engine is a choice in Settings.
 - **Links open tabs as in Chrome**: ⌘-click, a middle click or a page's "Open link in new tab" opens it behind, in order
-  after the page; ⌘⇧-click and target=_blank in front, and closing it goes back; sign-in and editor pages opened by a
-  site keep talking to it, agents' clicks never open your tabs, pop-ups need a click, and ⌘⇧T brings a page back with
+  after the page; ⌘⇧-click and target=_blank in front, and closing it goes back (closing one opened behind goes on to the
+  next); closing a page never closes the tabs it opened; sign-in and editor pages opened by a site keep talking to it, agents' clicks never open your tabs, pop-ups need a click, and ⌘⇧T brings a page back with
   its history, archived ones and after a relaunch too.
 - **The Browser's rough edges, smoothed as in Chrome**: pages that don't load say why in plain words (and load again once
   you're back online), untrusted certificates warn before you go on, a crashing page says so with Reload, loading tabs

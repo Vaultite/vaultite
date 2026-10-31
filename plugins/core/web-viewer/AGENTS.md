@@ -78,8 +78,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   or a middle click opens one behind, ⌘⇧-click in front, ⌥⌘-click (and the link's menu) in the system browser, as does
   every link with `openLinks: browser`. In a page, as in Chrome: ⌘-click, a middle click and the link's menu open a new
   tab behind it (in the page's container and tab group, after the ones opened from it before), ⌘⇧-click and
-  target=_blank in front (closing it straight away shows the page again), ⇧-click to the side, ⌥-click a glance (with
-  Glance on); `window.open` keeps `window.opener`, a page's script opens nothing without a click (it says so, with
+  target=_blank in front, right after the page (closing it straight away shows the page again; closing one of those
+  opened behind goes to the next of them, then the page), ⇧-click to the side, ⌥-click a glance (with Glance on); tabs
+  a page opened stay open when it closes; `window.open` keeps `window.opener`, a page's script opens nothing without a click (it says so, with
   Open), a tab whose page only downloaded closes. The link's menu also has Open link in container, to the side, Glance
   and Copy link text. What an agent's page opens is its own page, never a tab of the user's.
 - Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,

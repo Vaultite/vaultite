@@ -416,7 +416,9 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
       } }
     }
     const how = disposition === "background-tab" ? "background" : disposition === "new-window" ? "side" : "foreground"
-    return { action: "allow", overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => {
+    // (outliving its page, as a Chrome tab does: Electron closes what window.open made with its opener, which closed every
+    // tab opened from a page with it)
+    return { action: "allow", outlivesOpener: true, overrideBrowserWindowOptions: { webPreferences: prefsOf(profile) }, createWindow: (o) => {
       const child = make(p.win, to, profile, "", { agent: agents, adopt: (o as { webContents: WebContents }).webContents, opener: p.id })
       pagesChanged(p.win)
       // (the window hands it to the tab it opens for it, `web:adopt`, or it ends)

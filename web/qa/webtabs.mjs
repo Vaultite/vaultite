@@ -1,10 +1,10 @@
 // The Browser's new tabs in the desktop app (Electron), against pages this script serves on 127.0.0.1: ⌘-click and a
 // middle click open a link behind its page, in click order after it; ⌘⇧-click and target=_blank in front, and closing
-// that goes back to the page; window.open keeps window.opener, a sized popup is a window titled with its site and closed
-// with its page; a script opens nothing unclicked; a link that downloads leaves no tab; a page's link menu
-// (new tab, a container, to the side, Glance, Copy link text); ⌥-click glances and Open in tab keeps the page; links
-// in notes follow the same keys; an agent's page opens its own pages, never the user's tabs; ⌘⇧T brings a page back
-// with its history, and after a relaunch the closed tab and each tab's history are still there.
+// that goes back to the page; window.open keeps window.opener; tabs a page opened outlive it, but a sized popup is a
+// window titled with its site and closed with its page; a script opens nothing unclicked; a link that downloads leaves
+// no tab; a page's link menu (new tab, a container, to the side, Glance, Copy link text); ⌥-click glances and Open in
+// tab keeps the page; links in notes follow the same keys; an agent's page opens its own pages, never the user's tabs;
+// ⌘⇧T brings a page back with its history, and after a relaunch the closed tab and each tab's history are still there.
 // WRITES: the throwaway vault only.
 //   node web/qa/webtabs.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -243,6 +243,23 @@ check("a sized popup: a window of its own, titled with its site", await until(as
 check("… which reaches its page", await until(async () => (await pages()).some((p) => p.title === "got hi"), 5000), await pages())
 await menuClick("Close tab")
 check("… and closes with it", await until(async () => (await popup()).length === 0, 8000), await popup())
+
+// ---------- tabs a page opened outlive it, as Chrome's do ----------
+await openOpener()
+await clickInPage("#a", [MOD])
+await clickInPage("#pop")
+await until(async () => (await pages()).some((p) => p.visible && p.title === "child opener=true"), 10000)
+await showTab(at("/opener"))
+await until(async () => (await shownUrl()) === at("/opener"), 8000)
+const opener = (await tabs()).activeId, rest = (await tabs()).list.filter((t) => t !== at("/opener"))
+const opened = (await pages()).filter((p) => [at("/one"), at("/two"), at("/child")].includes(p.url)).length
+await menuClick("Close tab")
+await wait(1500)
+check("closing a page: the tabs it opened stay, behind and in front", await until(async () => {
+  const t = await tabs()
+  return !t.ids.includes(opener) && JSON.stringify(t.list.filter((x) => x !== at("/opener"))) === JSON.stringify(rest)
+}, 3000), [rest, await tabs()])
+check("… their pages too", (await pages()).filter((p) => [at("/one"), at("/two"), at("/child")].includes(p.url)).length === opened, [opened, await pages()])
 
 // ---------- ⌘⇧T: back with its history, after a relaunch too ----------
 await openOpener()

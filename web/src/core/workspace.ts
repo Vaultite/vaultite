@@ -69,7 +69,7 @@ export function set(next: Workspace) {
   state = { root, focus: focusAfter(state.root, root, next.focus) }
   try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
   const now = activeTab().id
-  if (now !== was) { shownAfter = { tab: now, prev: was }; if (lastChild?.opener !== now) lastChild = null }
+  if (now !== was) { if (!kin(was, now)) openers.clear(); if (lastChild?.opener !== now) lastChild = null }
   noteFile()
   changed.notify()
 }
@@ -262,12 +262,17 @@ export function go(to: string, newTab = false, push = true) {
     return show(to, push)
   }
   set(withGroup(state.focus, (g) => withTabAfter(g, cur.id, to, from)))
+  if (from) openers.set(activeTab().id, from)
   show(to, push)
 }
 
-/** The tab on screen in the focused pane and the one before it there: closing a tab opened from the one before it, with
- *  no other shown between, goes back to it (closeTab), as a browser's tab opened from a link does. */
-let shownAfter = { tab: "", prev: "" }
+/** Chrome's openers (tab: the tab it was opened from), what closing a tab goes on to (closeTab: openerNext): kept while
+ *  the user moves among a tab, those it opened and their siblings; a tab opened in front forgets the others'. */
+const openers = new Map<string, string>()
+const kin = (a: string, b: string) => {
+  const oa = openers.get(a), ob = openers.get(b)
+  return oa === b || ob === a || (!!oa && oa === ob)
+}
 /** The tab opened last from `opener` while it stayed on screen: the next opened from it goes after it (Chrome's order). */
 let lastChild: { opener: string; tab: string } | null = null
 
@@ -282,12 +287,13 @@ export function openTab(to: string, { background = false, from, id = newId() }: 
   }
   const opener = from && g.tabs.some((t) => t.id === from) ? from : cur.id
   const tab: Tab = { id, to, from: opener }
-  const after = lastChild?.opener === opener && g.tabs.some((t) => t.id === lastChild!.tab) ? lastChild.tab : opener
+  const after = background && lastChild?.opener === opener && g.tabs.some((t) => t.id === lastChild!.tab) ? lastChild.tab : opener
   const set0 = g.tabs.find((t) => t.id === opener)?.set
   set(withGroup(g.id, (x) => {
     const at = x.tabs.findIndex((t) => t.id === after) + 1
     return { ...x, tabs: [...x.tabs.slice(0, at), set0 ? { ...tab, set: set0 } : tab, ...x.tabs.slice(at)], active: background ? x.active : id }
   }, background ? {} : { focus: g.id }))
+  openers.set(id, opener)
   if (background) lastChild = { opener, tab: id }
   else show(to, true)
   return id
@@ -559,10 +565,18 @@ export function closeTab(id: string, force = false) {
   if (!force) return guarded(g.tabs.filter((t) => t.id === id), () => closeTab(id, true))
   closed(g.tabs.filter((t) => t.id === id))
   const left = withoutTabs(g, new Set([id]))
-  // (opened from the tab shown just before it, and nothing else shown since: back to that one)
-  const from = g.tabs.find((t) => t.id === id)?.from
-  const back = g.active === id && from && shownAfter.tab === id && shownAfter.prev === from && left.tabs.some((t) => t.id === from)
-  leave(g.id, left.tabs, back ? from : left.active)
+  leave(g.id, left.tabs, (g.active === id && openerNext(g, id)) || left.active)
+  // (those it opened are now its opener's, as Chrome's are)
+  const up = openers.get(id)
+  openers.delete(id)
+  for (const [t, o] of openers) if (o === id) { if (up) openers.set(t, up); else openers.delete(t) }
+}
+/** Chrome's tab after closing the active one: the next it opened, else the next its opener opened (each to the right,
+ *  else the left), else its opener; null when none is kept (`openers`): its neighbour, as ever. */
+function openerNext(g: Group, id: string) {
+  const i = g.tabs.findIndex((t) => t.id === id), by = openers.get(id)
+  const next = (o: string | undefined) => (o ? g.tabs.slice(i + 1).find((t) => openers.get(t.id) === o) ?? g.tabs.slice(0, i).findLast((t) => openers.get(t.id) === o) : undefined)
+  return (next(id) ?? next(by) ?? g.tabs.find((t) => t.id === by && t.id !== id))?.id ?? null
 }
 
 /** Whether a pane can be closed: not the only one (closing its tabs leaves a blank one: Close all). */
