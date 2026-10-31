@@ -454,7 +454,8 @@ export default function App() {
   const rside = showRight && !hideRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
   const peek = usePeek(hideLeft, hideRight && hasRight)
   const leftOpen = sidebar || hideLeft
-  // The traffic lights go with the sidebar they sit in; it slides out once they're gone.
+  // The traffic lights go with the sidebar they sit in; it slides out once they're gone, inert only then (an inert one
+  // isn't hit, so a web page it's still over would be raised over it meanwhile).
   const leftIn = usePeekLights(hideLeft, peek)
   useTypingFade(desktop && typingFade)
   useEffect(() => keepTypingInSight(), [])
@@ -488,7 +489,7 @@ export default function App() {
       {hideLeft && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 left-0 z-[38] w-[6px]" />}
       {hideRight && hasRight && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 right-0 z-[38] w-[3px]" />}
       {!popout && <>
-      <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && peek !== "left"} onContextMenu={menuFor(panelMenu)}
+      <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && !leftIn} onContextMenu={menuFor(panelMenu)}
         className={cn(
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
           "transition-[width] duration-200 ease-out md:flex",
