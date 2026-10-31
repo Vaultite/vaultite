@@ -45,7 +45,16 @@ export function SessionSheet({ id }: { id: string }) {
   const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine, host: e.host })
   return (
     <div data-session-sheet={e.id} data-ask={e.ask ?? ""}>
-      <SheetHead icon={agent?.icon ?? Bot} tint={agent?.tint ?? "var(--inbox)"} kicker="Inbox" title={e.title} sub={sub} />
+      <SheetHead icon={agent?.icon ?? Bot} tint={agent?.tint ?? "var(--inbox)"} kicker="Inbox" title={e.title} sub={sub}>
+        {/* (what needs you stays until it's dealt with: settled here, by the title, apart from the sheet bar's Done) */}
+        {!asks && (
+          <div className="mt-3 flex">
+            {e.state === "done"
+              ? <Button className="h-11 px-3 md:h-8" data-session-done="undo" onClick={() => done(false)}><RotateCcw className="size-4" /> Back to inbox</Button>
+              : <Button className="h-11 px-3 md:h-8" data-session-done onClick={() => done(true)}><CheckCheck className="size-4" /> Done with this</Button>}
+          </div>
+        )}
+      </SheetHead>
       {e.questions && blocked
         ? <Questions e={{ ...e, questions: e.questions }} />
         : e.body
@@ -63,14 +72,6 @@ export function SessionSheet({ id }: { id: string }) {
         ? <Button look="quiet" className="h-11 px-3 md:h-8" onClick={() => void open().catch((err) => notifyError(err, "Couldn't open it"))}><SquareTerminal className="size-4" /> Open session</Button>
         : <ReplyBox to={e.id} name={name} open={open} sent={() => markRead([e.id])} back={() => openDetail(detailPath(SESSION_DETAIL, e.id))}
           placeholder={!e.questions ? undefined : e.questions.length === 1 && !e.questions[0].multi ? "Or answer in your own words" : "Or tell it something else instead"} />}
-      {/* (what needs you stays until it's dealt with: here, without replying) */}
-      {!asks && (
-        <div className="mt-3 flex">
-          {e.state === "done"
-            ? <Button look="quiet" className="h-11 px-3 md:h-8" data-session-done="undo" onClick={() => done(false)}><RotateCcw className="size-4" /> Back to inbox</Button>
-            : <Button look="quiet" className="h-11 px-3 md:h-8" data-session-done onClick={() => done(true)}><CheckCheck className="size-4" /> Mark done</Button>}
-        </div>
-      )}
     </div>
   )
 }

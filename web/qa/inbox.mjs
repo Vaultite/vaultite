@@ -116,7 +116,7 @@ await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("bu
 async function openFromRow() { await kept.first().locator("button").first().click() }
 await until(() => sheet.count())
 await sheet.locator("[data-session-done]").click()
-check("Mark done in its sheet: done, out of the list", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "done")) &&
+check("Done with this, in its sheet: done, out of the list", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "done")) &&
   !!(await until(async () => (await kept.count()) === 0)))
 await page.locator("[data-sonner-toast]", { hasText: "Done: " }).first().getByRole("button", { name: "Undo" }).click()
 check("Undo: it needs you again", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.state === "open")))
