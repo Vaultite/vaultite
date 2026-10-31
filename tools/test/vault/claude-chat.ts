@@ -212,6 +212,15 @@ export default async ($: VaultTest) => {
     ;[st, b] = await api("POST", "ops/claude-code.chat-list", {})
     check("chat list: the session, its state", st === 200 && b.sessions.some((s: Any) => s.id === id && s.state === "idle"), b)
 
+    // A resume or fork that gives the session a new id, told with its thread: still one row, following the new id.
+    {
+      const tell = app.plugins.find((p) => p.id === "inbox")!.services["inbox:session"] as (b: Any) => Promise<Any>
+      const other = crypto.randomUUID(), threadId = (await rows()).find((x) => x.session === id)!.id
+      const e = await tell({ agent: "claude", session: other, thread: threadId, state: "done", prompt: "Go on", text: "Went on" })
+      const both = (await rows()).filter((x) => x.id === threadId || x.session === other || x.session === id)
+      check("chat: two session ids on one thread are one inbox row, following the newer", e?.id === threadId && both.length === 1 && both[0].session === other, both)
+      await tell({ agent: "claude", session: id, thread: threadId, state: "done", prompt: "Back", text: "Back" })
+    }
     // Stopped, then a message resumes it (its transcript says where it ran).
     const proj = path.join(CLAUDE_DIR, "projects", "-tmp-chat")
     fs.mkdirSync(proj, { recursive: true })
