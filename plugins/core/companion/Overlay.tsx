@@ -13,7 +13,7 @@ import { showThread, useInMargin } from "./threads"
 
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
  *  docked: at its arrow in the status bar (x, y: the arrow's corner), where it rests unseen, the arrow standing for it. */
-type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean }
+type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean; docked?: boolean; rides?: boolean }
 /** A cursor's place as drawn: what it looked at, its place among them (home's), its step in a stack; held, it stays
  *  there (offset by dx, dy: where it was dropped). */
 type Place = { at: Target; i: number; shift: number; dx: number; dy: number }
@@ -63,7 +63,8 @@ function rowOf(path: string): Spot | null {
   if (c.bottom - c.top < 12 || c.right - c.left < 12) return null
   const x = Math.max(c.left + 4, Math.min(c.right - 24, r.left + Math.min(r.width - 24, 120)))
   const y = Math.max(c.top + 2, Math.min(c.bottom - 24, r.top + 4))
-  return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40) }
+  // (on a hidden sidebar slid in, it rides over it, as the sidebar's toggle does; the rest stay under it with the page)
+  return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40), rides: !!el.closest("aside[data-peek]") || undefined }
 }
 
 /** Where an agent with nowhere to be rests: its arrow in the status bar, else (the bar's companion hidden, a phone) in the
@@ -325,12 +326,12 @@ const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, 
     el.addEventListener("pointercancel", cancel)
   }
   return (
-    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
+    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-(--z-page-float)" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
       data-docked={docked || undefined}
       style={{ transform: docked ? `translate(${at.x}px, ${at.y}px) scale(${DOCK_SCALE})` : `translate(${at.x - 3}px, ${at.y - 2}px)`, transformOrigin: "0 0",
         transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typed ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), ${docked ? "opacity .25s .45s, visibility 0s .7s" : "opacity .3s"}`,
-        opacity: docked ? 0 : idle && !hover && !open && !fan ? 0.55 : 1, visibility: docked ? "hidden" : undefined, zIndex: open || drag || fan ? 57 : many ? 56 : undefined }}>
+        opacity: docked ? 0 : idle && !hover && !open && !fan ? 0.55 : 1, visibility: docked ? "hidden" : undefined, zIndex: spot.rides ? "var(--z-peek-rider)" : open || drag || fan ? "calc(var(--z-page-float) + 2)" : many ? "calc(var(--z-page-float) + 1)" : undefined }}>
       {!spot.drawn && <>
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")}>
         <Arrow tint={tint} />
@@ -755,7 +756,7 @@ export function Overlay() {
       <style>{STYLE}</style>
       {lit && <style>{`${lit} { background-color: color-mix(in srgb, var(--c) 38%, transparent); box-shadow: 0 1.5px 0 color-mix(in srgb, var(--c) 85%, transparent); }`}</style>}
       {[...panes.values()].map((p) => (
-        <div key={p.id} className="pointer-events-none fixed inset-x-0 z-[54] overflow-hidden" style={{ top: p.top, height: Math.max(0, p.bottom - p.top) }}>
+        <div key={p.id} className="pointer-events-none fixed inset-x-0 z-(--z-page-float) overflow-hidden" style={{ top: p.top, height: Math.max(0, p.bottom - p.top) }}>
           {p.cards.map((c) => <Card key={c.n.id} n={c.n} x={c.x} y={c.y - p.top} folded={c.folded} open={!!c.open} cap={Math.max(120, p.bottom - p.top - 16)}
             minute={minute} onHeight={(h) => measured(c.n.id, h)} onOpen={(o) => pick(o ? c.n.id : null)} onHover={(on) => setHovered((h) => (on ? c.n.id : h === c.n.id ? null : h))} />)}
           {p.add && <AddComment x={p.add.x} y={p.add.y - p.top} />}

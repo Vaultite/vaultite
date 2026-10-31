@@ -134,7 +134,7 @@ function PageBar({ find, focus }: { find: PageFind; focus: number }) {
     find.step(e.shiftKey ? -1 : 1)
   }
   return (
-    <div data-page-find data-overlay data-find-bar className="fixed z-40 flex items-center gap-0.5 rounded-[8px] max-md:flex-wrap max-md:gap-y-1.5 border-[0.5px] border-border bg-popover p-1 text-popover-foreground shadow-lg"
+    <div data-page-find data-overlay data-find-bar className="fixed z-(--z-page-float) flex items-center gap-0.5 rounded-[8px] max-md:flex-wrap max-md:gap-y-1.5 border-[0.5px] border-border bg-popover p-1 text-popover-foreground shadow-lg"
       style={{ top: spot.top, left: spot.left, width: spot.width }}>
       <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
         <input ref={ref} value={text} placeholder="Find in page" aria-label="Find" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"

@@ -1145,6 +1145,12 @@ html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(-
 /* The phone's bar stays where it is: its buttons change in place. */
 ::view-transition-group(phone-bar) { animation-duration: 200ms; }
 
+/* The layers a hidden sidebar slides in among, bottom to top: what floats over the page (comment cards, agents'
+   cursors, the find bar) stays the page's, so the shade dims it and the sidebar covers it; what rides on the sidebar
+   (its toggle, a cursor on one of its rows) goes over it, and what the user opens (a menu: 60, a preview, a tooltip)
+   over all. */
+:root { --z-page-float: 32; --z-peek-shade: 35; --z-peek-edge: 38; --z-peek: 40; --z-peek-rider: 50; }
+
 /* Behind a hidden sidebar slid in (appearance `peekShade`): a soft dim that waits for the sidebar to be in, so brushing
    the window's edge never flashes the page, and lifts at once. Stronger in dark, where a dark page hardly darkens. */
 [data-peek-edge] { pointer-events: none; }

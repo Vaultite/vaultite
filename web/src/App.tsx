@@ -525,16 +525,16 @@ export default function App() {
           Sidebar.tsx, all offsets in spacing units). Right-click it to pick which panels show. */}
       {/* Behind a hidden sidebar slid in, the page dims a little (index.css: it starts once the sidebar is in, so
           brushing the edge never flashes it). Clicks pass through: one on the page puts the sidebar away. */}
-      {peekShade && (hideLeft || hideRight) && <div aria-hidden data-peek-shade="" data-shown={peek ? "" : undefined} className="pointer-events-none fixed inset-0 z-[35]" />}
+      {peekShade && (hideLeft || hideRight) && <div aria-hidden data-peek-shade="" data-shown={peek ? "" : undefined} className="pointer-events-none fixed inset-0 z-(--z-peek-shade)" />}
       {/* Over a frame (an HTML file, a PDF) the window hears no pointer: these catch it at the edges meanwhile (core/peek.ts). */}
-      {hideLeft && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 left-0 z-[38] w-[6px]" />}
-      {hideRight && hasRight && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 right-0 z-[38] w-[3px]" />}
+      {hideLeft && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 left-0 z-(--z-peek-edge) w-[6px]" />}
+      {hideRight && hasRight && <div aria-hidden data-peek-edge="" className="fixed inset-y-0 right-0 z-(--z-peek-edge) w-[3px]" />}
       {!popout && <>
       <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && !leftIn} onContextMenu={menuFor(panelMenu)}
         className={cn(
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
           "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
-          hideLeft && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+          hideLeft && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
         )} style={{ "--sidebar-open": `${sidebarPx(sidebarWidth)}px`, ...(hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }) } as React.CSSProperties}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
@@ -587,7 +587,7 @@ export default function App() {
           className={cn(
             "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-2 pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
             "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
-            hideRight && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+            hideRight && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
           )} style={{ "--sidebar-open": `${sidebarPx(rightSidebarWidth)}px`, ...(hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }) } as React.CSSProperties}>
           {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
@@ -629,13 +629,13 @@ export default function App() {
       {/* (the left one: hidden without a rail, it slides in and out with the sidebar; a click there keeps the sidebar open) */}
       {!popout && (
         <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
-          className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "left" && "pointer-events-none") : undefined}
+          className={hideLeft ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "left" && "pointer-events-none") : undefined}
           style={hideLeft ? peekRider("left", leftIn, sidebarPx(sidebarWidth)) : undefined} />
       )}
       {desktop && !popout && (
         <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
           onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
-          className={!rails && !rightOpen ? cn("z-50 transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "right" && "pointer-events-none") : undefined}
+          className={!rails && !rightOpen ? cn("z-(--z-peek-rider) transition-[translate,color,background-color] duration-(--motion-spring) ease-(--spring)", peek !== "right" && "pointer-events-none") : undefined}
           style={!rails && !rightOpen ? peekRider("right", peek === "right", sidebarPx(rightSidebarWidth)) : undefined} />
       )}
 
