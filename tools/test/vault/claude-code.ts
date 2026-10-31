@@ -115,6 +115,10 @@ export default async ($: VaultTest) => {
     check("claude session: an unknown session is a 404", c === 404, c)
     ;[c] = await api("GET", "claude-code/session/..%2F..%2Fetc")
     check("claude session: not a path", c === 404, c)
+    // (the blocks count the last 30 days, and the fixture's session is older: a reply of today's)
+    fs.appendFileSync(tfile, JSON.stringify({ type: "assistant", sessionId: sid, cwd: "/Users/sam/lighthouse", timestamp: new Date(fixtureNow() - 1000).toISOString(),
+      requestId: "req_10", message: { model: "claude-opus-5-5", id: "msg_10", role: "assistant", content: [{ type: "text", text: "Fixed." }],
+        usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) + "\n")
     const [, cr] = await api("GET", "render?path=Dashboards/Claude.md")
     check("the Claude page has projects and models as two blocks", typeof cr === "string" && cr.includes("## Claude Code by project") &&
       cr.includes("## Claude Code by model") && cr.includes("lighthouse"), String(cr).slice(0, 400))
