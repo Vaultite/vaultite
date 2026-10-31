@@ -56,6 +56,9 @@ export type Prefs = {
   /** The desktop app's window chrome (sidebars, tab bar, status bar) lets the desktop show through, blurred by the
    *  system (core/translucency.ts says where it can). */
   translucent: boolean
+  /** With `translucent`, pages too (notes, terminals, the app's own pages) show the desktop, more lightly than the
+   *  chrome; web pages and media stay solid. */
+  translucentPages: boolean
   /** Line numbers beside the text of a file being edited (Markdown, source mode, JSON);
    *  code files always have them. */
   lineNumbers: boolean

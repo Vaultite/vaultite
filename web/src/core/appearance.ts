@@ -116,8 +116,10 @@ function apply() {
   // What index.html puts in place before the app's code has loaded (no flash of the other theme): "system" when it
   // follows the system's, which the page checks itself.
   askTranslucent(p.translucent)
+  // (only read under data-translucent: pages show the desktop only while the chrome does)
+  root.toggleAttribute("data-translucent-pages", p.translucent && p.translucentPages)
   const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "",
-    ...(translucency.on ? { translucent: true } : {}) }
+    ...(translucency.on ? { translucent: true, ...(p.translucentPages ? { pages: true } : {}) } : {}) }
   if (previewing === null) try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }
   const vars: [string, string][] = [["--font-ui", p.interfaceFont], ["--font-text", p.textFont], ["--font-code", p.monoFont]]
   for (const [k, v] of vars) {

@@ -35,6 +35,9 @@ const hex = ([r, g, b, a]: RGBA) => "#" + [r, g, b, ...(a < 1 ? [Math.round(a * 
 /** a toward b by t (0..1), opaque. */
 const mix = (a: RGBA, b: RGBA, t: number): RGBA => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t).concat(1) as RGBA
 
+/** Translucent pages (appearance `translucentPages`): the terminal draws no ground, the pane's glass shows through. */
+const glassy = () => { const r = document.documentElement; return r.hasAttribute("data-translucent") && r.hasAttribute("data-translucent-pages") }
+
 function theme(): ITheme {
   const { read, done } = resolver()
   const dark = document.documentElement.classList.contains("dark")
@@ -45,7 +48,7 @@ function theme(): ITheme {
   const [blue, brightBlue] = colour("--blue"), [magenta, brightMagenta] = colour("--purple"), [cyan, brightCyan] = colour("--teal")
   const sel = read("--primary")
   const out: ITheme = {
-    background: hex(bg), foreground: hex(fg), cursor: hex(fg), cursorAccent: hex(bg),
+    background: glassy() ? "#00000000" : hex(bg), foreground: hex(fg), cursor: hex(fg), cursorAccent: hex(bg),
     selectionBackground: hex([sel[0], sel[1], sel[2], 0.3]), selectionInactiveBackground: hex([gray[0], gray[1], gray[2], 0.25]),
     scrollbarSliderBackground: hex([gray[0], gray[1], gray[2], 0.25]), scrollbarSliderHoverBackground: hex([gray[0], gray[1], gray[2], 0.4]),
     scrollbarSliderActiveBackground: hex([gray[0], gray[1], gray[2], 0.5]),
@@ -206,9 +209,22 @@ function create(id: string): Live {
       || (e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code)) || !appShortcut(e)
   })
   // Recolour with the app: its scheme, light or dark, a theme or snippet.
-  const offLook = onLook(() => { t.options.theme = theme() })
+  const offLook = onLook(() => { t.options.theme = theme(); renderer() })
 
   let ws: WebSocket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
+  // WebGL: the DOM renderer lays out the whole app per new glyph (a first screen 150-500 ms late). The DOM one without
+  // WebGL, after a lost context, and under translucent pages (WebGL draws text on a see-through ground thin and ragged).
+  let gl: WebglAddon | null = null, glLost = false
+  const renderer = () => {
+    if (!opened || (glassy() ? !gl : gl || glLost)) return
+    if (gl) { gl.dispose(); gl = null } else try {
+      const g = new WebglAddon()
+      g.onContextLoss(() => { glLost = true; g.dispose(); if (gl === g) gl = null })
+      t.loadAddon(g)
+      gl = g
+    } catch { glLost = true /* no WebGL here */ }
+    try { fit.fit() } catch { /* not laid out */ } // (their cells may differ by a fraction)
+  }
   // Only the tab that made this id starts its session; one put back (a reload, the app reopened) only attaches, so an
   // agent whose session is gone isn't started again by itself (the server says "gone"; Restart starts it).
   let attachOnly = !mintedHere(id), sessionGone = false
@@ -381,13 +397,7 @@ function create(id: string): Live {
       opened = true
       opening.mark("view")
       t.open(box)
-      // WebGL: the DOM renderer measures each new glyph in the page (a whole-app layout each time), holding a first screen
-      // back 150-500 ms. Without WebGL, or when its context is lost, it falls back to the DOM renderer.
-      try {
-        const gl = new WebglAddon()
-        gl.onContextLoss(() => gl.dispose())
-        t.loadAddon(gl)
-      } catch { /* no WebGL here: the DOM renderer */ }
+      renderer()
       t.textarea?.addEventListener("focus", onFocus)
       l.refit()
       opening.mark("xterm")
@@ -568,7 +578,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
 
   const restart = () => { live.current?.restart(); setRestarts((n) => n + 1) }
   return (
-    <div className={cn("flex flex-col bg-background", full ? "fixed inset-x-0 z-40 pt-[env(safe-area-inset-top)]" : "relative h-full min-h-[240px] w-full",
+    <div data-terminal-view className={cn("flex flex-col bg-background", full ? "fixed inset-x-0 z-40 pt-[env(safe-area-inset-top)]" : "relative h-full min-h-[240px] w-full",
       full && !area.keyboard && "pb-[env(safe-area-inset-bottom)]")}
       style={full ? { top: area.top, height: area.height } : undefined}>
       {status.kind === "live" && status.blocked && (

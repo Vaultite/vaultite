@@ -1119,3 +1119,24 @@ html[data-translucent] aside[data-side] [data-panel-handle].sticky { background:
   }
 }
 html[data-translucent]:not([data-over-pages]) .glass-strong { background: linear-gradient(var(--popover), var(--popover)) color-mix(in srgb, var(--background) 70%, transparent); }
+/* Translucent pages too (appearance `translucentPages`): what's read shows the desktop as well, more lightly than the
+   chrome, so it still sits above it. Web pages and media keep their own solid ground. */
+:root { --translucent-page-tint: 88%; }
+.dark { --translucent-page-tint: 82%; }
+html[data-translucent][data-translucent-pages] { --page-glass: color-mix(in srgb, var(--background) var(--translucent-page-tint), transparent); }
+html[data-translucent][data-translucent-pages] {
+  & [data-pane-body] { background: var(--page-glass); }
+  /* What paints the page's own ground over it lets it through: terminals (their theme too), canvases, the graph. */
+  & [data-pane-body] :is([data-terminal-view], [data-terminal-view] .xterm-viewport, [data-canvas-board], [data-graph-view]) { background: transparent; }
+  /* Stacked tabs slide over each other: each carries the glass, blurring the one under it, over a bare pane. */
+  & [data-pane-body]:has(> [data-stack]) { background: none; }
+  & [data-stacked-tab] { background: var(--page-glass); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
+  /* A file's bar: clear at the top, the page blurred under it once it scrolls (sticky: stuck). */
+  & [data-pane-body] [data-view-bar] { background: none; container-type: scroll-state; }
+}
+@container scroll-state(stuck: top) {
+  html[data-translucent][data-translucent-pages] [data-pane-body] [data-view-bar]::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb, var(--background) 50%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%);
+  }
+}

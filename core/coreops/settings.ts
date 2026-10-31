@@ -59,6 +59,7 @@ const APPEARANCE: Record<string, Setting> = {
   peekShade: { about: "true or false (default): with rails off, the page dims a little behind a hidden sidebar slid in", parse: bool("peekShade") },
   typingFade: { about: "true or false (default): on desktop, the bars above files (the path, the file's items) fade while typing in a file, back when the pointer moves or at Escape", parse: bool("typingFade") },
   translucent: { about: "true or false (default): in the Mac and Windows 11 apps, the desktop shows blurred through the sidebars, the tab bar and the status bar; solid with Reduce transparency, elsewhere and while an app window shows", parse: bool("translucent") },
+  translucentPages: { about: "true or false (default): with translucent, pages too (notes, terminals, canvases, the app's own pages) show the desktop, less than the chrome; web pages, PDFs, images and video stay solid", parse: bool("translucentPages") },
   statusBar: {
     about: "the desktop status bar's items, in order: the app's own (core:view, core:words, core:characters) and plugins' as <plugin>:<name> (inbox:new, terminal:agents, vim:mode, token-count:tokens): a JSON list or names separated by commas; [] for none (an empty corner, right-click to bring them back)", parse: names },
   statusBarMore: {

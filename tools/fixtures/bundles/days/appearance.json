@@ -12,7 +12,7 @@
   "fileIcons": true,
   "tabBar": true,
   "paneTitles": false, "tabTint": false,
-  "rails": true, "peekShade": false, "typingFade": false, "translucent": false,
+  "rails": true, "peekShade": false, "typingFade": false, "translucent": false, "translucentPages": false,
   "lineNumbers": false,
   "statusBar": null,
   "statusBarMore": [],

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Translucent pages**: with a translucent window, notes, terminals, canvases, the graph and the app's own pages can
+  show the desktop too, more lightly than the sidebars so they still read; web pages, PDFs, images and video stay
+  solid. A switch under Translucent window in Appearance, and the Full glass bundle.
 - **Agents' sessions stay in the inbox until they're dealt with**: each session is one thread that needs you (it asks,
   answered, reported or failed), then shows its agent working once you reply, and leaves only when you mark it done or
   it finishes with nothing more for you; opening or reading it no longer makes it disappear. A report is its session's

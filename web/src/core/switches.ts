@@ -1,6 +1,6 @@
 // On/off settings, declared once (a plugin's: a boolean in its manifest): Settings, its search, the palette, menus and
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
-import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
 import { canTranslucent, getTranslucency, onTranslucency } from "@/core/appearance"
 import type { Command } from "@/core/commands"
 import { reload } from "@/core/data"
@@ -65,6 +65,9 @@ const CORE: SwitchDef[] = [
   { id: "setting:rails", name: "Sidebar rails", section: "sidebars", icon: PanelLeftDashed, sub: () => "Off, a hidden sidebar slides in when the pointer reaches the window's edge", words: "rail icons compact zen hover edge sidebars", ...pref("rails") },
   { id: "setting:peek-shade", name: "Dim the page behind a sidebar", section: "sidebars", icon: SunDim, sub: () => "With rails off, while a hidden sidebar is slid in", words: "darken shade focus zen backdrop", ...pref("peekShade") },
   { id: "setting:translucent", name: "Translucent window", section: "appearance", icon: Blend, sub: translucentSub, words: "transparent transparency vibrancy blur glass frosted mica see-through desktop", ...pref("translucent") },
+  { id: "setting:translucent-pages", name: "Translucent pages", section: "appearance", icon: Layers2, sub: () => "Notes and terminals too, more lightly; web pages and media stay solid", words: "transparent transparency glass full notes terminal editor see-through",
+    // (on, the window too: pages show the desktop only through a translucent window)
+    get: () => getPrefs().translucentPages, set: (on: boolean) => setPrefs(on ? { translucentPages: true, translucent: true } : { translucentPages: false }) },
   { id: "setting:typing-fade", name: "Fade the file bar while typing", section: "appearance", icon: PenLine, sub: () => "Back when the pointer moves", words: "hide path breadcrumb focus zen writing distraction", ...pref("typingFade") },
   { id: "setting:line-numbers", name: "Line numbers", section: "appearance", icon: ListOrdered, words: "gutter", ...pref("lineNumbers") },
   { id: "setting:sidebar-scroll", name: "Scroll sidebar panels separately", section: "sidebars", icon: ArrowDownUp, words: "sidebars",
