@@ -15,6 +15,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   name. A file is renamed, a terminal's session gets a name every device and agent sees (`vau terminal rename`), and a
   web page or view keeps the name on its tab; an empty name brings back the automatic one. Rename tab group… and Add
   current tab to group… (pick a group, or type a new one's name) work the same way.
+- **Search tabs (⌘⇧A)**, as in Chrome: the window's tabs in every pane, the last one you were on first (so ⌘⇧A, Enter
+  flips back), each drawn as its tab with its group, pane or site; type to find one by name, address or group, and the
+  ones closed lately and archived are listed after it, to reopen. ⌘⌫ closes the selected tab without leaving the list.
+  Also in the Tabs panel's and the tab bar's menus.
 - **Delegation**: a coding agent hands a task to another as its subagent (`vau delegate codex "Review this diff"`, MCP's
   `delegate`): Claude Code as a chat in the app, Codex or OpenCode in a terminal, waiting for its answer (with the files
   it changed) or carrying on while its result comes back as a message. Each subagent is its own inbox thread, "from"

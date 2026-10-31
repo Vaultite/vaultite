@@ -136,6 +136,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const [selFor, setSelFor] = useState(query)
   if (selFor !== query) { setSelFor(query); setSel(query ? 0 : start) }
   useEffect(() => { list.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" }) }, [sel])
+  // (rows taken off the list under it: the last one stays selected)
+  if (sel > 0 && sel >= items.length) setSel(Math.max(0, items.length - 1))
   const selected = items[sel] ?? null
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => onSelect?.(selected), [selected?.id])

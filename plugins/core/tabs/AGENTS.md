@@ -8,6 +8,10 @@ the active tab). Under them, what the user's other devices have open (`other_dev
 week), from `.vaultite/plugins/tabs/device-<id>.json`, one per app or browser (`label`: the user's name for it). A
 browser driven by automation isn't a device.
 
+**Search tabs** (⌘⇧A, the command `tab:search`, or the panel's menu): the window's tabs in the palette, the one focused
+last first, found by name, address or tab group; then the tabs closed lately and the archived ones, to reopen. ⌘⌫ closes
+the selected tab.
+
 **Devices** (`vau tabs devices`; the Devices view, also in Machines): each one, open now or when it was last used, with
 its tabs. Which are open isn't kept in a file: each server knows its own windows, and asks the other machines for theirs.
 `vau tabs device-close <device> [tabs...]` closes tabs on one that's open now (all of them without tabs).

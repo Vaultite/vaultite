@@ -69,7 +69,7 @@ export function set(next: Workspace) {
   state = { root, focus: focusAfter(state.root, root, next.focus) }
   try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
   const now = activeTab().id
-  if (now !== was) { if (!kin(was, now)) openers.clear(); if (lastChild?.opener !== now) lastChild = null }
+  if (now !== was) { if (!kin(was, now)) openers.clear(); if (lastChild?.opener !== now) lastChild = null; leftTab(was) }
   noteFile()
   changed.notify()
 }
@@ -359,6 +359,28 @@ export function selectTab(id: string) {
   return true
 }
 
+/** The tabs focused in this window since it opened, the one left last first (Search tabs' order). One focused only on
+ *  the way to another isn't (a click in another pane shows its tab before the one clicked). */
+const recent: string[] = []
+let focusedAt = 0
+function leftTab(id: string) {
+  const held = Date.now() - focusedAt > 300
+  focusedAt = Date.now()
+  if (!held || !id) return
+  const i = recent.indexOf(id)
+  if (i > 0) recent.splice(i, 1)
+  if (i !== 0) recent.unshift(id)
+  recent.length = Math.min(recent.length, 200)
+}
+/** Every open tab, the one focused first, then the others by when they were left here; those not focused since the
+ *  window opened after them, the ones on screen first, then by when they were last seen (Tab.seen) and their place. */
+export function tabsByRecent(): Tab[] {
+  const cur = activeTab().id, on = new Set(groups().map((g) => g.active)), order = new Map(recent.map((id, i) => [id, i]))
+  const rank = (t: Tab) => (t.id === cur ? -1 : order.get(t.id) ?? Infinity)
+  return groups().flatMap((g) => g.tabs).map((t, i) => ({ t, i, r: rank(t) }))
+    .sort((a, b) => a.r - b.r || Number(on.has(b.t.id)) - Number(on.has(a.t.id)) || (b.t.seen ?? 0) - (a.t.seen ?? 0) || a.i - b.i).map((x) => x.t)
+}
+
 /** How many tabs the focused pane has. */
 export const tabsHere = () => focused().tabs.length
 /** The next (1) or previous (-1) tab in the focused pane, round from the last to the first. */
@@ -517,6 +539,24 @@ function remember(tabs: Tab[], pane?: Group) {
   keepClosed()
 }
 export const canReopenTab = () => reopenable.length > 0
+/** The tabs closed lately that aren't open again, the latest first (a closed pane's each), with when they closed. */
+export function closedTabs(): (ClosedTab & { closed: number })[] {
+  return reopenable.flatMap((r) => ("pane" in r ? r.pane.tabs.map((tab, at) => ({ tab, group: r.pane.id, at, closed: r.closed ?? 0 })) : [{ ...r, closed: r.closed ?? 0 }]))
+    .filter((r) => !groupOfTab(r.tab.id)).reverse()
+}
+/** Reopen one of closedTabs() where it was (restoreTab; a closed pane's alone, at the focused pane's end): it leaves the list. */
+export function reopenClosed(id: string) {
+  for (let i = reopenable.length - 1; i >= 0; i--) {
+    const r = reopenable[i]
+    const at = "pane" in r ? r.pane.tabs.findIndex((t) => t.id === id) : r.tab.id === id ? r.at : -1
+    if (at < 0) continue
+    const tab = "pane" in r ? r.pane.tabs[at] : r.tab
+    if ("pane" in r && r.pane.tabs.length > 1) r.pane = { ...r.pane, tabs: r.pane.tabs.filter((t) => t.id !== id) }
+    else reopenable.splice(i, 1)
+    keepClosed()
+    return restoreTab("pane" in r ? { tab, group: r.pane.id, at: Infinity } : { tab, group: r.group, at })
+  }
+}
 /** When the tab ⌘⇧T would reopen was closed (0: none). */
 export const lastClosedAt = () => reopenable.at(-1)?.closed ?? 0
 /** Reopen the tab closed last where it was (restoreTab), even where another tab has its place (a browser's way); skips

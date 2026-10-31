@@ -270,8 +270,8 @@ export default definePlugin({
     tabs: {
       title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,
       view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />, emptyDoubleClick: () => openNewTab({ at: "end" }),
-      // (Show tabs on top, the way back to the tab bar, and other devices' tabs on or off)
-      menu: () => [...commandItems("tab:sidebar"), othersItem(settings.get().other_devices !== false),
+      // (Search tabs, Show tabs on top, the way back to the tab bar, and other devices' tabs on or off)
+      menu: () => [...commandItems("tab:search", "tab:sidebar"), othersItem(settings.get().other_devices !== false),
         { label: "Show all devices", icon: MonitorSmartphone, run: () => openView("devices", { newTab: true }) },
         { label: "Show archived tabs", icon: Archive, run: () => openView("archived-tabs", { newTab: true }) }],
     },

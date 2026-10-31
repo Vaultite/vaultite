@@ -215,7 +215,7 @@ function barItems(group: Group): MenuItem[] {
 function barMenu(group: Group): MenuItem[] {
   return [
     { label: "New tab", icon: Plus, run: () => openNewTab({ pane: group.id, at: "end" }) },
-    ...commandItems("tab:reopen"),
+    ...commandItems("tab:reopen", "tab:search"),
     ...(hasMainWindow() ? [{ label: "Move all to main window", icon: AppWindow, run: () => moveToMain(group.tabs.map((t) => t.id)) }] : []),
     ...barItems(group),
   ]

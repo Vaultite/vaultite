@@ -1097,6 +1097,27 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   one([A], "a"); ws.closePane()
   check("close pane: not the only one", tree() === "a" && !ws.canClosePane(), tree())
 
+  // Search tabs: the tab focused last first; the ones closed lately listed, the latest first, and reopened where they were.
+  while (ws.canReopenTab()) ws.reopenTab()
+  const now = Date.now
+  let clock = now()
+  Date.now = () => (clock += 1000)
+  one([A, B, C], "a"); ws.selectTab("c"); ws.selectTab("b")
+  const recent = () => ws.tabsByRecent().map((t: T) => t.id).join()
+  check("search tabs: the one on screen first, then each by when it was left", recent() === "b,c,a", recent())
+  Date.now = () => clock
+  ws.selectTab("a"); ws.selectTab("b")
+  check("search tabs: … but for one only passed through", recent() === "b,c,a", recent())
+  Date.now = now
+  ws.closeTab("c"); ws.closeTab("a")
+  const shut = () => ws.closedTabs().map((c: Any) => c.tab.id).join()
+  check("search tabs: closed ones, the latest first", shut() === "a,c", shut())
+  ws.reopenClosed("c")
+  check("search tabs: one reopened where it was, shown, and off the list", tabs() === "file:b.md,file:c.md *" && ws.activeTab().id === "c" && shut() === "a", [tabs(), shut()])
+  two([A], [B, C], "gL"); ws.closePane("gR")
+  ws.reopenClosed("b")
+  check("search tabs: one of a closed pane's comes back alone, in the focused pane", tabs() === "file:a.md,file:b.md *" && shut() === "c", [tabs(), shut()])
+
   // Tabs that archive themselves: stamped while on screen (only with archiving on); never one on screen, pinned or that
   // closing would lose; closed with no ⌘⇧T entry, put back where they were; stamps from another device's copy are taken.
   const H = 3600_000, old = Date.now() - 48 * H

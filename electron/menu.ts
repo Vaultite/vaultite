@@ -280,6 +280,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       sep,
       cmd("tab:next", "Next tab", "chevron-right", { key: "Ctrl+Tab", always: true }),
       cmd("tab:previous", "Previous tab", "chevron-left", { key: "Ctrl+Shift+Tab", always: true }),
+      cmd("tab:search", "Search tabs…", "search", { key: "Mod+Shift+A", always: true }),
       cmd("tab:toggle-pin", "Pin tab", "pin", { always: true, named: true }),
       cmd("tab:toggle-stacked", "Stack tabs", "layers", { always: true, named: true }),
       cmd("split:move-right", "Move tab to new split right"),
@@ -310,4 +311,4 @@ const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new",
   "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "pane:close", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
   "setting:line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",
-  "tab:toggle-pin", "tab:toggle-stacked"])
+  "tab:toggle-pin", "tab:toggle-stacked", "tab:search"])

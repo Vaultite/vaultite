@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Type } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Search, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Type } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { share } from "@/core/share"
 import { SharedWith } from "@/components/SharedWith"
@@ -56,6 +56,7 @@ import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
 import { IconPicker, pickIcon } from "@/components/IconPicker"
 import { SearchPalette } from "@/components/SearchPalette"
+import { TabSearch } from "@/components/TabSearch"
 import { openNewTab } from "@/core/launcher"
 import { Workspace } from "@/components/Workspace"
 import { Resizer } from "@/components/Resizer"
@@ -301,8 +302,8 @@ export default function App() {
   const canBack = !!prev
   const prevTitle = canBack && store ? sheet_(store, prev, disabled, tabInfo).title : ""
   const sheetDetail = store && sheet ? sheet_(store, sheet, disabled, tabInfo) : null
-  // The quick switcher (⌘O) or the command palette (⌘P); their commands are below.
-  const [palette, setPalette] = useState<"search" | "launcher" | "commands" | null>(null)
+  // The quick switcher (⌘O), the command palette (⌘P) or Search tabs (⌘⇧A); their commands are below.
+  const [palette, setPalette] = useState<"search" | "launcher" | "commands" | "tabs" | null>(null)
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
   const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
@@ -371,6 +372,9 @@ export default function App() {
     { id: "tab:goto-last", name: "Go to last tab", keys: desktopApp ? ["Mod+9"] : undefined, when: isDesktop, run: () => selectTabAt(-1), icon: ArrowRightToLine },
     // (⌘⇧T is the browser's too.)
     { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: () => isDesktop() && canReopen(), run: () => reopenLatest(fileGone), icon: RotateCcw },
+    // (⌘⇧A is Chrome's tab search too: in the web app it searches the app's tabs, which are the ones looked for)
+    { id: "tab:search", name: "Search tabs…", keys: ["Mod+Shift+A"], words: "find switch open recently closed archived", when: isDesktop,
+      run: () => setPalette((p) => (p === "tabs" ? null : "tabs")), icon: Search },
     { id: "tab:close-others", name: "Close all other tabs", keys: ["Mod+Alt+W"], when: isDesktop, run: () => closeTabs("others", activeTab().id), icon: CopyX },
     // (⌃⇧PgUp and PgDn are the browser's: the desktop app has them.)
     { id: "tab:move-left", name: "Move tab left", keys: desktopApp ? ["Ctrl+Shift+PageUp"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => moveTabBy(-1), icon: ArrowLeft },
@@ -615,6 +619,7 @@ export default function App() {
 
       {(palette === "search" || palette === "launcher") && store && <SearchPalette key={palette} store={store} launcher={palette === "launcher"} onClose={() => setPalette(null)} />}
       {palette === "commands" && <CommandPalette onClose={() => setPalette(null)} />}
+      {palette === "tabs" && store && <TabSearch store={store} onClose={() => setPalette(null)} />}
       <FolderPicker />
       <Chooser />
       <DownloadingNotice store={store} />

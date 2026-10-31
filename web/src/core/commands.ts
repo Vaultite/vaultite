@@ -395,7 +395,7 @@ addEventListener("pointerdown", () => cancelKeys(), true)
  *  (runCommandId: the desktop app's menu, `vau command`, which the server hears itself) aren't noted. */
 const ran = (c: Command) => { if (!QUIET.has(c.id) && !standIns.has(c)) noteActivity("command", `Ran ${commandName(c)}`) }
 /** Opening the palettes is on the way to something else (what's run or opened from them is noted). */
-const QUIET = new Set(["palette:open", "switcher:open"])
+const QUIET = new Set(["palette:open", "switcher:open", "tab:search"])
 
 // The palette puts the commands used last on top.
 const RECENT = "vaultite.recentCommands"
