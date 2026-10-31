@@ -43,6 +43,8 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   text?: string; replace?: string; anchor?: string; replies?: Reply[]
   /** A thread a person started, not an agent: the user, or a shared folder's guest (`agent` is then their name). */
   by?: "user" | "guest"
+  /** The agent a person's thread asks (an @name in it): it hears the thread's words and answers in it. */
+  ask?: string
   /** A person's colour (a token), where an agent's is its own; a guest's share (its id). */
   tint?: string; share?: string
   /** A say the user pinned: the comment it became. */
@@ -51,7 +53,8 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   dismissed?: number
   /** The text it was on is gone: shown by its last line, found again if the text comes back. */
   orphaned?: boolean }
-/** A word in a thread: the user's, its agent's, or a guest's (`name`); when (older ones have none). */
+/** A word in a thread: the user's, an agent's, or a guest's (`name`: the guest's, or the agent's in a person's thread); when
+ *  (older ones have none). */
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
@@ -213,13 +216,13 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (m.kind === "edit" || m.kind === "open") delete full.for
   else full.for = addressee(m.for)
   // (an ask already asked, as it reads, a while ago: a line asked again by Enter on it, after a restart too)
-  if (m.kind === "ask" && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
+  if (m.kind === "ask" && !m.item && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
   // (more of the same lines before any agent saw the last: one moment)
   const last = moments[moments.length - 1]
   const merged = m.kind === "edit" && last?.kind === "edit" && last.path === m.path && ![...delivered.values()].some((d) => d >= last.seq) ? mergeHunks(last.hunks ?? [], m.hunks ?? []) : null
   if (merged) { Object.assign(last, { hunks: merged, t: full.t }); return last }
-  const was = m.kind === "ask" ? continues(full) : undefined
+  const was = m.kind === "ask" && !m.item ? continues(full) : undefined
   if (was) {
     // (not handed yet: the same ask, as it reads now)
     if ((delivered.get(key(was.for!)) ?? 0) < was.seq) { Object.assign(was, { text: full.text, line: full.line }); return was }
@@ -327,6 +330,8 @@ function putNote(n: Omit<Note, "id" | "t">, ttl?: number) {
   if (KEPT.has(note.kind)) save(note.path!)
   return note
 }
+/** Whether `id` is a thread a person started (the user's, a guest's). */
+const personThread = (id: string) => !!notes.get(id)?.by
 function dropNote(id: string) {
   clearTimeout(timers.get(id)); timers.delete(id)
   const n = notes.get(id)
@@ -509,8 +514,13 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
     if (verdict === "dismiss" && n.kind === "comment" && n.path) past.set(n.path, [...(past.get(n.path) ?? []).filter((x) => x.id !== id), { ...n, dismissed: Date.now() }].slice(-PAST))
     dropNote(id)
   }
-  // (a person's thread is between people: no agent hears of it)
-  if (n.by) return
+  // (a person's thread is between people, unless it asks an agent: then that agent hears the words in it)
+  if (n.by) {
+    const to = n.by === "user" && verdict === "reply" && text ? mentioned(text) ?? n.ask : undefined
+    if (!to) return
+    if (n.ask !== to) { n.ask = to; save(n.path!) }
+    return void addMoment({ kind: "reply", for: to, item: id, path: n.path, line: lineOf(n), text }, from)
+  }
   addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) }, from)
 }
 
@@ -618,7 +628,8 @@ plugin.socket("companion/live", (ws, req, { query }) => {
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined, req)
     } else if (m.t === "comment") {
-      personComment({ by: "user", agent: "" }, str(m.path), m)
+      const c = personComment({ by: "user", agent: "" }, str(m.path), m), to = c && mentioned(c.text!)
+      if (c && to) askIn(c, to, str(m.selection).slice(0, 20_000), req)
     } else if (m.t === "done" && typeof m.rid === "string") {
       asked.get(m.rid)?.done(m.ok === true, str(m.error) || undefined, m)
     }
@@ -1128,8 +1139,9 @@ plugin.op({
   cli: "companion next",
   summary: "Wait for what the user does next in the app (asks you, writes, opens a note, answers you), as the companion.",
   help: `Answers the moments since you last asked, or waits for one (up to timeout seconds; none by then: an empty list).
-ask: they addressed you (@claude anywhere in a line of a note, sent at Enter or a pause; or Ask companion on a
-selection): its text is what follows a leading @name, else the whole line. Always answer. edit: lines
+ask: they addressed you. A line starting with @claude becomes their comment thread by the text above it (answer in it,
+companion comment --id), as does @claude in a comment of theirs or Ask companion; @claude mid-line is the whole line,
+sent at a pause, and stays in the note. Always answer. edit: lines
 they changed after a pause (notice and pair modes). point: they dropped your cursor on a line (and a selection):
 look there and answer, as for an ask. open: the note they went to, with the next moment. reply, accept, reject, dismiss: their
 answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
@@ -1296,7 +1308,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   const out = [head]
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : ""
-    if (m.kind === "ask") out.push(`- ask${at}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
+    const thread = m.item && (m.kind === "ask" || m.kind === "reply") && personThread(m.item) ? ` (in their comment thread ${m.item}, by the line: answer in it, companion comment --id ${m.item})` : ""
+    if (m.kind === "ask") out.push(`- ask${at}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "edit") {
       out.push(`- edit${at}`)
@@ -1307,7 +1320,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
         for (const l of h.added) out.push(`  + ${l}`)
       }
     } else if (m.kind === "open") out.push(`- open${at}`)
-    else if (m.kind === "reply") out.push(`- reply to ${m.item}${at}: ${JSON.stringify(m.text ?? "")}`)
+    else if (m.kind === "reply") out.push(`- reply to ${m.item}${at}${thread}: ${JSON.stringify(m.text ?? "")}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
   }
   for (const e of notes) {
@@ -1382,7 +1395,7 @@ it: with id (the comment's), your words join its thread.
       // (a word in a dismissed thread brings it back to the margin)
       const n = notes.get(p.id) ?? reopen(p.id)
       if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id}`, 404)
-      n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text), t: Date.now() }]
+      n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text), t: Date.now(), ...(n.by ? { name } : {}) }]
       broadcast({ t: "note", note: n })
       save(n.path!)
       setAgent(name, { path: n.path, line: n.line, find: n.find, state: acting(name) })
@@ -1772,6 +1785,24 @@ function personComment(who: { by: "user" | "guest"; agent: string; share?: strin
   const line = Math.max(1, Math.floor(Number(m.line)) || 1), find = str(m.find).slice(0, 200)
   const anchor = find ? "" : lineText(rel, line)
   return putNote({ kind: "comment", ...who, ...(who.by === "guest" ? { tint: tintFor(who.agent) } : {}), text, path: rel, line, ...(find ? { find } : anchor ? { anchor } : {}) })
+}
+
+/** The agent a person's words ask, by the first @name in them that addresses one (as an ask in a note would). */
+export function mentioned(text: string): string | undefined {
+  const names = new Set([key(ownName()), "companion", key(nameOf(agentSetting())), ...agents.keys(), ...Object.keys(offered())])
+  for (const m of text.matchAll(/(?<![\w@./])@([\w-]+)/g)) if (names.has(key(m[1])) || (m[1].includes("-") && profileOf(m[1], offered()))) return addressee(m[1])
+  return undefined
+}
+/** A thread's line in its note as it reads now (its text found again), else as kept. */
+function lineOf(n: Note) {
+  try { return anchorLine(readText(plugin.vault.abs(n.path!)), n) ?? n.line } catch { return n.line }
+}
+/** The user's thread `c` asks agent `to`: it's told, with the thread's id to answer in. */
+function askIn(c: Note, to: string, selection: string, from?: IncomingMessage) {
+  c.ask = to
+  save(c.path!)
+  broadcast({ t: "note", note: c })
+  addMoment({ kind: "ask", for: to, item: c.id, path: c.path, line: lineOf(c), text: c.text, ...(selection ? { selection } : {}) }, from)
 }
 
 /** Only people's threads reach a guest, and only people's words in them: an agent's could tell what's outside the folder. */

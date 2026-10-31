@@ -16,13 +16,15 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   text?: string; replace?: string; replies?: Reply[]; pinned?: string
   /** A person's thread (the user's, a guest's: `agent` is their name), and their colour. */
   by?: "user" | "guest"; tint?: string
+  /** The agent a person's thread asks (an @name in it), which answers in it. */
+  ask?: string
   /** A comment the user dismissed, when (companion.history's). */
   dismissed?: number
   /** The text it was on is gone: shown by its last line. */
   orphaned?: boolean }
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
-/** A comment being written (Add comment): where it goes. */
-export type Draft = { path: string; line: number; find?: string }
+/** A comment being written: where, the words it starts with (Ask: "@claude "), the selection it asks about. */
+export type Draft = { path: string; line: number; find?: string; text?: string; selection?: string }
 /** Someone else in a note: their awareness id, name and colour (a CSS value). */
 export type Person = { id: number; name: string; color: string }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
@@ -80,7 +82,7 @@ export const threadTint = (n: Note) => (n.tint ? `var(--${n.tint})` : n.by === "
 /** Who started a thread, as this window names them (a guest's app: the folder's owner is "Owner"). */
 export const authorOf = (n: Note) => (n.by === "user" ? (share ? "Owner" : "You") : n.by === "guest" && share?.guest === n.agent ? "You" : n.agent)
 /** Who wrote a reply, likewise. */
-export const replyAuthor = (n: Note, r: Reply) => (r.by === "user" ? (share ? "Owner" : "You") : r.by === "guest" ? (share?.guest === r.name ? "You" : r.name ?? "Guest") : n.agent)
+export const replyAuthor = (n: Note, r: Reply) => (r.by === "user" ? (share ? "Owner" : "You") : r.by === "guest" ? (share?.guest === r.name ? "You" : r.name ?? "Guest") : r.name ?? n.agent)
 
 /** Who's in `path` now (cotype.ts says). */
 export const setPeople = (path: string, list: Person[]) => {
@@ -94,13 +96,15 @@ export const goToPerson = (path: string, id: number) => rooms?.goTo(path, id)
 
 /** Start writing a comment there (Add comment), or stop. */
 export const startComment = (d: Draft | null) => set({ draft: d, picked: d ? "draft" : state.picked === "draft" ? null : state.picked })
-/** Send the comment being written: a thread of the user's (a guest's, in theirs), which no agent is told of. */
+/** Send the comment being written: a thread of the user's (a guest's, in theirs); an @name in it asks that agent. */
 export function comment(text: string) {
   const d = state.draft
   if (!d || !text.trim()) return
-  say({ t: "comment", ...d, text: text.trim() })
+  commentAt({ ...d, text })
   set({ draft: null, picked: null })
 }
+/** A thread of the user's by a line, sent as is (an ask line of a note becomes one). */
+export const commentAt = (d: Draft & { text: string }) => say({ t: "comment", ...d, text: d.text.trim() })
 
 // ---------- editors showing files
 
@@ -310,6 +314,11 @@ export function mentionIn(line: string, names = mentionNames(), mid = midNames()
   if (!m) return null
   const text = MENTION_AT.test(line.slice(0, m.from)) ? line.slice(m.to).replace(/^[:,]/, "").trim() : line.trim()
   return { name: m.name, text: text || "(no words: look at this)" }
+}
+/** Whether a line opens with its @name ("@claude what's…", "- @ada: fix this"): an ask line, which becomes a thread. */
+export function asksAtStart(line: string, names = mentionNames(), mid = midNames()) {
+  const [m] = mentionsOf(line, names, mid)
+  return !!m && MENTION_AT.test(line.slice(0, m.from))
 }
 /** Whether a line's ask has words of its own, besides its @names (sent after a pause only then). */
 export const asksSomething = (line: string, ms: Mention[]) => !!ms.reduceRight((s, m) => s.slice(0, m.from) + s.slice(m.to), line).replace(LEAD, "").replace(/[\s\p{P}]/gu, "")

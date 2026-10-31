@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal } from "lucide-react"
-import { choose, cn, currentEditor, definePlugin, editAt, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
+import { cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { bump, connect, getState, liveAgents, type Note, sendMoment, setGuest, startComment, subscribe, viewOf } from "./live"
+import { bump, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, viewOf } from "./live"
 import { Arrow, follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
 import { modeItem, MODES, setMode, showSession } from "./session"
@@ -14,25 +14,14 @@ import { offerThreads } from "./threads"
 let loading: Promise<typeof import("./editor")> | null = null
 const load = () => (loading ??= import("./editor"))
 
-/** Ask the companion (or `agent`): about the selection (which agent, when several are around), or start an "@claude "
- *  line below the cursor to write the question on. In a drawing, about what's selected there. */
+/** Ask the companion (or `agent`): a comment by the selection (else the caret's line) that starts with its @name, so
+ *  the answer comes in that thread and nothing is written in the note. In a drawing, about what's selected there. */
 function ask(agent?: string) {
   const ed = currentEditor()
   if (!ed?.path || ed.kind !== "markdown") return void (askDrawing(agent) || notify(`Open a note to ask ${getState().name}`))
-  const v = ed.view, sel = v.state.selection.main, path = ed.path
-  if (!sel.empty) {
-    const send = (to: string) => sendMoment({ kind: "ask", agent: to, path, line: v.state.doc.lineAt(sel.from).number, text: "(look at the selection)", selection: v.state.sliceDoc(sel.from, sel.to) })
-    const live = liveAgents()
-    if (agent || live.length < 2) return send(agent ?? getState().name)
-    return choose({ title: "Ask an agent", placeholder: "Ask who?", items: live.map((a) => ({ id: a.name, label: a.name, detail: a.name === getState().name ? "companion" : undefined })), onPick: (c) => send(c.id) })
-  }
-  const line = v.state.doc.lineAt(sel.head), mention = `@${getState().name.toLowerCase()} `
-  const at = line.text.trim() ? line.to : line.from, insert = line.text.trim() ? `\n${mention}` : mention
-  const reading = v.contentDOM.contentEditable !== "true", y = reading ? v.coordsAtPos(line.from)?.top : undefined
-  v.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input", scrollIntoView: !reading })
-  if (!reading) return v.focus()
-  // (reading: the note goes into editing on that line, the line read kept where it shows)
-  editAt(path, v.state.doc.lineAt(at + insert.length).number - 1, { col: mention.length, ...(y === undefined ? {} : { from: { line: line.number - 1, y } }) })
+  const v = ed.view, sel = v.state.selection.main, picked = v.state.sliceDoc(sel.from, sel.to)
+  const line = v.state.doc.lineAt(sel.from), find = (picked.trim() || line.text.trim()).slice(0, 200)
+  startComment({ path: ed.path, line: line.number, ...(find ? { find } : {}), text: `@${(agent ?? getState().name).toLowerCase()} `, ...(picked.trim() ? { selection: picked } : {}) })
 }
 
 setGuest(share)

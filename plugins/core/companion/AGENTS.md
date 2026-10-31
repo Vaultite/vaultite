@@ -16,8 +16,10 @@ wait or poll for them. In a terminal: loop forever on `vau companion next --time
 above that), act, run it again, and never end your turn.
 - Asks, replies and edits come with the note's lines around them, numbered: act on those, don't read the note again (an ask's paragraph and the three above it come whole; other long lines are cut with …).
 - An `ask` or `reply` is for you: always answer it. One that takes work: a few words first (`say`), then the work; your
-  cursor shows you thinking until your turn ends (in a terminal, your next `next`). An ask is a line with your @name anywhere in it (sent at Enter, or
-  when they pause): its text is what follows a leading @name, else the whole line; written on after it went, it comes
+  cursor shows you thinking until your turn ends (in a terminal, your next `next`). A line that starts with your @name goes (at Enter, or when they
+  leave it) as their comment thread by the text above it, out of the note; your @name in a comment of theirs (Ask
+  companion opens one) asks too. Those asks name their thread: answer in it (`comment --id`), and their replies there
+  come to you as `reply`. Your @name mid-line stays their prose: the whole line, sent at a pause; written on, it comes
   again.
 - A `point` is an ask without words: they dragged your cursor onto a line (or a selection) to say "look at this".
 - They can click your cursor to see your last `say`s and ask you there, and pin a `say` into a comment; right-clicking it shows

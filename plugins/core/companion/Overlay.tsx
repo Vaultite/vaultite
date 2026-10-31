@@ -425,7 +425,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
   const body = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState(false)
   const writing = n.id === DRAFT, suggestion = n.kind === "suggestion"
-  const [draft, setDraft] = useState("")
+  const [draft, setDraft] = useState(() => (writing ? getState().draft?.text ?? "" : ""))
   const tint = threadTint(n), author = writing ? (share ? share.guest : "You") : authorOf(n)
   // (a guest closes only their own threads; the user, any)
   const closes = !share || (n.by === "guest" && n.agent === share.guest)
@@ -457,7 +457,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
     ...(!share && n.by === "user" ? [{ label: "Delete", icon: Trash2, danger: true, sep: !!words, run: () => void confirmDialog({ title: "Delete this comment?", body: "It won't be kept with the resolved ones.", confirm: "Delete", danger: true })
       .then((ok) => ok && answer(n.id, "reject")) }] : []),
   ]
-  const replyTint = (r: Reply) => (r.by === "agent" ? (n.by ? tintOf(n.agent) : tint) : r.by === "guest" && r.name === n.agent ? tint : "var(--muted-foreground)")
+  const replyTint = (r: Reply) => (r.by === "agent" ? (n.by ? tintOf(r.name ?? n.ask ?? n.agent) : tint) : r.by === "guest" && r.name === n.agent ? tint : "var(--muted-foreground)")
   return (
     <div ref={keep} data-companion-note={n.id} data-open={open || undefined} onPointerDown={(e) => !open && !(e.target as Element).closest("button") && onOpen(true)}
       onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)} onContextMenu={writing ? undefined : menuFor(items)}
@@ -493,7 +493,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
       )}
       {n.kind === "comment" && (open || writing) ? (
         <div className="shrink-0 px-2.5 pt-2">
-          <input autoFocus={writing} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={writing ? "Comment" : "Reply"} aria-label={writing ? "Comment" : "Reply"} enterKeyHint="send"
+          <input autoFocus={writing} value={draft} onFocus={(e) => e.currentTarget.setSelectionRange(draft.length, draft.length)} onChange={(e) => setDraft(e.target.value)} placeholder={writing ? "Comment" : "Reply"} aria-label={writing ? "Comment" : "Reply"} enterKeyHint="send"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() }
               else if (e.key === "Escape") { e.preventDefault(); if (writing) startComment(null); else { setDraft(""); onOpen(false) } }

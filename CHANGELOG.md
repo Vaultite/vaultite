@@ -15,6 +15,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   hovered, and clicking it opens the card); cards show who and when, Resolve and a menu (Copy text, Delete for your
   own), fold to their first words and how many replies, and open into the whole thread with a Reply box, stepping
   toward the text. Selecting text shows an Add comment button in the margin beside it.
+- **Asking the companion no longer writes in your note**: a line starting with @claude becomes a comment thread by the
+  text above it when you press Enter or leave the line, and Claude answers in that thread; replies there reach it
+  without its name. @claude in any comment asks it too, and Ask (Mod+Shift+K) opens a comment that starts with @claude.
 - **The container menu names who's signed in while you type**: typing gmail.com names each container's Google account
   (gmail.com, youtu.be and twitter.com count as Google's, YouTube's and X's logins), and a menu opened before the
   logins were listed fills them in as they answer, rather than showing none.

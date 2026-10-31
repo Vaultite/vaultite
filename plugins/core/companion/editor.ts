@@ -5,7 +5,7 @@ import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuild
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { capitalize, keyHint, notifyError, op, pluginSettings, share, type EditorCtx } from "@vaultite"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, threadTint, tintOf, views } from "./live"
+import { accept, answer, asksAtStart, asksSomething, commentAt, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, threadTint, tintOf, views } from "./live"
 import { nearest } from "./text"
 
 /** Its own changes: not the user's, so not said back as theirs. */
@@ -210,7 +210,10 @@ function watcher(path: string) {
     update(u: ViewUpdate) {
       if (u.docChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refresh)))) this.decorations = decorate(u.view, path)
       if (u.docChanged || u.geometryChanged || u.viewportChanged || u.selectionSet || u.focusChanged) bump()
-      if (u.focusChanged || (u.selectionSet && u.state.doc.lineAt(u.state.selection.main.head).number !== u.startState.doc.lineAt(u.startState.selection.main.head).number)) {
+      // (an ask line left, by the caret or the focus, goes)
+      const was = u.startState.doc.lineAt(u.startState.selection.main.head).number
+      if (!u.docChanged && ((u.selectionSet && u.state.doc.lineAt(u.state.selection.main.head).number !== was) || (u.focusChanged && !u.view.hasFocus)) && asksAtStart(u.state.doc.line(was).text) && this.ask(was, u.state.doc)) markSent(u.view, [was])
+      if (u.focusChanged || (u.selectionSet && u.state.doc.lineAt(u.state.selection.main.head).number !== was)) {
         if (this.whereTimer) clearTimeout(this.whereTimer)
         this.whereTimer = setTimeout(() => sayWhere(u.view.hasFocus), u.focusChanged ? 0 : 800)
       }
@@ -249,13 +252,34 @@ function watcher(path: string) {
       const line = state.doc.lineAt(state.selection.main.head), ask = mentionIn(line.text)
       if (ask && getState().mode !== "off" && !this.asked.includes(line.text) && asksSomething(line.text, mentionsOf(line.text))) listen(ask.name, path, line.number)
     }
-    /** Send line `n`'s ask, if it has one not sent as it reads now; `pause`: only one with words besides the @name. */
+    /** Send line `n`'s ask, if it has one not sent as it reads now; `pause`: only one with words besides the @name. An
+     *  ask line goes at Enter or once they leave it, as a thread by the text it's under, and leaves the note. */
     ask(n: number, doc: Text, pause = false) {
       const line = doc.line(n), ask = mentionIn(line.text)
       if (!ask || getState().mode === "off" || this.asked.includes(line.text) || (pause && !asksSomething(line.text, mentionsOf(line.text)))) return false
+      const lead = asksAtStart(line.text)
+      if (lead && pause && this.view.hasFocus && this.view.state.doc.lineAt(this.view.state.selection.main.head).text === line.text) return false
       this.asked = [...this.asked.slice(-200), line.text]
-      sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text, waited: Date.now() - this.typedAt })
+      if (lead) this.thread(n, doc)
+      else sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text, waited: Date.now() - this.typedAt })
       return true
+    }
+    /** Ask line `n` as a thread of the user's, on the nearest line with words above it (else below), and out of the note. */
+    thread(n: number, doc: Text) {
+      const text = doc.line(n).text, words = (i: number) => !!doc.line(i).text.trim() && !asksAtStart(doc.line(i).text)
+      let at = 0
+      for (let i = n - 1; i >= 1 && !at; i--) if (words(i)) at = i
+      for (let i = n + 1; i <= doc.lines && !at; i++) if (words(i)) at = i
+      const find = at ? doc.line(at).text.trim().slice(0, 200) : ""
+      commentAt({ path, line: at ? (at < n ? at : at - 1) : 1, ...(find ? { find } : {}), text: text.replace(/^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/, "") })
+      queueMicrotask(() => {
+        const d = this.view.state.doc, near = Math.min(n, d.lines)
+        let i = 0
+        for (let k = 0; k <= d.lines && !i; k++) for (const j of [near - k, near + k]) if (!i && j >= 1 && j <= d.lines && d.line(j).text === text) i = j
+        if (!i) return
+        const l = d.line(i), from = i < d.lines ? l.from : Math.max(0, l.from - 1), to = i < d.lines ? d.line(i + 1).from : l.to
+        this.view.dispatch({ changes: { from, to }, annotations: own.of(true) })
+      })
     }
     later() {
       if (this.timer) clearTimeout(this.timer)

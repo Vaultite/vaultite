@@ -21,6 +21,10 @@ export default async ($: VaultTest) => {
     check("companion: @name mid-line asks it the whole line", JSON.stringify(ask("Alright, hey how is it going @claude?")) === JSON.stringify({ name: "claude", text: "Alright, hey how is it going @claude?" }))
     check("companion: mid-line, only the agents around count, and never an email or a link", !ask("ask @ada later") && !ask("mail bob@claude.com") && !ask("x.com/@claude") && !ask("@bob hi"))
     check("companion: every @name of a line is found, where it is", JSON.stringify(l.mentionsOf("@ada and @claude, a@claude", names, mid)) === JSON.stringify([{ from: 0, to: 4, name: "ada" }, { from: 9, to: 16, name: "claude" }]))
+    check("companion: a line opening with @name is an ask line (a thread), one with it mid-line stays prose", l.asksAtStart("- [ ] @ada: fix this", names, mid) &&
+      l.asksAtStart("@claude how far?", names, mid) && !l.asksAtStart("how is it going @claude?", names, mid) && !l.asksAtStart("@bob hi", names, mid))
+    check("companion: an @name in a person's comment asks that agent; an email or a stranger doesn't",
+      c.mentioned("is this right @claude?") === "Claude" && c.mentioned("@Claude look") === "Claude" && !c.mentioned("mail bob@claude.com") && !c.mentioned("@nobody here"))
     check("companion: an @ can start a mention after a space or a line's start, not in a word", l.canMention("") && l.canMention("hey ") && l.canMention("(") && !l.canMention("bob") && !l.canMention("x.com/"))
     check("companion: an ask is sent at a pause only with words besides its @names", !l.asksSomething("@claude?", l.mentionsOf("@claude?", names, mid)) &&
       !l.asksSomething("- @claude ", l.mentionsOf("- @claude ", names, mid)) && l.asksSomething("how is it @claude?", l.mentionsOf("how is it @claude?", names, mid)))

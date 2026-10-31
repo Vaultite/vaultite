@@ -1,7 +1,7 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
 // words pop in a bubble by it, comments are cards in the margin (a dot on a phone, opened by a tap; or, a setting,
 // threads in the Conversations panel, a dot by the line) and take a reply, a suggestion is struck through with its replacement after it
-// and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
+// and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask, a thread
 // the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes
 // reaches it after a pause. Its cursor: hovered, its status; clicked, its last words and a box to ask it; dragged onto
 // text, a point; its flag follows it; agents on one spot fan out from one flag. A file's top bar items dock in a
@@ -110,13 +110,14 @@ await wait(800)
 check("say: a bubble by its cursor", await cursor.getByText("Basil keeps aphids off tomatoes.").isVisible())
 await page.screenshot({ path: `${OUT}say.png` })
 
-// "@claude …" then Enter: an ask, at once; it shows thinking.
+// "@claude …" then Enter: an ask, at once, as a thread by the line above (out of the note); it shows thinking.
 await editor.click()
 await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n@claude how far apart should they be?\n")
 let r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
-await until(() => text(NOTE).includes("@claude how far apart"), 5000)
-check("ask: @claude and Enter reach it at once, with the question and its line", r?.moments.some((m) => m.kind === "ask" && m.text === "how far apart should they be?" && m.path === NOTE && m.waited < 1000 && m.line === text(NOTE).split("\n").indexOf("@claude how far apart should they be?") + 1), r)
+await until(() => !text(NOTE).includes("@claude how far apart"), 5000)
+check("ask: @claude and Enter reach it at once, a thread by the line above, the line out of the note", r?.moments.some((m) => m.kind === "ask" && m.text === "@claude how far apart should they be?" && m.item && m.path === NOTE &&
+  m.line === text(NOTE).split("\n").indexOf("Basil between them.") + 1) && !text(NOTE).includes("@claude how far apart"), r)
 await until(async () => (await cursor.getAttribute("data-state")) === "thinking", 3000)
 check("ask: its cursor shows it thinking", (await cursor.getAttribute("data-state")) === "thinking")
 await wait(800)
@@ -160,13 +161,13 @@ check("@claude mid-line: the ask reaches it at the pause, the whole line", r?.mo
 await page.keyboard.press("Enter")
 r = await op("companion.next", { timeout: 3 })
 check("@claude mid-line: Enter after it doesn't ask again", !r.moments?.some((m) => m.kind === "ask"), r)
-// An ask mid-sentence goes at the pause all the same: written on, it comes again.
+// An ask line waits for Enter while they're on it (dictation lands in bursts), then goes.
 await page.keyboard.type("@claude and what about the")
-t0 = Date.now()
-r = await until(async () => { const x = await op("companion.next", { timeout: 3 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 5000)
-check("@claude mid-sentence: the ask goes at the pause, not the longer one", r?.moments.some((m) => m.kind === "ask" && m.text === "and what about the") && Date.now() - t0 < 1800, { ms: Date.now() - t0, r })
+r = await op("companion.next", { timeout: 3 })
+check("ask line: not sent at the pause while they're on it", !r.moments?.some((m) => m.kind === "ask"), r)
 await page.keyboard.press("Enter")
-await op("companion.next", { timeout: 2 })
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 4000)
+check("ask line: Enter sends it", r?.moments.some((m) => m.kind === "ask" && m.text === "@claude and what about the" && m.item), r)
 await page.keyboard.type("Mail bob@claude.com or ask @nobody.")
 r = await op("companion.next", { timeout: 4 })
 check("@ in an email or an unknown name mid-line: no chip, no ask", !r.moments?.some((m) => m.kind === "ask") &&
@@ -177,9 +178,10 @@ await wait(500)
 r = await op("companion.say", { text: "Going well.", find: "how is it going" })
 check("say: no path, the note they just left the editor of", r.path === NOTE, r)
 await editor.click()
+await page.keyboard.press("ControlOrMeta+End") // (the caret off the text commented on below: in it, its card opens)
 
 // A comment in the margin, a reply to it.
-r = await op("companion.comment", { path: NOTE, find: "how far apart", text: "About 60 cm: they get big." })
+r = await op("companion.comment", { path: NOTE, find: "Maybe a hand apart", text: "About 60 cm: they get big." })
 const commentId = r.id
 const card = page.locator(`[data-companion-note="${r.id}"]`)
 await card.waitFor({ timeout: 3000 })
@@ -189,8 +191,10 @@ check("comment: a card in the margin, beside the text", !!cb && !!content && cb.
 const mark = editor.locator(`[data-companion-mark="${r.id}"]`)
 /** A comment's text, lit: its background's alpha (0 to 1) and whether it's underlined as the active one. */
 const litOf = (m) => m.evaluate((el) => { const c = getComputedStyle(el), a = c.backgroundColor.match(/[\d.]+(?=\))/); return { alpha: c.backgroundColor.startsWith("rgba") || /\//.test(c.backgroundColor) ? Number(a?.[0] ?? 1) : 1, line: c.boxShadow !== "none", bg: c.backgroundColor } })
+await page.mouse.move(5, 5) // (not hovering its text)
+await wait(300)
 const soft = await litOf(mark)
-check("comment: its text is highlighted, as in a shared doc, not underlined", (await mark.innerText()) === "how far apart" && soft.alpha > 0.05 && soft.alpha < 0.3 && !soft.line && (await mark.evaluate((el) => getComputedStyle(el).textDecorationLine)) === "none", soft)
+check("comment: its text is highlighted, as in a shared doc, not underlined", (await mark.innerText()) === "Maybe a hand apart" && soft.alpha > 0.05 && soft.alpha < 0.3 && !soft.line && (await mark.evaluate((el) => getComputedStyle(el).textDecorationLine)) === "none", soft)
 check("comment: its card says who and when, Resolve and More at its right", /^C\s+Claude\s+now/.test(await card.innerText()) && await card.getByRole("button", { name: "Resolve" }).isVisible() && await card.getByRole("button", { name: "More" }).isVisible(), await card.innerText())
 await card.hover()
 await wait(300)
@@ -326,10 +330,8 @@ await page.keyboard.type("ada is basil a perennial?")
 const chip = editor.locator('.cm-companion-mention[data-agent="Ada"]')
 check("@ada: a chip in Ada's colour as it's typed", (await chip.count()) === 1 && (await chip.innerText()) === "@ada" && /--c: var\(--(?!orange)/.test(await chip.getAttribute("style") ?? ""))
 await page.keyboard.press("Enter")
-await chip.and(page.locator(".cm-companion-asked")).waitFor({ timeout: 1500 })
-check("@ada: the chip lights up as the ask goes", true)
 r = await until(async () => { const x = await op("companion.next", { timeout: 2, as: "Ada" }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
-check("@ada: the ask reaches Ada", r?.moments.some((m) => m.kind === "ask" && m.text === "is basil a perennial?" && m.for === "Ada"), r)
+check("@ada: the ask reaches Ada, in a thread, the line out of the note", r?.moments.some((m) => m.kind === "ask" && m.text === "@ada is basil a perennial?" && m.for === "Ada" && m.item) && !text(NOTE).includes("perennial"), r)
 const ada = page.locator('.companion-cursor[data-agent="Ada"]')
 await until(async () => (await ada.getAttribute("data-state")) === "thinking", 3000)
 check("@ada: Ada thinks, Claude doesn't", (await ada.getAttribute("data-state")) === "thinking" && (await cursor.getAttribute("data-state")) !== "thinking")
@@ -400,12 +402,15 @@ check("@opus-review at a line's start: an @name", (await editor.locator(".cm-lin
 for (let i = 0; i < "\n@opus-review ".length; i++) await page.keyboard.press("Backspace")
 await page.unroute("**/api/ops/companion.start")
 
-// Ask command: starts an @claude line.
+// Ask command: a comment by the caret's line that starts with @claude; nothing written in the note.
 await editor.getByText("Basil between them").click({ position: { x: 30, y: 8 } })
 await page.keyboard.press("End")
+const unasked = text(NOTE)
 await page.keyboard.press("ControlOrMeta+Shift+K")
-await wait(300)
-check("Ask the companion (⌘⇧K): a new @claude line under the cursor", (await editor.innerText()).includes("Basil between them.\n@claude "), await editor.innerText())
+const askBox = page.locator('[data-companion-note="draft"] input')
+await askBox.waitFor({ timeout: 2000 }).catch(() => {})
+check("Ask the companion (⌘⇧K): a comment that starts with @claude, the note unchanged", (await askBox.inputValue().catch(() => "")) === "@claude " && text(NOTE) === unasked)
+await page.keyboard.press("Escape")
 
 // A long card shows its first lines and More; clicked, all of it; clicking elsewhere folds it again. Lists are lists.
 await op("companion.clear")
@@ -570,7 +575,7 @@ await op("companion.comment", { path: NOTE, find: "Basil", text: "Plant it after
 const dot = pp.locator('button[aria-label="Claude\'s comment"]').last()
 await dot.waitFor({ timeout: 3000 })
 const db = await dot.boundingBox()
-check("phone: @names are chips here too", (await pp.locator(".cm-companion-mention").count()) >= 2)
+check("phone: @names are chips here too", (await pp.locator(".cm-companion-mention").count()) >= 1)
 check("phone: a comment is a dot inside the screen", !!db && db.x + db.width <= 390, db)
 await dot.tap()
 await pp.getByText("Plant it after the last frost.").waitFor({ timeout: 3000 })
@@ -669,9 +674,10 @@ const panel = sp.locator("[data-companion-panel]:visible")
 await panel.locator(`[data-companion-thread="${s1}"]`).waitFor({ timeout: 4000 })
 await wait(600) // (the sidebar opening moves the note's text)
 check("sidebar: an agent commenting shows the Conversations panel, in the right sidebar", await sp.locator('aside[data-side="right"] [data-panel="companion:conversations"]').isVisible())
-const order = await panel.locator("[data-companion-thread]").evaluateAll((els) => els.map((e) => e.dataset.companionThread))
+// (the user's own threads, from the asks above, stay: only these two are counted)
+const order = (await panel.locator("[data-companion-thread]").evaluateAll((els) => els.map((e) => e.dataset.companionThread))).filter((id) => [s1, c1].includes(id))
 check("sidebar: threads in the note's order", order.join() === [s1, c1].join(), order)
-check("sidebar: no cards in the margin, a dot by each line", !(await sp.locator("[data-companion-note]").count()) && (await sp.locator("[data-companion-gutter]").count()) === 2)
+check("sidebar: no cards in the margin, a dot by each line", !(await sp.locator("[data-companion-note]").count()) && (await sp.locator(`[data-companion-gutter="${s1}"], [data-companion-gutter="${c1}"]`).count()) === 2)
 const gd = await sp.locator(`[data-companion-gutter="${c1}"]`).boundingBox(), bl = await sed.getByText("Basil between them").boundingBox()
 check("sidebar: a thread's dot is left of its line, level with it", !!gd && !!bl && gd.x + gd.width <= bl.x + 4 && Math.abs(gd.y + gd.height / 2 - (bl.y + bl.height / 2)) < 12, { gd, bl })
 await sp.screenshot({ path: `${OUT}sidebar.png` })
