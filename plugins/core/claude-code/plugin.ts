@@ -10,6 +10,7 @@ import { type AgentAsk, type AgentCommand, type AgentMeter, type AgentModels, ty
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { askingIn, Conversation, WANTED } from "./transcript.ts"
+import { chats } from "./chat.ts"
 import { dialogOn } from "./dialog.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -516,6 +517,8 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
   // (inside WSL its sessions and accounts are the distro's own, not these)
   const found = resume && !wsl ? sessionFile(resume, true) : null
   if (resume && !found && !wsl) return notOnThisMachine("Claude Code", resume)
+  // (a session the chat runs goes to the terminal: one writes it)
+  if (resume && chat.hosted(resume)) await chat.letGo(resume)
   const a = wsl ? undefined : found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
   const env: Record<string, string> = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? { CLAUDE_CONFIG_DIR: a.dir } : {}
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
@@ -534,8 +537,9 @@ plugin.provide("agent:claude", async (start: AgentStart): Promise<AgentCommand> 
 })
 
 /** The models a session may run, by the aliases --model takes (each its family's latest), and its efforts. */
-plugin.provide("agent-models:claude", (): AgentModels => ({ models: ["sonnet", "opus", "haiku", "fable"].map((id) => ({ id, label: modelName(id) })),
-  efforts: ["low", "medium", "high", "xhigh", "max"] }))
+const models = (): AgentModels => ({ models: ["sonnet", "opus", "haiku", "fable"].map((id) => ({ id, label: modelName(id) })),
+  efforts: ["low", "medium", "high", "xhigh", "max"] })
+plugin.provide("agent-models:claude", models)
 
 /** Its dialogs: folder trust before its hooks run, its default No; a permission, Enter while Yes is chosen. Its question
  *  can be far up (choices wrapped): Yes chosen under it and no user prompt (❯) after tell it's the one shown now. */
@@ -555,6 +559,8 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
 /** A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox
  *  reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
 plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
+  const now = !terminal && session ? chat.turnNow(session) : null
+  if (now) return now
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null
   const t = found ? await transcript(found.file) : null
@@ -564,6 +570,8 @@ plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
 /** What a session waits on ("agent-asking:claude", the Inbox shows it whole): its AskUserQuestion or plan, else a dialog
  *  its terminal shows, as a question (not a permission: Approve and Deny answer it). Never a private account's. */
 plugin.provide("agent-asking:claude", async (terminal: string, session = ""): Promise<Asking | null> => {
+  const hosted = !terminal && session ? chat.askingNow(session) : undefined
+  if (hosted !== undefined) return hosted
   const sid = session || await sessionIn(terminal)
   const found = sid ? sessionFile(sid) : null, t = found && tail(found.file)
   const said = t ? askingIn(t.text) : null
@@ -602,13 +610,13 @@ async function sessionIn(terminal: string) {
 
 /** The model a session runs now, as said ("Opus 5.5"): its transcript's last answer's (the service "agent-model:claude-code":
  *  Provenance says who wrote a line). Read again only when the transcript grew. */
-const models = new Map<string, { size: number; model: string | null }>()
+const said = new Map<string, { size: number; model: string | null }>()
 plugin.provide("agent-model:claude-code", (session: string) => {
   const found = SESSION_ID.test(session) ? sessionFile(session, true) : null
   if (!found) return null
   let size = 0
   try { size = fs.statSync(found.file).size } catch { return null }
-  const was = models.get(found.file)
+  const was = said.get(found.file)
   if (was?.size === size) return was.model
   let model: string | null = null
   for (const line of (tail(found.file)?.text ?? "").split("\n").reverse()) {
@@ -616,8 +624,8 @@ plugin.provide("agent-model:claude-code", (session: string) => {
     const m = /"model":"([^"]+)"/.exec(line)
     if (m && m[1] !== "<synthetic>") { model = modelName(m[1]); break }
   }
-  models.set(found.file, { size, model })
-  if (models.size > 50) models.delete(models.keys().next().value!)
+  said.set(found.file, { size, model })
+  if (said.size > 50) said.delete(said.keys().next().value!)
   return model
 })
 
@@ -753,3 +761,28 @@ const agent = codingAgent(plugin, {
     return rc.length ? ["### Remote Control", bullets(rc.map((r) => `${r.name || "Unnamed"}${r.accountLabel ? ` (${r.accountLabel})` : ""}, since ${ago(r.started)}`))] : []
   },
 })
+
+// ---------- chat sessions: run through the Agent SDK in the app's chat keeper (chat.ts), drawn in the session's tab
+
+const chat = chats(plugin, {
+  accounts, sessionFile, models, modelName,
+  async tuiOf(id) {
+    for (const { a, s, pid, sid, tmux } of running(accounts())) {
+      // (one the SDK runs is the chat keeper's, followed again in a moment after a restart)
+      if (sid !== id || chat.hosted(id) || String(s.entrypoint ?? "").startsWith("sdk")) continue
+      const key = `${pid}@${s.procStart}`
+      const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+      if (t) terminals.set(key, t)
+      return a.private ? "" : t ?? ""
+    }
+    return null
+  },
+  async inTerminals() {
+    return new Set(running(accounts()).filter(({ s }) => !String(s.entrypoint ?? "").startsWith("sdk")).map(({ sid }) => sid).filter(Boolean))
+  },
+  async folders() {
+    const u = await summary(30, accounts().filter((a) => !a.private))
+    return sortBy((u.projects as Item[]).filter((p) => typeof p.root === "string" && p.root && fs.existsSync(p.root)), (p) => [String(p.last ?? "")]).reverse().map((p) => String(p.root))
+  },
+})
+plugin.exports.chat = chat.api

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { canRunAgents, choosePlace, openAgent } from "@/core/agents"
 import { addDays, dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, today, useLive, useTick } from "@/core/data"
 import { api } from "@/core/http"
-import type { BlockCtx, PluginDef } from "@/core/define"
+import type { BlockCtx, PluginDef, ViewDef } from "@/core/define"
 import { isViewOpen, openView } from "@/core/files"
 import { namedIcon } from "@/core/pages"
 import { machinePath, onMachine, useMachines } from "@/core/machines"
@@ -513,9 +513,11 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
   process?: string[]; accounts?: string
   /** Open it, in a split (desktop: before its name, so the server's list leaves it out), in an account or on a machine. */
   opens?: { open: Named; split: Named; where?: Named }
+  /** Its session's tab drawn its own way (Claude Code's chat), in place of the conversation read back. */
+  sessionView?: Partial<ViewDef>
   demo: AgentMock; demoMore?: () => Record<string, unknown>
 }): PluginDef {
-  const { blocks, process, accounts, opens, demo, demoMore, ...def } = o
+  const { blocks, process, accounts, opens, demo, demoMore, sessionView, ...def } = o
   const when = () => canRunAgents()
   return {
     ...def,
@@ -525,11 +527,12 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
     } : b])),
     // A session read back (view:<view>/<id>, <id>@<machine> for another machine's): opened by clicking one that isn't
     // in one of the app's terminals.
-    views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), pinAs: (id) => id || null, render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} /> } },
+    views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), pinAs: (id) => id || null, render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} />, ...sessionView } },
     // (Terminal runs it: the service "agent:<agent>" in its plugin.ts says how)
     ...(process && opens ? {
       agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(src.speaker ? { speaker: src.speaker } : {}), ...(accounts ? { accounts } : {}) } },
       commands: [
+        ...(def.commands ?? []),
         { ...opens.open, words: "new", when, run: () => openAgent(src.agent), icon: src.icon },
         ...(opens.where ? [{ ...opens.where, when, run: () => void choosePlace({ agent: src.agent }) }] : []),
         { ...opens.split, words: "new", desktop: true, when, run: () => openAgent(src.agent, { split: true }) },

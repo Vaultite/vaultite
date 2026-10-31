@@ -8,3 +8,9 @@ has run in it). Name them, keep one private (its usage counts; no titles, folder
 `.vaultite/plugins/claude-code/data.json`:
 `{"accounts": {"default": {"label": "Work", "private": true}, "personal": {"label": "Personal"}, "old": {"hidden": true}, "lab": {"dir": "~/code/claude-lab"}}}`.
 `GET /api/claude-code/accounts` lists them; "Open Claude Code in an account or on a machine…" starts one there.
+Chat sessions: Claude Code run by the app itself (the Agent SDK, the account's own login), not in a terminal: `vau chat
+start "<prompt>"` (`--cwd`, `--account`, `--model`, `--effort`, `--mode`, `--open`), `vau chat send <id> "<text>"` (resumes
+one that ended), `vau chat read <id>`, `vau chat list`, `vau chat interrupt|stop <id>`, `vau chat set <id> --model opus`.
+Each is a normal session (`claude --resume <id>` opens it in a terminal), drawn in `view:claude-session/<id>`; what it
+asks (a permission, questions, a plan) waits in its tab and the inbox for the user, never for an agent (`vau chat answer`
+is theirs).

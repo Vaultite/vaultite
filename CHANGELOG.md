@@ -9,6 +9,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Translucent pages**: with a translucent window, notes, terminals, canvases, the graph and the app's own pages can
   show the desktop too, more lightly than the sidebars so they still read; web pages, PDFs, images and video stay
   solid. A switch under Translucent window in Appearance, and the Full glass bundle.
+- **Claude Code in a chat tab**: "New Claude Code chat" (and "Open Claude Code in an account or on a machine…") runs a
+  session in the app rather than a terminal, through the Agent SDK on your own Claude Code login: answers stream in as
+  Markdown, tool calls fold, permissions, questions and plans are answered right in it (and from the inbox and your
+  phone), with Stop and model, effort and permission-mode pickers. It keeps working while the app or server restarts (a
+  turn cut off by a reboot goes on by itself), another machine's sessions open the same way, its edits show in Activity,
+  every session's tab is its chat (one started in a terminal carries on there once that ends), Open in terminal resumes it
+  in Claude Code, and the inbox's replies and voice notes go straight into chat sessions. `vau chat` drives them.
 - **Agents' sessions stay in the inbox until they're dealt with**: each session is one thread that needs you (it asks,
   answered, reported or failed), then shows its agent working once you reply, and leaves only when you mark it done or
   it finishes with nothing more for you; opening or reading it no longer makes it disappear. A report is its session's

@@ -870,6 +870,9 @@ async function locate(id: string): Promise<string | null> {
 plugin.provide("terminal:locate", locate)
 /** Whether session `id` runs on this machine. */
 plugin.provide("terminal:runs", runsHere)
+/** What an agent the app runs outside a terminal gets as its environment (Claude Code's chat sessions): a shell's here,
+ *  Vaultite's variables and the app's vau first on PATH, so its commands run as they would in a terminal. */
+plugin.provide("terminal:agent-env", (): Record<string, string> => ({ ...env(), ...context(null, LOCAL) }))
 
 const starting = new Map<string, Promise<{ s: Session; fresh: boolean }>>() // two sockets to a new id get the same shell
 

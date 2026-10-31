@@ -167,7 +167,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-meters:claude` (claude-code)
 - `agent-meters:codex` (codex): Its sessions in the app's terminals, by terminal (the service "agent-meters:codex"): the Terminals list's session ids. No meters: its rollouts don't say when a prompt cache expires.
 - `agent-model:claude-code` (claude-code)
-- `agent-models:claude` (claude-code): The models a session may run, by the aliases --model takes (each its family's latest), and its efforts.
+- `agent-models:claude` (claude-code)
 - `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
 - `agent-pick:claude` (claude-code): The keys answering its questions with `choices` ("agent-pick:claude"): a digit picks (in a multi-select toggles, Tab goes on), the one after the options types an answer; 1 submits the review several questions or a multi-select end in.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
@@ -229,6 +229,6 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.
 - `templates:folder` (templates): Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person).
-- `terminal:<…>` (meters, access, waits, state, agent-waits, screen, locate, runs, of, of-pids, info): agent-meters; terminal
+- `terminal:<…>` (meters, access, waits, state, agent-waits, screen, locate, runs, agent-env, of, of-pids, info): agent-meters; terminal
 - `text:<…>` (canvas, docx, epub, fb2, pptx, base, csv): canvas; documents; ebooks; presentations; query; tables
 - `widgets:refresh` (inbox): Another plugin's data the widgets show changed (a routine ticked).

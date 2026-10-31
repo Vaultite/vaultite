@@ -1378,7 +1378,7 @@ two or three plain sentences, no jargon; the push says it too.
     images: { type: "array", items: { type: "string" }, description: "screenshots: files on this machine (absolute paths) or in the vault (png, jpg, gif, webp)" },
     terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
     session: { type: "string", env: "CLAUDE_CODE_SESSION_ID", description: "your session's id, to resume it (filled in from CLAUDE_CODE_SESSION_ID)" },
-    agent: { type: "string", description: "who you are (claude, codex): from the terminal's id when left out" },
+    agent: { type: "string", env: "VAULTITE_AGENT", description: "who you are (claude, codex): from VAULTITE_AGENT (a chat session's), else the terminal's id" },
   },
   args: ["title"],
   run: async (p, ctx) => {

@@ -1,7 +1,7 @@
 // Coding agents in terminal tabs (the Terminal plugin runs them; a plugin brings one with `agents` in its definition
 // and the service "agent:<name>" in its backend): open a new session, or resume one in the folder it ran in.
 import { useEffect, useState } from "react"
-import { SquareTerminal } from "lucide-react"
+import { SquareTerminal, type LucideIcon } from "lucide-react"
 import { choose } from "@/components/Chooser"
 import { get } from "@/core/http"
 import { isViewOpen, openView } from "@/core/files"
@@ -158,14 +158,21 @@ export function openPlace(p: Place, opts: { split?: boolean } = {}) {
 }
 
 /** Choose where to open a terminal or an agent (`agent`: only that one's places), then open it. */
-export async function choosePlace(opts: { agent?: string; split?: boolean } = {}) {
-  const all = (await places()).filter((p) => !opts.agent || p.agent?.name === opts.agent)
+export async function choosePlace(opts: { agent?: string; split?: boolean; first?: PlaceChoice[] } = {}) {
+  const all = (await places()).filter((p) => !opts.agent || p.agent?.name === opts.agent), first = opts.first ?? []
   choose({
     title: opts.agent ? "Open an agent" : "Open a terminal or an agent", placeholder: "Where to open it…",
-    items: all.map((p, i) => ({ id: String(i), label: [p.agent?.label ?? "Terminal", p.profileLabel].filter(Boolean).join(" · "), detail: p.machineLabel, icon: p.agent?.icon ?? SquareTerminal })),
-    onPick: (it) => { const p = all[Number(it.id)]; if (p) openPlace(p, opts) },
+    items: [...first.map((c, i) => ({ id: `first:${i}`, label: c.label, detail: c.detail, icon: c.icon })),
+      ...all.map((p, i) => ({ id: String(i), label: [p.agent?.label ?? "Terminal", p.profileLabel].filter(Boolean).join(" · "), detail: p.machineLabel, icon: p.agent?.icon ?? SquareTerminal }))],
+    onPick: (it) => {
+      if (it.id.startsWith("first:")) return first[Number(it.id.slice(6))]?.run()
+      const p = all[Number(it.id)]
+      if (p) openPlace(p, opts)
+    },
   })
 }
+/** A choice listed before the places (Claude Code's chat, in the app rather than a terminal). */
+export type PlaceChoice = { label: string; detail?: string; icon?: LucideIcon; run: () => void }
 
 /** Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there. */
 export async function chooseDefaultPlace() {

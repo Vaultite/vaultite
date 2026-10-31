@@ -392,6 +392,9 @@ export type Question = { question: string; header?: string; multi?: boolean; opt
 export type Asking = { kind: "question"; questions: Question[] } | { kind: "plan"; plan: string }
 /** A question's answer: its options' numbers (from 1), or text typed as its own answer. */
 export type Choice = number[] | string
+/** A new chat session told `prompt` (the service "agent-chat-new:<name>"), in an account and folder: its id, or null
+ *  when none can run here (an app serving no port: a test's). */
+export type AgentChatNew = (o: { prompt: string; account?: string; cwd?: string; by?: string }) => Promise<{ id: string } | null>
 /** How a session is started, besides its id and first prompt. */
 export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
 /** What an agent's service "agent-models:<name>" answers: the models a session of it may run (`id` as its --model takes

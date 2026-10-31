@@ -1,8 +1,9 @@
-import { AgentLimitsChip, agentPlugin, definePlugin, getStore, openFile, pageOf, type AgentSource } from "@vaultite"
+import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
+import { chatTitle, ChatView, NEW } from "./ChatTab"
 
-// Claude Code draws the agent blocks (`agent: claude-code`) and its session tabs with the app's agent components
-// (AgentUsage.tsx) on GET /api/claude-code; its page is the Claude dashboard (pages/Claude.md).
+// Claude Code draws the agent blocks (`agent: claude-code`) with the app's agent components (AgentUsage.tsx) on GET
+// /api/claude-code, and its sessions' tabs as chats (Chat.tsx); its page is the Claude dashboard (pages/Claude.md).
 const SRC: AgentSource = {
   path: "claude-code", label: "Claude Code", speaker: "Claude", icon: ClaudeIcon, tint: "var(--orange)", agent: "claude", view: "claude-session",
   noLimits: "No limits yet. They come from Claude Code, signed in on this machine, or else its status line or the Claude app.",
@@ -15,8 +16,16 @@ export default definePlugin(agentPlugin(SRC, {
   blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   // Its accounts (config folders: plugin.ts) are offered when choosing where to open it.
   process: ["claude"], accounts: "claude-code/accounts",
-  opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" },
-    where: { id: "terminal:claude-where", name: "Open Claude Code in an account or on a machine…" } },
+  opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" } },
+  // A session's tab is its chat (`new` until it starts), drawn edge to edge with its own composer.
+  sessionView: { full: true, argState: true, title: (id) => chatTitle(id, sessionTitle(SRC, id)),
+    render: ({ arg, setArg }) => <ChatView id={arg} setArg={setArg} /> },
+  // A question about a file (a live answer's follow-up): a new chat with it.
+  ask: (question, file) => void askChat(question, file),
+  commands: [
+    { id: "claude-code:chat", name: "New Claude Code chat", words: "new", icon: ClaudeIcon, run: () => newChat() },
+    { id: "terminal:claude-where", name: "Open Claude Code in an account or on a machine…", run: () => void chooseWhere() },
+  ],
   demo: {
     plan: { name: "Max 5x", monthly: 100 },
     limits: { source: "status line", observed: 2, windows: [["session", "Current session", 300, 38, 130], ["week", "This week", 10080, 61, 60 * 52]] },
@@ -38,3 +47,16 @@ export default definePlugin(agentPlugin(SRC, {
     ],
   },
 }))
+
+/** A new chat, in a new tab. */
+const newChat = () => openView(`${SRC.view}/${NEW}`, { newTab: true })
+
+/** Where to open Claude Code: a chat in the app, then each terminal place (an account, a machine). */
+const chooseWhere = () => choosePlace({ agent: "claude", first: [{ label: "Claude Code chat", detail: "In the app", icon: ClaudeIcon, run: newChat }] })
+
+async function askChat(question: string, file?: string) {
+  try {
+    const { id } = await op<{ id: string }>("claude-code.chat-start", { prompt: file ? `${question}\n\n(About \`${file}\` in the vault.)` : question })
+    openView(`${SRC.view}/${id}`, { newTab: true })
+  } catch (e) { notifyError(e, "Couldn't ask Claude") }
+}

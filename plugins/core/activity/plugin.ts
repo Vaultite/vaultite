@@ -489,7 +489,8 @@ plugin.route("POST", "activity/hook", async (req) => {
   const tool = str(b.tool_name)
   const input = (b.tool_input ?? {}) as Record<string, unknown>
   const terminal = str(req.query.terminal)
-  const term = terminal ? await terminalInfo(terminal) : {}
+  // (a chat session has no terminal: its title says which)
+  const term = terminal ? await terminalInfo(terminal) : str(req.query.session) ? { session: str(req.query.session).slice(0, 120) } : {}
   const actor: Actor = { kind: "agent", name: nameOf(agent), ...term }
   const t = Date.now()
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) {

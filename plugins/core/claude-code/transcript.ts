@@ -1,37 +1,13 @@
 // A Claude Code session's transcript as a conversation: what the user said, Claude's answers (Markdown) and each tool
 // call with its result; attachments, thinking, sidechains and meta lines are skipped.
-import { type Asking, truncate, type Entry, type Head, type Question, type Tool, toolSummary } from "../../../core/agents.ts"
+import { type Asking, truncate, type Entry, type Head, type Tool } from "../../../core/agents.ts"
+import { questionsOf, resultText, summarize, userText } from "./chatlog.ts"
 // (a transcript line: untrusted JSON, each field checked where it's read)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
 /** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
 export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"custom-title"']
-
-const PICK = ["description", "command", "file_path", "path", "pattern", "url", "query", "prompt", "skill", "notebook_path", "subject", "task_id"]
-/** One line saying what a tool call did: "git status", "src/app.ts", "TODO in *.ts". */
-const summarize = (name: string, input: unknown) => toolSummary(input, PICK, name === "Grep" ? ["path", "glob"] : undefined)
-
-/** What a user message says, as Markdown: a slash command as "/name args", system reminders and command output left out. */
-function userText(content: unknown): string {
-  let s = ""
-  if (typeof content === "string") s = content
-  else if (Array.isArray(content)) {
-    s = content.map((c) => (c?.type === "text" ? String(c.text ?? "") : c?.type === "image" ? "_(image)_" : "")).filter(Boolean).join("\n\n")
-  }
-  const cmd = /<command-name>([^<]*)<\/command-name>/.exec(s)
-  if (cmd) {
-    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(s)?.[1].trim()
-    return `\`${cmd[1].trim()}${args ? ` ${args}` : ""}\``
-  }
-  return s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "").replace(/<local-command-(stdout|stderr|caveat)>[\s\S]*?<\/local-command-\1>/g, "").trim()
-}
-
-function resultText(content: unknown): string {
-  if (typeof content === "string") return content
-  if (Array.isArray(content)) return content.map((c) => (c?.type === "text" ? String(c.text ?? "") : c?.type === "image" ? "(image)" : "")).filter(Boolean).join("\n")
-  return content == null ? "" : JSON.stringify(content)
-}
 
 /** A conversation read so far, fed one line of the transcript at a time (the lines with a WANTED string). */
 export class Conversation {
@@ -104,24 +80,6 @@ export class Conversation {
       }
     }
   }
-}
-
-const words = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "")
-
-/** AskUserQuestion's input as questions (at most 4, of 2 to 6 options each), or none when it isn't one. */
-export function questionsOf(input: unknown): Question[] {
-  const qs = (input as { questions?: unknown })?.questions
-  if (!Array.isArray(qs)) return []
-  return qs.slice(0, 4).flatMap((q): Question[] => {
-    const question = words(q?.question, 500)
-    const options = (Array.isArray(q?.options) ? q.options : []).slice(0, 6).flatMap((o: unknown) => {
-      const label = words((o as Json)?.label, 120), description = words((o as Json)?.description, 300)
-      // (one that only says its label again says nothing)
-      return label ? [{ label, ...(description && description.toLowerCase() !== label.toLowerCase() ? { description } : {}) }] : []
-    })
-    const header = words(q?.header, 40)
-    return question && options.length ? [{ question, ...(header ? { header } : {}), ...(q?.multiSelect === true ? { multi: true } : {}), options }] : []
-  })
 }
 
 /** What a transcript's tail waits on: its last tool call still without a result, when that's AskUserQuestion (its
