@@ -91,9 +91,10 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   const m = settings(FVAULT)
   check("skipped: Standard's plugins (Claude Code on), and Restore still Browser's", !(m.plugins?.enabled ?? []).includes("workspaces") && !m.plugins?.disabled?.includes("claude-code")
     && json(FVAULT, ".vaultite/bundles/previous.json")?.bundle === "browser", [m.plugins, json(FVAULT, ".vaultite/bundles/previous.json")?.bundle])
-  await until(async () => (await page.locator("main h1").first().innerText()) === "Setup", 6000)
-  check("then the page is Setup, on its Bundles tab", (await page.locator("main h1").first().innerText()) === "Setup" &&
-    (await page.locator("[data-setup-tab=bundles]").getAttribute("aria-checked")) === "true")
+  // (its menu beside it where the pane is wide, else its tabs: this vault's right sidebar can make it narrow)
+  const onBundles = async () => { const t = page.locator("[data-setup-tab=bundles]"); return (await t.getAttribute("aria-current")) === "page" || (await t.getAttribute("aria-checked")) === "true" }
+  await until(() => page.locator("[data-setup-tab=bundles]").count(), 6000)
+  check("then the page is Setup, on Bundles", !(await page.getByText("Welcome to Vaultite").count()) && await onBundles())
   await ctx.close()
 }
 
@@ -103,7 +104,7 @@ const { ctx, page } = await open(1280, 820)
 const original = settings(VAULT)
 await go(page, B, "bundles")
 await until(() => page.locator("[data-bundle]").count() >= 3, 6000)
-check("an existing vault isn't greeted", (await page.locator("main h1").first().innerText()) === "Setup")
+check("an existing vault isn't greeted", !(await page.getByText("Welcome to Vaultite").count()) && (await page.locator("[data-setup-list]").count()) === 1)
 await shot(page, "picker")
 // What a built-in brings beyond settings is a mark on its title's row, its tooltip naming the plugins: cards one height.
 const cards = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)))

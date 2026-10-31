@@ -2,7 +2,8 @@
 // opens their sheet (pages/Plugins.tsx PluginGroupSheet), where each has its own switch and gear.
 import { ChevronRight, Puzzle, SquareTerminal, type LucideIcon } from "lucide-react"
 import { groupOf } from "../../../core/categories.ts"
-import { isEnabled, PLUGINS, switchedOn, usePlugins, type Plugin } from "@/core/plugins"
+import { isEnabled, PLUGINS, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
+import { IconTile } from "@/components/kit"
 import { usePrefs } from "@/core/prefs"
 import { openDetail } from "@/core/nav"
 import { cn } from "@/lib/utils"
@@ -29,9 +30,8 @@ export function GroupRow({ id }: { id: string }) {
       <button type="button" onClick={() => openDetail(`plugin-group/${id}`)} aria-label={`${label}: each one's switch`}
         data-plugin-group={id} data-plugin-members={members.map((p) => p.id).join(" ")}
         className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
-      <span className={cn("pointer-events-none grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-primary transition-opacity md:size-8 md:rounded-[8px]", !on.length && "opacity-45")}>
-        <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
-      </span>
+      <IconTile icon={Icon} tint={members[0] ? tileTint(members[0].id) : "var(--primary)"} iconClassName="size-[20px] md:size-[18px]"
+        className={cn("pointer-events-none size-9 rounded-[9px] transition-opacity md:size-8 md:rounded-[8px]", !on.length && "opacity-40 grayscale")} />
       <div className={cn("pointer-events-none min-w-0 flex-1 transition-opacity", !on.length && "opacity-55")}>
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">{label}</div>
         <div className="text-[13px] leading-[18px] text-muted-foreground max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]" data-plugin-group-on>

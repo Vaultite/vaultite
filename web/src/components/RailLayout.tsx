@@ -85,7 +85,7 @@ export function RailMenu({ label, items, active, pick, tiles: tiled, ...rest }: 
           <Fragment key={it.id}>
             {head}
             {!folded && (
-              <SidebarRow icon={icon} tint={tiled ? undefined : it.tint} label={it.label} open active={active === it.id} onClick={() => pick(it.id)} {...it.attrs}>
+              <SidebarRow icon={icon} tint={tiled ? undefined : it.tint} label={it.label} open active={active === it.id} aria-current={active === it.id ? "page" : undefined} onClick={() => pick(it.id)} {...it.attrs}>
                 {it.count !== undefined && <span className="pr-0.5 text-[12px] text-muted-foreground tabular-nums">{it.count}</span>}
               </SidebarRow>
             )}
@@ -130,15 +130,15 @@ type Search = {
 /** `side`: under the search where wide (the menu, or what it found). `page`: what's picked (a new one starts at its top).
  *  Narrow: `title`, the search, then `children` alone (the page draws the menu as its list). */
 export function RailLayout({ rail: [ref, wide], search, side, page, title, children }: {
-  rail: Rail; search: Search; side: ReactNode; page: string; title?: string; children: ReactNode
+  rail: Rail; search?: Search; side: ReactNode; page: string; title?: string; children: ReactNode
 }) {
   const { group } = usePane()
   const keys = (e: KeyboardEvent) => {
-    if (!search.onMove || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return
+    if (!search?.onMove || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return
     e.preventDefault()
     search.onMove(e.key === "ArrowDown" ? 1 : -1)
   }
-  const field = (
+  const field = search && (
     // Enter goes to the result picked; the arrows move between them.
     <form role="search" className="flex" onKeyDown={keys} onSubmit={(e) => { e.preventDefault(); search.onSubmit?.() }} {...search.attrs}>
       <FilterField value={search.value} onChange={search.onChange} placeholder={search.placeholder} />
@@ -149,7 +149,7 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
     return (
       <div ref={ref} className="flex h-full" data-rail-layout="wide">
         <div className="flex w-60 shrink-0 flex-col pr-2 pl-6" data-rail>
-          <div className="shrink-0 pb-2">{field}</div>
+          {field && <div className="shrink-0 pb-2">{field}</div>}
           <Scroller className="min-h-0 flex-1 pb-6">{side}</Scroller>
         </div>
         <Scroller page={page} className="min-w-0 flex-1 [scrollbar-gutter:stable]" data-rail-pane="">
@@ -162,7 +162,7 @@ export function RailLayout({ rail: [ref, wide], search, side, page, title, child
     <div ref={ref} className={cn(group && "h-full")} data-rail-layout="narrow">
       <PageScroller>
         {title && <PageHeader title={title} />}
-        <div className="mb-4">{field}</div>
+        {field && <div className="mb-4">{field}</div>}
         {children}
       </PageScroller>
     </div>

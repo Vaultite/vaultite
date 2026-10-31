@@ -18,7 +18,7 @@ export type AppPage = { id: "setup" | "settings"; label: string; icon: LucideIco
   full?: boolean }
 
 export const APP_PAGES: AppPage[] = share ? [] : [
-  { id: "setup", label: "Setup", icon: Blocks, tint: "var(--primary)", words: "bundles plugins extensions", tabs: SETUP_TABS },
+  { id: "setup", label: "Setup", icon: Blocks, tint: "var(--primary)", words: "bundles plugins extensions", tabs: SETUP_TABS, full: true },
   { id: "settings", label: "Settings", icon: Settings, tint: "var(--muted-foreground)", keys: ["Mod+,"], full: true },
 ]
 

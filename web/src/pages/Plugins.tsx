@@ -2,7 +2,7 @@
 // narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, ListFilter, Search, Settings2, X } from "lucide-react"
-import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
+import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { official } from "../../../core/updates.ts"
@@ -12,7 +12,7 @@ import type { Store } from "@/core/data"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
-import { FilterField, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
+import { FilterField, IconTile, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
 import { Button } from "@/components/Button"
 import { DirectoryMatches, GET_NONE, getSources, passesGet, PluginBrowse, SHOWS, sortOf, sortsOf, type GetFilters, type GetShow, type Listed } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
@@ -89,10 +89,8 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
       <button type="button" onClick={() => openDetail(`plugin/${p.id}`)} aria-label={`${p.name}: details and preview`} data-plugin-row={own.id}
         className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
       {/* Off (by its switch, or because something it needs is off): greyed out. */}
-      <span className={cn("pointer-events-none grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted transition-opacity md:size-8 md:rounded-[8px]", !live && "opacity-45")}
-        style={{ color: tintOfPlugin(p.id) }}>
-        <p.icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
-      </span>
+      <IconTile icon={p.icon} tint={tileTint(p.id)} className={cn("pointer-events-none size-9 rounded-[9px] transition-opacity md:size-8 md:rounded-[8px]", !live && "opacity-40 grayscale")}
+        iconClassName="size-[20px] md:size-[18px]" />
       <div className={cn("pointer-events-none min-w-0 flex-1 transition-opacity", !live && "opacity-55")}>
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">
           {p.name}
@@ -126,12 +124,12 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
       )}
       {live && hasSettings(p, files) && (
         <button type="button" onClick={() => (openSettings ?? openPluginSettings)(p.id)} aria-label={settingsTitle(p.name)} data-tip="Settings" data-plugin-gear={p.id}
-          className="-mr-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground active:opacity-60 md:size-7 md:rounded-[6px]">
+          className="-mr-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100 active:opacity-60 md:size-7 md:rounded-[6px] md:opacity-0 md:group-hover/prow:opacity-100">
           <Settings2 className="size-[18px] md:size-4" strokeWidth={2} />
         </button>
       )}
       <Switch on={on && !blocked.length} onChange={toggle} label={`${p.name} plugin`} disabled={!!blocked.length} />
-      <ChevronRight className="pointer-events-none -ml-1 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
+      <ChevronRight className="pointer-events-none -ml-1 size-4 shrink-0 text-tertiary md:hidden" strokeWidth={2.5} />
     </div>
   )
 }
@@ -215,6 +213,7 @@ function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chip
 }
 
 type Tab = "installed" | "get"
+export type PluginsView = Tab
 
 /** The categories a source's list has plugins in, in the page's order (none: it has no categories). */
 function categoriesIn(l: Listed | null) {
@@ -223,13 +222,14 @@ function categoriesIn(l: Listed | null) {
   return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
 }
 
-/** Setup's Plugins tab (pages/Setup.tsx). */
-export function Plugins({ store }: { store: Store }) {
+/** Setup's Plugins tab (pages/Setup.tsx). `view`: yours or to get, chosen in Setup's menu (no tabs of its own). */
+export function Plugins({ store, view, onView }: { store: Store; view?: Tab; onView?: (v: Tab) => void }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
   const [query, setQuery] = useState("")
-  const [tab, setTab] = useState<Tab>("installed")
+  const [own, setOwn] = useState<Tab>("installed")
+  const tab = view ?? own, setTab = onView ?? setOwn
   // (also in a ref: the open Filter menu draws itself again right after a pick, before React has the new state)
   const [filters, setFiltersState] = useState(NONE)
   const latest = useRef(filters)
@@ -244,7 +244,7 @@ export function Plugins({ store }: { store: Store }) {
   useEffect(() => {
     beforeReveal = () => { setQuery(""); setTab("installed"); latest.current = NONE; setFiltersState(NONE) }
     return () => { beforeReveal = () => {} }
-  }, [])
+  }, [setTab])
   const q = query.trim().toLowerCase()
   // Hosted originals installed beside their stand-in here, by the stand-in's id: drawn in its row, not on their own.
   const originals = new Map<string, Plugin>()
@@ -394,8 +394,8 @@ export function Plugins({ store }: { store: Store }) {
     <div data-plugins>
       {/* The search is above the list it looks in: what's installed, or (Get plugins) every source. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Segmented<Tab> label="Plugins" value={tab} onChange={setTab} className="shrink-0"
-          options={[{ value: "installed", label: "Your plugins", attrs: { "data-plugins-installed": "" } }, { value: "get", label: "Get plugins", attrs: { "data-plugins-get": "" } }]} />
+        {!view && <Segmented<Tab> label="Plugins" value={tab} onChange={setTab} className="shrink-0"
+          options={[{ value: "installed", label: "Your plugins", attrs: { "data-plugins-installed": "" } }, { value: "get", label: "Get plugins", attrs: { "data-plugins-get": "" } }]} />}
         <div className="flex min-w-[200px] flex-1 items-center gap-2">
           <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-plugins-search>
             <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search all plugins" : "Search your plugins"} />

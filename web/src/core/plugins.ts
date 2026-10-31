@@ -713,9 +713,10 @@ const CATEGORY_TINTS: Record<string, string> = {
  *  reads apart. */
 export function tileTint(id: string) {
   const own = tintOfPlugin(id)
-  if (own !== "var(--primary)") return own
-  return `var(--${CATEGORY_TINTS[categoryOf(pluginById(id)?.category).id] ?? "gray"})`
+  return own !== "var(--primary)" ? own : categoryTint(categoryOf(pluginById(id)?.category).id)
 }
+/** A plugin category's colour (core/categories.ts). */
+export const categoryTint = (category: string) => `var(--${CATEGORY_TINTS[category] ?? "gray"})`
 
 /** The detail sheet for a path ("person/People%2FAlice%20Park"), from whichever enabled plugin handles that kind. */
 export function detailFor(path: string, disabled: string[]) {

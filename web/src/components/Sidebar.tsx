@@ -352,7 +352,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
   more?: boolean
   /** What a finger swiping it shows (the buttons a mouse finds on hover: SwipeRow). */
   swipe?: () => SwipeAction[]
-} & Record<`data-${string}`, string | undefined> & { "aria-expanded"?: boolean }) {
+} & Record<`data-${string}`, string | undefined> & { "aria-expanded"?: boolean; "aria-current"?: "page" }) {
   const text = tip === null ? undefined : tip ?? (typeof label === "string" ? label : undefined)
   const more = typeof label === "string" && text !== label
   const side = useContext(SidebarSide)

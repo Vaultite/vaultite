@@ -2,7 +2,8 @@
 // dropped on the page, opens a preview of what applying it changes, asking first when it runs code.
 import { EDITOR } from "../../../core/editor.ts"
 import { official } from "../../../core/updates.ts"
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react"
+import { createPortal } from "react-dom"
 import {
   ArrowRight, BookOpen, Bot, Check, CircleAlert, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Star, Trash2, type LucideIcon,
@@ -239,8 +240,10 @@ const Badge = ({ quiet, children, ...rest }: { quiet?: boolean; children: ReactN
  *  plugins, runs code or can't be read. `trying`: it's being tried (the app-wide bar keeps or reverts it). */
 function BundleCard({ b, picked, trying }: { b: BundleInfo; picked?: boolean; trying?: boolean }) {
   const Icon = iconOfBundle(b)
+  const hover = useHoverPicture()
   return (
-    <div className="group/card relative flex min-w-0 flex-col">
+    <div className="group/card relative flex min-w-0 flex-col" {...hover.on}>
+      {hover.at && <BigPicture b={b} at={hover.at} />}
       <button type="button" onClick={() => openDetail(`bundle/${b.id}`)} data-bundle={b.id} data-keyrow aria-label={`${b.name}: preview`}
         className={cn(CARD, picked && "ring-2 ring-primary")}>
         <Thumb b={b} />
@@ -274,6 +277,41 @@ function BundleCard({ b, picked, trying }: { b: BundleInfo; picked?: boolean; tr
       )}
     </div>
   )
+}
+
+/** A card held under the mouse a moment shows its picture bigger beside it; leaving, a click or a scroll hides it. */
+function useHoverPicture() {
+  const [at, setAt] = useState<DOMRect | null>(null)
+  const timer = useRef(0)
+  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => {
+    if (!at) return
+    const hide = () => setAt(null)
+    addEventListener("scroll", hide, true)
+    return () => removeEventListener("scroll", hide, true)
+  }, [at])
+  const on = {
+    onPointerEnter: (e: PointerEvent<HTMLElement>) => {
+      if (e.pointerType !== "mouse") return
+      const el = e.currentTarget
+      timer.current = window.setTimeout(() => setAt(el.getBoundingClientRect()), 600)
+    },
+    onPointerLeave: () => { clearTimeout(timer.current); setAt(null) },
+    onPointerDown: () => { clearTimeout(timer.current); setAt(null) },
+  }
+  return { at, on }
+}
+
+/** The bigger picture: beside the card where there's room (right, else left), else over it. */
+function BigPicture({ b, at }: { b: BundleInfo; at: DOMRect }) {
+  const w = Math.min(560, innerWidth - 32), h = w * 10 / 16, gap = 12
+  const left = at.right + gap + w <= innerWidth - 16 ? at.right + gap : at.left - gap - w >= 16 ? at.left - gap - w : Math.max(16, at.left)
+  const top = Math.max(16, Math.min(at.top, innerHeight - h - 16))
+  return createPortal(
+    <div aria-hidden data-bundle-big={b.id} className="pointer-events-none fixed z-50 overflow-hidden rounded-[12px] border-[0.5px] border-border bg-background shadow-[0_12px_40px_rgb(0_0_0/0.28)] [&>*]:rounded-none [&>*]:border-0"
+      style={{ left, top, width: w }}>
+      <Thumb b={b} />
+    </div>, document.body)
 }
 
 /** Where a bundle came from, without the commit an import from the directory pinned. */
@@ -370,13 +408,47 @@ export function BundlesActions({ store }: { store: Store }) {
 }
 
 type Tab = "yours" | "get"
+export type BundlesView = Tab
 
-/** Setup's Bundles tab, as Plugins is: Your bundles (built in, then the user's) or Get bundles (the directory's). */
-export function Bundles({ store }: { store: Store }) {
+/** The setup in use, heading Your bundles: the bundle it came from (changed since or not), what saving it does, and the
+ *  way back to the setup before the last bundle applied. */
+function CurrentSetup({ b, prev }: { b: BundleInfo | null; prev: { name: string; at: string } | null }) {
+  const Icon = b ? iconOfBundle(b) : Package
+  return (
+    <div className="glass mb-7 flex flex-col overflow-hidden rounded-[12px] @lg:flex-row" data-bundles-current={b?.id ?? ""}>
+      {b && <div className="shrink-0 @lg:w-[46%] [&>*]:rounded-none [&>*]:border-0 @lg:border-r-[0.5px] @lg:border-border"><Thumb b={b} /></div>}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-4">
+        <div className="text-[12px] font-semibold text-muted-foreground">Your setup</div>
+        <div className="flex items-center gap-2">
+          <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-muted" style={{ color: b ? tintOfBundle(b) : undefined }}><Icon className="size-4" strokeWidth={2.25} /></span>
+          <span className="min-w-0 truncate text-[17px] font-semibold">{b ? b.name : "Your own"}</span>
+          {b?.modified ? <Badge data-tip={`Changed since you applied it: ${fewOf(b.differs?.map(changeName) ?? [])}`}>Modified</Badge> : b && <Badge>In use</Badge>}
+        </div>
+        <p className="text-[13px] leading-[18px] text-muted-foreground">
+          {b ? (b.modified ? `Based on ${b.name}, changed since: ${fewOf(b.differs?.map(changeName) ?? [])}.` : b.description || `As ${b.name} sets it up.`)
+            : "Not from a bundle."}
+        </p>
+        {prev && (
+          <div className="flex flex-wrap items-center gap-x-2 text-[13px] leading-[18px] text-muted-foreground" data-bundles-previous>
+            <History className="size-3.5 shrink-0" strokeWidth={2} />Applied {prev.name} {fmtAgo(prev.at)}
+            <button type="button" onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))}
+              className="cursor-pointer font-medium text-primary hover:underline">Restore previous setup</button>
+          </div>
+        )}
+        {b && <div className="mt-auto flex flex-wrap gap-2 pt-3"><Button onClick={() => openDetail(`bundle/${b.id}`)}>What it sets</Button></div>}
+      </div>
+    </div>
+  )
+}
+
+/** Setup's Bundles tab, as Plugins is: Your bundles (built in, then the user's) or Get bundles (the directory's).
+ *  `view`: which, chosen in Setup's menu (no tabs of its own). */
+export function Bundles({ store, view, onView }: { store: Store; view?: Tab; onView?: (v: Tab) => void }) {
   const l = useBundles()
   const prev = store.bundles?.previous ?? null
   const welcome = !!store.bundles?.onboarding
-  const [tab, setTab] = useState<Tab>("yours")
+  const [own, setOwn] = useState<Tab>("yours")
+  const tab = view ?? own, setTab = onView ?? setOwn
   const [query, setQuery] = useState("")
   const q = query.trim().toLowerCase()
   // The list follows the vault (a bundle saved or imported by an AI, from another device).
@@ -391,7 +463,7 @@ export function Bundles({ store }: { store: Store }) {
   const over = useImportGestures(root)
   return (
     <div ref={root} className="relative min-h-full" data-file-drop data-bundles-page>
-      {prev && (
+      {prev && !view && (
         <div className="glass mb-5 flex items-center gap-3 rounded-[12px] px-4 py-3" data-bundles-previous>
           <History className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />
           <div className="min-w-0 flex-1">
@@ -403,8 +475,8 @@ export function Bundles({ store }: { store: Store }) {
       {/* (the search is above the list it looks in, as on Plugins) */}
       {!welcome && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Segmented<Tab> label="Bundles" value={tab} onChange={setTab} className="shrink-0"
-            options={[{ value: "yours", label: "Your bundles", attrs: { "data-bundles-yours": "" } }, { value: "get", label: "Get bundles", attrs: { "data-bundles-get": "" } }]} />
+          {!view && <Segmented<Tab> label="Bundles" value={tab} onChange={setTab} className="shrink-0"
+            options={[{ value: "yours", label: "Your bundles", attrs: { "data-bundles-yours": "" } }, { value: "get", label: "Get bundles", attrs: { "data-bundles-get": "" } }]} />}
           <div className="flex min-w-[200px] flex-1 items-center gap-2">
             <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-bundles-search>
               <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search shared bundles" : "Search your bundles"} />
@@ -415,6 +487,7 @@ export function Bundles({ store }: { store: Store }) {
       )}
       <div className="@container" data-keylist>
         {tab === "get" && !welcome ? <Browse query={query} /> : <>
+          {view && !q && l && (prev || l.bundles.some((b) => b.inUse || b.modified)) && <CurrentSetup b={l.bundles.find((b) => b.inUse || b.modified) ?? null} prev={prev} />}
           {app.length > 0 && <>
             {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
             <div className={cn(GRID, "mb-7")} data-bundles-app>

@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Setup, beside a menu**: where the pane is wide, Your bundles, Get bundles, Your plugins (with its categories, a
+  jump to each) and Get plugins are a menu as Settings', in place of two rows of tabs. Plugins show their icons on
+  coloured tiles, their gear on hover; Your bundles opens on the bundle you're on (and what you changed since), and a
+  bundle's card held under the mouse shows its picture bigger.
 - **Phone polish**: dragging the bar up lifts the page as one rounded card (no more text from above the screen showing
   over the header), following the finger more closely; a tab opened from the tab list comes in as sharp as the page;
   pulling a page down past its top fills a ring round the action and runs it only once full (a longer pull, and a flick

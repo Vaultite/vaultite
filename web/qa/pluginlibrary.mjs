@@ -44,8 +44,8 @@ for (const colorScheme of ["light", "dark"]) {
     const builtIn = page.locator('[data-plugin-row="token-count"]').locator("..")
     check("a built-in plugin: no source label, no mark", (await builtIn.locator("[data-certified], [data-plugin-by]").count()) === 0)
     check("each section: on ones first", onFirst(await onOff(page)), await onOff(page))
-    check("no menu: Filter and the search above the list, no chips under them", await page.locator("[data-plugins-filter]").isVisible() &&
-      await page.locator("[data-plugins-search] input").isVisible() && !(await page.locator("[data-rail]").count()) && !(await page.locator("[data-plugins-active]").count()))
+    check("Setup's menu beside it; Filter and the search above the list, no chips under them", await page.locator("[data-plugins-filter]").isVisible() &&
+      await page.locator("[data-plugins-search] input").isVisible() && await page.locator("[data-setup-list]").count() === 1 && !(await page.locator("[data-plugins-active]").count()))
     await pluginsFilter(page, "AI tools", { category: true })
     check("a category shows only its plugins", await until(async () => (await page.locator("[data-plugin-row]").count()) === tools.length, 4000))
     check("...one list, on ones first", onFirst(await onOff(page)), await onOff(page))
@@ -82,7 +82,7 @@ for (const colorScheme of ["light", "dark"]) {
     await page.keyboard.press("Escape"); await wait(500)
     await page.locator("[data-plugins-search-more]").click()
     check("...Search everywhere opens Get plugins, its tab lit", await until(() => page.locator("[data-plugin-browse]").count(), 4000) &&
-      (await page.locator("[data-plugins-get]").getAttribute("aria-checked")) === "true")
+      (await page.locator("[data-plugins-get]").getAttribute("aria-current")) === "page")
     await page.locator("[data-plugins-installed]").click()
     await until(() => page.locator("[data-plugin-row]").count(), 4000)
     await page.locator("[data-plugins-search] input").fill("")
