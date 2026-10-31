@@ -3,7 +3,8 @@
 // saying "Signed in"; the rest and the trackers fold away behind one line; a login
 // that covers other sites (Google's, YouTube) is one row, and signing out of it signs out of both; the filter keeps only
 // what matches; a container dragged by its heading moves everywhere it's listed; the address bar's container menu
-// names who's signed in to the page's site in each container. A login moves to another container from its menu
+// names who's signed in to the page's site in each container (typing gmail.com: Google's login), filling in as the
+// listing answers. A login moves to another container from its menu
 // (asking before it replaces one there) or dragged onto that container's card (⌥: copied), Undo takes it back, one
 // whose login won't move stays; a container's sites reorder by dragging; deleting a container moves its logins first.
 // WRITES: the throwaway vault only.
@@ -46,7 +47,12 @@ await app.evaluate(({ BaseWindow, ipcMain }, fix) => {
   const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 860 }); w.focus()
   globalThis.forgot = []
   ipcMain.removeHandler("web:sites")
-  ipcMain.handle("web:sites", (_e, prof) => (fix[prof] ?? []).filter((s) => !globalThis.forgot.includes(`${prof} ${s.site}`)))
+  // (`slow`: how long a listing takes to answer, as Google's account list can)
+  globalThis.fix = fix; globalThis.slow = 0
+  ipcMain.handle("web:sites", async (_e, prof) => {
+    await new Promise((r) => setTimeout(r, globalThis.slow))
+    return (fix[prof] ?? []).filter((s) => !globalThis.forgot.includes(`${prof} ${s.site}`))
+  })
   ipcMain.removeHandler("web:forget")
   ipcMain.handle("web:forget", (_e, prof, site) => { globalThis.forgot.push(`${prof} ${site}`) })
   // (a move takes the row there, a copy leaves it here too; zoom.us keeps its login outside cookies: it won't move)
@@ -130,6 +136,24 @@ check("the container menu names each container's account for the site", await un
 }, 5000), await items())
 check("… in the order they were dragged to", (await items()).findIndex((t) => t.startsWith("Work")) < (await items()).findIndex((t) => t.startsWith("Personal")), await items())
 await win.keyboard.press("Escape")
+
+// Typing gmail.com, the chip clicked at once while the listing is slow: Google's login names it (gmail.com is only
+// Google's door), and a login the listing brings in after the menu opened shows in it as it answers.
+await app.evaluate(() => { globalThis.slow = 1200; globalThis.fix["c-work"].push({ site: "google.com", account: "alice@lighthouse.dev" }) })
+await win.locator("[data-web-page] [data-web-address]:visible").click()
+await win.keyboard.press("Meta+a")
+await win.keyboard.type("gmail.com")
+await win.locator("[data-web-page] [data-web-container]:visible").click()
+const first = await items()
+check("typing gmail.com, the menu opens at once, before the slow listing answers", first.some((t) => t === "Work") && first.some((t) => /Always open gmail\.com/.test(t)), first)
+check("… and names Work's Google account (gmail.com is Google's) as soon as it answers", await until(async () => (await items()).some((t) => t.startsWith("Work") && t.includes("alice@lighthouse.dev")), 5000), await items())
+await win.keyboard.press("Escape")
+await app.evaluate(() => { globalThis.slow = 0; globalThis.fix["c-work"] = globalThis.fix["c-work"].filter((s) => s.site !== "google.com") })
+await win.locator("[data-web-page] [data-web-address]:visible").click()
+await win.keyboard.press("Escape")
+// (listed again without it)
+await win.locator("[data-web-page] [data-web-container]:visible").hover()
+await wait(500)
 await ui({ action: "command", id: "web:sites-tab" })
 await until(async () => (await work.isVisible()), 5000)
 

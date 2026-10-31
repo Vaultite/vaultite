@@ -2,7 +2,7 @@
 // name), and a menu to choose another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
-import { choose, colorItems, confirmDialog, currentWorkspace, dotIcon, menuBelow, notify, notifyError, plural, webPages, type MenuItem, type WebSite } from "@vaultite"
+import { choose, colorItems, confirmDialog, currentWorkspace, dotIcon, menuBelow, notify, notifyError, plural, replaceMenu, webPages, type MenuItem, type WebSite } from "@vaultite"
 import { accountIn, askSites, keep, listed } from "./accounts"
 import { allLogins, andList, isIn, loginsOf, moveLogin, sitesOf } from "./loginsets"
 import { siteOf } from "./address"
@@ -123,13 +123,20 @@ export function containerMenu(container: string | null, url: string, pick: (id: 
   ]
 }
 
+/** The sets of logins being listed for the menu (one ask at a time). */
+let asking: Promise<void> | null = null
+
 /** Inside the page bar's address (a narrow bar, `@container/bar`: the dot alone): where the page is, or where what's
  *  typed will open, `why` saying why when it isn't plain (a site's rule, the workspace's container). */
 export function ContainerButton({ container, url, why, pick, manage }: { container: string | null; url: string; why: string; pick: (id: string | null) => void; manage: () => void }) {
   const c = containerById(container)
-  const open = (e: MouseEvent) => menuBelow(e, containerMenu(container, url, pick, manage))
-  // (who's signed in where, asked as the pointer comes: the menu names them as it opens)
-  const ask = () => askSites([profileIn(null), ...containers().map((x) => profileIn(x.id))])
+  // (who's signed in where, asked as the pointer comes: the menu names them as it opens, or as soon as they answer)
+  const ask = () => (asking ??= askSites([profileIn(null), ...containers().map((x) => profileIn(x.id))]).finally(() => { asking = null }))
+  const open = (e: MouseEvent) => {
+    const items = containerMenu(container, url, pick, manage)
+    menuBelow(e, items)
+    void ask().then(() => replaceMenu(items, containerMenu(container, url, pick, manage)))
+  }
   if (!c) {
     return (
       <button type="button" onClick={open} onPointerEnter={ask} onFocus={ask} aria-label="Container" aria-haspopup="menu" data-tip={why || "Open in a container"} data-web-container=""

@@ -6,14 +6,18 @@ import { cell, get, webPages, type WebSite } from "@vaultite"
 export const listed = cell(new Map<string, WebSite[]>())
 export const keep = (prof: string, sites: WebSite[]) => { listed.update((m) => new Map(m).set(prof, sites)); return sites }
 
-/** List these sets of logins' sites again (as the container menu may open). */
+/** List these sets of logins' sites again (as the container menu may open): done when they've all answered. */
 export function askSites(profs: string[]) {
-  for (const p of profs) void webPages?.sites?.(p).then((s) => keep(p, s), () => {})
+  return Promise.all(profs.map((p) => webPages?.sites?.(p).then((s) => { keep(p, s) }, () => {}))).then(() => {})
 }
+
+/** Addresses that are only another site's door, signed in with its login (gmail.com opens mail.google.com). */
+const DOOR: Record<string, string> = { "gmail.com": "google.com", "youtu.be": "youtube.com", "twitter.com": "x.com" }
 
 /** Who's signed in to `site` in a set of logins, as last listed: the account, and how many more beside it ("Signed in"
  *  when the site doesn't say who). */
-export function accountIn(prof: string, site: string) {
+export function accountIn(prof: string, typed: string) {
+  const site = DOOR[typed] ?? typed
   const s = listed.get().get(prof)?.find((x) => x.site === site || x.with?.includes(site))
   return s?.account ? (s.more?.length ? `${s.account} +${s.more.length}` : s.account) : s?.signed ? "Signed in" : ""
 }

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The container menu names who's signed in while you type**: typing gmail.com names each container's Google account
+  (gmail.com, youtu.be and twitter.com count as Google's, YouTube's and X's logins), and a menu opened before the
+  logins were listed fills them in as they answer, rather than showing none.
 - **The status bar has two corners, as in Vim**: bottom left what's about you (Vim's mode, the companion), bottom right
   the file's items; drag one between them. Vim's mode stays there as you click around, dimmed while the keyboard is
   elsewhere, so nothing beside it shifts. The companion's cursor rests in its arrow there, gliding out to where it

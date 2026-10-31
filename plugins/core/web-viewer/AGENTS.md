@@ -62,7 +62,7 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   app for that app's key, so the servers passing it on never read a cookie, and checked there as here. Deleting a
   container signed in somewhere offers to move its logins first. Accounts and always-open sites keep the order they're dragged into (`siteOrder`, by profile), else
   always-open first, then A to Z. The address bar's container menu names who's signed in
-  to the page's site in each container. The Browser's settings have the same for every set of logins, under Sites and logins.
+  to the page's site (or what's typed: gmail.com is Google's login) in each container, filling in as they're listed. The Browser's settings have the same for every set of logins, under Sites and logins.
 - Icons: a site's is its home page's or its /favicon.ico; a page with one of its own under a path (Maps on google.com)
   has it on its tab without changing its site's.
 - Notifications: a page's notifications become Inbox events (source: the site, kind `web`, linking to its tab), so
