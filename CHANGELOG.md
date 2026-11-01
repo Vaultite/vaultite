@@ -55,6 +55,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Long notes open and edit faster**: a note of tens of thousands of lines no longer works out all its tables,
   callouts and other drawn blocks again each time the background reading of it gets further, and Enter or Backspace
   in one takes about a quarter less time.
+- **An idle server sleeps**: with nothing asked of it, the server no longer wakes 50 times a second to time its own
+  event loop (that timing runs only while it works), cutting its idle CPU by half.
+- **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
+  other drawn blocks again each time the background reading of it gets further.
 - **Saving sends only what changed**: each save of a note sends only the edit, not the whole note twice, and gets
   back only what the server changed (a 2 KB note's save went from 6 KB to under 0.5 KB; a long note's from twice its
   size).

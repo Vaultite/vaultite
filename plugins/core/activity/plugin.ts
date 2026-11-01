@@ -723,10 +723,12 @@ let reqs = 0, errs = 0, syncs = 0
 // This minute's requests (ms each), then one Minute per minute: the last 24 h in memory, each written to perf-<date>.
 let cur: { t: number; ms: number[]; errors: number } = { t: Math.floor(Date.now() / MINUTE) * MINUTE, ms: [], errors: 0 }
 let minutes: Minute[] | null = null
+// (sampled only while the server works: always on, its 20 ms timer woke an idle server 50 times a second)
 const lag = monitorEventLoopDelay({ resolution: 20 })
-lag.enable()
+let busyAt = 0
+const busy = () => { if (!busyAt) lag.enable(); busyAt = Date.now() }
 plugin.onUnload(() => lag.disable())
-plugin.onSync(() => { syncs++ })
+plugin.onSync(() => { syncs++; busy() })
 
 /** A route as a pattern: its words kept, ids (anything with a digit, a space, a dot, a capital) as *. */
 export function routeOf(route: string) {
@@ -740,6 +742,7 @@ const mb = (n: number) => Math.round(n / 1048576)
 
 /** Count a request; a slow one is listed too (returned, so who it was can be filled in once known). */
 function timing(s: RequestStart, end: RequestEnd, actor: Actor): SlowRequest | null {
+  busy()
   rollMinute()
   const key = `${s.method} ${routeOf(s.route)}`
   const a = routes.get(key) ?? { n: 0, errors: 0, total: 0, max: 0, recent: [] }
@@ -777,6 +780,7 @@ function rollMinute(force = false) {
   const m: Minute = { t: cur.t, n: ms.length, errors: cur.errors, p50: r1(pct(ms, 0.5)), p95: r1(pct(ms, 0.95)), max: r1(ms[ms.length - 1] ?? 0),
     lag: r1(lag.percentile(99) / 1e6), lagMax: r1(lag.max / 1e6), rss: mb(mem.rss), heap: mb(mem.heapUsed) }
   lag.reset()
+  if (busyAt && Date.now() - busyAt > MINUTE) { lag.disable(); busyAt = 0 }
   cur = { t: now, ms: [], errors: 0 }
   if (!plugin.loaded) return
   const list = loadMinutes()
