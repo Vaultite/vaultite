@@ -6,7 +6,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { SHOTS, apiAt, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, apiAt, openPalette, palette, qa, wait } from "./lib/qa.mjs"
 import { fileURLToPath, pathToFileURL } from "node:url"
 const { args: [B, OUT = `${SHOTS}aiimport/`], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
@@ -39,13 +39,14 @@ const page = watch(await ctx.newPage(), { console: true })
 const toast = (text) => page.locator("[data-sonner-toast]", { hasText: text }).first()
 const importVia = async (name) => {
   const chooser = page.waitForEvent("filechooser")
-  await page.keyboard.press("ControlOrMeta+p"); await wait(300)
-  await page.keyboard.type("Import from ChatGPT or Claude"); await wait(300)
+  await openPalette(page); await page.waitForSelector("[role=dialog] input:focus")
+  await page.keyboard.type("Import from ChatGPT or Claude")
+  await page.locator("[role=option]", { hasText: "Import from ChatGPT or Claude" }).first().waitFor()
   await page.keyboard.press("Enter")
   await (await chooser).setFiles(path.join(dir, name))
 }
 
-await page.goto(B); await wait(2000)
+await page.goto(B); await page.locator("[data-pane]").first().waitFor()
 
 // 1. ChatGPT's export through the palette.
 await importVia("chatgpt-export.zip")
@@ -61,10 +62,12 @@ check("the chats are notes in Chats/ChatGPT, the image in Attachments", chats.in
   (await api("GET", "files")).others.some((f) => f.path === "Chats/ChatGPT/Attachments/file-Img001-beach.png"), chats)
 
 // 2. The review list: its card, ticked ones added to ME.md.
-await done1.locator("[data-button]").click(); await wait(1500)
+await done1.locator("[data-button]").click()
+await page.locator(".cm-content", { hasText: "Biscuit" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
 // (a note opens with the cursor at its start, which shows a block there as its source: read it instead)
-await page.keyboard.press("ControlOrMeta+p"); await wait(300); await page.keyboard.type("Switch to reading view"); await wait(300); await page.keyboard.press("Enter"); await wait(800)
+await palette(page, "Switch to reading view", 0)
 const card = page.locator("[data-memory-add]").first()
+await card.waitFor({ timeout: 15_000 }).catch(() => {})
 check("Review memories opens the list, its card says nothing is ticked", (await card.innerText()) === "Tick the ones to add", await card.innerText().catch(() => null))
 await page.screenshot({ path: `${OUT}review.png` })
 const rel = "Chats/ChatGPT/Memories to review.md"
@@ -82,7 +85,7 @@ const after = await file(rel)
 check("and moves them under Added", /## Added\n\n- ME.md, About me · I have a dog named Biscuit\./.test(after) && !after.includes("[x]"), after.slice(after.indexOf("## To review")))
 // The page follows the files live: the store reloads at most once a second, so the count comes within about that.
 const counted = () => page.locator("section", { has: card }).first().innerText()
-for (let i = 0; i < 50 && !/4 to review, 0 ticked/.test(await counted()); i++) await wait(100)
+await page.locator("section", { has: card }).first().filter({ hasText: /4 to review, 0 ticked/ }).waitFor({ timeout: 30_000 }).catch(() => {})
 check("the card counts what's left", /4 to review, 0 ticked/.test(await counted()), await counted())
 
 // 3. Again: nothing new, nothing doubled.
