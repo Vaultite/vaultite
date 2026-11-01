@@ -873,9 +873,9 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
     }))
     return { ...(await a.plan?.(accts) ?? { plan: null, limits: null }), live: busyFirst(live), ...s }
   }
-  plugin.route("GET", a.id, async (req) => ({ updated: new Date().toISOString(), ...await usage(daysOf(req.query.days), req.query.account) }))
+  plugin.route("GET", a.id, async (req) => await usage(daysOf(req.query.days), req.query.account))
   // (the status bar's limits, asked every 15 s: not the sessions and costs the usage reads to answer)
-  plugin.route("GET", `${a.id}/limits`, async (req) => ({ updated: new Date().toISOString(), ...await a.plan?.(accountsFor(req.query.account)) ?? { plan: null, limits: null } }))
+  plugin.route("GET", `${a.id}/limits`, async (req) => await a.plan?.(accountsFor(req.query.account)) ?? { plan: null, limits: null })
   plugin.route("GET", `${a.id}/session/*`, async (req) => {
     const id = req.arg(0)
     const s = a.sessionId.test(id) ? await a.session(id) : null

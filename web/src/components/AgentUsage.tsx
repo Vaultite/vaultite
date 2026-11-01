@@ -63,7 +63,6 @@ export type LiveSession = OfAccount & {
 export type Day = { date: string; cost: number; tokens: number; active_min: number; sessions: number }
 export type Share = { name: string; cost: number; tokens: number; root?: string; sessions?: number; active_min?: number; last?: string }
 export type AgentUsage = {
-  updated: string
   plan: { name: string; monthly: number | null } | null
   limits: { source: string; observed: string; windows: Window[] } | null
   live: LiveSession[]; days: Day[]; projects: Share[]; models: Share[]; sessions: Session[]
@@ -558,7 +557,7 @@ function mockUsage(m: AgentMock): AgentUsage {
   const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
   const sum = (k: "cost" | "tokens") => m.projects.reduce((n, p) => n + p[k], 0)
   return {
-    updated: ago(0), plan: m.plan ?? null,
+    plan: m.plan ?? null,
     limits: m.limits ? { source: m.limits.source, observed: ago(m.limits.observed),
       windows: m.limits.windows.map(([id, label, minutes, used, renews]) => ({ id, label, minutes, used, resets_at: ago(-renews) })) } : null,
     live: m.live.map(({ at: [started, since], ...s }, i) => ({ pid: i + 1, name: "", ...s, started: ago(started), since: ago(since) })),
