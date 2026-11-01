@@ -43,6 +43,8 @@ const openDrawer = async () => {
 
 await page.goto(B)
 await page.waitForSelector("[aria-label='Open sidebar']", { timeout: 30000 })
+// (the sandbox's toast would sit over the drawer's last rows, which a finger holds)
+await page.addStyleTag({ content: "[data-sonner-toaster] { display: none !important }" })
 await openDrawer()
 
 // Held, lifted: the menu, nothing picked up.

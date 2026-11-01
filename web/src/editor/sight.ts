@@ -8,7 +8,9 @@ import { offBlocks } from "./livePreview"
 /** The cursor as you type, a found word, a jump: clear of the bars drawn over the text (CodeMirror sees only its scroller). */
 export const sightMargins = EditorView.scrollMargins.of((view) => {
   const box = scrollingBox(view.dom), s = sightOf(view.dom)
-  const r = box ? box.getBoundingClientRect() : { top: 0, bottom: visualViewport?.height ?? innerHeight }
+  // (no box, and a window that doesn't scroll (a flyout): its own, which CodeMirror also hides its suggestions outside)
+  const r = box ? box.getBoundingClientRect() : document.documentElement.scrollHeight > innerHeight
+    ? { top: 0, bottom: visualViewport?.height ?? innerHeight } : view.scrollDOM.getBoundingClientRect()
   return { top: Math.max(0, s.top - r.top), bottom: Math.max(0, r.bottom - s.bottom) }
 })
 

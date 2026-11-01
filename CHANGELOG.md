@@ -63,6 +63,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   event loop (that timing runs only while it works), cutting its idle CPU by half.
 - **⌃C stops a flood of output at once**: a terminal's program waits while the page catches up with what it
   printed, so ⌃C during `yes` or a huge `cat` answers in about 0.1 s instead of the tab dropping and reconnecting.
+- **Suggestions show in a flyout's editor**: typing [[ in the rail's Daily note flyout listed notes nowhere (the list
+  was drawn off screen); it shows under the cursor now.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
   other drawn blocks again each time the background reading of it gets further.
 - **Saving sends only what changed**: each save of a note sends only the edit, not the whole note twice, and gets
