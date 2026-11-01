@@ -95,8 +95,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A tab bar is one Tab stop**: Tab goes into a pane's tabs at the one shown and out past them all, instead of
   stopping at every tab; the arrows, Home and End move between tabs, and Enter shows one.
 - **Format note**: the Linter plugin tidies a note's Markdown by rules you choose in its settings (trailing spaces,
-  extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
-  format a note or a folder (`vau linter.format`).
+  extra blank lines, space around headings, `##Title` made `## Title`, one kind of bullet), leaving frontmatter, code
+  and math alone; an AI can format a note or a folder (`vau linter.format`).
 - **The inbox's verbs: pin, settle, snooze, wake**: Done is Settle (its folded list Settled) and Unsnooze is Wake, in
   the app, the iPhone's and the watch's notifications, and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox
   done` and `inbox.done` still work.

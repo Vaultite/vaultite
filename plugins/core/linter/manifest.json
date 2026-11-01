@@ -10,6 +10,7 @@
     "trailingSpaces": { "type": "boolean", "default": true, "label": "Trailing spaces", "description": "spaces and tabs at the end of lines come off" },
     "blankLines": { "type": "boolean", "default": true, "label": "Extra blank lines", "description": "two or more blank lines in a row become one" },
     "headingSpacing": { "type": "boolean", "default": true, "label": "Space around headings", "description": "a blank line before and after each heading" },
+    "headingSpace": { "type": "boolean", "default": true, "label": "Space after heading marks", "description": "##Title becomes ## Title (one # is a tag, left alone)" },
     "headingMarks": { "type": "boolean", "default": true, "label": "Closing heading marks", "description": "## Title ## becomes ## Title" },
     "listMarkers": { "type": "boolean", "default": true, "label": "One kind of bullet", "description": "* and + bullets become -" },
     "finalNewline": { "type": "boolean", "default": true, "label": "One line break at the end", "description": "the note ends in exactly one line break" }

@@ -11,6 +11,8 @@ export default async ($: VaultTest) => {
   check("linter: formatted text stays as it is", formatMarkdown(out) === out)
   check("linter: a rule off is left alone", formatMarkdown("* a  \n", { ...RULES, listMarkers: false, trailingSpaces: false }) === "* a  \n" && rulesOf({ blankLines: false, x: 1 }).blankLines === false && rulesOf({}).blankLines === true)
   check("linter: a tag at a line's start isn't a heading", formatMarkdown("Text\n#tag\nmore\n") === "Text\n#tag\nmore\n")
+  check("linter: ##Title gets its space and is spaced as a heading; #tag and a fenced ##x don't", formatMarkdown("Text\n##Next\n#tag\n```\n##x\n```\n") === "Text\n\n## Next\n\n#tag\n```\n##x\n```\n",
+    JSON.stringify(formatMarkdown("Text\n##Next\n#tag\n```\n##x\n```\n")))
 
   write("Lint/A.md", "# A\ntext  \n")
   write("Lint/B.md", "# B\n\ntext\n")
