@@ -89,7 +89,7 @@ plugin.route("GET", "importer/jobs/*", (req) => {
 
 // ---------- operations (core/ops.ts)
 
-const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep" }
+const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear" }
 
 /** A job's summary (what `vau importer.run --wait` prints). */
 export function jobText(job: Job) {
@@ -118,7 +118,11 @@ zips) goes into Notion/: names without Notion's ids, subpages in their page's fo
 a database as its CSV and a note per row with the row's properties as frontmatter. Evernote (a notebook's ... > Export
 notebook, as .enex; or a zip of them) goes into Evernote/<notebook>/: tags, dates and source as frontmatter, to-dos as
 tasks, tables, attachments in Attachments/ embedded where they were. Google Keep (Google Takeout's zip with Keep in it)
-goes into Keep/: checklists as tasks, labels as tags, archived notes archived, trashed ones left out. Importing again
+goes into Keep/: checklists as tasks, labels as tags, archived notes archived, trashed ones left out. Bear (File > Backup notes: a .bear2bk)
+goes into Bear/: highlights and tags with spaces made the vault's, pictures in Bear/Attachments/, trashed notes left
+out. HTML pages (a
+page, or a zip of them: another app's export) go into a folder named as the file: a note per page, links between pages
+as wikilinks, images and other files beside them. Importing again
 adds only what's new (by ext_id);
 notes imported before stay as they are. wait: answer once it's done.
 
@@ -127,7 +131,7 @@ notes imported before stay as they are. wait: answer once it's done.
   kind: "write",
   lock: false, // the job holds the vault a few files at a time
   params: {
-    path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex or a zip of them, Takeout's zip)" },
+    path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex or a zip of them, Takeout's zip, Bear's .bear2bk, HTML pages)" },
     folder: { type: "string", description: "the folder Notion/, Evernote/ or Keep/ goes in (default the setting's: the vault's top)" },
     wait: { type: "boolean", description: "answer once the import is done (else at once, with the job to follow)" },
   },

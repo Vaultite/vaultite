@@ -122,4 +122,46 @@ export default async ($: VaultTest) => {
     /archived: true/.test(idea) && idea.includes("A garden app.\n\n[Gardens](https://example.com/g)\n\n![[Keep/Attachments/sketch.png]]") && /ext_id: keep-[0-9a-f]{16}/.test(idea), [shopping, idea])
   j = await runJob({ path: "Imports/takeout.zip" })
   check("importer keep: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 2 && j.files === 0, j)
+
+  // HTML pages: a zip of another app's pages, and one page alone.
+  const { pageMarkdown } = await import("../../../plugins/core/importer/importer.ts")
+  check("importer html: a page's body as Markdown, its title heading off", pageMarkdown("<html><head><title>T</title><style>x{}</style></head><body><h1>Trip</h1><p>Go <b>now</b>.</p></body></html>", "Trip") === "Go **now**.")
+  fs.writeFileSync(path.join(VAULT, "Imports/Old wiki.zip"), zipFiles({
+    "site/index.html": '<html><body><h1>Home</h1><p>See <a href="pages/Garden%20plan.html">the plan</a> and <a href="https://example.com">a site</a>.</p><img src="img/rose.png" alt="Rose"></body></html>',
+    "site/pages/Garden plan.html": '<html><body><p>Back <a href="../index.html">home</a>.</p><ul><li>Roses</li><li>Tulips</li></ul></body></html>',
+    "site/img/rose.png": Buffer.from([9, 9, 9]),
+  }))
+  j = await runJob({ path: "Imports/Old wiki.zip" })
+  const index = read("Old wiki/site/index.md"), garden = read("Old wiki/site/pages/Garden plan.md")
+  check("importer html: a note per page in a folder named as the export, the image beside", j.state === "done" && j.source === "html" && j.notes === 2 && j.created === 2 && j.files === 1 &&
+    exists("Old wiki/site/img/rose.png"), j)
+  check("importer html: links between pages as wikilinks, web links kept, the image embedded", index.includes("[[Old wiki/site/pages/Garden plan|the plan]]") && index.includes("[a site](https://example.com)") &&
+    index.includes("![[Old wiki/site/img/rose.png]]") && garden.includes("Back [[Old wiki/site/index|home]].") && garden.includes("- Roses\n- Tulips") && /^---\next_id: html-[0-9a-f]{16}\n---/.test(index), [index, garden])
+  j = await runJob({ path: "Imports/Old wiki.zip" })
+  check("importer html: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 2 && j.files === 0, j)
+  fs.writeFileSync(path.join(VAULT, "Imports/Recipe.html"), "<!DOCTYPE html><html><body><h2>Bread</h2><p>Flour, water.</p></body></html>")
+  j = await runJob({ path: "Imports/Recipe.html" })
+  check("importer html: one page alone", j.state === "done" && j.notes === 1 && read("Recipe/Recipe.md").includes("## Bread\n\nFlour, water."), [j, exists("Recipe/Recipe.md") && read("Recipe/Recipe.md")])
+
+  // Bear: a .bear2bk, a zip of TextBundles.
+  const { bearNote } = await import("../../../plugins/core/importer/bear.ts")
+  const bn = bearNote("# Groceries\nBuy ::milk:: for #home stuff# and #errands\n```\n::code:: #not this#\n```\n")
+  check("importer bear: title from the first heading, highlights, tags with spaces, code left alone", bn.title === "Groceries" &&
+    bn.body === "Buy ==milk== for #home-stuff and #errands\n```\n::code:: #not this#\n```", bn)
+  const info = (o: Record<string, unknown>) => JSON.stringify({ "net.shinyfrog.bear": { creationDate: "2026-09-01T10:00:00Z", modificationDate: "2026-09-02T10:00:00Z", ...o } })
+  fs.writeFileSync(path.join(VAULT, "Imports/Notes.bear2bk"), zipFiles({
+    "Bear Notes/Trip.textbundle/text.markdown": "# Trip\nPack light.\n![](assets/map%201.png)\n",
+    "Bear Notes/Trip.textbundle/info.json": info({ uniqueIdentifier: "AAA-1" }),
+    "Bear Notes/Trip.textbundle/assets/map 1.png": Buffer.from([5, 5, 5]),
+    "Bear Notes/Old.textbundle/text.markdown": "# Old\nArchived.\n",
+    "Bear Notes/Old.textbundle/info.json": info({ uniqueIdentifier: "AAA-2", archived: 1 }),
+    "Bear Notes/Gone.textbundle/text.markdown": "# Gone\n",
+    "Bear Notes/Gone.textbundle/info.json": info({ uniqueIdentifier: "AAA-3", trashed: 1 }),
+  }))
+  j = await runJob({ path: "Imports/Notes.bear2bk" })
+  const trip = read("Bear/Trip.md")
+  check("importer bear: notes in Bear/, a trashed one left out, an archived one archived, pictures as attachments", j.state === "done" && j.source === "bear" && j.notes === 2 && j.created === 2 && j.files === 1 &&
+    !exists("Bear/Gone.md") && /archived: true/.test(read("Bear/Old.md")) && trip.includes("Pack light.\n![[Bear/Attachments/map 1.png]]") && /^---\ncreated: '2026-09-0\d/.test(trip), [j, trip])
+  j = await runJob({ path: "Imports/Notes.bear2bk" })
+  check("importer bear: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 2 && j.files === 0, j)
 }

@@ -216,10 +216,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its
   lines, so Obsidian plugins' reading-view post-processors find their section there too.
-- **Import from Notion, Evernote and Google Keep**: the Importer plugin turns Notion's Markdown & CSV export into notes
-  (ids off the names, links as wikilinks, database rows' properties as frontmatter), Evernote's .enex into notes with
-  their tags, dates, to-dos, tables and attachments, and Keep's Takeout into notes with checklists as tasks and labels
-  as tags; importing again adds only what's new.
+- **Import from Notion, Evernote, Google Keep, Bear and HTML pages**: the Importer plugin turns Notion's Markdown & CSV
+  export into notes (ids off the names, links as wikilinks, database rows' properties as frontmatter), Evernote's .enex
+  into notes with their tags, dates, to-dos, tables and attachments, Keep's Takeout into notes with checklists as tasks
+  and labels as tags, Bear's backup into notes with its highlights, tags and pictures, and any app's HTML pages (one,
+  or a zip) into notes with links and images kept; importing again adds only what's new.
 - **The graph keeps up in big vaults**: after an edit only the changed note's links are worked out again (about 3x
   less work on the server at 50,000 notes).
 - **vau tells a mistyped command from a failed one**: a missing or bad argument now exits 2, like an unknown command,
