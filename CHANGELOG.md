@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Screen readers find their way around the desktop**: the workspace is one main landmark with each pane named
   after its tab, and resize handles say where they sit; tabs used to each be a main landmark of their own.
+- **Table columns fit their text**: in notes, dashboards and the editor, a short cell ("In columns", `wide: true`, a
+  date) stays on one line instead of breaking beside a column of prose, which keeps room to read; a table too wide for
+  that scrolls sideways.
 - **Slides draw Advanced Slides' layouts**: `<split>` columns (even, gap, left and right shares, wrap), `<grid>` boxes
   placed by drag and drop on a fixed slide, and `::: block` boxes draw as there, nested, their Markdown as in a note.
 - **Screen readers hear toasts and agents**: every toast is read (an error at once, with the key that reaches its

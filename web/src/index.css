@@ -930,6 +930,10 @@ dialog { --vau-panel-bottom: 0px; }
 /* A cell breaks between words, not letters (the prose and CodeMirror's wrapping around it break anywhere): a table too
    wide for a phone scrolls sideways instead of squeezing each column to a letter wide. */
 :is(.note-prose, .dash-prose, .vau-editor .cm-block) :is(th, td) { overflow-wrap: break-word; word-break: normal; }
+/* Short cells (core/markdown.ts) on one line, prose kept wide enough to read: past that the table scrolls. A table whose
+   separator sets its widths wraps as its columns say. */
+:is(.note-prose, .dash-prose, .vau-editor .cm-block) table:not(.has-widths) .md-cell-short { white-space: nowrap; }
+:is(.note-prose, .dash-prose, .vau-editor .cm-block) table:not(.has-widths) :is(th, td):not(.md-cell-short) { min-width: 10em; }
 /* Markdown's extras, in the editor (live preview, reading) and in Markdown drawn outside it (core/markdown.ts,
    core/richmd.ts). Code fences: a header line (language, copy) in place of the ``` line, off the cursor. */
 .vau-editor .cm-fence-top { font-size: 12px; line-height: 20px; }

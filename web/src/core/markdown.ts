@@ -20,6 +20,8 @@ const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|heic)$/i
 /** Addresses that run code where they open: drawn as text. */
 const UNSAFE = /^(javascript|data|vbscript|blob):/i
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i
+/** A table cell this many characters or fewer (a label, a date, `wide: true`) is drawn on one line. */
+const SHORT_CELL = 24
 /** An image's width written after its name or alt text (`|300`, `|300x200`), or 0. */
 const widthOf = (s: string) => Number(/^\s*(\d+)(?:x\d+)?\s*$/.exec(s)?.[1] ?? 0)
 
@@ -263,6 +265,13 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
         return `<div class="md-code${name ? "" : " md-code-bare"}"><div class="md-code-head"><span class="md-code-lang">${esc(name)}</span>` +
           `<button type="button" class="md-copy" data-copy aria-label="Copy" data-tip="Copy">${COPY_ICON}</button></div>` +
           `<pre><code${cls}>${esc(text.replace(/\n$/, ""))}\n</code></pre></div>\n`
+      },
+      // A short cell keeps to one line (index.css): auto layout shares spare width by max-content, so a prose column
+      // beside it would otherwise squeeze "In columns" onto two lines while it wraps anyway.
+      tablecell({ tokens, header, align }: Tokens.TableCell) {
+        const tag = header ? "th" : "td", inner = this.parser.parseInline(tokens)
+        const short = inner.replace(/<[^>]*>/g, "").replace(/&#?\w+;/g, "_").trim().length <= SHORT_CELL
+        return `<${tag}${align ? ` align="${align}"` : ""}${short ? ' class="md-cell-short"' : ""}>${inner}</${tag}>\n`
       },
       // A callout: a blockquote whose first line is `[!type] Title`; foldable ones are a <details>.
       blockquote({ tokens }: Tokens.Blockquote) {

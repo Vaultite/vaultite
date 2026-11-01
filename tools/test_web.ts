@@ -423,6 +423,10 @@ check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"),
   const soft = md.renderMarkdown("A ==two\nlines== here\n\n- ==a\n- b==\n\n%%a\nb%% c\n\nz == y == x")
   check("markdown: a highlight runs over a soft line break, not over list items or a blank line",
     soft.includes("<mark>two<br>lines</mark>") && !soft.includes("<mark>a") && soft.includes("==a") && soft.includes("<p> c</p>") && soft.includes("z == y == x"), soft)
+  const cells = md.renderMarkdown("| Key | How |\n| :-- | --- |\n| `wide: true` | The block takes the whole row, under the one before it |")
+  check("markdown: a short table cell is marked to stay on one line, a long one isn't",
+    cells.includes('<th align="left" class="md-cell-short">Key</th>') && cells.includes('<td align="left" class="md-cell-short"><code>wide: true</code></td>') &&
+    cells.includes("<td>The block takes"), cells)
   const doc = (text: string) => EditorState.create({ doc: text }).doc
   const para = (text: string, at: number) => { const d = doc(text), p = hl.paragraphAt(d, at); return d.sliceString(p.from, p.to) }
   check("paragraphs: soft-wrapped lines are one, a blank line, list item, heading or table row ends it",
