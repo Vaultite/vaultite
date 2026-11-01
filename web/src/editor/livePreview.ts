@@ -790,14 +790,31 @@ const painted = new WeakMap<HTMLElement, Block>()
 
 /** Width of some text in the editor's font, for list items' hanging indent (wrapped lines line up with the text). */
 let canvas: CanvasRenderingContext2D | null = null
+/** Each editor's font and the widths measured in it, kept while CodeMirror's own measure of it holds: read on every
+ *  keystroke, its computed style recalculated the page's styles. */
+const fonts = new WeakMap<EditorView, { key: string; font: string; size: number; widths: Map<string, number> }>()
 function measurer(view: EditorView) {
   canvas ??= document.createElement("canvas").getContext("2d")
-  const cs = getComputedStyle(view.contentDOM)
-  const font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
-  const size = parseFloat(cs.fontSize) || 17
+  const key = `${view.defaultCharacterWidth} ${view.defaultLineHeight} ${view.contentDOM.className}`
+  let f = fonts.get(view)
+  if (f?.key !== key) {
+    const cs = getComputedStyle(view.contentDOM)
+    f = { key, font: `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, size: parseFloat(cs.fontSize) || 17, widths: new Map() }
+    fonts.set(view, f)
+  }
+  const { font, size, widths } = f
   return {
     size,
-    width: (s: string) => { if (!canvas) return 0; canvas.font = font; return canvas.measureText(s.replace(/\t/g, "    ")).width },
+    width: (s: string) => {
+      let w = widths.get(s)
+      if (w === undefined) {
+        if (!canvas) return 0
+        canvas.font = font
+        w = canvas.measureText(s.replace(/\t/g, "    ")).width
+        if (widths.size < 1000) widths.set(s, w)
+      }
+      return w
+    },
   }
 }
 
