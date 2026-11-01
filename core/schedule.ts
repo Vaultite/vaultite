@@ -73,6 +73,7 @@ export class Scheduler {
   private here: (machine?: string) => Promise<boolean>
   private before: () => Promise<unknown>
   private state: Record<string, Last> = {}
+  private saved = ""
   private running = new Set<string>()
   private timer: ReturnType<typeof setInterval> | null = null
 
@@ -80,7 +81,7 @@ export class Scheduler {
    *  machine runs a job naming `machine`; `before`: run before each tick (load the vault's plugins); `paused`: listed only. */
   constructor(o: { file: string; jobs: () => Listed[]; here: (machine?: string) => Promise<boolean>; before?: () => Promise<unknown>; paused?: () => Paused[] }) {
     this.file = o.file; this.jobs = o.jobs; this.here = o.here; this.before = o.before ?? (async () => {}); this.paused = o.paused ?? (() => [])
-    try { this.state = JSON.parse(fs.readFileSync(this.file, "utf8")) } catch { /* none yet */ }
+    try { this.state = JSON.parse(this.saved = fs.readFileSync(this.file, "utf8")) } catch { /* none yet */ }
   }
 
   start() {
@@ -130,9 +131,13 @@ export class Scheduler {
     return error
   }
 
+  /** Only what changed: every tick saved, an idle server rewrote it twice a minute. */
   private save() {
+    const json = JSON.stringify(this.state)
+    if (json === this.saved) return
     try {
-      writeAtomic(this.file, JSON.stringify(this.state))
+      writeAtomic(this.file, json)
+      this.saved = json
     } catch (e) {
       console.error("schedule: couldn't keep its last runs:", e)
     }
