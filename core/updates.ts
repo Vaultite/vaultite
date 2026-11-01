@@ -1,5 +1,7 @@
 // Installed plugins updating on their own: which do (plugins.json's `updates`, and each plugin's own choice), and what's
-// new in an update (its commits' subjects, as release notes). No Node and no imports of code: the web imports it too.
+// new in an update (its commits' subjects, as release notes). No Node: the web imports it too.
+
+import { strings } from "./values.ts"
 
 /** One update of an installed plugin (its lock entry's `history`): from and to which version, when, how (on its own, by
  *  hand, rolled back), and what's new in it (its commits' subjects since the version it replaced). */
@@ -13,8 +15,6 @@ const POLICIES: UpdatePolicy[] = ["vaultite", "all", "off"]
 export function official(source: string) {
   return /^vaultite\//i.test(source) || /^(https:\/\/(www\.)?github\.com\/|(ssh:\/\/)?git@github\.com[/:])vaultite\//i.test(source)
 }
-
-const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [])
 
 /** plugins.json's keys about updates. */
 export type UpdateConfig = { updates?: unknown; updatesOn?: unknown; updatesOff?: unknown }
@@ -30,8 +30,8 @@ export const byPolicy = (c: UpdateConfig, source: string) => { const p = policyO
 /** Whether an installed plugin updates on its own: its own choice (plugins.json `updatesOn`, `updatesOff`), else the
  *  vault's policy. */
 export function autoUpdates(c: UpdateConfig, id: string, source: string) {
-  if (!updatable(source) || ids(c.updatesOff).includes(id)) return false
-  return ids(c.updatesOn).includes(id) || byPolicy(c, source)
+  if (!updatable(source) || strings(c.updatesOff).includes(id)) return false
+  return strings(c.updatesOn).includes(id) || byPolicy(c, source)
 }
 
 const QUIET = new Set(["chore", "test", "tests", "ci", "build", "docs", "style"])

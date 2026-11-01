@@ -1,6 +1,7 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
+import { strings } from "../core/values.ts"
 import { AppWindow } from "./appwindow.ts"
 import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, openedByAgent, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
@@ -1677,8 +1678,7 @@ const CLOUD = {
 let cloudWant: CloudWant = { profiles: [], read: false, hidden: [] }
 const cloudWantOf = (x: unknown): CloudWant => {
   const w = (x && typeof x === "object" ? x : {}) as Record<string, unknown>
-  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [])
-  return { profiles: [...new Set(strs(w.profiles).filter((p) => p === "" || profileOf(p) === p))].slice(0, 50), read: w.read === true, hidden: strs(w.hidden) }
+  return { profiles: [...new Set(strings(w.profiles).filter((p) => p === "" || profileOf(p) === p))].slice(0, 50), read: w.read === true, hidden: strings(w.hidden) }
 }
 /** The windows that asked (`web:cloud`): they're told the state as it changes, and its news. */
 const cloudWindows = new Set<AppWindow>()

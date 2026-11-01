@@ -4,6 +4,7 @@ import { patch, put } from "@/core/http"
 import { readSidebars, type Sidebars } from "../../../core/sidebars.ts"
 import { readNewTab, type NewTabSetup } from "../../../core/newtab.ts"
 import type { UpdatePolicy } from "../../../core/updates.ts"
+import { isObj } from "../../../core/values.ts"
 import { LOOK, LOOK_KEYS } from "../../../core/look.ts"
 import { signal } from "@/core/signal"
 
@@ -123,12 +124,11 @@ function fits(k: keyof Prefs, v: unknown) {
   if (typeof d === "object") return !!v && typeof v === "object" && !Array.isArray(v)
   return typeof v === typeof d
 }
-const isObject = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)
 
 function load(): Prefs {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(KEY) ?? "{}")
-    if (!isObject(saved)) return DEFAULTS
+    if (!isObj(saved)) return DEFAULTS
     const out = { ...DEFAULTS } as Record<string, unknown>
     for (const k of Object.keys(DEFAULTS) as (keyof Prefs)[]) if (k in saved && fits(k, saved[k])) out[k] = saved[k]
     return out as Prefs
@@ -172,9 +172,9 @@ export function setPrefs(changes: Partial<Prefs>) {
  *  Obsidian vault has, core/plugins.ts settingDefaults), else the default. */
 export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab" | "editor", Record<string, unknown>>>,
   seeds: Record<string, Record<string, unknown>> = {}) {
-  const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab), editor: isObject(config.editor) ? config.editor : {} }
+  const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab), editor: isObj(config.editor) ? config.editor : {} }
   for (const file of Object.keys(FILES) as File[]) {
-    const got: unknown = config[file], saved = { ...(isObject(seeds[file]) ? seeds[file] : {}), ...(isObject(got) ? got : {}) }
+    const got: unknown = config[file], saved = { ...(isObj(seeds[file]) ? seeds[file] : {}), ...(isObj(got) ? got : {}) }
     for (const k of FILES[file]) (next as Record<string, unknown>)[k] = k in saved && fits(k, saved[k]) ? saved[k] : DEFAULTS[k]
   }
   if (JSON.stringify(next) !== JSON.stringify(prefs)) commit(next)

@@ -25,6 +25,7 @@ import { permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 import { gitEnv } from "../core/gitenv.ts"
+import { strings } from "../core/values.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const PRELOAD = path.join(ROOT, "electron", "preload.cjs")
@@ -937,8 +938,6 @@ function handle(name: string, fn: (w: Win | null, ...args: never[]) => unknown) 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
 /** A new vault folder's name as typed, without the characters a file name can't have. */
 const folderName = (x: unknown) => str(x).replace(/[/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
-/** A list's text items (anything else left out, never the whole list refused). */
-const strings = (x: unknown) => (Array.isArray(x) ? x.filter((v): v is string => typeof v === "string") : [])
 
 handle("vaults:list", (w) => ({
   current: w?.vault.path ?? null, home: app.getPath("home"),
