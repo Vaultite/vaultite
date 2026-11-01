@@ -138,13 +138,13 @@ export function FindTools({ spec, set, total, step, close }: { spec: Options; se
       <Toggle on={spec.wholeWord} label="Whole word" onClick={() => set({ wholeWord: !spec.wholeWord })}><WholeWord className="size-4" strokeWidth={2} /></Toggle>
       <Toggle on={spec.regexp} label="Regular expression" onClick={() => set({ regexp: !spec.regexp })}><Regex className="size-4" strokeWidth={2} /></Toggle>
       <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border max-md:invisible max-md:ml-auto" />
-      <button type="button" aria-label="Previous match" data-tip="Previous match (⇧↵)" disabled={!total} onClick={() => step(-1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
+      <button type="button" aria-label="Previous match" data-tip={`Previous match (${keyHint("Shift+Enter")})`} disabled={!total} onClick={() => step(-1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
         <ChevronUp className="size-4" strokeWidth={2} />
       </button>
-      <button type="button" aria-label="Next match" data-tip="Next match (↵)" disabled={!total} onClick={() => step(1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
+      <button type="button" aria-label="Next match" data-tip={`Next match (${keyHint("Enter")})`} disabled={!total} onClick={() => step(1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
         <ChevronDown className="size-4" strokeWidth={2} />
       </button>
-      <button type="button" aria-label="Close" data-tip="Close (esc)" onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool}>
+      <button type="button" aria-label="Close" data-tip={`Close (${keyHint("Escape")})`} onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool}>
         <X className="size-4" strokeWidth={2} />
       </button>
     </>
@@ -205,7 +205,7 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
           <span className="w-5 shrink-0 max-md:hidden" />
           <input ref={replRef} value={repl} placeholder="Replace" aria-label="Replace" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
             onChange={(e) => { setRepl(e.target.value); set({ replace: e.target.value }) }} onKeyDown={(e) => keys(e, "replace")} className={cn(field, "flex-1")} />
-          <button type="button" disabled={!count.total} onClick={() => replaceNext(view)} onMouseDown={(e) => e.preventDefault()} data-tip="Replace this match (↵)"
+          <button type="button" disabled={!count.total} onClick={() => replaceNext(view)} onMouseDown={(e) => e.preventDefault()} data-tip={`Replace this match (${keyHint("Enter")})`}
             className="h-7 shrink-0 cursor-pointer rounded-[6px] px-2 text-[13px] font-medium hover:bg-foreground/[0.06] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-md:h-9 max-md:text-[15px]">Replace</button>
           <button type="button" disabled={!count.total} onClick={() => replaceAll(view)} onMouseDown={(e) => e.preventDefault()} data-tip={`Replace every match (${keyHint("Mod+Enter")})`}
             className="h-7 shrink-0 cursor-pointer rounded-[6px] px-2 text-[13px] font-medium hover:bg-foreground/[0.06] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-md:h-9 max-md:text-[15px]">Replace all</button>

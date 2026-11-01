@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Shortcuts name Enter and Esc on Windows and Linux**: tooltips and the palette read Ctrl+Enter and Esc, not a Mac's
+  ↵ and esc, and find's buttons no longer show ⇧↵ there.
 - **Terminals copy and paste the Windows way**: on Windows, Ctrl+C copies the selection (with nothing selected it
   still stops the program), Ctrl+V pastes, and a right-click copies the selection or else pastes, as in Windows
   Terminal; Ctrl+V used to reach the shell as ^V, so cmd, Git Bash and WSL pasted nothing.

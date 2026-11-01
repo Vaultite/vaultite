@@ -2,7 +2,7 @@
 // the window raised over it, its pointer passed on), searched by the page's engine (electron/web.ts `web:find`).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { CaseSensitive, ChevronDown, ChevronUp, X } from "lucide-react"
-import { cn, numberText, type WebPages } from "@vaultite"
+import { cn, keyHint, numberText, type WebPages } from "@vaultite"
 import type { FindAsk } from "./state"
 
 /** Each tab's find, as Chrome keeps it: its words, and whether its bar is open (shown again, it is). */
@@ -63,13 +63,13 @@ export function FindBar({ web, id, tab, ask, found, close }: { web: WebPages; id
         <CaseSensitive className="size-4" strokeWidth={2} />
       </button>
       <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border" />
-      <button type="button" aria-label="Previous match" data-tip="Previous match (⇧↵)" disabled={!found?.matches} onClick={() => step(false)} onMouseDown={(e) => e.preventDefault()} className={tool}>
+      <button type="button" aria-label="Previous match" data-tip={`Previous match (${keyHint("Shift+Enter")})`} disabled={!found?.matches} onClick={() => step(false)} onMouseDown={(e) => e.preventDefault()} className={tool}>
         <ChevronUp className="size-4" strokeWidth={2} />
       </button>
-      <button type="button" aria-label="Next match" data-tip="Next match (↵)" disabled={!found?.matches} onClick={() => step(true)} onMouseDown={(e) => e.preventDefault()} className={tool}>
+      <button type="button" aria-label="Next match" data-tip={`Next match (${keyHint("Enter")})`} disabled={!found?.matches} onClick={() => step(true)} onMouseDown={(e) => e.preventDefault()} className={tool}>
         <ChevronDown className="size-4" strokeWidth={2} />
       </button>
-      <button type="button" aria-label="Close" data-tip="Close (esc)" onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool} data-web-find-close>
+      <button type="button" aria-label="Close" data-tip={`Close (${keyHint("Escape")})`} onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool} data-web-find-close>
         <X className="size-4" strokeWidth={2} />
       </button>
     </div>
