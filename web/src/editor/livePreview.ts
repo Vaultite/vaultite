@@ -1474,9 +1474,8 @@ function gridRuns(c: Cands, state: EditorState, cards: Cand[]): Range<Decoration
   return out
 }
 
-// A change within one line that can't start, end or reshape a block, on a line no block holds or ends just above,
-// leaves every block as it was, only moved: typing a sentence in a long file doesn't read it all again. A heading
-// starts a block only as a drawn section.
+// A change within one line that can't start, end or reshape a block (a heading only as a drawn section), on a line no
+// block holds or ends just above, leaves every block only moved: typing in a long file doesn't read it all again.
 const LOUD = /`{3}|~{3}|\$\$|<\/?details|^\s{0,3}<\/?[a-z]|%%|!\[\[|\||^\s{0,3}>|^\s*$/i, HEADING_LINE = /^\s{0,3}#{1,6}(?:\s|$)/
 function mapped(c: Cands, tr: Transaction): Cands | null {
   if (c.reads.length) return null
