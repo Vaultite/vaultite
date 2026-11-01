@@ -827,6 +827,17 @@ dialog { --vau-panel-bottom: 0px; }
 .cm-table-add.is-row { height: 18px; margin-top: 4px; }
 .cm-table-add svg { width: 12px; height: 12px; }
 @media (pointer: coarse) { .cm-table-add.is-col { width: 24px; } .cm-table-add.is-row { height: 24px; } .cm-table-add svg { width: 16px; height: 16px; } }
+/* A column's edge in the header, dragged to resize it: a line on hover. A table whose separator sets its widths is as
+   wide as the text, its columns in those shares (fixed: long words wrap), scrolling in its box once one would be too narrow. */
+.cm-table-edge { width: 9px; transform: translateX(-50%); cursor: col-resize; touch-action: none; }
+.cm-table-edge::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px; border-radius: 1.5px; }
+.cm-table-edge:hover, .cm-table-edge.is-active { background: none; }
+.cm-table-edge:hover::after, .cm-table-edge.is-active::after { background: var(--primary); }
+.vau-editor .cm-table-view.is-shared { overflow-x: auto; overscroll-behavior-x: contain; isolation: isolate; }
+.vau-editor .cm-content[contenteditable="true"] .cm-table-view.is-shared { max-width: calc(100% - 24px); }
+@media (pointer: coarse) { .vau-editor .cm-content[contenteditable="true"] .cm-table-view.is-shared { max-width: calc(100% - 30px); } }
+.vau-editor .cm-content .cm-block-table table.has-widths { display: table; width: 100%; max-width: none; table-layout: fixed; }
+.vau-editor .cm-block-table table.has-widths :where(th, td) { min-width: 0; overflow-wrap: break-word; }
 .cm-table-drop { position: absolute; background: var(--primary); border-radius: 1px; pointer-events: none; }
 .cm-table-drop.is-row { height: 2px; margin-top: -1px; }
 .cm-table-drop.is-col { width: 2px; margin-left: -1px; }

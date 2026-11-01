@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Table columns resize**: drag a column's edge in a table's header to set the widths, kept in the separator's
+  dashes as Pandoc reads them (so plain Markdown); double-click the edge to fit the columns to their text again.
 - **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer
   and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,

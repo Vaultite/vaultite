@@ -503,6 +503,36 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   check("tables: a padded table stays lined up, indented as it was", tt.writeTable(padded) === "  | Name      | Qty |\n  | --------- | --- |\n  | Pineapple | 3   |", tt.writeTable(padded))
   check("tables: a line break in a cell is <br>", tt.escape("a\nb") === "a<br>b" && tt.unescape("x\\|y") === "x|y")
 }
+// Column widths in the separator's dashes, as Pandoc reads them; a table written the usual ways has none.
+{
+  const long = "x".repeat(90)
+  const usual = ["|a|b|\n|---|---|\n|1|2|", "| a | b |\n| --- | :-: |\n| 1 | 2 |", `| Name | Note |\n| ---- | ${"-".repeat(90)} |\n| Pear | ${long} |`,
+    `| ${"h".repeat(40)} | ${"k".repeat(40)} |\n|${"-".repeat(42)}|${"-".repeat(42)}|\n| 1 | 2 |`, `|a|\n|${"-".repeat(80)}|\n|1|`]
+  for (const src of usual) {
+    const t = tt.parseTable(src)!
+    check(`tables: no widths, written as it was (${JSON.stringify(src.slice(0, 30))})`, t.widths === null && tt.columnShares(t) === null && tt.writeTable(t) === src, t.widths)
+  }
+  const sep = `|${"-".repeat(20)}|${"-".repeat(59)}:|`
+  const set = tt.parseTable(`| Name | Qty |\n${sep}\n| pear | 10 |`)!
+  check("tables: a separator past 72 columns sets the columns' widths", same(set.widths, [20, 60]) && Math.abs(tt.columnShares(set)![0] - 0.25) < 1e-9, set.widths)
+  set.rows[1].cells[0] = "Apple"
+  check("tables: editing a cell keeps them", tt.writeTable(set).split("\n")[1] === sep, tt.writeTable(set))
+  tt.insertColumn(set, 2); set.rows[0].cells[2] = "When"
+  const grown = tt.writeTable(set).split("\n")[1]
+  check("tables: a new column gets the others' average, alignment kept", /^\|-+\|-+:\|-+\|$/.test(grown) && same(tt.parseTable(tt.writeTable(set))!.widths, [13, 40, 27]), grown)
+  tt.moveColumn(set, 0, 2)
+  check("tables: a moved column takes its width along", same(tt.parseTable(tt.writeTable(set))!.widths, [40, 27, 13]), tt.writeTable(set))
+  tt.setWidths(set, [1, 1, 2])
+  const out = tt.writeTable(set)
+  check("tables: widths set are written in the separator, scaled to 80 dashes", out.split("\n")[1] === `|${"-".repeat(19)}:|${"-".repeat(20)}|${"-".repeat(40)}|` && same(tt.parseTable(out)!.widths, [20, 20, 40]), out)
+  tt.setWidths(set, null)
+  check("tables: and back to as wide as their text", tt.writeTable(set).split("\n")[1] === "|--:|---|---|" && tt.parseTable(tt.writeTable(set))!.widths === null, tt.writeTable(set))
+  const padded = tt.parseTable("| Name  | Qty |\n| ----- | --- |\n| Apple | 3   |")!
+  tt.setWidths(padded, [3, 1])
+  check("tables: a padded table given widths keeps its rows as they were", tt.writeTable(padded) === `| Name  | Qty |\n|${"-".repeat(60)}|${"-".repeat(20)}|\n| Apple | 3   |`, tt.writeTable(padded))
+  tt.deleteColumn(padded, 1)
+  check("tables: one column left has no widths", padded.widths === null && tt.writeTable(padded).split("\n")[1] === "|---|", tt.writeTable(padded))
+}
 {
   const t = tt.parseTable("| Name | Qty | When |\n| --- | --: | --- |\n| pear | 10 | 2026-03-01 |\n| Apple | 9 | 2025-12-31 |\n|  | 1,200 |  |\n| banana | 2.5 | 2026-01-15 |")!
   const col = (c: number) => t.rows.slice(1).map((r) => r.cells[c]).join(",")

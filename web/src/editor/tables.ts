@@ -13,8 +13,8 @@ import { isMac } from "@/core/platform"
 import { blockLines, markdownDrawn } from "@/core/richmd"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
-import { clearCells, deleteColumn, deleteRow, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow, parseTable,
-  shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
+import { clearCells, columnShares, deleteColumn, deleteRow, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow,
+  parseTable, setWidths, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
 /** What a drawn table needs from the editor around it. */
 export type TableEnv = {
@@ -38,6 +38,18 @@ const STEPS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [
 /** After a change: a cell edited, or cells selected (a row or column moved by its grip stays picked). */
 type Then = { open?: Cell; pick?: [Cell, Cell] }
 let made = 0
+/** The narrowest a column whose width is set is drawn (in the table's ems): narrower, the table scrolls sideways. */
+const NARROWEST = 5
+
+/** A table drawn as wide as the text, its columns in these shares (a `<col>` each); `box` scrolls it sideways. */
+function shareColumns(box: HTMLElement, t: HTMLTableElement, shares: number[]) {
+  box.classList.add("is-shared")
+  t.classList.add("has-widths")
+  t.style.minWidth = `${Math.min(shares.length * 12, Math.max(...shares.map((f) => NARROWEST / f))).toFixed(2)}em`
+  let g = t.querySelector(":scope > colgroup")
+  if (!g) { g = document.createElement("colgroup"); t.prepend(g) }
+  g.replaceChildren(...shares.map((f) => { const col = document.createElement("col"); col.style.width = `${(f * 100).toFixed(3)}%`; return col }))
+}
 
 export function drawTable(el: HTMLElement, text: string, view: EditorView, env: TableEnv) {
   // What the file has (as last drawn or written), its rows, and the cell being edited.
@@ -58,6 +70,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   // The table drawn; its grips and + (aria-hidden: not what Find searches); and the keyboard while cells are selected, a
   // field, so copy, cut and paste come to it (inputmode none: no keyboard pops up on a phone).
   const drawn = document.createElement("div")
+  drawn.className = "cm-table-view"
+  drawn.addEventListener("scroll", () => place(), { passive: true })
   const tools = document.createElement("div")
   tools.className = "cm-table-tools"
   tools.setAttribute("aria-hidden", "true")
@@ -73,6 +87,9 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const rowGrip = tool("cm-table-grip is-row", dots([9, 15], [5, 12, 19]))
   const addCol = tool("cm-table-add is-col", PLUS, "Add column")
   const addRow = tool("cm-table-add is-row", PLUS, "Add row")
+  // A column's right edge in the header, dragged to set the widths (in the separator's dashes); a double-click, as wide as
+  // their text again. One per edge between columns, made as they're needed.
+  const edges: HTMLButtonElement[] = []
   const line = document.createElement("div")
   line.className = "cm-table-drop"
   line.hidden = true
@@ -85,10 +102,13 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   el.append(drawn, tools, keeper)
 
   const paint = () => {
+    drawn.classList.remove("is-shared")
     drawn.innerHTML = env.render(shown)
     markdownDrawn(drawn, blockLines(env.line, () => shown, () => view.state.doc.toString()))
     const t = drawn.querySelector("table")
     grid = null
+    const shares = table && columnShares(table)
+    if (t && shares) shareColumns(drawn, t, shares)
     if (t && table) {
       const rows = [...t.rows]
       if (rows.length === table.rows.length && rows.every((r) => r.cells.length === table!.align.length)) {
@@ -494,10 +514,20 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     tools.hidden = !on
     if (!on) return
     tools.toggleAttribute("data-active", !!editing || !!sel)
-    const box = el.getBoundingClientRect(), tb = t!.getBoundingClientRect()
+    // (`tb`: the table as far as it's in sight, a table with set widths scrolling in its box)
+    const box = el.getBoundingClientRect(), whole = t!.getBoundingClientRect(), seen = drawn.getBoundingClientRect()
+    const tb = { top: whole.top, bottom: whole.bottom, height: whole.height, left: Math.max(whole.left, seen.left), right: Math.min(whole.right, seen.right), width: 0 }
+    tb.width = tb.right - tb.left
     const px = (n: number) => `${Math.round(n)}px`
     Object.assign(addCol.style, { left: px(tb.right - box.left), top: px(tb.top - box.top), height: px(tb.height) })
     Object.assign(addRow.style, { left: px(tb.left - box.left), top: px(tb.bottom - box.top), width: px(tb.width) })
+    const heads = grid![0]
+    while (edges.length < heads.length - 1) edges.push(edgeHandle(edges.length))
+    edges.forEach((h, i) => {
+      const b = i < heads.length - 1 ? heads[i].getBoundingClientRect() : null
+      h.hidden = !b || b.right < tb.left + 4 || b.right > tb.right - 4
+      if (b) Object.assign(h.style, { left: px(b.right - box.left), top: px(b.top - box.top), height: px(b.height) })
+    })
     const at = over ?? (editing && { r: editing.r, c: editing.c }) ?? sel?.h ?? null
     const cell = at && grid![at.r]?.[at.c]
     colGrip.hidden = rowGrip.hidden = !cell
@@ -543,6 +573,56 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     })
   }
 
+  function edgeHandle(i: number) {
+    const h = tool("cm-table-edge", "")
+    h.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !table || !env.canEdit()) return
+      e.preventDefault(); e.stopPropagation()
+      const x0 = e.clientX, id = e.pointerId
+      let shares: number[] | null = null, tw = 0, a0 = 0, b0 = 0, from = 0, narrowest = 0
+      h.setPointerCapture(id)
+      const move = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return
+        if (!shares) {
+          if (Math.abs(ev.clientX - x0) < 3 || !grid) return
+          // (a table as wide as its text takes the widths it's drawn at, made as wide as the text; the edge then follows
+          // the pointer from where it's drawn now)
+          close(); unselect()
+          const t = drawn.querySelector("table")
+          if (!t || !grid) return
+          const ws = grid[0].map((c) => c.getBoundingClientRect().width), sum = ws.reduce((a, b) => a + b, 0)
+          shares = ws.map((w) => w / sum)
+          shareColumns(drawn, t, shares)
+          tw = t.getBoundingClientRect().width
+          narrowest = NARROWEST * parseFloat(getComputedStyle(t).fontSize)
+          a0 = shares[i]; b0 = shares[i + 1]
+          from = grid[0][i].getBoundingClientRect().right
+          h.classList.add("is-active")
+        }
+        const min = Math.min(narrowest / tw, (a0 + b0) / 2)
+        const a = Math.max(min, Math.min(a0 + b0 - min, a0 + (ev.clientX - from) / tw))
+        shares[i] = a; shares[i + 1] = a0 + b0 - a
+        shareColumns(drawn, drawn.querySelector("table")!, shares)
+        place()
+      }
+      const up = (ev: PointerEvent) => {
+        if (ev.pointerId !== id) return
+        h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up)
+        h.classList.remove("is-active")
+        if (shares) { const s = shares; change((t) => setWidths(t, s), "input.table") }
+      }
+      h.addEventListener("pointermove", move)
+      h.addEventListener("pointerup", up)
+      h.addEventListener("pointercancel", up)
+    })
+    h.addEventListener("dblclick", (e) => {
+      e.preventDefault(); e.stopPropagation()
+      if (table?.widths && env.canEdit()) change((t) => setWidths(t, null), "input.table")
+    })
+    h.addEventListener("click", (e) => e.stopPropagation())
+    return h
+  }
+
   /** Where a row or column held at x, y would go: the gap before row or column `gap` (the line drawn there). Held near
    *  the edge of a table wider than the note, or of the pane, it scrolls that way. */
   const sideways = edgeScroller("x"), down = edgeScroller()
@@ -552,7 +632,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       if (item.table !== id || !dragging || !grid || !table || !t) return null
       const { row, from } = dragging
       if (row) down.over(t, x, y)
-      else sideways.over(t, x, y)
+      else sideways.over(drawn.classList.contains("is-shared") ? drawn : t, x, y)
       if (!dragging.shown) { dragging.shown = true; const [a, h] = row ? wholeRow(from) : wholeCol(from); select(a, h) }
       const tb = t.getBoundingClientRect(), box = el.getBoundingClientRect()
       if (x < tb.left - 48 || x > tb.right + 48 || y < tb.top - 48 || y > tb.bottom + 48) { line.hidden = true; return null }

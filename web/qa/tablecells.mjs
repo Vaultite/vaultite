@@ -1,14 +1,14 @@
 // A table in live preview edited cell by cell (editor/tables.ts): the grid stays drawn and its columns put, /table, rows
-// and columns added, sorted, dragged, copied and pasted. WRITES "Qa tablecells/": throwaway only.
+// and columns added, sorted, dragged, copied, pasted and resized. WRITES "Qa tablecells/": throwaway only.
 //   node web/qa/tablecells.mjs <base url> [out dir]
 import { SHOTS, command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
-const NOTE = "Qa tablecells/Cells.md", MORE = "Qa tablecells/More.md"
+const NOTE = "Qa tablecells/Cells.md", MORE = "Qa tablecells/More.md", WIDE = "Qa tablecells/Widths.md"
 const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
 // (the editor saves after a pause)
 const saved = (fn) => until(fn, 10000)
 const read = async (path) => (await (await fetch(`${B}api/file?path=${encodeURIComponent(path)}`)).json()).text
-for (const p of [NOTE, MORE]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
+for (const p of [NOTE, MORE, WIDE]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
 await put(NOTE, "Top line\n\n| Where | Free | Note |\n|---|---|---|\n| Laptop | 122G | Up from **32G** on [[Lighthouse]] |\n| Desktop | 95G | `short` |\n\nBottom line\n")
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1, permissions: ["clipboard-read", "clipboard-write"] })
@@ -166,4 +166,47 @@ await mob.screenshot({ path: `${OUT}/tablecells-phone.png` })
 await mob.locator(".cm-table-grip.is-row").first().tap(); await wait(400)
 check("phone: a tapped grip opens its menu", await mob.getByRole("menuitem", { name: "Move row down" }).isVisible())
 await mob.screenshot({ path: `${OUT}/tablecells-phone-menu.png` })
+
+// ---- a column's edge dragged: its width in the separator's dashes; a double-click, as wide as its text again ----
+const WIDE_MD = "Above\n\n| Task | Owner | Notes |\n| --- | :-: | --- |\n| Ship the beta | Alice Park | Waiting on [[Lighthouse]] review |\n| Write docs | Sam | Short |\n\nBelow\n"
+await put(WIDE, WIDE_MD)
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(WIDE)}`); await wait(1500)
+const tw = ed.locator(".cm-block-table table")
+const sepLine = async () => (await read(WIDE)).split("\n").find((l) => /^\|[-:|]+\|$/.test(l))
+await cell(0, 0, tw).hover(); await wait(200)
+const edge = ed.locator(".cm-table-edge").first()
+check("hovering a table shows its columns' edges in the header", await ed.locator(".cm-table-edge:not([hidden])").count() === 2)
+const eb = await edge.boundingBox()
+const w0 = await widths()
+await page.mouse.move(eb.x + eb.width / 2, eb.y + eb.height / 2); await page.mouse.down()
+for (let i = 1; i <= 8; i++) await page.mouse.move(eb.x + eb.width / 2 + 12 * i, eb.y + eb.height / 2, { steps: 2 })
+await page.screenshot({ path: `${OUT}/widths-dragging.png` })
+await page.mouse.up(); await wait(400)
+const sep = await saved(async () => { const l = await sepLine(); return l.length > 72 && l })
+check(`dragged, the separator holds the widths, alignment kept (${sep})`, !!sep && /^\|-+\|:-+:\|-+\|$/.test(sep))
+const [d0, d1, d2] = (sep || "").split("|").slice(1, 4).map((x) => x.length)
+check(`the first column wider than before, by its dashes (${d0}, ${d1}, ${d2})`, d0 >= 25 && d0 + d1 + d2 >= 78)
+const drawnW = await tw.evaluate((t) => [...t.rows[0].cells].map((c) => Math.round(c.getBoundingClientRect().width)))
+check(`drawn as wide as the text, in those shares (${w0} → ${drawnW})`, await tw.evaluate((t) => t.classList.contains("has-widths"))
+  && Math.abs(drawnW[0] / drawnW.reduce((a, b) => a + b, 0) - d0 / (d0 + d1 + d2)) < 0.02)
+await page.screenshot({ path: `${OUT}/widths-desktop.png` })
+await cell(2, 2, tw).click({ position: { x: 4, y: 4 } }); await wait(200)
+await page.keyboard.press("End"); await page.keyboard.type(" more"); await wait(200)
+await ed.locator(".cm-line", { hasText: "Below" }).click(); await wait(300)
+check("editing a cell keeps the widths", await saved(async () => (await read(WIDE)).includes("| Write docs | Sam | Short more |")) && await sepLine() === sep, await read(WIDE))
+await page.reload(); await wait(1500)
+check("read again, the table keeps them", await tw.evaluate((t) => t.classList.contains("has-widths") && t.querySelectorAll("col").length === 3))
+await page.emulateMedia({ colorScheme: "dark" }); await cell(0, 1, tw).hover(); await wait(200)
+const eb2 = await ed.locator(".cm-table-edge").first().boundingBox()
+await page.mouse.move(eb2.x + eb2.width / 2, eb2.y + eb2.height / 2); await wait(200)
+await page.screenshot({ path: `${OUT}/widths-dark-hover.png` })
+await page.emulateMedia({ colorScheme: "light" })
+const mw = watch(await phone.newPage())
+await mw.goto(`${B}#file/${encodeURIComponent(WIDE)}`); await wait(2000)
+check("phone: the widths are drawn too", await mw.locator(".vau-editor .cm-block-table table.has-widths").count() === 1)
+await mw.screenshot({ path: `${OUT}/widths-phone.png` })
+await page.mouse.dblclick(eb2.x + eb2.width / 2, eb2.y + eb2.height / 2); await wait(400)
+check("a double-click on an edge puts the default separator back", await saved(async () => await sepLine() === "|---|:-:|---|"), await read(WIDE))
+check("and draws the table as wide as its text", await tw.evaluate((t) => !t.classList.contains("has-widths")))
+await page.screenshot({ path: `${OUT}/widths-reset.png` })
 await done()

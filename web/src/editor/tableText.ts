@@ -5,8 +5,9 @@ export type Align = "" | "left" | "center" | "right"
 /** A row: its cells as written (`\|` escaped), and the line it came from while they're unchanged (kept as it was).
  *  `rest`: cells past its header's width, which nothing draws, kept until its shape changes (widen). */
 type Row = { cells: string[]; line?: string; was?: string; rest?: string[] }
-/** `delim`: its separator line as written, kept while the columns and their alignment (`aligned`) are the same. */
-export type Table = { rows: Row[]; align: Align[]; delim: string; aligned: string; padded: boolean
+/** `delim`: its separator line as written, kept while the columns, their alignment and widths (`aligned`) are the same.
+ *  `widths`: each column's dashes (colons too) when the separator sets the columns' widths. */
+export type Table = { rows: Row[]; align: Align[]; delim: string; aligned: string; padded: boolean; widths: number[] | null
   /** What its lines start with (a table in a list item): new lines get it too. */
   indent: string }
 export type Cell = { r: number; c: number }
@@ -57,12 +58,35 @@ export function parseTable(text: string): Table | null {
     while (cells.length < head.length) cells.push("")
     rows.push({ cells, line: l, was: cells.join("\0"), ...(rest ? { rest } : {}) })
   }
+  // Widths set (Pandoc's relative widths): a separator wider than 72 columns whose dashes aren't just each column padded
+  // to its header or its widest cell (with the spaces around it or not), as a formatter or writeTable pads them.
+  const seps = d.map((c) => c.length), widest = seps.map((_, c) => Math.max(3, ...rows.map((r) => width(r.cells[c]))))
+  const pads = (n: number, w: number) => n === w || n === w + 2
+  const widths = d.length > 1 && lines[1].trim().length > 72 && seps.some((n, c) => !pads(n, widest[c]) && !pads(n, width(head[c]))) ? seps : null
   // Padded so its pipes line up (as a formatter writes it): kept lined up as cells change.
   const w = width(lines[0].trimEnd())
-  const padded = lines.every((l) => width(l.trimEnd()) === w) && /\S {2,}\|/.test(lines.join("\n"))
-  return { rows, align, delim: lines[1], aligned: align.join(), padded, indent: /^[ \t]*/.exec(lines[0])![0] }
+  const padded = !widths && lines.every((l) => width(l.trimEnd()) === w) && /\S {2,}\|/.test(lines.join("\n"))
+  return { rows, align, delim: lines[1], aligned: shape(align, widths), padded, widths, indent: /^[ \t]*/.exec(lines[0])![0] }
 }
+const shape = (align: Align[], widths: number[] | null) => `${align.join()}/${widths?.join() ?? ""}`
 
+/** Its columns' shares of the table's width (summing to 1), when its separator sets them. */
+export const columnShares = (t: Table) => {
+  const sum = t.widths?.reduce((a, b) => a + b, 0)
+  return t.widths && sum ? t.widths.map((n) => n / sum) : null
+}
+/** Dashes the separator spreads between columns given their widths: wider than 72, so Pandoc reads them as widths. */
+const SCALE = 80
+/** Its columns' widths set to these shares (any scale), or back to as wide as their text (null): only its separator
+ *  changes. */
+export function setWidths(t: Table, shares: number[] | null) {
+  t.widths = shares && shares.length > 1 ? scaled(shares) : null
+  if (t.widths) t.padded = false
+}
+const scaled = (shares: number[]) => { const sum = shares.reduce((a, b) => a + b, 0) || 1; return shares.map((s) => Math.max(3, Math.round((SCALE * s) / sum))) }
+
+/** A column's separator `w` long, its colons included. */
+const sized = (a: Align, w: number) => a === "center" ? `:${"-".repeat(w - 2)}:` : a === "right" ? `${"-".repeat(w - 1)}:` : a === "left" ? `:${"-".repeat(w - 1)}` : "-".repeat(w)
 const dashes = (a: Align, w: number) => a === "center" ? `:${"-".repeat(Math.max(w - 2, 1))}:` : a === "right" ? `${"-".repeat(Math.max(w - 1, 2))}:`
   : a === "left" ? `:${"-".repeat(Math.max(w - 1, 2))}` : "-".repeat(Math.max(w, 3))
 
@@ -76,7 +100,9 @@ export function writeTable(t: Table): string {
     return [row(t.rows[0]), `${t.indent}| ${t.align.map((a, c) => dashes(a, w[c])).join(" | ")} |`, ...t.rows.slice(1).map(row)].join("\n")
   }
   const row = (r: Row) => (r.line !== undefined && r.was === r.cells.join("\0") ? r.line : `${t.indent}| ${all(r).join(" | ")} |`)
-  const delim = cellsOf(t.delim).length === cols && t.aligned === t.align.join() ? t.delim : `${t.indent}|${t.align.map((a) => dashes(a, 3)).join("|")}|`
+  const ws = t.widths && cols > 1 ? scaled(t.widths) : null
+  const delim = cellsOf(t.delim).length === cols && t.aligned === shape(t.align, t.widths) ? t.delim
+    : `${t.indent}|${t.align.map((a, c) => (ws ? sized(a, ws[c]) : dashes(a, 3))).join("|")}|`
   return [row(t.rows[0]), delim, ...t.rows.slice(1).map(row)].join("\n")
 }
 
@@ -92,19 +118,29 @@ export const shownText = (cell: string) => unescape(cell).replace(/<br\s*\/?>/gi
 export function widen(t: Table) {
   const n = Math.max(t.align.length, ...t.rows.map((r) => r.cells.length + (r.rest?.length ?? 0)))
   for (const r of t.rows) { if (r.rest) { r.cells.push(...r.rest); delete r.rest } while (r.cells.length < n) r.cells.push("") }
-  while (t.align.length < n) t.align.push("")
+  while (t.align.length < n) { t.align.push(""); t.widths?.push(average(t.widths)) }
 }
+/** A new column's width among set ones: theirs on average. */
+const average = (ws: number[]) => Math.max(3, Math.round(ws.reduce((a, b) => a + b, 0) / Math.max(1, ws.length)))
 const blank = (t: Table): Row => ({ cells: t.align.map(() => "") })
 export const insertRow = (t: Table, at: number) => { t.rows.splice(at, 0, blank(t)) }
 export const deleteRow = (t: Table, r: number) => { t.rows.splice(r, 1) }
-export const insertColumn = (t: Table, at: number) => { t.align.splice(at, 0, ""); for (const r of t.rows) r.cells.splice(at, 0, "") }
-export const deleteColumn = (t: Table, c: number) => { t.align.splice(c, 1); for (const r of t.rows) r.cells.splice(c, 1) }
+export const insertColumn = (t: Table, at: number) => {
+  t.align.splice(at, 0, ""); t.widths?.splice(at, 0, average(t.widths))
+  for (const r of t.rows) r.cells.splice(at, 0, "")
+}
+export const deleteColumn = (t: Table, c: number) => {
+  t.align.splice(c, 1); t.widths?.splice(c, 1)
+  if (t.widths && t.widths.length < 2) t.widths = null
+  for (const r of t.rows) r.cells.splice(c, 1)
+}
 const move = <T>(xs: T[], from: number, to: number) => { xs.splice(to, 0, ...xs.splice(from, 1)) }
 /** A body row to another place among them (the header stays first). */
 export const moveRow = (t: Table, from: number, to: number) => { if (from > 0 && to > 0 && to < t.rows.length) move(t.rows, from, to) }
 export const moveColumn = (t: Table, from: number, to: number) => {
   if (to < 0 || to >= t.align.length) return
   move(t.align, from, to)
+  if (t.widths) move(t.widths, from, to)
   for (const r of t.rows) move(r.cells, from, to)
 }
 /** Cells r0..r1, c0..c1 emptied. */
