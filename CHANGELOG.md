@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Day planner**: a block in your daily note draws its timed items (`- 09:00 - 10:30 Standup`, `- 14:00 Lunch`) as a
   timeline of the day, overlapping ones side by side and a line at the time it is now; agents read it as the plan.
+- **Obsidian vaults are offered the Importer and Mind map**: a vault that used Obsidian's Importer or Mind Map plugin
+  gets these in their place when it opens (or keeps running the originals).
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
 - **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing

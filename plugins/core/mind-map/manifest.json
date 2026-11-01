@@ -3,6 +3,7 @@
   "icon": "network",
   "category": "writing",
   "offByDefault": true,
+  "replaces": { "obsidian": ["obsidian-mind-map"] },
   "name": "Mind map",
   "description": "A note's headings as a mind map: open one in a tab beside the note, or put one in any page. Click a branch to go there; fold the ones you don't need.",
   "tint": "teal",

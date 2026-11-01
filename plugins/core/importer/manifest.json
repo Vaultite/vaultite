@@ -3,6 +3,7 @@
   "icon": "import",
   "category": "writing",
   "offByDefault": true,
+  "replaces": { "obsidian": ["obsidian-importer"] },
   "name": "Importer",
   "description": "Brings your notes from Notion and Evernote: their exports become Markdown notes, with attachments, links between pages, tags, to-dos and database properties kept.",
   "tint": "blue",
