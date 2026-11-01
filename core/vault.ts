@@ -596,6 +596,9 @@ type Stat = { ns: bigint; size: number; born: number }
 /** Folders of installed packages and compiled caches (a code project dropped into the vault): never listed. Every
  *  request walks the vault, and these can hold tens of thousands of files nobody opens. */
 const CACHES = new Set(["node_modules", "__pycache__"])
+/** A path the scan leaves out of the index (settings, hidden files, caches, a write's temporary copy) or may not see. */
+const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsWith(".") && (n !== ARCHIVE_DIR || i === all.length - 1)) ||
+  n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
 const sameStat = (a: Stat, b: Stat) => a.ns === b.ns && a.size === b.size
 const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated"])
 
@@ -793,30 +796,52 @@ export class Vault {
     })
   }
 
+  private letGo = new Set<string>() // (files dropped as gone: heard of later, nothing new)
+  /** Whether the watcher has told of every change so far (one hearing each as it's made): the index is the disk's. */
+  async caughtUp() {
+    await turn(); await turn()
+    return this.vouched() && !!this.untold && !this.untold()
+  }
+
+  /** Whether these changes heard are in the index already (or what no sync looks at). */
+  told(rels: Iterable<string>) {
+    for (const r of rels) if (!NOT_SETTINGS.has(r.split("/").slice(0, 2).join("/")) && !this.indexed(r)) return false
+    return true
+  }
+
   /** Whether a file is in the index as it is on disk now. */
   private indexed(rel: string) {
     const was = this.entries.get(rel)?.stat ?? this.others.get(rel)
-    if (!was || this.entries.get(rel)?.broken) return false
+    if (this.entries.get(rel)?.broken) return false
     try {
       const st = fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false })
+      if (!was) return !st && this.letGo.has(rel)
       return !!st && st.isFile() && sameStat(was, statFrom(st))
     } catch {
       return false
     }
   }
 
-  /** Index `rels` after writing them: only those while the watcher vouches for the rest and they're Markdown files
-   *  already indexed, else a whole sync. */
+  /** Index `rels` after writing, adding, moving or removing them: only those while the watcher vouches for the rest,
+   *  else (a folder, a hidden or new folder, a placeholder) a whole sync. */
   async reread(rels: string[]): Promise<boolean> {
-    if (!this.vouched() || rels.some((r) => !this.entries.has(r))) return this.sync()
+    if (!this.vouched()) return this.sync()
+    const stats = rels.map((rel) => fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false }))
+    if (rels.some((rel, i) => unscanned(rel) || (stats[i] ? !stats[i]!.isFile() || evicted(this.abs(rel), stats[i]!) ||
+      (rel.includes("/") && !this.folders.includes(rel.slice(0, rel.lastIndexOf("/")))) : this.folders.includes(rel)))) return this.sync()
     let changed = false
-    for (const rel of rels) {
-      const st = fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false })
-      if (!st?.isFile()) return this.sync()
-      const e = this.entries.get(rel)!
-      if (sameStat(e.stat, statFrom(st)) && !e.broken) continue
-      this.read(rel, statFrom(st))
-      changed = true
+    for (const [i, rel] of rels.entries()) {
+      const st = stats[i] ? statFrom(stats[i]!) : null, e = this.entries.get(rel), other = this.others.get(rel)
+      if (!st) {
+        if (e) this.drop(rel)
+        else if (other) { this.others.delete(rel); this.letGo.add(rel); this.version++ }
+        changed ||= !!(e || other)
+      } else if (!rel.endsWith(".md")) {
+        if (!other || !sameStat(other, st)) { this.others.set(rel, st); this.version++; changed = true }
+      } else if (!e || !sameStat(e.stat, st) || e.broken) {
+        this.read(rel, st)
+        changed = true
+      }
     }
     if (changed) this.version++
     for (const fn of this.hooks) {
@@ -925,14 +950,19 @@ export class Vault {
     }
   }
 
-  /** Every file as links see it: its path and aliases (its name is its title: `title:` and `name:` aren't link names). */
-  private linkFiles(): LinkFile[] {
+  /** Every file as links see it: its path and aliases (its name is its title: `title:` and `name:` aren't link names).
+   *  With `names` (lowercase), only `also` and the files a link by one of them could find: of that name, or that alias. */
+  private linkFiles(names?: Set<string>, also?: Map<string, string>): LinkFile[] {
     const out: LinkFile[] = []
-    for (const [rel, e] of this.entries) {
-      const aliases = e.fm.aliases
-      out.push({ path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
+    const named = (rel: string) => {
+      const n = rel.slice(rel.lastIndexOf("/") + 1).toLowerCase(), dot = n.lastIndexOf(".")
+      return names!.has(n) || (dot > 0 && names!.has(n.slice(0, dot))) || also!.has(rel)
     }
-    for (const rel of this.others.keys()) out.push({ path: rel })
+    for (const [rel, e] of this.entries) {
+      const a = e.fm.aliases, aliases = (Array.isArray(a) ? a : a ? [a] : []).map(String)
+      if (!names || named(rel) || aliases.some((x) => names.has(x.trim().toLowerCase()))) out.push({ path: rel, aliases, archived: e.archived })
+    }
+    for (const rel of this.others.keys()) if (!names || named(rel)) out.push({ path: rel })
     return out
   }
   private links: { version: number; resolve: Resolve<string> } | null = null
@@ -947,11 +977,17 @@ export class Vault {
   relink(moves: [string, string][]): string[] {
     if (!moves.length) return []
     const fwd = new Map(moves), back = new Map(moves.map(([f, t]) => [t, f]))
-    const now = this.linkFiles()
+    const base = (p: string) => p.slice(p.lastIndexOf("/") + 1)
+    // A link can change only if it names a moved file (its name, written or encoded, or an alias), but in a moved file.
+    const names = [...new Set(moves.flatMap(([from, to]) => {
+      const a = this.entries.get(to)?.fm.aliases, own = [base(from), base(from).replace(/\.[^.]+$/, ""), ...(Array.isArray(a) ? a : a ? [a] : []).map(String)]
+      return own.flatMap((n) => [n, encodeURI(n), encodeURIComponent(n)]).map((n) => n.trim().toLowerCase()).filter(Boolean)
+    }))]
+    // (the resolvers know only the files such a link could find: a moved file, or another of its old or new names)
+    const now = this.linkFiles(new Set([...names, ...moves.flatMap(([, to]) => [base(to), base(to).replace(/\.[^.]+$/, "")].map((n) => n.toLowerCase()))]), back)
     const before = linkResolver(now.map((f) => (back.has(f.path) ? { ...f, path: back.get(f.path)! } : f)))
     const after = linkResolver(now, { twins: false }) // (a path left pointing at a file's old place is rewritten)
-    const was = new Set(now.map((f) => back.get(f.path) ?? f.path)), is = new Set(now.map((f) => f.path))
-    const base = (p: string) => p.slice(p.lastIndexOf("/") + 1)
+    const is = new Set([...this.entries.keys(), ...this.others.keys()]), was = new Set([...is].map((p) => back.get(p) ?? p))
     // (each link as seen from its file, where it was and where it is: the closest file of a name wins)
     const wiki = (t: string, was: string, now: string) => {
       const old = before(t, was), np = old === null ? undefined : fwd.get(old)
@@ -985,11 +1021,6 @@ export class Vault {
       const out = old.md ? np.slice(0, -3) : np
       return t.startsWith("/") ? `/${out}` : old.relative ? relativePath(dirOf(rel), out) : out
     }
-    // A link can change only if it names a moved file (its name, written or encoded, or an alias), but in a moved file.
-    const names = [...new Set(moves.flatMap(([from, to]) => {
-      const a = this.entries.get(to)?.fm.aliases, own = [base(from), base(from).replace(/\.[^.]+$/, ""), ...(Array.isArray(a) ? a : a ? [a] : []).map(String)]
-      return own.flatMap((n) => [n, encodeURI(n), encodeURIComponent(n)]).map((n) => n.toLowerCase()).filter(Boolean)
-    }))]
     const mentions = (text: string) => { const low = text.toLowerCase(); return names.some((n) => low.includes(n)) }
     const changed: string[] = []
     for (const [rel, e] of [...this.entries]) {
@@ -1487,6 +1518,8 @@ export class Vault {
 
   drop(rel: string) {
     const e = this.entries.get(rel)
+    if (this.letGo.size > 4096) this.letGo.clear()
+    this.letGo.add(rel)
     if (e) this.version++
     if (e?.kind) this.ordered.delete(e.kind)
     this.entries.delete(rel)

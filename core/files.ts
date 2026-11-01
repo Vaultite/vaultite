@@ -832,13 +832,15 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (dst.startsWith(src + "/")) throw new HTTPError(400, "can't move a folder into itself")
     guard(vault.abs(src))
     guard(vault.abs(dst))
+    // (a file's move indexes only it while the watcher has told of everything else: a link to it may be new)
+    const folder = fs.statSync(vault.abs(src)).isDirectory(), alone = !folder && await vault.caughtUp()
     fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
     renameFile(vault.abs(src), vault.abs(dst))
     forget(vault, src)
     vault.moved(src, dst) // open apps follow it (core/live.ts), and so do plugins (plugin.onMove: an artifact's storage, pinned pages)
-    await vault.sync()
+    await (alone ? vault.reread([src, dst]) : vault.sync())
     // Links to what moved follow it: a folder's files each, by where they are now.
-    const moves: [string, string][] = !fs.statSync(vault.abs(dst)).isDirectory() ? [[src, dst]]
+    const moves: [string, string][] = !folder ? [[src, dst]]
       : [...vault.entries.keys(), ...vault.others.keys()].filter((p) => p.startsWith(`${dst}/`)).map((p) => [src + p.slice(dst.length), p])
     const updated = vault.relink(moves)
     if (updated.length) await vault.reread(updated)

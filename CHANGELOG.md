@@ -252,6 +252,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **File history keeps up in big vaults**: after an edit it looks at the files that changed, not at every file
   again (a third of the time at 24,000 notes), and a start reads one index of what it follows, not a file for each
   (0.6 s to 0.15 s at 49,000 notes).
+- **Renaming a much-linked note is faster in big vaults**: a rename indexes only what moved instead of walking the
+  whole vault, and finds the links to rewrite without indexing every file's links (49,000 notes: 0.9-1.4 s to 0.4 s).
 - **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third
   faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).

@@ -80,7 +80,8 @@ export class Live {
         : fs.watch(root, { recursive: true }, (_event, name) => this.add(name === null || name === undefined ? null : String(name).split(path.sep).join("/")))
       this.watcher.on("error", (e) => this.restart(e))
       // (inotify, folder by folder, hears each change as it's made; FSEvents tells of them a while later)
-      this.vault.watching(true, process.platform === "linux" ? () => this.timer !== null || this.flushing : undefined)
+      // (what it heard of the server's own writes, indexed as written, isn't news)
+      this.vault.watching(true, process.platform === "linux" ? () => this.flushing || (this.timer !== null && (this.all || !this.vault.told(this.pending))) : undefined)
     } catch (e) {
       this.restart(e)
     }
