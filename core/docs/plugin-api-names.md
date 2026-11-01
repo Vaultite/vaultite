@@ -62,6 +62,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).
 - `askMove(path, opts?)`: "Move file to…": pick a folder (fuzzy, "/" the top level), then move it there.
 - `askMoveMany(paths, opts?)`: "Move to…" for several: one folder for them all (one none of them is, nor is inside).
+- `askText(o)`: The palette as a text field: Enter gives what's typed (trimmed; `label` names the row it makes), an empty Enter `onBlank` where there is one, Esc nothing.
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.

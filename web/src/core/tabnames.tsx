@@ -1,7 +1,7 @@
 // Naming tabs and tab groups from the palette, which turns into a field as Rex's Rename Session does. A tab's name
 // belongs to what it shows: a file's is the file's, a terminal's its session's, anything else's the tab's own.
 import { PencilLine, Plus } from "lucide-react"
-import { choose } from "@/components/Chooser"
+import { askText, choose } from "@/components/Chooser"
 import { dotIcon } from "@/components/ColorDot"
 import { editSet, namesItself, setName, shownLabel, tabLabel } from "@/components/Tabs"
 import { getStore } from "@/core/data"
@@ -33,13 +33,10 @@ export function canRenameTab(t: Tab | undefined) {
  *  field gives the automatic name back, Esc leaves it. */
 function askName(o: { what: string; placeholder: string; name: string; typed?: string; auto: string; set: (name: string) => void }) {
   const typed = o.typed ?? o.name
-  choose({
-    title: `Rename ${o.what}`, heading: `Rename ${o.what} "${o.name}"`, placeholder: o.placeholder, typed, items: [],
-    empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">
-      {o.name === o.auto ? "Type a name" : `Enter to go back to the automatic name, "${o.auto}"`}</p>,
-    other: (typed) => ({ id: typed.trim(), label: `Rename to "${typed.trim()}"`, icon: PencilLine }),
-    onPick: (it) => o.set(it.id),
-    onBlank: () => o.set(""),
+  askText({
+    title: `Rename ${o.what}`, heading: `Rename ${o.what} "${o.name}"`, placeholder: o.placeholder, typed,
+    hint: o.name === o.auto ? "Type a name" : `Enter to go back to the automatic name, "${o.auto}"`,
+    label: (t) => `Rename to "${t}"`, icon: PencilLine, onText: o.set, onBlank: () => o.set(""),
   })
 }
 

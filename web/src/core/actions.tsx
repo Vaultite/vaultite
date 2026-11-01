@@ -1,7 +1,7 @@
 // A file's actions in the app (core/actions.ts): the ops that act on its kind, from the catalog (read again when the
 // plugins on change), run with the file filled in and the rest asked in the palette.
 import { actionsFor, type OpAction } from "../../../core/actions.ts"
-import { choose } from "@/components/Chooser"
+import { askText, choose } from "@/components/Chooser"
 import { getStore } from "@/core/data"
 import { get, request } from "@/core/http"
 import { anyIcon } from "@/core/icons"
@@ -39,9 +39,8 @@ function ask(label: string, name: string, s: Schema): Promise<unknown> {
         onPick: (it) => done(values[Number(it.id)]), onDismiss: () => done(null) })
       return
     }
-    choose({ title: label, heading, placeholder: `Type ${name}…`, items: [],
-      empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Type, then Enter</p>,
-      other: (t) => ({ id: t, label: `Use "${t}"` }), onPick: (it) => done(it.id), onDismiss: () => done(null) })
+    askText({ title: label, heading, placeholder: `Type ${name}…`, hint: "Type, then Enter",
+      label: (t) => `Use "${t}"`, onText: done, onDismiss: () => done(null) })
   })
 }
 

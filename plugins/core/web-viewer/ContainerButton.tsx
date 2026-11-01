@@ -2,7 +2,7 @@
 // name), and a menu to choose another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
 import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, KeyRound, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
-import { choose, colorItems, confirmDialog, currentWorkspace, dotIcon, menuBelow, notify, notifyError, plural, replaceMenu, webPages, type MenuItem, type WebSite } from "@vaultite"
+import { askText, choose, colorItems, confirmDialog, currentWorkspace, dotIcon, menuBelow, notify, notifyError, plural, replaceMenu, webPages, type MenuItem, type WebSite } from "@vaultite"
 import { accountIn, askSites, keep, listed } from "./accounts"
 import { allLogins, andList, isIn, loginsOf, moveLogin, sitesOf } from "./loginsets"
 import { siteOf } from "./address"
@@ -24,12 +24,8 @@ export function useCanLock() {
 
 /** Ask for a name (a new container's, or a new name for one). */
 function askName(title: string, current: string, done: (name: string) => void) {
-  choose({
-    title, placeholder: "Name", items: [],
-    empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Type a name{current ? ` for ${current}` : ""}.</p>,
-    other: (typed) => (typed.trim() ? { id: typed.trim(), label: current ? `Rename to “${typed.trim()}”` : `New container “${typed.trim()}”` } : null),
-    onPick: (it) => done(it.id),
-  })
+  askText({ title, placeholder: "Name", hint: `Type a name${current ? ` for ${current}` : ""}.`,
+    label: (t) => (current ? `Rename to “${t}”` : `New container “${t}”`), onText: done })
 }
 
 export function newContainer(then?: (c: Container) => void) {

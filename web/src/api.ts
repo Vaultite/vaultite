@@ -39,7 +39,7 @@ export { csvRecords, parseCsv } from "../../core/csv.ts"
 /** Moment.js-style dates (core/dates.ts, shared with the server). */
 export { formatDate, parseDate, type DateOptions } from "../../core/dates.ts"
 export { activeFile, insertOnOwnLine, type ActiveFile } from "@/core/active"
-export { choose, type Choice } from "@/components/Chooser"
+export { askText, choose, type Choice } from "@/components/Chooser"
 /** The palette's overlay as a frame for a palette-like box of a plugin's own (Terminal's Ask box). */
 export { PaletteFrame } from "@/components/Palette"
 /** `data-tip` tooltips in another window the app draws in (a popup's document, rendered from here). */

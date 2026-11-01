@@ -54,6 +54,15 @@ export function choose<C extends Choice>(c: Choose<C> | null) {
   if (was && was !== asking) was.onDismiss?.()
 }
 
+/** The palette as a text field: Enter gives what's typed (trimmed; `label` names the row it makes), an empty Enter
+ *  `onBlank` where there is one, Esc nothing. */
+export function askText(o: Pick<Choose, "title" | "heading" | "placeholder" | "typed" | "onBlank" | "onDismiss"> & {
+  hint: ReactNode; label: (text: string) => string; icon?: Choice["icon"]; onText: (text: string) => void }) {
+  const { hint, label, icon, onText, ...rest } = o
+  choose({ ...rest, items: [], empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">{hint}</p>,
+    other: (t) => (t.trim() ? { id: t.trim(), label: label(t.trim()), icon } : null), onPick: (it) => onText(it.id) })
+}
+
 export const Chooser = memo(function Chooser() {
   const c = subs.use(() => asking) as unknown as Choose | null
   return c ? <Picker key={shown} c={c} onClose={() => choose(null)} /> : null
