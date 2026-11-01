@@ -228,8 +228,9 @@
   /* Loading (main.tsx, App.tsx): what the vault's state moves goes there at once, not with the transitions clicks get. */
   body[data-arriving] * { transition: none !important; }
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-  /* A row of a keyboard list with the keyboard (core/keylist.ts): highlighted like a hovered row, ringed inside. */
-  [data-keyrow]:focus-visible { outline: 1.5px solid color-mix(in srgb, var(--primary) 70%, transparent); outline-offset: -1.5px; border-radius: 5px; background-color: color-mix(in srgb, var(--foreground) 6%, transparent); }
+  /* A row of a keyboard list with the keyboard (core/keylist.ts): highlighted like a hovered row, ringed inside in the
+     ring's colour, which every scheme keeps at 3:1 or more on its sidebar, page and cards. */
+  [data-keyrow]:focus-visible { outline: 1.5px solid var(--ring); outline-offset: -1.5px; border-radius: 5px; background-color: color-mix(in srgb, var(--foreground) 6%, transparent); }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }

@@ -39,6 +39,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   began was sometimes credited to the call before it, or left off the list; it's the AI's now.
 - **A row of choices is one Tab stop**: Theme, Colour scheme, Density and every other set of choices take one Tab,
   landing on the one picked; the arrow keys move among them and Space or Enter picks, as on a Mac.
+- **Focus you can see in every scheme**: the ring around what has the keyboard, and around a file tree or list row
+  reached with the arrows, stands out at least 3:1 from what's behind it; Ayu, Everforest, Nord, Solarized and Tokyo
+  Night light had rings too faint to find.
 - **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
   Shift+I and Shift+U read and unread; G I opens the inbox. In a session's sheet J and K go to the next and previous
   session, E marks it done, P pins, R replies. Each is a command, rebindable in Hotkeys.
