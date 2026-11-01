@@ -18,17 +18,23 @@ export type Fence = { open: number; close: number | null; info: string }
  *  own character, at least as long, like CommonMark: everything looking for Markdown outside code reads fences here. */
 export function scan(text: string): { lines: string[]; prose: boolean[]; code: boolean[]; fences: Fence[] } {
   const lines = text.split("\n")
-  const prose = lines.map(() => true)
-  const code = lines.map(() => false)
+  const prose: boolean[] = new Array(lines.length).fill(true)
+  const code: boolean[] = new Array(lines.length).fill(false)
   const fences: Fence[] = []
-  let i = 0
+  let i = 0, at = 0
   const fm = FRONT.exec(text)
-  if (fm) for (const n = fm[0].replace(/\n$/, "").split("\n").length; i < n; i++) { prose[i] = false; code[i] = true }
+  if (fm) for (const n = fm[0].replace(/\n$/, "").split("\n").length; i < n; i++) { prose[i] = false; code[i] = true; at += lines[i].length + 1 }
   let fence: string | null = null
   let comment = false
-  for (; i < lines.length; i++) {
-    const l = lines[i]
-    const f = FENCE.exec(l)
+  // (where the next ``` ~~~ and %% are: the regexes run only on their lines, a long note's scan most of an Enter)
+  const next = (mark: string, from: number) => { const k = text.indexOf(mark, from); return k < 0 ? Infinity : k }
+  let ticks = next("```", 0), tildes = next("~~~", 0), pcts = next("%%", 0)
+  for (; i < lines.length; at += lines[i].length + 1, i++) {
+    const l = lines[i], end = at + l.length
+    if (ticks < at) ticks = next("```", at)
+    if (tildes < at) tildes = next("~~~", at)
+    if (pcts < at) pcts = next("%%", at)
+    const f = ticks < end || tildes < end ? FENCE.exec(l) : null
     if (!comment && f && (fence === null || (f[1][0] === fence[0] && f[1].length >= fence.length && !l.trim().slice(f[1].length).trim()))) {
       if (fence === null) fences.push({ open: i, close: null, info: l.trim().slice(f[1].length).trim() })
       else fences[fences.length - 1].close = i
@@ -39,7 +45,7 @@ export function scan(text: string): { lines: string[]; prose: boolean[]; code: b
     }
     if (fence !== null) { prose[i] = false; code[i] = true; continue }
     // A %% on its own opens (or closes) a comment block; %%inline%% pairs on one line don't.
-    const marks = (l.replace(/`+[^`]*`+/g, "").match(/%%/g) ?? []).length
+    const marks = pcts < end ? (l.replace(/`+[^`]*`+/g, "").match(/%%/g) ?? []).length : 0
     if (comment || marks % 2) prose[i] = false
     if (marks % 2) comment = !comment
   }

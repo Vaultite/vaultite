@@ -1234,21 +1234,21 @@ const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/
 
 // Fences and %%comment%% blocks (core/sections.ts), with each line's text and start, read once per document version:
 // blocks are worked out on every cursor move, and doc.line() per line per pass was most of a keystroke's time.
-type Scan = ReturnType<typeof scan> & { starts: number[] }
+type Scan = ReturnType<typeof scan> & { starts: number[]; text: string }
 const scans = new WeakMap<Text, Scan>()
 function scanOf(doc: Text): Scan {
   let s = scans.get(doc)
   if (!s) {
-    const r = scan(doc.toString())
+    const text = doc.toString(), r = scan(text)
     const starts: number[] = new Array(r.lines.length)
     for (let i = 0, at = 0; i < r.lines.length; i++) { starts[i] = at; at += r.lines[i].length + 1 }
-    s = { ...r, starts }
+    s = { ...r, starts, text }
     scans.set(doc, s)
   }
   return s
 }
 /** A line's %% marks, not counting any in `inline code`. */
-const commentMarks = (t: string) => (t.replace(/`+[^`]*`+/g, "").match(/%%/g) ?? []).length
+const commentMarks = (t: string) => t.includes("%%") ? (t.replace(/`+[^`]*`+/g, "").match(/%%/g) ?? []).length : 0
 
 /** A block that could be drawn: its lines (1-based) and its decorations. Whether it is depends on the cursor
  *  (touched) and on blocks drawn before it that hold it (a table in a callout): visible(). */
@@ -1275,7 +1275,10 @@ function candidates(state: EditorState): Cands {
   if (!cfg.live) return { cfg, read, list, reads: [] }
   const doc = state.doc
   // Lines are 1-based here, 0-based in the scan.
-  const { prose, code, fences, lines, starts } = scanOf(doc)
+  const { prose, code, fences, lines, starts, text } = scanOf(doc)
+  // (a loop over every line only for what the note has somewhere: a long note works this out again on each Enter)
+  const has = (mark: string) => text.includes(mark)
+  const loud = has("$$") || has("<")
   const row = (k: number) => ({ from: starts[k - 1], to: starts[k - 1] + lines[k - 1].length, text: lines[k - 1] })
   const opens = new Map(fences.map((f) => [f.open + 1, f]))
   const add = (a: number, b: number, widget: WidgetType | null, always = false, fence?: Cand["fence"]) => {
@@ -1301,8 +1304,9 @@ function candidates(state: EditorState): Cands {
       k = end
       continue
     }
-    if (!prose[k - 1]) continue
+    if (!loud || !prose[k - 1]) continue
     const t = lines[k - 1]
+    if (!t.includes("$$") && !t.includes("<")) continue
     if (/^\s{0,3}\$\$/.test(t)) {
       // $$ on its own line (or with TeX after it) to the line that ends with $$; or all on one line.
       const one = /^\s{0,3}\$\$(.+)\$\$\s*$/.exec(t)
@@ -1336,7 +1340,7 @@ function candidates(state: EditorState): Cands {
     }
   }
   // Embedded artifacts and tables: `![[Spending.html]]` on a line of its own.
-  for (let k = 1; k <= lines.length; k++) {
+  if (has("![[")) for (let k = 1; k <= lines.length; k++) {
     if (!prose[k - 1] || !lines[k - 1].startsWith("![[")) continue
     const m = embedOf(lines[k - 1])
     if (!m) continue
@@ -1352,9 +1356,9 @@ function candidates(state: EditorState): Cands {
     }, cfg.place))
   }
   // Sections (a `## Timeline`): from the heading to the next heading of the same or a higher level.
-  if (cfg.sections.length) {
+  if (cfg.sections.length && has("#")) {
     for (let k = 1; k <= lines.length; k++) {
-      if (!prose[k - 1]) continue
+      if (!prose[k - 1] || !lines[k - 1].startsWith("#")) continue
       const h = HEADING.exec(lines[k - 1])
       if (!h) continue
       const name = h[2].trim().toLowerCase()
@@ -1372,7 +1376,7 @@ function candidates(state: EditorState): Cands {
     }
   }
   // %% comment blocks %% over several lines: faint while editing, gone when reading.
-  for (let k = 1; k <= lines.length; k++) {
+  if (has("%%")) for (let k = 1; k <= lines.length; k++) {
     if (code[k - 1] || commentMarks(lines[k - 1]) % 2 === 0) continue
     let end = k + 1
     while (end <= lines.length && commentMarks(lines[end - 1]) % 2 === 0) end++

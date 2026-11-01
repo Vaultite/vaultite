@@ -49,8 +49,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   "Writing").
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
-- **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
-  other drawn blocks again each time the background reading of it gets further.
+- **Long notes open and edit faster**: a note of tens of thousands of lines no longer works out all its tables,
+  callouts and other drawn blocks again each time the background reading of it gets further, and Enter or Backspace
+  in one takes about a quarter less time.
 - **Saving sends only what changed**: each save of a note sends only the edit, not the whole note twice, and gets
   back only what the server changed (a 2 KB note's save went from 6 KB to under 0.5 KB; a long note's from twice its
   size).
