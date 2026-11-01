@@ -311,7 +311,8 @@ export function ConnectSection() {
   return (
     <div className="flex flex-col gap-1.5 pb-2" data-newtab-connect>
       <div className="pl-1.5 text-[12px] font-semibold text-muted-foreground">Connect your AI</div>
-      <AppCards />
+      {/* (in from the rows' bleed: cards line up with the page's text and the pinned tiles) */}
+      <div className="px-1.5"><AppCards /></div>
     </div>
   )
 }

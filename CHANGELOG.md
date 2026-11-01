@@ -413,6 +413,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   15px and 13px), as are a stat's label and note, so lists match the text around them.
 - **Keys over the phone's keyboard take a whole-row tap**: the editing and terminal keys answer a tap anywhere in the
   row's height, not only on the key's face.
+- **A blank tab's Connect your AI cards line up**: they sit within the page's margins, in line with its headings and
+  pinned tiles, no longer reaching almost to a phone's edges.
 
 ## 0.8.0 (2026-10-24)
 
