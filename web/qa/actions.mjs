@@ -65,8 +65,10 @@ try {
   await page.keyboard.press("Escape"); await wait(200)
 
   // 3. The status bar's ambient items: the inbox's new items, on a page and on a blank tab.
-  const bar = page.locator("[role=status]").filter({ has: page.locator("[data-ambient]") })
-  const chip = () => bar.locator("[data-ambient] button[data-tip^='Inbox, ']")
+  // (the bar holding it: there's one on each side)
+  const INBOX = "[data-ambient] button[data-tip^='Inbox, ']"
+  const bar = page.locator("[role=status]").filter({ has: page.locator(INBOX) })
+  const chip = () => page.locator(`[role=status] ${INBOX}`)
   check("status bar: the inbox's new items on a file", !!(await until(async () => (await chip().count()) === 1)), await page.locator("[role=status]").allInnerTexts())
   await page.goto(`${B}#new`); await wait(1500)
   check("status bar: still there on a blank tab", !!(await until(async () => (await chip().count()) === 1)))

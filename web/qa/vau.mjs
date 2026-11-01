@@ -67,7 +67,7 @@ try {
   vau("command", "sidebar:toggle")
 
   ;[code, out] = vau("open", "x.md", "--split", "left")
-  check("a bad --split is refused", code === 1 && out.includes("right or down"), out)
+  check("a bad --split is refused, as a mistyped command line", code === 2 && out.includes("right or down"), out)
   await a.close(); await b.close()
   await wait(500)
   ;[code, out] = vau("open", "Dashboards/Today.md")

@@ -42,7 +42,7 @@ try {
   check("...and not in the left one", !(await panelsIn("left")).includes("files:files"), await panelsIn("left"))
   check("...saved as the right sidebar's", !!(await until(async () => JSON.stringify((await conf()).right) === '["files:files"]')), (await conf()).right)
   const aside = await (await right()).boundingBox()
-  const status = await (await page.$("[role=status]"))?.boundingBox()
+  const status = await (await page.$("[role=status]:not([data-status-left])"))?.boundingBox()
   check("the status bar keeps clear of it", !!status && status.x + status.width <= aside.x + 1, [status, aside])
   const panes = await page.$eval("section[data-group]", (e) => e.closest(".fixed").getBoundingClientRect().right)
   check("the panes end where it starts", Math.abs(panes - aside.x) < 2, [panes, aside.x])

@@ -31,7 +31,7 @@ try {
   const short = `aside [data-pin="Start here.md"]`, long = `aside [data-pin="${LONG}.md"]`
   await until(() => page.$(long))
   check("a name that fits: no tooltip", (await tipOf(short)) === null, await tipOf(short))
-  const cut = await page.$eval(`${long} .truncate`, (e) => e.scrollWidth > e.clientWidth)
+  const cut = await page.$eval(`${long} .fade-end`, (e) => e.scrollWidth > e.clientWidth)
   check("the long name is cut off", cut)
   check("a name cut off: its whole name", (await tipOf(long)) === LONG, await tipOf(long))
 
