@@ -20,7 +20,7 @@ const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subject
 const TIMEOUT = 8 * 60_000
 /** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
  *  sandbox dated to today has that day's logs. */
-const UNDATED = new Set(["counts", "requests"])
+const UNDATED = new Set(["counts", "requests", "a11y"])
 
 const argv = process.argv.slice(2)
 if (argv.includes("--lint")) process.exit(lint())
