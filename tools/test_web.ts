@@ -571,6 +571,20 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   check("tables: a padded table given widths keeps its rows as they were", tt.writeTable(padded) === `| Name  | Qty |\n|${"-".repeat(60)}|${"-".repeat(20)}|\n| Apple | 3   |`, tt.writeTable(padded))
   tt.deleteColumn(padded, 1)
   check("tables: one column left has no widths", padded.widths === null && tt.writeTable(padded).split("\n")[1] === "|---|", tt.writeTable(padded))
+  // Read as Pandoc reads them: dashes and colons past 72 with the pipes; spaces don't count.
+  const spaced = tt.parseTable(`| a | b | c |\n| ${"-".repeat(22)} | ${"-".repeat(22)} | ${"-".repeat(22)} |\n| 1 | 2 | 3 |`)!
+  check("tables: a separator long only by its spaces sets no widths", spaced.widths === null, spaced.widths)
+  const cjk = "東京".repeat(20), cjkPad = tt.parseTable(`| City | Note |\n| ${"-".repeat(40)} | ${"-".repeat(40)} |\n| ${cjk} | ${"n".repeat(40)} |`)!
+  check("tables: padded by a formatter counting a wide character as one column, no widths", cjkPad.widths === null, cjkPad.widths)
+  const byHead = tt.parseTable(`| ${"Name ".repeat(8).trim()} | ${"Description ".repeat(3).trim()} |\n| ${"-".repeat(39)} | ${"-".repeat(35)} |\n| a | ${"b".repeat(50)} |`)!
+  check("tables: dashes as long as each header, no widths", byHead.widths === null, byHead.widths)
+  // Pandoc's own pipe table (writer: floor(share * (72 - cols - 1)) + 2 dashes, its rows too long to pad)
+  const pd = tt.parseTable(`| Name | Notes |\n|${"-".repeat(22)}|${"-".repeat(50)}|\n| Pear | ${"word ".repeat(16).trim()} |`)!
+  check("tables: a table Pandoc wrote with widths has them", same(pd.widths, [22, 50]), pd.widths)
+  // (dashes set that happen to be each column's text as wide: one more, so they still read as set)
+  const fits = tt.parseTable(`| ${"x".repeat(40)} | ${"y".repeat(38)} |\n|---|---|\n| 1 | 2 |`)!
+  tt.setWidths(fits, [1, 1])
+  check("tables: widths that match the text still read as set", same(tt.parseTable(tt.writeTable(fits))!.widths?.length, 2), tt.writeTable(fits))
 }
 {
   const t = tt.parseTable("| Name | Qty | When |\n| --- | --: | --- |\n| pear | 10 | 2026-03-01 |\n| Apple | 9 | 2025-12-31 |\n|  | 1,200 |  |\n| banana | 2.5 | 2026-01-15 |")!

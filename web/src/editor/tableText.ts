@@ -61,15 +61,20 @@ export function parseTable(text: string): Table | null {
     while (cells.length < head.length) cells.push("")
     rows.push({ cells, line: l, was: cells.join("\0"), ...(rest ? { rest } : {}) })
   }
-  // Widths set (Pandoc's relative widths): a separator wider than 72 columns whose dashes aren't just each column padded
-  // to its header or its widest cell (with the spaces around it or not), as a formatter or writeTable pads them.
-  const seps = d.map((c) => c.length), widest = (c: number) => rows.reduce((m, r) => Math.max(m, width(r.cells[c])), 3)
-  const pads = (n: number, w: number) => n === w || n === w + 2
-  const widths = d.length > 1 && lines[1].trim().length > 72 && seps.some((n, c) => !pads(n, widest(c)) && !pads(n, width(head[c]))) ? seps : null
+  const seps = d.map((c) => c.length), widths = setIn(seps, rows) ? seps : null
   // Padded so its pipes line up (as a formatter writes it): kept lined up as cells change.
   const w = width(lines[0].trimEnd())
   const padded = !widths && lines.every((l) => width(l.trimEnd()) === w) && /\S {2,}\|/.test(lines.join("\n"))
   return { rows, align, delim: lines[1], aligned: shape(align, widths), padded, widths, indent: /^[ \t]*/.exec(lines[0])![0] }
+}
+/** Whether a separator's dashes (colons too) set its columns' widths: past 72 columns with its pipes, as Pandoc reads
+ *  them, and not just each column padded to its widest cell or its header (spaces around or not), as formatters do. */
+function setIn(seps: number[], rows: Row[]) {
+  if (seps.length < 2 || seps.reduce((a, b) => a + b, 0) + seps.length + 1 <= 72) return false
+  // (formatters count a wide character as two columns or as one)
+  const widest = (c: number, w: (s: string) => number) => rows.reduce((m, r) => Math.max(m, w(r.cells[c])), 3)
+  const pads = (n: number, c: number) => [width, (s: string) => [...s].length].some((w) => [widest(c, w), w(rows[0].cells[c])].some((x) => n === x || n === x + 2))
+  return seps.some((n, c) => !pads(n, c))
 }
 const shape = (align: Align[], widths: number[] | null) => `${align.join()}/${widths?.join() ?? ""}`
 
@@ -103,10 +108,15 @@ export function writeTable(t: Table): string {
     return [row(t.rows[0]), `${t.indent}| ${t.align.map((a, c) => dashes(a, w[c])).join(" | ")} |`, ...t.rows.slice(1).map(row)].join("\n")
   }
   const row = (r: Row) => (r.line !== undefined && r.was === r.cells.join("\0") ? r.line : `${t.indent}| ${all(r).join(" | ")} |`)
-  const ws = t.widths && cols > 1 ? scaled(t.widths) : null
-  const delim = cellsOf(t.delim).length === cols && t.aligned === shape(t.align, t.widths) ? t.delim
-    : `${t.indent}|${t.align.map((a, c) => (ws ? sized(a, ws[c]) : dashes(a, 3))).join("|")}|`
+  const delim = cellsOf(t.delim).length === cols && t.aligned === shape(t.align, t.widths) ? t.delim : separator(t)
   return [row(t.rows[0]), delim, ...t.rows.slice(1).map(row)].join("\n")
+}
+
+function separator(t: Table) {
+  const ws = t.widths && t.align.length > 1 ? scaled(t.widths) : null
+  // (dashes that happen to match every column's text would read as a formatter's padding: one more says they're set)
+  if (ws && !setIn(ws, t.rows)) ws[ws.indexOf(Math.max(...ws))]++
+  return `${t.indent}|${t.align.map((a, c) => (ws ? sized(a, ws[c]) : dashes(a, 3))).join("|")}|`
 }
 
 export const unescape = (cell: string) => cell.replace(/\\\|/g, "|")
