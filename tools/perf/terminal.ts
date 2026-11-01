@@ -229,9 +229,9 @@ try {
     const m0 = t.msgs, b0 = t.bytes, t0 = performance.now()
     const r = await cpuOf(() => t.run(cmd, 120000))
     const ms = performance.now() - t0, bytes = t.bytes - b0
-    ;(result.burst ??= {} as Record<string, unknown>) && ((result.burst as Record<string, unknown>)[name] = {
+    ;((result.burst ??= {}) as Record<string, unknown>)[name] = {
       ms: +ms.toFixed(0), mbps: +(bytes / 1048576 / (ms / 1000)).toFixed(2), msgs: t.msgs - m0, avgMsg: Math.round(bytes / (t.msgs - m0)),
-      serverCpu: r.server, keeperCpu: r.keeper })
+      serverCpu: r.server, keeperCpu: r.keeper }
   }
 
   step("typing while busy")

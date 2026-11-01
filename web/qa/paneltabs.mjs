@@ -128,7 +128,6 @@ try {
   check("  the dragged item says what it opens", r.ghost?.includes("Pinned pages"), r.ghost)
   check("  it opens as a tab", (await tabs()).includes("Pinned pages") && (await hash()) === "#view/pages", [await tabs(), await hash()])
   check("  the panel stays in the sidebar", !!(await page.$("aside [data-panel='pages:pages']")))
-  const before = (await tabs()).length
   r = await dragFrom("pages:pages", [px, py])
   check("  again onto the pane showing it: not offered", !r.zone, r)
   // Onto the tab bar of a pane that has it but shows another tab: shows it, no second one.

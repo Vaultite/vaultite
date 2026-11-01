@@ -90,7 +90,6 @@ try {
       await page.locator('[data-settings-nav="plugin:files"]').count() === 1)
     check("...not one with nothing to set", await page.locator('[data-settings-nav="plugin:outline"]').count() === 0)
     check("...nor one that can be switched (a gear away on Plugins)", !(await page.locator('[data-settings-nav="plugin:web-viewer"], [data-settings-nav="plugin:logs"], [data-settings-nav="plugin:workspaces"]').count()))
-    const lit = (id) => page.locator(`[data-settings-nav="${id}"]`).evaluate((e) => e.className.includes("font-medium"))
 
     // Your setup: Setup's page, in Settings' tab (one path to Bundles and Plugins).
     await page.locator("[data-settings-setup]").click()

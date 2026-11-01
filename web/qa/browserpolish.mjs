@@ -12,7 +12,7 @@ import http from "node:http"
 import https from "node:https"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, qa, until } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-browserpolish-"))
@@ -89,7 +89,6 @@ check("… nothing to go on with till Advanced", await win.locator("[data-web-un
 await win.locator("[data-web-unsafe-more]:visible").click()
 await win.locator("[data-web-unsafe-go]:visible").click()
 check("Continue (unsafe): the page, this time", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SECURE}/`), 15000) && !(await unsafe.count()), await pages())
-const sec = (await pages()).find((p) => p.visible && p.url === `${SECURE}/`)
 check("… its address shown", (await win.locator("[data-web-address]:visible").inputValue()).includes(SECURE.replace("https://", "")), await win.locator("[data-web-address]:visible").evaluateAll((els) => els.map((e) => e.value)))
 check("… trusted only for its host: another site's bad certificate still warns (localhost, the same server)",
   await (async () => { await open(SECURE.replace("127.0.0.1", "localhost") + "/"); return !!(await until(() => unsafe.count(), 15000)) })(), await pages())

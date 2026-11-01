@@ -125,7 +125,7 @@ await win.evaluate(() => {
   window.qaFrames = []
   const tick = () => { window.qaFrames.push(Date.now()); requestAnimationFrame(tick) }
   requestAnimationFrame(tick)
-  new MutationObserver((ms) => window.qaCut.push({ t: Date.now(), cut: cut(), what: [...document.querySelectorAll("[data-web-hole]")].map((e) => e.tagName + (e.dataset.pane !== undefined ? "[pane]" : "") + (e.hasAttribute("data-web-box") ? "[box]" : "")).join(" ") })).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["data-web-hole"] })
+  new MutationObserver(() => window.qaCut.push({ t: Date.now(), cut: cut(), what: [...document.querySelectorAll("[data-web-hole]")].map((e) => e.tagName + (e.dataset.pane !== undefined ? "[pane]" : "") + (e.hasAttribute("data-web-box") ? "[box]" : "")).join(" ") })).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["data-web-hole"] })
 })
 await open(`view:web/${SITE}/whoami?a`)
 await open(`view:web/${SITE}/whoami?b`)

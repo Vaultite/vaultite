@@ -70,7 +70,7 @@ const empty = async () => {
   const last = await tree.evaluate((el) => { el.scrollTop = el.scrollHeight; el.scrollIntoView({ block: "end" }); return el.lastElementChild.getBoundingClientRect().bottom })
   return [tb.x + 80, last + 12]
 }
-const [ex, ey] = await empty()
+const [ex] = await empty()
 const [ix, iy] = await center(row("Qa target/Inbox"))
 await page.mouse.move(ix, iy); await page.mouse.down(); await page.mouse.move(ix + 6, iy + 4, { steps: 3 }); await wait(60)
 await page.mouse.move(ex, (await empty())[1], { steps: 6 }); await wait(150)

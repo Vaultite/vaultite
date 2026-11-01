@@ -171,7 +171,7 @@ async function suite(file, label) {
     await measure(page, `${label}: same tab, away and back`, a, () => page.evaluate((h) => { location.hash = h }, hash(file)))
   }
   // Views: reading -> live preview -> source -> reading, from the middle.
-  if (STEPS.includes("view")) await scrollTo(page, 0.5), await wait(500)
+  if (STEPS.includes("view")) { await scrollTo(page, 0.5); await wait(500) }
   for (const [to, keys] of STEPS.includes("view") ? [["live preview", "ControlOrMeta+e"], ["reading", "ControlOrMeta+e"]] : []) {
     const a = await anchorNow(page)
     await measure(page, `${label}: to ${to}`, a, () => page.keyboard.press(keys))

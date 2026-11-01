@@ -3,11 +3,10 @@
 //   node web/qa/tabgroups.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
+import { palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0, VAULT, OUT = "/tmp/tabgroups-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 mkdirSync(OUT, { recursive: true })
-const api = apiAt(B)
 
 const keep = (f) => { const p = path.join(VAULT, ".vaultite", f); return { p, was: existsSync(p) ? readFileSync(p, "utf8") : null } }
 const sidebars = keep("sidebars.json"), look = keep("appearance.json")

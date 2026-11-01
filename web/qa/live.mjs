@@ -40,7 +40,6 @@ const page = await ctx.newPage()
 page.on("pageerror", (e) => out.errs.push(String(e)))
 page.on("console", (m) => m.type() === "error" && !/WebSocket|ERR_CONNECTION|Failed to load resource/.test(m.text()) && out.errs.push(m.text()))
 const shot = (name) => page.screenshot({ path: `${OUT}live-${name}.png` })
-const openFile = async (p) => { await page.goto(`${B}#file/${encodeURIComponent(p)}`); await wait(1500) }
 await page.goto(B); await wait(1500)
 await page.evaluate(() => { window.__qaMarker = 1 })
 const marker = () => page.evaluate(() => window.__qaMarker === 1)

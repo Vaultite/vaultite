@@ -99,7 +99,6 @@ await wait(500)
 // ---------- its right-click shows it again ----------
 await moveInPage(400, 1)
 await until(async () => (await look()).bar === "out", 4000)
-const bar = await win.locator("[data-web-bar]:visible").boundingBox()
 await win.locator("[data-web-address]:visible").click({ button: "right" })
 // (the field's menu opens once the clipboard's read)
 const items = await until(async () => { const t = await win.locator("[role=menu] [role^=menuitem]").allInnerTexts(); return t.length ? t : null }, 3000) ?? []

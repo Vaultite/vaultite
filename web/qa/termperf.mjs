@@ -6,7 +6,7 @@ const { args: [B, RUNS = "3"], browser } = await qa(import.meta.url)
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => {
   window.__input = 0
-  for (const ev of ["keydown", "pointerdown"]) addEventListener(ev, (e) => { window.__input = performance.now() }, true)
+  for (const ev of ["keydown", "pointerdown"]) addEventListener(ev, () => { window.__input = performance.now() }, true)
   window.__ws = []
   const W = window.WebSocket
   window.WebSocket = class extends W {

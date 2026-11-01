@@ -8,7 +8,7 @@ import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { WebSocketServer } from "ws"
-import { ROOT, apiAt, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
+import { apiAt, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
 import { testServer } from "../../tools/test/lib.ts"
 
 const { args: [VAULT], check, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
