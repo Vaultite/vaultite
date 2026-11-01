@@ -480,7 +480,7 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
       style={width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex var(--motion) var(--ease-out)" } : undefined}>
       <button type="button" role="tab" aria-selected={active}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
-        data-tip={item ? undefined : info.label} data-tip-trunc className={cn("flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]", info.color && "[&_[data-container-line]]:hidden")}>
+        data-tip={item ? undefined : info.label} data-tip-trunc className={cn("flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-[inherit] pr-6 pl-2 text-left text-[13px]", info.color && "[&_[data-container-line]]:hidden")}>
         {/* (too narrow for both, the mark stands in for the icon: a browser's speaker does) */}
         {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.mark && "@max-[80px]/tab:hidden", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
