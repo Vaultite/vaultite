@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Command as CommandIcon } from "lucide-react"
 import { available, runCommandById, useCommandList, type Command } from "@/core/commands"
+import { fingerHolding } from "@/core/drag"
 import { haptic } from "@/core/haptics"
 import { commandIcon } from "@/core/pages"
 import { usePrefs, type Prefs } from "@/core/prefs"
@@ -53,6 +54,8 @@ export function PullActions() {
     const move = (e: TouchEvent) => {
       const p = g.current
       if (!p) return
+      // A finger that held something picked it up (core/drag.ts): it's moving that, not pulling the page.
+      if (fingerHolding()) { g.current = null; return }
       const t = e.touches[0], dy = t.clientY - p.y, dx = t.clientX - p.x
       if (!p.on) {
         // Down first, from the top: a page scrolled since, or going sideways, isn't a pull.

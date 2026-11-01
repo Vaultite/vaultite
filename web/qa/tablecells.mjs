@@ -1,7 +1,7 @@
 // A table in live preview edited cell by cell (editor/tables.ts): the grid stays drawn and its columns put, /table, rows
-// and columns added, sorted, dragged, copied, pasted and resized. WRITES "Qa tablecells/": throwaway only.
+// and columns added, sorted, dragged (a finger too), copied, pasted and resized. WRITES "Qa tablecells/": throwaway only.
 //   node web/qa/tablecells.mjs <base url> [out dir]
-import { SHOTS, command, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, command, fingers, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const NOTE = "Qa tablecells/Cells.md", MORE = "Qa tablecells/More.md", WIDE = "Qa tablecells/Widths.md"
 const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
@@ -177,6 +177,54 @@ await mob.screenshot({ path: `${OUT}/tablecells-phone.png` })
 await mob.locator(".cm-table-grip.is-row").first().tap(); await wait(400)
 check("phone: a tapped grip opens its menu", await mob.getByRole("menuitem", { name: "Move row down" }).isVisible())
 await mob.screenshot({ path: `${OUT}/tablecells-phone-menu.png` })
+await mob.keyboard.press("Escape"); await wait(200)
+
+// ---- phone: a grip held, then dragged, moves its row or column (the page neither scrolls nor pulls) ----
+await put(MORE, "Intro\n\n| Fruit | Qty | Note |\n| --- | --: | --- |\n| pear | 10 | green |\n| apple | 9 | red |\n| plum | 4 | dark |\n\nEnd\n")
+await mob.goto("about:blank"); await mob.goto(`${B}#file/${encodeURIComponent(MORE)}`); await wait(2000)
+if (await mob.locator("[data-view-toggle=read]").count()) { await mob.locator("[data-view-toggle=read]").first().tap(); await wait(500) }
+const { touch } = await fingers(mob)
+const mid = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 })
+/** A finger held on `from`, moved to `to` in steps; `during` looks before it lifts. */
+const fingerDrag = async (from, to, during) => {
+  await touch("touchStart", from.x, from.y); await wait(700)
+  for (let i = 1; i <= 10; i++) { await touch("touchMove", from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10); await wait(20) }
+  await wait(200)
+  const seen = await during()
+  await touch("touchEnd", to.x, to.y); await wait(500)
+  return seen
+}
+const looks = () => mob.evaluate(() => ({ line: !document.querySelector(".cm-table-drop")?.hidden, menus: document.querySelectorAll("[role=menu]").length,
+  pulled: document.querySelectorAll("[data-pull-actions]").length, top: Math.round(document.querySelector(".vau-editor .cm-block-table table").getBoundingClientRect().top) }))
+await cell(1, 0, mt).tap(); await wait(400)
+const hits = await mob.evaluate(() => [...document.querySelectorAll(".cm-table-grip")].map((g) => {
+  const b = g.getBoundingClientRect(), s = getComputedStyle(g, "::before")
+  return Math.min(b.width - parseFloat(s.left) - parseFloat(s.right), b.height - parseFloat(s.top) - parseFloat(s.bottom))
+}))
+check(`phone: a grip's target is 44px each way (${hits})`, hits.length === 2 && hits.every((n) => n >= 44))
+const top0 = Math.round(await mt.evaluate((t) => t.getBoundingClientRect().top))
+const plum = await cell(3, 0, mt).boundingBox()
+const rowSeen = await fingerDrag(mid(await mob.locator(".cm-table-grip.is-row").boundingBox()), { x: 30, y: plum.y + plum.height - 4 }, async () => {
+  await mob.screenshot({ path: `${OUT}/touch-table-row-drag.png` }); return looks()
+})
+check("phone: a row's grip held and dragged down shows where it goes, the page held still", rowSeen.line && !rowSeen.menus && !rowSeen.pulled && rowSeen.top === top0, { rowSeen, top0 })
+check("phone: let go, the row moved there", await saved(async () => (await read(MORE)).includes("| --- | --: | --- |\n| apple | 9 | red |\n| plum | 4 | dark |\n| pear | 10 | green |\n")), await read(MORE))
+await mob.screenshot({ path: `${OUT}/touch-table-row-after.png` })
+await cell(1, 0, mt).tap(); await wait(400)
+const note = await cell(0, 2, mt).boundingBox()
+const colSeen = await fingerDrag(mid(await mob.locator(".cm-table-grip.is-col").boundingBox()), { x: note.x + note.width - 6, y: note.y + note.height / 2 }, async () => {
+  await mob.screenshot({ path: `${OUT}/touch-table-col-drag.png` }); return looks()
+})
+check("phone: a column's grip held and dragged right shows where it goes", colSeen.line && !colSeen.menus && !colSeen.pulled, colSeen)
+check("phone: let go, the column moved there", await saved(async () => (await read(MORE)).includes("| Qty | Note | Fruit |\n|--:|---|---|\n| 9 | red | apple |\n")), await read(MORE))
+await mob.screenshot({ path: `${OUT}/touch-table-col-after.png` })
+// (a swipe without the hold scrolls: nothing moves)
+await cell(1, 0, mt).tap(); await wait(400)
+const was = await read(MORE), g = mid(await mob.locator(".cm-table-grip.is-row").boundingBox())
+await touch("touchStart", g.x, g.y)
+for (let i = 1; i <= 6; i++) { await touch("touchMove", g.x, g.y + 20 * i); await wait(16) }
+await touch("touchEnd", g.x, g.y); await wait(600)
+check("phone: a grip swiped without a hold moves nothing", await read(MORE) === was && !(await mob.locator(".cm-table-drop:not([hidden])").count()))
 
 // ---- a column's edge dragged: its width in the separator's dashes; a double-click, as wide as its text again ----
 const WIDE_MD = "Above\n\n| Task | Owner | Notes |\n| --- | :-: | --- |\n| Ship the beta | Alice Park | Waiting on [[Lighthouse]] review |\n| Write docs | Sam | Short |\n\nBelow\n"

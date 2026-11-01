@@ -291,7 +291,7 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
                 const last = ci === res.columns.length - 1, s = sortOf(c.key), w = width(c.key)
                 return (
                   <th key={c.key} data-query-col={c.key} style={w ? { width: w, minWidth: w, maxWidth: w } : undefined}
-                    onPointerDown={ctl ? (e) => startDrag(e, { from: "column", column: { table: id, key: c.key }, label: c.label }) : undefined}
+                    onPointerDown={ctl ? (e) => startDrag(e, { from: "column", column: { table: id, key: c.key }, label: c.label }, { touch: true }) : undefined}
                     onContextMenu={ctl ? menuFor(() => ctl.menu(c)) : undefined}
                     className={cn("relative py-1.5 pr-4 text-left font-normal last:pr-0",
                       lifted?.column?.table === id && lifted.column.key === c.key && "opacity-50",

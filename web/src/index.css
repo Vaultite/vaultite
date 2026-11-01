@@ -816,8 +816,8 @@ dialog { --vau-panel-bottom: 0px; }
 .cm-table-grip { transform: translate(-50%, -50%); border-radius: 5px; background: var(--background); border: 0.5px solid var(--border); cursor: grab; }
 .cm-table-grip.is-col { width: 24px; height: 14px; }
 .cm-table-grip.is-row { width: 14px; height: 24px; }
-/* (by touch, inside the table's edge: a phone's edge is the sidebar's swipe) */
-@media (pointer: coarse) { .cm-table-grip.is-row { width: 10px; transform: translate(1px, -50%); } }
+/* (by touch, inside the table's edge: a phone's edge is the sidebar's swipe; a grip's target 44px each way) */
+@media (pointer: coarse) { .cm-table-grip.is-row { width: 10px; transform: translate(1px, -50%); } .cm-table-grip::before { inset: -15px -17px; } }
 /* Room for the column + at the right while editing: a table as wide as the text scrolls a little sooner. */
 .vau-editor .cm-content[contenteditable="true"] .cm-block-table table { max-width: calc(100% - 24px); }
 @media (pointer: coarse) { .vau-editor .cm-content[contenteditable="true"] .cm-block-table table { max-width: calc(100% - 30px); } }

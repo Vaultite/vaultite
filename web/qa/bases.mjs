@@ -2,7 +2,7 @@
 // ```base fences and embeds. WRITES a "Qa bases" folder (removed after): throwaway server only.
 //   node web/qa/bases.mjs <base url> <vault path> [screenshots dir]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { qa, until } from "./lib/qa.mjs"
+import { fingers, qa, until } from "./lib/qa.mjs"
 const { args: [B, VAULT, SHOTS_DIR = "/tmp/vaultite-bases"], browser, check, watch, done } = await qa(import.meta.url)
 const OUT = SHOTS_DIR.replace(/\/?$/, "/")
 mkdirSync(OUT, { recursive: true })
@@ -358,6 +358,31 @@ await mb.locator('[data-base-button="Filter"]').tap(); await m.waitForTimeout(30
 await m.emulateMedia({ colorScheme: "dark" })
 await m.evaluate(() => document.documentElement.classList.add("dark")); await m.waitForTimeout(400)
 await m.screenshot({ path: `${OUT}base-phone-filter-menu-dark.png` })
+await m.emulateMedia({ colorScheme: "light" }); await m.evaluate(() => document.documentElement.classList.remove("dark"))
+
+// Phone: a heading held, then dragged past another, moves its column (a tap still opens its menu: above).
+await put(`${F}/Touch.base`, `filters: 'type == "qa-book"'\nviews:\n  - type: table\n    name: Touch\n    order: [file.name, status, pages]\n`)
+await m.goto("about:blank"); await m.goto(url(`${F}/Touch.base`))
+const th = (k) => m.locator(`thead th[data-query-col="${k}"]:visible`).first()
+await th("file").waitFor({ timeout: 15000 })
+const { touch } = await fingers(m)
+const finger = async (from, to, during) => {
+  await touch("touchStart", from.x, from.y); await m.waitForTimeout(700)
+  for (let i = 1; i <= 10; i++) { await touch("touchMove", from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10); await m.waitForTimeout(20) }
+  await m.waitForTimeout(200)
+  const seen = await during()
+  await touch("touchEnd", to.x, to.y); await m.waitForTimeout(500)
+  return seen
+}
+const nb = await th("file").boundingBox(), pb = await th("pages").boundingBox()
+const held = await finger({ x: nb.x + 20, y: nb.y + nb.height / 2 }, { x: pb.x + pb.width - 4, y: nb.y + nb.height / 2 }, async () => {
+  await m.screenshot({ path: `${OUT}touch-base-heading-drag.png` })
+  return { menus: await m.locator("[role=menu]").count(), lifted: await m.locator("[data-drag-ghost]").count() }
+})
+check("390px: a heading held and dragged lifts it, its menu gone", held.menus === 0 && held.lifted === 1, held)
+await waitFile(`${F}/Touch.base`, (t) => t.includes("order: [status, pages, file.name]"))
+check("390px: let go past the last, its column moves to the end", read(`${F}/Touch.base`).includes("order: [status, pages, file.name]"), read(`${F}/Touch.base`))
+await m.screenshot({ path: `${OUT}touch-base-heading-after.png` })
 
 await browser.close()
 await api("DELETE", `file?path=${encodeURIComponent(F)}`)
