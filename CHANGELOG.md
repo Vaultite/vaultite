@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agents read notes sooner after an edit in big vaults**: a note's links are found without making the vault's link
+  index again unless a file came, went or got new aliases (rendering a note after an edit at 24,000 notes: 55 ms to 10).
 - **An Obsidian vault's hotkeys carry over**: `.obsidian/hotkeys.json`'s keys for the commands Vaultite has too (the
   palette, quick switcher, tabs, splits, list and heading commands...) apply, under `.vaultite/hotkeys.json`'s, and
   Settings ▸ Hotkeys marks them Obsidian's keys.

@@ -608,6 +608,12 @@ const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaulti
 const unseen = (rel: string) => NOT_SETTINGS.has(rel.split("/").slice(0, 2).join("/")) ||
   (unscanned(rel) && !/^\.(vaultite|obsidian)(\/|$)/.test(rel) && !rel.endsWith(".icloud"))
 
+/** What a [[link]] finds a note by, past its path: its aliases, and whether it's archived (Vault.linkNames). */
+export function linkKey(e: Entry) {
+  const a = e.fm.aliases
+  return `${(Array.isArray(a) ? a : a ? [a] : []).map(String).join("\u0001")}${e.archived ? "\u0002" : ""}`
+}
+
 export class Entry {
   rel: string
   stat: Stat
@@ -986,11 +992,29 @@ export class Vault {
     for (const rel of this.others.keys()) if (!names || named(rel)) out.push({ path: rel })
     return out
   }
-  private links: { version: number; resolve: Resolve<string> } | null = null
-  /** The file a [[link]] written in `from` goes to (core/links.ts: the closest of its name), or null. */
+  private links: { version: number; resolve: Resolve<string>; names: Map<string, string> } | null = null
+  /** The file a [[link]] written in `from` goes to (core/links.ts: the closest of its name), or null. The resolver is
+   *  kept while the files have the same names (paths, aliases): an edit doesn't make it again. */
   resolveLink(target: string, from?: string): string | null {
-    if (this.links?.version !== this.version) this.links = { version: this.version, resolve: linkResolver(this.linkFiles()) }
-    return this.links.resolve(target, from)
+    const was = this.links
+    if (was?.version !== this.version) {
+      if (was && this.sameLinkNames(was.names)) was.version = this.version
+      else this.links = { version: this.version, resolve: linkResolver(this.linkFiles()), names: this.linkNames() }
+    }
+    return this.links!.resolve(target, from)
+  }
+  /** What links find each file by, past its path: its aliases, and whether it's archived (other files: ""). */
+  linkNames(): Map<string, string> {
+    const out = new Map<string, string>()
+    for (const [rel, e] of this.entries) out.set(rel, linkKey(e))
+    for (const rel of this.others.keys()) out.set(rel, "")
+    return out
+  }
+  private sameLinkNames(names: Map<string, string>) {
+    if (names.size !== this.entries.size + this.others.size) return false
+    for (const [rel, e] of this.entries) if (names.get(rel) !== linkKey(e)) return false
+    for (const rel of this.others.keys()) if (names.get(rel) !== "") return false
+    return true
   }
 
   /** Point links to moved files (already in the index at `to`) at their new paths. A link changes only

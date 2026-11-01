@@ -894,6 +894,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `keepDownloaded(vault, done)`: Keep a vault in iCloud Drive downloaded on this Mac (Finder's Keep Downloaded, macOS 15), so iCloud stops evicting the files the server reads.
 - `Kind`
 - `KindSpec`
+- `linkKey(e)`: What a [[link]] finds a note by, past its path: its aliases, and whether it's archived (Vault.linkNames).
 - `loadFm(raw)`: Frontmatter text -> a record.
 - `localStamp(d?)`: Local "YYYY-MM-DD HHMMSS", for names of trashed files.
 - `mergeFm(existing, owned)`: The keys a kind owns, in its order (blank ones dropped), then every other key the file already had.

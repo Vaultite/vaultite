@@ -17,7 +17,7 @@ import { fenced, linkResolver } from "./links.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
-import { cmp, DEVICE_NAME, type Entry, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, removeTree, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
+import { cmp, DEVICE_NAME, type Entry, linkKey, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, removeTree, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -706,7 +706,6 @@ type Linked = { version: number; resolve: (t: string, from?: string) => string |
   into: Map<string, Set<string>>; byName: Map<string, Set<string>> }
 const linkIndexes = new WeakMap<Vault, Linked>()
 const aliasesOf = (e: Entry) => { const a = e.fm.aliases; return (Array.isArray(a) ? a : a ? [a] : []).map(String) }
-const nameKey = (e: Entry) => `${aliasesOf(e).join("\u0001")}${e.archived ? "\u0002" : ""}`
 const linkName = (t: string) => t.slice(t.lastIndexOf("/") + 1).trim().toLowerCase()
 const putIn = (m: Map<string, Set<string>>, k: string, v: string) => { let s = m.get(k); if (!s) m.set(k, s = new Set()); s.add(v) }
 const takeOut = (m: Map<string, Set<string>>, k: string, v: string) => { const s = m.get(k); if (s?.delete(v) && !s.size) m.delete(k) }
@@ -716,7 +715,7 @@ function linkIndex(vault: Vault): Linked {
   if (ix?.version === vault.version) return ix
   if (!ix) {
     const made: Linked = { version: vault.version, resolve: linkResolver(vault.linkFiles()), names: new Map(), out: new Map(), into: new Map(), byName: new Map() }
-    for (const [rel, e] of vault.entries) { made.names.set(rel, nameKey(e)); add(vault, made, rel, e) }
+    for (const [rel, e] of vault.entries) { made.names.set(rel, linkKey(e)); add(vault, made, rel, e) }
     for (const rel of vault.others.keys()) made.names.set(rel, "")
     linkIndexes.set(vault, made)
     return made
@@ -732,7 +731,7 @@ function linkIndex(vault: Vault): Linked {
     const had = ix.out.get(rel)
     if (had?.e === e) continue
     reread.push(rel)
-    const key = nameKey(e)
+    const key = linkKey(e)
     if (!had || ix.names.get(rel) !== key) { if (had) nameOf(rel, had.e); nameOf(rel, e); ix.names.set(rel, key) }
   }
   for (const rel of vault.others.keys()) if (!ix.names.has(rel)) { nameOf(rel); ix.names.set(rel, "") }

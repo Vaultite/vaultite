@@ -151,7 +151,7 @@ try {
   ws.onmessage = (m) => { if (JSON.parse(String(m.data)).type === "change") told?.() }
   await new Promise((r) => { ws.onopen = r })
   let v = (await time("GET", "api/state?since=0")).json().v as string
-  const after: Record<string, number[]> = { "change told after an edit": [], "state patch after an edit": [], "files after an edit": [], "links panel after an edit": [], "graph after an edit": [], "search after an edit": [] }
+  const after: Record<string, number[]> = { "change told after an edit": [], "state patch after an edit": [], "files after an edit": [], "links panel after an edit": [], "render after an edit": [], "graph after an edit": [], "search after an edit": [] }
   let patchBytes = 0
   for (let i = 0; i < RUNS; i++) {
     const heard = new Promise<void>((r) => { told = r })
@@ -163,6 +163,7 @@ try {
     v = st.json().v; patchBytes = st.bytes
     after["state patch after an edit"].push(st.ms)
     after["files after an edit"].push((await time("GET", "api/files")).ms)
+    after["render after an edit"].push((await time("GET", `api/render?path=${q(NOTE)}`)).ms)
     after["links panel after an edit"].push((await time("GET", `api/file/linked?path=${q(RENAME)}`)).ms)
     after["graph after an edit"].push((await time("GET", "api/graph")).ms)
     after["search after an edit"].push((await time("GET", `api/search?q=${q(SEARCH)}`)).ms)
