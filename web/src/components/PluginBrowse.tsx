@@ -123,7 +123,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
             {says.map((s) => <span key={s} className="rounded-[5px] bg-muted px-1.5 py-px text-[12px] leading-[17px] text-muted-foreground md:text-[11px] md:leading-[16px]">{capitalize(s)}</span>)}
           </div>
         )}
-        {e.blocked && <div className="mt-0.5 text-[13px] text-[var(--red)] md:text-[12px]">Blocked by the directory: a known problem with this version.</div>}
+        {e.blocked && <div className="mt-0.5 text-[13px] text-ink-(--red) md:text-[12px]">Blocked by the directory: a known problem with this version.</div>}
       </div>
       {button && (
         <button type="button" disabled={busy} onClick={() => act(e)} data-browse-action={button.toLowerCase()}
@@ -156,7 +156,7 @@ function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
   )
 }
 
-const TONES = { green: "text-[var(--green)]", orange: "text-[var(--orange)]", red: "text-[var(--red)]" }
+const TONES = { green: "text-ink-(--green)", orange: "text-ink-(--orange)", red: "text-ink-(--red)" }
 
 
 /** A host's entry. One a plugin here does the job of offers that first (installing the original too would only draw the
@@ -457,7 +457,7 @@ function DirectorySheet({ id }: { id: string }) {
       <SheetHead icon={Icon} tint={e.tint ? `var(--${e.tint})` : "var(--primary)"} kicker={ours ? "Vaultite" : e.author || "Plugin directory"}
         title={<>{e.name}{ours && <Certified className="ml-1.5 align-[1px]" />}</>} sub={e.description} />
       <div className="mb-5 flex items-center gap-3">
-        {e.blocked ? <p className="min-w-0 flex-1 text-[15px] text-[var(--red)] md:text-[13px]">Blocked by the directory: a known problem with this version.</p>
+        {e.blocked ? <p className="min-w-0 flex-1 text-[15px] text-ink-(--red) md:text-[13px]">Blocked by the directory: a known problem with this version.</p>
           : here && !e.update ? <>
             <span className={cn(NOTE, "text-foreground/80")} data-browse-installed>Installed</span>
             <Button className={BIG} onClick={() => replaceDetail(`plugin/${e.id}`)} data-browse-sheet-show>Show</Button>

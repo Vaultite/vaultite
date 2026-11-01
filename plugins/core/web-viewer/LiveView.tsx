@@ -329,7 +329,7 @@ function Watch({ tab, machine, back }: { tab: number; machine: string; back: () 
           <ol className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             {steps.length ? steps.map((s, i) => (
               <li key={`${s.t}-${i}`} className="flex flex-col rounded-[6px] px-2 py-1">
-                <span className={cn("text-[15px] md:text-[13px]", s.failed && "text-[var(--red)]")}>{s.text}</span>
+                <span className={cn("text-[15px] md:text-[13px]", s.failed && "text-ink-(--red)")}>{s.text}</span>
                 <span className="text-[12px] text-tertiary">{dateText(s.t, TIME)} · {s.by}</span>
               </li>
             )) : <li className="px-2 py-1 text-[15px] text-tertiary md:text-[13px]">{kept ? "Nothing yet." : "Turn on Activity to see what agents do here."}</li>}

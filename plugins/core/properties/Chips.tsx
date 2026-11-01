@@ -110,7 +110,7 @@ export function ChipsSettings({ store }: { store: Store }) {
               <SettingRow label="In the status bar">
                 <Switch on={c.statusBar} onChange={(statusBar) => put(i, { statusBar })} label="In the status bar" />
               </SettingRow>
-              <SettingRow label={<span className="text-[var(--red)]">Remove from files' headers</span>} onClick={() => unpin(c.key)} chevron={null} data-chip-unpin={c.key} />
+              <SettingRow label={<span className="text-ink-(--red)">Remove from files' headers</span>} onClick={() => unpin(c.key)} chevron={null} data-chip-unpin={c.key} />
             </Group>
           </div>
         </Section>

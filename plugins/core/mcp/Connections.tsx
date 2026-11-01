@@ -338,7 +338,7 @@ function SignInRows({ data, lead }: { data: State; lead?: boolean }) {
         <Row key={`finishing-${i}`} lead={mark} title={f.name} meta={f.stuck ?? <span className="shimmer">Finishing connecting…</span>} wrap aria-busy data-connection-finishing data-stuck={f.stuck ? true : undefined} />
       ))}
       {(data.failed ?? []).map((f, i) => (
-        <Row key={`failed-${i}`} lead={mark} title={f.name} meta={<span className="text-[var(--red)]">Didn't connect: {f.why}</span>} wrap data-connection-failed />
+        <Row key={`failed-${i}`} lead={mark} title={f.name} meta={<span className="text-ink-(--red)">Didn't connect: {f.why}</span>} wrap data-connection-failed />
       ))}
     </>
   )
@@ -378,7 +378,7 @@ export function AiApps() {
   })
   const others = data.connections.filter((c) => !taken.has(c.id))
   const open = (c: Connection) => openDetail(detailPath(CONNECTION_DETAIL, c.id))
-  const connectedMeta = (c: Connection) => <><span className="text-[var(--green)]">Connected</span>{usedText(c) && ` · ${usedText(c)}`}</>
+  const connectedMeta = (c: Connection) => <><span className="text-ink-(--green)">Connected</span>{usedText(c) && ` · ${usedText(c)}`}</>
   return (
     <div className="flex flex-col gap-3" data-ai-apps>
       {data.waiting > 0 && (data.url || data.cloud.url) && <Waiting data={data} onDone={reload} />}

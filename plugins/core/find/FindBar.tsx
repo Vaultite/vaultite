@@ -159,7 +159,7 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
           <input ref={findRef} main-field="true" value={find} placeholder="Find" aria-label="Find" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
             onChange={(e) => { setFind(e.target.value); set({ search: e.target.value }) }} onKeyDown={(e) => keys(e, "find")}
             className={cn(field, "pr-28 max-md:pr-24", bad && badField)} />
-          <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
+          <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-ink-(--red)" : "text-muted-foreground")}>{status}</span>
         </div>
         <FindTools spec={query} set={set} total={count.total} step={(by) => (by < 0 ? findPrevious(view) : findNext(view))}
           close={() => { closeSearchPanel(view); view.focus() }} />

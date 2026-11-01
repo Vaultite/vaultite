@@ -59,7 +59,7 @@ export function DiffRows({ lines }: { lines: DiffLine[] }) {
             l.kind === "add" && "bg-[color-mix(in_srgb,var(--green)_16%,transparent)]",
             l.kind === "del" && "bg-[color-mix(in_srgb,var(--red)_14%,transparent)] text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--red)_60%,transparent)]",
             l.kind === "gap" && "bg-foreground/[0.03] font-sans text-[12px] text-tertiary")}>
-          <span aria-hidden className={cn("w-6 shrink-0 text-center select-none", l.kind === "add" ? "text-[var(--green)]" : l.kind === "del" ? "text-[var(--red)]" : "text-tertiary")}>
+          <span aria-hidden className={cn("w-6 shrink-0 text-center select-none", l.kind === "add" ? "text-ink-(--green)" : l.kind === "del" ? "text-ink-(--red)" : "text-tertiary")}>
             {l.kind === "add" ? "+" : l.kind === "del" ? "−" : l.kind === "gap" ? "⋯" : ""}
           </span>
           <span>{l.kind === "gap" ? plural(l.n ?? 0, "unchanged line") : l.text || " "}</span>

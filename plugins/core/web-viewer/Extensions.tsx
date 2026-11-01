@@ -183,7 +183,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
                   <div className="truncate text-[15px] leading-[20px] font-medium md:text-[14px]">
                     {x.name}<span className="ml-1.5 text-[12px] font-normal text-muted-foreground">{x.version}</span>
                   </div>
-                  {x.error ? <div className={cn(line, "text-[var(--red)]")} data-tip={x.error}>Couldn't start</div>
+                  {x.error ? <div className={cn(line, "text-ink-(--red)")} data-tip={x.error}>Couldn't start</div>
                     : <div className={cn(line, "text-muted-foreground")}>{x.managed ? "Managed by this Mac" : x.from === "folder" ? `${x.description ? `${x.description} · ` : ""}not updated` : x.description}</div>}
                 </div>
                 {x.options && x.on && (
@@ -204,7 +204,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
           </div>
         </Panel>
       )}
-      {problems.map((p) => <div key={p} className={cn(line, "mt-2 whitespace-normal text-[var(--red)]")} data-ext-problem>Couldn't add what this Mac manages: {p}</div>)}
+      {problems.map((p) => <div key={p} className={cn(line, "mt-2 whitespace-normal text-ink-(--red)")} data-ext-problem>Couldn't add what this Mac manages: {p}</div>)}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button look="quiet" size="small" onClick={() => run("file", () => engine("ext:add-file"), "Couldn't add it")} data-ext-file>
           <FolderOpen className="size-4" strokeWidth={2} />Add from a folder or file…

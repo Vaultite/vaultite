@@ -23,7 +23,7 @@ function Preview() {
         reach the shell as files.
       </p>
       <pre className="mt-3 rounded-[8px] bg-background px-3 py-2 font-mono text-[12px] leading-[17px]">
-        <span className="text-[var(--green)]">vault</span> % claude{"\n"}
+        <span className="text-ink-(--green)">vault</span> % claude{"\n"}
         <span className="text-muted-foreground">Welcome to Claude Code</span>
       </pre>
     </Panel>

@@ -372,7 +372,7 @@ function PermissionsStep({ setup, app, nav }: { setup: SetupApi; app: string; na
                     <span className="block text-[12px] text-muted-foreground">{why}</span>
                   </span>
                   {on
-                    ? <span className="dot-in flex items-center gap-1 font-medium text-[var(--green)]" data-allowed><CircleCheck className="size-4" strokeWidth={2.25} />Allowed</span>
+                    ? <span className="dot-in flex items-center gap-1 font-medium text-ink-(--green)" data-allowed><CircleCheck className="size-4" strokeWidth={2.25} />Allowed</span>
                     : <Button size="small" look={opened.has(p.id) ? "outline" : "primary"} onClick={() => act(p.id)} data-act={p.id}>{label(p)}</Button>}
                 </div>
                 {!on && opened.has(p.id) && <Hint app={app} />}

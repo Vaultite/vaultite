@@ -84,9 +84,9 @@ export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon:
   )
 }
 
-/** A colour token as text: its lightness held where it reads on a card (--ink-lo/--ink-hi in index.css). Fills and
- *  icons on their own keep the token. */
-export const ink = (color: string) => `oklch(from ${color} clamp(var(--ink-lo), l, var(--ink-hi)) c h)`
+/** A colour token as text: its lightness held where it reads on a card (--ink-l in index.css; a class is
+ *  `text-ink-(--red)`). Fills and icons on their own keep the token. */
+export const ink = (color: string) => `oklch(from ${color} var(--ink-l) c h)`
 
 /** No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new). */
 export function SheetHead({ icon: Icon, tint, kicker, title, sub, children }: {

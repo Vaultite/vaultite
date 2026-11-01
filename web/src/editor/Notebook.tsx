@@ -46,8 +46,8 @@ function HtmlOutput({ html }: { html: string }) {
 
 function OutputView({ o }: { o: Output }) {
   const pre = "overflow-x-auto text-[13px] leading-[19px] whitespace-pre-wrap font-mono"
-  if (o.output_type === "stream") return <pre className={cn(pre, o.name === "stderr" && "text-(--red)")}>{join(o.text).replace(ANSI, "")}</pre>
-  if (o.output_type === "error") return <pre className={cn(pre, "text-(--red)")}>{(o.traceback?.join("\n") ?? `${o.ename}: ${o.evalue}`).replace(ANSI, "")}</pre>
+  if (o.output_type === "stream") return <pre className={cn(pre, o.name === "stderr" && "text-ink-(--red)")}>{join(o.text).replace(ANSI, "")}</pre>
+  if (o.output_type === "error") return <pre className={cn(pre, "text-ink-(--red)")}>{(o.traceback?.join("\n") ?? `${o.ename}: ${o.evalue}`).replace(ANSI, "")}</pre>
   const d = o.data ?? {}
   for (const t of ["image/png", "image/jpeg", "image/gif"]) {
     if (d[t]) return <img src={`data:${t};base64,${join(d[t]).replace(/\s/g, "")}`} alt="Output" className="max-w-full self-start rounded-[6px]" />

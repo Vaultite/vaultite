@@ -55,7 +55,7 @@ export function FindBar({ web, id, tab, ask, found, close }: { web: WebPages; id
           onChange={(e) => change(e.target.value)} onKeyDown={keys} data-web-find-field
           className={cn("h-7 w-full min-w-0 rounded-[6px] bg-card pr-24 pl-2 text-[13px] text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-primary/60",
             none && "ring-[color-mix(in_srgb,var(--red)_55%,transparent)] focus:ring-[color-mix(in_srgb,var(--red)_70%,transparent)]")} />
-        <span aria-live="polite" data-web-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums", none ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
+        <span aria-live="polite" data-web-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums", none ? "text-ink-(--red)" : "text-muted-foreground")}>{status}</span>
       </div>
       <button type="button" aria-label="Match case" aria-pressed={matchCase} data-tip="Match case" onMouseDown={(e) => e.preventDefault()}
         onClick={() => { setMatchCase(!matchCase); if (text) find(text, { matchCase: !matchCase }) }}

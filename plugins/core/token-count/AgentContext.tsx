@@ -7,7 +7,7 @@ import { shortTokens } from "./estimate"
 import "./types"
 
 /** "12k", "840": a size without its tilde and unit. */
-export const toneOf = (l: Level) => (l === "over" ? "text-(--red)" : l === "near" ? "text-(--orange)" : "text-muted-foreground")
+export const toneOf = (l: Level) => (l === "over" ? "text-ink-(--red)" : l === "near" ? "text-ink-(--orange)" : "text-muted-foreground")
 const name = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 const folder = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
 

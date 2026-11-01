@@ -133,7 +133,7 @@ function Waiting({ plugin }: { plugin: Plugin }) {
             className="cursor-pointer font-sans text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground">and {a.changed.length - shown.length} more</button></>}
         </p>
       )}
-      {says.length > 0 && <p className="mt-1.5 text-[14px] leading-[19px] text-[var(--orange)] md:text-[13px] md:leading-[18px]" data-plugin-discloses>{host ? "A look at its code found it can" : "It says it"} {says.join("; ")}.</p>}
+      {says.length > 0 && <p className="mt-1.5 text-[14px] leading-[19px] text-ink-(--orange) md:text-[13px] md:leading-[18px]" data-plugin-discloses>{host ? "A look at its code found it can" : "It says it"} {says.join("; ")}.</p>}
       <div className="mt-2.5 flex gap-2">
         <Button look="primary" onClick={() => void allowPlugin(plugin)} data-plugin-allow={plugin.id}
           >Allow</Button>
@@ -368,10 +368,10 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
       )}
       <Kept plugin={plugin} files={store.pluginSettings ?? []} />
       {plugin.tier === "vault" && (
-        <Button className="mt-5 text-[var(--red)]" data-plugin-uninstall={plugin.id} onClick={() => void uninstall(plugin)}>{plugin.meta?.source ? "Uninstall" : "Move to trash"}</Button>
+        <Button className="mt-5 text-ink-(--red)" data-plugin-uninstall={plugin.id} onClick={() => void uninstall(plugin)}>{plugin.meta?.source ? "Uninstall" : "Move to trash"}</Button>
       )}
       {plugin.tier === "hosted" && hostOf(plugin)?.uninstall && (
-        <Button className="mt-5 text-[var(--red)]" data-plugin-uninstall={plugin.id}
+        <Button className="mt-5 text-ink-(--red)" data-plugin-uninstall={plugin.id}
           onClick={async () => { if (await confirmDialog({ title: `Uninstall ${plugin.name}?`, body: "Its files are removed from this vault. Its settings stay, in case you install it again.", confirm: "Uninstall", danger: true })) await hostOf(plugin)?.uninstall?.(plugin.id) }}>Uninstall</Button>
       )}
     </>

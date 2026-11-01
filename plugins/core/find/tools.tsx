@@ -30,7 +30,7 @@ export function FindField({ inputRef, value, placeholder, status, bad, onChange,
     <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
       <input ref={inputRef} value={value} placeholder={placeholder} aria-label="Find" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
         onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} className={cn(field, "pr-24", bad && badField)} />
-      <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
+      <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-ink-(--red)" : "text-muted-foreground")}>{status}</span>
     </div>
   )
 }

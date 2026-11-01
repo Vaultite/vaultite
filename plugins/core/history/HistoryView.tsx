@@ -136,7 +136,7 @@ export function HistoryView({ path }: { path: string }) {
               {lines === null ? <Loading className="px-3 font-sans text-[13px] leading-[19px]" /> : <DiffRows lines={lines} />}
             </div>
             <p className="mt-2 text-[12px] text-muted-foreground">
-              <span className="text-[var(--green)]">+</span> in this version, <span className="text-[var(--red)]">−</span> in the file now. Restore makes the file this version (it can be undone).
+              <span className="text-ink-(--green)">+</span> in this version, <span className="text-ink-(--red)">−</span> in the file now. Restore makes the file this version (it can be undone).
             </p>
           </section>
         </div>

@@ -131,7 +131,7 @@ function SheetGrid({ ws, embed }: { ws: XLSX.WorkSheet; embed?: boolean }) {
                   return (
                     <td key={c} rowSpan={span?.[0]} colSpan={span?.[1]}
                       className={cn("max-w-[480px] truncate border-r-[0.5px] border-b-[0.5px] border-border/60 px-1.5 py-0.5 align-top",
-                        (x?.t === "n" || x?.t === "d") && "text-right tabular-nums", x?.t === "b" && "text-center", x?.t === "e" && "text-[var(--red)]",
+                        (x?.t === "n" || x?.t === "d") && "text-right tabular-nums", x?.t === "b" && "text-center", x?.t === "e" && "text-ink-(--red)",
                         grid.widths[c] === 0 && "hidden")}
                       data-tip={v.length > 30 ? v : undefined} data-tip-trunc>{v}</td>
                   )

@@ -247,7 +247,7 @@ function NumberField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
   const why = n === null ? "" : Number.isNaN(n) ? "should be a number" : valueProblem(d, n)
   const save = () => { if (typed !== null && !why) set(n); if (!why) setTyped(null) }
   return (
-    <SettingRow label={d.label} sub={why ? <span className="text-[var(--red)]">{capitalize(why)}</span> : capitalize(d.description)} data-setting={k}>
+    <SettingRow label={d.label} sub={why ? <span className="text-ink-(--red)">{capitalize(why)}</span> : capitalize(d.description)} data-setting={k}>
       <input inputMode="decimal" aria-label={d.label} value={text} placeholder={d.default !== undefined ? String(d.default) : ""}
         aria-invalid={!!why || undefined} onChange={(e) => setTyped(e.target.value)} onBlur={save}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
@@ -288,7 +288,7 @@ function useFolders() {
   const files = useStore().store?.files
   return useMemo(() => new Set(files ? folderList(files) : []), [files])
 }
-const missing = (f: string) => <span className="text-[var(--red)]">There's no folder {f}</span>
+const missing = (f: string) => <span className="text-ink-(--red)">There's no folder {f}</span>
 
 /** A folder, chosen from the vault's (or a new one, made); one set that isn't there says so. Cleared, the default. */
 function FolderField({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
@@ -323,7 +323,7 @@ function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unkno
       <div className="flex flex-wrap gap-1.5 sm:max-w-[60%] sm:justify-end">
         {list.map((f) => (
           <span key={f} data-folder-chip={f} data-tip={folders.has(f) ? undefined : `There's no folder ${f}`}
-            className={cn(chip, "pr-0.5 pl-2.5", folders.has(f) ? "border-border" : "border-[var(--red)] text-[var(--red)]")}>
+            className={cn(chip, "pr-0.5 pl-2.5", folders.has(f) ? "border-border" : "border-[var(--red)] text-ink-(--red)")}>
             {f}
             <button type="button" aria-label={`Remove ${f}`} onClick={() => { const rest = list.filter((x) => x !== f); set(rest.length ? rest : null) }}
               className="grid size-6 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">

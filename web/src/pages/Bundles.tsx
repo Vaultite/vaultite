@@ -884,7 +884,7 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
           </div>
         </div>
       )}
-      {!!b.problems.length && <p className="mb-4 text-[14px] text-[var(--red)]">{b.problems.join(". ")}</p>}
+      {!!b.problems.length && <p className="mb-4 text-[14px] text-ink-(--red)">{b.problems.join(". ")}</p>}
       {picture && <img src={picture} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
       <div className="grid grid-cols-1 gap-3">
         {(installs.length > 0 || plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0 || added.length > 0) && (

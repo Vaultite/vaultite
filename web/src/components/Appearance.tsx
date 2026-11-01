@@ -361,7 +361,7 @@ function Snippets() {
           </form>
         </Group>
       </Section>
-      {error && <p className="mt-1 px-1 text-[13px] text-[var(--red)]">{error}</p>}
+      {error && <p className="mt-1 px-1 text-[13px] text-ink-(--red)">{error}</p>}
       {canOpenHere() && <FolderButton folder={SNIPPETS_FOLDER} label="Open snippets folder" className="mt-1 h-7 text-[13px]" />}
     </section>
   )

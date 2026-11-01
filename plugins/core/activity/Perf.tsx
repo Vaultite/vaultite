@@ -75,7 +75,7 @@ function RouteRows({ routes }: { routes: RouteStat[] }) {
           <td className={`${td} ${wide}`}>{ms(r.p50)}</td>
           <td className={td}>{ms(r.p95)}</td>
           <td className={`${td} ${wide}`}>{ms(r.max)}</td>
-          <td className={`${td} ${r.errors ? "text-[var(--red)]" : "text-muted-foreground"}`}>{r.errors ? count(r.errors) : "–"}</td>
+          <td className={`${td} ${r.errors ? "text-ink-(--red)" : "text-muted-foreground"}`}>{r.errors ? count(r.errors) : "–"}</td>
         </tr>
       ))}
     </tbody>

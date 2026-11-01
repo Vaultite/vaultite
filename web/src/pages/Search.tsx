@@ -227,7 +227,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
           <input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="Anywhere" aria-label="Only in this folder" spellCheck={false}
             className="h-full min-w-0 flex-1 rounded-[6px] border-[0.5px] border-border bg-card px-2 text-foreground outline-none focus:ring-2 focus:ring-primary/40 max-md:text-[16px]" />
         </label>
-        {error ? <p role="alert" className="text-[13px] text-[var(--red)] max-md:text-[15px]">{error}</p>
+        {error ? <p role="alert" className="text-[13px] text-ink-(--red) max-md:text-[15px]">{error}</p>
           : node && (settings.explain || !plain) && <p data-search-explain className="text-[13px] text-muted-foreground max-md:text-[15px]">{explain(node)}</p>}
       </div>
 

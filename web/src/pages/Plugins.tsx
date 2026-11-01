@@ -106,7 +106,7 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
           )}
         </div>
         {/* A vault plugin that can't run says why (the sheet has the rest). */}
-        {problem ? <div className={cn(line, "text-[var(--red)]")}>Couldn't start</div>
+        {problem ? <div className={cn(line, "text-ink-(--red)")}>Couldn't start</div>
           // On in the vault, but this machine hasn't allowed it (as it is now): the sheet shows what changed and Allow.
           : waiting ? <div className={cn(line, "text-muted-foreground")} data-plugin-waiting={p.id}>
             {p.meta!.approval!.state === "changed" ? "Changed: waiting for you to allow it again" : "Waiting for you to allow it on this machine"}</div>

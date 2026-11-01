@@ -331,7 +331,7 @@ function EntryView({ e, id, open, toggle, pending }: { e: Entry; id: string; ope
 
 function Note({ text, tone }: { text: string; tone?: "error" }) {
   return (
-    <div data-entry="note" className={cn("flex items-start gap-2 text-[13px] leading-[19px] max-md:text-[15px]", tone === "error" ? "text-[var(--red)]" : "justify-center text-muted-foreground")}>
+    <div data-entry="note" className={cn("flex items-start gap-2 text-[13px] leading-[19px] max-md:text-[15px]", tone === "error" ? "text-ink-(--red)" : "justify-center text-muted-foreground")}>
       {tone === "error" && <CircleAlert className="mt-0.5 size-3.5 shrink-0" strokeWidth={2.25} />}
       <span className="min-w-0 break-words whitespace-pre-wrap">{text}</span>
     </div>
@@ -375,7 +375,7 @@ function ToolRow({ t, kids, open, toggle }: { t: Tool; kids: Entry[]; open: bool
           {kids.length > 0 && <div className="-ml-1.5 border-l-2 border-border pl-1.5">{kids.filter((k): k is Tool => k.k === "tool").map((k) => <ToolLine key={k.id} t={k} />)}</div>}
           {t.result !== undefined && (
             <pre className={cn("max-h-72 overflow-auto rounded-[8px] border-[0.5px] border-border px-3 py-2 font-mono text-[12px] leading-[17px] whitespace-pre-wrap break-words",
-              t.error ? "text-[var(--red)]" : "text-muted-foreground")}>{t.result || "(no output)"}</pre>
+              t.error ? "text-ink-(--red)" : "text-muted-foreground")}>{t.result || "(no output)"}</pre>
           )}
         </div>
       )}
@@ -621,7 +621,7 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
             {/* (first: what's changed mid-session, whole on a phone however far the rest scroll) */}
             <Chip label="Permission mode" onClick={(e) => menu(e, (o?.modes ?? []).filter((m) => m.id !== "dontAsk").map((m) => ({ label: m.label, checked: m.id === modeId,
               danger: m.id === "bypassPermissions", run: () => choose({ mode: m.id }) })))}>
-              <span className={cn(modeId === "bypassPermissions" && "text-[var(--red)]", modeId === "plan" && "text-[var(--teal)]")}>
+              <span className={cn(modeId === "bypassPermissions" && "text-ink-(--red)", modeId === "plan" && "text-ink-(--teal)")}>
                 <span className="max-md:hidden">{mode}</span><span className="md:hidden">{MODE_SHORT[modeId] ?? mode}</span>
               </span>
             </Chip>

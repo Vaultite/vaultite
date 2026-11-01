@@ -61,7 +61,7 @@ function ToolLine({ t }: { t: Tool }) {
           <pre className="max-h-72 overflow-auto rounded-[8px] bg-muted px-3 py-2 font-mono text-[12px] leading-[17px] whitespace-pre-wrap break-words">{t.input}</pre>
           {t.result !== null && (
             <pre className={cn("max-h-72 overflow-auto rounded-[8px] border-[0.5px] border-border px-3 py-2 font-mono text-[12px] leading-[17px] whitespace-pre-wrap break-words",
-              t.error ? "text-[var(--red)]" : "text-muted-foreground")}>{t.result || "(no output)"}</pre>
+              t.error ? "text-ink-(--red)" : "text-muted-foreground")}>{t.result || "(no output)"}</pre>
           )}
         </div>
       )}

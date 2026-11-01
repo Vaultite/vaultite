@@ -83,7 +83,7 @@ export function HotkeysSheet() {
               <div className="min-w-0 flex-1">
                 {/* (a setting's place: "Toasts" is Inbox's) */}
                 <div className="truncate text-[14px]">{c.name}{c.where && <span className="text-muted-foreground"> · {c.where}</span>}</div>
-                {notes.map((n) => <div key={n} data-hotkey-conflict className="truncate text-[12px] text-[var(--red)]">{n}</div>)}
+                {notes.map((n) => <div key={n} data-hotkey-conflict className="truncate text-[12px] text-ink-(--red)">{n}</div>)}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                 {keys.map((k) => <Caps key={k} keys={k} onRemove={() => setHotkeys(c.id, keys.filter((x) => x !== k))} />)}

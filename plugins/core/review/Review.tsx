@@ -108,7 +108,7 @@ function FileDiff({ path }: { path: string }) {
 function Size({ f }: { f: Pending }) {
   if (f.created) return <span>new file</span>
   if (f.added === undefined) return <span>no earlier version</span>
-  return <span className="tabular-nums"><span className={f.added ? "text-[var(--green)]" : undefined}>+{f.added}</span> <span className={f.removed ? "text-[var(--red)]" : undefined}>−{f.removed}</span></span>
+  return <span className="tabular-nums"><span className={f.added ? "text-ink-(--green)" : undefined}>+{f.added}</span> <span className={f.removed ? "text-ink-(--red)" : undefined}>−{f.removed}</span></span>
 }
 
 /** A file to review: its name and who changed it, unfolding to its diff. */

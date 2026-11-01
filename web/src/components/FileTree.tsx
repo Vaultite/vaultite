@@ -874,7 +874,7 @@ const TreeRow = memo(function TreeRow({ n, depth, pos, size, index, rows, isOpen
             <span {...partProps(decor?.name)} className={cn(decor?.name?.className, "min-w-0 flex-1", compact ? "truncate" : "py-2.5 leading-[22px] break-words", faint && "text-muted-foreground")}>{n.name}</span>
             {!!decor?.after?.length && <RowNodes nodes={decor.after} />}
             {mark && <span data-file-mark data-tip={mark.tip} className={cn("shrink-0 tabular-nums", compact ? "text-[11px]" : "text-[13px]",
-              mark.tone === "orange" ? "text-(--orange)" : "text-(--red)")}>{mark.text}</span>}
+              mark.tone === "orange" ? "text-ink-(--orange)" : "text-ink-(--red)")}>{mark.text}</span>}
           </button>
           {/* (a tree holds only its items: on a computer the keyboard opens this menu from the row, Shift+F10) */}
           <button type="button" data-no-drag aria-label={`More for ${n.name}`} tabIndex={compact ? -1 : undefined} aria-hidden={compact || undefined}
