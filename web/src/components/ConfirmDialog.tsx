@@ -132,11 +132,12 @@ function Dialog({ a }: { a: Ask }) {
       </div>
       <div className="flex border-t-[0.5px] border-border md:justify-end md:gap-2 md:border-0 md:px-5 md:pb-4">
         <button type="button" data-cancel onClick={() => finish(false)}
-          className="h-11 flex-1 cursor-pointer text-[17px] text-primary hover:bg-foreground/[0.05] focus-visible:bg-foreground/[0.07] focus-visible:outline-none md:h-7 md:flex-none md:rounded-[6px] md:bg-foreground/[0.06] md:px-3 md:text-[13px] md:font-medium md:text-foreground md:hover:bg-foreground/[0.1] md:focus-visible:ring-2 md:focus-visible:ring-ring">
+          className="h-11 flex-1 cursor-pointer text-[17px] text-primary focus-visible:outline-none max-md:hover:bg-foreground/[0.05] max-md:focus-visible:bg-foreground/[0.07] md:h-7 md:flex-none md:rounded-[6px] md:bg-foreground/[0.06] md:px-3 md:text-[13px] md:font-medium md:text-foreground md:hover:bg-foreground/[0.1] md:focus-visible:ring-2 md:focus-visible:ring-ring">
           {a.cancel ?? "Cancel"}
         </button>
+        {/* The phone's fills only there: on a desktop they covered the button's own colour while it had the focus. */}
         <button ref={ok} type="button" data-confirm-ok onClick={() => finish(true)} disabled={!!a.field && !given}
-          className={cn("h-11 flex-1 cursor-pointer border-l-[0.5px] border-border text-[17px] font-semibold hover:bg-foreground/[0.05] focus-visible:bg-foreground/[0.07] focus-visible:outline-none",
+          className={cn("h-11 flex-1 cursor-pointer border-l-[0.5px] border-border text-[17px] font-semibold focus-visible:outline-none max-md:hover:bg-foreground/[0.05] max-md:focus-visible:bg-foreground/[0.07]",
             "md:h-7 md:flex-none md:rounded-[6px] md:border-0 md:px-3 md:text-[13px] md:font-medium md:text-white md:focus-visible:ring-2 md:focus-visible:ring-ring md:focus-visible:ring-offset-1 md:focus-visible:ring-offset-card disabled:cursor-default disabled:opacity-50",
             a.danger ? "text-destructive md:bg-destructive md:hover:bg-destructive/90" : "text-primary md:bg-primary md:hover:bg-primary/90")}>
           {a.confirm ?? "OK"}

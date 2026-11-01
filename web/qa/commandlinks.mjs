@@ -28,6 +28,14 @@ const before = await tabs()
 await link("a new tab").click()
 const asked = await until(() => page.$("[data-confirm]"), 5000)
 check("a link to any other command asks first, naming it", !!asked && /Open new tab\?/.test(await page.locator("[data-confirm]").innerText()))
+// Run has the focus and its keyboard ring: still filled with the primary colour, its white label readable.
+await page.keyboard.press("Tab"); await page.keyboard.press("Tab")
+const run = await page.$eval("[data-confirm-ok]", (b) => {
+  const probe = document.createElement("i"); probe.style.color = "var(--primary)"; b.append(probe)
+  const want = getComputedStyle(probe).color; probe.remove()
+  return { focused: b.matches(":focus-visible"), bg: getComputedStyle(b).backgroundColor, want }
+})
+check("… its Run button keeps its colour while focused", run.focused && run.bg === run.want, run)
 await page.keyboard.press("Escape")
 await wait(400)
 check("… Cancel runs nothing", (await tabs()) === before, [before, await tabs()])
