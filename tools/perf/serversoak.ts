@@ -83,6 +83,8 @@ async function act() {
     fs.mkdirSync(path.join(VAULT, "Soak"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, rel), `---\ntype: note\n---\n\nWritten by the soak, linking [[${mine.length ? pick(mine).slice(5, -3) : "Start here"}]].\n`)
     mine.push(rel)
+    // (past 60, one of its notes goes for each made: the vault stays one size, so what grows is the server's)
+    if (mine.length > 60) fs.rmSync(path.join(VAULT, mine.splice(Math.floor(Math.random() * (mine.length - 1)), 1)[0]), { force: true })
   } else if (r < 0.75) fs.appendFileSync(path.join(VAULT, pick(mine)), `\nOne more line at ${new Date().toISOString()}.\n`)
   else if (r < 0.85) {
     const from = pick(mine), to = `Soak/Moved ${n++}.md`
