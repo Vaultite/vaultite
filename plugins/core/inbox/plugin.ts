@@ -1233,7 +1233,7 @@ plugin.op({
 something, its last answer or report is for the user, or it failed; working once they answer; done once a turn after
 ends with nothing for them, or they mark it done. Reading never settles a thread (* is unread); a message (vau notify)
 is done once read. Results are files in Inbox/ to review. Events are kept on the machine they happened on (another
-machine's id ends in @<machine>), done ones for keep_days, each with its id (inbox.done, inbox.answer, inbox.reply,
+machine's id ends in @<machine>), done ones for keep_days, each with its id (inbox.settle, inbox.answer, inbox.reply,
 inbox.snooze take it). done: the latest done ones too.
 
   vau inbox
@@ -1265,8 +1265,8 @@ inbox.snooze take it). done: the latest done ones too.
     list("Working on it", r.working.map(line))
     list("Messages", r.messages.map(line))
     list("Snoozed", r.snoozed.map((x: Item) => `  until ${x.until}  ${x.path ?? `${x.title}  (${x.id})`}`))
-    if (Array.isArray(r.done)) list("Done", r.done.map(line))
-    else if (r.done) out.push(`${out.length ? "\n" : ""}Done: ${r.done} (vau inbox --done lists them).`)
+    if (Array.isArray(r.done)) list("Settled", r.done.map(line))
+    else if (r.done) out.push(`${out.length ? "\n" : ""}Settled: ${r.done} (vau inbox --done lists them).`)
     return out.length ? out.join("\n") : "Nothing new."
   },
 })
@@ -1760,19 +1760,20 @@ same way. A session on another of the Machines gets it through the app there.
   text: (r) => `${r.how === "resume" ? "Resumed its session" : r.how === "new" ? "Started a new session" : r.how === "host" ? "Sent to its session" : "Sent"}${r.terminal ? ` in ${r.terminal}` : ""}${r.done ? "; the report is archived, its thread working" : "; its thread is working"}.`,
 })
 
-plugin.op({
-  id: "inbox.done",
-  cli: "inbox done",
-  summary: "Mark something in the inbox done: a result is archived (into Inbox/.archive/, named anew when given a title); a thread or an event is done, out of the inbox (its report archived).",
-  help: `What the user's Done does. A result's file moves into Inbox/.archive/, out of what's to review: an agent handed a voice
-note ends with it (not by editing its status: that leaves it in the inbox); with title, it's renamed too. A session's
-thread (or any event, by its id) is done: out of what needs the user, kept under Done for keep_days, and its report, if
-it has one to review, archived. Reading never does this: only done (or the session moving on) settles a thread. undo
-brings it back: a result to review, a thread open again.
+/** Settle: dealt with, out of the inbox (a result archived, a thread or an event settled). */
+const settle: Parameters<typeof plugin.op>[0] = {
+  id: "inbox.settle",
+  cli: "inbox settle",
+  summary: "Settle something in the inbox: a result is archived (into Inbox/.archive/, named anew when given a title); a thread or an event is settled, out of the inbox (its report archived).",
+  help: `What the user's Settle does. A result's file moves into Inbox/.archive/, out of what's to review: an agent handed a
+voice note ends with it (not by editing its status: that leaves it in the inbox); with title, it's renamed too. A
+session's thread (or any event, by its id) is settled: out of what needs the user, kept under Settled for keep_days, and
+its report, if it has one to review, archived. Reading never does this: only settling (or the session moving on) does.
+undo brings it back: a result to review, a thread open again. (inbox.done, vau inbox done: its old name.)
 
-  vau inbox done "Inbox/Remind me to call Alice about….md" --title "Call Alice about the trip"
-  vau inbox done lzk3p2-a1b2c3
-  vau inbox done lzk3p2-a1b2c3 --undo`,
+  vau inbox settle "Inbox/Remind me to call Alice about….md" --title "Call Alice about the trip"
+  vau inbox settle lzk3p2-a1b2c3
+  vau inbox settle lzk3p2-a1b2c3 --undo`,
   kind: "write",
   params: {
     item: { type: "string", required: true, description: "the result (Inbox/<Title>.md) or the event's id (vau inbox lists them)" },
@@ -1780,7 +1781,7 @@ brings it back: a result to review, a thread open again.
     undo: { type: "boolean", description: "bring it back: a result to review, a thread or an event open again" },
   },
   args: ["item"],
-  action: { on: ["inbox"], param: "item", label: "Mark done", icon: "check-check", menu: false },
+  action: { on: ["inbox"], param: "item", label: "Settle", icon: "check-check", menu: false },
   run: async (p, ctx) => {
     const item = str(p.item).trim(), back = p.undo === true
     if (EVENT_ID.test(item)) {
@@ -1798,8 +1799,23 @@ brings it back: a result to review, a thread open again.
     const done = await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { status: back ? "new" : "done", ...(title ? { title } : {}) }) as Item
     return { path: `${done.id}.md`, done: !back }
   },
-  text: (r) => (r.done ? `Done: ${r.path ?? r.title}.` : `Back in the inbox: ${r.path ?? r.title}.`),
-  did: (p) => ({ action: "save", text: `Marked ${quoted(p.item)} ${p.undo ? "not done" : "done"} in the inbox` }),
+  text: (r) => (r.done ? `Settled: ${r.path ?? r.title}.` : `Back in the inbox: ${r.path ?? r.title}.`),
+  did: (p) => ({ action: "save", text: `${p.undo ? "Brought back" : "Settled"} ${quoted(p.item)} in the inbox` }),
+}
+plugin.op(settle)
+// (the old name: scripts, hooks and saved prompts call it)
+plugin.op({ ...settle, id: "inbox.done", cli: "inbox done", summary: "inbox.settle's old name: settle something in the inbox.", action: undefined })
+
+plugin.op({
+  id: "inbox.wake",
+  cli: "inbox wake",
+  summary: "Wake something snoozed in the inbox: back now, on top (inbox.snooze --until now).",
+  kind: "write",
+  params: { item: { type: "string", required: true, description: "the result (Inbox/<Title>.md) or the event's id (vau inbox lists them)" } },
+  args: ["item"],
+  run: async (p, ctx) => ctx.op("inbox.snooze", { item: p.item, until: "now" }),
+  text: (r) => `Woken: ${r.item}.`,
+  did: (p) => ({ action: "save", text: `Woke ${quoted(p.item)} in the inbox` }),
 })
 
 plugin.op({
@@ -1858,7 +1874,7 @@ it or it's read; done (or archived) unpins it. off unpins it.
     const item = str(p.item).trim(), on = p.off !== true
     if (EVENT_ID.test(item)) {
       const e = await eventFor(ctx, item)
-      if (on && e.state === "done") throw new OpError(`${item} is done: bring it back first (vau inbox done ${item} --undo)`)
+      if (on && e.state === "done") throw new OpError(`${item} is settled: bring it back first (vau inbox settle ${item} --undo)`)
       await ctx.api("POST", "inbox/events/pin", { ids: [e.id], pinned: on })
       return { item: e.id, title: e.title, pinned: on }
     }
@@ -1907,7 +1923,7 @@ hold on now, if any. label says what for ("Practice guitar"), in the line at its
 plugin.op({
   id: "inbox.read",
   cli: "inbox read",
-  summary: "Mark the inbox's events read (seen: no longer bold), some by id (vau inbox lists them) or all. A message is done once read; a thread stays until it's done (inbox.done).",
+  summary: "Mark the inbox's events read (seen: no longer bold), some by id (vau inbox lists them) or all. A message is done once read; a thread stays until it's settled (inbox.settle).",
   kind: "write",
   params: { ids: { type: "array", items: { type: "string" }, description: "the events' ids; none: every event" } },
   args: ["ids"],
@@ -1953,7 +1969,7 @@ is permission) while its terminal still shows the question, or a question the se
 asks (the event's questions): picks, one per question, an option's number or name (several, comma-separated, in a
 multi-select), or text typed as its own answer. approve, deny and pick are the user's alone: only from the app or their
 phone, never an agent nor vau. Approved, denied, picked or replied to, a session's thread is working (its agent goes on);
-done marks it done (inbox.done), read only marks it read. A session run outside a terminal is answered by its host
+settle settles it (inbox.settle; done, its old name), read only marks it read. A session run outside a terminal is answered by its host
 (agent-reply:<agent>, agent-answer:<agent>). Another machine's event is answered there, where its session runs; a bare
 id from a notification another machine sent is found too.
 
@@ -1964,7 +1980,7 @@ id from a notification another machine sent is found too.
   kind: "write",
   params: {
     id: { type: "string", required: true, description: "the event's id (vau inbox lists them)" },
-    answer: { type: "string", enum: ["approve", "deny", "pick", "reply", "done", "read"], required: true, description: "approve, deny, pick, reply, done or read" },
+    answer: { type: "string", enum: ["approve", "deny", "pick", "reply", "settle", "done", "read"], required: true, description: "approve, deny, pick, reply, settle (done, its old name) or read" },
     picks: { type: "array", items: { type: "string" }, description: "with pick: an answer for each question, in order" },
     text: { type: "string", description: "with reply: what to tell it" },
   },
@@ -1976,7 +1992,7 @@ id from a notification another machine sent is found too.
     const bare = splitMachine(e.id)[0]
     if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}) })
     if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.reply", { to: e.id, text: str(text) })) }
-    if (answer === "done") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.done", { item: e.id })) }
+    if (answer === "settle" || answer === "done") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.settle", { item: e.id })) }
     if (answer === "read") {
       await ctx.api("POST", "inbox/events/read", { ids: [e.id] })
       return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }

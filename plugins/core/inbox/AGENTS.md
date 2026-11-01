@@ -2,7 +2,7 @@
 Something for the user to read later (research, a summary): `vau inbox add "<title>" --tldr "<in short>" --body
 "<markdown>"` (MCP's `inbox_add`). A long task finished: `vau notify "<text>"`.
 
-**Results**: a file in `Inbox/` for the user to review, then mark done or file into a folder:
+**Results**: a file in `Inbox/` for the user to review, then settle (archive) or file into a folder:
 ````
 ---
 type: inbox
@@ -16,11 +16,12 @@ snoozed: '2026-10-02 08:00:00'      # optional, set by Snooze: out of what's to 
 
 What it says, as Markdown.
 ````
-- Mark it done with `vau inbox done <path>`, not by editing `status` (that leaves the file in place): done is archived,
-  into `Inbox/.archive/`. A clip lands here with `inbox: true`.
-- Snooze (`vau inbox snooze <path|event id> --until tomorrow`, or 3h, weekend, now...): out of the way until then, then
-  back on top, unread, and told again (toast, phone). A snoozed thread stays open meanwhile; news from its session wakes it.
-- Pin (`vau inbox pin <path|event id>`, `--off` unpins): kept on top under Pinned whatever it waits on, until it's done.
+- Settle it with `vau inbox settle <path>` (`done`: its old name), not by editing `status` (that leaves the file in
+  place): settled is archived, into `Inbox/.archive/`. A clip lands here with `inbox: true`.
+- Snooze (`vau inbox snooze <path|event id> --until tomorrow`, or 3h, weekend...): out of the way until then, then back
+  on top, unread, and told again (toast, phone). A snoozed thread stays open meanwhile; news from its session wakes it.
+  Wake (`vau inbox wake <path|event id>`) brings it back now.
+- Pin (`vau inbox pin <path|event id>`, `--off` unpins): kept on top under Pinned whatever it waits on, until it's settled.
 - Hold (`vau inbox hold 30m --label "Practice guitar"`, or 07:30, off): nothing is told (toasts, the Mac's and the phone's
   notifications) until then, on every machine; what came is unread, summed up in one line when it ends.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
@@ -41,8 +42,8 @@ with a `state`:
   model when its words don't settle it), or it reported (`vau inbox report`). It's told then (toast, the phone and watch).
 - `working`: the user answered (a reply, Approve, a pick, a prompt in its terminal) and its agent is on it. Its next turn
   ends open again when it has something for them, else done.
-- `done`: the user marked it done (`vau inbox done <id>`, which archives its report too), or a turn after their answer
-  ended with nothing for them, or they ended its terminal. Kept `keep_days` under Done (`vau inbox --done`).
+- `done`: the user settled it (`vau inbox settle <id>`, which archives its report too), or a turn after their answer
+  ended with nothing for them, or they ended its terminal. Kept `keep_days` under Settled (`vau inbox --done`).
 Read (bold or not) is only whether they've seen it: opening or reading a thread never settles it. A turn done with
 nothing for the user goes in quietly, done. Reply with `vau inbox reply <id> "<text>"` (typed into its session, resumed
 if it ended). Don't write "nothing needed from you" rules into prompts for this.

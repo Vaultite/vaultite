@@ -100,7 +100,7 @@ export function markEventsDone(ids: string[], done = true) {
   const before = getEvents().events
   set(before.map((e) => (!want.has(e.id) ? e : done ? { ...e, state: "done" as const, read: true, kept: undefined, snoozed: undefined, questions: undefined, pinned: undefined }
     : e.state === "done" ? { ...e, state: "open" as const } : e)))
-  return Promise.all(ids.map((id) => op("inbox.done", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't mark it done" : "Couldn't bring it back")(e); return false })
+  return Promise.all(ids.map((id) => op("inbox.settle", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't settle it" : "Couldn't bring it back")(e); return false })
 }
 
 /** Whether it can be snoozed: not a gate nor a permission asked (they'd wait unseen), nor what's done. */

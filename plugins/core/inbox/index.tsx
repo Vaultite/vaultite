@@ -48,7 +48,7 @@ function Background({ store }: { store: Store }) {
   useEffect(() => follow(), [])
   useEffect(() => onFresh((e) => announce(e, settings.get())), [])
   // A result that just arrived (an agent's inbox_add, a clip) or a snoozed one whose time came: said once. Not the ones
-  // there when the app loads, nor one brought back (Undo, Unsnooze), nor a report (its session's row tells it).
+  // there when the app loads, nor one brought back (Undo, Wake), nor a report (its session's row tells it).
   const known = useRef<Set<string> | null>(null)
   const away = useRef(new Map<string, number>())
   useBack(store)
@@ -156,10 +156,10 @@ export default definePlugin({
     return [
       r.status === "done"
         ? { label: "Mark as new", icon: RotateCcw, section: "actions", run: () => markDone(r, false) }
-        : { label: "Done", icon: Check, section: "actions", run: () => markDone(r) },
+        : { label: "Settle", icon: Check, section: "actions", run: () => markDone(r) },
       { label: "File to…", icon: FolderInput, section: "actions", run: () => fileTo(r) },
       ...(r.status === "done" ? [] : snoozed(r.snoozed)
-        ? [{ label: "Unsnooze", icon: AlarmClockOff, section: "actions", run: () => snoozeKeys([`r:${r.id}`], null) }]
+        ? [{ label: "Wake", icon: AlarmClockOff, section: "actions", run: () => snoozeKeys([`r:${r.id}`], null) }]
         : [{ label: "Snooze", icon: Clock, section: "actions", run: () => {}, items: snoozeItems([`r:${r.id}`]) }]),
     ]
   },
@@ -168,7 +168,7 @@ export default definePlugin({
     // (Gmail's keys, on the Inbox's rows: the page's and the panel's)
     { id: "inbox:next", name: "Move to the next inbox row", keys: ["J"], when: keysOnThreads, run: byKey(() => stepRow(1), (_, id) => stepSheet(id, 1)), icon: ArrowDown },
     { id: "inbox:previous", name: "Move to the previous inbox row", keys: ["K"], when: keysOnThreads, run: byKey(() => stepRow(-1), (_, id) => stepSheet(id, -1)), icon: ArrowUp },
-    { id: "inbox:done", name: "Mark the inbox row done", keys: ["E"], when: keysOnThreads, run: byKey(doneByKey, (s) => press(s, "[data-session-done]")), icon: Check },
+    { id: "inbox:settle", name: "Settle the inbox row", keys: ["E"], when: keysOnThreads, run: byKey(doneByKey, (s) => press(s, "[data-session-done]")), icon: Check },
     { id: "inbox:snooze", name: "Snooze the inbox row", keys: ["B"], when: keysOnInbox, run: snoozeByKey, icon: Clock },
     { id: "inbox:reply", name: "Reply to the inbox row's session", keys: ["R"], when: keysOnThreads,
       run: byKey(replyByKey, (s) => s.querySelector<HTMLTextAreaElement>("textarea[data-reply]")?.focus()), icon: MessageSquareReply },

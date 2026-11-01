@@ -448,15 +448,18 @@ export default async ($: VaultTest) => {
       // The thread done (its Done, vau inbox done <id>): out of what needs you, its report archived with it; undone, open again.
       await api("POST", "ops/inbox.report", { title: "Done by its thread", work: "fix", tldr: "x", summary: "x", session: "sess-done-thread", agent: "claude" })
       const th = (await rows()).find((e) => e.session === "sess-done-thread")
-      const [ds, db] = await api("POST", "ops/inbox.done", { item: th.id })
+      const [ds, db] = await api("POST", "ops/inbox.settle", { item: th.id })
       let now = (await rows()).find((e) => e.id === th.id)
-      check("inbox.done <id>: the thread is done, its report archived", ds === 200 && db.done === true && now?.state === "done" && now.link === "Inbox/.archive/Fix done · Done by its thread.md" &&
+      check("inbox.settle <id>: the thread is settled, its report archived", ds === 200 && db.done === true && now?.state === "done" && now.link === "Inbox/.archive/Fix done · Done by its thread.md" &&
         exists("Inbox/.archive/Fix done · Done by its thread.md") && !exists("Inbox/Fix done · Done by its thread.md"), [ds, db, now])
-      await api("POST", "ops/inbox.done", { item: th.id, undo: true })
+      await api("POST", "ops/inbox.settle", { item: th.id, undo: true })
       now = (await rows()).find((e) => e.id === th.id)
-      check("inbox.done <id> --undo: open again, its record staying archived", now?.state === "open" && exists("Inbox/.archive/Fix done · Done by its thread.md"), now)
+      check("inbox.settle <id> --undo: open again, its record staying archived", now?.state === "open" && exists("Inbox/.archive/Fix done · Done by its thread.md"), now)
       cr = await vau("inbox", "done", th.id)
-      check("vau inbox done <id>", cr.code === 0 && (await rows()).find((e) => e.id === th.id)?.state === "done", cr)
+      check("vau inbox done <id>: settle's old name still settles it", cr.code === 0 && (await rows()).find((e) => e.id === th.id)?.state === "done", cr)
+      await vau("inbox", "settle", th.id, "--undo")
+      cr = await vau("inbox", "settle", th.id)
+      check("vau inbox settle <id>", cr.code === 0 && /^Settled/.test(cr.out) && (await rows()).find((e) => e.id === th.id)?.state === "done", cr)
     }
     {
       // Its event goes where the result goes: Done archives it (and reads the event, it's dealt with), Back to review
@@ -678,7 +681,7 @@ export default async ($: VaultTest) => {
       const brief = await vau("inbox"), listed = await vau("inbox", "--done")
       const [, opened] = await api("GET", "inbox/events?open=1&all=1")
       check("inbox events ?open=1: only what isn't done (the widgets', the watch's)", opened.events.length > 0 && !opened.events.some((x: Any) => x.state === "done") && !opened.events.some((x: Any) => x.id === eid), opened.events.length)
-      check("vau inbox: done ones counted, listed with --done", /\nDone: 1 \(vau inbox --done/.test(brief.out) && new RegExp(`\\nDone:\\n.*\\(${eid}\\)`).test(listed.out), [brief.out.slice(-200), listed.out.slice(-300)])
+      check("vau inbox: settled ones counted, listed with --done", /\nSettled: 1 \(vau inbox --done/.test(brief.out) && new RegExp(`\\nSettled:\\n.*\\(${eid}\\)`).test(listed.out), [brief.out.slice(-200), listed.out.slice(-300)])
       cr = await vau("inbox", "unread")
       check("vau inbox unread: needs ids", cr.code !== 0, cr)
     }
@@ -913,6 +916,10 @@ export default async ($: VaultTest) => {
     cr = await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "now")
     ;[, items] = await api("GET", "inbox")
     check("vau inbox snooze --until now: back at once, on top", cr.code === 0 && firstOpen() === "Inbox/Snooze me" && /Back in the inbox/.test(cr.out), [cr, read("Inbox/Snooze me.md")])
+    await vau("inbox", "snooze", "Inbox/Snooze me.md", "--until", "tomorrow")
+    cr = await vau("inbox", "wake", "Inbox/Snooze me.md")
+    ;[, items] = await api("GET", "inbox")
+    check("vau inbox wake: back at once, on top", cr.code === 0 && firstOpen() === "Inbox/Snooze me" && /Woken/.test(cr.out), [cr, read("Inbox/Snooze me.md")])
     let [, b] = await api("PUT", "inbox/Snooze me", { snoozed: "2099-01-01 08:00:00" })
     ;[, b] = await api("PUT", "inbox/Snooze me", { status: "done" })
     check("snooze: done isn't snoozed any more", b.status === "done" && !b.snoozed, b)

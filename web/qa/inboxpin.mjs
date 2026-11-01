@@ -41,7 +41,7 @@ check("a pinned row's menu has Unpin", (await page.getByRole("menuitem", { name:
 await page.keyboard.press("Escape")
 
 // Done unpins: the result leaves Pinned, archived.
-await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).getByRole("button", { name: "Done" }).click()
+await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).getByRole("button", { name: "Settle" }).click()
 check("done, it leaves Pinned", !!(await until(async () => (await pinned.locator("[data-result]").count()) === 0)))
 check("and isn't pinned any more", !!(await until(async () => (await api("GET", "inbox")).find((r) => r.title === "Lighthouse launch notes")?.pinned !== true)))
 

@@ -11,6 +11,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Format note**: the Linter plugin tidies a note's Markdown by rules you choose in its settings (trailing spaces,
   extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
   format a note or a folder (`vau linter.format`).
+- **The inbox's verbs: pin, settle, snooze, wake**: Done is Settle (its folded list Settled) and Unsnooze is Wake, in
+  the app and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox done` and `inbox.done` still work.
 - **Screen readers follow the file tree**: the row the keyboard is on is the tree item, so a screen reader says whether
   a folder is open, how deep a row is, where it is among its folder's rows and whether it's selected.
 - **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit
@@ -109,9 +111,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   page you're on, as F6 does.
 - **Screen readers stay quiet while you type**: the status bar no longer reads out its word and character counts
   at every keystroke; it's still there to read on its own.
-- **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
+- **The inbox by keyboard**: on its rows, J and K move, E settles one and goes on to the next, B snoozes, P pins,
   Shift+I and Shift+U read and unread; G I opens the inbox. In a session's sheet J and K go to the next and previous
-  session, E marks it done, P pins, R replies. Each is a command, rebindable in Hotkeys.
+  session, E settles it, P pins, R replies. Each is a command, rebindable in Hotkeys.
 - **Code blocks without a language sit evenly**: no empty label line over their code; the copy button shows beside
   the first line, in notes and on dashboards.
 - **A file's problems read as sentences**: the note over a file that can't be fully read shows its values as code,
@@ -143,6 +145,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   JPEG.
 - **Only the owner runs commands in the app's window**: palette commands and terminal tabs sent to the window (`vau
   command`, `vau open view:terminal/...`) answer only this machine's owner, as terminals do.
+  result on top under Pinned whatever it waits on, until it's settled or unpinned.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
   cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its

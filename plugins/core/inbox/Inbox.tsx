@@ -106,7 +106,7 @@ export const doneByKey = () => onRow((key) => {
   if (r) void (open(r) ? markDone(r) : reopen(r))
   else if (e) markManyEventsDone([e], e.state !== "done")
 })
-/** B: the Snooze choices under the row (what's snoozed: Unsnooze). */
+/** B: the Snooze choices under the row (what's snoozed: Wake). */
 export const snoozeByKey = () => onRow((key, row) => {
   const r = resultOf(key), e = eventOf(key)
   if (r ? snoozed(r.snoozed) : e ? snoozed(e.snoozed) : false) return snoozeKeys([key], null)
@@ -170,7 +170,7 @@ export function markDone(r: InboxItem, done = true) {
   const next = done && currentFile() === pathOf(r) ? nextToReview(r) : undefined
   const now = change(r, { status: done ? "done" : "new" })
   if (next) openFile(pathOf(next))
-  if (done) notify(`Marked “${r.title}” done`, { action: { label: "Undo", run: async () => {
+  if (done) notify(`Settled “${r.title}”`, { action: { label: "Undo", run: async () => {
     const back = await change(await now, { status: "new" })
     if (next) openFile(pathOf(back))
   } } })
@@ -194,7 +194,7 @@ const unInbox = async (p: string) => { await setProperty(p, "status", undefined)
 // ---------- snooze: out of the way until a time, then back on top (the server wakes it, and tells the phone)
 
 /** Snooze results and events (by selection key) till `at`, or bring them back now (null: their snooze ends now, so
- *  they're on top); the result being read gives its tab to the next one, as Done does. Undo puts each as it was. */
+ *  they're on top); the result being read gives its tab to the next one, as Settle does. Undo puts each as it was. */
 export function snoozeKeys(keys: string[], at: Date | null) {
   const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && open(r))
   const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && (at ? snoozable(e) : !!e.snoozed))
@@ -272,7 +272,7 @@ const resultKey = (r: InboxItem) => `r:${r.id}`, eventKey = (e: InboxEvent) => `
 async function markManyDone(list: InboxItem[], done = true) {
   const all = await Promise.allSettled(list.map((r) => change(r, { status: done ? "done" : "new", ...(done ? {} : { archived: false }) })))
   const now = all.flatMap((x) => (x.status === "fulfilled" ? [x.value] : []))
-  if (now.length) notify(`${done ? "Marked" : "Put back"} ${plural(now.length, "result")} ${done ? "done" : "to review"}`,
+  if (now.length) notify(done ? `Settled ${plural(now.length, "result")}` : `Put back ${plural(now.length, "result")} to review`,
     { action: { label: "Undo", run: () => void markManyDone(now, !done) } })
 }
 
@@ -280,7 +280,7 @@ async function markManyDone(list: InboxItem[], done = true) {
 function markManyEventsDone(evs: InboxEvent[], done = true) {
   if (!evs.length) return
   void markEventsDone(evs.map((e) => e.id), done)
-  notify(evs.length === 1 ? `${done ? "Done" : "Back in the inbox"}: “${evs[0].title}”` : `${done ? "Marked" : "Put back"} ${plural(evs.length, "item")} ${done ? "done" : "in the inbox"}`,
+  notify(evs.length === 1 ? (done ? `Settled “${evs[0].title}”` : `Back in the inbox: “${evs[0].title}”`) : (done ? `Settled ${plural(evs.length, "item")}` : `Put back ${plural(evs.length, "item")} in the inbox`),
     { action: { label: "Undo", run: () => void markEventsDone(evs.map((e) => e.id), !done) } })
 }
 
@@ -292,7 +292,7 @@ function selectionItems(store: Store, keys: string[]): MenuItem[] {
   const evs = events.filter((e) => keys.includes(eventKey(e)))
   const live = evs.filter((e) => e.state !== "done"), gone = evs.filter((e) => e.state === "done")
   const out: MenuItem[] = []
-  if (fresh.length || live.length) out.push({ label: "Done", icon: Check, run: () => { if (fresh.length) void markManyDone(fresh); markManyEventsDone(live) } })
+  if (fresh.length || live.length) out.push({ label: "Settle", icon: Check, run: () => { if (fresh.length) void markManyDone(fresh); markManyEventsDone(live) } })
   if (fresh.length) out.push({ label: "File to…", icon: FolderInput, run: () => askMoveMany(fresh.map(pathOf), { before: unInbox }) })
   // (what's snoozed is in the Snoozed list: picked there, it comes back)
   const later = [...results.filter((r) => open(r) && snoozed(r.snoozed)).map(resultKey), ...live.filter((e) => snoozed(e.snoozed)).map(eventKey)]
@@ -301,7 +301,7 @@ function selectionItems(store: Store, keys: string[]): MenuItem[] {
   if (unpinned.length) out.push(pinItem(unpinned, false))
   else if (pinnable.length || live.length) out.push(pinItem([...pinnable.map(resultKey), ...live.map(eventKey)], true))
   if (soon.length) out.push(snoozeMenu(soon))
-  if (later.length) out.push({ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys(later, null) })
+  if (later.length) out.push({ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys(later, null) })
   if (dealt.length) out.push({ label: "Back to review", icon: RotateCcw, run: () => void markManyDone(dealt, false) })
   if (gone.length) out.push({ label: "Back to inbox", icon: RotateCcw, run: () => markManyEventsDone(gone, false) })
   if (evs.some((e) => !e.read)) out.push({ label: "Mark as read", icon: MailOpen, sep: out.length > 0, run: () => markRead(evs.map((e) => e.id)) })
@@ -317,17 +317,17 @@ function useInboxSelect(store: Store) {
 /** Phones: a row swiped sideways shows what's done with it most (SwipeRow): Done and File to…, back to review, Back. */
 const resultSwipe = (r: InboxItem): SwipeAction[] => waiting(r)
   ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) }, { label: "File to", icon: FolderInput, run: () => fileTo(r) },
-    { label: "Done", icon: Check, run: () => markDone(r), removes: true }]
-  : open(r) ? [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
+    { label: "Settle", icon: Check, run: () => markDone(r), removes: true }]
+  : open(r) ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
   : [{ label: "To review", icon: RotateCcw, run: () => reopen(r), removes: true }]
 const eventSwipe = (e: InboxEvent): SwipeAction[] => e.state === "done"
   ? [{ label: "Back", icon: RotateCcw, run: () => markManyEventsDone([e], false), removes: true }]
   : snoozed(e.snoozed)
-  ? [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([eventKey(e)], null), removes: true }]
+  ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([eventKey(e)], null), removes: true }]
   : [
     ...(!e.read ? [{ label: "Read", icon: MailOpen, run: () => markRead([e.id]) }] : []),
     ...(snoozable(e) ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([eventKey(e)]) }] : []),
-    { label: "Done", icon: Check, run: () => markManyEventsDone([e]), removes: true },
+    { label: "Settle", icon: Check, run: () => markManyEventsDone([e]), removes: true },
   ]
 
 // (then what other plugins do with a file, like Dispatch's agents)
@@ -349,7 +349,7 @@ const reopen = (r: InboxItem) => change(r, { status: "new", archived: false })
 const settledItems = (r: InboxItem): MenuItem[] => [resultItems(r)[0], { label: "Back to review", icon: RotateCcw, sep: true, run: () => void reopen(r) }]
 
 /** A result's right-click: Done, then what its … button has. */
-const resultItemsMenu = (r: InboxItem) => () => [{ label: "Done", icon: Check, run: () => markDone(r) }, { ...resultItems(r)[0], sep: true }, ...resultItems(r).slice(1)]
+const resultItemsMenu = (r: InboxItem) => () => [{ label: "Settle", icon: Check, run: () => markDone(r) }, { ...resultItems(r)[0], sep: true }, ...resultItems(r).slice(1)]
 
 /** An event's right-click. `shownNew`: drawn as new (unread, or still new on the Inbox page); `touched`: the user read
  *  or unread it here (the page stops drawing it as new). */
@@ -362,7 +362,7 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   ...(snoozable(e) ? [snoozeMenu([eventKey(e)])] : []),
   e.state === "done"
     ? { label: "Back to inbox", icon: RotateCcw, sep: true, run: () => markManyEventsDone([e], false) }
-    : { label: "Done", icon: Check, sep: true, run: () => { markManyEventsDone([e]); touched?.(e.id) } },
+    : { label: "Settle", icon: Check, sep: true, run: () => { markManyEventsDone([e]); touched?.(e.id) } },
   ...(e.state === "done" ? [{ label: "Delete", icon: Trash2, run: () => void forget(e.id) }] : []),
 ]
 
@@ -524,7 +524,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
       icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
       <GateButtons e={e} className={small} size="size-3.5" />
       {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
-      {!answerable(e) && <HeadingButton icon={Check} label="Done" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
+      {!answerable(e) && <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
     </PanelRow>
   )
   return (
@@ -539,7 +539,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
         {[...l.pinned.results, ...l.review].map((r) => (
           <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} tag={<>{r.pinned && pin}<DraftTag to={pathOf(r)} short /></>} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
             icon={<Badged on><FileText className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /></Badged>} onClick={() => openFile(pathOf(r))} onContextMenu={menuFor(rowMenu(SELECT, resultKey(r), resultItemsMenu(r)))}>
-            <HeadingButton icon={Check} label="Done" onClick={stop(() => { haptic("medium"); void markDone(r) })} />
+            <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); void markDone(r) })} />
             <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([resultKey(r)])} />
             <HeadingButton icon={MoreHorizontal} label="More" onClick={(e) => { e.preventDefault(); e.stopPropagation(); moreMenu(e, r) }} />
           </PanelRow>
@@ -560,7 +560,7 @@ const pageSwipe = "-mx-2 bg-origin-content px-2"
 const pickedRow = "data-[selected]:!bg-transparent data-[selected]:before:bg-primary/15"
 
 function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
-  const meta = [r.from && `from ${r.from}`, r.source && host(r.source), (r.updated || r.created) && fmtAgo((r.updated || r.created)!), done && "done"]
+  const meta = [r.from && `from ${r.from}`, r.source && host(r.source), (r.updated || r.created) && fmtAgo((r.updated || r.created)!), done && "settled"]
     .filter(Boolean).join(" · ")
   const key = resultKey(r), picked = useSelected(SELECT, key)
   const draft = useHasDraft(pathOf(r))
@@ -578,7 +578,7 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
       {done
         ? <button type="button" className={iconButton} aria-label="Back to review" data-tip="Back to review" onClick={() => { haptic("medium"); void reopen(r) }}><RotateCcw className="size-4" strokeWidth={2.25} /></button>
         : <>
-          <button type="button" className={iconButton} aria-label="Done" data-tip="Done" onClick={() => { haptic("medium"); void markDone(r) }}><Check className="size-4" strokeWidth={2.25} /></button>
+          <button type="button" className={iconButton} aria-label="Settle" data-tip="Settle" onClick={() => { haptic("medium"); void markDone(r) }}><Check className="size-4" strokeWidth={2.25} /></button>
           {/* (a phone swipes for it) */}
           <button type="button" className={cn(iconButton, "max-md:hidden")} aria-label="Snooze" data-tip="Snooze" data-snooze onClick={snoozeBelow([resultKey(r)])}><Clock className="size-4" strokeWidth={2.25} /></button>
           <button type="button" className={iconButton} aria-label="More" data-tip="More" onClick={(e) => moreMenu(e, r)}><MoreHorizontal className="size-4" strokeWidth={2.25} /></button>
@@ -639,7 +639,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums max-md:text-[15px]">{fmtAgo(e.t, { short: true })}</span>}
       </button>
-      {/* (a request's Approve takes its time's place and Deny its Done's, so the rows stay in line) */}
+      {/* (a request's Approve takes its time's place and Deny its Settle's, so the rows stay in line) */}
       <GateButtons e={e} className={iconButton} size="size-4" />
       {inPlace && (
         <button type="button" className={cn(iconButton, !replying && "md:invisible md:group-hover/ev:visible", replying && "text-foreground")} aria-label="Reply" data-tip="Reply"
@@ -648,7 +648,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
       {!asks && (e.state === "done"
         ? <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Back to inbox" data-tip="Back to inbox" onClick={() => { haptic("medium"); markManyEventsDone([e], false) }}>
           <RotateCcw className="size-4" strokeWidth={2.25} /></button>
-        : <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Done" data-tip="Done" data-done onClick={() => { haptic("medium"); markManyEventsDone([e]); touched?.(e.id) }}>
+        : <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Settle" data-tip="Settle" data-done onClick={() => { haptic("medium"); markManyEventsDone([e]); touched?.(e.id) }}>
           <Check className="size-4" strokeWidth={2.25} /></button>)}
     </div>
     {replying && inPlace && <RowReply e={e} close={(back) => { setReplying(false); if (back) document.querySelector<HTMLElement>(`[data-event="${CSS.escape(e.id)}"] [data-keyrow]`)?.focus({ preventScroll: true }) }} />}
@@ -657,7 +657,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   )
 }
 
-/** What's out of the way, last on the page and folded: "Snoozed N", "Done N". */
+/** What's out of the way, last on the page and folded: "Snoozed N", "Settled N". */
 function Folded({ label, n, attr, children }: { label: string; n: number; attr: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   if (!n) return null
@@ -688,7 +688,7 @@ function SnoozedRow({ sel, title, until, icon, open: openIt, swipe }: { sel: str
   return (
     <SwipeRow actions={swipe} className={pageSwipe}>
       <div data-snoozed={sel} data-select-key={sel} {...selectedAttr(picked)}
-        onContextMenu={menuFor(rowMenu(SELECT, sel, () => [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([sel], null) }, snoozeMenu([sel])]))}
+        onContextMenu={menuFor(rowMenu(SELECT, sel, () => [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([sel], null) }, snoozeMenu([sel])]))}
         className={cn("group/sn relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]", pickedRow)}>
         <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(e) => { if (!selectClick(e, SELECT, sel)) openIt() }}>
           {icon}
@@ -697,7 +697,7 @@ function SnoozedRow({ sel, title, until, icon, open: openIt, swipe }: { sel: str
             <span className="block truncate text-[13px] text-muted-foreground max-md:text-[15px]">Until {whenText(new Date(until)).replace(/^Tomorrow/, "tomorrow")}</span>
           </span>
         </button>
-        <button type="button" className={iconButton} aria-label="Unsnooze" data-tip="Unsnooze" onClick={() => { haptic("medium"); snoozeKeys([sel], null) }}>
+        <button type="button" className={iconButton} aria-label="Wake" data-tip="Wake" onClick={() => { haptic("medium"); snoozeKeys([sel], null) }}>
           <AlarmClockOff className="size-4" strokeWidth={2.25} /></button>
       </div>
     </SwipeRow>
@@ -709,7 +709,7 @@ function Settled({ store, fresh }: { store: Store; fresh?: ReadonlySet<string> }
   const { events: evs, results } = listsOf(store, useEvents().events, fresh).done
   const rows = [...evs.map((e) => ({ at: e.t, row: <EventRow key={e.id} e={e} /> })), ...results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} done /> }))]
     .sort((a, b) => b.at - a.at)
-  return <Folded label="Done" n={rows.length} attr="data-inbox-settled">{rows.map((x) => x.row)}</Folded>
+  return <Folded label="Settled" n={rows.length} attr="data-inbox-settled">{rows.map((x) => x.row)}</Folded>
 }
 
 /** One of the lists, under its heading, with "Show N more" past `max`. */
@@ -799,7 +799,7 @@ export function InboxPage({ store, focused }: { store: Store; focused: boolean }
         <h1 className="flex-1 text-[22px] leading-[28px] font-bold max-md:hidden">Inbox</h1>
         {done > 0 && (
           <button type="button" onClick={clearDone} data-inbox-clear className="flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[13px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:ml-auto">
-            <Trash2 className="size-3.5" strokeWidth={2.25} />Clear done
+            <Trash2 className="size-3.5" strokeWidth={2.25} />Clear settled
           </button>
         )}
         {/* Phones (no ⌘ or ⇧): pick several with taps, then the bar's Actions. */}
@@ -811,7 +811,7 @@ export function InboxPage({ store, focused }: { store: Store; focused: boolean }
         )}
       </div>
       <p className="mb-4 text-[13px] text-muted-foreground max-md:text-[15px]">
-        Your coding agents' sessions when they need you (a question, an approval, an answer or a report to read) and results to review. Reading one doesn't settle it: it stays until you mark it done, or you reply and the agent finishes with nothing more for you.
+        Your coding agents' sessions when they need you (a question, an approval, an answer or a report to read) and results to review. Reading one doesn't settle it: it stays until you settle it, or you reply and the agent finishes with nothing more for you.
       </p>
       <Lists store={store} events={20} results={100} fresh={fresh} touched={touched} all />
     </div>

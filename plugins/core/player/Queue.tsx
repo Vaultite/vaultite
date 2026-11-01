@@ -88,7 +88,7 @@ function QueueRow({ e, place }: { e: Entry; place?: Place }) {
   const pct = d && t > 5 && !place?.done ? Math.min(100, (t / d) * 100) : null
   // (it leaves the queue at once: the store, which the next refresh replaces)
   const done = () => optimistic((s) => (s.inbox ? { ...s, inbox: s.inbox.map((r) => (r.id === e.id ? { ...r, status: "done" } : r)) } : s),
-    () => op("inbox.done", { path: e.note }), "Couldn't mark it done").catch(() => {})
+    () => op("inbox.settle", { item: e.note }), "Couldn't settle it").catch(() => {})
   const toggle = () => {
     if (!e.media) return
     if (playing) { if (now!.el.paused) void now!.el.play(); else now!.el.pause() } else playFile(e.media, e.note)

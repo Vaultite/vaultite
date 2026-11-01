@@ -25,7 +25,7 @@ const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answ
 /** Whether thread `x` is session `p` (by its terminal, else its session id). */
 const isSession = (p: { terminal?: string; session?: string }, x: InboxEvent) => x.kind === "session" && !x.machine &&
   ((!!p.terminal && x.terminal === p.terminal) || (!!p.session && x.session === p.session))
-const STATE: Record<string, string> = { open: "Needs you", working: "Working", done: "Done" }
+const STATE: Record<string, string> = { open: "Needs you", working: "Working", done: "Settled" }
 
 /** Who delegated this session its task (its thread, else its session), and the subagents it delegated to. */
 function Lineage({ e }: { e: InboxEvent }) {
@@ -76,7 +76,7 @@ export function SessionSheet({ id }: { id: string }) {
   useEffect(() => { if (e && !e.read && !answerable(e)) markRead([e.id]) }, [e?.id, e?.t]) // eslint-disable-line react-hooks/exhaustive-deps
   if (!e) return <Empty>This session is no longer in the inbox.</Empty>
   const name = agent?.label ?? (e.source ? e.source[0].toUpperCase() + e.source.slice(1) : "the agent")
-  const why = e.state === "working" ? "Working on it" : e.state === "done" ? "Done" : WHY[e.ask ?? ""] ?? "Needs you"
+  const why = e.state === "working" ? "Working on it" : e.state === "done" ? "Settled" : WHY[e.ask ?? ""] ?? "Needs you"
   const sub = [why, name, e.machineLabel && `on ${e.machineLabel}`, fmtAgo(e.t)].filter(Boolean).join(" · ")
   const asks = answerable(e)
   const blocked = e.state === "open" && BLOCKED.includes(e.ask ?? "")
@@ -85,7 +85,7 @@ export function SessionSheet({ id }: { id: string }) {
     void markEventsDone([e.id], to)
     // (dealt with: the sheet goes, as a mail archived does)
     if (to) backDetail()
-    notify(to ? `Done: “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void markEventsDone([e.id], !to) } })
+    notify(to ? `Settled “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void markEventsDone([e.id], !to) } })
   }
   const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine, host: e.host })
   return (
@@ -96,7 +96,7 @@ export function SessionSheet({ id }: { id: string }) {
           <div className="mt-3 flex">
             {e.state === "done"
               ? <Button className="h-11 px-3 md:h-8" data-session-done="undo" onClick={() => done(false)}><RotateCcw className="size-4" /> Back to inbox</Button>
-              : <Button className="h-11 px-3 md:h-8" data-session-done onClick={() => done(true)}><CheckCheck className="size-4" /> Done with this</Button>}
+              : <Button className="h-11 px-3 md:h-8" data-session-done onClick={() => done(true)}><CheckCheck className="size-4" /> Settle</Button>}
             {e.state !== "done" && (
               <Button look="quiet" className="ml-2 h-11 px-3 md:h-8" data-session-pin={e.pinned ? "on" : "off"} onClick={() => { haptic("medium"); pinEvents([e.id], !e.pinned) }}>
                 {e.pinned ? <><PinOff className="size-4" /> Unpin</> : <><Pin className="size-4" /> Pin</>}
