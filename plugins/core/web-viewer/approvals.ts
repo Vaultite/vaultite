@@ -1,6 +1,7 @@
 // Pages a phone's Safari opens (over https: passkeys need it) to approve an agent's login or add the passkey that does;
 // the desktop app checks their answers (electron/browser/logins.ts). Routes, never ops: no agent answers for the user.
-import { HTTPError, type Plugin, servedAt, Text } from "../../../core/plugins.ts"
+import { type Plugin, servedAt, Text } from "../../../core/plugins.ts"
+import { desktopOf } from "./machinecalls.ts"
 
 const HEADERS = { "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }
@@ -80,9 +81,7 @@ const ADD = `
 
 export function approvals(plugin: Plugin) {
   const what = "Approving agents' logins"
-  const desktop = async <T>(name: string, ...args: unknown[]) => {
-    try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new HTTPError(409, (e as Error).message) }
-  }
+  const desktop = desktopOf(plugin)
   const o = { lock: false, sync: false }
   plugin.route("GET", "web-viewer/approve", async (req) => { await plugin.ownerOnly(req, what); return page("Approve a login", APPROVE) }, o)
   plugin.route("GET", "web-viewer/approve/options", async (req) => { await plugin.ownerOnly(req, what); return desktop("agent:login-options", String(req.query.grant ?? "")) }, o)

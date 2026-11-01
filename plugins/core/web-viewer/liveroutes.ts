@@ -3,7 +3,7 @@
 import type { IncomingMessage } from "node:http"
 import type { RawData, WebSocket } from "ws"
 import { HTTPError, inDesktop, machineSocket, pipeSockets, splitMachine, type Machine, type Plugin } from "../../../core/plugins.ts"
-import { askThere, machineOf, otherBrowsers } from "./machinecalls.ts"
+import { askThere, desktopOf, machineOf, otherBrowsers } from "./machinecalls.ts"
 import type { LiveStep, LiveTab } from "./livetabs.ts"
 
 const RENEW_MS = 10_000
@@ -13,9 +13,7 @@ const STEP = /\bbrowser tab (\d+)\b/
 
 export function liveView(plugin: Plugin) {
   const what = "The browser's live view"
-  const desktop = async <T>(name: string, ...args: unknown[]) => {
-    try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new HTTPError(409, (e as Error).message) }
-  }
+  const desktop = desktopOf(plugin)
   /** "3" or "3@m1": the tab, and the other machine whose browser has it (null: this server's, its own id too). */
   const tabOf = async (raw: string): Promise<[number, Machine | null]> => {
     const [n, id] = splitMachine(raw)

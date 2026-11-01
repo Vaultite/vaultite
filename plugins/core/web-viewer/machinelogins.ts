@@ -1,16 +1,14 @@
 // Other machines' logins (Machines): who's signed in where, and a login copied there sealed for that app's key
 // (electron/web.ts), so servers never read a cookie. Owner only, and routes, never ops: no agent copies a login.
 import { HTTPError, inDesktop, type Plugin } from "../../../core/plugins.ts"
-import { askThere, machineOf, otherBrowsers } from "./machinecalls.ts"
+import { askThere, desktopOf, machineOf, otherBrowsers } from "./machinecalls.ts"
 
 /** A machine's sets of logins with sites, by profile (each a list of the desktop app's WebSite). */
 export type MachineLogins = { machine: string; label: string; sets: Record<string, unknown[]> }
 
 export function machineLogins(plugin: Plugin) {
   const what = "Other machines' logins"
-  const desktop = async <T>(name: string, ...args: unknown[]) => {
-    try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new HTTPError(409, (e as Error).message) }
-  }
+  const desktop = desktopOf(plugin)
   const o = { lock: false, sync: false }
 
   // The other machines' sets of logins among `profiles` (the vault's, so the same on each); `local`: this server's

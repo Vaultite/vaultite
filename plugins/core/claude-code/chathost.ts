@@ -434,6 +434,22 @@ const lastLines = (lines: string[]) => lines.join("").trim().split("\n").slice(-
 
 // ---------- the socket: requests {op, re, ...} answered {re, ...} or {re, error}; `follow` hears every Event
 
+/** Each message a socket of the keeper's protocol brings (a JSON object a line; an unreadable line skipped). */
+export function eachMessage(sock: net.Socket, fn: (m: Record<string, unknown>) => void) {
+  let buf = ""
+  sock.setEncoding("utf8")
+  sock.on("data", (chunk: string) => {
+    buf += chunk
+    for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
+      const line = buf.slice(0, nl)
+      buf = buf.slice(nl + 1)
+      let m: Record<string, unknown>
+      try { m = JSON.parse(line) } catch { continue }
+      fn(m)
+    }
+  })
+}
+
 /** Serve `host` at socket `sock` (a Unix socket, or a named pipe on Windows), until `stop`. */
 export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) => void; hello?: () => Record<string, unknown> } = {}) {
   const conns = new Set<net.Socket>(), followers = new Set<net.Socket>()
@@ -461,19 +477,8 @@ export function listen(host: Host, sock: string, o: { log?: (...a: unknown[]) =>
   }
   const server = net.createServer((c) => {
     conns.add(c)
-    let buf = ""
-    c.setEncoding("utf8")
-    c.on("data", (chunk: string) => {
-      buf += chunk
-      for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
-        const line = buf.slice(0, nl)
-        buf = buf.slice(nl + 1)
-        let m: Record<string, unknown>
-        try { m = JSON.parse(line) } catch { continue }
-        handle(c, m).then((out) => { if (m.re !== undefined) send(c, { re: m.re, ...out }) },
-          (e) => { if (m.re !== undefined) send(c, { re: m.re, error: String((e as Error)?.message ?? e) }) })
-      }
-    })
+    eachMessage(c, (m) => handle(c, m).then((out) => { if (m.re !== undefined) send(c, { re: m.re, ...out }) },
+      (e) => { if (m.re !== undefined) send(c, { re: m.re, error: String((e as Error)?.message ?? e) }) }))
     const gone = () => { conns.delete(c); followers.delete(c) }
     c.on("close", gone)
     c.on("error", gone)

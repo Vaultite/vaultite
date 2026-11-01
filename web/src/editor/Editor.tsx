@@ -326,6 +326,15 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       EditorView.updateListener.of((u) => { traceUpdate(u, docPath ?? label ?? ""); if (u.docChanged) textChanged(u.view, u.changes) }),
     ]
     const sight = [sightMargins, followReader]
+    // (what a file's raw editor and a code editor share: plain text, Tab indents)
+    const plain = [
+      edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
+      keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
+      EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": label ?? "File" }),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.remote))) cb.current.onChange(u.state.doc.toString(), 0)
+      }),
+    ]
     // (as this tab's editor of the file was left, its history with it, when it went: editor/kept.ts)
     const keepAs = keep ? keptKey(tab, keep) : null
     let restored = false
@@ -345,22 +354,12 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           Prec.highest(plugged.current.of([])),
           leaving, sight, history(), conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
           lang.current.of([]), syntaxHighlighting(codeStyle),
-          edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
-          keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
-          EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": label ?? "File" }),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.remote))) cb.current.onChange(u.state.doc.toString(), 0)
-          }),
+          plain,
         ] : code ? [
           Prec.highest(plugged.current.of([])),
           leaving, sight, history(), conflicts, indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
           code === "json" ? [jsonLang(), syntaxHighlighting(jsonStyle)] : code === "html" ? [htmlLang(), syntaxHighlighting(htmlStyle)] : [],
-          edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
-          keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
-          EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off", autocapitalize: "off", "aria-label": label ?? "File" }),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.remote))) cb.current.onChange(u.state.doc.toString(), 0)
-          }),
+          plain,
         ] : [
           Prec.highest(fenceMenu), Prec.highest(plugged.current.of([])),
           leaving, sight, history(), conflicts,

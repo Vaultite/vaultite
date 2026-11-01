@@ -1,5 +1,11 @@
-// Another machine's browser (Machines), asked through its server: the same route there. The live view's and logins'.
+// The owner's routes' browser: this machine's desktop app, or another machine's (Machines), asked through its server
+// (the same route there). The live view's, logins' and approvals'.
 import { HTTPError, MACHINE_CLIENT, type Machine, type Plugin } from "../../../core/plugins.ts"
+
+/** This machine's desktop app, asked by an owner's route: its refusal a 409. */
+export const desktopOf = (plugin: Plugin) => async <T>(name: string, ...args: unknown[]) => {
+  try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new HTTPError(409, (e as Error).message) }
+}
 
 /** The machine `id` names, answering (null: this server's own, by its id or none). */
 export async function machineOf(plugin: Plugin, id: string): Promise<Machine | null> {

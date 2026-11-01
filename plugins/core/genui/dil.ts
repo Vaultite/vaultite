@@ -329,19 +329,18 @@ export function stateNames(nodes: Node[]): string[] {
   return out
 }
 
-/** The live values a fence keeps (`{@state …}`), {} when none or unreadable. */
-export function savedState(src: string): Record<string, unknown> {
-  const m = STATE.exec(src)
+/** The JSON object a fence's line `line` matches holds, {} when none or unreadable. */
+function savedObject(line: RegExp, src: string) {
+  const m = line.exec(src)
   if (!m) return {}
   try { const v = JSON.parse(m[1]); return v && typeof v === "object" && !Array.isArray(v) ? v : {} } catch { return {} }
 }
 
+/** The live values a fence keeps (`{@state …}`), {} when none or unreadable. */
+export const savedState = (src: string): Record<string, unknown> => savedObject(STATE, src)
+
 /** What ChatGPT resolved for a program (its `{@data}` line), {} when none. */
-export function savedData(src: string): Data {
-  const m = DATA.exec(src)
-  if (!m) return {}
-  try { const v = JSON.parse(m[1]); return v && typeof v === "object" && !Array.isArray(v) ? v : {} } catch { return {} }
-}
+export const savedData = (src: string): Data => savedObject(DATA, src)
 
 /** ChatGPT's resolved data for an answer (from its message's metadata: model_dil_v2, a map's points in
  *  content_references), as a `{@data}` line; "" when none. */

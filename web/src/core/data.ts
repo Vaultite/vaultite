@@ -115,6 +115,11 @@ export function useTick(ms = 30_000, on = true) {
 export const PreviewLive = createContext<Record<string, unknown> | null>(null)
 /** Drawn in a plugin's preview (made-up data, nothing fetched or written). */
 export const usePreview = () => useContext(PreviewLive) !== null
+/** A preview's made-up answer for `path` (its own, or its address's without the query). */
+function mocked<T>(mock: Record<string, unknown>, path: string | null) {
+  const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
+  return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
+}
 
 // Cards asking for the same live data at once share one request. Always no-cache at the same address, so over the
 // network an unchanged answer is a 304 with no body.
@@ -213,10 +218,7 @@ export function useLive<T>(path: string | null, version?: string | number, files
   }, [path, ask, mock, every])
   const shown = !kept.current
   useEffect(() => { if (shown && every) again.current?.(every / 2) }, [shown, every])
-  if (mock) {
-    const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
-    return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
-  }
+  if (mock) return mocked<T>(mock, path)
   return { data, error, loading: !!path && data === null && error === null }
 }
 
@@ -245,10 +247,7 @@ export function usePatched<T>(path: string | null, version?: string | number) {
     void ask(had.current?.path === path ? had.current : null)
     return () => { on = false }
   }, [path, version, again, mock])
-  if (mock) {
-    const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
-    return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
-  }
+  if (mock) return mocked<T>(mock, path)
   const data = got?.path === path ? got.data : null
   return { data, error, loading: !!path && data === null && error === null }
 }

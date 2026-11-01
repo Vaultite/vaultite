@@ -215,16 +215,11 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
 
   const onBytes = (n: number) => { job.read += n }
   let n = 0
-  if (zip) {
-    for (const e of convs) for await (const item of jsonItems(entryStream(file, e), onBytes)) {
-      try { await take(item) } catch (err) { if (job.problems.length < 10) job.problems.push(String((err as Error).message ?? err)) }
-      if (++n % 50 === 0) await turn()
-    }
-  } else {
-    for await (const item of jsonItems(fs.createReadStream(file), onBytes)) {
-      try { await take(item) } catch (err) { if (job.problems.length < 10) job.problems.push(String((err as Error).message ?? err)) }
-      if (++n % 50 === 0) await turn()
-    }
+  // (each opened only when the one before is read)
+  const streams = zip ? convs.map((e) => () => entryStream(file, e)) : [() => fs.createReadStream(file)]
+  for (const stream of streams) for await (const item of jsonItems(stream(), onBytes)) {
+    try { await take(item) } catch (err) { if (job.problems.length < 10) job.problems.push(String((err as Error).message ?? err)) }
+    if (++n % 50 === 0) await turn()
   }
   await flush()
   if (!job.chats && !projects.length) throw new Error("found no conversations: is this ChatGPT's or Claude's export?")

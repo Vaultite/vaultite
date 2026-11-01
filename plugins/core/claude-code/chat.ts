@@ -11,7 +11,7 @@ import { type AgentChatNew, type Asking, type Choice, findBin, HOME, Transcript,
 import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, outliving, pipeSockets, type Plugin, runtimeDir,
   splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Entry, Reader } from "./chatlog.ts"
-import { type Answer, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
+import { type Answer, eachMessage, EFFORTS, type Effort, type Event, type Mode, MODES, type Spec, type Summary, type ToolDef } from "./chathost.ts"
 
 type Account = { id: string; dir: string; label: string; private: boolean }
 /** What the chat takes from the rest of the plugin (plugin.ts). */
@@ -80,18 +80,9 @@ class Wire {
   closed = false
   constructor(sock: net.Socket, hear: (m: Record<string, unknown>) => void, gone: () => void) {
     this.sock = sock
-    let buf = ""
-    sock.setEncoding("utf8")
-    sock.on("data", (chunk: string) => {
-      buf += chunk
-      for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
-        const line = buf.slice(0, nl)
-        buf = buf.slice(nl + 1)
-        let m: Record<string, unknown>
-        try { m = JSON.parse(line) } catch { continue }
-        const w = typeof m.re === "number" ? this.waiting.get(m.re) : undefined
-        if (w) { this.waiting.delete(m.re as number); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m) } else hear(m)
-      }
+    eachMessage(sock, (m) => {
+      const w = typeof m.re === "number" ? this.waiting.get(m.re) : undefined
+      if (w) { this.waiting.delete(m.re as number); if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m) } else hear(m)
     })
     const end = () => {
       if (this.closed) return
