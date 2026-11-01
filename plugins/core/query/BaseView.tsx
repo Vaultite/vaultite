@@ -1,13 +1,13 @@
 // An Obsidian base (its tab, an embed, a ```base fence) with QueryView's pieces, views as tabs, Obsidian's toolbar. A change
 // here is a small edit to its YAML (baseedit.ts), shown at once, written to its file (an embed's too) or its fence.
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Table2, X, type LucideIcon } from "lucide-react"
+import { ArrowDown, ArrowUp, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Search, Table2, X, type LucideIcon } from "lucide-react"
 import { cn, menuBelow, notify, notifyError, Panel, put, readFile, resolver, today, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
 import { ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
 import { parse as parseYaml } from "yaml"
 import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplayName, setOrder, setSort, setSummary, setViewType } from "./baseedit"
 import { obj, pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
-import { keyOf, label, sortOf, type Result } from "./query"
+import { keyOf, label, sortOf, text as shownText, type Result } from "./query"
 import { SUMMARIES } from "./expr"
 import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, Popover, PropertiesMenu, ResultsButton, ResultsMenu, SortMenu, type BaseEdit } from "./Toolbar"
 
@@ -78,7 +78,9 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
     return `query?q=${encodeURIComponent(JSON.stringify({ base: cur, ...(show ? { show } : {}), ...(calendar ? { month } : {}) }))}&self=${encodeURIComponent(path)}${at}`
   }, [byText, path, host, cur, show, month, calendar])
   const sort = useMemo(() => (vcfg ? sortOf(vcfg.sort) : null), [vcfg])
-  const { res: answer, error, groups, save, rows } = useQueryResult(url, sort)
+  const { res: answer, error, groups: all, save, rows } = useQueryResult(url, sort)
+  // Search (null: closed): the rows whose name or shown values have every word typed; the file is left as it is.
+  const [q, setQ] = useState<string | null>(null)
   const resolve = resolver(store)
   const views = local ?? answer?.views ?? []
   const current = at ?? answer?.current ?? 0
@@ -92,6 +94,21 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
     const columns = keys.map((k) => ({ key: k, label: named(cfg, k) ?? label(k) }))
     return JSON.stringify(columns) === JSON.stringify(answer.columns) ? answer : { ...answer, columns }
   }, [answer, cfg, vcfg])
+
+  const words = (q ?? "").toLowerCase().split(/\s+/).filter(Boolean)
+  const groups = useMemo(() => {
+    if (!words.length || !res) return all
+    const hit = (r: Result["groups"][number]["rows"][number]) => {
+      const hay = [r.title, ...res.columns.map((c) => shownText(r.values[c.key]))].join(" ").toLowerCase()
+      return words.every((w) => hay.includes(w))
+    }
+    // (a board keeps its columns, a calendar its days; elsewhere a group nothing's left in goes, and its summaries
+    // (worked out over every row) with it)
+    const keep = res.view === "board" || res.view === "calendar"
+    return all.map((g) => ({ ...g, rows: g.rows.filter(hit), summaries: undefined })).filter((g) => keep || g.rows.length)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, res, q])
+  const searched = words.length && res ? { ...res, summaries: undefined, shown: groups.reduce((n, g) => n + g.rows.length, 0) } : res
 
   // Where a change goes: the tab's editor, the fence in its note, else the file itself; a fence that can't be
   // changed keeps it here only.
@@ -178,12 +195,23 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   const counts = { group: 0, sort: sort?.length ?? 0, filter: cfg && at !== null ? filterCount(cfg, at) : 0, properties: 0 }
   // (a calendar's days and a map's places are its own layout: neither groups, a calendar has no columns)
   const bar = (["group", "sort", "filter", "properties"] as const).filter((k) => !(k === "group" && (res?.view === "calendar" || res?.view === "map")) && !(k === "properties" && res?.view === "calendar"))
+  const searchRef = useRef<HTMLButtonElement>(null)
   const tools = be && res && (
     <div className="flex shrink-0 items-center gap-0.5" data-base-tools>
-      <ResultsButton refTo={refs.results} res={res} open={open === "results"} onClick={() => setOpen(open === "results" ? null : "results")} />
+      {q !== null && (
+        <label className="relative mr-0.5 flex items-center">
+          <Search className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" strokeWidth={2.25} />
+          <input type="search" autoFocus value={q} placeholder="Search" aria-label="Search this view" spellCheck={false} autoComplete="off" data-base-search
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); if (q) setQ(""); else { setQ(null); searchRef.current?.focus() } } }}
+            className="h-7 w-32 rounded-[6px] border-[0.5px] border-border bg-background pr-2 pl-7 text-[13px] outline-none focus:border-primary @md:w-44 pointer-coarse:h-9 pointer-coarse:text-[16px] [&::-webkit-search-cancel-button]:hidden" />
+        </label>
+      )}
+      <ResultsButton refTo={refs.results} res={searched ?? res} open={open === "results"} onClick={() => setOpen(open === "results" ? null : "results")} />
       {bar.map((k) => (
         <BarButton key={k} refTo={refs[k]} icon={BUTTONS[k]} name={NAMES[k]} count={counts[k]} on={k === "group" && !!vcfg && !!groupOf(vcfg)} open={open === k} onClick={() => setOpen(open === k ? null : k)} />
       ))}
+      <BarButton refTo={searchRef} icon={Search} name="Search" on={!!q} open={q !== null} onClick={() => setQ(q === null ? "" : null)} />
       {open && (
         <Popover anchor={refs[open]} label={NAMES[open]} close={() => setOpen(null)} wide={open === "filter"}>
           {open === "results" ? <ResultsMenu e={be} path={path} title={views[current]?.name ?? "Results"} />
@@ -213,7 +241,8 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   )
   const body = error ? <p className="text-[15px] text-muted-foreground" data-base-error>Base: {error.replace(/^Error: /, "")}</p>
     : !res ? <ResultSkeleton view={views[current]?.type.toLowerCase() ?? "table"} rows={rows} />
-    : <ResultBody res={res} groups={groups} resolve={resolve} ctl={ctl} save={save} month={month} setMonth={setMonth} fill={fill} />
+    : words.length && !groups.some((g) => g.rows.length) ? <p className="py-2 text-[15px] text-muted-foreground" data-base-no-match>Nothing matches "{q!.trim()}".</p>
+    : <ResultBody res={searched!} groups={groups} resolve={resolve} ctl={ctl} save={save} month={month} setMonth={setMonth} fill={fill} />
   const more = lasting && place !== "embed" && res && (
     <button type="button" aria-label="View options" data-tip="View options" data-base-menu onClick={menu}
       className="-mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:size-9">

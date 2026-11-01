@@ -20,6 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Activity can fill the left sidebar**: Show activity in the sidebar turns it into the live feed, newest first by
   day, each row opening what it's about; its X or the command again brings your panels back, and each workspace
   remembers which it shows.
+- **Search in a base**: a base's bar has Search, as in Obsidian: what's typed narrows the view to the files whose name
+  or shown values have every word (the count says how many), leaving the base as it is; Escape clears it.
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
