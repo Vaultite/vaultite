@@ -493,6 +493,12 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   check("tables: only the changed row is rewritten, its pipe escaped", out[0] === "|a|b|" && out[2] === "| 1 | x \\| y |" && out[3] === "| 2 | a\\|b |", out.join("\n"))
   t.align.push(""); t.rows.forEach((r) => r.cells.push(""))
   check("tables: a new column gets its own separator", tt.writeTable(t).split("\n")[1] === "|---|:-:|---|", tt.writeTable(t))
+  const g = tt.parseTable("|a|b|c|d|e|\n|-|-|-|-|-|\n|1|2||4|5|\n|x|||y||")!
+  const at = (r: number, c: number, dr: number, dc: number) => { const e = tt.edgeFrom(g, { r, c }, dr, dc); return `${e.r},${e.c}` }
+  check("tables: ⌘ arrows go to the end of a run of filled cells, from a blank to the next filled, else the edge",
+    at(1, 0, 0, 1) === "1,1" && at(1, 1, 0, 1) === "1,3" && at(1, 3, 0, 1) === "1,4" && at(1, 4, 0, 1) === "1,4" && at(2, 1, 0, 1) === "2,3" && at(2, 3, 0, 1) === "2,4"
+    && at(0, 0, 1, 0) === "2,0" && at(2, 0, -1, 0) === "0,0" && at(0, 2, 1, 0) === "2,2",
+    [at(1, 0, 0, 1), at(1, 1, 0, 1), at(1, 3, 0, 1), at(1, 4, 0, 1), at(2, 1, 0, 1), at(2, 3, 0, 1), at(0, 0, 1, 0), at(2, 0, -1, 0), at(0, 2, 1, 0)])
   const ragged = tt.parseTable("|a|\n|-|\n|1|2|")!
   ragged.rows[1].cells[0] = "3"
   check("tables: a row wider than its header keeps its extra cells as cells change", tt.writeTable(ragged) === "|a|\n|-|\n| 3 | 2 |", tt.writeTable(ragged))

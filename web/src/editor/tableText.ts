@@ -183,3 +183,19 @@ export function sortRows(t: Table, c: number, desc = false) {
   })
   t.rows = [t.rows[0], ...body.map((b) => b.r)]
 }
+
+/** Where ⌘ or Ctrl and an arrow goes from `at`, as in a spreadsheet: along filled cells, the last before a blank one;
+ *  from a blank one (or the end of a run), the next filled cell; else the table's edge. */
+export function edgeFrom(t: Table, at: Cell, dr: number, dc: number): Cell {
+  const filled = (r: number, c: number) => shownText(t.rows[r]?.cells[c] ?? "").trim() !== ""
+  const inside = (r: number, c: number) => r >= 0 && c >= 0 && r < t.rows.length && c < t.align.length
+  let { r, c } = at
+  if (!inside(r + dr, c + dc)) return at
+  if (filled(r, c) && filled(r + dr, c + dc)) {
+    while (inside(r + dr, c + dc) && filled(r + dr, c + dc)) { r += dr; c += dc }
+    return { r, c }
+  }
+  r += dr; c += dc
+  while (!filled(r, c) && inside(r + dr, c + dc)) { r += dr; c += dc }
+  return { r, c }
+}

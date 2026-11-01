@@ -13,7 +13,7 @@ import { isMac } from "@/core/platform"
 import { blockLines, markdownDrawn } from "@/core/richmd"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
-import { clearCells, columnShares, deleteColumn, deleteRow, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow,
+import { clearCells, columnShares, deleteColumn, deleteRow, edgeFrom, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow,
   parseTable, setWidths, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
 /** What a drawn table needs from the editor around it. */
@@ -378,6 +378,14 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       if (edge && (to.r !== r || to.c !== c)) { e.preventDefault(); select({ r, c }, to) }
       return
     }
+    // ⌘ or Ctrl and an arrow with the caret already at that end of the text: to the end of the filled cells (⇧ selects).
+    if (mod && !e.altKey && STEPS[e.key]) {
+      const edge = e.key === "ArrowLeft" ? s === 0 && f === 0 : e.key === "ArrowRight" ? s === f && f === value.length
+        : s === f && (oneLine || (e.key === "ArrowUp" ? s === 0 : f === value.length))
+      const to = edgeFrom(table, { r, c }, ...STEPS[e.key])
+      if (edge && (to.r !== r || to.c !== c)) { if (e.shiftKey) { e.preventDefault(); select({ r, c }, to) } else go(to.r, to.c) }
+      return
+    }
     // (⌘A again, all its text already selected: every cell)
     if (mod && e.key === "a" && all && value) { e.preventDefault(); select({ r: 0, c: 0 }, { r: rs - 1, c: cs - 1 }); return }
     switch (e.key) {
@@ -415,9 +423,11 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     const mod = isMac ? e.metaKey : e.ctrlKey
     if (undoKeys(e, mod)) return
     const step = STEPS[e.key]
-    if (step && !mod) {
+    // ⌘ or Ctrl and an arrow: to the end of the filled cells (edgeFrom); Home and End: the row's ends (⌘: the table's).
+    const to = step ? (mod ? edgeFrom(table, sel.h, step[0], step[1]) : clamp({ r: sel.h.r + step[0], c: sel.h.c + step[1] }))
+      : e.key === "Home" ? { r: mod ? 0 : sel.h.r, c: 0 } : e.key === "End" ? { r: mod ? rows() - 1 : sel.h.r, c: cols() - 1 } : null
+    if (to && !e.altKey) {
       e.preventDefault()
-      const to = clamp({ r: sel.h.r + step[0], c: sel.h.c + step[1] })
       if (e.shiftKey) select(sel.a, to); else open(to.r, to.c)
     } else if (mod && e.key === "a") { e.preventDefault(); select({ r: 0, c: 0 }, { r: rows() - 1, c: cols() - 1 }) }
     else if (!mod && (e.key === "Backspace" || e.key === "Delete")) { e.preventDefault(); const { a, h } = sel; change((t) => clearCells(t, a, h), "delete", { pick: [a, h] }) }

@@ -124,6 +124,17 @@ await page.keyboard.press("ControlOrMeta+z"); await wait(300)
 check("one undo puts the cell back", await saved(async () => /\| banana \| 120 \|/.test(await read(MORE))), await read(MORE))
 await page.keyboard.press("Shift+ArrowUp"); await wait(200); await page.keyboard.press("F2"); await wait(200)
 check("F2 edits a selected cell as it is", await ed.locator(".cm-cell-input").inputValue() === "9")
+// ⌘ or Ctrl and an arrow, as a spreadsheet's: to the end of the filled cells (⇧ selects to there); Home and End
+await page.keyboard.press("End"); await page.keyboard.press("ControlOrMeta+ArrowUp"); await wait(200)
+check("⌘↑ from an open cell goes to the top of its filled cells", await ed.locator(".cm-cell-input").inputValue() === "Qty", await ed.locator(".cm-cell-input").inputValue())
+await page.keyboard.press("ControlOrMeta+Shift+ArrowDown"); await wait(200)
+check("⌘⇧↓ selects down to the last filled cell", await t2.locator(".is-selected").count() === 4)
+await page.keyboard.press("Home"); await wait(200)
+check("Home, cells selected, goes to the row's first cell", await ed.locator(".cm-cell-input").inputValue() === "banana", await ed.locator(".cm-cell-input").inputValue())
+await page.keyboard.press("Shift+ArrowUp"); await page.keyboard.press("ControlOrMeta+End"); await wait(200)
+check("⌘End goes to the table's last cell", await ed.locator(".cm-cell-input").inputValue() === "120", await ed.locator(".cm-cell-input").inputValue())
+await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.press("ControlOrMeta+ArrowLeft"); await wait(200)
+check("⌘← with the caret mid-text stays in the cell", await ed.locator(".cm-cell-input").inputValue() === "120")
 
 // ---- tab-separated cells pasted into a cell, and into the text ----
 await page.evaluate(() => navigator.clipboard.writeText("kiwi\t3\nlime\t4\nfig\t5"))
