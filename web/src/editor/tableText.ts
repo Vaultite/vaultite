@@ -170,7 +170,7 @@ export function fillCells(t: Table, at: Cell, cells: string[][]) {
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
-const NUMBER = /^[-+]?[$€£¥]?\s?[-+]?(\d[\d,]*)?\.?\d+\s?%?$/
+export const NUMBER = /^[-+]?[$€£¥]?\s?[-+]?(\d[\d,]*)?\.?\d+\s?%?$/
 const DATE = /^\d{4}-\d{1,2}-\d{1,2}(?:[ T][\d:.]+Z?)?$|^\d{4}\/\d{1,2}\/\d{1,2}$|^[A-Za-z]{3,9}\.? \d{1,2},? \d{4}$|^\d{1,2} [A-Za-z]{3,9}\.? \d{4}$/
 /** A cell's text as read: links by their names, without emphasis marks. */
 const plain = (cell: string) => dropHighlightEmoji(shownText(cell)).replace(/!?\[\[([^\]|]*)\|?([^\]]*)\]\]/g, (_, a, b) => b || a)

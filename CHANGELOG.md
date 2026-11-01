@@ -153,6 +153,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   and how many there are.
 - **A terminal's right-click menu**: right-clicking a terminal on a Mac or Linux opens the app's menu (Copy, Paste,
   Select all, with their keys) instead of the browser's.
+- **Tables pasted keep their links and emphasis**: a table copied from a web page or a spreadsheet keeps its links,
+  bold, italics, strikethrough and code as Markdown, and its columns of numbers are aligned right.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".

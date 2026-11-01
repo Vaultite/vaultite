@@ -615,7 +615,13 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   check("paste: in the text, not one line, uneven tabs, tab-indented code, or one column",
     tp.pastedTable("a\tb") === null && tp.pastedTable("a\tb\n1\t2\t3") === null && tp.pastedTable("\tfoo()\n\tbar()") === null && tp.pastedTable("x", "<table><tr><td>a</td></tr><tr><td>b</td></tr></table>") === null)
   check("paste: in the text, a page's table", same(tp.pastedTable("", sheets), [["Name", "Note"], ["Alice & co", "two\nlines"]]))
-  check("paste: rows as a Markdown table, pipes and line breaks escaped", tp.markdownTable([["a", "b|c"], ["1", "x\ny"]]) === "| a | b\\|c |\n| --- | --- |\n| 1 | x<br>y |", tp.markdownTable([["a", "b|c"], ["1", "x\ny"]]))
+  check("paste: rows as a Markdown table, pipes and line breaks escaped", tp.markdownTable([["a", "b|c"], ["1", "x\ny"]]) === "| a | b\\|c |\n| --: | --- |\n| 1 | x<br>y |", tp.markdownTable([["a", "b|c"], ["1", "x\ny"]]))
+  const page = '<table><tr><th>Name</th><th>Site</th></tr><tr><td><b>Lighthouse </b>keeper</td><td><a href="https://example.com/a(b)">the <em>site</em></a></td></tr><tr><td><s>old</s> <code>x</code></td><td><a href="https://example.com">https://example.com</a></td></tr></table>'
+  check("paste: a page's table keeps its emphasis, code and links as Markdown", same(tp.pastedTable("", page), [["Name", "Site"], ["**Lighthouse** keeper", "[the *site*](https://example.com/a%28b%29)"], ["~~old~~ `x`", "https://example.com"]]), tp.pastedTable("", page))
+  const boldBody = '<google-sheets-html-origin><table><tr><td style="font-weight:bold;">Name</td><td style="font-weight:bold;">Site</td></tr><tr><td style="font-weight:bold;">Total</td><td><a href="https://example.com">Report</a></td></tr></table>'
+  check("paste: a spreadsheet's bold header row as the header, a bold cell and a link below it as Markdown", same(tp.pastedTable("Name\tSite\nTotal\tReport", boldBody), [["Name", "Site"], ["**Total**", "[Report](https://example.com)"]]), tp.pastedTable("Name\tSite\nTotal\tReport", boldBody))
+  check("paste: a table's columns of numbers aligned right", tp.markdownTable([["Item", "Qty", "Cost"], ["pear", "10", "$1.50"], ["fig", "", "12%"], ["kiwi", "3", "n/a"]]).split("\n")[1] === "| --- | --: | --- |",
+    tp.markdownTable([["Item", "Qty", "Cost"], ["pear", "10", "$1.50"], ["fig", "", "12%"], ["kiwi", "3", "n/a"]]))
   check("copy: cells as tab-separated text, quoted where they must be", tp.tsvText([["a", "b\tc"], ["x\ny", 'say "hi"']]) === 'a\t"b\tc"\n"x\ny"\t"say ""hi"""')
 }
 const imgs = md.renderMarkdown("Before ![[photo.png|300]] and ![alt|200](../Img/photo.png) and ![[Idea]] after\n", vopts)

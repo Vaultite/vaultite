@@ -148,10 +148,18 @@ check("pasted into a cell, they fill the table from it, a row added", await save
 await ed.locator(".cm-line", { hasText: "End" }).click(); await page.keyboard.press("End"); await page.keyboard.press("Enter"); await page.keyboard.press("Enter")
 await page.evaluate(() => navigator.clipboard.writeText("City\tPeople\nOslo\t700000"))
 await page.keyboard.press("ControlOrMeta+v"); await wait(500)
-check("pasted into the text, they make a table, drawn", await saved(async () => (await read(MORE)).includes("End\n\n| City | People |\n| --- | --- |\n| Oslo | 700000 |\n\n")) && await ed.locator(".cm-block-table").count() === 2, await read(MORE))
+check("pasted into the text, they make a table, drawn", await saved(async () => (await read(MORE)).includes("End\n\n| City | People |\n| --- | --: |\n| Oslo | 700000 |\n\n")) && await ed.locator(".cm-block-table").count() === 2, await read(MORE))
 await page.evaluate(() => navigator.clipboard.writeText("plain words\tnot\na table"))
 await page.keyboard.press("ControlOrMeta+v"); await wait(300)
 check("uneven tabs paste as text, on a line of their own after it", await saved(async () => (await read(MORE)).endsWith("| Oslo | 700000 |\n\nplain words\tnot\na table")), await read(MORE))
+// (a spreadsheet's copy: its cells as text and as HTML, a link and a bold cell in it)
+await page.keyboard.press("Enter"); await page.keyboard.press("Enter")
+await page.evaluate(() => navigator.clipboard.write([new ClipboardItem({
+  "text/plain": new Blob(["Site\tDocs\nLighthouse\tguide"], { type: "text/plain" }),
+  "text/html": new Blob(['<google-sheets-html-origin><table><tr><td>Site</td><td>Docs</td></tr><tr><td style="font-weight:bold">Lighthouse</td><td><a href="https://example.com/guide">guide</a></td></tr></table>'], { type: "text/html" }),
+})]))
+await page.keyboard.press("ControlOrMeta+v"); await wait(500)
+check("a spreadsheet's table pasted keeps its bold and its link", await saved(async () => (await read(MORE)).includes("| Site | Docs |\n| --- | --- |\n| **Lighthouse** | [guide](https://example.com/guide) |")), await read(MORE))
 
 // ---- a row wider than its header: still edited, its extra cell a column once the shape changes ----
 await put(MORE, "| A | B |\n| --- | --- |\n| 1 | 2 | extra |\n\nEnd\n")
