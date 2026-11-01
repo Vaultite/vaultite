@@ -571,8 +571,8 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
       <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(e) => { if (!selectClick(e, SELECT, key)) openFile(pathOf(r)) }}>
         {r.source ? <Globe className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} /> : <FileText className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="min-w-0 flex-1">
-          <span className="line-clamp-2 text-[15px] leading-[20px]">{r.title}</span>
-          {(meta || draft) && <span className="block text-[13px] text-muted-foreground max-md:line-clamp-2 md:truncate"><DraftTag to={pathOf(r)} className="mr-1.5 align-[1px]" />{meta}</span>}
+          <span className="line-clamp-2 text-[15px] leading-[20px] max-md:text-[17px] max-md:leading-[22px]">{r.title}</span>
+          {(meta || draft) && <span className="block text-[13px] text-muted-foreground max-md:text-[15px] max-md:line-clamp-2 md:truncate"><DraftTag to={pathOf(r)} className="mr-1.5 align-[1px]" />{meta}</span>}
         </span>
       </button>
       {done
@@ -630,14 +630,14 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
       <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; if (!targetOf(e)) { setWhole(!whole); markRead([e.id]); return } openEvent(e); touched?.(e.id) }}>
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className={cn("line-clamp-2 text-[15px] leading-[20px]", !read && "font-semibold")}>{e.title}</span>
+          <span className={cn("line-clamp-2 text-[15px] leading-[20px] max-md:text-[17px] max-md:leading-[22px]", !read && "font-semibold")}>{e.title}</span>
           {(e.body || e.machineLabel || e.parent || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
-            className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />
+            className={cn("block text-[13px] text-muted-foreground max-md:text-[15px]", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />
             {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{((line && !replying) || e.machineLabel || e.parent) && " · "}</span>}
             {/* (unfolded for a reply, its answer is whole under the row) */}
             {[e.parent && `from ${parentTitle(e)}`, replying ? "" : whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
-        {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>}
+        {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums max-md:text-[15px]">{fmtAgo(e.t, { short: true })}</span>}
       </button>
       {/* (a request's Approve takes its time's place and Deny its Done's, so the rows stay in line) */}
       <GateButtons e={e} className={iconButton} size="size-4" />
@@ -693,8 +693,8 @@ function SnoozedRow({ sel, title, until, icon, open: openIt, swipe }: { sel: str
         <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(e) => { if (!selectClick(e, SELECT, sel)) openIt() }}>
           {icon}
           <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-[15px] leading-[20px]">{title}</span>
-            <span className="block truncate text-[13px] text-muted-foreground">Until {whenText(new Date(until)).replace(/^Tomorrow/, "tomorrow")}</span>
+            <span className="line-clamp-2 text-[15px] leading-[20px] max-md:text-[17px] max-md:leading-[22px]">{title}</span>
+            <span className="block truncate text-[13px] text-muted-foreground max-md:text-[15px]">Until {whenText(new Date(until)).replace(/^Tomorrow/, "tomorrow")}</span>
           </span>
         </button>
         <button type="button" className={iconButton} aria-label="Unsnooze" data-tip="Unsnooze" onClick={() => { haptic("medium"); snoozeKeys([sel], null) }}>
@@ -810,7 +810,7 @@ export function InboxPage({ store, focused }: { store: Store; focused: boolean }
           </button>
         )}
       </div>
-      <p className="mb-4 text-[13px] text-muted-foreground">
+      <p className="mb-4 text-[13px] text-muted-foreground max-md:text-[15px]">
         Your coding agents' sessions when they need you (a question, an approval, an answer or a report to read) and results to review. Reading one doesn't settle it: it stays until you mark it done, or you reply and the agent finishes with nothing more for you.
       </p>
       <Lists store={store} events={20} results={100} fresh={fresh} touched={touched} all />

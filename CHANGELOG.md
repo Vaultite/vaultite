@@ -421,6 +421,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   finger-sized remove button, and the field to add one no longer shrinks to a sliver.
 - **Settings at phone sizes**: on a phone the search fields over lists (Settings, plugins, hotkeys) are 44px with 17px
   text, Appearance's picture choices are labelled at 15px, and Show all and a field's clear button take a finger's tap.
+- **The Inbox at phone sizes**: on a phone its rows' titles are 17px and the lines under them and its intro 15px (they
+  were 15px and 13px), as the dashboards' lists.
 
 ## 0.8.0 (2026-10-24)
 
