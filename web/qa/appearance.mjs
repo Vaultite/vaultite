@@ -17,9 +17,9 @@ const note = files.find((f) => f.path.startsWith("Notes/") && f.path.endsWith(".
 const today = files.find((f) => f.path === "Dashboards/Today.md")?.path ?? note
 const themes = await api("GET", "themes")
 
-async function open(w, dark, hash) {
+async function open(w, dark, hash, contrast = "no-preference") {
   const mobile = w < 768
-  const ctx = await browser.newContext({ viewport: { width: w, height: mobile ? 844 : 900 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile, colorScheme: dark ? "dark" : "light" })
+  const ctx = await browser.newContext({ viewport: { width: w, height: mobile ? 844 : 900 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile, colorScheme: dark ? "dark" : "light", contrast })
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#${hash}`)
   await page.waitForTimeout(1500)
@@ -30,6 +30,17 @@ async function open(w, dark, hash) {
 const shot = (page, name) => page.screenshot({ path: `${OUT}${name}.png` })
 const token = (page, t) => page.evaluate((t) => getComputedStyle(document.documentElement).getPropertyValue(`--${t}`).trim(), t)
 const fileHash = (p) => `file/${encodeURIComponent(p)}`
+/** The lowest contrast of text and muted text on the background, a card and the sidebar (WCAG's ratio). */
+const lowest = (page) => page.evaluate(() => {
+  // (through a canvas: a computed colour may be oklch or oklab, not rgb)
+  const probe = document.body.appendChild(document.createElement("i")), cx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
+  const rgb = (t) => { probe.style.color = `var(--${t})`; cx.fillStyle = getComputedStyle(probe).color; cx.fillRect(0, 0, 1, 1); return [...cx.getImageData(0, 0, 1, 1).data.slice(0, 3)] }
+  const lum = (c) => c.map((v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0)
+  const ratio = (a, b) => { const [x, y] = [lum(rgb(a)), lum(rgb(b))].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05) }
+  const r = Math.min(...["foreground", "muted-foreground"].flatMap((t) => ["background", "card", "sidebar"].map((b) => ratio(t, b))))
+  probe.remove()
+  return Math.round(r * 100) / 100
+})
 
 // Settings, desktop and phone, light and dark
 await set({})
@@ -110,6 +121,13 @@ for (const scheme of ids) {
     if (scheme === "dracula") check("dracula stays dark", await page.evaluate(() => document.documentElement.classList.contains("dark")))
     await shot(page, `scheme-${scheme.replace(":", "-")}-${dark ? "dark" : "light"}`)
     await page.close()
+    // The system's Increase contrast: text and muted text read at 4.5:1 or more on every surface, whatever the scheme.
+    if (!scheme.startsWith("theme:")) {
+      const more = await open(1440, dark, fileHash(today), "more")
+      const low = await lowest(more)
+      check(`${scheme} ${dark ? "dark" : "light"}, Increase contrast: text at 4.5:1 or more`, low >= 4.5, low)
+      await more.close()
+    }
   }
 }
 

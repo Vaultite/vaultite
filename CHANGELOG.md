@@ -18,6 +18,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Reduce motion keeps everything still**: with the system's Reduce motion or animations off in Settings, the phone's
   tab list, new tabs and Back no longer zoom or slide, a closed tab card no longer shrinks away, and scrolls to a tab,
   heading or setting jump instead of gliding.
+- **Increase contrast is honored**: with the system's Increase contrast on, text, muted text and hairlines read at
+  4.5:1 or more in every colour scheme, and Windows' contrast themes keep a visible focus ring; muted text in Everforest,
+  Kanagawa, Nord, One and Solarized's weaker variants reads a little stronger everywhere.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".
