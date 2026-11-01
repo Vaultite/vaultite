@@ -10,7 +10,7 @@ import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
 import { desktop as desktopApp, hasLights, otherVaults } from "@/core/desktop"
 import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
-import { useTypingFade } from "@/core/typing"
+import { useBarFade } from "@/core/barfade"
 import { keepTypingInSight } from "@/core/sight"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
@@ -255,7 +255,7 @@ export default function App() {
   const lingering = useLingeringSheet()
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
-  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, typingFade, disabled, enabled, sidebarHeader } = usePrefs()
+  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, fileBarFade, disabled, enabled, sidebarHeader } = usePrefs()
   // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
   const home = store ? homeTab(store, disabled) : null
   const isFileTab = tab.startsWith("file/") || tab === "file"
@@ -535,7 +535,7 @@ export default function App() {
   // The traffic lights go with the sidebar they sit in; it slides out once they're gone, inert only then (an inert one
   // isn't hit, so a web page it's still over would be raised over it meanwhile).
   const leftIn = usePeekLights(hideLeft, peek)
-  useTypingFade(desktop && typingFade)
+  useBarFade(desktop && fileBarFade)
   useEffect(() => keepTypingInSight(), [])
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   // (before the paint: the bar drawn a frame with the old room moves when it gets the new)

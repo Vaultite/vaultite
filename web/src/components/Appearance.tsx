@@ -2,12 +2,12 @@
 // tabs, text (this device's sizes), a phone's pull-down actions, snippets. Saved in appearance.json.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
-import { canTranslucent, getTranslucency, onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
+import { canTranslucent, getTranslucency, onlyMode, previewLook, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
 import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { opensChoices, setOpens } from "@/core/launcher"
-import { getPrefs, setPrefs, usePrefs, type Animation, type Density, type Theme } from "@/core/prefs"
-import { ANIMATIONS, DENSITIES, THEMES } from "@/core/choices"
+import { getPrefs, setPrefs, usePrefs, type Animation, type Density, type FileBarFade, type Theme } from "@/core/prefs"
+import { ANIMATIONS, BAR_FADES, barFadeOf, coreChoice, DENSITIES, THEMES } from "@/core/choices"
 import { SCHEMES } from "@/themes/schemes"
 import { schemeName } from "@/components/SchemeChooser"
 import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
@@ -19,9 +19,9 @@ import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { FONTS, fontPicker, type FontKey } from "@/components/FontChooser"
-import { Group, ResetButton, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { Group, ResetButton, Section, Segmented, SettingRow, SheetHead, Slider, Switch } from "@/components/kit"
 import { PictureChoice, SystemPicture, WindowPicture, type Scene } from "@/components/ChoicePictures"
-import { animationPreview } from "@/components/SettingPictures"
+import { animationPreview, barFadePreview } from "@/components/SettingPictures"
 import { errorText } from "@/core/notify"
 import { available, commandList, useCommandList } from "@/core/commands"
 import { choose } from "@/components/Chooser"
@@ -195,6 +195,7 @@ const themePicture = (t: Theme, scene: Scene = "note") => t === "system" ? <Syst
 export function AppearancePanel() {
   const prefs = usePrefs()
   const only = onlyMode(prefs.scheme)
+  const desktop = useDesktop()
   const row = (k: string) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />
   return (
     <div className="flex flex-col gap-6">
@@ -235,7 +236,9 @@ export function AppearancePanel() {
           </SettingRow>
           <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
             onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
-          {["file-icons", "typing-fade", "pane-cards", "dim-panes"].map(row)}
+          {row("file-icons")}
+          {desktop && <BarFadeRow />}
+          {["pane-cards", "dim-panes"].map(row)}
         </Group>
       </Section>
       <Section title="Tabs">
@@ -268,15 +271,44 @@ function Fold({ open, children }: { open: boolean; children: ReactNode }) {
   )
 }
 
-/** Glass's own rows: why the window stays solid here, if it does, and translucent pages. */
+/** Fade the file bar: never, while typing, or always (back while the pointer is at it). Desktop only: a phone has no
+ *  pointer to bring it back. */
+function BarFadeRow() {
+  const value = barFadeOf(usePrefs().fileBarFade), c = coreChoice("setting:file-bar-fade")
+  return (
+    <SettingRow stack label={c.name} sub={c.sub?.() || undefined} data-settings-row="file-bar-fade" preview={barFadePreview(value, BAR_FADES)}>
+      <Segmented<FileBarFade> label={c.name} value={value} onChange={(fileBarFade) => setPrefs({ fileBarFade })} className="w-full shrink-0 sm:w-[260px]"
+        options={BAR_FADES} />
+    </SettingRow>
+  )
+}
+
+/** Glass's own rows: why the window stays solid here, if it does, how see-through it is, and translucent pages (how
+ *  see-through they are). */
 function GlassRows() {
   useSwitches()
+  const prefs = usePrefs()
   const { why } = getTranslucency()
   return (
     <>
       {(!canTranslucent || why) && <p className="py-2.5 text-[13px] leading-[18px] text-muted-foreground" data-glass-why>{coreSwitch("setting:translucent").sub?.()}</p>}
+      <GlassSlider k="translucency" label="Window transparency" sub="The sidebars and bars" />
       <SwitchRow s={coreSwitch("setting:translucent-pages")} />
+      <Fold open={prefs.translucentPages}><GlassSlider k="pageTranslucency" label="Page transparency" sub="Notes, terminals and the app's pages" /></Fold>
     </>
+  )
+}
+
+/** How much of the desktop glass lets through, 0 (solid) to 100; shown on the window as it's dragged, saved once let go. */
+function GlassSlider({ k, label, sub }: { k: "translucency" | "pageTranslucency"; label: string; sub: string }) {
+  const raw = usePrefs()[k], value = Number.isFinite(raw) ? Math.min(100, Math.max(0, raw)) : 50
+  return (
+    <SettingRow stack label={label} sub={sub} data-settings-row={k === "translucency" ? "translucency" : "page-translucency"}>
+      <WithReset on={value !== 50} onReset={() => setPrefs({ [k]: 50 })} label={`Reset ${label.toLowerCase()}`}>
+        <Slider label={label} value={value} onInput={(v) => previewLook({ [k]: v })}
+          onChange={(v) => { void setPrefs({ [k]: v }); previewLook(null) }} className="min-w-0 flex-1 sm:w-[200px] sm:flex-none" />
+      </WithReset>
+    </SettingRow>
   )
 }
 

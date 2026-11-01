@@ -56,6 +56,21 @@ export default async ($: VaultTest) => {
     check("vau appearance translucent: a true or false, kept with the look", cr.code === 0 && conf("appearance").translucent === true && bad.code === 1 && conf("appearance").translucent === true, [cr, bad, conf("appearance")])
     cr = await vau("appearance", "translucentPages", "true")
     check("vau appearance translucentPages: kept with the look", cr.code === 0 && conf("appearance").translucentPages === true, [cr, conf("appearance")])
+    cr = await vau("appearance", "pageTranslucency", "80")
+    const over = await vau("appearance", "translucency", "120")
+    check("vau appearance pageTranslucency: a number to 100, kept as one", cr.code === 0 && conf("appearance").pageTranslucency === 80 && over.code === 1 && !("translucency" in conf("appearance")), [cr, over, conf("appearance")])
+    cr = await vau("appearance", "fileBarFade", "always")
+    check("vau appearance fileBarFade: off, typing or always", cr.code === 0 && conf("appearance").fileBarFade === "always" && (await vau("appearance", "fileBarFade", "true")).code === 1, [cr, conf("appearance")])
+    // (appearance.json's typingFade, from before fileBarFade: on becomes typing, in its place)
+    {
+      const { DONE, migrate } = await import("../../../core/migrations.ts")
+      const look = conf("appearance")
+      write(".vaultite/appearance.json", JSON.stringify({ theme: "dark", typingFade: true, translucent: true }) + "\n")
+      vault.patchConfig("migrations", { done: DONE.filter((d) => d !== "file-bar-fade-2026-11") })
+      await migrate(vault, false)
+      check("typingFade on becomes fileBarFade typing, in its place", JSON.stringify(conf("appearance")) === JSON.stringify({ theme: "dark", fileBarFade: "typing", translucent: true }), conf("appearance"))
+      write(".vaultite/appearance.json", JSON.stringify(look) + "\n")
+    }
 
     cr = await vau("item.create", "note", JSON.stringify({ title: "Item op", ext_id: "item-op", body: "From item.create." }))
     check("item.create: a note of any kind's fields", cr.code === 0 && exists("Notes/Item op.md") && read("Notes/Item op.md").includes("From item.create."), cr)

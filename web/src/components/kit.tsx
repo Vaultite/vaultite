@@ -407,6 +407,30 @@ export function ResetButton({ on, onClick, label }: { on: boolean; onClick: () =
   )
 }
 
+/** A value along a track, in the accent colour (index.css .slider). `onInput` as it's dragged (show it, save nothing),
+ *  `onChange` once it's let go: one write for a whole drag. */
+export function Slider({ value, min = 0, max = 100, step = 1, label, onInput, onChange, className }: {
+  value: number; min?: number; max?: number; step?: number; label: string; onInput?: (v: number) => void; onChange: (v: number) => void; className?: string
+}) {
+  const [held, setHeld] = useState<number | null>(null)
+  const v = held ?? value
+  const el = useRef<HTMLInputElement>(null), commit = useRef(onChange)
+  commit.current = onChange
+  // (the element's own change event: once it's let go, or at each key; React's onChange is every step)
+  useEffect(() => {
+    const input = el.current!
+    const done = () => { setHeld(null); commit.current(Number(input.value)) }
+    input.addEventListener("change", done)
+    return () => input.removeEventListener("change", done)
+  }, [])
+  return (
+    <input ref={el} type="range" min={min} max={max} step={step} value={v} aria-label={label} aria-describedby={useContext(Described)}
+      onChange={(e) => { const n = Number(e.currentTarget.value); setHeld(n); onInput?.(n) }}
+      style={{ ["--pct" as string]: `${max > min ? ((v - min) / (max - min)) * 100 : 0}%` }}
+      className={cn("slider h-6 cursor-pointer", className)} />
+  )
+}
+
 /** Inset grouped list, like iOS Settings (detail sheets). */
 export const Group = ({ children }: { children: ReactNode }) => (
   <div data-setting-group className="rounded-[10px] bg-foreground/[0.04] px-3"><List>{children}</List></div>

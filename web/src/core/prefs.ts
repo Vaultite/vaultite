@@ -15,6 +15,7 @@ type Scheme = string
 export type Density = "compact" | "comfortable"
 /** How things move (core/animation.ts): springy, quick and straight, or not at all. */
 export type Animation = "snappy" | "natural" | "off"
+export type FileBarFade = "off" | "typing" | "always"
 /** How a sidebar with more than fits scrolls: each panel in its own box, under dividers that set their heights
  *  ("panels"), or the whole sidebar as one ("sidebar"). */
 type SidebarScroll = "panels" | "sidebar"
@@ -57,14 +58,17 @@ export type Prefs = {
   rails: boolean
   /** Behind a hidden sidebar slid in, the page dims a little. */
   peekShade: boolean
-  /** The bars above files fade while typing in one, back once the pointer moves. */
-  typingFade: boolean
+  /** The bars above files fade (desktop): while typing in one, back once the pointer moves, or always, back while the
+   *  pointer is over one. */
+  fileBarFade: FileBarFade
   /** The desktop app's window chrome (sidebars, tab bar, status bar) lets the desktop show through, blurred by the
    *  system (core/translucency.ts says where it can). */
   translucent: boolean
   /** With `translucent`, pages too (notes, terminals, the app's own pages) show the desktop, more lightly than the
    *  chrome; web pages and media stay solid. */
   translucentPages: boolean
+  /** How much of the desktop the chrome and the pages let through, 0 (solid) to 100; 50 is the scheme's own. */
+  translucency: number; pageTranslucency: number
   /** Line numbers beside the text of a file being edited (Markdown, source mode, JSON);
    *  code files always have them. */
   lineNumbers: boolean

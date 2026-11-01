@@ -227,6 +227,16 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       if (conf && "show_read" in conf) set("plugins/inbox/data", Object.fromEntries(Object.entries(conf).filter(([k]) => k !== "show_read")))
     }),
   },
+  {
+    // appearance.json's `typingFade` (on or off), now one of fileBarFade's three: off, typing or always.
+    id: "file-bar-fade-2026-11",
+    run: (v) => eachSettings(v, (get, set) => {
+      const look = get("appearance")
+      if (!look || !("typingFade" in look)) return
+      const renamed = renamedKey(look, "typingFade", "fileBarFade")!
+      set("appearance", "fileBarFade" in look ? renamed : { ...renamed, fileBarFade: look.typingFade === true ? "typing" : "off" })
+    }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

@@ -42,7 +42,7 @@ const current = (page) => card(page).locator("[data-current]").getAttribute("dat
 const loops = (page) => page.evaluate(() => document.querySelector("[data-setting-preview]")?.getAnimations({ subtree: true }).filter((a) => a.effect?.getComputedTiming().iterations === Infinity).length ?? -1)
 
 // ---------- hover: a wait, then warm; leaving closes; the card is a bridge ----------
-await setLook({ fileIcons: true, typingFade: false })
+await setLook({ fileIcons: true, fileBarFade: "off" })
 {
   const page = await open()
   await hover(page, "file-icons"); await wait(150)
@@ -56,19 +56,19 @@ await setLook({ fileIcons: true, typingFade: false })
   check("coming down the rows: above its row, out of the way", c.y + c.height <= r.y + 1, { r, c })
   check("…at its switch: the card's end just past the switch's", Math.abs(c.x + c.width - (sw.x + sw.width)) <= 16, { c, sw })
   check("it plays its row's description to a screen reader", await row(page, "file-icons").getByRole("switch").evaluate((el) => document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent ?? "").then((t) => /icons/.test(t)))
-  await hover(page, "typing-fade"); await wait(60)
-  check("warm: the next row's shows at once", (await cardFor(page)) === "typing-fade", await cardFor(page))
+  await hover(page, "pane-cards"); await wait(60)
+  check("warm: the next row's shows at once", (await cardFor(page)) === "pane-cards", await cardFor(page))
   check("…gliding over from where the last one was", /top/.test(await card(page).evaluate((e) => e.style.transition)), await card(page).evaluate((e) => e.style.transition))
   await wait(450)
   {
-    const [cg, rg] = [await card(page).locator(".preview-card").boundingBox(), await row(page, "typing-fade").boundingBox()]
+    const [cg, rg] = [await card(page).locator(".preview-card").boundingBox(), await row(page, "pane-cards").boundingBox()]
     check("…to its own row", Math.abs(cg.y + cg.height - rg.y) <= 8 || Math.abs(cg.y - (rg.y + rg.height)) <= 8, { cg, rg })
   }
   // (into the card: through the gap between them)
   const c2 = await card(page).locator(".preview-card").boundingBox()
-  const r2 = await row(page, "typing-fade").boundingBox()
+  const r2 = await row(page, "pane-cards").boundingBox()
   await page.mouse.move(r2.x + 40, r2.y + 4, { steps: 2 }); await page.mouse.move(c2.x + 40, c2.y + c2.height / 2, { steps: 8 }); await wait(300)
-  check("moving onto the card keeps it", (await cardFor(page)) === "typing-fade")
+  check("moving onto the card keeps it", (await cardFor(page)) === "pane-cards")
   await page.mouse.move(c2.x + c2.width + 300, c2.y + c2.height + 200, { steps: 4 }); await wait(400)
   check("leaving it closes it", (await shown(page)) === 0)
   // the ring follows the switch; a picture clicked sets it
@@ -96,15 +96,15 @@ await setLook({ fileIcons: true, typingFade: false })
   await shot(page, "animation", "animation-snappy-hover")
   // keyboard
   await page.mouse.move(5, 5); await wait(700)
-  await row(page, "typing-fade").getByRole("switch").focus()
+  await row(page, "pane-cards").getByRole("switch").focus()
   await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab")
-  await until(() => cardFor(page).then((k) => k === "typing-fade"), 1500)
-  check("keyboard focus on a row's switch opens its card", (await cardFor(page)) === "typing-fade", await cardFor(page))
-  check("…without taking the focus", await page.evaluate(() => document.activeElement?.closest("[data-settings-row]")?.getAttribute("data-settings-row")) === "typing-fade")
+  await until(() => cardFor(page).then((k) => k === "pane-cards"), 1500)
+  check("keyboard focus on a row's switch opens its card", (await cardFor(page)) === "pane-cards", await cardFor(page))
+  check("…without taking the focus", await page.evaluate(() => document.activeElement?.closest("[data-settings-row]")?.getAttribute("data-settings-row")) === "pane-cards")
   await page.keyboard.press("Tab"); await wait(100)
-  check("Tab to the next row's: its card at once", (await cardFor(page)) === "pane-cards", await cardFor(page))
+  check("Tab to the next row's: its card at once", (await cardFor(page)) === "dim-panes", await cardFor(page))
   await page.keyboard.press("Escape"); await wait(150)
-  check("Esc closes it, the focus stays", (await shown(page)) === 0 && await page.evaluate(() => !!document.activeElement?.closest('[data-settings-row="pane-cards"]')))
+  check("Esc closes it, the focus stays", (await shown(page)) === 0 && await page.evaluate(() => !!document.activeElement?.closest('[data-settings-row="dim-panes"]')))
   // behaviours move; with Animations off, they're still
   await hover(page, "dim-panes"); await until(() => shown(page), 1500)
   check("behaviours play a calm loop", (await loops(page)) > 0, await loops(page))
@@ -165,7 +165,7 @@ await setLook({ fileIcons: true, typingFade: false })
 
 // ---------- every preview, light and dark ----------
 // ---------- every preview, light and dark ----------
-const ROWS = { appearance: ["animation", "file-icons", "typing-fade", "dim-panes", "tab-bar", "line-numbers"], editor: ["readable-line-length", "show-inline-title", "properties-in-document"] }
+const ROWS = { appearance: ["animation", "file-icons", "file-bar-fade", "dim-panes", "tab-bar", "line-numbers"], editor: ["readable-line-length", "show-inline-title", "properties-in-document"] }
 for (const dark of [false, true]) {
   await setLook({ theme: dark ? "dark" : "light" })
   const page = await open({ dark })

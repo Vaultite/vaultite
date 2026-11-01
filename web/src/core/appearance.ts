@@ -93,8 +93,8 @@ export function onLook(fn: () => void): () => void {
   return () => { looks.delete(fn) }
 }
 
-/** What a picker can show for now: the theme, a colour scheme, density, a font. */
-export type LookPreview = Partial<Pick<Prefs, "theme" | "scheme" | "density" | "interfaceFont" | "textFont" | "monoFont">>
+/** What a picker can show for now: the theme, a colour scheme, density, a font, how see-through glass is. */
+export type LookPreview = Partial<Pick<Prefs, "theme" | "scheme" | "density" | "interfaceFont" | "textFont" | "monoFont" | "translucency" | "pageTranslucency">>
 // Shown for now (the palette's pickers, as the selection moves), saved nowhere.
 let previewing: LookPreview | null = null
 /** Shows those settings on the whole app without saving them; null goes back to the saved ones. */
@@ -102,6 +102,12 @@ export function previewLook(look: LookPreview | null) {
   if (JSON.stringify(previewing) === JSON.stringify(look)) return
   previewing = look
   apply()
+}
+
+/** A transparency setting (0 to 100) as index.css's level (0 to 2); "" at the default, 50. */
+const glassLevel = (v: unknown) => {
+  const n = typeof v === "number" && Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 50
+  return n === 50 ? "" : String(n / 50)
 }
 
 function apply() {
@@ -123,9 +129,15 @@ function apply() {
   root.toggleAttribute("data-translucent-pages", p.translucent && p.translucentPages)
   root.toggleAttribute("data-dim-panes", p.dimPanes)
   root.toggleAttribute("data-pane-cards", p.paneCards)
+  // How much glass lets through (index.css: --glass-level scales the tints, 1 the scheme's own at 50).
+  const glass = glassLevel(p.translucency), pageGlass = glassLevel(p.pageTranslucency)
   const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "",
-    ...(translucency.on ? { translucent: true, ...(p.translucentPages ? { pages: true } : {}) } : {}) }
+    ...(translucency.on ? { translucent: true, ...(p.translucentPages ? { pages: true } : {}), ...(glass ? { glass } : {}), ...(pageGlass ? { pageGlass } : {}) } : {}) }
   if (previewing === null) try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }
+  for (const [k, v] of [["--glass-level", glass], ["--page-glass-level", pageGlass]] as const) {
+    if (v) root.style.setProperty(k, v)
+    else root.style.removeProperty(k)
+  }
   const vars: [string, string][] = [["--font-ui", p.interfaceFont], ["--font-text", p.textFont], ["--font-code", p.monoFont]]
   for (const [k, v] of vars) {
     if (family(v)) root.style.setProperty(k, fontStack(v, k === "--font-code"))

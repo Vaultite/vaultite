@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The file bar can stay out of sight**: Fade the file bar is now Never, While typing or Always; Always hides the
+  bar above files until the pointer goes up to it, leaving only the page to read (`fileBarFade` in appearance.json).
+- **Glass has transparency sliders**: Window transparency and Page transparency, under Style ▸ Glass, set how much of
+  the desktop shows through the sidebars and bars, and through pages, shown live as you drag (`translucency`,
+  `pageTranslucency`, 0 to 100).
 - **Big changes from the companion arrive as proposals**: an agent's rewrite shows in the note as tracked changes in its
   colour (what goes struck through, what comes under it), with one card in the margin; none of it is in the file until
   you take it. In a change, Tab takes it and Esc leaves it, ⌥] and ⌥[ step through them, and Accept all takes the rest.

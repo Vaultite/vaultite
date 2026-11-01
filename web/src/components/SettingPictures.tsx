@@ -3,7 +3,7 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react"
 import { FileText, Folder, MousePointer2 } from "lucide-react"
 import { moves, PACES } from "@/core/animation"
-import { setPrefs, usePrefs, type Animation } from "@/core/prefs"
+import { setPrefs, usePrefs, type Animation, type FileBarFade } from "@/core/prefs"
 import { PROPERTIES_SHOWN, setEditor, type PropertiesShown } from "@/core/editorPrefs"
 import { switchPreview, type Preview } from "@/components/SettingPreview"
 import { Frame, Lights, line } from "@/components/ChoicePictures"
@@ -164,27 +164,33 @@ function Peek({ rail, shade, pace = "natural", pointer }: { rail?: boolean; shad
   )
 }
 
-/** Typing, the file bar above the note fades; the pointer moved, it's back. */
-function TypingFade({ on }: { on: boolean }) {
-  const ms = 5600, at = kf(ms)
+/** The file bar above a note: never fading; typing, it fades, the pointer moved, it's back; always, it's out of sight
+ *  until the pointer goes up to it. */
+function BarFade({ mode }: { mode: FileBarFade }) {
+  const ms = 5600, at = kf(ms), dim = 0.12
+  const bar = mode === "typing" ? [at(0, { opacity: 1 }), at(900, { opacity: 1 }), at(1400, { opacity: dim }), at(3900, { opacity: dim }), at(4060, { opacity: 1 }), at(ms, { opacity: 1 })]
+    : mode === "always" ? [at(0, { opacity: dim }), at(1700, { opacity: dim }), at(1860, { opacity: 1 }), at(3600, { opacity: 1 }), at(4300, { opacity: dim }), at(ms, { opacity: dim })]
+    : [{ opacity: 1 }, { opacity: 1 }]
   return (
     <Frame>
       <Side w="22%" />
       <Pane>
-        <Moving ms={ms} className="flex h-[14px] shrink-0 items-center gap-[3px] border-b-[0.5px] border-border bg-foreground/[0.05] px-[7px]" style={{ opacity: on ? 0.12 : 1 }}
-          frames={on ? [at(0, { opacity: 1 }), at(900, { opacity: 1 }), at(1400, { opacity: 0.12 }), at(3900, { opacity: 0.12 }), at(4060, { opacity: 1 }), at(ms, { opacity: 1 })] : [{ opacity: 1 }, { opacity: 1 }]}>
+        <Moving ms={ms} className="flex h-[14px] shrink-0 items-center gap-[3px] border-b-[0.5px] border-border bg-foreground/[0.05] px-[7px]" style={{ opacity: mode === "off" ? 1 : dim }} frames={bar}>
           <span className="size-[4px] rounded-[1px] bg-primary/80" />{line("14%", "bg-foreground/40")}<span className="text-[6px] leading-none text-foreground/40">/</span>{line("24%", "bg-foreground/50")}
         </Moving>
         <div className="flex flex-col gap-[4px] px-[8px] pt-[7px]">
-          {line("42%", "bg-foreground/30")}{lines(["88%", "80%"])}
-          <span className="flex items-center gap-[1px]">
-            <Moving ms={ms} className={cn("h-[3px] rounded-full", MUTED)} style={{ width: "62%" }}
-              frames={[at(0, { width: "4%" }), at(500, { width: "4%" }), at(3300, { width: "62%" }), at(ms - 200, { width: "62%" }), at(ms, { width: "4%" })]} />
-            <span className="h-[6px] w-[1px] bg-primary" />
-          </span>
+          {line("42%", "bg-foreground/30")}{lines(mode === "always" ? ["88%", "80%", "84%", "62%"] : ["88%", "80%"])}
+          {mode !== "always" && (
+            <span className="flex items-center gap-[1px]">
+              <Moving ms={ms} className={cn("h-[3px] rounded-full", MUTED)} style={{ width: "62%" }}
+                frames={[at(0, { width: "4%" }), at(500, { width: "4%" }), at(3300, { width: "62%" }), at(ms - 200, { width: "62%" }), at(ms, { width: "4%" })]} />
+              <span className="h-[6px] w-[1px] bg-primary" />
+            </span>
+          )}
         </div>
       </Pane>
-      {on && <Pointer ms={ms} rest={[80, 70, 0]} path={[[0, 80, 70, 0], [3500, 80, 70, 0], [3600, 80, 70], [4000, 70, 58], [5200, 70, 58], [ms, 70, 58, 0]]} />}
+      {mode === "typing" && <Pointer ms={ms} rest={[80, 70, 0]} path={[[0, 80, 70, 0], [3500, 80, 70, 0], [3600, 80, 70], [4000, 70, 58], [5200, 70, 58], [ms, 70, 58, 0]]} />}
+      {mode === "always" && <Pointer ms={ms} rest={[66, 62]} path={[[0, 66, 62], [900, 66, 62], [1700, 52, 7], [3400, 52, 7], [4100, 66, 62], [ms, 66, 62]]} />}
     </Frame>
   )
 }
@@ -355,7 +361,6 @@ const PICTURES: Record<string, Pictures> = {
   "pane-cards": { text: "Each pane an inset, rounded card, with the window's colour around and between them.", draw: paneCards },
   "dim-panes": { text: "With the window split, the panes you're not in fade a little, following the focus.", draw: (on) => <DimPanes on={on} /> },
   "file-icons": { text: "Files show their icons in the sidebar and in tabs.", draw: fileIcons },
-  "typing-fade": { text: "While you type, the bar above the file fades; it's back when the pointer moves.", draw: (on) => <TypingFade on={on} /> },
   "translucent-pages": { text: "Notes and terminals let the desktop through too, more lightly.", draw: (on) => <Translucent pages={on} /> },
   "line-numbers": { text: "Each line of a note shows its number in a gutter.", draw: lineNumbers },
   rails: { text: "On, a hidden sidebar folds to a rail of icons; off, it slides in when the pointer reaches the window's edge.", draw: (on) => <Peek rail={on} pointer /> },
@@ -376,6 +381,13 @@ export function switchPictures(row: string, value: boolean, set: (on: boolean) =
 export const animationPreview = (value: Animation): Preview => ({
   text: "How panes, tabs and sidebars move: with a soft spring, quickly, or not at all.", value, set: (v) => setPrefs({ animation: v as Animation }),
   options: [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }].map((o) => ({ ...o, picture: <Peek pace={o.value as Animation} /> })),
+})
+
+/** Fade the file bar's preview: never, while typing (back when the pointer moves), or always (back while it's at it);
+ *  `options` are its choice's (core/choices.ts BAR_FADES, which imports what imports this). */
+export const barFadePreview = (value: FileBarFade, options: { value: FileBarFade; label: string }[]): Preview => ({
+  text: "The bar above a file: always there, fading while you type, or out of sight until the pointer goes up to it.", value, set: (v) => setPrefs({ fileBarFade: v as FileBarFade }),
+  options: options.map((o) => ({ ...o, picture: <BarFade mode={o.value} /> })),
 })
 
 /** Properties in document's preview: shown as a table, hidden, or as their YAML. */

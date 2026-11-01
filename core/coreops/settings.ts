@@ -26,6 +26,12 @@ const bool = (key: string) => (v: string) => {
   if (!["true", "false", "on", "off"].includes(v)) throw new OpError(`${key} is true or false`)
   return v === "true" || v === "on"
 }
+/** A whole number from `min` to `max`. */
+const within = (key: string, min: number, max: number) => (v: string) => {
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < min || n > max) throw new OpError(`${key} is a whole number from ${min} to ${max}`)
+  return n
+}
 /** A JSON list, or names separated by commas. */
 const names = (v: string) => {
   const j = value(v)
@@ -59,9 +65,11 @@ const APPEARANCE: Record<string, Setting> = {
   paneCards: { about: "false (default) or true: on desktop, each pane is an inset rounded card with room around it, the window showing between; off, flat panes divided by lines", parse: bool("paneCards") },
   rails: { about: "true (default) or false: a hidden sidebar folds to its icon rail on desktop; off, it's gone, sliding back over the page while the pointer is at that edge of the window", parse: bool("rails") },
   peekShade: { about: "true or false (default): with rails off, the page dims a little behind a hidden sidebar slid in", parse: bool("peekShade") },
-  typingFade: { about: "true or false (default): on desktop, the bars above files (the path, the file's items) fade while typing in a file, back when the pointer moves or at Escape", parse: bool("typingFade") },
+  fileBarFade: { about: "off (default), typing or always: on desktop, the bars above files (the path, the file's items) fade; typing: while typing in a file, back when the pointer moves or at Escape; always: out of sight until the pointer is over one", parse: oneOf("off", "typing", "always") },
   translucent: { about: "true or false (default): in the Mac and Windows 11 apps, the desktop shows blurred through the sidebars, the tab bar and the status bar; solid with Reduce transparency, elsewhere and while an app window shows", parse: bool("translucent") },
   translucentPages: { about: "true or false (default): with translucent, pages too (notes, terminals, canvases, the app's own pages) show the desktop, less than the chrome; web pages, PDFs, images and video stay solid", parse: bool("translucentPages") },
+  translucency: { about: "0 to 100 (default 50): with translucent, how much of the desktop the sidebars and bars let through; 0 solid, 100 twice the default", parse: within("translucency", 0, 100) },
+  pageTranslucency: { about: "0 to 100 (default 50): with translucentPages, how much of the desktop pages let through; 0 solid, 100 twice the default", parse: within("pageTranslucency", 0, 100) },
   statusBar: {
     about: "the desktop status bar's items, in order: the app's own (core:view, core:words, core:characters) and plugins' as <plugin>:<name> (inbox:new, terminal:agents, vim:mode, token-count:tokens): a JSON list or names separated by commas; [] for none (an empty corner, right-click to bring them back)", parse: names },
   statusBarMore: {

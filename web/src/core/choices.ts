@@ -1,6 +1,6 @@
 // Settings of a few values, declared once (a plugin's: its manifest's enums): Settings draws these values, and the palette
 // has "<Name>…", their picker (core/choicePicker.ts). On/off ones are core/switches.ts.
-import { AppWindow, ArrowDownWideNarrow, BookOpen, IndentIncrease, PencilLine, RefreshCw, Sparkles, SunMoon, Tags, UnfoldVertical } from "lucide-react"
+import { AppWindow, ArrowDownWideNarrow, BookOpen, IndentIncrease, PanelTopDashed, PencilLine, RefreshCw, Sparkles, SunMoon, Tags, UnfoldVertical } from "lucide-react"
 import type { Command } from "@/core/commands"
 import { choose } from "@/components/Chooser"
 import { SORTS } from "@/components/FileTree"
@@ -12,7 +12,7 @@ import { notify, notifyError } from "@/core/notify"
 import { isDesktop } from "@/core/platform"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { pluginSettings, settingDefault } from "@/core/pluginSettings"
-import { getPrefs, setPrefs, type Animation, type Density, type FileSort, type Theme } from "@/core/prefs"
+import { getPrefs, setPrefs, type Animation, type Density, type FileBarFade, type FileSort, type Theme } from "@/core/prefs"
 import { placeOf } from "@/core/switches"
 import type { UpdatePolicy } from "../../../core/updates.ts"
 
@@ -22,6 +22,9 @@ type Options<V extends string> = { value: V; label: string }[]
 export const THEMES: Options<Theme> = [{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]
 export const DENSITIES: Options<Density> = [{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]
 export const ANIMATIONS: Options<Animation> = [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }]
+export const BAR_FADES: Options<FileBarFade> = [{ value: "off", label: "Never" }, { value: "typing", label: "While typing" }, { value: "always", label: "Always" }]
+/** What the file bar's fade is now: one of its three (a hand-edited value reads as off). */
+export const barFadeOf = (v: unknown): FileBarFade => (v === "typing" || v === "always" ? v : "off")
 export type Indent = "tab" | "2" | "4"
 export const INDENTS: Options<Indent> = [{ value: "tab", label: "Tab" }, { value: "2", label: "2 spaces" }, { value: "4", label: "4 spaces" }]
 export const PLUGIN_UPDATE_POLICIES: Options<UpdatePolicy> = [{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]
@@ -41,6 +44,9 @@ const CORE: ChoiceDef[] = [
     preview: (v) => previewLook(v === null ? null : { density: v as Density }) },
   { id: "setting:animation", name: "Animations", section: "appearance", icon: Sparkles, words: "motion reduce speed spring", options: list(ANIMATIONS),
     get: () => getPrefs().animation, set: (v) => setPrefs({ animation: v as Animation }) },
+  { id: "setting:file-bar-fade", name: "Fade the file bar", section: "appearance", icon: PanelTopDashed, words: "hide path breadcrumb focus zen writing reading distraction typing hover auto-hide",
+    sub: () => ({ off: "", typing: "While typing, back when the pointer moves", always: "Back while the pointer is over it" })[barFadeOf(getPrefs().fileBarFade)],
+    options: list(BAR_FADES), get: () => barFadeOf(getPrefs().fileBarFade), set: (v) => setPrefs({ fileBarFade: v as FileBarFade }) },
   { id: "setting:new-tabs", name: "New tabs open", section: "appearance", icon: AppWindow, words: "new tab launcher start blank",
     options: () => opensChoices().map((c) => ({ value: c.value ?? "", label: c.label })),
     get: () => { const o = getPrefs().newTab.opens; return opensChoices().some((c) => c.value === o) ? o ?? "" : "" }, set: (v) => setOpens(v || null) },
