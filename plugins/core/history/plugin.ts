@@ -17,7 +17,11 @@ type Stat = { mtime: number; size: number; ns?: string }
 type Meta = Stat & { path: string; hash: string; last: number; gone?: boolean }
 /** `version`: the vault's version at the last comparison (nothing to compare while it's the same). */
 /** `seen`: each file's stat (the index's object) at the last look: one still the same isn't compared again. */
-type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object> }
+/** `saving`: the index's write, due a moment after the heads changed. */
+type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>
+  saving: ReturnType<typeof setTimeout> | null }
+/** Every followed file's head (its meta.json's), kept together; each meta.json stays what's true, the index may lag it. */
+const INDEX = "heads.json"
 
 const sha1 = (s: string | Buffer) => crypto.createHash("sha1").update(s).digest("hex")
 const states = new WeakMap<Vault, State>()
@@ -31,12 +35,18 @@ function state(vault: Vault): State {
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, "vault.txt"), real + "\n")
   // The first prune a minute after the start (it looks at every snapshot: not while a server is starting), then hourly.
-  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map() }
+  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map(), saving: null }
+  // The heads from the index when there is one (one file, not one per file followed: a big vault's start isn't held).
+  let index: Meta[] | null = null
+  try { index = JSON.parse(fs.readFileSync(path.join(root, INDEX), "utf8")) } catch { /* none yet */ }
+  for (const m of index ?? []) s.heads.set(m.path, m)
   for (const name of fs.readdirSync(root)) {
     if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue } // (a copy a stop cut off)
+    if (index) continue
     const m = readMeta(path.join(root, name))
     if (m && !m.gone) s.heads.set(m.path, m)
   }
+  if (!index) (s.saving = setTimeout(() => saveIndex(s), 10_000)).unref?.() // (the next start reads the index)
   states.set(vault, s)
   return s
 }
@@ -48,6 +58,20 @@ function readMeta(dir: string): Meta | null {
 }
 // (whole or not at all: a head cut off by a crash would become the next snapshot, losing the version to restore)
 const writeMeta = (s: State, m: Meta) => writeAtomic(path.join(dirOf(s, m.path), "meta.json"), JSON.stringify(m))
+
+/** A file's head as its own meta.json says (the index may be behind it, after a stop): what's done to it goes by this. */
+function current(s: State, rel: string): Meta | undefined {
+  const m = readMeta(dirOf(s, rel))
+  if (m && !m.gone && m.path === rel) s.heads.set(rel, m)
+  else s.heads.delete(rel)
+  return s.heads.get(rel)
+}
+
+function saveIndex(s: State) {
+  if (s.saving) clearTimeout(s.saving)
+  s.saving = null
+  try { writeAtomic(path.join(s.root, INDEX), JSON.stringify([...s.heads.values()])) } catch (e) { console.error("history:", e) }
+}
 
 /** Copy a file's bytes for its history as they're read (what's hashed is what's kept, never all in memory): its hash;
  *  null if not text we keep (not UTF-8, NULs: copy removed); undefined if unreadable now (iCloud: next sync). */
@@ -179,12 +203,17 @@ export async function follow(vault: Vault) {
   s.version = vault.version
   const { out: now, gone } = candidates(s, vault)
   const added: string[] = [], changed: string[] = []
+  const differs = (m: Meta, st: Stat) => m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)
   for (const [rel, st] of now) {
-    const m = s.heads.get(rel)
+    let m = s.heads.get(rel)
+    if (!m || differs(m, st)) m = current(s, rel)
     if (!m) { if (s.skip.get(rel) !== `${st.mtime}:${st.size}`) added.push(rel) }
-    else if (m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)) changed.push(rel)
+    else if (differs(m, st)) changed.push(rel)
   }
+  for (let i = gone.length - 1; i >= 0; i--) if (!current(s, gone[i])) gone.splice(i, 1)
   if (added.length || changed.length || gone.length) {
+    s.saving ??= setTimeout(() => saveIndex(s), 10_000)
+    s.saving.unref?.()
     const { interval } = settings()
     for (const rel of changed) {
       const m = s.heads.get(rel)!, st = now.get(rel)!, copy = tmp(s)
@@ -249,7 +278,11 @@ plugin.onSync((vault) => {
 })
 const timer = setInterval(() => { try { if (plugin.loaded) prune(plugin.vault) } catch (e) { console.error(e) } }, HOUR)
 timer.unref()
-plugin.onUnload(() => clearInterval(timer))
+plugin.onUnload(() => {
+  clearInterval(timer)
+  const s = plugin.loaded ? states.get(plugin.vault) : undefined
+  if (s?.saving) saveIndex(s)
+})
 
 const relOf = (p: unknown) => {
   const rel = String(p ?? "").replaceAll("\\", "/").replace(/^\/+|\/+$/g, "")
