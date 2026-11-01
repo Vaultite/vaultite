@@ -69,7 +69,8 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
     ...(group && typeof group.property === "string" ? { group: { property: group.property, direction: group.direction } } : {}),
     ...(typeof v.limit === "number" && v.limit > 0 ? { limit: v.limit } : {}),
   }
-  for (const k of ["coordinates", "markerColor", "markerIcon", "date", "month"]) if (typeof v[k] === "string") opts[k] = v[k]
+  for (const k of ["coordinates", "markerColor", "markerIcon", "date", "month", "image", "imageFit"]) if (typeof v[k] === "string") opts[k] = v[k]
+  for (const k of ["cardSize", "imageAspectRatio"]) if (typeof v[k] === "number") opts[k] = v[k]
   if (Array.isArray(v.groups) && v.groups.length) opts.groups = v.groups.map(String)
   return { opts, views, index, notes }
 }

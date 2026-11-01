@@ -3,7 +3,7 @@
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info } from "lucide-react"
 import {
-  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, Resizer, resolver, rowFileMenu, setProperty, startDrag,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
 import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
@@ -439,24 +439,49 @@ const MapResult = memo(function MapResult({ groups, res, resolve, fill }: { grou
 
 const others = (res: Result) => res.columns.filter((c) => c.key !== "file")
 
+/** A card's picture from its `image` value: a colour (#hex), a web address, or a vault picture by [[link]] or path. */
+function cardPicture(v: string, from: string, resolve: Resolve): { color: string } | { src: string } | null {
+  if (/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return { color: v }
+  if (/^https?:\/\/\S+$/.test(v)) return { src: v }
+  const name = /^!?\[\[([^\]|#]+)/.exec(v)?.[1] ?? v
+  const file = resolve(name.trim(), from)?.file ?? null
+  return file && /\.(png|jpe?g|gif|webp|avif|svg|bmp|heic|heif)$/i.test(file) ? { src: rawUrl(file) } : null
+}
+
 const Cards = memo(function Cards({ rows, res, resolve }: { rows: Row[]; res: Result; resolve: Resolve }) {
   const [drawn, mark] = useRowsNear(rows.length)
+  const look = res.cards ?? {}
+  // (Obsidian's: a picture as tall as half its width, filling it)
+  const ratio = look.ratio ?? 0.5
+  const pictured = rows.some((r) => r.image)
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {rows.slice(0, drawn).map((r) => (
-        <button type="button" key={r.path} data-keyrow data-query-row={r.path} onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
-          className="min-w-0 cursor-pointer rounded-[10px] border-[0.5px] border-border bg-background/50 p-3 text-left hover:bg-foreground/[0.03]">
-          <div className="truncate text-[15px] font-medium">{r.title}</div>
-          <div className="mt-1 space-y-0.5 text-[13px]">
-            {others(res).map((c) => (
-              <div key={c.key} className="flex min-w-0 gap-2">
-                <span className="shrink-0 text-muted-foreground">{c.label}</span>
-                <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[c.key]} resolve={resolve} from={r.path} /></span>
+    <div className={cn("grid gap-2", !look.size && "grid-cols-1 sm:grid-cols-2")} data-query-cards
+      style={look.size ? { gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${look.size}px), 1fr))` } : undefined}>
+      {rows.slice(0, drawn).map((r) => {
+        const pic = r.image ? cardPicture(r.image, r.path, resolve) : null
+        return (
+          <button type="button" key={r.path} data-keyrow data-query-row={r.path} onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
+            className="min-w-0 cursor-pointer overflow-hidden rounded-[10px] border-[0.5px] border-border bg-background/50 text-left hover:bg-foreground/[0.03]">
+            {pictured && (
+              <div className="w-full bg-foreground/[0.04]" style={{ aspectRatio: 1 / ratio, ...(pic && "color" in pic ? { background: pic.color } : {}) }} data-query-card-image>
+                {pic && "src" in pic && <img src={pic.src} alt="" loading="lazy" draggable={false}
+                  className={cn("size-full", look.fit === "contain" ? "object-contain" : "object-cover")} />}
               </div>
-            ))}
-          </div>
-        </button>
-      ))}
+            )}
+            <div className="p-3">
+              <div className="truncate text-[15px] font-medium">{r.title}</div>
+              <div className="mt-1 space-y-0.5 text-[13px]">
+                {others(res).map((c) => (
+                  <div key={c.key} className="flex min-w-0 gap-2">
+                    <span className="shrink-0 text-muted-foreground">{c.label}</span>
+                    <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[c.key]} resolve={resolve} from={r.path} /></span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </button>
+        )
+      })}
       {drawn < rows.length && <div ref={mark} className="col-span-full h-px" aria-hidden />}
     </div>
   )

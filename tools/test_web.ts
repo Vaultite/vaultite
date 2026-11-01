@@ -1560,6 +1560,12 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     bases.viewNames(cfg))
   check("bases: a view that isn't there shows the first, with a note", view("Nope").title === "All" && view("Nope").notes[0] === "There's no view named Nope: showing All")
 
+  const cardsCfg = { filters: 'file.inFolder("Books")', views: [{ type: "cards", image: "note.cover", imageFit: "contain", imageAspectRatio: 1.5, cardSize: 240 }] }
+  const crecs = [{ ...book, fm: { ...book.fm, cover: ["[[dune.jpg]]", "x"] } }, { ...book, path: "Books/Emma.md", fm: { cover: "#336699" } }, { ...book, path: "Books/Old.md", fm: {} }]
+  const cards = run(bases.baseOptions(cardsCfg).opts, crecs, new Date(now))
+  check("bases: cards carry each one's picture (a list's first) and the view's look",
+    JSON.stringify(cards.groups[0].rows.map((r: Any) => r.image ?? null)) === '["[[dune.jpg]]","#336699",null]' && JSON.stringify(cards.cards) === '{"size":240,"fit":"contain","ratio":1.5}',
+    [cards.groups[0].rows.map((r: Any) => r.image), cards.cards])
   const text = "# my books\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n    name: All # main\n    order: [file.name, price]\n    rowHeight: tall\n  - type: cards\n    name: Shelf\nextra: {keep: me}\n"
   check("bases: a layout changed is one line", edit.setViewType(text, 1, "kanban") === text.replace("type: cards", "type: kanban"), edit.setViewType(text, 1, "kanban"))
   const added = edit.addView(text, "table", edit.freeViewName(["All", "Shelf"], "All"), 0)

@@ -12,8 +12,10 @@ const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
 
 const F = "Qa bases"
 await api("DELETE", `file?path=${encodeURIComponent(F)}`)
-await put(`${F}/Books/Lighthouse keeper.md`, "---\ntype: qa-book\nstatus: reading\npages: 300\nread: 120\nprice: 12.5\n---\n")
-await put(`${F}/Books/Harbour lights.md`, "---\ntype: qa-book\nstatus: want\npages: 200\nread: 0\nprice: 8\n---\n")
+await put(`${F}/Books/Lighthouse keeper.md`, "---\ntype: qa-book\nstatus: reading\npages: 300\nread: 120\nprice: 12.5\ncover: \"[[cover.svg]]\"\n---\n")
+await put(`${F}/Books/Harbour lights.md`, "---\ntype: qa-book\nstatus: want\npages: 200\nread: 0\nprice: 8\ncover: \"#336699\"\n---\n")
+await fetch(`${B}api/upload?path=${encodeURIComponent(`${F}/cover.svg`)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" },
+  body: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#d4a017"/></svg>') })
 await put(`${F}/Books/Tide tables.md`, "---\ntype: qa-book   # keep this\nstatus: done\npages: 100\nread: 100\nprice: 20\n---\n")
 await put(`${F}/Places/North pier.md`, "---\ntype: qa-place\ncoordinates: [38.70, -9.14]\ncolor: green\n---\n")
 await put(`${F}/Places/Old lighthouse.md`, "---\ntype: qa-place\ncoordinates: \"51.5, -0.12\"\n---\n")
@@ -45,6 +47,8 @@ views:
     name: Shelf
     filters: 'type == "qa-book"'
     order: [file.name, status]
+    image: note.cover
+    cardSize: 180
   - type: kanban
     name: Board
     filters: 'type == "qa-book"'
@@ -86,6 +90,10 @@ check("the count", (await base.locator("[data-base-count]").innerText()) === "3 
 await page.screenshot({ path: `${OUT}base-desktop.png` })
 await base.locator('[data-base-view="Shelf"]').click(); await page.waitForTimeout(1200)
 check("a tab switches the view (cards)", (await base.locator("[data-query=cards] button[data-query-row]").count()) === 3)
+const pics = await base.locator("[data-query-card-image]").evaluateAll((els) => els.map((e) => e.querySelector("img")?.naturalWidth > 0 ? "img" : e.style.background ? "color" : "none"))
+check("cards: each one's picture, a vault image or a colour, at the view's size", pics.includes("img") && pics.includes("color") && pics.length === 3
+  && (await base.locator("[data-query-cards]").evaluate((g) => g.style.gridTemplateColumns.includes("180px"))), pics)
+await page.screenshot({ path: `${OUT}base-cards-desktop.png` })
 await base.locator('[data-base-view="Gallery"]').click(); await page.waitForTimeout(1200)
 check("a layout this app doesn't draw: a table, and a note saying so", (await base.locator("[data-query-notes]").innerText()).includes("draws gallery views as a table")
   && (await base.locator("table").count()) === 1, await base.locator("[data-query-notes]").innerText())

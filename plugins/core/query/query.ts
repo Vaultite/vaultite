@@ -15,7 +15,9 @@ export type Rec = { path: string; fm: Record<string, unknown>; mtime: number; cr
 export type Column = { key: string; label: string }
 /** A file on a map: where, and its pin's colour (CSS: an app colour's name is var(--name)) and lucide icon. */
 export type Pin = { lat: number; lon: number; color?: string; icon?: string }
-export type Row = { path: string; title: string; values: Record<string, unknown>; pin?: Pin }
+export type Row = { path: string; title: string; values: Record<string, unknown>; pin?: Pin
+  /** Cards: its picture, as its `image` property says (a [[file]], a path, an address or a #colour). */
+  image?: string }
 /** A group: its name as text (null: no value), and `value`, the value a file in it has (what moving a card into its
  *  column writes; a listed group nobody has yet: its name). A calendar's groups are its days ("2026-09-27"). */
 export type Group = { name: string | null; value?: unknown; rows: Row[]
@@ -43,6 +45,9 @@ export type Result = {
   archivedHidden?: number
   /** A map: the key the pins come from, and how many matches have no place on it. */
   coordinates?: string; unplaced?: number
+  /** Cards: how wide each is at least (px), and how their pictures sit (`cover` fills, `contain` fits) at what height
+   *  for their width. */
+  cards?: { size?: number; fit?: "cover" | "contain"; ratio?: number }
   /** A Bases file's views (bases.ts), and which one this is. */
   views?: { name: string; type: string }[]; current?: number
   /** The declared types of its keys that have one (the vault's property types), so the app sorts them alike. */
@@ -301,7 +306,19 @@ export function compile(o: Opts) {
     inScope, where, outByArchive, hidesArchived: arch === false, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
     title: typeof o.title === "string" ? o.title : "",
     coordinates: keyName(o.coordinates) || "coordinates", markerColor: keyName(o.markerColor), markerIcon: keyName(o.markerIcon),
+    image: keyName(o.image), cards: cardLook(o),
   }
+}
+
+/** A cards view's look, as Obsidian's settings say it (cardSize, imageFit, imageAspectRatio), each when it makes sense. */
+function cardLook(o: Opts): { size?: number; fit?: "cover" | "contain"; ratio?: number } | undefined {
+  const size = Number(o.cardSize), ratio = Number(o.imageAspectRatio)
+  const out = {
+    ...(size >= 80 && size <= 800 ? { size: Math.round(size) } : {}),
+    ...(o.imageFit === "contain" || o.imageFit === "cover" ? { fit: o.imageFit as "contain" | "cover" } : {}),
+    ...(ratio >= 0.1 && ratio <= 4 ? { ratio } : {}),
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 /** The day a value names ("2026-09-27", "2026-09-27 18:00", "2026-09-27T18:00:00Z"), or null. */
@@ -491,6 +508,10 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   const rowOf = new Map<Row, Rec>()
   const rows: Row[] = shown.map((r) => {
     const row: Row = { path: r.path, title: stemOf(r.path), values: Object.fromEntries(keys.map((k) => [k, get(r, k) ?? null])) }
+    if (q.view === "cards" && q.image) {
+      const v = get(r, q.image), first = Array.isArray(v) ? v[0] : v
+      if (typeof first === "string" && first.trim()) row.image = first.trim()
+    }
     if (map) {
       const c = coordsOf(get(r, q.coordinates))
       if (c) {
@@ -577,7 +598,7 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   return {
     title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: rows.length, ...(q.offset ? { offset: q.offset } : {}), sort,
     ...(q.group ? { group: q.group } : {}), ...(date ? { date, month } : {}), ...(summaries ? { summaries } : {}),
-    ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(notes.length ? { notes } : {}), ...(archived.length ? { archivedHidden: archived.length } : {}), ...(Object.keys(types).length ? { types } : {}),
+    ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(q.view === "cards" && q.cards ? { cards: q.cards } : {}), ...(notes.length ? { notes } : {}), ...(archived.length ? { archivedHidden: archived.length } : {}), ...(Object.keys(types).length ? { types } : {}),
     ...(allKeys ? { keys: allKeys } : {}),
   }
 }

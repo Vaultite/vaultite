@@ -79,6 +79,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   printed, so ⌃C during `yes` or a huge `cat` answers in about 0.1 s instead of the tab dropping and reconnecting.
 - **Suggestions show in a flyout's editor**: typing [[ in the rail's Daily note flyout listed notes nowhere (the list
   was drawn off screen); it shows under the cursor now.
+- **Pictures on a base's cards**: a cards view with `image: note.cover` shows each file's picture (a [[picture]], an
+  address or a #colour) atop its card, as in Obsidian, sized by `cardSize`, `imageFit` and `imageAspectRatio`.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
   other drawn blocks again each time the background reading of it gets further.
 - **Saving sends only what changed**: each save of a note sends only the edit, not the whole note twice, and gets
