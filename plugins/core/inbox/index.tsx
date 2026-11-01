@@ -1,12 +1,12 @@
 // The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for what the server says to
 // tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef, useState } from "react"
-import { AlarmClockOff, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
+import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, Pin, RotateCcw } from "lucide-react"
 import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
-import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
+import { doneByKey, fileTo, GateSheet, keysOnInbox, pinByKey, readByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
 import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
@@ -164,7 +164,15 @@ export default definePlugin({
     ]
   },
   commands: [
-    { id: "inbox:open", name: "Open inbox", run: openInbox },
+    { id: "inbox:open", name: "Open inbox", keys: ["G I"], run: openInbox },
+    // (Gmail's keys, on the Inbox's rows: the page's and the panel's)
+    { id: "inbox:next", name: "Move to the next inbox row", keys: ["J"], when: keysOnInbox, run: () => stepRow(1), icon: ArrowDown },
+    { id: "inbox:previous", name: "Move to the previous inbox row", keys: ["K"], when: keysOnInbox, run: () => stepRow(-1), icon: ArrowUp },
+    { id: "inbox:done", name: "Mark the inbox row done", keys: ["E"], when: keysOnInbox, run: doneByKey, icon: Check },
+    { id: "inbox:snooze", name: "Snooze the inbox row", keys: ["B"], when: keysOnInbox, run: snoozeByKey, icon: Clock },
+    { id: "inbox:pin", name: "Pin or unpin the inbox row", keys: ["P"], when: keysOnInbox, run: pinByKey, icon: Pin },
+    { id: "inbox:mark-read", name: "Mark the inbox row read", keys: ["Shift+I"], when: keysOnInbox, run: () => readByKey(true), icon: MailOpen },
+    { id: "inbox:mark-unread", name: "Mark the inbox row unread", keys: ["Shift+U"], when: keysOnInbox, run: () => readByKey(false), icon: Mail },
     { id: "inbox:read", name: "Mark inbox events read", when: () => getEvents().unread > 0, run: () => markRead(), icon: CheckCheck },
   ],
   mock,

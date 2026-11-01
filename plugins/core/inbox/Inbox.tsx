@@ -6,12 +6,12 @@ import {
   Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  askMove, askMoveMany, backDetail, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
+  askMove, askMoveMany, backDetail, currentRow, moveInList, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
   notify, notifyError, openDetail, openFile, openMenu, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
-  SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
+  SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, pinEvents, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, pinEvents, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
@@ -56,6 +56,73 @@ function useCap<T>(first: T[], rest: T[], max: number) {
   const room = Math.max(0, max - first.length)
   return { shown: all ? rest : rest.slice(0, room), more: Math.max(0, rest.length - room), all, toggle: () => setAll(!all) }
 }
+
+// ---------- the keyboard: Gmail's keys on the row it's on (index.tsx's commands)
+
+/** The Inbox's row the keyboard is on: its element (with its selection key), or null. */
+function keyedRow() {
+  const row = currentRow()?.closest<HTMLElement>("[data-select-key]")
+  return row?.closest(`[data-select-list="${SELECT}"]`) ? row : null
+}
+/** The keyboard is on an Inbox row, or in the Inbox page (where J and K find its first row). */
+export const keysOnInbox = () => !!keyedRow() || (focusedTarget() === "view:inbox" && !typingIn(document.activeElement) && !document.activeElement?.closest("[data-sidebar-body]"))
+/** Its rows in sight, in order: the page's or the panel's, whichever the keyboard is in. */
+const rowsAround = (from: Element | null) => {
+  const scope = from?.closest(`[data-select-list="${SELECT}"]`) ?? document.querySelector(`[data-inbox-view] [data-select-list="${SELECT}"]`)
+  return scope ? [...scope.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0 && !!keyOf(r)) : []
+}
+const keyOf = (row: HTMLElement) => (row.matches("[data-keyrow]") ? row : row.querySelector<HTMLElement>("[data-keyrow]"))
+
+/** Move down (1) or up (-1) the rows; off them, to the first. */
+export function stepRow(by: 1 | -1) {
+  if (keyedRow()) return moveInList(by)
+  const first = rowsAround(null)[0]
+  if (first) { keyOf(first)?.focus({ preventScroll: true }); first.scrollIntoView({ block: "nearest" }) }
+  return true
+}
+
+/** Do `act` to the row the keyboard is on (by its selection key), then put the keyboard on the row after it, as Gmail
+ *  does once one is archived (the one before, when it was the last). */
+function onRow(act: (key: string, row: HTMLElement) => void, leaves = true) {
+  const row = keyedRow()
+  if (!row) return
+  const key = row.dataset.selectKey!
+  const rows = rowsAround(row), i = rows.indexOf(row)
+  const next = leaves ? (rows[i + 1] ?? rows[i - 1])?.dataset.selectKey : undefined
+  act(key, row)
+  if (!next) return
+  requestAnimationFrame(() => {
+    const to = rowsAround(null).find((r) => r.dataset.selectKey === next) ?? document.querySelector<HTMLElement>(`[data-select-key="${CSS.escape(next)}"]`)
+    if (to) keyOf(to)?.focus({ preventScroll: true })
+  })
+}
+const resultOf = (key: string) => (getStore()?.inbox ?? []).find((r) => resultKey(r) === key)
+const eventOf = (key: string) => getEvents().events.find((e) => eventKey(e) === key)
+
+/** E: done with it (a result archived, a thread or an event done); one done already comes back. */
+export const doneByKey = () => onRow((key) => {
+  const r = resultOf(key), e = eventOf(key)
+  haptic("medium")
+  if (r) void (open(r) ? markDone(r) : reopen(r))
+  else if (e) markManyEventsDone([e], e.state !== "done")
+})
+/** B: the Snooze choices under the row (what's snoozed: Unsnooze). */
+export const snoozeByKey = () => onRow((key, row) => {
+  const r = resultOf(key), e = eventOf(key)
+  if (r ? snoozed(r.snoozed) : e ? snoozed(e.snoozed) : false) return snoozeKeys([key], null)
+  if (r ? waiting(r) : e ? snoozable(e) : false) snoozeAtRow([key])(row.getBoundingClientRect())
+}, false)
+/** P: pin it on top, or unpin it. */
+export const pinByKey = () => onRow((key) => {
+  const r = resultOf(key), e = eventOf(key)
+  pinKeys([key], !(r?.pinned ?? e?.pinned))
+}, false)
+/** Shift+I and Shift+U: read or unread, the selected rows or the keyboard's. */
+export const readByKey = (read: boolean) => onRow((key) => {
+  const e = eventOf(key)
+  if (!e) return
+  if (read) markRead([e.id]); else markUnread([e.id])
+}, false)
 
 // ---------- results: what a row can do
 
@@ -473,7 +540,7 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
     <SwipeRow actions={() => resultSwipe(r)} className={pageSwipe}>
     <div data-result={r.id} data-select-key={key} {...selectedAttr(picked)} onContextMenu={menuFor(rowMenu(SELECT, key, done ? () => settledItems(r) : resultItemsMenu(r)))}
       className={cn("group/res relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]", pickedRow, done && "opacity-60 hover:opacity-100")}>
-      <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(e) => { if (!selectClick(e, SELECT, key)) openFile(pathOf(r)) }}>
+      <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(e) => { if (!selectClick(e, SELECT, key)) openFile(pathOf(r)) }}>
         {r.source ? <Globe className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} /> : <FileText className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="min-w-0 flex-1">
           <span className="line-clamp-2 text-[15px] leading-[20px]">{r.title}</span>
@@ -509,7 +576,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
       onContextMenu={menuFor(rowMenu(SELECT, key, eventItems(e, !read, touched)))}
       className={cn("group/ev relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]",
         pickedRow, done && !draft && "opacity-60 hover:opacity-100")}>
-      <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; if (!targetOf(e)) { setWhole(!whole); markRead([e.id]); return } openEvent(e); touched?.(e.id) }}>
+      <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; if (!targetOf(e)) { setWhole(!whole); markRead([e.id]); return } openEvent(e); touched?.(e.id) }}>
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
           <span className={cn("line-clamp-2 text-[15px] leading-[20px]", !read && "font-semibold")}>{e.title}</span>
@@ -565,7 +632,7 @@ function SnoozedRow({ sel, title, until, icon, open: openIt, swipe }: { sel: str
       <div data-snoozed={sel} data-select-key={sel} {...selectedAttr(picked)}
         onContextMenu={menuFor(rowMenu(SELECT, sel, () => [{ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys([sel], null) }, snoozeMenu([sel])]))}
         className={cn("group/sn relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]", pickedRow)}>
-        <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(e) => { if (!selectClick(e, SELECT, sel)) openIt() }}>
+        <button type="button" data-keyrow className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[6px] text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40" onClick={(e) => { if (!selectClick(e, SELECT, sel)) openIt() }}>
           {icon}
           <span className="min-w-0 flex-1">
             <span className="line-clamp-2 text-[15px] leading-[20px]">{title}</span>
@@ -626,7 +693,7 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
     .sort((a, b) => b.at - a.at).map((x) => x.row)
   if (!pinned.length && !results.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>Nothing needs you.</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
   return (
-    <div className="flex flex-col gap-4" data-select-list={SELECT}>
+    <div className="flex flex-col gap-4" data-select-list={SELECT} data-keylist>
       <Section title="Pinned" attr="data-inbox-pinned" rows={pinned} max={dealt ? 50 : Math.max(ne, nr)} />
       <Section title="Needs you" attr="data-inbox-needs" rows={ne ? l.needs.map(row) : []} max={dealt ? 50 : ne}
         loading={loading && rows > 0 ? <LoadingRows count={rows} meta={bodies} lead={<span className="size-[18px] shrink-0" />} /> : undefined} />
