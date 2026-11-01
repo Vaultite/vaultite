@@ -97,9 +97,11 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 function textMatcher(s: string, matchCase: boolean): Matcher {
   const want = matchCase ? s : s.toLowerCase()
+  // (an ASCII word is found case-blind by a regex, without a lowercased copy of every file's text per query)
+  const ascii = !matchCase && /^[\x20-\x7e]+$/.test(want) ? new RegExp(escapeRe(want), "i") : null
   return {
     label: `"${s}"${matchCase ? " (match case)" : ""}`,
-    test: (text) => !!want && (matchCase ? text : text.toLowerCase()).includes(want),
+    test: (text) => !!want && (ascii ? ascii.test(text) : (matchCase ? text : text.toLowerCase()).includes(want)),
     ranges: (text) => {
       if (!want) return []
       const hay = matchCase ? text : text.toLowerCase()

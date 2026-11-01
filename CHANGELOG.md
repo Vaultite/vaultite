@@ -256,6 +256,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   whole vault, and finds the links to rewrite without indexing every file's links (49,000 notes: 0.9-1.4 s to 0.4 s).
 - **The first load after a start is quicker in big vaults**: notes without blocks or links aren't scanned for them
   (a quarter less time listing the files at 49,000 notes).
+- **Search is twice as fast in big vaults**: a query no longer works out every note's name and fields again, nor
+  lowercases every note to find a plain word (49,000 notes: 110 ms to 56 ms).
 - **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third
   faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).

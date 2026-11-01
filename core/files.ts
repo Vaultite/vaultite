@@ -9,7 +9,7 @@ import { pipeline } from "node:stream/promises"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
 import { extOf, isTextKind, kindOf, tooBig } from "./filetypes.ts"
-import { highlighter, matches, type Node, parse, SearchError } from "./searchquery.ts"
+import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } from "./searchquery.ts"
 import { merge3 } from "./textedit.ts"
 import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
@@ -573,6 +573,15 @@ const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
   "created-old": [(r) => r.created, false],
 }
 
+// A note as search reads it, once per read of it (an Entry is new each time its file is read): a query of a big vault
+// doesn't work out every note's name and fields again. (Its type is asked each time: plugins' marks can change it.)
+const docs = new WeakMap<Entry, SearchDoc>()
+function docOf(rel: string, e: Entry): SearchDoc {
+  let d = docs.get(e)
+  if (!d) docs.set(e, d = { name: stemOf(rel), file: rel.slice(rel.lastIndexOf("/") + 1), path: rel, text: e.body, tags: e.tags, props: e.fm, get type() { return e.type } })
+  return d
+}
+
 /** `only`: the files it may look at, no other (a shared folder's guest's: plugins/core/share). */
 type SearchOpts = { lines?: number; folder?: string; path?: string; only?: Set<string>; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
@@ -592,10 +601,9 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
   // (excluded files are left out, unless the search is in an excluded folder or file: asked for by name)
   const excluded = folder && vault.excluded(`${folder}/`) ? () => false : (rel: string) => vault.excluded(rel)
   /** The file's item when `body` (its text, or the piece of it from line `from` on) matches. */
-  const check = (rel: string, body: string, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
-    const file = rel.split("/").pop()!
-    const name = e ? stemOf(rel) : file
-    if (!matches(node, { name, file, path: rel, text: body, tags: e?.tags, props: e?.fm, type: e?.type })) return null
+  const check = (d: SearchDoc, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
+    if (!matches(node, d)) return null
+    const { path: rel, name, text: body } = d
     const score = names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0)
     const item: Item = { path: rel, title: name, context: "", score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
     // The search tab (view:search) shows every line that matched, like a search editor; `context` lines around each
@@ -635,7 +643,7 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
   const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.only && !opts.only.has(rel)) || (opts.path ? rel !== opts.path : excluded(rel))
   for (const [rel, e] of vault.entries) {
     if (skip(rel)) continue
-    const item = check(rel, e.body, e.stat.ns, e.stat.born, e, e.bodyLine)
+    const item = check(docOf(rel, e), e.stat.ns, e.stat.born, e, e.bodyLine)
     if (item) out.push(item)
   }
   await refresh(vault)
@@ -645,7 +653,8 @@ async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts =
     // A file read in pieces matches when one of them does; its lines are counted on from piece to piece.
     let item: Item | null = null, from = 0
     for await (const text of textsOf(vault, rel, f)) {
-      const got = check(rel, text, st.ns, st.born, null, from)
+      const file = rel.slice(rel.lastIndexOf("/") + 1)
+      const got = check({ name: file, file, path: rel, text }, st.ns, st.born, null, from)
       from += (text.match(/\n/g)?.length ?? 0) + 1
       if (!got) continue
       if (!item) { item = got; if (!opts.lines) break; continue }
