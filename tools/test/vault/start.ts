@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 import { MOVED, NOW_OPT_IN } from "../../../core/migrations.ts"
+import { Vault } from "../../../core/vault.ts"
 
 // The app's own plugins that are off until turned on: Standard (the app's defaults) turns none of them on.
 const optIn = fs.readdirSync(path.join(import.meta.dirname, "../../../plugins/core")).filter((id) => {
@@ -10,6 +11,23 @@ const optIn = fs.readdirSync(path.join(import.meta.dirname, "../../../plugins/co
 
 export default async ($: VaultTest) => {
   const { check, open, tmp } = $
+  // A start takes a file's text from the last start's when its mtime and size are the same, else reads it.
+  {
+    const dir = path.join(tmp, "Kept texts")
+    fs.mkdirSync(dir)
+    for (const n of ["same", "changed"]) fs.writeFileSync(path.join(dir, `${n}.md`), `---\ntitle: ${n} on disk\n---\n\nBody.\n`)
+    const st = (n: string) => fs.statSync(path.join(dir, `${n}.md`), { bigint: true })
+    const v = new Vault(dir)
+    v.startTexts = { now: new Map(), had: new Map([
+      ["same.md", [String(st("same").mtimeNs), Number(st("same").size), "---\ntitle: same kept\n---\n\nBody.\n"]],
+      ["changed.md", [String(st("changed").mtimeNs - 1n), Number(st("changed").size), "---\ntitle: changed kept\n---\n\nBody.\n"]]]) }
+    await v.sync()
+    const kept = v.startTexts.now
+    v.startTexts = null
+    check("start: an unchanged file's text comes from the last start's, a changed one is read",
+      v.entries.get("same.md")?.fm.title === "same kept" && v.entries.get("changed.md")?.fm.title === "changed on disk" &&
+      kept.get("changed.md")?.[2].includes("changed on disk") && kept.size === 2, [...v.entries.values()].map((e) => e.fm.title))
+  }
   // A vault opened for the first time starts from Standard (core/start.ts), writing nothing outside .vaultite/; a new one
   // gets Start here only when the user chose it (vault.starter). Last: opening another vault binds the plugins to it.
   {

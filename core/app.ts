@@ -941,6 +941,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
   const kept = start ? keepReads(vaultPath) : null
   const app = await new App(vaultPath).init(timing)
+  app.vault.startTexts = kept?.texts ?? null
   if (fresh) B.markNew(app.vault)
   if (start) {
     await migrate(app.vault, fresh)
@@ -949,7 +950,8 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
     B.tidy(app.vault)
     await turn()
     await app.vault.sync()
-    kept?.()
+    app.vault.startTexts = null
+    kept?.done()
     timing?.mark("vault read")
     if (fresh) await setUpNew(app.host()).catch((e) => console.error("setting up the new vault:", e))
     // (in the background: it waits on the network)

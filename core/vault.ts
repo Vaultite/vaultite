@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { withKindBlocks } from "./blocks.ts"
+import type { KeptText, StartTexts } from "./fmcache.ts"
 import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
 import { tagsOf } from "./sections.ts"
@@ -701,6 +702,9 @@ export class Vault {
   /** The plugins loaded, set as they load (core/plugins.ts, App.syncPlugins): what switchedOff() reads their manifests for. */
   pluginList: { id: string; manifest: Item; tier?: string }[] = []
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
+  /** While a server starts, the texts its last start read (core/fmcache.ts): the first walk takes those of files unchanged
+   *  since, and keeps what it has in `now` for the next start. */
+  startTexts: StartTexts | null = null
   /** Files a sync went on without, still being read (iCloud downloading them): as last read, or not indexed yet. */
   downloading: string[] = []
   /** Files the last scan saw iCloud has evicted (placeholders): Markdown files and settings. */
@@ -1375,8 +1379,19 @@ export class Vault {
     }).map(([r]) => r)
     // Read before the index changes; one iCloud is slow to give is left as it was until it arrives. Files iCloud evicted
     // since they were read are brought down meanwhile, for what reads them in this request.
-    const reread = new Set(changed)
-    const [{ texts, late: unread }, away] = await Promise.all([this.readAll(changed), this.fetchEvicted(this.evicted.filter((r) => !reread.has(r)))])
+    const reread = new Set(changed), start = this.startTexts, kept = new Map<string, KeptText>()
+    // (a start takes the texts of files unchanged since the last one from what it kept, but those iCloud evicted)
+    if (start) {
+      const away = new Set(this.evicted)
+      for (const r of changed) { const k = start.had.get(r), st = found.get(r)!; if (k && k[0] === String(st.ns) && k[1] === st.size && !away.has(r)) kept.set(r, k) }
+    }
+    const [{ texts, late: unread }, away] = await Promise.all([this.readAll(kept.size ? changed.filter((r) => !kept.has(r)) : changed),
+      this.fetchEvicted(this.evicted.filter((r) => !reread.has(r)))])
+    for (const [r, k] of kept) texts.set(r, k[2])
+    if (start) for (const r of changed) {
+      const t = texts.get(r), st = found.get(r)!
+      if (typeof t === "string") start.now.set(r, kept.get(r) ?? [String(st.ns), st.size, t])
+    }
     const late = [...unread, ...away].sort()
     if (late.join("\n") !== this.downloading.join("\n")) { this.downloading = late; this.version++ }
     changed = changed.filter((r) => texts.has(r))
