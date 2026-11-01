@@ -1,7 +1,11 @@
+import { lazy, Suspense } from "react"
 import { GitCompareArrows } from "lucide-react"
 import { currentFile, definePlugin, isHidden, Panel, stem } from "@vaultite"
 import { argOf, reviewFileView, reviewView } from "./open"
-import { ReviewChip, ReviewCount, ReviewFileView, ReviewView } from "./Review"
+import { ReviewChip, ReviewCount } from "./Chip"
+
+const ReviewView = lazy(() => import("./Review").then((m) => ({ default: m.ReviewView })))
+const ReviewFileView = lazy(() => import("./Review").then((m) => ({ default: m.ReviewFileView })))
 
 // Review: what AIs changed that the user hasn't looked at, to keep or revert (Review.tsx; the finding is plugin.ts').
 
@@ -10,9 +14,9 @@ const onFile = () => !!currentFile() && !isHidden(currentFile()) && !currentFile
 export default definePlugin({
   views: {
     // Every writer's (view:review), or one's: view:review/<name as Activity says it, encoded>.
-    review: { icon: GitCompareArrows, title: (arg) => (arg ? `${argOf(arg)}'s changes` : "AI changes"), render: ({ arg }) => <ReviewView key={arg} arg={arg} /> },
+    review: { icon: GitCompareArrows, title: (arg) => (arg ? `${argOf(arg)}'s changes` : "AI changes"), render: ({ arg }) => <Suspense fallback={null}><ReviewView key={arg} arg={arg} /></Suspense> },
     // One file's: view:review-file/<vault path>.
-    "review-file": { icon: GitCompareArrows, title: (arg) => `${stem(arg)} changes`, pinAs: (arg) => arg || null, render: ({ arg }) => <ReviewFileView key={arg} path={arg} /> },
+    "review-file": { icon: GitCompareArrows, title: (arg) => `${stem(arg)} changes`, pinAs: (arg) => arg || null, render: ({ arg }) => <Suspense fallback={null}><ReviewFileView key={arg} path={arg} /></Suspense> },
   },
   fileBar: { review: { sort: 51, render: (file) => (isHidden(file.path) || file.path.startsWith("/") ? null : <ReviewChip file={file} />) } },
   ambient: { review: { title: "AI changes to review", sort: 35, render: () => <ReviewCount /> } },

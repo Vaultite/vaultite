@@ -1,14 +1,20 @@
 // A ```genui fence: its program run in the sandbox, what it draws shown with the app's components, and its values
 // (the key picked, a box ticked) kept in the fence's {@state} line, so the note opens as it was left, on any device.
-import { useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { askAbout, copyText, Markdown, notify, onLook, openWebLink, type BlockCtx, errorText } from "@vaultite"
 import { dilText, parse, savedData, savedState, stateNames, withState } from "./dil"
 import { sandboxDoc, type FromSandbox, type Tree } from "./sandbox"
-import { Drawn, type Host } from "./parts"
+import type { Host } from "./parts"
+
+// The components it draws with load with the first fence, while its sandbox starts (the tree comes after that anyway).
+let parts: Promise<typeof import("./parts")> | null = null
+const loadParts = () => (parts ??= import("./parts"))
+const Drawn = lazy(() => loadParts().then((m) => ({ default: m.Drawn })))
 
 const SAVE_AFTER = 800
 
 export function GenUiFence(ctx: BlockCtx) {
+  useEffect(() => void loadParts().catch(() => {}), [])
   const source = useMemo(() => withState(ctx.text, {}), [ctx.text])
   const nodes = useMemo(() => parse(source), [source])
   const names = useMemo(() => stateNames(nodes), [nodes])
@@ -89,7 +95,7 @@ export function GenUiFence(ctx: BlockCtx) {
   return (
     <div ref={box} className="genui-block" data-genui>
       <iframe ref={frame} srcDoc={sandboxDoc()} sandbox="allow-scripts" aria-hidden tabIndex={-1} title="" className="hidden" />
-      {tree ? <Drawn tree={tree} host={host} /> : error ? <Fallback source={source} from={ctx.path} /> : <div className="min-h-24" />}
+      {tree ? <Suspense fallback={<div className="min-h-24" />}><Drawn tree={tree} host={host} /></Suspense> : error ? <Fallback source={source} from={ctx.path} /> : <div className="min-h-24" />}
       {error && <p className="mt-2 text-[13px] text-muted-foreground">{error}</p>}
     </div>
   )

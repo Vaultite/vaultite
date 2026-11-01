@@ -2,12 +2,11 @@
 // (its images and the fonts it uses inside it; a small player for keys, clicks, swipes, fragments and notes).
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
-import { cell, cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
+import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
 import { annotate, backgroundOf, DECK_CSS } from "./Presentation"
+import { exportAsked } from "./asked"
 import { isTitleSlide, type Slide } from "./slides"
 
-/** The note whose presentation is being exported, while it is. */
-export const exportAsked = cell<string | null>(null)
 
 const dataUrl = (url: string) => fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${r.status}`)))).then((b) => new Promise<string>((ok, no) => {
   const fr = new FileReader()

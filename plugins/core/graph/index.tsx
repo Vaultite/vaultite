@@ -1,9 +1,13 @@
 // Graph view: the whole vault, a file's local graph (a tab or the sidebar panel), and
 // ```block-graph for a file's neighbours.
+import { lazy, Suspense } from "react"
 import { SquareArrowOutUpRight, Waypoints } from "lucide-react"
 import { currentFile, definePlugin, isViewOpen, notify, openView, Panel } from "@vaultite"
-import { FollowingGraph, GraphView, LocalGraph, LocalGraphPanel } from "./GraphView"
+import { LocalGraph, LocalGraphPanel } from "./GraphView"
 import { MAX_DEPTH, nameOf } from "./graph"
+
+const GraphView = lazy(() => import("./GraphPage").then((m) => ({ default: m.GraphView })))
+const FollowingGraph = lazy(() => import("./GraphPage").then((m) => ({ default: m.FollowingGraph })))
 
 const openLocal = (path?: string | null) => {
   if (!path) return notify("Open a file to see its local graph")
@@ -30,10 +34,10 @@ export default definePlugin({
     graph: {
       icon: Waypoints, full: true,
       title: (arg) => (arg ? `Graph of ${nameOf(arg)}` : "Graph view"),
-      render: ({ arg }) => <GraphView key={arg} arg={arg} />,
+      render: ({ arg }) => <Suspense fallback={null}><GraphView key={arg} arg={arg} /></Suspense>,
     },
     // The sidebar's Local graph panel as a tab: it follows the file you're on (graph/<path> stays on one file).
-    "local-graph": { icon: Waypoints, full: true, title: () => "Local graph", render: () => <FollowingGraph /> },
+    "local-graph": { icon: Waypoints, full: true, title: () => "Local graph", render: () => <Suspense fallback={null}><FollowingGraph /></Suspense> },
   },
   commands: [
     { id: "graph:open", name: "Open graph view", keys: ["Mod+G"], run: () => openView("graph", { newTab: !isViewOpen("graph") }) },

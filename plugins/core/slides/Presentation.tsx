@@ -4,7 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from "lucide-react"
 import { activeFile, cn, folderOf, getStore, NoteBody, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
-import { DeckExport, exportAsked } from "./exportHtml"
+import { exportAsked } from "./asked"
+import { DeckExport } from "./exportHtml"
 import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, type Slide } from "./slides"
 
 /** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */

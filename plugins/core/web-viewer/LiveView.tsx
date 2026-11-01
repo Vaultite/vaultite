@@ -2,14 +2,12 @@
 // each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closeTab, cn, dateText, errorText, get, onMachine, openInSplit, post, selectTab, SidebarHeading, SidebarRow, splitMachine, useChosen, usePane, usePaneTopBar, viewsChanged, webPages } from "@vaultite"
+import { Button, closeTab, cn, dateText, errorText, get, onMachine, openInSplit, post, selectTab, SidebarHeading, SidebarRow, splitMachine, useChosen, usePane, usePaneTopBar, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
+import { keepTitle } from "./livetitles"
 
-const titles = new Map<string, string>()
-/** A watched tab's title, for its tab ("3@m1"). */
-export const liveTitle = (id: string) => titles.get(id)
 const idOf = (t: Pick<LiveTab, "tab" | "machine">) => onMachine(String(t.tab), t.machine)
 /** Tab `tab` on `machine` in the list ("": the answering server's). */
 const find = (r: LiveTabs, tab: number, machine: string) => r.tabs.find((x) => x.tab === tab && (x.machine ?? "") === (machine || r.self || ""))
@@ -18,11 +16,6 @@ const find = (r: LiveTabs, tab: number, machine: string) => r.tabs.find((x) => x
  *  through a restart of the window), which the page comes back to. */
 export function showAppTab(t: Pick<LiveTab, "appTab" | "url" | "container">) {
   if (!selectTab(t.appTab)) openInSplit(`view:web/${argOf(t.url, t.container)}`, "right", true, t.appTab)
-}
-function keepTitle(id: string, title: string) {
-  if (!title || titles.get(id) === title) return
-  titles.set(id, title)
-  viewsChanged()
 }
 
 const TIME = { hour: "numeric", minute: "2-digit" } as const

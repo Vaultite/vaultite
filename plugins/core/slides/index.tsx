@@ -1,9 +1,11 @@
 // Slides: "Start presentation" shows the note being read or edited as slides (slides.ts reads
 // the deck), one at a time over the whole app (Presentation.tsx). Also in a note's menu.
+import { lazy, Suspense } from "react"
 import { FileDown, Presentation as PresentationIcon } from "lucide-react"
 import { activeFile, cell, currentFile, definePlugin, notify, Panel } from "@vaultite"
-import { exportAsked } from "./exportHtml"
-import { Presentation } from "./Presentation"
+import { exportAsked } from "./asked"
+
+const Presentation = lazy(() => import("./Presentation").then((m) => ({ default: m.Presentation })))
 
 const shown = cell<string | null>(null)
 const show = shown.set
@@ -25,7 +27,7 @@ export function exportHtml(path = shown.get() ?? here()) {
 
 function Shown() {
   const path = shown.use()
-  return path ? <Presentation key={path} path={path} onClose={() => show(null)} /> : null
+  return path ? <Suspense fallback={null}><Presentation key={path} path={path} onClose={() => show(null)} /></Suspense> : null
 }
 
 export default definePlugin({

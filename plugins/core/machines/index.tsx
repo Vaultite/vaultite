@@ -1,12 +1,15 @@
-import type { MouseEvent } from "react"
+import { lazy, Suspense, type MouseEvent } from "react"
 import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
   canRunAgents, cell, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, places,
   SidebarHeading, SidebarRow,
   useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
-import { MachineFiles, EnrollMachine } from "./Files"
 import { DevicesPanel } from "@plugins/tabs/devices"
+import { EnrollMachine } from "./Enroll"
+
+// The file browser, with its previews, loads with its first tab.
+const MachineFiles = lazy(() => import("./Files").then((m) => ({ default: m.MachineFiles })))
 
 // Machines: your other computers running Vaultite, each with whether it answers and what it runs; a click opens a
 // terminal, an agent or its app there.
@@ -143,7 +146,7 @@ export default definePlugin({
     },
   },
   sidebar: { machines: { title: "Machines", heading: false, sort: 32, hidden: true, view: "machines", render: (ctx) => <MachinesPanel {...ctx} /> } },
-  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, pinAs: (id) => id || null, render: (ctx) => <MachineFiles {...ctx} /> } },
+  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, pinAs: (id) => id || null, render: (ctx) => <Suspense fallback={null}><MachineFiles {...ctx} /></Suspense> } },
   commands: [{ id: "machines:open-tab", name: "Open machines in a tab", run: () => openView("machines", { newTab: true }) }],
   mockLive: () => ({ machines: mock }),
   preview: () => <MachinesBlock />,

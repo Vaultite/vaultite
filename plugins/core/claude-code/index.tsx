@@ -1,9 +1,13 @@
+import { lazy, Suspense } from "react"
 import { AgentLimitsChip, agentPlugin, choosePlace, definePlugin, getStore, notifyError, op, openFile, openView, pageOf, sessionTitle, type AgentSource } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
-import { chatTitle, ChatView, NEW } from "./ChatTab"
+import { chatTitle, NEW } from "./titles"
+
+// The chat is its own chunk, loaded when a chat tab first draws.
+const ChatView = lazy(() => import("./ChatTab").then((m) => ({ default: m.ChatView })))
 
 // Claude Code draws the agent blocks (`agent: claude-code`) with the app's agent components (AgentUsage.tsx) on GET
-// /api/claude-code, and its sessions' tabs as chats (Chat.tsx); its page is the Claude dashboard (pages/Claude.md).
+// /api/claude-code, and its sessions' tabs as chats (ChatTab.tsx); its page is the Claude dashboard (pages/Claude.md).
 const SRC: AgentSource = {
   path: "claude-code", label: "Claude Code", speaker: "Claude", icon: ClaudeIcon, tint: "var(--orange)", agent: "claude", view: "claude-session",
   noLimits: "No limits yet. They come from Claude Code, signed in on this machine, or else its status line or the Claude app.",
@@ -19,7 +23,7 @@ export default definePlugin(agentPlugin(SRC, {
   opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" } },
   // A session's tab is its chat (`new` until it starts), drawn edge to edge with its own composer.
   sessionView: { full: true, argState: true, title: (id) => chatTitle(id, sessionTitle(SRC, id)),
-    render: ({ arg, setArg }) => <ChatView id={arg} setArg={setArg} /> },
+    render: ({ arg, setArg }) => <Suspense fallback={null}><ChatView id={arg} setArg={setArg} /></Suspense> },
   // A question about a file (a live answer's follow-up): a new chat with it.
   ask: (question, file) => void askChat(question, file),
   commands: [

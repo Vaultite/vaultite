@@ -4,9 +4,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { ArrowUp, Brain, Check, ChevronDown, ChevronRight, CircleAlert, FileText, Folder, Globe, History, ListTodo, Pencil, Search, Square, SquareTerminal,
   Bot, Wrench, X, Ellipsis } from "lucide-react"
 import { Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
-  openAgent, openMenu, openView, plural, splitMachine, textDiff, useScopedState, viewsChanged, type DiffLine, type MenuItem } from "@vaultite"
+  openAgent, openMenu, openView, plural, splitMachine, textDiff, useScopedState, type DiffLine, type MenuItem } from "@vaultite"
 import type { Entry, Question } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
+import { nameTab, NEW } from "./titles"
 
 type Mode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
 type Summary = { id: string; state: "starting" | "working" | "waiting" | "idle" | "error"; cwd: string; account: string; model: string; effort: string
@@ -16,18 +17,7 @@ type Tool = Extract<Entry, { k: "tool" }>
 type Options = { models: { id: string; label: string }[]; efforts: string[]; modes: { id: Mode; label: string }[]; accounts: { id: string; label: string; effort: string; mode: Mode }[]
   folders: string[]; vault: string; home: string }
 
-/** A chat tab's arg before its session exists. */
-export const NEW = "new"
 const TINT = "var(--orange)"
-
-/** Sessions' titles, for their tabs (viewsChanged redraws them). */
-const titles = new Map<string, string>()
-export const chatTitle = (id: string, fallback: string) => (!id || id === NEW ? "New chat" : titles.get(id) || fallback)
-function nameTab(id: string, title: string) {
-  if (!title || titles.get(id) === title) return
-  titles.set(id, title)
-  viewsChanged()
-}
 
 let options: Promise<Options> | null = null
 const optionsOf = () => (options ??= get<Options>("claude-code/chat/options").catch((e) => { options = null; throw e }))

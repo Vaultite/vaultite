@@ -9,11 +9,8 @@ import { addContainer, argOf, colorOf, destination, keepOutside, openBehind, use
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
 import { painted } from "./layers"
 import { manageContainers, SitesPanel, sitesPanelMenu, SitesSettings, SitesView } from "./Sites"
-import { ExtensionsView } from "./Extensions"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
-import { ReplaysView } from "./Replays"
-import { AgentPasskeys } from "./AgentPasskeys"
-import { liveTitle, LiveView } from "./LiveView"
+import { liveTitle } from "./livetitles"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
@@ -27,6 +24,11 @@ import { barHidden, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
 
 const WebPage = lazy(() => import("./WebPage"))
+// Pages opened on demand load with their first tab.
+const ReplaysView = lazy(() => import("./Replays").then((m) => ({ default: m.ReplaysView })))
+const AgentPasskeys = lazy(() => import("./AgentPasskeys").then((m) => ({ default: m.AgentPasskeys })))
+const LiveView = lazy(() => import("./LiveView").then((m) => ({ default: m.LiveView })))
+const ExtensionsView = lazy(() => import("./Extensions").then((m) => ({ default: m.ExtensionsView })))
 
 /** Open an address in a web tab (a new one, or the tab already showing it): in `container`, else where its site always
  *  opens (WebPage moves it there). */
@@ -298,16 +300,16 @@ export default definePlugin({
         ]
       },
     },
-    "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <ReplaysView /> },
-    "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <AgentPasskeys /> },
+    "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <Suspense fallback={null}><ReplaysView /></Suspense> },
+    "agent-passkeys": { icon: KeyRound, title: () => "Passkeys for agents' logins", render: () => <Suspense fallback={null}><AgentPasskeys /></Suspense> },
     // (every machine's browser tabs, one watched live: `3`, or `3@m1` in another machine's browser)
     "web-live": { icon: MonitorPlay, title: (arg) => (arg ? liveTitle(arg) || "Browser tab" : "Browser tabs"), argState: true, full: true,
       // (a page of this window's agents shown in its tab: an ask there needs no toast)
       onScreen: (arg) => { const p = agentPage(Number(arg.split("@")[0])); return !!p && onScreen.get().has(p.id) },
-      render: ({ arg, setArg }) => <LiveView arg={arg} setArg={setArg} /> },
+      render: ({ arg, setArg }) => <Suspense fallback={null}><LiveView arg={arg} setArg={setArg} /></Suspense> },
     // (named web-pages from when it listed open pages too: kept, as sidebars and tabs name it)
     "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
-    "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <ExtensionsView openPage={openPage} /> },
+    "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <Suspense fallback={null}><ExtensionsView openPage={openPage} /></Suspense> },
     "web-history": { icon: History, title: () => "History", render: () => <HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /> },
   },
   files: { types: ["bookmarks"], icon: Bookmark },
