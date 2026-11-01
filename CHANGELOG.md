@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Format note**: the Linter plugin tidies a note's Markdown by rules you choose in its settings (trailing spaces,
+  extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
+  format a note or a folder (`vau linter.format`).
 - **Screen readers follow the file tree**: the row the keyboard is on is the tree item, so a screen reader says whether
   a folder is open, how deep a row is, where it is among its folder's rows and whether it's selected.
 - **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit
