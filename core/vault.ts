@@ -18,7 +18,7 @@ import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, reso
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
 import { strings } from "./values.ts"
-import { guard, setGate, watching } from "./writegate.ts"
+import { guard, setGate, watching, written } from "./writegate.ts"
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
 export { extract, hasTag, tagName, tagsOf } from "./sections.ts"
 // A file's type (its kind's, else its frontmatter's), whether it's archived (`archived: true`) and archive folders:
@@ -115,6 +115,7 @@ export function writeNew(p: string, data: string | Buffer): boolean {
     if (fs.existsSync(p) || !gone(p, { code: "ENOENT" })) { fs.rmSync(tmp, { force: true }); return false }
     renameFile(tmp, p)
     told?.(null, data as string)
+    written(p)
     return true
   } catch (e) {
     fs.rmSync(tmp, { force: true })
@@ -197,6 +198,7 @@ export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?:
     throw e
   }
   told?.(before, text as string)
+  written(p)
 }
 
 /** A settings file's mtime and size, which change with every write (readConfig: is the text read last still it?). */
@@ -713,6 +715,7 @@ export class Vault {
   /** Files the last scan saw iCloud has evicted (placeholders): Markdown files and settings. */
   private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
+  private writes = new Set<(rel: string) => void>()
 
   /** May the plugin acting on its own write `rel` (outside .vaultite/)? The App asks the grants (core/grants.ts);
    *  without one, never. */
@@ -722,7 +725,8 @@ export class Vault {
 
   constructor(p: string) {
     this.path = p
-    setGate(p, { may: (plugin, rel) => this.mayWrite(plugin, rel), refused: (plugin, rel) => this.writeRefused(plugin, rel), watch: (rel) => this.watch(rel) })
+    setGate(p, { may: (plugin, rel) => this.mayWrite(plugin, rel), refused: (plugin, rel) => this.writeRefused(plugin, rel), watch: (rel) => this.watch(rel),
+      wrote: (rel) => { for (const fn of this.writes) fn(rel) } })
   }
 
   /** Run fn with the vault to itself: writes (and the sync before them) take turns, so a file is never half-updated. */
@@ -898,6 +902,12 @@ export class Vault {
    *  removes it. */
   onArrive(fn: (rel: string) => void) {
     return added(this.arrivals, fn)
+  }
+
+  /** fn(rel) when this server writes a file of the vault (Live tells the apps at once, not when the watcher does).
+   *  Returns the function that removes it. */
+  onWrote(fn: (rel: string) => void) {
+    return added(this.writes, fn)
   }
 
   /** The texts of `rels` (or why one can't be read), read 64 at a time off the main thread. `late`: the ones still

@@ -35,6 +35,14 @@ export default async ($: VaultTest) => {
   await api("PUT", "file", { path: "Notes/Live two.md", text: "From the app.\n", base: read("Notes/Live two.md") })
   check("live: the app's own writes are heard too", await wait(() => touched("Notes/Live two.md")), heard)
   {
+    // (told as they're written, not when the watcher says: one that isn't watching hears them too)
+    const deaf = new Live(vault), got: Any[] = []
+    deaf.listen((c) => got.push(c))
+    await api("PUT", "file", { path: "Notes/Live two.md", text: "Again from the app.\n", base: read("Notes/Live two.md") })
+    check("live: the app's own writes are told without the watcher", await wait(() => got.some((c) => c.paths?.includes("Notes/Live two.md")), 1000), got)
+    deaf.close()
+  }
+  {
     // While the watcher hears nothing, the app's reads don't walk the vault; an agent's always do (it may have just
     // written a file the watcher hasn't told of yet).
     const sync = vault.sync
@@ -91,7 +99,9 @@ export default async ($: VaultTest) => {
     // A write the API indexed itself, heard after another change was told at that index: still told (once).
     const own = new Live(vault), got: Any[] = []
     own.listen((c) => got.push(c))
-    await api("PUT", "file", { path: "Notes/Live three.md", text: "Indexed by the API.\n" })
+    // (written behind Live's back and indexed, as by a writer that doesn't tell it)
+    fs.writeFileSync(path.join(VAULT, "Notes/Live three.md"), "Indexed by the API.\n")
+    await vault.reread(["Notes/Live three.md"])
     own.add(".vaultite/live-probe.json")
     await wait(() => got.length === 1)
     own.add("Notes/Live three.md")

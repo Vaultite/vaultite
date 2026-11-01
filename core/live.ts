@@ -57,11 +57,13 @@ export class Live {
 
   private unmove: () => void
   private unarrive: () => void
+  private unwrote: () => void
 
   constructor(vault: Vault) {
     this.vault = vault
     this.unmove = vault.onMove((from, to) => this.send({ type: "moved", from, to })) // (to null: trashed)
     this.unarrive = vault.onArrive((rel) => this.add(rel)) // (iCloud gave it: the watcher may not say)
+    this.unwrote = vault.onWrote((rel) => this.add(rel)) // (the server's own writes: FSEvents may tell of them seconds later)
   }
 
   get v() {
@@ -363,6 +365,7 @@ export class Live {
     this.closed = true
     this.unmove()
     this.unarrive()
+    this.unwrote()
     if (this.watcher) { this.watcher.close(); this.vault.watching(false) }
     if (this.timer) clearTimeout(this.timer)
     if (this.again) clearTimeout(this.again)
