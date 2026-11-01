@@ -1387,25 +1387,46 @@ function candidates(state: EditorState): Cands {
     }
     k = end
   }
-  // Tables, and callouts (a quote whose first line is `> [!type] Title`). Only where they can be: not inside
-  // paragraphs and headings (most of a long file's tree).
+  list.push(...parsedCands(state, cfg, 0))
+  return { cfg, read, list, reads: read && cfg.readBlock ? readsOf(state) : [] }
+}
+
+/** Tables, and callouts (a quote whose first line is `> [!type] Title`), from `from` on: the only blocks read from the
+ *  syntax tree. Only where they can be: not inside paragraphs and headings (most of a long file's tree). */
+function parsedCands(state: EditorState, cfg: PreviewConfig, from: number): Cand[] {
+  const doc = state.doc, out: Cand[] = []
+  const add = (first: { number: number; from: number }, last: { number: number; to: number }, widget: Block) =>
+    out.push({ from: first.from, to: last.to, a: first.number, b: last.number, kind: widget.key, decos: [Decoration.replace({ widget, block: true }).range(first.from, last.to)] })
   syntaxTree(state).iterate({
+    from,
     enter: (n) => {
       if (n.name === "Blockquote") {
+        if (n.from < from) return false
         const first = doc.lineAt(n.from), last = doc.lineAt(n.to)
         const m = /^\s{0,3}>\s?(.*)$/.exec(first.text)
-        if (m && CALLOUT.test(m[1])) {
-          add(first.number, last.number, new Block("callout", doc.sliceString(first.from, last.to), cfg.version, drawHtml, cfg.place))
-        }
+        if (m && CALLOUT.test(m[1])) add(first, last, new Block("callout", doc.sliceString(first.from, last.to), cfg.version, drawHtml, cfg.place))
         return false
       }
       if (n.name !== "Table") return n.name === "Document" || n.name === "BulletList" || n.name === "OrderedList" || n.name === "ListItem"
+      if (n.from < from) return false
       const first = doc.lineAt(n.from), last = doc.lineAt(n.to)
-      add(first.number, last.number, new Block("table", doc.sliceString(first.from, last.to), cfg.version, drawTable, cfg.place))
+      add(first, last, new Block("table", doc.sliceString(first.from, last.to), cfg.version, drawTable, cfg.place))
       return false
     },
   })
-  return { cfg, read, list, reads: read && cfg.readBlock ? readsOf(state) : [] }
+  return out
+}
+
+/** More of a long file parsed: its tables and callouts past what was parsed before, from the top-level block that
+ *  was cut off there (a paragraph may turn out a table's start). */
+function parsedMore(c: Cands, state: EditorState, was: number): Cands {
+  const parsed = (x: Cand) => x.kind === "table" || x.kind === "callout"
+  let top = syntaxTree(state).resolve(Math.max(0, was - 1), -1)
+  while (top.parent?.parent) top = top.parent
+  let cut = Math.min(was, top.from)
+  for (let i = c.list.length - 1; i >= 0; i--) { const x = c.list[i]; if (parsed(x) && x.to >= cut) cut = Math.min(cut, x.from) }
+  cut = state.doc.lineAt(Math.min(cut, state.doc.length)).from
+  return { ...c, list: [...c.list.filter((x) => !parsed(x) || x.from < cut), ...parsedCands(state, c.cfg, cut)] }
 }
 
 /** The blocks drawn now: those the cursor isn't on and no block drawn before holds (a table in a callout being
@@ -1529,7 +1550,7 @@ const blockField = StateField.define<{ c: Cands; deco: DecorationSet }>({
     let c = v.c
     if (c.cfg !== state.facet(previewConfig) || c.read !== reading(state)) c = candidates(state)
     else if (tr.docChanged) c = mapped(c, tr) ?? candidates(state)
-    else if (syntaxTree(tr.startState).length < syntaxTree(state).length) c = candidates(state) // more of a long file parsed
+    else if (syntaxTree(tr.startState).length < syntaxTree(state).length) c = c.read ? candidates(state) : parsedMore(c, state, syntaxTree(tr.startState).length)
     if (c === v.c && !tr.selection && !tr.effects.some((e) => e.is(setFocus) || e.is(readAnswered))) return v
     return { c, deco: visible(c, state) }
   },
