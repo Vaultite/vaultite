@@ -203,6 +203,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   still downloading" on a busy machine (a slow read of a file on disk isn't iCloud's).
 - **Windows reads its processes in milliseconds**: what finds your agents and their terminals (usage pages, the
   inbox's sessions) asks one PowerShell kept running, rather than starting one each time (20 s on an Arm machine).
+- **Edits show sooner in big vaults**: after a note changes, the app's update is worked out without sorting or
+  re-reading every file again (a third less time at 49,000 notes).
 - **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third
   faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).

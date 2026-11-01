@@ -152,6 +152,17 @@ type Tree = { files: Item[]; others: Item[]; folders: string[] }
 const trees = new WeakMap<object, { version: number; settings: number; pages: Plugin[]; tree: Tree }>()
 type Looks = (vault: Vault, rel: string, mtime: number) => Item
 
+// The index's paths in order, sorted again only when they changed: an edit of a file sorts nothing.
+const sortedOf = new WeakMap<Vault, { entries?: string[]; others?: string[] }>()
+function sortedKeys(vault: Vault, slot: "entries" | "others"): string[] {
+  const m = vault[slot] as Map<string, unknown>
+  let all = sortedOf.get(vault)
+  if (!all) sortedOf.set(vault, all = {})
+  const was = all[slot]
+  if (was && was.length === m.size && was.every((k) => m.has(k))) return was
+  return all[slot] = [...m.keys()].sort(cmp)
+}
+
 /** The plugins that are on and make some files pages (the service `looks:<ext>`: HTML's .html, Tables' .csv). */
 function pagePlugins(vault: Vault) {
   const off = vault.switchedOff()
@@ -165,7 +176,8 @@ export function tree(vault: Vault): Tree {
   const pages = pagePlugins(vault)
   if (hit?.version !== vault.version || hit.settings !== vault.settingsVersion || hit.pages.length !== pages.length || hit.pages.some((p, i) => p !== pages[i])) {
     const files: Item[] = [], others: Item[] = []
-    for (const [rel, e] of [...vault.entries].sort(([a], [b]) => cmp(a, b))) {
+    for (const rel of sortedKeys(vault, "entries")) {
+      const e = vault.entries.get(rel)!
       let r = rows.get(e)
       if (!r) {
         r = { row: Object.freeze(row(vault, rel, e)) }
@@ -175,8 +187,8 @@ export function tree(vault: Vault): Tree {
     }
     // Files a plugin makes pages (its `looks:<ext>`: an artifact, a table) are files you open, like notes, named by their
     // title (else their name without the extension); the rest (images, PDFs, canvases) are only served.
-    for (const [r, st] of [...vault.others].sort(([a], [b]) => cmp(a, b))) {
-      const excluded = vault.excluded(r)
+    for (const r of sortedKeys(vault, "others")) {
+      const st = vault.others.get(r)!, excluded = vault.excluded(r)
       let base = otherRows.get(st)
       if (base?.path !== r || !!base.excluded !== excluded) {
         otherRows.set(st, base = Object.freeze({ path: r, mtime: ms(st.ns), ctime: st.born, size: st.size, ...(inArchive(r) ? { archived: true } : {}), ...(excluded ? { excluded: true } : {}) }))

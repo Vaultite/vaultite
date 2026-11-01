@@ -1805,8 +1805,8 @@ export class Vault {
   }
 
   problemList() {
-    return [...this.entries].sort(([a], [b]) => cmp(a, b))
-      .flatMap(([r, e]) => e.problems.map((m) => ({ file: r, problem: m })))
+    return [...this.entries.values()].filter((e) => e.problems.length).sort((a, b) => cmp(a.rel, b.rel))
+      .flatMap((e) => e.problems.map((m) => ({ file: e.rel, problem: m })))
       .concat(this.downloading.map((r) => ({ file: r, problem: "iCloud is still downloading it" })))
   }
 }

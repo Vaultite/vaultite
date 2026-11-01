@@ -23,7 +23,8 @@ export function typeOf(v: unknown): PropType {
 }
 
 /** The vault's Markdown files that are notes (no hidden folders: settings, the trash). */
-const files = (vault: Vault) => [...vault.entries].filter(([rel]) => rel[0] !== "." && !rel.includes("/."))
+const isNote = (rel: string) => rel[0] !== "." && !rel.includes("/.")
+const files = (vault: Vault) => [...vault.entries].filter(([rel]) => isNote(rel))
 
 type Summary = { key: string; count: number; type: PropType; types: Partial<Record<PropType, number>> }
 let cached: { vault: Vault; version: number; list: Summary[] } | null = null
@@ -52,16 +53,18 @@ export function summary(vault: Vault): Summary[] {
       if (!c.size) counts.delete(key)
     }
   }
-  const now = new Set<string>()
-  for (const [rel, e] of files(vault)) {
-    now.add(rel)
+  let seen = 0
+  for (const [rel, e] of vault.entries) {
+    if (!isNote(rel)) continue
+    seen++
     const was = of.get(rel)
     if (was === e) continue
     if (was) count(was, -1)
     count(e, 1)
     of.set(rel, e)
   }
-  for (const [rel, e] of of) if (!now.has(rel)) { count(e, -1); of.delete(rel) }
+  // (more counted than there are now: some are gone)
+  if (seen !== of.size) for (const [rel, e] of of) if (!vault.entries.has(rel)) { count(e, -1); of.delete(rel) }
   const byKey = new Map<string, Summary>()
   for (const [key, c] of counts) {
     const types = Object.fromEntries(c) as Partial<Record<PropType, number>>

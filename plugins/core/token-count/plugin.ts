@@ -100,11 +100,14 @@ const MAX_PER_BYTE = 1.2
 // Whether a file may be flagged (a load chain's root, or near its limit by its size), once per read of it (an Entry is
 // new each time) and per limits.
 const mayFlag = new WeakMap<Entry, { key: string; may: boolean }>()
+let lastKey = ""
 
 /** Every Markdown file sized (the index's, and agent files in hidden folders), biggest first. `flaggedOnly`: only the
  *  files that may be flagged are read, so a big vault isn't read again for the few near a limit (most have none). */
 export function sizes(vault: Vault, { flaggedOnly = false } = {}): Sized[] {
-  const l = limits(), key = JSON.stringify(l), out: Sized[] = []
+  const l = limits(), out: Sized[] = []
+  // (one string while the limits stay the same: each file's check is then a pointer compare)
+  const json = JSON.stringify(l), key = lastKey = json === lastKey ? lastKey : json
   for (const e of vault.entries.values()) {
     if (flaggedOnly) {
       let had = mayFlag.get(e)

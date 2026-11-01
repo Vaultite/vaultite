@@ -2,7 +2,7 @@
 // {keys, drop} or {items: runs of old items and new ones}; what it leaves alone keeps its object, so nothing redraws.
 
 /** A value as pieces of JSON: whole (its JSON), an object's keys, or an array's items (each one's JSON). */
-export type Piece = string | { keys: Map<string, Piece> } | { items: string[]; from?: readonly unknown[] }
+export type Piece = string | { keys: Map<string, Piece>; from?: object } | { items: string[]; from?: readonly unknown[] }
 export type Patch = { set: unknown } | { keys: Record<string, Patch>; drop?: string[] } | { items: ([number, number] | [unknown])[] }
 
 const isPlain = (x: unknown): x is Record<string, unknown> => {
@@ -35,14 +35,17 @@ function indexOf(items: string[]) {
 /** A value (JSON-safe: what the API answers) as pieces. With `prev`, the pieces of an earlier state, a piece that's
  *  the same is that one's string: kept once in memory, and compared at once. */
 export function snapshot(value: unknown, prev?: Piece): Piece {
+  // (a frozen value given again is the piece it was: a kind nothing changed in costs nothing)
+  if (prev !== undefined && typeof prev !== "string" && prev.from === value && Object.isFrozen(value)) return prev
   if (Array.isArray(value)) {
     const old = prev !== undefined && typeof prev !== "string" && "items" in prev ? prev : null, was = old?.items ?? null
     let at: Map<string, number> | null = null
     // (a frozen item where it was is that piece: nothing to look up)
     return { from: value, items: value.map((x, n) => {
       if (was && old!.from?.[n] === x && x !== null && typeof x === "object" && Object.isFrozen(x)) return was[n]
+      // (a frozen item's JSON is the one string it had before, wherever it moved: nothing to look up)
       const j = json(x)
-      if (!was || was[n] === j) return j
+      if (!was || was[n] === j || (x !== null && typeof x === "object" && Object.isFrozen(x))) return j
       const i = (at ??= indexOf(was)).get(j)
       return i === undefined ? j : was[i]
     }) }
@@ -51,7 +54,7 @@ export function snapshot(value: unknown, prev?: Piece): Piece {
     const was = prev !== undefined && typeof prev !== "string" && "keys" in prev ? prev.keys : null
     const keys = new Map<string, Piece>()
     for (const [k, v] of Object.entries(value)) if (v !== undefined && typeof v !== "function") keys.set(k, snapshot(v, was?.get(k)))
-    return { keys }
+    return { keys, from: value }
   }
   const j = json(value)
   return prev === j ? prev : j
