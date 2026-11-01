@@ -28,7 +28,9 @@ const typeAtEnd = async (page, text) => {
 }
 
 // Edits whose save never got through (the server couldn't write them, then the window closed) come back the next time.
-{
+// (root writes into a read-only folder: there the saves can't be made to fail this way)
+if (process.getuid?.() === 0) console.log("skip unsaved edits: running as root")
+else {
   const page = watch(await ctx.newPage(), { label: "unsaved" })
   await open(page, "Qa safe/Big.md")
   // (its folder read-only: a route that aborts the saves lets go of the one a closing page sends)
