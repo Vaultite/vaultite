@@ -55,7 +55,8 @@ All four must pass:
 ```sh
 npm run build       # types (tsc -b, backend and frontend) and the web app
 npm run check       # the plugin rules, blocks, ops, bundles and skills (tools/check_plugins.ts)
-npm test            # browser-free web modules, then the backend on a throwaway vault
+npm test            # every suite at once (tools/test.ts): the browser-free web modules, the backend on a throwaway
+                    # vault and the rest; `npm test -- test_vault` runs one, `node tools/test_vault.ts <area>` some areas
 npm run smoke       # the build starts: Chrome, desktop and phone, no page error, and opening a vault of your own
                     # changes none of its files (web/qa/boot.mjs, its own servers)
 ```
