@@ -211,7 +211,7 @@ try {
   const row = (label) => page.locator("[data-tabs-panel] [data-open-tab]", { hasText: label }).first()
   const sh = await row("Start here").boundingBox()
   release = await hold(row("Lighthouse"), sh.x + sh.width / 2, sh.y + sh.height * 0.8)
-  const moving = await page.$eval("[data-tabs-panel] [data-slide] [data-open-tab]:is([aria-label='Lighthouse'])", (e) => ({ moved: !!e.parentElement.style.transform, rail: !!e.parentElement.querySelector(":scope > span[aria-hidden]") })).catch(() => null)
+  const moving = await page.locator("[data-tabs-panel] [data-slide] [data-open-tab]", { hasText: "Lighthouse" }).first().evaluate((e) => ({ moved: !!e.parentElement.style.transform, rail: !!e.parentElement.querySelector(":scope > span[aria-hidden]") }), null, { timeout: 2000 }).catch(() => null)
   check("in the panel too: dragged over a group's last row, the rows make way, the group's line beside it", moving?.moved && moving.rail, moving)
   await page.screenshot({ path: `${OUT}vertical-dragging.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await release()
