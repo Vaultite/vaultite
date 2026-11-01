@@ -1,14 +1,14 @@
 // The terminal view: xterm.js on a WebSocket to the shell, its own chunk, coloured from the app's tokens. On phones a
 // tap brings up the keyboard and a row of the keys a phone's lacks sits above it.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy } from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, TextSelect } from "lucide-react"
 import { Terminal as XTerm, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, linkClick, mintedHere, notifyError, offerPicture, onLook, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
@@ -564,10 +564,20 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     // time iOS shows the keyboard), a long press opens the menu, a swipe scrolls like a wheel and glides on.
     let start: { x: number; y: number } | null = null, press = 0, pressed = false
     let swiping = false, lastY = 0, lastT = 0, speed = 0, glide = 0
+    // (the keys only with a keyboard: off a Mac ⌃C and ⌃V are the shell's, so it's ⌃⇧C and ⌃⇧V)
+    const hint = (k: string) => (touchUi ? undefined : keyHint(isMac ? `Mod+${k}` : `Ctrl+Shift+${k}`))
     const menu = (at: { x: number; y: number }) => openMenu(at, [
-      { label: "Paste", icon: ClipboardPaste, run: () => touchActions.current.paste() },
-      ...(t.hasSelection() ? [{ label: "Copy", icon: Copy, run: () => copy(t.getSelection()) }] : []),
+      ...(t.hasSelection() ? [{ label: "Copy", icon: Copy, hint: hint("C"), run: () => { copy(t.getSelection()); t.focus() } }] : []),
+      { label: "Paste", icon: ClipboardPaste, hint: hint("V"), run: () => { touchActions.current.paste(); if (!touchUi) t.focus() } },
+      { label: "Select all", icon: TextSelect, run: () => { t.selectAll(); if (!touchUi) t.focus() } },
     ])
+    // A right-click is the app's menu, never the browser's (Windows': copy or paste at once, above).
+    const onContextMenu = (e: MouseEvent) => {
+      if (isWindows || touchUi) return
+      e.preventDefault(); e.stopPropagation()
+      menu({ x: e.clientX, y: e.clientY })
+    }
+    el.addEventListener("contextmenu", onContextMenu, true)
     const wheel = (deltaY: number, x: number, y: number) => t.element?.querySelector(".xterm-screen")
       ?.dispatchEvent(new WheelEvent("wheel", { deltaY, deltaMode: 0, clientX: x, clientY: y, bubbles: true, cancelable: true }))
     const onTouchStart = (e: TouchEvent) => {
@@ -638,6 +648,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       el.removeEventListener("touchmove", onTouchMove, true)
       el.removeEventListener("touchend", onTouchEnd, true)
       el.removeEventListener("touchcancel", onTouchCancel, true)
+      el.removeEventListener("contextmenu", onContextMenu, true)
       t.textarea?.removeEventListener("focus", onTyping)
       t.textarea?.removeEventListener("blur", onStopTyping)
       clearTimeout(press); clearTimeout(blurTimer); cancelAnimationFrame(glide)

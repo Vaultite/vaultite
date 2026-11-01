@@ -69,6 +69,12 @@ for (const dark of [false, true]) {
   check(`${dark ? "dark" : "light"}: command output`, await until(async () => /^hello-42\s*$/m.test(await text())), (await text()).slice(-300))
   await page.keyboard.type("pwd"); await page.keyboard.press("Enter")
   check(`${dark ? "dark" : "light"}: starts in the vault`, await until(async () => (await text()).includes(vaultName)), (await text()).slice(-300))
+  // A right-click opens the app's menu, never the browser's (Windows: it copies or pastes at once).
+  if (process.platform !== "win32") {
+    await page.locator(".xterm-screen").click({ button: "right", position: { x: 200, y: 200 } })
+    check(`${dark ? "dark" : "light"}: right-click opens the terminal's menu`, await until(async () => (await page.getByRole("menuitem", { name: /Paste/ }).count()) > 0))
+    await page.keyboard.press("Escape")
+  }
   const bg = await page.evaluate(() => getComputedStyle(document.querySelector(".xterm-scrollable-element")).backgroundColor)
   const pageBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   check(`${dark ? "dark" : "light"}: background follows the theme`, bg === pageBg, [bg, pageBg])
