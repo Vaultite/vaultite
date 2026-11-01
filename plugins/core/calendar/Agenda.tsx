@@ -72,7 +72,7 @@ export function AgendaPanel() {
             <div key={d}>
               {label && <div className="mb-1 text-[13px] font-semibold text-muted-foreground">{label}</div>}
               {!items.length ? (
-                <p className="py-1 text-[15px] text-muted-foreground">Nothing scheduled</p>
+                <div className="py-1"><Empty>Nothing scheduled.</Empty></div>
               ) : (
                 <List>
                   {items.map((e, i) => {

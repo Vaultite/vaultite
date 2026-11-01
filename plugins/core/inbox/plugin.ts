@@ -2220,7 +2220,7 @@ plugin.block("inbox", (ctx) => {
   if (nr > 0 && results.length) {
     parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(stampAt(latest(r)))].filter(Boolean).join(" · ")))}`)
   }
-  return [`## ${str(o.title) || "Inbox"}`, parts.length ? parts.join("\n\n") : "_Nothing new._"].join("\n\n")
+  return [`## ${str(o.title) || "Inbox"}`, parts.length ? parts.join("\n\n") : "_Nothing needs you. When an agent asks you something or leaves you a report, it shows here._"].join("\n\n")
 })
 
 plugin.block("reply", (ctx) => {
