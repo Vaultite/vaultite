@@ -95,5 +95,15 @@ export default async ($: VaultTest) => {
     O.allow([out.replace(".pdf", ".bin")])
     ;[code] = await api("GET", `file?path=${out.replace(".pdf", ".bin")}`)
     check("outside: a binary file isn't read as text", code === 415, code)
+    // (an editor's save: only its edit and the base's fingerprint, as web/src/core/autosave.ts sends it)
+    const note = path.join(tmp, "elsewhere", "Note.md")
+    fs.writeFileSync(note, "Written outside.\n")
+    O.allow([note])
+    const { textHash } = await import("../../../core/texthash.ts")
+    let saved: Any
+    ;[code, saved] = await api("PUT", "file", { path: note, edit: { at: 17, cut: 0, add: "Edited.\n" }, baseHash: textHash("Written outside.\n"), lean: true })
+    check("outside: an editor's edit-only save is written", code === 200 && fs.readFileSync(note, "utf8") === "Written outside.\nEdited.\n", [code, saved])
+    ;[code] = await api("PUT", "file", { path: note, edit: { at: 0, cut: 0, add: "x" }, baseHash: textHash("something else") })
+    check("outside: an edit of a base that changed on disk asks for the base (412)", code === 412, code)
   }
 }

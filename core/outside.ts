@@ -5,6 +5,7 @@ import path from "node:path"
 import { kindOf, tooBig } from "./filetypes.ts"
 import { HTTPError, reply } from "./plugins.ts"
 import { merge3 } from "./textedit.ts"
+import { applyEdit, textHash } from "./texthash.ts"
 import { readText, writeText } from "./vault.ts"
 
 const allowed = new Set<string>()
@@ -63,20 +64,28 @@ function read(p: string) {
 }
 
 /** GET and PUT /api/file for an allowed outside path. */
-export function handle(method: string, p: string, body: { text?: unknown; base?: unknown }) {
+export function handle(method: string, p: string, body: { text?: unknown; base?: unknown; baseHash?: unknown; edit?: unknown }) {
   check(p)
   if (method === "GET") return read(p)
   if (method !== "PUT") throw new HTTPError(405, "files outside the vault can only be read and saved")
-  if (typeof body.text !== "string") throw new HTTPError(400, "text must be a string")
-  let text = body.text
   let cur: string | null
   try {
     cur = readText(p)
   } catch {
     cur = null
   }
-  const base = typeof body.base === "string" ? body.base : null
-  if (cur === null && base !== null) throw new HTTPError(404, `${p} isn't there any more (moved or deleted)`)
+  const base = typeof body.base === "string" ? body.base : null, baseHash = typeof body.baseHash === "string" ? body.baseHash : null
+  if (cur === null && (base !== null || baseHash !== null)) throw new HTTPError(404, `${p} isn't there any more (moved or deleted)`)
+  // An editor's save is its edit of the base and the base's fingerprint, as in the vault (core/files.ts PUT): the
+  // base itself only when the file changed on disk, to merge.
+  let text: string
+  if (body.edit !== undefined) {
+    if (cur !== null && baseHash !== null && textHash(cur) !== baseHash) return reply(412, { error: "the file changed on disk: send its base to merge" })
+    const made = cur !== null && baseHash !== null ? applyEdit(cur, body.edit) : null
+    if (made === null) throw new HTTPError(400, "edit is {at, cut, add}, an edit of the text whose baseHash is sent")
+    text = made
+  } else if (typeof body.text === "string") text = body.text
+  else throw new HTTPError(400, "text must be a string")
   if (cur !== null && base !== null && cur !== base && cur !== text) {
     const merged = merge3(base, text, cur)
     if (merged === null) return reply(409, { error: "the file changed on disk in the same place", ...read(p) })
