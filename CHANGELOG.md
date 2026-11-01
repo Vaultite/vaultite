@@ -318,6 +318,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   tab on a phone spends about 340 ms less reading YAML.
 - **Phone drawers at phone sizes**: the drawers' pinned files, panels and headings are 17px with 44px rows (they were
   15.6px and 34px), as every other list of the sidebar's on a phone.
+- **Search and the palettes at phone sizes**: on a phone their results are 17px with 44px rows (they were 15px and
+  37px), and the field's clear button takes a finger-sized tap.
 
 ## 0.8.0 (2026-10-24)
 

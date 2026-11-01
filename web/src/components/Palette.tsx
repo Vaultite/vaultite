@@ -66,7 +66,7 @@ const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHov
   return (
     <button id={`palette-${id}`} data-i={i} type="button" role="option" aria-selected={selected} tabIndex={-1}
       onMouseMove={() => onHover(i)} onClick={(e) => onPick(i, e)}
-      className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left [contain-intrinsic-size:auto_37px] [content-visibility:auto]", selected && "bg-foreground/[0.07]")}>
+      className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left max-md:py-[9px] [contain-intrinsic-size:auto_37px] [content-visibility:auto]", selected && "bg-foreground/[0.07]")}>
       {draw(item, selected)}
     </button>
   )
@@ -76,7 +76,7 @@ const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHov
 const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
   return (
     <button type="button" aria-label="Clear" onClick={onClear}
-      className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card hover:bg-foreground/80">
+      className="relative grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card after:absolute after:-inset-2 hover:bg-foreground/80">
       <X className="size-4" strokeWidth={3} />
     </button>
   )
@@ -184,7 +184,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
           className="h-14 min-w-0 flex-1 bg-transparent text-[17px] outline-none placeholder:text-muted-foreground" />
         {query && <Clear onClear={clear} />}
       </div>
-      <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
+      {/* (phones: the rows a size up, 15px to 17px, 44px tall) */}
+      <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5 max-md:[zoom:1.1333]">
         {heading && <div className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
         {!items.length && empty}
         {items.slice(0, drawn).map((it, i) => (
