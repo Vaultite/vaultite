@@ -2,7 +2,7 @@
 // today ringed; a day opens its note (made from the template when there's none, as the commands do).
 import { useEffect, useState } from "react"
 import { Calendar1, ChevronLeft, ChevronRight } from "lucide-react"
-import { addDays, cn, dateText, dow, get, HeadingButton, openFile, parse, range, SidebarHeading, today, useVaultChange, type SidebarCtx } from "@vaultite"
+import { addDays, cn, dateText, dow, get, HeadingButton, openFile, parse, range, SidebarHeading, today, useTick, useVaultChange, type SidebarCtx } from "@vaultite"
 import { nav, openDay } from "./Day"
 
 type Month = { month: string; days: Record<string, { path: string; words: number }> }
@@ -28,6 +28,7 @@ export const MonthPanel = ({ open }: SidebarCtx) => (open ? <MonthCalendar /> : 
 
 /** The calendar itself: the panel's, and the tab's (`tab`: a page's heading with its arrows always shown). */
 export function MonthCalendar({ tab = false }: { tab?: boolean }) {
+  useTick(60_000) // so the ring moves to the new day after midnight
   const now = today()
   const [month, setMonth] = useState(now.slice(0, 7))
   const data = useMonth(month)
