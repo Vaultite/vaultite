@@ -128,7 +128,7 @@ export function PictureChoice<T extends string>({ value, options, onChange, labe
               on ? "shadow-[0_0_0_2.5px_var(--background),0_0_0_4.5px_var(--primary)]" : "group-hover/pic:shadow-[0_0_0_2.5px_var(--background),0_0_0_4.5px_var(--border)]")}>
               {o.picture}
             </span>
-            <span className={cn("max-w-full truncate text-[12px] leading-[16px]", on ? "font-semibold" : "text-muted-foreground")}>{o.label}</span>
+            <span className={cn("max-w-full truncate text-[12px] leading-[16px] max-md:text-[15px] max-md:leading-[20px]", on ? "font-semibold" : "text-muted-foreground")}>{o.label}</span>
           </button>
         )
       })}

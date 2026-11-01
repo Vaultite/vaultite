@@ -461,10 +461,10 @@ export function FilterField({ value, onChange, placeholder, className }: { value
       <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
         spellCheck={false} autoComplete="off"
         onKeyDown={(e) => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange("") } }}
-        className="h-9 w-full rounded-[8px] border-[0.5px] border-border bg-card pr-8 pl-8 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-7.5 md:text-[13px] [&::-webkit-search-cancel-button]:hidden" />
+        className="h-11 w-full rounded-[10px] border-[0.5px] border-border bg-card pr-8 pl-8 text-[17px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-7.5 md:rounded-[8px] md:text-[13px] [&::-webkit-search-cancel-button]:hidden" />
       {value && (
         <button type="button" onClick={() => onChange("")} aria-label="Clear" data-tip="Clear"
-          className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground hover:text-foreground">
+          className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 cursor-pointer place-items-center rounded-full text-muted-foreground hover:text-foreground max-md:after:absolute max-md:after:-inset-3">
           <X className="size-3.5" strokeWidth={2.25} />
         </button>
       )}

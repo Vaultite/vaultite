@@ -419,6 +419,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   field (a person's context, where they live) takes a taller tap.
 - **Properties fit a finger on a phone**: their rows, toggle and Add property are 44px, list values 15px with a
   finger-sized remove button, and the field to add one no longer shrinks to a sliver.
+- **Settings at phone sizes**: on a phone the search fields over lists (Settings, plugins, hotkeys) are 44px with 17px
+  text, Appearance's picture choices are labelled at 15px, and Show all and a field's clear button take a finger's tap.
 
 ## 0.8.0 (2026-10-24)
 

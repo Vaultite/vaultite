@@ -217,7 +217,7 @@ export function AppearancePanel() {
           <SettingRow below data-settings-row="scheme" label={
             <span className="flex items-center justify-between gap-3">Colour scheme
               <button type="button" onClick={() => openDetail("schemes")} data-schemes-all
-                className="-my-1 -mr-1.5 h-7 cursor-pointer rounded-[7px] px-1.5 text-[13px] text-primary hover:bg-foreground/[0.05]">Show all</button>
+                className="relative -my-1 -mr-1.5 h-7 cursor-pointer rounded-[7px] px-1.5 text-[13px] text-primary hover:bg-foreground/[0.05] max-md:text-[15px] max-md:after:absolute max-md:after:-inset-2">Show all</button>
             </span>}>
             <SchemeStrip />
           </SettingRow>
