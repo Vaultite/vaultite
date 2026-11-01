@@ -1,9 +1,9 @@
 // A canvas's cards and groups, each memoized so dragging or panning redraws only what changed. Text and note cards edit
 // in place; zoomed far out a card is only its colour and name, to keep big boards smooth.
 import { memo, useEffect, useState, type CSSProperties } from "react"
-import { FileText, ImageOff } from "lucide-react"
+import { ChevronDown, ChevronUp, FileText, ImageOff } from "lucide-react"
 import { cn, FileEditor, FileEmbed, Markdown, NoteEditor, rawUrl, readFile, splitFm, useVaultChange, withoutBlocks, type Store } from "@vaultite"
-import { colorOf, styleOf, type CanvasNode } from "./codec"
+import { colorOf, COLLAPSED_H, styleOf, type CanvasNode } from "./codec"
 import { SIDES, DIRS, anchor, type Dir } from "./geometry"
 import { fileName, isImage, px, tint } from "./look"
 import { LinkCard } from "./LinkCard"
@@ -171,20 +171,31 @@ export function ResizeHandle({ id, dir }: { id: string; dir: Dir }) {
 type GroupProps = {
   node: CanvasNode; selected: boolean; editingLabel: boolean; far: boolean; resizable: boolean
   onLabel: (id: string, label: string | null) => void
+  /** Fold or unfold it (absent: it can't be changed). */
+  onToggle?: (id: string) => void
   LabelEditor: (p: { value: string; className: string; onDone: (t: string) => void }) => React.ReactNode
 }
 /** A group: its box behind the cards, its label above it (bigger when zoomed out, so it stays readable). */
-export const Group = memo(function Group({ node: n, selected, editingLabel, far, resizable, onLabel, LabelEditor }: GroupProps) {
+export const Group = memo(function Group({ node: n, selected, editingLabel, far, resizable, onLabel, onToggle, LabelEditor }: GroupProps) {
   const c = colorOf(n.color)
+  const shut = n.collapsed === true
   return (
-    <div data-canvas-node={n.id} data-type="group" className="absolute rounded-[12px] border-2"
-      style={{ left: n.x, top: n.y, width: n.width, height: n.height, borderColor: c ?? "var(--border)", background: c ? tint(c, 8, "transparent") : "color-mix(in srgb, var(--foreground) 3%, transparent)", outline: selected ? `${px(2)} solid var(--primary)` : undefined, outlineOffset: px(2) }}>
+    <div data-canvas-node={n.id} data-type="group" data-collapsed={shut ? "" : undefined} className="group/node absolute rounded-[12px] border-2"
+      style={{ left: n.x, top: n.y, width: n.width, height: shut ? COLLAPSED_H : n.height, borderColor: c ?? "var(--border)", background: c ? tint(c, 8, "transparent") : "color-mix(in srgb, var(--foreground) 3%, transparent)", outline: selected ? `${px(2)} solid var(--primary)` : undefined, outlineOffset: px(2) }}>
       <div className="absolute bottom-full left-0 mb-1.5 max-w-full origin-bottom-left" data-group-label={n.id} style={far ? { transform: "scale(calc(0.4 / var(--k, 1)))" } : undefined}>
         {editingLabel
           ? <LabelEditor value={String(n.label ?? "")} className="h-8 min-w-[160px] rounded-[6px] border border-border bg-card px-2 text-[18px] font-semibold" onDone={(t) => onLabel(n.id, t)} />
           : n.label ? <span className="block truncate rounded-[6px] px-1 text-[18px] font-semibold" style={{ color: c ?? "var(--muted-foreground)" }}>{String(n.label)}</span> : null}
       </div>
-      {resizable && DIRS.map((d) => <ResizeHandle key={d} id={n.id} dir={d} />)}
+      {onToggle && !far && (
+        <button type="button" data-no-drag data-group-toggle={n.id} aria-label={shut ? "Unfold group" : "Fold group"} data-tip={shut ? "Unfold group" : "Fold group"}
+          onClick={(e) => { e.stopPropagation(); onToggle(n.id) }}
+          className={cn("absolute top-1.5 right-1.5 grid size-7 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+            !shut && !selected && "opacity-0 group-hover/node:opacity-100")}>
+          {shut ? <ChevronDown className="size-4" strokeWidth={2.25} /> : <ChevronUp className="size-4" strokeWidth={2.25} />}
+        </button>
+      )}
+      {resizable && !shut && DIRS.map((d) => <ResizeHandle key={d} id={n.id} dir={d} />)}
     </div>
   )
 })

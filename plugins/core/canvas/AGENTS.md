@@ -29,6 +29,8 @@ The shape (other apps write it indented with tabs; keep keys you don't know):
   colour like `"#4a90d9"`. Leave it out for none.
 - `styleAttributes` (other canvas apps' keys): a card's `shape` (`pill`, `circle`, `diamond`, `parallelogram`) and
   `border` (`dashed`, `dotted`, `invisible`); an edge's `path` (`long-dashed`, `short-dashed`, `dotted`). Others are kept.
+- A group with `collapsed: true` is folded: the app draws it as its bar and hides the cards inside it (and their arrows)
+  until it's unfolded; the cards stay in the file as they are.
 - Presenting (the board's Present button) shows each group as a slide: in the order arrows between groups give, the
   rest in reading order. To make a deck, put each slide's cards in a group and join the groups with arrows.
 - Keep the JSON valid: a canvas that doesn't parse isn't drawn. Sentence case on cards, no emojis.

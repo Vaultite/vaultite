@@ -20,6 +20,13 @@ export default async ($: VaultTest) => {
   check("canvas: an empty file is an empty canvas; not JSON throws", parseCanvas("").nodes.length === 0 && (() => { try { parseCanvas("{nope"); return false } catch { return true } })())
   check("canvas: an empty canvas as text says so", canvasMarkdown('{"nodes":[],"edges":[]}') === "_An empty canvas._")
   {
+    const { hiddenIn } = await import("../../../plugins/core/canvas/codec.ts")
+    const fold = { nodes: [{ id: "g", type: "group", label: "Later", x: 0, y: 0, width: 400, height: 300, collapsed: true }, { id: "in", type: "text", text: "Inside", x: 20, y: 60, width: 100, height: 60 },
+      { id: "out", type: "text", text: "Outside", x: 500, y: 0, width: 100, height: 60 }], edges: [] }
+    check("canvas fold: a collapsed group hides what's inside it, nothing else", [...hiddenIn(fold)].join() === "in" && hiddenIn({ ...fold, nodes: fold.nodes.map((n) => ({ ...n, collapsed: undefined })) }).size === 0)
+    check("canvas fold: the text says it's collapsed and still lists its cards", canvasMarkdown(JSON.stringify(fold)).includes("### Later (collapsed)\n\n- Card: Inside"), canvasMarkdown(JSON.stringify(fold)))
+  }
+  {
     const { styleOf, withStyle } = await import("../../../plugins/core/canvas/codec.ts")
     const n = { id: "a", type: "text", x: 0, y: 0, width: 1, height: 1, styleAttributes: { shape: "diamond", other: 1 } }
     check("canvas styles: shapes and line styles read, unknown ones are none, setting one keeps the rest", styleOf(n, "shape") === "diamond" && styleOf({ styleAttributes: { shape: "hexagon" } }, "shape") === "" &&

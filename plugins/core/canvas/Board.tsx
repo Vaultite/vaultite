@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, Palette, Pencil, Plus, Presentation, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup, X,
 } from "lucide-react"
 import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
-import { BORDERS, colorOf, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
+import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
 import { Card, Group, type CardEvents } from "./Card"
@@ -272,7 +272,9 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     return { x: (cx - r.left - v.x) / v.k, y: (cy - r.top - v.y) / v.k }
   }
   const nodeAt = (p: Pt, except?: string) => {
-    const ns = docRef.current.nodes.filter((n) => n.id !== except && p.x >= n.x && p.x <= n.x + n.width && p.y >= n.y && p.y <= n.y + n.height)
+    const hide = hiddenIn(docRef.current)
+    const h = (n: CanvasNode) => (n.collapsed === true ? COLLAPSED_H : n.height)
+    const ns = docRef.current.nodes.filter((n) => n.id !== except && !hide.has(n.id) && p.x >= n.x && p.x <= n.x + n.width && p.y >= n.y && p.y <= n.y + h(n))
     return ns.findLast((n) => n.type !== "group") ?? ns[ns.length - 1] ?? null
   }
   const viewCentre = (): Pt => { const r = box.current!.getBoundingClientRect(); return toWorld(r.left + r.width / 2, r.top + r.height / 2) }
@@ -328,6 +330,14 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (n && t !== null && t !== String(n.label ?? "")) patchNode(id, { label: t })
   }
   const onGroupLabel = useCallback((id: string, t: string | null) => labelDone.current(id, t), [])
+  // Folding a group: `collapsed` on it, its cards (and arrows to them) hidden until it's unfolded.
+  const toggleGroup = useRef((_id: string) => {})
+  toggleGroup.current = (id: string) => {
+    const d = docRef.current
+    setSel(new Set())
+    commit({ ...d, nodes: d.nodes.map((n) => { if (n.id !== id) return n; const y = { ...n }; if (n.collapsed === true) delete y.collapsed; else y.collapsed = true; return y }) })
+  }
+  const onGroupToggle = useCallback((id: string) => toggleGroup.current(id), [])
 
   // ---- adding things
   const addNode = (node: Omit<CanvasNode, "id">, opts: { edit?: boolean; from?: { id: string; side: Side; toSide: Side } } = {}) => {
@@ -690,7 +700,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       const m = { ...d, x1: p.x, y1: p.y }
       setD(m)
       const r = { x0: Math.min(m.x0, m.x1), y0: Math.min(m.y0, m.y1), x1: Math.max(m.x0, m.x1), y1: Math.max(m.y0, m.y1) }
-      const hit = docRef.current.nodes.filter((n) => (n.type === "group" ? within(n, r) : overlaps(n, r))).map((n) => n.id)
+      const hide = hiddenIn(docRef.current)
+      const hit = docRef.current.nodes.filter((n) => !hide.has(n.id) && (n.type === "group" ? within(n.collapsed === true ? { ...n, height: COLLAPSED_H } : n, r) : overlaps(n, r))).map((n) => n.id)
       setSel(new Set([...m.add, ...hit]))
     }
   }
@@ -919,7 +930,10 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   if (error !== null && !doc.nodes.length) return <p className="p-4 text-[15px] text-muted-foreground">This canvas couldn't be read{error ? `: ${error}` : ""}. Source mode shows its text.</p>
 
   const far = !!win?.far
-  const shown = (n: CanvasNode) => !win || overlaps(n, win) || sel.has(n.id) || editing?.id === n.id
+  const hidden = hiddenIn(doc)
+  // (a folded group as drawn: its bar, which its arrows meet)
+  const drawn = (n: CanvasNode | undefined) => (n?.collapsed === true ? { ...n, height: COLLAPSED_H } : n)
+  const shown = (n: CanvasNode) => !hidden.has(n.id) && (!win || overlaps(n, win) || sel.has(n.id) || editing?.id === n.id)
   const groups = doc.nodes.filter((n) => n.type === "group" && shown(n))
   const cards = doc.nodes.filter((n) => n.type !== "group" && shown(n))
   const handles = editable && interactive && !far && !drag
@@ -927,7 +941,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const toolbarOn = editable && interactive && !drag && !editing && slide === null && (sel.size > 0 || !!selEdge)
   const edgeOf = (id: string | null) => {
     const e = id ? doc.edges.find((x) => x.id === id) : undefined
-    const a = e && byId.get(e.fromNode), b = e && byId.get(e.toNode)
+    const a = e && drawn(byId.get(e.fromNode)), b = e && drawn(byId.get(e.toNode))
     return e && a && b ? { e, ...edgePath(e, a, b) } : null
   }
   {
@@ -955,12 +969,12 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       <div ref={stage} className="absolute top-0 left-0 origin-top-left" data-canvas-stage>
         {groups.map((n) => (
           <Group key={n.id} node={n} selected={sel.has(n.id)} editingLabel={editing?.kind === "label" && editing.id === n.id} far={far}
-            resizable={handles && one?.id === n.id} onLabel={onGroupLabel} LabelEditor={LabelEditor} />
+            resizable={handles && one?.id === n.id} onLabel={onGroupLabel} onToggle={editable && interactive ? onGroupToggle : undefined} LabelEditor={LabelEditor} />
         ))}
         <svg className="pointer-events-none absolute top-0 left-0 overflow-visible" width="1" height="1" data-canvas-edges-layer>
           {doc.edges.map((e) => {
-            const a = byId.get(e.fromNode), b = byId.get(e.toNode)
-            if (!a || !b) return null
+            const a = drawn(byId.get(e.fromNode)), b = drawn(byId.get(e.toNode))
+            if (!a || !b || hidden.has(a.id) || hidden.has(b.id)) return null
             const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y)
             if (win && !overlaps({ x: x0, y: y0, width: Math.max(a.x + a.width, b.x + b.width) - x0, height: Math.max(a.y + a.height, b.y + b.height) - y0 }, win)) return null
             return <Edge key={e.id} edge={e} from={a} to={b} selected={selEdge === e.id} editingLabel={editing?.kind === "edge" && editing.id === e.id} interactive={interactive} moving={movingEdge === e.id} />

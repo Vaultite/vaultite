@@ -91,6 +91,14 @@ export function withStyle<T extends object>(x: T, key: string, value: string): T
   return y
 }
 
+/** A collapsed group's height as drawn: its bar. */
+export const COLLAPSED_H = 48
+/** The nodes hidden by a collapsed group (`collapsed: true`, as other canvas apps keep it): every node inside one. */
+export function hiddenIn(doc: CanvasDoc): Set<string> {
+  const shut = doc.nodes.filter((g) => g.type === "group" && g.collapsed === true)
+  return new Set(doc.nodes.filter((n) => shut.some((g) => inside(n, g))).map((n) => n.id))
+}
+
 /** Whether node `a` lies inside group `g` (its box, a little slack). */
 export const inside = (a: CanvasNode, g: CanvasNode) =>
   a !== g && a.x >= g.x - 1 && a.y >= g.y - 1 && a.x + a.width <= g.x + g.width + 1 && a.y + a.height <= g.y + g.height + 1
@@ -154,7 +162,7 @@ export function canvasMarkdown(text: string): string {
   if (loose.length) parts.push(loose.map(card).join("\n"))
   for (const g of groups) {
     const cards = doc.nodes.filter((n) => inGroup.get(n.id) === g).sort(order)
-    parts.push(`### ${g.label ? String(g.label) : "Group"}${colour(g)}\n\n${cards.length ? cards.map(card).join("\n") : "_(empty)_"}`)
+    parts.push(`### ${g.label ? String(g.label) : "Group"}${colour(g)}${g.collapsed === true ? " (collapsed)" : ""}\n\n${cards.length ? cards.map(card).join("\n") : "_(empty)_"}`)
   }
   const lines = doc.edges.flatMap((e) => {
     const a = byId.get(e.fromNode), b = byId.get(e.toNode)
