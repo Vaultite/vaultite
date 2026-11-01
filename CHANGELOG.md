@@ -12,6 +12,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   that note, its `::: name` blocks in the template's `<% name %>` places, as in Advanced Slides.
 - **Fold canvas groups**: a group's fold button tucks it into its bar, hiding its cards and their arrows until it's
   unfolded; files from other canvas apps that fold groups open folded.
+- **Vim keys' ]] and [[ show the heading they go to**: in a note being read, it stopped under the path bar, hidden.
 - **Slides have a presenter view**: S (or its button) opens a window of its own with the slide, what comes next (the
   next fragment or slide), the speaker notes, a timer you can pause and reset, and the clock; either window moves both.
 - **A note's title is its heading while you edit it**: a screen reader lists an editable title as the page's heading,

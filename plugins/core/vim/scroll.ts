@@ -1,7 +1,7 @@
 // Moving through what's on screen outside the editor: the scroller j/k move (a sheet's, else the focused pane's),
 // headings (a note's from its text, so undrawn ones count) and the note's editor itself, for `i`.
 import type { EditorView } from "@codemirror/view"
-import { currentFile, editorAt, glide, runCommandById } from "@vaultite"
+import { currentFile, editorAt, glide, runCommandById, sightOf } from "@vaultite"
 import { setPeek } from "./state"
 
 const LINE = 60
@@ -94,10 +94,12 @@ function headingTops(el: HTMLElement) {
 export function heading(dir: 1 | -1) {
   const el = scroller()
   if (!el) return
-  const at = el.scrollTop + 12
+  // (just below the bars drawn over it, the path bar's: a heading under one isn't seen)
+  const below = Math.max(0, sightOf(el.firstElementChild ?? el).top - el.getBoundingClientRect().top) + 12
+  const at = el.scrollTop + below
   const tops = headingTops(el)
   const to = dir > 0 ? tops.find((t) => t > at + 2) : [...tops].reverse().find((t) => t < at - 2)
-  if (to !== undefined) el.scrollTo({ top: Math.max(0, to - 12), behavior: "auto" })
+  if (to !== undefined) el.scrollTo({ top: Math.max(0, to - below), behavior: "auto" })
 }
 
 /** The first line in sight in a note's editor. */
