@@ -1,7 +1,7 @@
 // Activity's frontend: draws what the server records (plugin.ts, model.ts) and reports what only the app knows
 // (Report.tsx).
 import { Activity, CalendarDays, SquareTerminal } from "lucide-react"
-import { currentFile, definePlugin, getStore, openFile, openView, pageOf } from "@vaultite"
+import { currentFile, definePlugin, getStore, openFile, openView, pageOf, sidebarMode, toggleSidebarMode } from "@vaultite"
 import { FeedBlock, FeedView } from "./Feed"
 import { mockLive } from "./mock"
 import { ActivityPanel } from "./Panel"
@@ -11,6 +11,7 @@ import { Report } from "./Report"
 import { chooseSession, sessionsHere, SessionsChip } from "./Sessions"
 import { SummaryBlock } from "./Summary"
 
+const FEED = "activity:feed"
 
 export default definePlugin({
   blocks: {
@@ -33,7 +34,8 @@ export default definePlugin({
     types: ["recap"], folders: ["Recaps"], icon: CalendarDays, tint: RECAP_TINT,
     page: { render: (ctx) => <RecapPage {...ctx} /> },
   },
-  // The last few things done, one line each: hidden until the user shows it, a flyout in the rail, a tab (view:activity).
+  // The last few things done, one line each: hidden until the user shows it, a flyout in the rail, a tab (view:activity),
+  // or the left sidebar's mode (activity:sidebar), filling it.
   sidebar: {
     feed: { title: "Activity", names: ["activity"], heading: false, sort: 32, hidden: true, view: "activity", flyout: { icon: Activity }, render: (ctx) => <ActivityPanel {...ctx} /> },
   },
@@ -45,6 +47,9 @@ export default definePlugin({
       id: "activity:open", name: "Open activity",
       run: () => { const page = pageOf(getStore(), "activity", "Activity"); return page ? openFile(page.path) : openView("activity", { newTab: true }) },
     },
+    // The left sidebar as Activity alone, or its panels again (core/sidebarmode.ts), kept in the workspace.
+    { id: "activity:sidebar", name: "Show activity in the sidebar", desktop: true, run: () => toggleSidebarMode(FEED),
+      icon: Activity, nameWhenOn: "Show panels in the sidebar", on: () => sidebarMode() === FEED },
     { id: "activity:sessions", name: "Sessions that changed this file", icon: SquareTerminal, when: () => sessionsHere(currentFile()), run: chooseSession },
   ],
   background: () => <Report />,

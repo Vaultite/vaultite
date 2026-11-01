@@ -26,7 +26,9 @@ A panel's key is `<plugin id>:<name>`; one in neither sidebar is hidden (its plu
 none takes no room. Without the file every panel is on the left in the app's order, but the ones a plugin hides until
 asked (Links, Outline, Local graph, Recent files...). With Workspaces on each workspace may have its own (its `sidebars`), so change
 the current one's: `vau panels` (move, hide, show, left, right, collapse, expand; `--vault` for sidebars.json). Phones
-show the same two sidebars as drawers.
+show the same two sidebars as drawers. A computer's left sidebar can be one panel alone, filling it, as its mode (Show
+activity in the sidebar: Activity's feed); its heading's X or the command again brings the panels back. Each workspace
+keeps its own (`core:sidebar-mode`, the panel's key).
 
 **A new tab's page**, `.vaultite/newtab.json`: its sections top to bottom, and the buttons of its Buttons section,
 each a palette command by id (its name, icon and shortcut are the command's; `icons` gives one another icon, a Lucide

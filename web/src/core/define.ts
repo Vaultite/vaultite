@@ -365,6 +365,9 @@ export type SidebarCtx = { store: Store
   /** In a box of its own height (a
    *  `tall` panel in a flyout): it scrolls in it. Otherwise it's as tall as what it draws, and the sidebar scrolls. */
   bounded?: boolean
+  /** Alone in the left sidebar, its mode (core/sidebarmode.ts), with `open` and `bounded`: it fills the sidebar's
+   *  height, so a list can show more and scroll under its heading. */
+  mode?: boolean
   /** The file in the focused tab ("" when it isn't a file). */
   file: string
   /** The focused tab's target ("file:Notes/Idea.md", "view:terminal/abc", "plugins"). */

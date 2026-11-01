@@ -17,6 +17,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   rounded corners, as every other button's does, not a square box around it.
 - **Panes as cards**: an Appearance setting (and palette command) draws desktop panes as inset, rounded cards with a
   little room around and between them; drag the gap to resize. Off by default.
+- **Activity can fill the left sidebar**: Show activity in the sidebar turns it into the live feed, newest first by
+  day, each row opening what it's about; its X or the command again brings your panels back, and each workspace
+  remembers which it shows.
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and

@@ -525,6 +525,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
 - `setsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging), and whether it's that group's last: its line ends there.
+- `setSidebarMode(key)`: Show panel `key` alone in the left sidebar, the sidebar open (null: its panels again).
 - `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
@@ -544,6 +545,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `shownName(path)`: A file or folder as the app names it: a note without .md, other files with their extension.
 - `SidebarCtx`
 - `SidebarHeading`
+- `sidebarMode(prefs?)`: The panel the left sidebar shows alone now (its key), or null: its panels.
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
 - `SidebarRow({ icon, iconClassName, tint, badge, tag, mark, label, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
 - `sidebars(prefs?)`: The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's.
@@ -612,6 +614,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `tintNames()`: Plugins' colours: a manifest's `tint` ("orange") makes --<id> (--today: var(--orange)).
 - `tintOf(t?)`: `tint: people` -> var(--people): a colour token (never a hex, so schemes recolour it).
 - `today()`
+- `toggleSidebarMode(key)`: Panel `key` alone in the left sidebar, or the panels again if it is already.
 - `tokens(n)`
 - `touches(paths, path)`: Does this change touch `path` (the file itself, or a folder it's in)?
 - `touchTabsSeen()`: The tabs on screen are being looked at (the window is in view): stamped as seen now.
@@ -663,6 +666,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useSelectedKeys(list)`: The keys selected in a list, live (for a short list drawn in one piece; long ones ask per row: useSelected).
 - `useSelecting(list?)`: A phone selecting (in this list): taps pick rows, and swipes rest.
 - `useSheetGuard(lost)`: A form in a sheet that isn't saved as you type: closing the sheet while `lost()` has lines asks first, showing them.
+- `useSidebarMode()`
 - `useSidebars()`
 - `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.

@@ -25,7 +25,8 @@ import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
 import { foldPanel, liftedHeight, settle } from "@/components/panelMotion"
 
-import { PanelFold, SidebarHeading } from "@/components/SidebarHeading"
+import { useSidebarMode, setSidebarMode } from "@/core/sidebarmode"
+import { PanelAlone, PanelFold, SidebarHeading } from "@/components/SidebarHeading"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { PanelFold, SidebarHeading }
 
@@ -94,6 +95,10 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
 
   const [flying, setFlying] = useState<string | null>(null)
   useEffect(() => { if (ctx.open) setFlying(null) }, [ctx.open])
+  // The left sidebar showing one panel alone (its mode): that panel fills it. The rail and phones keep the panels.
+  const mode = useSidebarMode()
+  const alone = side === "left" && ctx.open && !ctx.phone ? sidebarPanels(disabled).find((p) => p.key === mode) : undefined
+  if (alone) return <SidebarSide.Provider value={side}><SidebarMode of={alone} ctx={ctx} /></SidebarSide.Provider>
 
   if (!ctx.open) {
     return (
@@ -175,6 +180,32 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
       {making?.includes(INCOMING) && <div aria-hidden data-slide={INCOMING} data-slide-fixed className={cn("absolute inset-x-1 top-0 h-7", liftedHeight() && "bg-transparent")} style={{ height: liftedHeight() }} />}
     </div>
     </SidebarSide.Provider>
+  )
+}
+
+const leaveMode = () => setSidebarMode(null)
+
+/** A panel alone in the left sidebar, filling it (its own box, scrolling under its heading), with an X on its heading
+ *  back to the panels. Right-click: its own menu, Open in a tab, Show panels. */
+function SidebarMode({ of: { key, panel }, ctx }: { of: PanelOf; ctx: SidebarCtx }) {
+  const menu = (): MenuItem[] => {
+    const own: MenuItem[] = panel.menu?.() ?? []
+    const view = panel.view
+    const tab = panel.tab?.() ?? (view ? { name: panel.title, open: () => openView(view, { newTab: true }) } : null)
+    return [...own, ...(tab ? [{ label: `Open ${tab.name} in a tab`, icon: SquareArrowOutUpRight, sep: !!own.length, run: tab.open }] : []),
+      { label: "Show panels", icon: Layers, sep: true, run: leaveMode }]
+  }
+  const draw = { ...ctx, panel: key, open: true, bounded: true, mode: true }
+  return (
+    <div data-sidebar-body="left" data-sidebar-mode={key} onContextMenu={menuFor(menu)}
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-1">
+      <PanelFold.Provider value={null}>
+        <PanelAlone.Provider value={leaveMode}>
+          {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.(draw)}</SidebarHeading>}
+          <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render(draw)} /></Guard>
+        </PanelAlone.Provider>
+      </PanelFold.Provider>
+    </div>
   )
 }
 

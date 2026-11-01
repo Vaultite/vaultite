@@ -1,6 +1,6 @@
 // A sidebar panel's heading, on its own so the file tree (which the sidebar imports) can use it too.
 import { createContext, useContext } from "react"
-import { ChevronRight, Ellipsis } from "lucide-react"
+import { ChevronRight, Ellipsis, X } from "lucide-react"
 import { coarse } from "@/core/haptics"
 import { HeadingButton } from "@/components/Button"
 import { rightClickBelow } from "@/components/ContextMenu"
@@ -11,6 +11,13 @@ import { cn } from "@/lib/utils"
  *  how to fold or open it. None (a heading outside the sidebar, the rail): the heading is only a label. */
 export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void } | null>(null)
 
+/** A panel shown alone in the left sidebar (its mode, core/sidebarmode.ts): how to bring the panels back, which its
+ *  heading offers as an X that's always there. */
+export const PanelAlone = createContext<(() => void) | null>(null)
+
+/** Its heading's way out of the sidebar's mode: back to the panels. */
+const LeaveMode = ({ leave }: { leave: () => void }) => <HeadingButton icon={X} label="Show panels" data-leave-mode onClick={leave} className="ml-0.5" />
+
 /** A panel's heading: label left, hover buttons right (touch: swiped to), then … for its menu, then `aside` (always
  *  shown: a picker of what it shows); click folds the panel, drag moves it (`data-panel-handle`). Nothing in the rail. */
 export function SidebarHeading({ title, open, children, aside, className }: {
@@ -20,6 +27,7 @@ export function SidebarHeading({ title, open, children, aside, className }: {
   className?: string
 }) {
   const fold = useContext(PanelFold)
+  const alone = useContext(PanelAlone)
   if (!open) return null
   const f = fold
   const label = (
@@ -42,7 +50,7 @@ export function SidebarHeading({ title, open, children, aside, className }: {
   if (coarse && children) {
     return (
       <SwipeRow {...head} under={children} className={box}>
-        <div className="flex h-7 items-center gap-0.5 pr-0.5 pl-1.5">{label}<span className="flex-1" />{aside}</div>
+        <div className="flex h-7 items-center gap-0.5 pr-0.5 pl-1.5">{label}<span className="flex-1" />{aside}{alone && <LeaveMode leave={alone} />}</div>
       </SwipeRow>
     )
   }
@@ -56,6 +64,7 @@ export function SidebarHeading({ title, open, children, aside, className }: {
         {f && <HeadingButton icon={Ellipsis} label={`More for ${title}`} tip="More" data-heading-more onClick={rightClickBelow} />}
       </span>
       {aside}
+      {alone && <LeaveMode leave={alone} />}
     </div>
   )
 }
