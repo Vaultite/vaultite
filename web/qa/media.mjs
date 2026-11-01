@@ -165,6 +165,34 @@ await page.getByRole("button", { name: "End presentation" }).click(); await wait
 check("phone: the close button ends it", await page.locator("[data-presentation]").count() === 0)
 await page.close()
 
+// css: files and a theme that's a file: the deck's, live, never the app's.
+{
+  const CSS_DECK = "Qa media/Styled.md", SHEET = "Qa media/css/deck.css"
+  fs.mkdirSync(`${VAULT}/.obsidian/plugins/obsidian-advanced-slides/css`, { recursive: true })
+  fs.writeFileSync(`${VAULT}/.obsidian/plugins/obsidian-advanced-slides/css/qa-theme.css`, ":root { --r-main-color: rgb(4, 5, 6); }\n.reveal p { font-style: italic; }\n")
+  await put(SHEET, ".reveal h2 { color: rgb(1, 2, 3); }\n.reveal .slides section { background-image: url(../pic.png); }\n")
+  await put(CSS_DECK, "---\ntheme: css/qa-theme.css\ncss: [css/deck.css]\n---\n\n## Styled\n\nSome text\n")
+  page = await open({ viewport: { width: 1280, height: 800 } })
+  await page.goto(`${B}#file/${enc(CSS_DECK)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(1200)
+  const look = () => page.evaluate(() => {
+    const h = document.querySelector("[data-deck-slide] h2"), p = document.querySelector("[data-deck-slide] p"), d = document.querySelector("[data-deck]")
+    return { h2: h && getComputedStyle(h).color, p: p && getComputedStyle(p).fontStyle, main: d && getComputedStyle(d).color, bg: d && getComputedStyle(d).backgroundImage,
+      app: getComputedStyle(document.querySelector("#root h2, #root p") ?? document.body).fontStyle }
+  })
+  const l1 = await look()
+  check("css: a deck's stylesheet styles its slides", l1.h2 === "rgb(1, 2, 3)" && l1.bg.includes("pic.png"), l1)
+  check("css: a theme that's a file, from Advanced Slides' folder", l1.main === "rgb(4, 5, 6)" && l1.p === "italic" && l1.app !== "italic", l1)
+  await page.screenshot({ path: `${OUT}media-slides-css.png` })
+  await put(SHEET, ".reveal h2 { color: rgb(7, 8, 9); }\n")
+  await until(async () => (await look()).h2 === "rgb(7, 8, 9)", 8000).catch(() => {})
+  check("css: a changed stylesheet shows at once", (await look()).h2 === "rgb(7, 8, 9)", await look())
+  await page.keyboard.press("Escape"); await wait(400)
+  check("css: gone with the presentation", await page.evaluate(() => [...document.querySelectorAll("style")].every((s) => !s.textContent.includes("rgb(7, 8, 9)"))))
+  await page.close()
+  for (const p of [CSS_DECK, SHEET]) await del(p)
+}
+
 // ---------- print ----------
 for (const scheme of ["dark", "light"]) {
   page = await open({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })

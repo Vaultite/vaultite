@@ -1299,7 +1299,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Slides: a note as a deck, read as Advanced Slides reads one (plugins/core/slides/slides.ts) ----------
 {
-  const { parseDeck, isTitleSlide, scopeCss, scopeSelector } = await import("../plugins/core/slides/slides.ts")
+  const { cssFiles, cssPlaces, cssUrls, parseDeck, isTitleSlide, scopeCss, scopeSelector } = await import("../plugins/core/slides/slides.ts")
   const mds = (body: string, opts = {}) => parseDeck(body, opts).slides.map((s) => s.md)
   const got = mds("# Launch\n\n---\n\n## Why\n- one\n\n----\n```md\n---\nnot a split\n```\n---\n\n---\n![[chart.png]]\n")
   check("slides: split at --- lines, never inside code, empty ones dropped", got.length === 4 && got[0] === "# Launch" && got[2].includes("not a split") && got[3] === "![[chart.png]]", got)
@@ -1328,6 +1328,14 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const sc = scopeCss("@import url(x.css);\n/* c } */ body { margin: 0 }\n@media (min-width: 1px) { .reveal h2 { color: blue } }\n@font-face { font-family: X; }\n@page { size: A4 }\n.a::after { content: \"}\" }", "[d]")
   check("slides: the deck's CSS stays in the deck (@media scoped, @import and @page dropped)",
     sc.includes("[d] { margin: 0 }") && sc.includes("@media (min-width: 1px) {\n[d] h2 { color: blue }") && sc.includes("@font-face") && !sc.includes("@import") && !sc.includes("A4") && sc.includes('[d] .a::after { content: "}" }'), sc)
+  check("slides: css: files (a list or commas) after a theme that's a file or an address; a theme's name isn't one",
+    JSON.stringify(cssFiles({ theme: "css/my-theme.css", css: "a.css, [[b.css]]" })) === '["css/my-theme.css","a.css","b.css"]'
+    && JSON.stringify(cssFiles({ theme: "night", css: ["x.css", "not css"] })) === '["x.css"]' && cssFiles({ theme: "https://t.example/robot.css" }).length === 1, cssFiles({ theme: "css/my-theme.css", css: "a.css, [[b.css]]" }))
+  check("slides: a css: file beside the note, from the root, then in Advanced Slides' folder",
+    JSON.stringify(cssPlaces("css/x.css", "Talks/Deck.md")) === '["Talks/css/x.css","css/x.css",".obsidian/plugins/obsidian-advanced-slides/css/x.css"]'
+    && JSON.stringify(cssPlaces("../s.css", "A/B/Deck.md").slice(0, 1)) === '["A/s.css"]' && JSON.stringify(cssPlaces("/s.css", "A/Deck.md")) === '["s.css"]', cssPlaces("css/x.css", "Talks/Deck.md"))
+  const urls = cssUrls("a { background: url('img/b.png') } b { src: url(https://f.example/x.woff2) } c { mask: url(#m) } d { x: url(data:image/png;base64,AA) }", "Talks/css", (p) => `raw:${p}`)
+  check("slides: a stylesheet's relative url()s load from beside it, addresses kept", urls.includes('url("raw:Talks/css/img/b.png")') && urls.includes("url(https://f.example/x.woff2)") && urls.includes("url(#m)") && urls.includes("url(data:image"), urls)
 }
 
 // ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------

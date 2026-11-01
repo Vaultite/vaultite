@@ -35,6 +35,9 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
   steps it in; list items marked `+` or `1)` come in one at a time.
 - `<style>` blocks apply to the whole deck while it's presented, never to the app (`.reveal`, `:root` mean the deck;
   `--r-code-font`, `--r-main-color` and `--r-background-color` count). A `%% comment %%` hides what's in it.
+- `css: [deck.css]` (a list, or names split by commas; beside the note, else from the vault's root) and a `theme:`
+  that's a CSS file (`css/my-theme.css`, also found in `.obsidian/plugins/obsidian-advanced-slides/`) or an https
+  address: stylesheets kept to the deck like its `<style>`, before it, shown again when one changes.
 - Frontmatter: `separator`, `verticalSeparator`, `notesSeparator` (regexes for a line), `bg` (every slide's background),
   `theme` (only light or dark: `black`, `night`... or `white`, `beige`...), `showNotes: true` (notes open).
 - Not drawn: `<split>` and `<grid>` layouts and `::: block`s (their content shows in order, without the layout),

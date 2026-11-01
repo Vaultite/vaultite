@@ -41,6 +41,9 @@ function splitext(rel: string): [string, string] {
   return dot > 0 ? [rel.slice(0, slash + 1 + dot), name.slice(dot)] : [rel, ""]
 }
 
+/** Advanced Slides' themes, read (never written) by a deck's `theme: css/….css`. */
+const SLIDE_THEMES = ".obsidian/plugins/obsidian-advanced-slides/css/"
+
 /** The app's settings files, reachable by exact path even with hidden files off: .vaultite/**.{json,md,vim}, and the
  *  snippets and themes folders. */
 const SETTINGS = /^\.vaultite\/(?:(?:[^./][^/]*\/)*[^./][^/]*\.(?:json|md|vim)|(?:snippets|themes)(?:\/[^./][^/]*)*)$/
@@ -720,7 +723,8 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
   if (route === "file/linked" && method === "GET") return { lines: linkedLines(vault, clean(query.path, false, vault, true)) }
   if (route === "file") {
     if (method === "GET") {
-      const rel = clean(query.path, false, vault, true)
+      const p = String(query.path ?? "")
+      const rel = p.startsWith(SLIDE_THEMES) && p.endsWith(".css") ? SLIDE_THEMES + clean(p.slice(SLIDE_THEMES.length)) : clean(query.path, false, vault, true)
       await downloaded(vault, rel)
       return read(vault, rel)
     }

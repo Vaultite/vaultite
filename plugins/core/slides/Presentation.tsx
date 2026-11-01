@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type RefObject, type TouchEvent } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from "lucide-react"
-import { activeFile, cn, getStore, NoteBody, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
-import { isTitleSlide, parseDeck, scopeCss, type Slide } from "./slides"
+import { activeFile, cn, folderOf, getStore, NoteBody, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
+import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, type Slide } from "./slides"
 
 /** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */
 async function textOf(path: string) {
@@ -126,6 +126,30 @@ const nextName = (md: string) => {
   return snippet(/^#{1,6}\s+(.+)$/m.exec(plain)?.[1] ?? plain.replace(/!\[\[[^\]]*\]\]/g, ""))
 }
 
+/** The deck's stylesheet files (`css:`, a `theme:` that's one), as one sheet: read again when one changes, a missing
+ *  or unreadable one left out. */
+function useSheets(path: string, props: Record<string, unknown>) {
+  const refs = cssFiles(props).join("\n")
+  const [css, setCss] = useState("")
+  const [n, setN] = useState(0)
+  const places = useMemo(() => new Set(refs.split("\n").filter(Boolean).flatMap((r) => cssPlaces(r, path))), [refs, path])
+  useVaultChange(() => setN((x) => x + 1), (p) => places.has(p))
+  useEffect(() => {
+    let on = true
+    const one = async (ref: string) => {
+      if (/^https:/i.test(ref)) return fetch(ref).then((r) => (r.ok ? r.text() : ""), () => "")
+      for (const p of cssPlaces(ref, path)) {
+        const text = await readFile(p).then((f) => f.text, () => null)
+        if (text !== null) return cssUrls(text, folderOf(p), (u) => rawUrl(u))
+      }
+      return ""
+    }
+    void Promise.all(refs.split("\n").filter(Boolean).map(one)).then((all) => { if (on) setCss(all.join("\n")) })
+    return () => { on = false }
+  }, [refs, path, n])
+  return css
+}
+
 /** Speaker notes, shown or not, for every presentation till the app reloads. */
 let notesShown = false
 
@@ -147,7 +171,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const { fm, body } = useMemo(() => splitFm(text ?? ""), [text])
   const props = useMemo(() => readProps(fm).props, [fm])
   const deck = useMemo(() => parseDeck(body, props), [body, props])
-  const css = useMemo(() => scopeCss(deck.css, "[data-deck]"), [deck.css])
+  const sheets = useSheets(path, props)
+  const css = useMemo(() => scopeCss(`${sheets}\n${deck.css}`, "[data-deck]"), [sheets, deck.css])
   const { slides } = deck
   const hasNotes = slides.some((s) => s.notes)
   const [notes, setNotes] = useState(() => notesShown || props.showNotes === true)

@@ -106,6 +106,17 @@ export default async ($: VaultTest) => {
     ;[code] = await api("GET", `file?path=${bad}`)
     check(`no ${bad} with hidden files off`, code === 400, code)
   }
+  // Advanced Slides' themes, which a deck's `theme:` names: read by their path, never written.
+  write(".obsidian/plugins/obsidian-advanced-slides/css/mine.css", ".reveal { color: red }\n")
+  ;[code, cfg] = await api("GET", "file?path=.obsidian/plugins/obsidian-advanced-slides/css/mine.css")
+  check("a deck theme in Advanced Slides' folder reads with hidden files off", code === 200 && cfg.text.includes(".reveal"), [code, cfg])
+  for (const bad of [".obsidian/plugins/obsidian-advanced-slides/css/../../../app.json", ".obsidian/plugins/obsidian-advanced-slides/css/.x/a.css", ".obsidian/plugins/obsidian-advanced-slides/data.json"]) {
+    ;[code] = await api("GET", `file?path=${encodeURIComponent(bad)}`)
+    check(`but not ${bad}`, code === 400, code)
+  }
+  ;[code] = await api("PUT", "file", { path: ".obsidian/plugins/obsidian-advanced-slides/css/mine.css", text: "x" })
+  check("nor written", code === 400, code)
+  fs.rmSync(path.join(VAULT, ".obsidian"), { recursive: true })
   ;[, cfg] = await api("GET", "files")
   check("hidden files aren't listed", !JSON.stringify(cfg).includes(".vaultite/"), null)
   let res: Any

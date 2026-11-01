@@ -149,6 +149,35 @@ export function isTitleSlide(md: string): boolean {
 
 // ---------- the deck's CSS, kept to the presentation ----------
 
+const CSS_FILE = /^(https:\/\/\S+|[^\s<>"]+\.css([?#]\S*)?)$/i
+/** The deck's stylesheets, in the order they apply: a `theme` that's a CSS file or address, then `css` (a list, or
+ *  names split by commas). */
+export function cssFiles(props: Record<string, unknown>): string[] {
+  const list = (v: unknown) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : []).map((s) => String(s).trim().replace(/^\[\[([^\]|]+)[^\]]*\]\]$/, "$1"))
+  return [...list(props.theme), ...list(props.css)].filter((s) => CSS_FILE.test(s))
+}
+
+/** Where a stylesheet `ref` named by the note at `note` may be in the vault, likeliest first: beside the note, from
+ *  the vault's root, then Advanced Slides' own folder (its `css/…` themes). */
+export function cssPlaces(ref: string, note: string): string[] {
+  const join = (dir: string, p: string) => {
+    const out: string[] = []
+    for (const x of `${dir}/${p}`.split("/")) { if (x === "..") out.pop(); else if (x && x !== ".") out.push(x) }
+    return out.join("/")
+  }
+  const p = ref.replace(/[?#].*$/, "")
+  if (p.startsWith("/")) return [join("", p)]
+  const dir = note.includes("/") ? note.slice(0, note.lastIndexOf("/")) : ""
+  return [...new Set([join(dir, p), join("", p), join(".obsidian/plugins/obsidian-advanced-slides", p)])]
+}
+
+/** A stylesheet's relative `url(…)`s (fonts, images) as addresses the browser loads: `toUrl` of the vault path each
+ *  names from the sheet's folder `dir`. */
+export function cssUrls(css: string, dir: string, toUrl: (path: string) => string): string {
+  return css.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (m, _q, u: string) =>
+    /^([a-z][\w+.-]*:|\/\/|#)/i.test(u.trim()) ? m : `url(${JSON.stringify(toUrl(cssPlaces(u.trim(), `${dir}/x`)[0]))})`)
+}
+
 /** What a reveal.js deck's CSS calls the page or the presentation (`:root`, `.reveal .slides section`…): the deck here. */
 const PAGE = /^(?:(?::root|html|body|\.reveal-viewport)(?=$|[\s>+~.:#[])\s*)*(?:\.reveal(?=$|[\s>+~.:#[])(?:\s+\.slides(?=$|[\s>.:#[]))?(?:\s+section(?=$|[\s>.:#[]))?)?/
 
