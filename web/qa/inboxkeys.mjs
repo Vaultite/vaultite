@@ -23,7 +23,7 @@ await page.locator("body").click({ position: { x: 700, y: 400 } })
 await page.keyboard.press("Escape")
 await page.keyboard.press("g")
 await page.keyboard.press("i")
-check("G I opens the Inbox", !!(await until(() => page.locator("[data-inbox-view] [data-inbox-results]").count(), 8000)))
+check("G I opens the Inbox", !!(await until(() => page.locator("[data-inbox-view] [data-inbox-active]").count(), 8000)))
 await wait(500)
 
 /** The selection key of the row the keyboard is on. */

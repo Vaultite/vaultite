@@ -110,7 +110,7 @@ await wait(400)
 await shot(page, "2b-session-sheet-answer")
 // What the inbox was for: read and not answered, it doesn't go away (the block's Needs you still has it, plain).
 await page.keyboard.press("Escape")
-const kept = page.locator(`[data-inbox-needs] [data-event="${rows[0].id}"]`)
+const kept = page.locator(`[data-inbox-active] [data-event="${rows[0].id}"]`)
 check("read, not answered: still listed under Needs you, no longer bold", !!(await until(() => kept.count())) && (await kept.first().getAttribute("data-unread")) === null, await kept.count())
 await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("button", { name: "Open" }).click().catch(() => openFromRow())
 async function openFromRow() { await kept.first().locator("button").first().click() }
@@ -180,9 +180,11 @@ check("the button counts results and what needs you", !!(await until(async () =>
 await page.locator("aside [data-inbox-button]").click()
 await page.waitForSelector("[data-inbox-view]")
 check("the view lists results to review", (await page.locator("[data-inbox-view] [data-result]").count()) === 3, await page.locator("[data-inbox-view] [data-result]").count())
-check("and what needs you, what agents work on, and messages, each under its heading", (await page.locator("[data-inbox-view] [data-inbox-needs] [data-event]").count()) >= 2 &&
-  (await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()) >= 1 && (await page.locator("[data-inbox-view] [data-inbox-messages] [data-event]").count()) >= 1,
-  [await page.locator("[data-inbox-view] [data-inbox-needs] [data-event]").count(), await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()])
+check("and what needs you and messages under Active, what agents work on under Working", (await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count()) >= 3 &&
+  (await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()) >= 1,
+  [await page.locator("[data-inbox-view] [data-inbox-active] [data-event]").count(), await page.locator("[data-inbox-view] [data-inbox-working] [data-event]").count()])
+const firstActive = await page.locator("[data-inbox-view] [data-inbox-active]").locator("[data-event], [data-result]").first().getAttribute("data-kind").catch(() => null)
+check("Active: what waits on you first", firstActive === "session" || firstActive === "waiting", firstActive)
 await wait(400)
 await shot(page, "2-inbox-view")
 check("open, it reads the messages, which doesn't change the count", !!(await until(async () => !(await api("GET", "inbox/events")).events.some((e) => e.kind === "info" && !e.read && !e.kept))) &&
@@ -206,7 +208,7 @@ await page.getByRole("menuitem", { name: "Mark as unread" }).click()
 await wait(2000)
 let one = (await api("GET", "inbox/events")).events.find((e) => e.title === "Wrote the weekly review")
 check("Mark as unread: unread, open again, and seeing the view doesn't read it", one?.read === false && one.kept === true && one.state === "open" &&
-  (await page.locator("[data-inbox-view] [data-inbox-messages] [data-event]", { hasText: "Wrote the weekly review" }).first().getAttribute("data-unread")) === "true", one)
+  (await page.locator("[data-inbox-view] [data-inbox-active] [data-event]", { hasText: "Wrote the weekly review" }).first().getAttribute("data-unread")) === "true", one)
 await evRow("Wrote the weekly review").click({ button: "right" })
 await page.getByRole("menuitem", { name: "Mark as read" }).click()
 one = (await until(async () => { const e = (await api("GET", "inbox/events")).events.find((x) => x.title === "Wrote the weekly review"); return e?.read ? e : null }))
@@ -353,9 +355,9 @@ check("Done on a thread's row: out of the panel", !!(await until(async () => (aw
 
 // 9. The block on a page.
 await page.goto(`${B}#file/${enc(PAGE)}`)
-const block = page.locator("[data-inbox-results]").first()
+const block = page.locator("[data-inbox-active]").first()
 check("the block on a page lists what's new", await until(async () => (await block.count()) === 1, 8000), await block.count())
-await page.locator("section", { has: page.locator("[data-inbox-results]") }).first().screenshot({ path: `${OUT}5-page-block.png` }).catch(() => {})
+await page.locator("section", { has: page.locator("[data-inbox-active]") }).first().screenshot({ path: `${OUT}5-page-block.png` }).catch(() => {})
 const text = await api("GET", `render?path=${enc(PAGE)}`)
 check("as text too", text.includes("## Inbox") && text.includes("Plant care apps compared"), text.slice(text.indexOf("## Inbox"), text.indexOf("## Inbox") + 300))
 
@@ -366,7 +368,7 @@ const ph = watch(await phone.newPage(), { label: "phone" })
 await ph.goto(`${B}#file/${enc(PAGE)}`)
 await ph.waitForSelector("[data-phone-bar]")
 await wait(1500)
-const pblock = ph.locator("[data-inbox-results]").first()
+const pblock = ph.locator("[data-inbox-active]").first()
 await pblock.scrollIntoViewIfNeeded().catch(() => {})
 check("phone: the block", await until(async () => (await pblock.count()) === 1, 8000))
 const wide = await ph.evaluate(() => document.documentElement.scrollWidth <= 390)

@@ -25,7 +25,7 @@ check("a pinned message is under Pinned, on top", !!(await until(async () => (aw
 check("Pinned is the first list", await page.locator("[data-inbox-view] section").first().evaluate((s) => s.hasAttribute("data-inbox-pinned")))
 
 // A result's right-click: Pin, then it's under Pinned (not To review), one toast with Undo.
-const res = page.locator("[data-inbox-view] [data-inbox-results] [data-result]", { hasText: "Lighthouse launch notes" })
+const res = page.locator("[data-inbox-view] [data-inbox-active] [data-result]", { hasText: "Lighthouse launch notes" })
 await res.click({ button: "right" })
 await page.getByRole("menuitem", { name: "Pin", exact: true }).click()
 check("a result pinned from its menu goes under Pinned", !!(await until(async () => (await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).count()) === 1)))

@@ -746,18 +746,19 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   const row = (e: InboxEvent) => <EventRow key={e.id} e={e} fresh={fresh?.has(e.id)} touched={touched} />
   const past = dealt && <><Snoozed store={store} /><Settled store={store} fresh={fresh} /></>
   const results = l.review.slice(0, nr)
-  // (pinned on top, the latest first, its results and threads together)
-  const pinned = [...(ne ? l.pinned.events.map((e) => ({ at: e.t, row: row(e) })) : []), ...(nr ? l.pinned.results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })) : [])]
-    .sort((a, b) => b.at - a.at).map((x) => x.row)
-  if (!pinned.length && !results.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>Nothing needs you.</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
+  // The shelves: pinned, active (what waits on you first, then what's to read, the latest first), working; snoozed and
+  // settled folded below. A row says why it's there (its icon, Asks you, Report...).
+  const byLatest = (xs: { at: number; row: ReactNode }[]) => xs.sort((a, b) => b.at - a.at).map((x) => x.row)
+  const pinned = byLatest([...(ne ? l.pinned.events.map((e) => ({ at: e.t, row: row(e) })) : []), ...(nr ? l.pinned.results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })) : [])])
+  const active = [...(ne ? l.needs.map(row) : []),
+    ...byLatest([...results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })), ...(ne ? l.messages.map((e) => ({ at: e.t, row: row(e) })) : [])])]
+  if (!pinned.length && !active.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>Nothing needs you.</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
   return (
     <div className="flex flex-col gap-4" data-select-list={SELECT} data-keylist>
       <Section title="Pinned" attr="data-inbox-pinned" rows={pinned} max={dealt ? 50 : Math.max(ne, nr)} />
-      <Section title="Needs you" attr="data-inbox-needs" rows={ne ? l.needs.map(row) : []} max={dealt ? 50 : ne}
+      <Section title="Active" attr="data-inbox-active" rows={active} max={dealt ? 100 : Math.max(ne, nr)}
         loading={loading && rows > 0 ? <LoadingRows count={rows} meta={bodies} lead={<span className="size-[18px] shrink-0" />} /> : undefined} />
-      <Section title="To review" attr="data-inbox-results" rows={results.map((r) => <ResultRow key={r.id} r={r} />)} max={nr} />
-      <Section title="Working on it" attr="data-inbox-working" rows={ne ? l.working.map(row) : []} max={dealt ? 20 : ne} />
-      <Section title="Messages" attr="data-inbox-messages" rows={ne ? l.messages.map(row) : []} max={dealt ? 20 : ne} />
+      <Section title="Working" attr="data-inbox-working" rows={ne ? l.working.map(row) : []} max={dealt ? 20 : ne} />
       {past}
     </div>
   )
