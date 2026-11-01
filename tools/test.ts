@@ -20,5 +20,5 @@ const runs = await Promise.all((want.length ? want : ALL).map((name) => new Prom
 console.log("\nsuites:")
 for (const r of runs) console.log(`  ${r.code ? "FAIL" : "ok  "} ${(r.ms / 1000).toFixed(1).padStart(6)} s  ${r.name}`)
 const failed = runs.filter((r) => r.code)
-console.log(`\n${failed.length ? `${failed.length} of ${runs.length} suites failed: ${failed.map((r) => r.name).join(", ")}` : `all ${runs.length} suites passed`} in ${((Date.now() - t0) / 1000).toFixed(1)} s`)
+console.log(`\n${failed.length ? `${failed.length} of ${runs.length} suites failed: ${failed.map((r) => r.name).join(", ")}` : runs.length === 1 ? `${runs[0].name} passed` : `all ${runs.length} suites passed`} in ${((Date.now() - t0) / 1000).toFixed(1)} s`)
 process.exitCode = failed.length ? 1 : 0
