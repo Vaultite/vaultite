@@ -1,5 +1,5 @@
-// What this branch changed, checked: build and check, then the web test, vault test areas, QA scripts whose header
-// names a changed path and the smoke test, as needed, timing each. node tools/verify.ts [--base main] [--dry]
+// What this branch changed, checked, timing each: build, check, then the tests and QA scripts it reaches (--all: every
+// test and smoke, the done gate). node tools/verify.ts [--base main] [--all] [--dry]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
@@ -9,7 +9,7 @@ import { gitEnv } from "../core/gitenv.ts"
 const ROOT = path.resolve(import.meta.dirname, "..")
 const argv = process.argv.slice(2)
 const base = argv.includes("--base") ? argv[argv.indexOf("--base") + 1] : "main"
-const dry = argv.includes("--dry")
+const dry = argv.includes("--dry"), all = argv.includes("--all")
 const git = (...a: string[]) => spawnSync("git", a, { cwd: ROOT, encoding: "utf8", env: gitEnv() }).stdout.split("\n").filter(Boolean)
 const changed = [...new Set([...git("diff", "--name-only", `${base}...HEAD`), ...git("diff", "--name-only", "HEAD"),
   ...git("ls-files", "--others", "--exclude-standard")])].sort()
@@ -48,15 +48,19 @@ function qaFor(files: string[]): string[] {
 
 const web = changed.some((f) => f.startsWith("web/"))
 const areas = areasFor(changed), qa = qaFor(changed)
-const stages: { name: string; cmd: string[]; why: string }[] = [
-  { name: "build", cmd: ["npm", "run", "build"], why: "always" },
-  { name: "check", cmd: ["npm", "run", "check"], why: "always" },
+type Stage = { name: string; cmd: string[]; why: string }
+const picked: Stage[] = [
   ...(changed.some((f) => f.startsWith("web/src/") || f === "tools/test_web.ts") ? [{ name: "test_web", cmd: ["node", "tools/test_web.ts"], why: "web/src or its test changed" }] : []),
   ...(areas.length ? [{ name: "test_vault", cmd: ["node", "tools/test_vault.ts", ...(areas.length === AREAS.length ? [] : areas)],
     why: areas.length === AREAS.length ? "all areas" : areas.join(" ") }] : []),
   ...(changed.some((f) => f.startsWith("web/qa/") || f.startsWith("web/src/")) ? [{ name: "qa lint", cmd: ["node", "tools/qa.ts", "--lint"], why: "QA selectors" }] : []),
   ...(qa.length ? [{ name: "qa", cmd: ["node", "tools/qa.ts", ...qa], why: qa.join(" ") }] : []),
   ...(web ? [{ name: "smoke", cmd: ["npm", "run", "smoke"], why: "web changed" }] : []),
+]
+const stages: Stage[] = [
+  { name: "build", cmd: ["npm", "run", "build"], why: "always" },
+  { name: "check", cmd: ["npm", "run", "check"], why: "always" },
+  ...(all ? [{ name: "test", cmd: ["npm", "test"], why: "--all" }, { name: "smoke", cmd: ["npm", "run", "smoke"], why: "--all" }] : picked),
 ]
 
 console.log(`${changed.length} files changed since ${base}`)

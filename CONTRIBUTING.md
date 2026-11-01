@@ -61,7 +61,7 @@ npm run smoke       # the build starts: Chrome, desktop and phone, no page error
 ```
 
 `npm run verify` runs what this branch's changes need (build, check, the vault test's areas and the QA scripts that
-name the changed files, the web test and smoke when web/ changed) and times each.
+name the changed files, the web test and smoke when web/ changed) and times each; `npm run verify -- --all` runs all four.
 
 UI changes: the scripts in `web/qa/` drive the app in Chromium at desktop and phone sizes (`node web/qa/layout.mjs
 http://127.0.0.1:8799`). Many write to the vault, so run them only against a throwaway server; each one's header says

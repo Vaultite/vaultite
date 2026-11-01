@@ -38,7 +38,7 @@ is its point.
 - Debugging: `vau errors` (the app's and the server's, with stacks), `vau activity --action failed` (calls agents and
   the CLI got wrong, and why); a server log line's `#<id>` is the request its errors name.
 - Done means `npm run build`, `npm run check`, `npm test` and `npm run smoke` pass (`npm run verify` runs what a branch
-  needs), and the change is live (`CLAUDE.local.md`).
+  needs, `npm run verify -- --all` all four), and the change is live (`CLAUDE.local.md`).
 - Throwaway server: `vau sandbox /tmp/v`, then `VAULTITE_VAULT=/tmp/v VAULTITE_LOCAL=/tmp/local PORT=<free> npm start`.
   On a copy of a real vault, first strip its terminal tabs (`view:terminal/...` in
   `.vaultite/plugins/workspaces/*.json`: showing one starts its agent, a `resume-` one resumes the user's live session)
