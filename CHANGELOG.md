@@ -81,7 +81,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   second it works or each word count in the status bar.
 - **Slide themes look like themselves**: a deck's `theme:` (black, night, serif, league, dracula and the rest of
   reveal's and Advanced Slides') draws its fonts, heading case and tone in the app's colours, laid out as reveal.js
-  lays it out: a 960 × 700 slide scaled as a whole, its text and heading sizes, centred text and lists.
+  lays it out: a 960 × 700 slide scaled as a whole, its text and heading sizes, centred text, lists and images.
 - **Present a canvas**: Present in a canvas's toolbar shows its groups one at a time, in the order arrows between them
   give (else top to bottom, left to right); the arrow keys step through them and Escape ends it.
 - **An idle server stops writing**: it no longer rewrites its schedule's last runs to disk every 30 s when no job ran,

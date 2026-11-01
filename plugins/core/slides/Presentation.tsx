@@ -146,6 +146,7 @@ export const DECK_CSS = `
 [data-deck-theme] .note-prose :where(ul, ol) :where(ul, ol) { display: block; margin-left: 40px; }
 [data-deck-theme] .note-prose :where(li + li) { margin-top: 0; }
 [data-deck-theme] .note-prose :where(img, video, iframe) { max-width: 95%; max-height: 95%; }
+[data-deck-theme] .note-prose :where(img):not(:is(.stretch-row, .stretch-column) img) { display: inline-block; vertical-align: middle; }
 [data-deck-theme] .note-prose :where(pre) { width: 90%; margin: var(--r-block-margin) auto; text-align: left; font-size: .55em; line-height: 1.2em; }
 [data-deck-theme] .note-prose :where(blockquote) { width: 70%; margin: var(--r-block-margin) auto; font-style: italic; }
 [data-deck-theme] .note-prose :where(table) { margin: auto; }
