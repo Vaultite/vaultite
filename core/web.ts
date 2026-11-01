@@ -5,6 +5,7 @@ import fs from "node:fs"
 import http from "node:http"
 import https from "node:https"
 import type { LookupFunction } from "node:net"
+import os from "node:os"
 import zlib from "node:zlib"
 
 /** A dotted IPv4 address as its four numbers, or null. */
@@ -85,6 +86,14 @@ export function blockedHost(hostname: string): boolean {
   if (/^[\d.]+$/.test(h)) return true // a number that isn't a dotted address
   if (!h.includes(".")) return true
   return LOCAL_NAMES.some((s) => h === s || h.endsWith(`.${s}`))
+}
+
+/** Whether an address is on this machine or its network: a local host (blockedHost) or this machine's own name; what
+ *  isn't a web address counts as one. The desktop app's browser opens none for agents from outside this machine. */
+export function localUrl(raw: string): boolean {
+  let h: string
+  try { h = new URL(raw).hostname } catch { return true }
+  return blockedHost(h) || h.toLowerCase().replace(/\.$/, "") === os.hostname().toLowerCase()
 }
 
 /** A web address the server may fetch: http(s) only, no user or password, on a public host (by its name; its

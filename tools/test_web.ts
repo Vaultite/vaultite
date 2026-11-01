@@ -2358,6 +2358,17 @@ await section("sealed logins", async () => {
   check("sealed: what isn't a box, or a key, is refused", fails(() => sl.open(m1, "{}", "x")) && fails(() => sl.open(m1, "not json", "x")) && fails(() => sl.seal("nope", login, "x")))
 })
 
+// ---------- Browser: where agents from outside this machine may go (core/web.ts localUrl, electron/browser/agent.ts) ----------
+await section("agents' local addresses", async () => {
+  const { localUrl } = await import("../core/web.ts")
+  const os = await import("node:os")
+  const local = ["http://127.0.0.1:8793", "http://localhost:3000/x", "http://app.localhost", "http://[::1]:8793", "http://[::ffff:127.0.0.1]", "http://0.0.0.0",
+    "http://192.168.1.20", "http://10.0.0.5", "http://172.16.0.1", "http://169.254.169.254/latest", "http://[fe80::1]", "http://100.101.102.103",
+    "https://m1.tail1234.ts.net", "http://m1", "http://nas.local:5000", `http://${os.hostname()}:8793`, "not an address"]
+  check("agents' addresses: this machine, its network and the tailnet are local", local.every(localUrl), local.filter((u) => !localUrl(u)))
+  check("agents' addresses: … a public site isn't", !["https://example.com", "http://93.184.216.34", "https://lighthouse.example.org/a?b"].some(localUrl))
+})
+
 // ---------- Browser: the user's passkeys approving agents' logins (electron/browser/presence.ts) ----------
 // A made-up authenticator here (a P-256 key, as a phone's passkey has), WebAuthn's bytes built by hand.
 await section("login approvals", async () => {

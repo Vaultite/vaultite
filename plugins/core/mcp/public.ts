@@ -11,7 +11,7 @@ import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
 import type { Item } from "../../../core/vault.ts"
 import { agentName } from "../../../core/agents.ts"
-import { blockedHost } from "../../../core/web.ts"
+import { blockedHost, localUrl } from "../../../core/web.ts"
 import { byUser } from "../../../core/writegate.ts"
 import { appsFrom } from "./apps.ts"
 import { toolsOf } from "./catalog.ts"
@@ -69,6 +69,9 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
     try { host = new URL(params.url).hostname } catch { /* not an address: the op says so */ }
     if (host && blockedHost(host)) return `fetch ${host}, an address on this machine's network`
   }
+  // (the browser's pages on this machine, the app's own among them, are its owner's: a terminal is a click away)
+  const page = id === "web-viewer.open" ? params.url : id === "web-viewer.navigate" ? params.to : undefined
+  if (typeof page === "string" && /^https?:/i.test(page.trim()) && localUrl(page.trim())) return `open ${page.trim()}, an address on this machine's network, in your browser`
   return ""
 }
 

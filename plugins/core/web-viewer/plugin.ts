@@ -30,8 +30,10 @@ type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[
 async function ask<T>(name: string, ...args: unknown[]): Promise<T> {
   try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new OpError((e as Error).message, 409) }
 }
-const by = (ctx: OpCtx, p: { terminal?: string; task?: string; summary?: string }) => ({ name: ctx.who.label, session: p.terminal || ctx.who.agent || "", task: p.task ?? "",
-  summary: p.summary ?? "" })
+/** Who asks: `remote` when it isn't this machine's owner (an app on the internet, a guest through another machine), whose
+ *  pages never reach this machine or its network (the engine checks). */
+const by = async (ctx: OpCtx, p: { terminal?: string; task?: string; summary?: string }) => ({ name: ctx.who.label, session: p.terminal || ctx.who.agent || "",
+  task: p.task ?? "", summary: p.summary ?? "", remote: !!(await ctx.refusal?.("the browser's pages on this machine")) })
 const terminal = { type: "string" as const, env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL): your steps are kept together for replay" }
 const task = { type: "string" as const, description: "your task in two or three words (flight search): your tabs are grouped as <you>/<task>, and tabs marks them yours" }
 // (ops that only drive the desktop app's pages are lock: false: an act settling or a run's 30 s never hold the vault's
@@ -64,7 +66,7 @@ The browser is the desktop app's attached to this server; a server without one a
   vau browser tabs --task "flight search"`,
   kind: "read",
   params: { task, terminal },
-  run: (p, ctx) => ask<Tab[]>("agent:tabs", by(ctx, p)),
+  run: async (p, ctx) => ask<Tab[]>("agent:tabs", await by(ctx, p)),
   text: (tabs: Tab[]) => tabs.length
     ? tabs.map((t) => `${t.tab}  [${[t.access, t.container, t.paused && "paused"].filter(Boolean).join(", ")}]  ${t.title || "(untitled)"}  ${t.url}  `
       + `(${t.mine ? "yours" : t.by ? `${t.by}'s` : "the user's"}${t.asking ? `; asked the user: ${t.asking}` : ""})${t.summary ? `\n    ${t.summary}` : ""}`).join("\n")
@@ -93,7 +95,7 @@ searching past runs. Close it when you're done with it, unless the user would wa
     terminal,
   },
   args: ["url"],
-  run: (p, ctx) => ask<Page>("agent:open", p.url, p.container ?? null, by(ctx, p)),
+  run: async (p, ctx) => ask<Page>("agent:open", p.url, p.container ?? null, await by(ctx, p)),
   text: where,
   did: (p) => ({ action: "run", text: `Opened ${String(p.url)} in the browser` }),
 })
@@ -186,7 +188,7 @@ went to another.
   run: async (p, ctx) => {
     if (p.fields && p.action !== "fill") throw new OpError("`fields` go with fill")
     return ask<Acted>("agent:act", p.tab, { action: p.action, ref: p.ref, value: p.value, key: p.key, direction: p.direction, fields: p.fields, diff: p.diff,
-      ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, by(ctx, p))
+      ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, await by(ctx, p))
   },
   text: (r: Acted) => `${r.navigated ? "Went to another page. " : ""}${where(r)}${changed(r)}`,
   // (each names its tab, "browser tab 3": the live view lists a tab's steps from Activity by it)
@@ -205,7 +207,7 @@ plugin.op({
   lock: false,
   params: { tab, to: { type: "string", required: true, description: "an http(s) address, or back, forward, reload" }, terminal },
   args: ["tab", "to"],
-  run: (p, ctx) => ask<Page>("agent:navigate", p.tab, p.to, by(ctx, p)),
+  run: async (p, ctx) => ask<Page>("agent:navigate", p.tab, p.to, await by(ctx, p)),
   text: where,
   did: (p) => ({ action: "run", text: `Sent browser tab ${String(p.tab)} to ${String(p.to)}` }),
 })
@@ -339,7 +341,7 @@ the page; act's real input is still the way to click and type.
   lock: false,
   params: { tab, expression: { type: "string", required: true, description: "a JavaScript expression (an async IIFE for statements)" }, terminal },
   args: ["tab", "expression"],
-  run: (p, ctx) => ask<Page & { value: string }>("agent:evaluate", p.tab, p.expression, by(ctx, p)),
+  run: async (p, ctx) => ask<Page & { value: string }>("agent:evaluate", p.tab, p.expression, await by(ctx, p)),
   text: (r: Page & { value: string }) => r.value,
   did: (p) => ({ action: "run", text: `Ran a script in browser tab ${String(p.tab)}` }),
 })
@@ -363,7 +365,7 @@ like any other. Answers what it logged and what it returned, as JSON.
   lock: false,
   params: { tab, script: { type: "string", required: true, stdin: true, description: "the script: an async function's body (await, return)" }, terminal },
   args: ["tab", "script"],
-  run: (p, ctx) => ask<Page & { value: string; logs: string[] }>("agent:run", p.tab, p.script, by(ctx, p)),
+  run: async (p, ctx) => ask<Page & { value: string; logs: string[] }>("agent:run", p.tab, p.script, await by(ctx, p)),
   text: (r: Page & { value: string; logs: string[] }) => [...r.logs, r.value === "null" && r.logs.length ? "" : r.value].filter(Boolean).join("\n"),
   did: (p) => ({ action: "run", text: `Ran a script of steps in browser tab ${String(p.tab)}` }),
 })
@@ -388,7 +390,7 @@ plugin.op({
   },
   args: ["tab"],
   run: async (p, ctx) => {
-    const r = await ask<Page & { pdf: string }>("agent:pdf", p.tab, by(ctx, p))
+    const r = await ask<Page & { pdf: string }>("agent:pdf", p.tab, await by(ctx, p))
     const name = `${String(p.name ?? "").trim() || r.title.trim() || new URL(r.url).hostname}`.replace(/\.pdf$/i, "").slice(0, 120)
     const saved = await plugin.runOp("file.upload", { data: r.pdf, name: `${name}.pdf`, folder: p.folder, note: p.note }, ctx.who)
     return { tab: r.tab, url: r.url, ...saved.result as { path: string; note: string | null } }
@@ -412,7 +414,7 @@ they did it (--text, --url). Never ask for their password: they type it themselv
   params: { tab, reason: { type: "string", required: true, description: "what to do, in a sentence (Sign in to GitHub)" }, terminal },
   args: ["tab", "reason"],
   run: async (p, ctx) => {
-    const r = await ask<Page>("agent:help", p.tab, p.reason, by(ctx, p))
+    const r = await ask<Page>("agent:help", p.tab, p.reason, await by(ctx, p))
     // (the live view's tab names whose browser it's in, so the Inbox on any machine opens that one)
     const on = await plugin.ask<string | null>("machines:browser", null)
     await plugin.ask("inbox:event", null, { source: "browser", kind: "waiting", key: `help-${p.tab}`, title: `${ctx.who.label} needs you in the browser`,
@@ -461,7 +463,7 @@ the site's pages, load the page again (browser go <tab> reload) before logging i
   },
   args: ["tab"],
   run: async (p, ctx) => {
-    const who = by(ctx, p), asked = { entry: p.entry ?? "", submit: p.submit === true }
+    const who = await by(ctx, p), asked = { entry: p.entry ?? "", submit: p.submit === true }
     const drop = (r: Login) => { if (r.ask) plugin.service("inbox:drop")?.("browser", `login-${r.ask}`) }
     const r = await ask<Login>("agent:login", p.tab, asked, who)
     if (r.status !== "approval") { if (r.status === "filled") drop(r); return r }

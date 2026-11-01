@@ -183,6 +183,12 @@ export default async ($: VaultTest) => {
       const marks = ["companion.comment", "companion.suggest", "companion.clear"].map((id) => app.catalog().find((e) => e.id === id))
       check("public mcp read-only: Companion's comments and suggestions in the user's notes are refused, saying is not",
         marks.every((e) => e && accessRefusal("A", "read", e, e.id) !== "") && accessRefusal("A", "read", app.catalog().find((e) => e.id === "companion.say")!, "companion.say") === "", marks.map((e) => e?.kind))
+      // The desktop app's browser opening this machine or its network for an app on the internet (its own pages, a NAS).
+      const { gateOf } = await import("../../../plugins/core/mcp/public.ts")
+      check("public mcp: opening this machine or its network in the browser waits for the owner's yes, a public site doesn't",
+        ["http://127.0.0.1:8793", "http://localhost:3000/x", "http://[::1]:8793", "http://192.168.1.20", "https://m1.tail1234.ts.net", "http://100.101.102.103"]
+          .every((url) => gateOf("web-viewer.open", "write", { url }) !== "" && gateOf("web-viewer.navigate", "write", { tab: 3, to: url }) !== "")
+        && gateOf("web-viewer.open", "write", { url: "https://example.com" }) === "" && gateOf("web-viewer.navigate", "write", { tab: 3, to: "back" }) === "")
     }
     {
       // Connect (plugins/core/mcp/connect.ts): Vaultite Cloud's signed header for the handle's owner.

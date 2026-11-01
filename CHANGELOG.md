@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Canvas shapes and dashed lines**: a card can be a pill, circle, diamond or parallelogram with a dashed, dotted or no
   border, and an arrow dashed or dotted (Shape and Line style in the toolbar), for flowcharts; files from other canvas
   apps that use them draw the same.
+- **AI apps on the internet stay off your network in the browser**: the desktop app's browser never opens this
+  machine, the local network or the tailnet for them, even through a redirect; your own agents still can.
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
 - **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing

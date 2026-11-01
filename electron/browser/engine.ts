@@ -4,10 +4,12 @@ import type { BaseWindow, OnBeforeRequestListenerDetails, Session, WebContents }
 
 /** One of the app's windows: its page is `webContents`, the Browser's pages are views in it. */
 export type EngineWindow = BaseWindow & { readonly webContents: WebContents }
-/** What the engine needs of the app (main.ts hands it once, before any page opens). */
-export type EngineHost = { windows: () => EngineWindow[] }
-let host: EngineHost = { windows: () => [] }
+/** What the engine needs of the app (main.ts hands it once, before any page opens). `localUrl`: whether an address is
+ *  this machine's or its network's (core/web.ts). */
+export type EngineHost = { windows: () => EngineWindow[]; localUrl: (url: string) => boolean }
+let host: EngineHost = { windows: () => [], localUrl: () => true }
 export const setEngineHost = (h: EngineHost) => { host = h }
+export const localUrl = (url: string) => host.localUrl(url)
 /** The app's windows, open now. */
 export const appWindows = () => host.windows().filter((w) => !w.isDestroyed())
 export const focusedWindow = () => appWindows().find((w) => w.isFocused()) ?? null

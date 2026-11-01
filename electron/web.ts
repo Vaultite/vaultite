@@ -2,6 +2,7 @@
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipcMain, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, safeStorage, screen, session, shell, type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { strings } from "../core/values.ts"
+import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
 import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, openedByAgent, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
@@ -17,7 +18,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-setEngineHost({ windows: () => AppWindow.getAllWindows() })
+setEngineHost({ windows: () => AppWindow.getAllWindows(), localUrl })
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; playing?: boolean; muted?: boolean

@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, mayOpen, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 
 type Access = "none" | "read" | "act"
@@ -22,8 +22,8 @@ const helpWaits = new Map<number, Set<() => void>>()
 const accessOf = (p: EnginePage): Access => (!mayOpen(p.profile) ? "none" : access.get(p.profile) ?? "none")
 const levels: Record<Access, number> = { none: 0, read: 1, act: 2 }
 
-/** The page `tab` if agents may `need` there, else why not. */
-export function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
+/** The page `tab` if agents (`who`, when it says) may `need` there, else why not. */
+export function pageFor(tab: unknown, need: "read" | "act", who?: By): EnginePage {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   const a = accessOf(p)
@@ -36,6 +36,7 @@ export function pageFor(tab: unknown, need: "read" | "act"): EnginePage {
   if (need === "act" && filling.has(p.id)) throw new Error("the app is filling a login in this tab: try again in a moment")
   // (an extension's own page, Focus's blocked page and its ask for time among them, is the user's alone)
   if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("agents use web pages only, not an extension's or the app's")
+  if (who?.remote && localUrl(p.wc.getURL() || p.url)) throw new Error(OUTSIDE)
   used.set(p.id, Date.now())
   void p.wake()
   return p
@@ -432,7 +433,7 @@ const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 const KEEP_DAYS = 14
 /** Who asked: the agent's name, its session (the op's caller), the task it named and what it said it's doing (`summary`,
  *  given on open), a run each a day. */
-type By = { name?: string; session?: string; task?: string; summary?: string }
+type By = { name?: string; session?: string; task?: string; summary?: string; remote?: boolean }
 const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${[by.session || by.name || "agent", by.task].filter(Boolean).join("-").replace(/[^\w.-]+/g, "_").slice(0, 80)}`
 /** An agent's tabs' group in the window, Neo's way: "<agent>/<task>". */
 const groupOf = (by: By) => [by.name || "Agent", by.task].filter(Boolean).join("/")
@@ -545,7 +546,7 @@ async function logged(p: EnginePage, ref: string | undefined, value: unknown) {
 export const byOf = (x: unknown): By => {
   if (!x || typeof x !== "object") return {}
   const s = (k: keyof By, n = 80) => String((x as By)[k] ?? "").replace(/\s+/g, " ").trim().slice(0, n) || undefined
-  return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300) }
+  return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300), ...((x as By).remote === true ? { remote: true } : {}) }
 }
 
 const DOING: Record<string, string> = { click: "Clicking", dblclick: "Double-clicking", hover: "Pointing at", fill: "Filling", type: "Typing in",
@@ -601,10 +602,30 @@ async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
   }
 }
 
+// ---------- agents from outside this machine (an app on the internet, a guest through another machine) ----------
+
+// (the app's own page on loopback is its owner's, a terminal a click away; and a router's or a NAS's are the network's)
+const OUTSIDE = "agents from outside this machine don't use its addresses or its network's (localhost, the LAN, the tailnet)"
+/** A page such an agent opened, or acted in a moment ago (a click on a link, a script sending it on). */
+const fromOutside = (id: number) => {
+  const d = doing.get(id)
+  return !!owners.get(id)?.remote || (!!d?.by?.remote && Date.now() - d.at < 5000)
+}
+const address = (ip: string) => `http://${ip.includes(":") ? `[${ip}]` : ip}/`
+// Where those pages go, their redirects and frames too: never a local address, by its name or by what DNS answers for it.
+onRequest("onBeforeRequest", (d, s) => {
+  const p = d.webContentsId === undefined ? undefined : allPages().find((x) => !x.wc.isDestroyed() && x.wc.id === d.webContentsId)
+  if (!p || !fromOutside(p.id) || !/^https?:/i.test(d.url)) return
+  if (localUrl(d.url)) return { cancel: true }
+  return s.resolveHost(new URL(d.url).hostname).then((found) => found.endpoints.length && !found.endpoints.some((e) => localUrl(address(e.address))) ? undefined : { cancel: true },
+    () => ({ cancel: true }))
+}, undefined, ["mainFrame", "subFrame"])
+
 const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return u } }
 async function navigateIn(p: EnginePage, to: unknown, who: By) {
   const was = p.wc.getURL(), t = String(to ?? "")
   if (!["back", "forward", "reload"].includes(t) && !/^https?:\/\//i.test(t)) throw new Error("an http(s) address, back, forward or reload")
+  if (who.remote && /^https?:/i.test(t) && localUrl(t)) throw new Error(OUTSIDE)
   acting(p, who, t === "back" ? "Going back" : t === "forward" ? "Going forward" : t === "reload" ? "Reloading" : `Opening ${hostOf(t)}`)
   const h = p.wc.navigationHistory
   if (t === "back") { if (h.canGoBack()) h.goBack() } else if (t === "forward") { if (h.canGoForward()) h.goForward() }
@@ -684,12 +705,12 @@ async function runIn(p: EnginePage, script: string, who: By) {
   wc.on("will-navigate", (e) => e.preventDefault())
   // (each call checks the tab's access again: the user may pause agents mid-run)
   const calls: Record<string, (...a: unknown[]) => Promise<unknown>> = {
-    snapshot: async () => (await snapshot(pageFor(p.id, "read"))).snapshot,
-    act: (a) => actIn(pageFor(p.id, "act"), { diff: "none", ...(a && typeof a === "object" ? a as Act : { action: "" }) }, who),
-    ref: (name, role) => refIn(pageFor(p.id, "read"), name, role),
-    read: async () => (await readIn(pageFor(p.id, "read"))).text,
-    wait: (w) => { const x = (w && typeof w === "object" ? w : {}) as Wait & { timeout?: number }; return waitIn(pageFor(p.id, "read"), x, (Number(x.timeout) || 10) * 1000) },
-    go: (to) => navigateIn(pageFor(p.id, "act"), to, who),
+    snapshot: async () => (await snapshot(pageFor(p.id, "read", who))).snapshot,
+    act: (a) => actIn(pageFor(p.id, "act", who), { diff: "none", ...(a && typeof a === "object" ? a as Act : { action: "" }) }, who),
+    ref: (name, role) => refIn(pageFor(p.id, "read", who), name, role),
+    read: async () => (await readIn(pageFor(p.id, "read", who))).text,
+    wait: (w) => { const x = (w && typeof w === "object" ? w : {}) as Wait & { timeout?: number }; return waitIn(pageFor(p.id, "read", who), x, (Number(x.timeout) || 10) * 1000) },
+    go: (to) => navigateIn(pageFor(p.id, "act", who), to, who),
   }
   const answer = (id: unknown, ok: boolean, v: unknown) => {
     if (!wc.isDestroyed()) void wc.executeJavaScript(`window.__answer(${JSON.stringify(id)}, ${ok}, ${JSON.stringify(v ?? null)})`).catch(() => {})
@@ -832,6 +853,7 @@ serve("agent:tabs", (_win, by) => listOf(byOf(by)))
 serve("agent:open", async (win, url, container, by) => {
   const u = String(url ?? "")
   if (!/^https?:\/\//i.test(u)) throw new Error("only http and https addresses")
+  if (byOf(by).remote && localUrl(u)) throw new Error(OUTSIDE)
   const profile = container ? `c-${String(container)}` : home
   if (!profile) throw new Error("no container lets agents act: set one's Agents to Act (the container menu in a page's bar)")
   if (access.get(profile) !== "act" || !mayOpen(profile)) throw new Error(`agents may not act in ${container ? `the container ${String(container)}` : "that container"}`)
@@ -888,10 +910,9 @@ const PASSWORD_GIVEN = `(() => { const any = (root) => [...root.querySelectorAll
   || (el.shadowRoot && any(el.shadowRoot)) || ((el.tagName === "IFRAME" || el.tagName === "FRAME") && (() => { try { return !!el.contentDocument && any(el.contentDocument) } catch { return false } })()))
   return any(document) })()`
 serve("agent:evaluate", async (_win, tab, expression, by) => {
-  const p = pageFor(tab, "act")
+  const who = byOf(by), p = pageFor(tab, "act", who)
   const code = String(expression ?? "")
   if (!code.trim()) throw new Error("evaluate needs an expression")
-  const who = byOf(by)
   // Never where it could read a password: one the app filled (its code could also stay, listening, so a page it ran in
   // gets no login till it loads again: pagesecrets.ts), or one in a field now.
   const held = heldNear(p)
@@ -910,9 +931,9 @@ serve("agent:evaluate", async (_win, tab, expression, by) => {
   if (json.length > 100_000) json = `${json.slice(0, 100_000)}… (cut short)`
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
 })
-serve("agent:run", (_win, tab, script, by) => runIn(pageFor(tab, "act"), String(script ?? ""), byOf(by)))
+serve("agent:run", (_win, tab, script, by) => runIn(pageFor(tab, "act", byOf(by)), String(script ?? ""), byOf(by)))
 serve("agent:help", (_win, tab, reason, by) => {
-  const p = pageFor(tab, "read")
+  const p = pageFor(tab, "read", byOf(by))
   const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
   if (!why) throw new Error("say what the user should do (sign in, solve the check)")
   const who = byOf(by)
@@ -926,7 +947,7 @@ serve("agent:help", (_win, tab, reason, by) => {
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
 serve("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), (what && typeof what === "object" ? what : {}) as Wait, ms))
-serve("agent:navigate", (_win, tab, to, by) => navigateIn(pageFor(tab, "act"), to, byOf(by)))
+serve("agent:navigate", (_win, tab, to, by) => navigateIn(pageFor(tab, "act", byOf(by)), to, byOf(by)))
 // (any tab, whatever its container lets agents do: it moves the page to a window, nothing in it is read or done)
 serve("agent:player", (_win, tab, on, fullScreen) => {
   const p = allPages().find((x) => x.id === Number(tab))
@@ -935,7 +956,7 @@ serve("agent:player", (_win, tab, on, fullScreen) => {
   p.player(on !== false, fullScreen !== false)
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act"), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
+serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act", byOf(by)), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
 
 // A page that ends isn't paused, anyone's, live or asking any more.
 eachPage((p) => p.wc.once("destroyed", () => {

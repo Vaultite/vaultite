@@ -102,7 +102,8 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   `--download`, `--helped`) and `vau browser screenshot <tab>` (a PNG's path; a background tab too; MCP gives the
   picture). An element keeps its ref while it's on the page; a new page gives new ones. A container's
   `agents` setting says what agents may do in its pages (`read`, or `act`; unset: nothing, as in tabs in no container);
-  the user can pause agents in a tab. Pages' scripts never run for agents, nor see what agents do:
+  the user can pause agents in a tab. An agent from outside this machine (an AI app on the internet) never opens or uses
+  its addresses or its network's (localhost, the LAN, the tailnet), redirected there or not. Pages' scripts never run for agents, nor see what agents do:
   `vau browser evaluate <tab> "<expression>"` (Act only) runs in a world of its own, which sees the DOM, not the page's
   scripts. A site asking for a passkey shows a QR code in the tab for the user's phone. Where only the user can go on (a
   sign-in, a passkey, a captcha), `vau browser ask <tab> "<what to do>"` opens the page as a tab, in front, with that

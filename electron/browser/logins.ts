@@ -378,4 +378,4 @@ async function fill(p: EnginePage, e: Entry, db: Database, o: Opts, who: ReturnT
 }
 
 // (the server's call: for an entry that needs the user's yes, it tells them (the Inbox) and waits (agent:login-wait))
-serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act"), (opts && typeof opts === "object" ? opts : {}) as Opts, byOf(by)))
+serve("agent:login", (_win, tab, opts, by) => login(pageFor(tab, "act", byOf(by)), (opts && typeof opts === "object" ? opts : {}) as Opts, byOf(by)))
