@@ -11,7 +11,7 @@ import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
 import { extOf, isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, SearchError } from "./searchquery.ts"
 import { merge3 } from "./textedit.ts"
-import { textHash } from "./texthash.ts"
+import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
@@ -774,13 +774,20 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         if (notHereYet(e)) throw e // (there, not down yet: never written over as a new file)
         cur = null
       }
-      const base = body.base ?? null, baseHash = typeof body.baseHash === "string" ? body.baseHash : null, sent = text
+      const base = body.base ?? null, baseHash = typeof body.baseHash === "string" ? body.baseHash : null
       // An editor saving a file that was deleted or moved meanwhile: don't bring it back.
       if (cur === null && (base !== null || baseHash !== null)) throw new HTTPError(404, `${rel} isn't in the vault any more (moved or deleted)`)
-      // A big file's save sends its base's fingerprint: the base itself only when the file changed on disk, to merge.
-      if (cur !== null && base === null && baseHash !== null && cur !== text && textHash(cur) !== baseHash) {
+      // An editor's save sends its base's fingerprint (and only its edit of it, `edit`): the base itself only when the
+      // file changed on disk, to merge.
+      if (cur !== null && base === null && baseHash !== null && (body.edit !== undefined || cur !== text) && textHash(cur) !== baseHash) {
         return reply(412, { error: "the file changed on disk: send its base to merge" })
       }
+      if (body.edit !== undefined) {
+        const made = cur !== null && baseHash !== null ? applyEdit(cur, body.edit) : null
+        if (made === null) throw new HTTPError(400, "edit is {at, cut, add}, an edit of the text whose baseHash is sent")
+        text = made
+      }
+      const sent = text
       if (cur !== null && base !== null && cur !== base && cur !== text) {
         const merged = merge3(base, text, cur)
         if (merged === null) return reply(409, { error: "the file changed on disk in the same place", ...read(vault, rel) })
@@ -797,8 +804,8 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       // An edit in the app: plugins may fill things in (a note's id and dates), and the editor gets the result.
       if (cur !== text) await vault.fillIn(rel, before)
       const f = read(vault, rel)
-      // (a big file's text back only when it isn't what was sent)
-      if (body.lean && f.text === sent) { const { text: _, ...rest } = f; return { ...rest, same: true } }
+      // (an editor's save gets back only how the file differs from what it sent)
+      if (body.lean) { const { text: _, ...rest } = f; return f.text === sent ? { ...rest, same: true } : { ...rest, edit: editOf(sent, f.text) } }
       return f
     }
   }

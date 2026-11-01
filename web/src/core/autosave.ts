@@ -8,7 +8,7 @@ import { merge3, mergeClashes, type Clash } from "@/core/merge"
 import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
-import { LEAN_PAST, textHash } from "../../../core/texthash.ts"
+import { applyEdit, editOf, LEAN_PAST, textHash } from "../../../core/texthash.ts"
 import { keptLive } from "@/core/cosync"
 
 /** A conflict: `base` the text both sides started from, `lines` where they clash (the file's, 1-based), `who` the agent
@@ -102,18 +102,19 @@ function makeAutosave(path: string, initial: string, options: Options) {
     if (merged !== now && s.alive) o.current.apply(merged)
   }
   const tell = (s: SaveStatus) => { status = s; o.current.onStatus(s) }
-  /** A save: a big file's sends its base's fingerprint, the base only if the server asks (it changed on disk), and gets
-   *  back no copy of its own text. */
+  /** A save: its edit of the base and the base's fingerprint, the whole text and base only if the server asks (it
+   *  changed on disk); it gets back how the file differs from what it sent. (keepalive takes 64 KB at most) */
   const put = async (text: string, base: string | null, init?: RequestInit) => {
-    const lean = base !== null && (text.length > LEAN_PAST || base.length > LEAN_PAST)
-    let r = await request("PUT", "file", lean ? { path: where(), text, baseHash: textHash(base), lean } : { path: where(), text, base }, init)
-    if (r.status === 412) r = await request("PUT", "file", { path: where(), text, base, lean }, init)
-    return r
+    const fits = (n: number) => (init?.keepalive && n > 60_000 ? { ...init, keepalive: false } : init)
+    if (base === null) return request("PUT", "file", { path: where(), text, base }, fits(text.length))
+    const edit = editOf(base, text)
+    const r = await request("PUT", "file", { path: where(), edit, baseHash: textHash(base), lean: true }, fits(edit.add.length + 200))
+    return r.status === 412 ? request("PUT", "file", { path: where(), text, base, lean: true }, fits(text.length + base.length)) : r
   }
-  /** The server's answer, with the text it left out (the same as sent). */
+  /** The server's answer, with its text made from what was sent. */
   const answer = async (r: Response, sent: string): Promise<FileText & { error?: string }> => {
     const j = await r.json()
-    return j.same ? { ...j, text: sent } : j
+    return j.same ? { ...j, text: sent } : j.edit ? { ...j, text: applyEdit(sent, j.edit) ?? sent } : j
   }
 
   const s = {
@@ -315,11 +316,11 @@ function makeAutosave(path: string, initial: string, options: Options) {
     flush(base: string, say: boolean) {
       const text = o.current.text()
       if (text === base || o.current.readOnly || keptLive(where())) return
-      // (kept here first: keepalive takes 64 KB at most, so a bigger save is a plain one, which a closed window may cut short)
+      // (kept here first: a save too big for keepalive is a plain one, which a closed window may cut short)
       keepDraft(path, text, base)
       const send = async (base: string | null) => {
         sentMaybe(text)
-        const r = await put(text, base, { keepalive: text.length < 60_000 })
+        const r = await put(text, base, { keepalive: true })
         if (r.status === 409) throw Object.assign(new Error(changedText()), { conflict: true })
         if (!r.ok) throw Object.assign(new Error((await r.json().catch(() => ({}))).error ?? r.statusText), { gone: r.status === 404 })
         dropDraft(path)

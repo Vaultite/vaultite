@@ -55,7 +55,7 @@ export default async ($: VaultTest) => {
   check("a huge file reads as text, at any size", code === 200 && out.text.length === 16 << 20, [code, out?.text?.length])
   {
     // A big file's save: its base's fingerprint, not the base; the base only when the file changed on disk.
-    const { textHash } = await import("../../../core/texthash.ts")
+    const { applyEdit, editOf, textHash } = await import("../../../core/texthash.ts")
     const huge = out.text, mine = huge + "\nmine\n"
     ;[code, out] = await api("PUT", "file", { path: "Code/huge.log", text: mine, baseHash: textHash(huge), lean: true })
     check("a big file saves with its base's fingerprint, its text not sent back", code === 200 && out.same === true && out.text === undefined && read("Code/huge.log") === mine, [code, out?.same])
@@ -63,7 +63,16 @@ export default async ($: VaultTest) => {
     ;[code] = await api("PUT", "file", { path: "Code/huge.log", text: mine + "more\n", baseHash: textHash(mine), lean: true })
     check("changed on disk meanwhile: asked for the base (412), nothing written", code === 412 && read("Code/huge.log") === "theirs\n" + mine, code)
     ;[code, out] = await api("PUT", "file", { path: "Code/huge.log", text: mine + "more\n", base: mine, lean: true })
-    check("and with it, merged", code === 200 && read("Code/huge.log") === "theirs\n" + mine + "more\n" && out.text === read("Code/huge.log"), code)
+    check("and with it, merged; back, how the file differs from what was sent", code === 200 && read("Code/huge.log") === "theirs\n" + mine + "more\n" &&
+      out.text === undefined && applyEdit(mine + "more\n", out.edit) === read("Code/huge.log"), [code, out?.edit])
+    // An editor's save: only its edit of the base (an edit of what's on disk, else 412 and nothing written).
+    const now = read("Code/huge.log"), edit = editOf(now, now.replace("theirs", "ours"))
+    ;[code, out] = await api("PUT", "file", { path: "Code/huge.log", edit, baseHash: textHash(now), lean: true })
+    check("a save sends only its edit", code === 200 && out.same === true && read("Code/huge.log") === now.replace("theirs", "ours") && edit.add === "ou", [code, edit])
+    ;[code] = await api("PUT", "file", { path: "Code/huge.log", edit, baseHash: textHash(now), lean: true })
+    check("an edit of a text the file no longer is: 412, nothing written", code === 412 && read("Code/huge.log") === now.replace("theirs", "ours"), code)
+    ;[code] = await api("PUT", "file", { path: "Code/huge.log", edit: { at: -1, cut: 0, add: "x" }, baseHash: textHash(read("Code/huge.log")), lean: true })
+    check("an edit that isn't one: 400", code === 400, code)
   }
   ;{
     const was = read("Code/analysis.ipynb")

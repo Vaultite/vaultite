@@ -7,7 +7,7 @@
   "reload": {
     "requests": 11,
     "api": 10,
-    "apiKB": 4,
+    "apiKB": 3,
     "socket": 9
   },
   "open": {
@@ -17,7 +17,7 @@
   },
   "typing": {
     "api": 7,
-    "apiKB": 9,
+    "apiKB": 7,
     "socket": 6
   },
   "open another": {

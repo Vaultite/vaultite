@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Saving sends only what changed**: each save of a note sends only the edit, not the whole note twice, and gets
+  back only what the server changed (a 2 KB note's save went from 6 KB to under 0.5 KB; a long note's from twice its
+  size).
 - **No stray focus ring at launch on Windows**: a vault window opened with its vault menu ringed, as if tabbed to.
 - **Shortcuts name Enter and Esc on Windows and Linux**: tooltips and the palette read Ctrl+Enter and Esc, not a Mac's
   ↵ and esc, and find's buttons no longer show ⇧↵ there.

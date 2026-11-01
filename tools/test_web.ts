@@ -234,6 +234,15 @@ check("frontmatter: dumpKey writes like the server", fm.dumpKey("bed", "23:15") 
 
 // ---------- the editor's merge (the server's core/textedit.ts) ----------
 
+{
+  // A save's edit (core/texthash.ts): made on its base, it's the text, whatever the two share or don't.
+  const { editOf, applyEdit } = await import("../core/texthash.ts")
+  const pairs = [["", ""], ["", "abc"], ["abc", ""], ["aaa", "aa"], ["abcabc", "abc"], ["one two", "one 2 two"], ["x😀y", "x😃y"], ["same", "same"]]
+  const bad = pairs.filter(([a, b]) => applyEdit(a, editOf(a, b)) !== b)
+  check("save edits: an edit made on its base is the text", !bad.length && editOf("a long line", "a longer line").add === "er", bad)
+  check("save edits: one that doesn't fit is none", applyEdit("abc", { at: 2, cut: 5, add: "" }) === null && applyEdit("abc", { at: 1 }) === null)
+}
+
 const base = "a\nb\nc\nd\n"
 check("merge: changes on both sides in different lines are both kept", merge.merge3(base, "A\nb\nc\nd\n", "a\nb\nc\nD\n") === "A\nb\nc\nD\n",
   merge.merge3(base, "A\nb\nc\nd\n", "a\nb\nc\nD\n"))
