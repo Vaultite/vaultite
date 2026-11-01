@@ -43,6 +43,9 @@ async function drive(label, how) {
   await page.mouse.move(1270, 890)
   if (typeof how === "string") await page.keyboard.press(how); else await how()
   await until(async () => (await state()).open, 2000)
+  // (its rows as they'll stay: a block's sources come in after it opens)
+  let n = -1
+  await until(async () => { const rows = (await state()).rows, same = rows === n; n = rows; return same }, 2000, 250)
   let s = await state()
   if (!check(`${label}: a menu opens`, s.open, s)) { await page.keyboard.press("Escape"); return }
   check(`${label}: by ${t.caret ? "the caret" : "what has the keyboard"}, not at the mouse`, beside(s.box, t), { box: s.box, t })
