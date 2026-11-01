@@ -173,7 +173,8 @@ check("390px: the calendar is an agenda", await ag.isVisible() && !(await m.loca
   && (await ag.innerText()).includes("Write docs") && (await ag.innerText()).includes("Today"), await ag.innerText())
 await m.screenshot({ path: `${OUT}query-board-phone.png`, fullPage: true })
 await m.goto(url(DESIGN)); await m.waitForTimeout(2000)
-const pd = m.locator("section.glass", { has: m.locator("[data-query]") }).first()
+// (:visible: the phone keeps recent pages drawn, hidden, before this one)
+const pd = m.locator("section.glass:visible", { has: m.locator("[data-query]") }).first()
 await pd.scrollIntoViewIfNeeded(); await m.waitForTimeout(300)
 await pd.screenshot({ path: `${OUT}query-phone.png` })
 
