@@ -7,24 +7,46 @@ const PIECE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Ha
 const SAMPLE_PAST = 1 << 20, SAMPLES = 64, SAMPLE = 8192
 
 export function estimateTokens(text: string): number {
-  if (text.length <= SAMPLE_PAST) return Math.round(count(text))
+  const was = last
+  last = new Map()
+  if (text.length <= SAMPLE_PAST) return Math.round(byLines(text, was) / 5)
   const step = text.length / SAMPLES
   let n = 0
-  for (let i = 0; i < SAMPLES; i++) n += count(text.slice(Math.floor(i * step), Math.floor(i * step) + SAMPLE))
-  return Math.round(n * text.length / (SAMPLES * SAMPLE))
+  for (let i = 0; i < SAMPLES; i++) n += byLines(text.slice(Math.floor(i * step), Math.floor(i * step) + SAMPLE), was)
+  return Math.round(n / 5 * text.length / (SAMPLES * SAMPLE))
 }
 
+/** The last text's lines' counts: a note counted again as it's typed counts only the lines that changed. */
+let last = new Map<string, number>()
+/** A text's count, line by line: a run of newlines ends a piece, so the lines' counts add up to the whole's. */
+function byLines(text: string, was: Map<string, number>): number {
+  let n = 0
+  for (let a = 0; a < text.length;) {
+    let b = text.indexOf("\n", a)
+    if (b < 0) b = text.length
+    else while (text.charCodeAt(b) === 10) b++
+    const line = text.slice(a, b)
+    let c = last.get(line) ?? was.get(line)
+    if (c === undefined) c = count(line)
+    last.set(line, c)
+    n += c
+    a = b
+  }
+  return n
+}
+
+/** In fifths of a token (whole numbers: a sum doesn't depend on how it's split). */
 function count(text: string): number {
   let n = 0
   for (const [p] of text.matchAll(PIECE)) {
     const c = p.charCodeAt(0), len = p.length
-    if (/^[A-Za-z]+$/.test(p)) n += 1 + Math.floor((len - 1) / 7)
-    else if (/^[\p{L}\p{M}]+$/u.test(p)) n += len === 1 && c >= 0x2e80 ? 1.2 : Math.ceil(len / 3)
-    else if (/^\p{N}+$/u.test(p)) n += Math.ceil(len / 3)
-    else if (c === 32 || c === 9) n += len === 1 ? 0 : Math.ceil(len / 8)
-    else if (c === 10) n += Math.ceil(len / 2)
-    else if (/^[\x21-\x7e]+$/.test(p)) n += Math.ceil(len / 2)
-    else n += len // emoji and other symbols: a token or more each
+    if (/^[A-Za-z]+$/.test(p)) n += 5 * (1 + Math.floor((len - 1) / 7))
+    else if (/^[\p{L}\p{M}]+$/u.test(p)) n += len === 1 && c >= 0x2e80 ? 6 : 5 * Math.ceil(len / 3)
+    else if (/^\p{N}+$/u.test(p)) n += 5 * Math.ceil(len / 3)
+    else if (c === 32 || c === 9) n += len === 1 ? 0 : 5 * Math.ceil(len / 8)
+    else if (c === 10) n += 5 * Math.ceil(len / 2)
+    else if (/^[\x21-\x7e]+$/.test(p)) n += 5 * Math.ceil(len / 2)
+    else n += 5 * len // emoji and other symbols: a token or more each
   }
   return n
 }
