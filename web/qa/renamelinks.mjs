@@ -45,7 +45,7 @@ const panes = () => page.locator("section[data-group]")
 const shown = (pane) => panes().nth(pane).locator(".file-view:not([data-kept] *) .cm-content").first()
 const paneText = (pane) => shown(pane).evaluate((el) => [...el.querySelectorAll(".cm-line")].map((l) => l.textContent).join("\n")).catch(() => "")
 const row = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"]`).first()
-const expanded = (p) => page.locator(`aside [role=tree] li:has(div[data-tree-path="${p}"]):not(:has(li div[data-tree-path="${p}"]))`).first().getAttribute("aria-expanded")
+const expanded = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"] > [role=treeitem]`).first().getAttribute("aria-expanded")
 const unfold = async (p) => { if ((await expanded(p)) !== "true") { await row(p).locator("button").first().click(); await until(async () => (await expanded(p)) === "true", 2000) } }
 const backlinks = async (p) => Object.keys((await api("GET", `file/linked?path=${encodeURIComponent(p)}`)).lines ?? {}).sort()
 
