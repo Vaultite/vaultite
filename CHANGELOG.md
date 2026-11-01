@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The graph keeps up in big vaults**: after an edit only the changed note's links are worked out again (about 3x
+  less work on the server at 50,000 notes).
 - **vau errors name flags only where they mean them**: a word in an error that happens to be a parameter's name
   stays a word ("no entry for" no longer reads "no --entry for"); a parameter the server names is its flag or <arg>.
 - **The app starts with less to download**: it asks only for the actions a file's menu offers, not the whole

@@ -21,49 +21,57 @@ function linkReader(vault: Vault, rel: string): ((text: string) => string[]) | n
   return null
 }
 
-let cached: { vault: Vault; version: string; plugins: unknown[]; graph: Graph; built: Built } | null = null
-
 // A file's links (its text's, and its frontmatter's by key), its place in the graph and as a link target, once per read
-// of it (an Entry is new each time its file is read): a change to one file doesn't read every other file's again.
-type Seen = { excluded: boolean; file: GraphFile; target: LinkFile; key: string }
+// of it (an Entry is new each time its file is read) and settings version: an edit doesn't read every other file again.
+type Seen = { settings: number; excluded: boolean; file: GraphFile; target: LinkFile; key: string }
 const seenOf = new WeakMap<Entry, Seen>()
 function seen(vault: Vault, rel: string, e: Entry): Seen {
-  const excluded = vault.excluded(rel)
   let s = seenOf.get(e)
+  if (s?.settings === vault.settingsVersion) return s
+  const excluded = vault.excluded(rel)
   if (s?.excluded !== excluded) {
     const title = e.fm.title || e.fm.name || stemOf(rel), aliases = e.fm.aliases
     const target = { path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived }
-    seenOf.set(e, s = { excluded, target, key: `${rel}\u0001${target.aliases.join("\u0001")}${e.archived ? "\u0002" : ""}`,
+    s = { settings: 0, excluded, target, key: `${rel}\u0001${target.aliases.join("\u0001")}${e.archived ? "\u0002" : ""}`,
       file: { path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: e.tags, links: s?.file.links ?? wikiTargets(e.body),
-        props: s?.file.props ?? frontmatterLinks(e.fm), ...(e.archived ? { archived: true } : {}), ...(excluded ? { excluded: true } : {}) } })
+        props: s?.file.props ?? frontmatterLinks(e.fm), ...(e.archived ? { archived: true } : {}), ...(excluded ? { excluded: true } : {}) } }
   }
+  s.settings = vault.settingsVersion
+  seenOf.set(e, s)
   return s
 }
 
-// The resolver, kept while the files links can go to are the same, and what each file's links resolve to, kept while
-// its links and the resolver are: an edit of a note's text resolves only its own links again.
-let resolving: { key: string; resolve: (t: string, from?: string) => string | null } | null = null
-function resolverFor(targets: LinkFile[], key: string) {
-  if (resolving?.key !== key) resolving = { key, resolve: linkResolver(targets) }
-  return resolving
-}
-const resolved = new WeakMap<string[], { key: string; to: [string, string | null][] }>()
 const NO_LINKS: string[] = []
 
 // Other files' links, kept until the file or its reader changes: a big drawing is read once, not on every change.
 const otherLinks = new WeakMap<Vault, Map<string, { ns: bigint; read: unknown; links: string[]; file?: GraphFile }>>()
 
-/** The whole vault's graph, built again only when the vault's files changed or the plugins that are off did (their
- *  services name links); the same object meanwhile, frozen (so the server serializes it once). */
+/** The last build: each file's Seen (notes first, in the index's order, then other files) and resolved links, the
+ *  resolver (kept while the files links can go to are), and how many links go to each path (what makes an attachment a node). */
+type Kept = { vault: Vault; version: string; plugins: unknown[]; graph: Graph; built: Built; entries: Entry[]; seen: Seen[]; others: GraphFile[]
+  resolve: (t: string, from?: string) => string | null; links: [string, string | null][][]; inbound: Map<string, number> }
+let cached: Kept | null = null
+
+const resolveAll = (f: GraphFile, resolve: Kept["resolve"]): [string, string | null][] =>
+  [...f.links.map((t): [string, string | null] => [BODY, resolve(t, f.path)]), ...(f.props ?? []).map(([k, t]): [string, string | null] => [k, resolve(t, f.path)])]
+const count = (inbound: Map<string, number>, links: [string, string | null][], by: number) => {
+  for (const [, p] of links) if (p) inbound.set(p, (inbound.get(p) ?? 0) + by)
+}
+
+/** The whole vault's graph, built again when files changed or plugins went off (their services name links), frozen
+ *  meanwhile (serialized once). An edit redoes only its files: their links resolved again, their edges. */
 export function vaultGraph(vault: Vault): Graph {
   const version = `${vault.version}:${vault.settingsVersion}:${[...vault.switchedOff()].join(",")}`
-  if (cached?.vault === vault && cached.version === version && cached.plugins.length === LOADED.length &&
-    LOADED.every((p, i) => p === cached!.plugins[i])) return cached.graph
+  const same = cached?.vault === vault && cached.plugins.length === LOADED.length && LOADED.every((p, i) => p === cached!.plugins[i])
+  if (same && cached!.version === version) return cached!.graph
+  const was = same ? cached : null
 
-  const files: GraphFile[] = [], targets: LinkFile[] = [], keys: string[] = []
+  const entries: Entry[] = [], seens: Seen[] = []
+  let at = 0, changed: number[] | null = was ? [] : null
   for (const [rel, e] of vault.entries) {
-    const s = seen(vault, rel, e)
-    files.push(s.file); targets.push(s.target); keys.push(s.key)
+    const s = was?.entries[at] === e && was.seen[at].settings === vault.settingsVersion ? was.seen[at] : seen(vault, rel, e)
+    if (changed && s !== was!.seen[at] && changed.push(at) > 1000) changed = null
+    entries.push(e); seens.push(s); at++
   }
   // Other files: those a plugin reads links out of, and the ones something links to (attachments).
   const others: GraphFile[] = []
@@ -81,21 +89,30 @@ export function vaultGraph(vault: Vault): Graph {
     const excluded = vault.excluded(rel)
     if (!had.file || !!had.file.excluded !== excluded) had.file = { path: rel, title: rel.slice(rel.lastIndexOf("/") + 1), type: null, tags: [], links: had.links, ...(excluded ? { excluded: true } : {}) }
     others.push(had.file)
-    targets.push({ path: rel }); keys.push(rel)
   }
-  const { key, resolve } = resolverFor(targets, keys.join("\0"))
-  const linksOf = (f: GraphFile) => {
-    let hit = resolved.get(f.links)
-    if (hit?.key !== key) {
-      resolved.set(f.links, hit = { key, to: [...f.links.map((t): [string, string | null] => [BODY, resolve(t, f.path)]),
-        ...(f.props ?? []).map(([k, t]): [string, string | null] => [k, resolve(t, f.path)])] })
+  const n = seens.length, all = [...seens.map((s) => s.file), ...others]
+  // The resolver and every file's links again when a file came or went, was renamed or archived, or its aliases changed.
+  if (changed && was && (was.seen.length !== n || was.others.length !== others.length || others.some((o, i) => o !== was.others[i]) ||
+    changed.some((i) => seens[i].key !== was.seen[i].key))) changed = null
+  let resolve: Kept["resolve"], links: [string, string | null][][], inbound: Map<string, number>
+  if (changed && was) {
+    ({ resolve } = was)
+    links = was.links.slice(); inbound = new Map(was.inbound)
+    for (const i of changed) {
+      if (seens[i].file === was.seen[i].file) continue
+      count(inbound, links[i], -1)
+      count(inbound, links[i] = resolveAll(seens[i].file, resolve), 1)
     }
-    return hit.to
+  } else {
+    resolve = linkResolver([...seens.map((s) => s.target), ...others.map((o) => ({ path: o.path }))])
+    links = all.map((f) => resolveAll(f, resolve)); inbound = new Map()
+    for (const l of links) count(inbound, l, 1)
   }
-  const linked = new Set<string>()
-  for (const f of [...files, ...others]) for (const [, p] of linksOf(f)) if (p) linked.add(p)
-  const built = buildGraph([...files, ...others.filter((o) => o.links.length || linked.has(o.path))], linksOf, cached?.vault === vault ? cached.built : undefined)
-  cached = { vault, version, plugins: [...LOADED], graph: Object.freeze(built.graph), built }
+  // (an attachment is a node when it links somewhere or something links to it)
+  const files = all.slice(0, n), kept = links.slice(0, n)
+  for (let i = n; i < all.length; i++) if (all[i].links.length || inbound.get(all[i].path)) { files.push(all[i]); kept.push(links[i]) }
+  const built = buildGraph(files, kept, was?.built)
+  cached = { vault, version, plugins: [...LOADED], graph: Object.freeze(built.graph), built, entries, seen: seens, others, resolve, links, inbound }
   return built.graph
 }
 

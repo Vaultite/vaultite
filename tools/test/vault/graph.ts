@@ -320,6 +320,24 @@ export default async ($: VaultTest) => {
     check("graph patch: nothing changed, nothing sent", a1.v === a0.v && a1.patch === null, a1)
     check("graph patch: after an edit, a patch that makes the graph", a2.v !== a0.v && a2.since === a0.v && w2.length < w0.length / 2 && sameJson(applyPatch(a0.whole, a2.patch), now), w2.slice(0, 300))
     write("Graph test/Alone.md", "No links at all.\n")
+    // An edit redoes only its file's links and edges: the graph is the one a build from scratch makes.
+    fs.writeFileSync(path.join(VAULT, "Graph test/pic.png"), "png")
+    await api("GET", "graph")
+    const edits = ["Now [[Far]] and ![[pic.png]].\n", "---\nup: '[[Far]]'\n---\n\nOnly [[pic.png]].\n", "[[Graph test/Typed]] gone, [[Alone]] itself.\n", "![[pic.png]]\n"]
+    const sorted = (g: Any) => JSON.stringify([g.nodes.map((n: Any) => JSON.stringify(n)).sort(), g.edges.map((e: Any) => JSON.stringify(e)).sort()])
+    let same = true, linked = true
+    for (const text of edits) {
+      write("Graph test/Alone.md", text)
+      const [, edited] = await api("GET", "graph?archived=true")
+      write("Graph test/Scratch.md", "x\n"); await api("GET", "graph"); fs.rmSync(path.join(VAULT, "Graph test/Scratch.md"))
+      const [, scratch] = await api("GET", "graph?archived=true")
+      same &&= sorted(edited) === sorted(scratch)
+      linked &&= edited.nodes.some((n: Any) => n.path === "Graph test/pic.png") === text.includes("pic.png")
+    }
+    write("Graph test/Alone.md", "No links at all.\n")
+    const [, after] = await api("GET", "graph")
+    check("graph after edits: as built from scratch; an attachment is a node while linked", same && linked && !after.nodes.some((n: Any) => n.path === "Graph test/pic.png"), { same, linked })
+    fs.rmSync(path.join(VAULT, "Graph test/pic.png"))
   }
   Object.assign($.vars, { board })
 }

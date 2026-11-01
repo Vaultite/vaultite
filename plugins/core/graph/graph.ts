@@ -39,14 +39,16 @@ function edgeOf(files: GraphFile[], links: [string, string | null][][], a: numbe
     ...(types.length > 1 || types[0] !== BODY ? { types } : {}) })
 }
 
-/** The graph of these files, their links as `linksOf` resolves them ([BODY or a frontmatter key, path or null]), but to
+/** The graph of these files, `links` each one's links as resolved ([BODY or a frontmatter key, path or null]), but to
  *  itself or out of `files`. With `was` (the last build), only files whose links changed are; unchanged parts stay. */
-export function buildGraph(files: GraphFile[], linksOf: (f: GraphFile) => [string, string | null][], was?: Built): Built {
+export function buildGraph(files: GraphFile[], links: [string, string | null][][], was?: Built): Built {
   const n = files.length
-  const links = files.map(linksOf)
-  const same = was && was.files.length === n && files.every((f, i) => f.path === was.files[i].path)
-  const changed = same ? links.flatMap((l, i) => (l !== was.links[i] ? [i] : [])) : []
-  if (!same || changed.length > n / 8) return buildAll(files, links)
+  if (!was || was.files.length !== n) return buildAll(files, links)
+  const changed: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (files[i].path !== was.files[i].path) return buildAll(files, links)
+    if (links[i] !== was.links[i] && changed.push(i) > n / 8) return buildAll(files, links)
+  }
   // (files by number: a pair's key is a number, not a string made per link)
   const { index, pairs } = was, degree = was.degree.slice()
   const key = (i: number, j: number) => (i < j ? i * n + j : j * n + i)
