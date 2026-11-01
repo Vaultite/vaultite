@@ -161,7 +161,8 @@ function list(q: { source?: string; limit?: number; since?: number }): ErrorList
   const all = [...loaded().values()]
   const since = q.since ?? 0
   const shown = all.filter((g) => (!q.source || g.source === q.source) && g.last >= since).sort((a, b) => b.last - a.last)
-  const oldest = all.reduce((m, g) => Math.min(m, g.first), Date.now())
+  // (none yet: null, not now, so an unchanged list is the same answer: a 304 to the page polling it)
+  const oldest = all.length ? all.reduce((m, g) => Math.min(m, g.first), Infinity) : null
   return { groups: shown.slice(0, Math.min(500, Math.max(1, q.limit ?? 50))), total: shown.length,
     events: shown.reduce((n, g) => n + g.count, 0), since: oldest }
 }

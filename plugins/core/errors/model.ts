@@ -43,5 +43,5 @@ export type ErrorGroup = {
   latest: ErrorEvent
 }
 
-export type ErrorList = { groups: ErrorGroup[]; total: number; events: number; since: number }
+export type ErrorList = { groups: ErrorGroup[]; total: number; events: number; since: number | null }
 export type ErrorDetail = { group: ErrorGroup; events: ErrorEvent[] }
