@@ -129,6 +129,15 @@ for (const dark of [false, true]) {
     check("clicking it opens the note", await until(async () => (await page.locator('[role="tab"]', { hasText: "Lisbon trip" }).count()) > 0, 5000))
     await page.locator('[role="tab"]', { hasText: "Terminal" }).first().click()
     await page.locator(`[data-terminal="${sid}"]`).click()
+    // Scrolled up its history while output goes on: a button goes back to the end.
+    await page.keyboard.type("seq 1 2000; sleep 1; echo tail-$((5*5))"); await page.keyboard.press("Enter")
+    await until(async () => /^2000\s*$/m.test(await text()))
+    const screen = await page.locator(".xterm-screen").boundingBox()
+    await page.mouse.move(screen.x + 200, screen.y + 200); await page.mouse.wheel(0, -2000)
+    check("scrolled up, the way back to the end shows", await until(async () => (await page.locator("[data-terminal-end]").count()) > 0, 3000))
+    await wait(1200)
+    await page.locator("[data-terminal-end]").click()
+    check("it goes back to the end", await until(async () => /^tail-25\s*$/m.test(await text()) && !(await page.locator("[data-terminal-end]").count()), 3000))
     // Scheme change recolours.
     const before = await page.evaluate(() => getComputedStyle(document.querySelector(".xterm-scrollable-element")).backgroundColor)
     await page.evaluate(() => { const h = document.documentElement; if (h.dataset.scheme) delete h.dataset.scheme; else h.dataset.scheme = "gruvbox" }); await wait(300)

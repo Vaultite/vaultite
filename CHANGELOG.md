@@ -44,6 +44,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Resizing a terminal no longer floods it**: dragging a window or split redraws the terminal at each size, but its
   program hears the new size once the drag settles, so an agent redraws once rather than dozens of times into its
   history.
+- **Back to the end of a terminal**: scrolled up a terminal's history, a round button at its corner goes back to
+  the newest output, which keeps arriving below meanwhile.
 - **Day planner**: a block in your daily note draws its timed items (`- 09:00 - 10:30 Standup`, `- 14:00 Lunch`) as a
   timeline of the day beside the day's calendar events (with the Calendar plugin on), overlapping ones side by side and
   a line at the time it is now; a task ticks done right on the timeline; agents read it as the plan.

@@ -581,6 +581,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   const inPane = usePane().group !== ""
   const phone = touchUi && !inPane
   const [typing, setTyping] = useState(false)
+  const [up, setUp] = useState(false)
   const area = useVisibleArea(phone && typing)
   const pageAt = useRef(0) // where the page was scrolled before the keyboard came up
   const touchActions = useRef({ key: (_send: (t: XTerm) => string) => {}, paste: () => {}, hide: () => {} })
@@ -703,10 +704,14 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
       t.textarea?.addEventListener("blur", onStopTyping)
     }
     const unregister = register({ id, end: () => l.send(JSON.stringify({ t: "close" })) })
+    // Scrolled up its history: the way back to the end shows (output goes on arriving below).
+    const scrolled = () => { const b = t.buffer.active; setUp(b.viewportY < b.baseY) }
+    const onScroll = t.onScroll(scrolled)
+    scrolled()
 
     return () => {
       cancelAnimationFrame(frame)
-      ro.disconnect(); unregister()
+      ro.disconnect(); unregister(); onScroll.dispose()
       el.removeEventListener("touchstart", onTouchStart, true)
       el.removeEventListener("touchmove", onTouchMove, true)
       el.removeEventListener("touchend", onTouchEnd, true)
@@ -765,6 +770,14 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
             keyboard's hidden field at 16px, or iOS zooms the page in when it's focused. */}
         <div ref={host} data-terminal={id} className={cn("h-full w-full", touchUi && "select-none [-webkit-touch-callout:none] [&_.xterm-helper-textarea]:!text-[16px]")} />
         {finding > 0 && live.current && <FindBar l={live.current} ask={finding} close={closeFind} />}
+        {up && (
+          <button type="button" aria-label="Scroll to the end" data-tip="Scroll to the end" data-terminal-end
+            onClick={() => { const t = live.current?.t; t?.scrollToBottom(); if (!touchUi) t?.focus() }}
+            className={cn("absolute right-5 bottom-3 z-10 flex cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md hover:text-foreground",
+              touchUi ? "size-11" : "size-8")}>
+            <ArrowDown className={touchUi ? "size-5" : "size-4"} strokeWidth={2} />
+          </button>
+        )}
       </div>
       {full && <KeyBar label="Terminal keys" hide={() => touchActions.current.hide()} keys={[
         ...KEYS.map((k) => ({ name: k.name, label: k.label, run: () => touchActions.current.key(k.send) })),
