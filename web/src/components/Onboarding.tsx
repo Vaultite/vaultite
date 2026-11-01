@@ -1,7 +1,7 @@
 // Set up Vaultite, the desktop app's first-run window (web/onboarding.html; electron/setup.ts): the vault, the coding
 // agents here, then the Mac's permissions they use. Settings > Permissions opens it again at the agents, for its vault.
 import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { Check, ChevronRight, CircleAlert, CircleCheck, Copy, FlaskConical, FolderOpen, FolderPlus, LoaderCircle, Monitor, MousePointer2, MousePointerClick, RotateCw, type LucideIcon } from "lucide-react"
+import { Check, ChevronRight, CircleAlert, CircleCheck, Copy, FlaskConical, FolderOpen, FolderPlus, LoaderCircle, Monitor, MousePointer2, MousePointerClick, Plug, RotateCw, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
 import { plainText } from "../../../core/plainerror.ts"
@@ -312,6 +312,10 @@ function AgentsStep({ setup, home, nav }: { setup: SetupApi; home: string; nav: 
               ))}
             </section>
           )}
+          <p className="flex items-start gap-2 rounded-[8px] bg-foreground/[0.04] px-3 py-2.5 text-muted-foreground" data-connect-ai>
+            <Plug className="mt-px size-4 shrink-0" strokeWidth={2} />
+            <span>AI apps like Claude and ChatGPT can use your vault too: connect one from a new tab once the vault opens.</span>
+          </p>
         </div>
       )}
     </Page>

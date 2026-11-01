@@ -20,6 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **An empty inbox says what comes there**: on a dashboard, it says an agent's questions and reports show up in
   it, and an empty calendar day reads as a calm sentence.
+- **Setup mentions connecting an AI**: the agents step says Claude, ChatGPT and other AI apps can use the vault too,
+  and where to connect one once it opens.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the
   view button instead of running under it, and back and forward give way before it leaves the pane.
 - **Slides use templates**: a slide naming `template="[[note]]"` (or a deck's `defaultTemplate`) is drawn in
