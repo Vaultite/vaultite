@@ -431,7 +431,15 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   // A route that reads its own body (an upload: plugin.route's `stream`) gets it unread.
   const body = app.streams(method, parts, String(req.headers["content-type"] ?? "")) ? {} : await bodyOf(req)
   if (body === undefined) return json(res, { error: "the body isn't JSON" }, 400)
-  if (parts.join("/") === "ui") { const [out, status] = live.handle(method, body); return json(res, out, status) } // core/live.ts
+  if (parts.join("/") === "ui") { // core/live.ts
+    // (as ui.command and ui.open: a palette command or a terminal tab starts a shell in the owner's window)
+    const b = (body ?? {}) as { action?: unknown; path?: unknown }
+    const why = method === "POST" && (b.action === "command" || (b.action === "open" && String(b.path).startsWith("view:terminal/")))
+      ? await app.ownerWhy(req, b.action === "command" ? "the app's commands" : "the terminal") : ""
+    if (why) return json(res, { error: why }, 403)
+    const [out, status] = live.handle(method, body)
+    return json(res, out, status)
+  }
   if (parts.join("/") === "events/stream" && method === "GET") return events.stream(events.eventsOf(vault), req, res, query) // core/events.ts
   if (parts[0] === "vaults" && !DESKTOP) {
     // (it browses and opens any folder of this machine, drives included: only its owner, like other apps' plugins)

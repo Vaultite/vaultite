@@ -129,6 +129,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   result on top under Pinned whatever it waits on, until it's done or unpinned.
 - **Audio covers are always shown as images**: a cover whose tag names a type that isn't an image is served as a
   JPEG.
+- **Only the owner runs commands in the app's window**: palette commands and terminal tabs sent to the window (`vau
+  command`, `vau open view:terminal/...`) answer only this machine's owner, as terminals do.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
   cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its

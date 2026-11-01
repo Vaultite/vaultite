@@ -55,6 +55,9 @@ export default async ($: VaultTest) => {
     const t = await refused("terminal.list", {})
     check("ops: an owner-only op is refused to someone else on the tailnet", t === "refused", t)
     check("ops: an op whose route only the owner may use is refused the same (the request goes with ctx.api)", await refused("inbox.clear", {}) === "refused")
+    // (a palette command or a terminal tab starts a shell or an agent in the owner's window)
+    const ui = [await refused("ui.command", { id: "terminal:open" }), await refused("ui.open", { path: "view:terminal/claude-abcd1234" })]
+    check("ops: running a palette command or opening a terminal in the owner's window is refused to someone else", ui.every((r) => r === "refused"), ui)
     {
       // (who may reach any plugin is this machine's, whether or not its manifest marks allowRemote local)
       const had = exists(".vaultite/plugins/inbox/data.json") ? read(".vaultite/plugins/inbox/data.json") : null

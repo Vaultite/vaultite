@@ -122,7 +122,12 @@ current tab. On a phone it opens in the sheet. For something the user should loo
       newTab: { type: "boolean", description: "in a new tab, keeping the current one" },
     },
     args: ["path"],
-    run: ({ path, split, newTab }, ctx) => ctx.ui({ action: "open", path, split: split ?? null, newTab: !!newTab }).catch(noWindow),
+    run: async ({ path, split, newTab }, ctx) => {
+      // (showing a terminal tab starts its shell or agent, which only the owner may)
+      const why = typeof path === "string" && path.startsWith("view:terminal/") ? await ctx.refusal?.("the terminal") : ""
+      if (why) throw new OpError(why, 403)
+      return ctx.ui({ action: "open", path, split: split ?? null, newTab: !!newTab }).catch(noWindow)
+    },
     text: (_r, p) => `Opened ${p.path}${p.split ? ` in a split ${p.split}` : ""}.`,
     did: ({ path, split }) => ({ action: "ui", text: `Opened ${path} in the app${split ? ` (split ${split})` : ""}`, paths: path && !path.startsWith("view:") ? [path] : [] }),
   }, {
@@ -136,6 +141,7 @@ command that isn't available right then (it needs an open file) runs nothing, an
   vau command terminal:open
   vau command theme:dark`,
     kind: "write",
+    owner: "the app's commands",
     params: { id: { type: "string", required: true, description: "the command's id (sidebar:toggle)" } },
     args: ["id"],
     run: ({ id }, ctx) => ctx.ui({ action: "command", id }).catch(noWindow),

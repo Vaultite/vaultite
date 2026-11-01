@@ -123,6 +123,11 @@ const one = serve(port)
   const bad = await call("web-viewer/logins/take", { to: "../x", sealed: "{}" })
   const foreign = await fetch(`http://127.0.0.1:${port}/api/web-viewer/logins/key`, { headers: { Origin: "http://attacker.example" } })
   check("logins: a bad set of logins, or another site's page, is refused", bad.status === 400 && foreign.status === 403, [bad.status, foreign.status])
+  const ui = (body: unknown, headers: Record<string, string> = {}) => fetch(`http://127.0.0.1:${port}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) }).then((r) => r.status)
+  const proxied = { "X-Forwarded-For": "100.64.0.9" }
+  const asked = [await ui({ action: "command", id: "terminal:open" }, proxied), await ui({ action: "open", path: "view:terminal/claude-abcd1234" }, proxied),
+    await ui({ action: "command", id: "terminal:open" }), await ui({ action: "open", path: "Notes/A.md" }, proxied)]
+  check("/api/ui: only the owner runs palette commands or opens terminals in the window (no window here: 409)", JSON.stringify(asked) === "[403,403,409,409]", asked)
   const self = await fetch(`http://127.0.0.1:${port}/api/machines/self`).then((r) => r.json()) as any
   check("attached: Machines says this always-on server has a browser", self.desktop === true && self.standalone === true, self)
 
