@@ -417,6 +417,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   pinned tiles, no longer reaching almost to a phone's edges.
 - **A person's page at phone sizes**: where they live and their tags read at 15px on a phone, and a tap-to-change
   field (a person's context, where they live) takes a taller tap.
+- **Properties fit a finger on a phone**: their rows, toggle and Add property are 44px, list values 15px with a
+  finger-sized remove button, and the field to add one no longer shrinks to a sliver.
 
 ## 0.8.0 (2026-10-24)
 

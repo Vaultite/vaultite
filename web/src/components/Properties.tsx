@@ -27,7 +27,7 @@ function Field({ value, onCommit, readOnly, placeholder, className, inputMode, a
     <input value={v} readOnly={readOnly} placeholder={placeholder} inputMode={inputMode} spellCheck={false} autoFocus={autoFocus} type={type} step={step}
       onChange={(e) => setV(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur() } if (e.key === "Escape") { setV(value); (e.target as HTMLInputElement).blur() } }}
-      className={cn("h-8 w-full min-w-0 rounded-[6px] bg-transparent px-1.5 text-[15px] outline-none placeholder:text-muted-foreground",
+      className={cn("h-8 w-full min-w-0 rounded-[6px] bg-transparent px-1.5 text-[15px] outline-none max-md:h-11 placeholder:text-muted-foreground",
         !readOnly && "hover:bg-foreground/[0.04] focus:bg-foreground/[0.06]", className)} />
   )
 }
@@ -44,13 +44,13 @@ function Chips({ items, onChange, readOnly }: { items: unknown[]; onChange: (v: 
     if (e.key === "Backspace" && !draft && items.length) onChange(items.slice(0, -1))
   }
   return (
-    <div className="flex min-h-8 flex-wrap items-center gap-1 px-1 py-1">
+    <div className="flex min-h-8 flex-wrap items-center gap-1 px-1 py-1 max-md:min-h-11">
       {items.map((x, i) => (
-        <span key={`${i}-${String(x)}`} className="flex min-h-6 max-w-full items-center gap-0.5 rounded-[12px] bg-muted pr-1 pl-2.5 text-[13px] leading-[18px]">
+        <span key={`${i}-${String(x)}`} className="flex min-h-6 max-w-full items-center gap-0.5 rounded-[12px] bg-muted pr-1 pl-2.5 text-[13px] leading-[18px] max-md:min-h-8 max-md:rounded-[16px] max-md:text-[15px]">
           <span className="min-w-0 py-[3px] break-words">{String(x)}</span>
           {!readOnly && (
             <button type="button" aria-label={`Remove ${String(x)}`} onClick={() => onChange(items.filter((_, k) => k !== i))}
-              className="grid size-5 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
+              className="relative grid size-5 shrink-0 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground max-md:after:absolute max-md:after:-inset-3">
               <X className="size-3" strokeWidth={2.5} />
             </button>
           )}
@@ -60,7 +60,7 @@ function Chips({ items, onChange, readOnly }: { items: unknown[]; onChange: (v: 
       {!readOnly && (
         <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onKey} onBlur={add} placeholder={items.length ? "" : "Add"}
           aria-label="Add an item" spellCheck={false}
-          className="h-6 w-20 min-w-0 flex-1 bg-transparent px-1 text-[13px] outline-none placeholder:text-muted-foreground" />
+          className="h-6 w-20 min-w-0 flex-1 bg-transparent px-1 text-[13px] outline-none placeholder:text-muted-foreground max-md:h-8 max-md:min-w-16 max-md:text-[15px]" />
       )}
     </div>
   )
@@ -119,7 +119,7 @@ function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; t
   ])
   return (
     <button type="button" aria-label={label} data-tip={label} data-prop-type={declared ?? ""} onClick={open}
-      className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[6px] text-tertiary hover:bg-foreground/[0.04] hover:text-foreground">
+      className="relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-[6px] text-tertiary hover:bg-foreground/[0.04] hover:text-foreground max-md:mt-1.5 max-md:after:absolute max-md:after:-inset-1.5">
       <Icon className="size-4" strokeWidth={2} />
     </button>
   )
@@ -139,7 +139,7 @@ function Value({ k, v, set, readOnly, autoFocus, type, stamps }: {
   const empty = v === null || v === undefined || v === ""
   switch (typedKind(type, v) ?? propKind(v)) {
     case "checkbox":
-      return <div className="flex h-8 items-center px-1.5"><Switch on={v === true} onChange={(x) => set(x)} label={k} disabled={readOnly} /></div>
+      return <div className="flex h-8 items-center px-1.5 max-md:h-11"><Switch on={v === true} onChange={(x) => set(x)} label={k} disabled={readOnly} /></div>
     case "number":
       return <Field value={empty ? "" : String(v)} readOnly={readOnly} inputMode="decimal" className="num" placeholder={empty ? "Empty" : undefined}
         onCommit={(s) => set(typedNumber(s))} />
@@ -214,7 +214,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
   return (
     <section ref={box} aria-label="Properties" className="mb-4">
       <button type="button" onClick={() => setOpen(!open)} onContextMenu={menuFor(shownMenu)} aria-expanded={open}
-        className="-ml-1.5 flex h-8 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] font-semibold text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
+        className="-ml-1.5 flex h-8 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] font-semibold text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground max-md:h-11 max-md:text-[15px]">
         <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
         Properties{keys.length ? <span className="font-normal">{keys.length}</span> : null}
         {extra}
@@ -260,10 +260,10 @@ export const Properties = memo(function Properties({ path, block, onChange, read
             <input ref={newKey} placeholder="Property name" spellCheck={false} aria-label="New property name"
               onBlur={(e) => addKey(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") addKey((e.target as HTMLInputElement).value); if (e.key === "Escape") setAdding(false) }}
-              className="mt-1 h-8 w-[160px] rounded-[6px] bg-foreground/[0.06] px-1.5 text-[15px] outline-none" />
+              className="mt-1 h-8 w-[160px] rounded-[6px] bg-foreground/[0.06] px-1.5 text-[15px] outline-none max-md:h-11" />
           ) : (
             <button type="button" onClick={() => setAdding(true)}
-              className="mt-1 flex h-8 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 text-[15px] text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
+              className="mt-1 flex h-8 cursor-pointer items-center gap-1.5 rounded-[6px] px-1.5 text-[15px] text-muted-foreground max-md:h-11 hover:bg-foreground/[0.04] hover:text-foreground">
               <Plus className="size-4" strokeWidth={2.25} />Add property
             </button>
           ))}
