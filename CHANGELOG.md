@@ -14,6 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   may use the microphone, location or pasting without asking; a page another program serves on localhost may not.
 - **Add comment is offered only in a note**: the commands leave it out on a new tab, a page or a terminal, where it
   could only say to open a note.
+- **The Links panel says whose links it shows on a tab that isn't a file**: a new tab or a terminal keeps the links
+  of the file you were on, now named above them.
 - **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the

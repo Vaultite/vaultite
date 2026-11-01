@@ -229,9 +229,11 @@ export function LinksPanel({ store, open, file: focused, tab }: SidebarCtx) {
       <SidebarHeading title="Links" open={open}>
         <HeadingButton icon={SquareArrowOutUpRight} label="Open links in a tab" tip="Open in a tab" onClick={() => openView("links", { newTab: true })} />
       </SidebarHeading>
-      {page ? <WebLinksList url={page} title={viewInfo(tab).label} /> : file ? (
+      {page ? <WebLinksList url={page} title={viewInfo(tab).label} /> : file ? <>
+        {/* (on a tab that isn't a file, the list is another tab's: say whose) */}
+        {!focused && <p className="truncate pl-1.5 text-[12px] leading-6 text-tertiary" data-links-of>For {stem(file)}, the file you were on</p>}
         <LinksList store={store} path={file} />
-      ) : <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Open a file to see its links.</p>}
+      </> : <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Open a file to see its links.</p>}
     </div>
   )
 }
