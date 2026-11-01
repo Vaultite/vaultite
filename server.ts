@@ -483,8 +483,8 @@ function webBuild() {
   }
 }
 
-/** The web app (web/dist). Its assets are named by content, so a browser keeps them for good; the rest (index.html,
- *  icons) is asked again each time (a 304 when unchanged). Over the network they're sent compressed. */
+/** The web app (web/dist). Its assets are named by content, so a browser keeps them for good; index.html is asked again
+ *  each time (a 304 when unchanged), icons after an hour (each logo drawn asked again). Over the network they're compressed. */
 async function file(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   let p = path.normalize(path.join(DIST, decode(url.pathname)))
   if (p !== DIST && !p.startsWith(DIST + path.sep)) return send(res, 403, "Forbidden", "text/plain")
@@ -500,7 +500,7 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   const modified = st.mtime.toUTCString()
   const headers: Record<string, string> = p.startsWith(ASSETS + path.sep)
     ? { "Cache-Control": "public, max-age=31536000, immutable" }
-    : { "Last-Modified": modified, "Cache-Control": "no-cache" }
+    : { "Last-Modified": modified, "Cache-Control": type.startsWith("text/html") ? "no-cache" : "public, max-age=3600" }
   if (COMPRESSIBLE.test(type)) headers.Vary = "Accept-Encoding"
   // (another site's page can't frame the app to steer clicks onto it: Allow, Turn on)
   if (type.startsWith("text/html")) Object.assign(headers, { "Content-Security-Policy": "frame-ancestors 'self'", "X-Frame-Options": "SAMEORIGIN" })
