@@ -17,4 +17,14 @@ export default async ($: VaultTest) => {
   write("Notes/Map plan.md", "Intro.\n\n```block-mind-map\ndepth: 2\n```\n\n# Goals\n## Ship\n### Detail\n# Risks\n")
   const [st, out] = await api("GET", "render?path=Notes/Map plan.md")
   check("mind map block: rendered as the headings' tree", st === 200 && String(out).includes("**Map plan**\n- Goals\n  - Ship\n- Risks"), out)
+
+  const li = headingsIn("- Before\n# A\n- one\n  - [ ] one a\n  - one b\n- two\n1. three\n```\n- code\n```\n## B\n  - under B\n", true)
+  check("mind map lists: items by their indent, under the heading before them; tasks' boxes off; code skipped", li.map((h) => `${h.level}${h.text}`).join("|") ===
+    "7Before|1A|7one|8one a|8one b|7two|7three|2B|7under B", li)
+  const lt = treeText(treeOf(li, "R"))
+  check("mind map lists: as a tree", lt === "**R**\n- Before\n- A\n  - one\n    - one a\n    - one b\n  - two\n  - three\n  - B\n    - under B", lt)
+  check("mind map lists: off, headings only", headingsIn("# A\n- one\n").length === 1)
+  write("Notes/Map lists.md", "```block-mind-map\n```\n\n# Trip\n## Pack\n- Hat\n- Sunscreen\n## Book\n")
+  const [ls, lo] = await api("GET", "render?path=Notes/Map lists.md")
+  check("mind map block: lists in its text, lists: false leaves them out", ls === 200 && String(lo).includes("**Trip**\n- Pack\n  - Hat\n  - Sunscreen\n- Book"), lo)
 }

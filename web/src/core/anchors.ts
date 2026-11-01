@@ -170,5 +170,9 @@ export function useOutline(path: string) {
     loading: md && !v && file.path !== path,
     current,
     go: (h: Heading) => (v ? v.scrollTo(h.line) : openAt(path, h.text.replace(/#/g, " "))),
+    /** Its text as the outline read it (the editor's, else the file's). */
+    text,
+    /** Go to a line that isn't a heading (a list item): there in its editor, else just open the file. */
+    goLine: (line: number) => (v ? v.scrollTo(line) : openFile(path)),
   }
 }

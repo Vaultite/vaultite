@@ -51,7 +51,7 @@ function layout(root: MindNode, shut: Set<number>, depth: number) {
 }
 const count = (n: MindNode): number => n.children.reduce((s, c) => s + 1 + count(c), 0)
 
-export function MindMap({ root, path, depth = 6, onGo, height }: { root: MindNode; path: string; depth?: number; onGo: (line: number) => void; height?: number }) {
+export function MindMap({ root, path, depth = 9, onGo, height }: { root: MindNode; path: string; depth?: number; onGo: (line: number) => void; height?: number }) {
   const [, redraw] = useState(0)
   const shut = folded.get(path) ?? new Set<number>()
   const { all, width, height: h } = useMemo(() => layout(root, shut, depth), [root, depth, shut.size, [...shut].join()])
