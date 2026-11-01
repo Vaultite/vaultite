@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, check, fixtureNow, tmp, write, TOOLS } = $
@@ -119,7 +120,8 @@ export default async ($: VaultTest) => {
     fs.appendFileSync(tfile, JSON.stringify({ type: "assistant", sessionId: sid, cwd: "/Users/sam/lighthouse", timestamp: new Date(fixtureNow() - 1000).toISOString(),
       requestId: "req_10", message: { model: "claude-opus-5-5", id: "msg_10", role: "assistant", content: [{ type: "text", text: "Fixed." }],
         usage: { input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }) + "\n")
-    const [, cr] = await api("GET", "render?path=Dashboards/Claude.md")
+    // (read once the transcripts' scan, throttled to one per 5 s, has the reply)
+    const cr = String(await waitFor(async () => { const [, r] = await api("GET", "render?path=Dashboards/Claude.md"); return typeof r === "string" && r.includes("lighthouse") && r }, 8000, 250))
     check("the Claude page has projects and models as two blocks", typeof cr === "string" && cr.includes("## Claude Code by project") &&
       cr.includes("## Claude Code by model") && cr.includes("lighthouse"), String(cr).slice(0, 400))
     check("Claude Code's costs are labelled estimates at list prices", cr.includes("_Costs estimated at list prices._"), String(cr).slice(0, 600))

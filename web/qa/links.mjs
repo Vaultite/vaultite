@@ -2,7 +2,7 @@
 // (put back), runs shells: only a throwaway server with CLAUDE_CONFIG_DIR=<claude dir> (a copy of tools/fixtures/claude).
 //   node web/qa/links.mjs <base url> <vault path> <claude dir> [out dir]
 import { execFileSync } from "node:child_process"
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"
@@ -30,6 +30,10 @@ const put = (rel, text) => { mkdirSync(path.dirname(path.join(VAULT, rel)), { re
 put(`${DIR}/Beacon.md`, "The beacon: a made-up note others mention.\n")
 put(`${DIR}/Linker.md`, "Links to [[Beacon]] here.\n")
 put(`${DIR}/Mention.md`, "We talked about the beacon at lunch. Also [[Nowhere yet]] and [[Linker]].\n")
+// (the sessions list shows the last 30 days, and the fixture's session is older: a reply of now's)
+const transcript = path.join(CLAUDE, "projects/-Users-sam-lighthouse", `${SID}.jsonl`)
+appendFileSync(transcript, JSON.stringify({ type: "assistant", sessionId: SID, cwd: "/Users/sam/lighthouse", timestamp: new Date().toISOString(), requestId: "req_qa",
+  message: { model: "claude-opus-5-5", id: "msg_qa", role: "assistant", content: [{ type: "text", text: "Fixed." }], usage: { input_tokens: 100, output_tokens: 50 } } }) + "\n")
 const fake = path.join(CLAUDE, "sessions")
 let fakeFile = ""
 
@@ -110,19 +114,20 @@ try {
   await wait(500)
   await shot(page, "5-claude-page")
 
-  // A finished session: its conversation in a tab.
+  // A finished session: its conversation in a chat tab.
+  const chat = `[data-chat='${SID}']`
   await page.click("section:has(h2:text-is('Sessions')) button:has-text('Upload test fix')")
-  check("a session opens its conversation", !!(await until(() => page.$(`[data-claude-session='${SID}']`), 8000)))
-  check("title, folder, model", await until(async () => /Upload test fix/.test(await page.textContent("[data-claude-session] h1")) &&
-    (await page.textContent("[data-claude-session] header")).includes("Opus 5.5"), 8000))
-  check("messages as Markdown", !!(await page.$("[data-claude-session] [data-entry=assistant] strong")))
-  check("tool calls are one line each", (await page.$$("[data-claude-session] [data-tool]")).length >= 2)
-  await page.click("[data-claude-session] [data-tool='Bash'] button")
-  check("a tool call expands to its input and result", (await page.textContent("[data-claude-session] [data-tool='Bash']")).includes("1 failing: upload retries"))
+  check("a session opens its conversation", !!(await until(() => page.$(chat), 8000)))
+  check("title, folder, model", await until(async () => /Upload test fix/.test(await page.textContent(`${chat} h1`)) &&
+    (await page.textContent(`${chat} header`)).includes("Opus 5.5"), 8000))
+  check("messages as Markdown", !!(await until(() => page.$(`${chat} [data-entry=text] strong`), 8000)))
+  check("tool calls are one line each", (await page.$$(`${chat} [data-tool]`)).length >= 2)
+  await page.click(`${chat} [data-tool='Bash'] button`)
+  check("a tool call expands to its input and result", await until(async () => (await page.textContent(`${chat} [data-tool='Bash']`)).includes("1 failing: upload retries"), 4000))
   await shot(page, "6-session-view")
-  // Resume in terminal: a terminal tab running claude --resume (the fixture's session isn't real: claude says so, the shell stays).
-  await page.click("[data-claude-session] [data-resume]")
-  check("Resume in terminal opens a terminal tab", await until(() => decodeURIComponent(page.url()).includes(`view/terminal/resume-claude-${SID}`), 8000), page.url())
+  // Open in terminal: a terminal tab running claude --resume (the fixture's session isn't real: claude says so, the shell stays).
+  await page.click(`${chat} [data-open-terminal]`)
+  check("Open in terminal opens a terminal tab", await until(() => decodeURIComponent(page.url()).includes(`view/terminal/resume-claude-${SID}`), 8000), page.url())
   await wait(1500)
   await palette("End terminal session") // ends that shell (closing its tab would leave Claude Code running)
   // Claude Code may still be running in it (it asks which session to pick): ending asks first.
