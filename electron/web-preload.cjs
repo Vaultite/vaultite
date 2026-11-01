@@ -1,6 +1,5 @@
-// A web page's first paint, told by its main frame (electron/web.ts): a new page shows the app's colour till then rather
-// than white; its window's size as a browser tab's; ⌥-click on a link; and, from every frame, the browser's keys it left
-// alone, the mouse's back and forward buttons and typed input it holds. Sandboxed, no Node, in the isolated world.
+// What a web page tells electron/web.ts: first paint (the app's colour till then, not white), window size, ⌥-click on
+// a link; from every frame, keys it left alone, mouse back/forward, typed input it holds. Isolated world, no Node.
 "use strict"
 const { contextBridge, ipcRenderer } = require("electron")
 
