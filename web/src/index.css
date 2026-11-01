@@ -299,9 +299,14 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 .font-keys { font-family: var(--font-sans), 'Lucida Grande'; }
 /* 0.5px hairlines on retina, like UIKit separators. Drawn as a background, not a border: a rounded row's border bends
    at its corners, while this stays a straight line (its ends inside the corners clipped, like an inset separator). */
+/* (a tile under a device pixel draws or not by where the row falls, so rows of fractional height lost every other line:
+   the tile is a whole pixel, half of it the line where pixels are halves) */
 .hairline > :where(:not(:first-child)) {
   background-image: linear-gradient(var(--border), var(--border));
-  background-size: 100% 0.5px; background-position: top; background-repeat: no-repeat;
+  background-size: 100% 1px; background-position: top; background-repeat: no-repeat;
+}
+@media (min-resolution: 2dppx) {
+  .hairline > :where(:not(:first-child)) { background-image: linear-gradient(var(--border) 50%, transparent 50%); }
 }
 /* A list drawn as two in a row (Settings > Pages: the pinned ones, which drag, then the rest) reads as one list: the
    line between them is drawn too, so every row is separated whatever state it's in. */

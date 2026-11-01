@@ -11,6 +11,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Table columns fit their text**: in notes, dashboards and the editor, a short cell ("In columns", `wide: true`, a
   date) stays on one line instead of breaking beside a column of prose, which keeps room to read; a table too wide for
   that scrolls sideways.
+- **Every row of a list has its line**: a database view's list (Recently changed on the Design page), Settings and other
+  lists drawn with hairlines no longer lose the line between every other row where rows are a fraction of a pixel tall.
 - **Slides draw Advanced Slides' layouts**: `<split>` columns (even, gap, left and right shares, wrap), `<grid>` boxes
   placed by drag and drop on a fixed slide, and `::: block` boxes draw as there, nested, their Markdown as in a note.
 - **Screen readers hear toasts and agents**: every toast is read (an error at once, with the key that reaches its
