@@ -117,12 +117,13 @@ export const usePreview = () => useContext(PreviewLive) !== null
 
 // Cards asking for the same live data at once share one request. Always no-cache at the same address, so over the
 // network an unchanged answer is a 304 with no body.
-const inflight = new Map<string, { at: number; p: Promise<unknown> }>()
-function fetchLive<T>(path: string, key = path, fresh = 10_000): Promise<T> {
+const inflight = new Map<string, { at: number; n: number; p: Promise<unknown> }>()
+let changes = 0 // (`since`: a request made after that many changes, so the cards one touches share the new one)
+function fetchLive<T>(path: string, key = path, fresh = 10_000, since = 0): Promise<T> {
   const hit = inflight.get(key)
-  if (hit && Date.now() - hit.at < fresh) return hit.p as Promise<T>
+  if (hit && hit.n >= since && Date.now() - hit.at < fresh) return hit.p as Promise<T>
   const p = send<T>("GET", path, undefined, "no-cache")
-  inflight.set(key, { at: Date.now(), p })
+  inflight.set(key, { at: Date.now(), n: changes, p })
   p.catch(() => inflight.delete(key))
   return p
 }
@@ -136,7 +137,7 @@ function liveData(paths: Paths, route: string) {
     || p === `.vaultite/plugins/${id}` || p.startsWith(`.vaultite/plugins/${id}/`))
 }
 // Before any card refetches, forget what's in flight, so they share one new request.
-onVaultChange((paths) => { for (const k of [...inflight.keys()]) if (liveData(paths, k)) inflight.delete(k) })
+onVaultChange((paths) => { changes++; for (const k of [...inflight.keys()]) if (liveData(paths, k)) inflight.delete(k) })
 
 // The last answer per address, so a card drawn again shows it at once while it asks again instead of jumping. Kept for
 // this visit (200) and in localStorage per vault (20, up to 16 KB each).
@@ -184,7 +185,7 @@ export function useLive<T>(path: string | null, version?: string | number, files
   useEffect(() => {
     if (!path || !ask || mock) return
     let on = true
-    const load = (fresh?: number) => fetchLive<T>(path, ask, fresh).then((d) => {
+    const load = (fresh?: number, since?: number) => fetchLive<T>(path, ask, fresh, since).then((d) => {
       if (!on) return
       const json = JSON.stringify(d)
       remember(path, d, json)
@@ -195,7 +196,7 @@ export function useLive<T>(path: string | null, version?: string | number, files
     const off = onVaultChange((paths) => {
       const f = follow.current
       if (liveData(paths, path)) return load()
-      if (f && (paths === null || paths.some((p) => !p.split("/").some((s) => s.startsWith(".")) && (f === true || f(p))))) { inflight.delete(ask); load() }
+      if (f && (paths === null || paths.some((p) => !p.split("/").some((s) => s.startsWith(".")) && (f === true || f(p))))) load(undefined, changes)
     })
     if (!every) return () => { on = false; off() }
     // (cards polling the same address share a request made in the last half period)
