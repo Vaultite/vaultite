@@ -27,6 +27,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   dashes as Pandoc reads them (so plain Markdown); double-click the edge to fit the columns to their text again.
 - **A confirm dialog's button is readable from the start**: on a desktop, the button a question opens focused (Run,
   Delete) lost its colour while focused, leaving its white label on a pale button until the pointer went over it.
+- **What you typed is marked in the accent colour**: the letters ⌘O, ⌘P and the pickers matched are drawn in the
+  scheme's accent, not in red, which the app keeps for errors.
 - **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer
   and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **Review lists every AI edit on Linux**: an edit or new file the coarse file clock dated a tick before its call

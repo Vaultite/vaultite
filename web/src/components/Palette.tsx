@@ -41,7 +41,7 @@ export function Marked({ text, marks }: { text: string; marks: number[] }) {
     if (last && last[1] === m) last[0] += text[i]
     else runs.push([text[i], m])
   }
-  return <>{runs.map(([t, m], i) => (m ? <mark key={i} className="bg-transparent font-semibold text-[var(--red)]">{t}</mark> : t))}</>
+  return <>{runs.map(([t, m], i) => (m ? <mark key={i} className="bg-transparent font-semibold text-primary">{t}</mark> : t))}</>
 }
 
 /** Keycaps for a shortcut ("Mod+E"), drawn small at the end of a row. */
