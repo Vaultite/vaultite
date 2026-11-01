@@ -1,7 +1,8 @@
 // Phones: what acts at the caret acts where you're reading, and the caret stays in sight (core/sight.ts, editor/sight.ts).
-// Scrolled while reading, the caret follows; Ask from reading opens editing on that line, the line read held still; with
-// the keyboard up (a made-up one: the visual viewport cut short) the caret stays clear of the keys over it, as it's typed
-// on too. iOS's own scrolling isn't in Chrome: check that on an iPhone. WRITES a note: throwaway server only.
+// Scrolled while reading, the caret follows (past a heading's #s); Ask from reading opens a card on that line, the line
+// read held still; editing with the keyboard up (a made-up one: the visual viewport cut short), the caret stays clear of
+// the keys over it, as it's typed on too. iOS's own scrolling isn't in Chrome: check that on an iPhone. WRITES a note:
+// throwaway server only.
 //   node web/qa/keyboardsight.mjs <base url> <vault path>
 import { unlinkSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -42,16 +43,23 @@ await page.evaluate(() => scrollTo(0, 2400))
 const read = await until(async () => { const s = await state(); return inSight(s) && s }, 3000)
 check("scrolled while reading, the caret follows to the first line in sight", !!read, await state())
 
-// Ask from reading: the question's line where you are, into editing on it, the line read where it was.
+// Ask from reading: a card to write the question in, on the line read, the line read held where it was.
 const at = await yOf(read.line)
 await page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].runCommandById("companion:ask"))
-const asked = await until(async () => { const s = await state(); return s.editable && /@\w+ $/m.test(s.text) && s }, 4000)
-const mention = asked ? asked.text.split("\n").findIndex((l) => /^@\w+ $/.test(l)) + 1 : -1
-check("Ask writes its line next to the one read", mention > 0 && Math.abs(mention - read.line) <= 2, { mention, read: read.line })
-check("…in editing, the caret after it", !!asked && asked.line === mention, asked && asked.line)
+const card = page.locator("[data-companion-note=draft]")
+const field = card.locator("input, textarea").first()
+check("Ask opens a card to write in, @ the companion", !!(await until(async () => /^@\w+/.test(await field.inputValue().catch(() => "")) && field.evaluate((e) => e === document.activeElement), 4000)))
+check("…on the line read", !!(await until(() => page.evaluate((n) => {
+  const v = globalThis.__vaultite.modules["@vaultite"].currentEditor().view
+  return v.state.doc.lineAt(v.state.selection.main.head).number === n
+}, read.line), 2000)))
 // (held while the editor settles: 3 s at most)
 await wait(3000)
 check("…the line read held where it was", Math.abs((await yOf(read.line)) - at) <= 12, { was: at, now: await yOf(read.line) })
+await page.keyboard.press("Escape")
+await until(async () => !(await card.count()), 2000)
+await page.locator("[data-view-toggle]").first().tap()
+await until(async () => (await state()).editable, 4000)
 
 // The keyboard comes up over the caret: it's kept above the keys.
 const low = await page.evaluate(() => {

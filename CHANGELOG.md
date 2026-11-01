@@ -10,6 +10,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   next fragment or slide), the speaker notes, a timer you can pause and reset, and the clock; either window moves both.
 - **A note's title is its heading while you edit it**: a screen reader lists an editable title as the page's heading,
   and a contact shown as a link changes from a Change button the keyboard reaches, not a button around the link.
+- **Reading on a phone, the caret lands on a heading's text**: scrolled to a heading, the caret went into its hidden
+  #s, where nothing could show it or act at it; Ask now opens on the heading read.
 - **A cut-off folder in the path bar shows its name**: hovering a folder squeezed to a letter above a note names the
   whole folder in its tooltip, over Show in the file tree.
 - **Activity credits an edit to the call that made it**: an edit just after a refused call (an AI's keep or revert

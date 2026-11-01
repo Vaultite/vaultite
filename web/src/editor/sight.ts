@@ -24,7 +24,10 @@ export const followReader = ViewPlugin.define((view) => {
     if (view.hasFocus || !sel.empty || !view.dom.getClientRects().length || wholly(view, sel.head)) return
     const s = sightOf(view.dom)
     if (s.top >= view.documentTop + view.contentHeight || s.bottom <= view.documentTop) return
-    const pos = offBlocks(view.state, lineInSight(view))
+    let pos = offBlocks(view.state, lineInSight(view))
+    // (past a heading's hidden #s: a caret in them is drawn nowhere, and what acts at it has no place)
+    const line = pos === null ? null : view.state.doc.lineAt(pos), marks = line && pos === line.from ? /^#{1,6}[ \t]+/.exec(line.text) : null
+    if (pos !== null && marks) pos += marks[0].length
     if (pos !== null && pos !== sel.head) view.dispatch({ selection: EditorSelection.cursor(pos), userEvent: "select.follow" })
   }
   const settle = () => { clearTimeout(timer); timer = window.setTimeout(follow, 150) }
