@@ -2,6 +2,7 @@
 // was, clipped to its size on the way, over its plate (the page's colour). New ones pop in; closing ones shrink away.
 import { useLayoutEffect, useRef, type RefObject } from "react"
 import { moves, timing } from "@/core/animation"
+import { stillCopy } from "@/core/snapshot"
 import { floatOrder, getWorkspace, groupOfTab, groups, layoutQuiet, onWorkspaceChange } from "@/core/workspace"
 import { layout, leaves, type Rect, type Workspace } from "../../../core/layout.ts"
 
@@ -21,7 +22,7 @@ export function paneBoxes({ root, zoom }: Workspace): PaneBox[] {
 const keyOf = (panes: PaneBox[]) => panes.map((p) => `${p.id}:${r4(p.rect.x)},${r4(p.rect.y)},${r4(p.rect.w)},${r4(p.rect.h)},${p.layer}`).join("|")
 
 type Box = { x: number; y: number; w: number; h: number }
-type Snap = { rects: Map<string, Box>; up: string | null; gone: { el: HTMLElement; at: Box; scrolls: [number, number, number][] }[] }
+type Snap = { rects: Map<string, Box>; up: string | null; gone: { el: HTMLElement; at: Box; scrolls: [Element, number, number][] }[] }
 
 const ID = "pane-motion"
 const near = (a: Box, b: Box) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.w - b.w) < 0.5 && Math.abs(a.h - b.h) < 0.5
@@ -99,8 +100,7 @@ export function usePaneMotion(box: RefObject<HTMLDivElement | null>, panes: Pane
     for (const g of s.gone) {
       Object.assign(g.el.style, { position: "absolute", left: `${g.at.x}px`, top: `${g.at.y}px`, width: `${g.at.w}px`, height: `${g.at.h}px`, zIndex: "0", pointerEvents: "none" })
       el.prepend(g.el)
-      const all = g.el.querySelectorAll("*")
-      for (const [i, top, left] of g.scrolls) { const x = all[i]; if (x) { x.scrollTop = top; x.scrollLeft = left } }
+      for (const [x, top, left] of g.scrolls) { x.scrollTop = top; x.scrollLeft = left }
       // (Rex's close: it shrinks toward its middle as it fades, quicker than the survivor springs over it)
       const a = g.el.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(0.92)" }], { ...timing("fast"), id: ID })
       void a.finished.catch(() => {}).finally(() => g.el.remove())
@@ -114,16 +114,11 @@ export function usePaneMotion(box: RefObject<HTMLDivElement | null>, panes: Pane
 }
 
 /** A still copy of a closing pane: nothing in it runs or loads (frames, players), nothing finds it as a pane, and its
- *  scrollers keep their places (`scrolls`: [index among its elements, top, left]). */
+ *  scrollers keep their places (`scrolls`: [its copy, top, left]). */
 function copyOf(sec: HTMLElement) {
-  const scrolls: [number, number, number][] = []
-  sec.querySelectorAll("*").forEach((x, i) => { if (x.scrollTop || x.scrollLeft) scrolls.push([i, x.scrollTop, x.scrollLeft]) })
+  const scrolls: [Element, number, number][] = []
   const el = sec.cloneNode(true) as HTMLElement
-  const olds = sec.querySelectorAll("canvas")
-  // (a WebGL one, a terminal's, copies empty: its picture is gone once drawn, and keeping it would cost every frame)
-  el.querySelectorAll("canvas").forEach((c, i) => {
-    try { c.getContext("2d")?.drawImage(olds[i], 0, 0) } catch { /* tainted */ }
-  })
+  stillCopy(sec, el, (o, c) => { if (o.scrollTop || o.scrollLeft) scrolls.push([c, o.scrollTop, o.scrollLeft]) })
   for (const x of el.querySelectorAll("iframe, video, audio, object, embed")) {
     const stand = document.createElement("div")
     stand.className = (x as HTMLElement).className

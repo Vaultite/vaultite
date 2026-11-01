@@ -32,15 +32,10 @@ export function snapshot(el: HTMLElement, { limit = 6000, light }: { limit?: num
   // (a kept tab's page, hidden, shows in its copy)
   Object.assign(copy.style, { position: "absolute", inset: src === el ? "0" : "0 0 auto 0", transform: "none", scale: "none", opacity: "1", display: "" }, src === el ? { width: "auto", height: "auto" } : {})
   const boxes: Element[] = []
-  const a = document.createTreeWalker(src, NodeFilter.SHOW_ELEMENT), b = document.createTreeWalker(copy, NodeFilter.SHOW_ELEMENT)
-  for (let x: Node | null = a.currentNode, y: Node | null = b.currentNode; x && y; x = a.nextNode(), y = b.nextNode()) {
-    const o = x as Element, c = y as Element
+  stillCopy(src, copy, (o, c) => {
     if (o.scrollTop || o.scrollLeft) scrolls.push([c, o.scrollTop, o.scrollLeft])
-    if (o instanceof HTMLCanvasElement && c instanceof HTMLCanvasElement) {
-      // (a WebGL canvas reads back empty: what's behind it, the terminal's own colour, shows)
-      try { c.getContext("2d")?.drawImage(o, 0, 0) } catch { /* tainted or gone */ }
-    } else if (opaque(o)) boxes.push(c)
-  }
+    if (opaque(o)) boxes.push(c)
+  })
   for (const c of boxes) {
     const box = document.createElement("div")
     box.className = c.getAttribute("class") ?? ""
@@ -49,4 +44,31 @@ export function snapshot(el: HTMLElement, { limit = 6000, light }: { limit?: num
   }
   root.append(copy)
   return { host, settle: () => { for (const [c, top, left] of scrolls) { c.scrollTop = top; c.scrollLeft = left } } }
+}
+
+const pictures = new WeakMap<Element, () => HTMLCanvasElement | null>()
+/** `el` gives copies of the page its picture as it is now (`draw`; null: copy it as it is), for what a copy can't show
+ *  of it: a WebGL canvas reads back empty once shown. Kept as long as `el` is. */
+export function offerPicture(el: Element, draw: () => HTMLCanvasElement | null) { pictures.set(el, draw) }
+
+/** Makes `copy` (a clone of `src`) look as `src` does where cloning loses it: canvases drawn again, and an element that
+ *  offers its picture shows that instead of its insides. `visit` sees each element with its copy first. */
+export function stillCopy(src: Element, copy: Element, visit?: (o: Element, c: Element) => void) {
+  const shown: [Element, HTMLCanvasElement][] = []
+  const a = document.createTreeWalker(src, NodeFilter.SHOW_ELEMENT), b = document.createTreeWalker(copy, NodeFilter.SHOW_ELEMENT)
+  for (let x: Node | null = a.currentNode, y: Node | null = b.currentNode; x && y; x = a.nextNode(), y = b.nextNode()) {
+    const o = x as Element, c = y as Element
+    visit?.(o, c)
+    const draw = pictures.get(o)
+    let pic: HTMLCanvasElement | null = null
+    try { pic = draw?.() ?? null } catch { /* copied as it is */ }
+    if (pic) shown.push([c, pic])
+    else if (o instanceof HTMLCanvasElement && c instanceof HTMLCanvasElement) {
+      try { c.getContext("2d")?.drawImage(o, 0, 0) } catch { /* tainted, gone, or not a 2D one */ }
+    }
+  }
+  for (const [c, pic] of shown) {
+    pic.style.cssText = "position: absolute; inset: 0; width: 100%; height: 100%"
+    c.replaceChildren(pic)
+  }
 }

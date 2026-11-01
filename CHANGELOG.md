@@ -24,6 +24,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   size).
 - **Vault plugins' shared modules load in a code project**: a module one vault plugin exports to another no longer
   loads as CommonJS (losing its exports) when a package.json above it says `"type": "commonjs"`.
+- **A closing terminal fades with what it showed**: closing its pane, or dragging it or its tab as a card, shows its
+  last screen instead of an empty one.
 - **No stray focus ring at launch on Windows**: a vault window opened with its vault menu ringed, as if tabbed to.
 - **Shortcuts name Enter and Esc on Windows and Linux**: tooltips and the palette read Ctrl+Enter and Esc, not a Mac's
   ↵ and esc, and find's buttons no longer show ⇧↵ there.

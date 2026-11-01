@@ -44,6 +44,8 @@ export { choose, type Choice } from "@/components/Chooser"
 export { PaletteFrame } from "@/components/Palette"
 /** The look changing (light or dark, colour scheme, a theme or snippet, fonts), once applied: read colour tokens again. */
 export { onLook } from "@/core/appearance"
+/** An element that copies of the page (a closing pane, a dragged card) can't clone gives them its picture instead. */
+export { offerPicture } from "@/core/snapshot"
 export { pickIcon } from "@/components/IconPicker"
 export { BrandIcon, GitHubIcon } from "@/core/icons"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).

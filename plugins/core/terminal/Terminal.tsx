@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, offerPicture, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -250,6 +250,20 @@ function create(id: string): Live {
     } catch { glLost = true /* no WebGL here */ }
     try { fit.fit() } catch { /* not laid out */ } // (their cells may differ by a fraction)
   }
+  // What it shows, for a closing pane's fade or a dragged card: WebGL's canvas reads back empty once shown, so it's
+  // drawn again now (xterm.js's own render, not public: if it moves, the copy shows the ground as before).
+  const picture = (screen: HTMLElement) => {
+    if (!gl) return null
+    const rs = (t as unknown as { _core?: { _renderService?: { _renderRows?: (a: number, b: number) => void } } })._core?._renderService
+    const layers = [...screen.querySelectorAll("canvas")]
+    if (!rs?._renderRows || !layers[0]?.width) return null
+    rs._renderRows(0, t.rows - 1)
+    const c = document.createElement("canvas")
+    c.width = layers[0].width; c.height = layers[0].height
+    const g = c.getContext("2d")
+    for (const layer of layers) g?.drawImage(layer, 0, 0, c.width, c.height)
+    return c
+  }
   // Only the tab that made this id starts its session; one put back (a reload, the app reopened) only attaches, so an
   // agent whose session is gone isn't started again by itself (the server says "gone"; Restart starts it).
   let attachOnly = !mintedHere(id), sessionGone = false
@@ -431,6 +445,8 @@ function create(id: string): Live {
       opening.mark("view")
       t.open(box)
       renderer()
+      const screen = t.element?.querySelector<HTMLElement>(".xterm-screen")
+      if (screen) offerPicture(screen, () => picture(screen))
       t.textarea?.addEventListener("focus", onFocus)
       l.refit()
       opening.mark("xterm")
