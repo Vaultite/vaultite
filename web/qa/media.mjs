@@ -162,7 +162,7 @@ for (const scheme of ["light", "dark"]) {
   if (!pv) { await page.close(); continue }
   await pv.waitForSelector("[data-presenter]", { timeout: 5000 }).catch(() => {}); await wait(800)
   const inPv = (sel) => pv.locator(sel).innerText().catch(() => "")
-  const visible = (where) => pv.locator(`[data-presenter-${where}] .fragment.visible`).count()
+  const visible = (pane) => pv.locator(`${pane} .fragment.visible`).count()
   check("presenter: the slide, its notes, the next slide and the count", (await inPv("[data-presenter-current] [data-deck-slide]")).includes("Talk")
     && (await inPv("[data-presenter-notes]")).includes("Welcome everyone") && (await inPv("[data-presenter-next] [data-deck-slide]")).includes("Steps")
     && await inPv("[data-presenter-count]") === "Slide 1 of 3", [await inPv("[data-presenter-count]"), await inPv("[data-presenter-notes]")])
@@ -175,9 +175,9 @@ for (const scheme of ["light", "dark"]) {
   await pv.keyboard.press("ArrowRight"); await wait(600)
   check("presenter: → there moves the presentation too", await count() === "2 / 3" && await inPv("[data-presenter-count]") === "Slide 2 of 3" && (await inPv("[data-presenter-notes]")).includes("Walk through"))
   check("presenter: next is this slide's next fragment", await pv.locator("[data-presenter-next] [data-deck-slide]").getAttribute("data-deck-slide") === "2"
-    && await visible("next") === 1 && await visible("current") === 0, [await visible("next"), await visible("current")])
+    && await visible("[data-presenter-next]") === 1 && await visible("[data-presenter-current]") === 0, [await visible("[data-presenter-next]"), await visible("[data-presenter-current]")])
   await page.keyboard.press("n"); await wait(500)
-  check("presenter: a step in the presentation's window shows there", await visible("current") === 1 && await visible("next") === 2 && await page.locator("[data-deck-slide] .fragment.visible").count() === 1)
+  check("presenter: a step in the presentation's window shows there", await visible("[data-presenter-current]") === 1 && await visible("[data-presenter-next]") === 2 && await page.locator("[data-deck-slide] .fragment.visible").count() === 1)
   await pv.screenshot({ path: `${OUT}media-presenter-${scheme}.png` })
   await page.keyboard.press("n"); await wait(400)
   check("presenter: after the last fragment, next is the next slide", (await inPv("[data-presenter-next] [data-deck-slide]")).includes("The end"))
