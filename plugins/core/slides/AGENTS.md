@@ -25,8 +25,10 @@ note: what to say here; the slide doesn't show it.
 It reads Obsidian Advanced Slides' syntax, so its decks present as they do there:
 - `--` on its own line: a vertical slide, below the one before (↑ ↓ and Space go through every slide, ← → a column at a
   time).
-- `note:` or `notes:` at the start of a line: from there to the slide's end are speaker notes, off the slide; S or the
-  notes button shows them beside it.
+- `note:` or `notes:` at the start of a line: from there to the slide's end are speaker notes, off the slide; the
+  notes button shows them beside it. S opens the presenter view, a window of its own with the slide, the next step, the
+  notes, a timer and the clock, moving with the presentation both ways (on a phone, with no second window, S shows the
+  notes).
 - `<!-- slide bg="..." -->` (a colour, an image's address or `[[image.png]]`, with `data-background-opacity`, `-size`,
   `-position`): the slide's background; the text takes a tone that reads on a colour. `<!-- .slide: class="..."
   style="..." -->` styles the slide.

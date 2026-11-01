@@ -625,6 +625,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `today()`
 - `toggleSidebarMode(key)`: Panel `key` alone in the left sidebar, or the panels again if it is already.
 - `tokens(n)`
+- `Tooltips`: The tooltips of `data-tip` in window `win`: the app's, or a popup's it draws in from here (a presenter view).
 - `touches(paths, path)`: Does this change touch `path` (the file itself, or a folder it's in)?
 - `touchTabsSeen()`: The tabs on screen are being looked at (the window is in view): stamped as seen now.
 - `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.

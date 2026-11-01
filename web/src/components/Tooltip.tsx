@@ -8,7 +8,8 @@ type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left"
 const DELAY = 450
 const WARM = 500 // after one hides, the next shows without waiting for this long
 
-export const Tooltips = memo(function Tooltips() {
+/** The tooltips of `data-tip` in window `win`: the app's, or a popup's it draws in from here (a presenter view). */
+export const Tooltips = memo(function Tooltips({ win = window }: { win?: Window }) {
   const [tip, setTip] = useState<Tip | null>(null)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -38,7 +39,7 @@ export const Tooltips = memo(function Tooltips() {
       if (el.hasAttribute("data-tip-trunc") && !cut(el)) return
       const r = el.getBoundingClientRect()
       const want = el.getAttribute("data-tip-side")
-      const side: Tip["side"] = want === "right" || want === "left" ? want : want === "top" || r.bottom + 44 > innerHeight ? "top" : "bottom"
+      const side: Tip["side"] = want === "right" || want === "left" ? want : want === "top" || r.bottom + 44 > win.innerHeight ? "top" : "bottom"
       shown = true
       setTip(side === "right" || side === "left" ? { text, x: side === "right" ? r.right + 8 : r.left - 8, y: r.top + r.height / 2, side }
         : { text, x: r.left + r.width / 2, y: side === "bottom" ? r.bottom + 8 : r.top - 8, side })
@@ -54,26 +55,26 @@ export const Tooltips = memo(function Tooltips() {
       else timer = setTimeout(() => show(el), DELAY)
     }
     const out = (e: PointerEvent) => { if (!e.relatedTarget) hide() } // left the window
-    addEventListener("pointerover", over)
-    document.addEventListener("pointerout", out)
-    addEventListener("pointerdown", hide, true)
-    addEventListener("keydown", hide, true)
-    addEventListener("scroll", hide, true)
-    addEventListener("blur", hide)
+    win.addEventListener("pointerover", over)
+    win.document.addEventListener("pointerout", out)
+    win.addEventListener("pointerdown", hide, true)
+    win.addEventListener("keydown", hide, true)
+    win.addEventListener("scroll", hide, true)
+    win.addEventListener("blur", hide)
     return () => {
       clearTimeout(timer)
-      removeEventListener("pointerover", over)
-      document.removeEventListener("pointerout", out)
-      removeEventListener("pointerdown", hide, true)
-      removeEventListener("keydown", hide, true)
-      removeEventListener("scroll", hide, true)
-      removeEventListener("blur", hide)
+      win.removeEventListener("pointerover", over)
+      win.document.removeEventListener("pointerout", out)
+      win.removeEventListener("pointerdown", hide, true)
+      win.removeEventListener("keydown", hide, true)
+      win.removeEventListener("scroll", hide, true)
+      win.removeEventListener("blur", hide)
     }
-  }, [])
-  return tip ? createPortal(<Bubble tip={tip} />, document.body) : null
+  }, [win])
+  return tip ? createPortal(<Bubble tip={tip} win={win} />, win.document.body) : null
 })
 
-function Bubble({ tip }: { tip: Tip }) {
+function Bubble({ tip, win }: { tip: Tip; win: Window }) {
   const ref = useRef<HTMLDivElement>(null)
   const [shift, setShift] = useState(0)
   // Keep it on screen: slide the label, not the arrow.
@@ -82,8 +83,8 @@ function Bubble({ tip }: { tip: Tip }) {
     if (!el || tip.side === "right" || tip.side === "left") return setShift(0)
     const w = el.offsetWidth
     const left = tip.x - w / 2
-    setShift(left < 8 ? 8 - left : left + w > innerWidth - 8 ? innerWidth - 8 - (left + w) : 0)
-  }, [tip])
+    setShift(left < 8 ? 8 - left : left + w > win.innerWidth - 8 ? win.innerWidth - 8 - (left + w) : 0)
+  }, [tip, win])
   const place = tip.side === "right" || tip.side === "left"
     ? { left: tip.x, top: tip.y, transform: tip.side === "left" ? "translate(-100%, -50%)" : "translateY(-50%)" }
     : { left: tip.x + shift, top: tip.y, transform: `translate(-50%, ${tip.side === "top" ? "-100%" : "0"})` }

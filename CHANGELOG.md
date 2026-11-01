@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Slides have a presenter view**: S (or its button) opens a window of its own with the slide, what comes next (the
+  next fragment or slide), the speaker notes, a timer you can pause and reset, and the clock; either window moves both.
 - **A cut-off folder in the path bar shows its name**: hovering a folder squeezed to a letter above a note names the
   whole folder in its tooltip, over Show in the file tree.
 - **Activity credits an edit to the call that made it**: an edit just after a refused call (an AI's keep or revert

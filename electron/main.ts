@@ -521,7 +521,11 @@ function guard(win: AppWindow, origin: string) {
     e.preventDefault()
     void openLink(url)
   })
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The presenter view (plugins/core/slides/Presenter.tsx): a blank window the page draws into itself.
+    if ((url === "about:blank" || url === "") && frameName === "vaultite-presenter") {
+      return { action: "allow", overrideBrowserWindowOptions: { backgroundColor: background(), autoHideMenuBar: true } }
+    }
     if (url.startsWith(`${origin}/?popout=`)) {
       const w = [...wins.values()].find((x) => x.win === win) ?? popouts.get(win.webContents)
       if (!w) return { action: "deny" }

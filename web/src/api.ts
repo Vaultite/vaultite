@@ -42,6 +42,8 @@ export { activeFile, insertOnOwnLine, type ActiveFile } from "@/core/active"
 export { choose, type Choice } from "@/components/Chooser"
 /** The palette's overlay as a frame for a palette-like box of a plugin's own (Terminal's Ask box). */
 export { PaletteFrame } from "@/components/Palette"
+/** `data-tip` tooltips in another window the app draws in (a popup's document, rendered from here). */
+export { Tooltips } from "@/components/Tooltip"
 /** The look changing (light or dark, colour scheme, a theme or snippet, fonts), once applied: read colour tokens again.
  *  `onlyMode(scheme)`: the one mode a scheme has, if it has only one (Dracula: dark). */
 export { onLook, onlyMode } from "@/core/appearance"

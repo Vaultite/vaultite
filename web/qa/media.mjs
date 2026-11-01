@@ -13,10 +13,10 @@ const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { ..
 const read = async (path) => (await (await fetch(`${B}api/file?path=${enc(path)}`)).json()).text
 const files = async () => (await (await fetch(`${B}api/files`)).json())
 const del = (path) => fetch(`${B}api/file?path=${enc(path)}`, { method: "DELETE" })
-const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md", LAYOUTS = "Qa media/Layouts.md", MOVES = "Qa media/Transitions.md"
+const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md", LAYOUTS = "Qa media/Layouts.md", MOVES = "Qa media/Transitions.md", TALK = "Qa media/Talk.md"
 const THEMED = { night: "Qa media/Night.md", serif: "Qa media/Serif.md", other: "Qa media/Other theme.md" }
 
-for (const p of [MEMO, SLASH, DECK, LAYOUTS, MOVES, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
+for (const p of [MEMO, SLASH, DECK, LAYOUTS, MOVES, TALK, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
 // (Slides is off until turned on)
 const plugins = async (method, body) => (await fetch(`${B}api/config/plugins`, { method, headers: json, body: body && JSON.stringify(body) })).json()
 const pluginsBefore = await plugins("GET")
@@ -131,11 +131,11 @@ for (const [scheme, vp] of [["light", { width: 1280, height: 800 }], ["dark", { 
   await page.screenshot({ path: `${OUT}media-slides-2-${scheme}.png` })
   const notesOf = () => page.locator("[data-slide-notes]")
   check("speaker notes (note:) stay off the slide", !(await page.locator("[data-deck-slide]").innerText()).includes("Say why now") && await notesOf().count() === 0)
-  await page.keyboard.press("s"); await wait(400)
-  check("S shows them beside it", (await notesOf().innerText().catch(() => "")).includes("Say why now"))
+  await page.getByRole("button", { name: "Show speaker notes" }).click(); await wait(400)
+  check("the notes button shows them beside it", (await notesOf().innerText().catch(() => "")).includes("Say why now"))
   check("the next slide's name is plain text", (await page.locator("[data-slide-notes] [data-next-slide]").innerText().catch(() => "")) === "Next: A picture")
   await page.screenshot({ path: `${OUT}media-slides-notes-${scheme}.png` })
-  await page.keyboard.press("s"); await wait(300)
+  await page.getByRole("button", { name: "Hide speaker notes" }).click(); await wait(300)
   await page.keyboard.press("End"); await wait(1000)
   const img = page.locator("[data-deck-slide] img")
   check("End: the last slide, its image from the vault", await count() === "3 / 3" && await img.count() === 1 && await img.evaluate((i) => i.complete && i.naturalWidth > 0))
@@ -146,6 +146,68 @@ for (const [scheme, vp] of [["light", { width: 1280, height: 800 }], ["dark", { 
   check("a click on the right goes on", await count() === "3 / 3")
   await page.keyboard.press("Escape"); await wait(500)
   check("Escape ends it", await deck.count() === 0)
+  await page.close()
+}
+// The presenter view: a window of its own (S), in step with the presentation both ways.
+await put(TALK, "# Talk\n\nnote: Welcome everyone\n\n---\n\n## Steps\n- Always\n+ First\n+ Second\n\nnote: Walk through the steps\n\n---\n\n## The end\n")
+for (const scheme of ["light", "dark"]) {
+  page = await open({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })
+  await page.goto(`${B}#file/${enc(TALK)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(800)
+  const count = () => page.locator("[data-slide-count]").innerText()
+  const popped = page.waitForEvent("popup", { timeout: 5000 }).catch(() => null)
+  await page.keyboard.press("s")
+  const pv = await popped
+  check(`presenter (${scheme}): S opens it in a window of its own`, !!pv)
+  if (!pv) { await page.close(); continue }
+  await pv.waitForSelector("[data-presenter]", { timeout: 5000 }).catch(() => {}); await wait(800)
+  const inPv = (sel) => pv.locator(sel).innerText().catch(() => "")
+  const visible = (where) => pv.locator(`[data-presenter-${where}] .fragment.visible`).count()
+  check("presenter: the slide, its notes, the next slide and the count", (await inPv("[data-presenter-current] [data-deck-slide]")).includes("Talk")
+    && (await inPv("[data-presenter-notes]")).includes("Welcome everyone") && (await inPv("[data-presenter-next] [data-deck-slide]")).includes("Steps")
+    && await inPv("[data-presenter-count]") === "Slide 1 of 3", [await inPv("[data-presenter-count]"), await inPv("[data-presenter-notes]")])
+  check("presenter: drawn in the app's look (its stylesheets and theme)", await pv.evaluate(() => document.documentElement.classList.contains("dark")) === (scheme === "dark")
+    && await pv.locator("[data-presenter]").evaluate((e) => getComputedStyle(e).display) === "flex")
+  check("the presentation keeps its slide on its own screen, no notes beside it", await count() === "1 / 3" && await page.locator("[data-slide-notes]").count() === 0)
+  const t0 = await inPv("[data-timer]"); await wait(2100)
+  const t1 = await inPv("[data-timer]")
+  check("presenter: the timer ticks, the clock shows", /^0:0\d$/.test(t0) && t1 !== t0 && /\d:\d\d/.test(await inPv("[data-clock]")), [t0, t1])
+  await pv.keyboard.press("ArrowRight"); await wait(600)
+  check("presenter: → there moves the presentation too", await count() === "2 / 3" && await inPv("[data-presenter-count]") === "Slide 2 of 3" && (await inPv("[data-presenter-notes]")).includes("Walk through"))
+  check("presenter: next is this slide's next fragment", await pv.locator("[data-presenter-next] [data-deck-slide]").getAttribute("data-deck-slide") === "2"
+    && await visible("next") === 1 && await visible("current") === 0, [await visible("next"), await visible("current")])
+  await page.keyboard.press("n"); await wait(500)
+  check("presenter: a step in the presentation's window shows there", await visible("current") === 1 && await visible("next") === 2 && await page.locator("[data-deck-slide] .fragment.visible").count() === 1)
+  await pv.screenshot({ path: `${OUT}media-presenter-${scheme}.png` })
+  await page.keyboard.press("n"); await wait(400)
+  check("presenter: after the last fragment, next is the next slide", (await inPv("[data-presenter-next] [data-deck-slide]")).includes("The end"))
+  await pv.getByRole("button", { name: "Next slide" }).click(); await wait(500)
+  check("presenter: its next button", await count() === "3 / 3" && (await inPv("[data-presenter-next]")).includes("End of the presentation"))
+  await pv.screenshot({ path: `${OUT}media-presenter-end-${scheme}.png` })
+  await pv.keyboard.press("ArrowLeft"); await wait(500)
+  check("presenter: ← there goes back in both", await count() === "2 / 3" && await inPv("[data-presenter-count]") === "Slide 2 of 3")
+  await pv.keyboard.press("Home"); await wait(500)
+  check("presenter: Home there, the first slide in both", await count() === "1 / 3" && await inPv("[data-presenter-count]") === "Slide 1 of 3")
+  await pv.getByRole("button", { name: "Pause timer" }).click(); await wait(100)
+  const p0 = await inPv("[data-timer]"); await wait(1500)
+  check("presenter: pause stops the timer", await inPv("[data-timer]") === p0 && await pv.getByRole("button", { name: "Resume timer" }).count() === 1)
+  await pv.getByRole("button", { name: "Reset timer" }).click(); await wait(200)
+  check("presenter: reset", await inPv("[data-timer]") === "0:00")
+  await pv.getByRole("button", { name: "Resume timer" }).click()
+  const closed = pv.waitForEvent("close", { timeout: 3000 }).then(() => true, () => false)
+  await page.locator("[data-presentation]").focus(); await page.keyboard.press("s")
+  check("presenter: S again closes it", await closed && await page.locator("[data-presentation]").count() === 1)
+  if (scheme === "dark") {
+    const again = page.waitForEvent("popup", { timeout: 5000 }).catch(() => null)
+    await page.getByRole("button", { name: "Open presenter view" }).click()
+    const pv2 = await again
+    await pv2?.waitForSelector("[data-presenter]", { timeout: 5000 }).catch(() => {})
+    await pv2?.close(); await wait(1500)
+    check("presenter: the button opens it; closing its window leaves the presentation", !!pv2 && await page.locator("[data-presentation]").count() === 1
+      && await page.getByRole("button", { name: "Open presenter view" }).count() === 1)
+  }
+  await page.keyboard.press("Escape"); await wait(500)
+  check("presenter: Escape ends the presentation", await page.locator("[data-presentation]").count() === 0)
   await page.close()
 }
 // A phone: swipes.
@@ -161,6 +223,8 @@ const swipe = async (x0, x1) => {
 await swipe(320, 80)
 check("phone: a swipe left goes on", await page.locator("[data-slide-count]").innerText() === "2 / 3")
 await wait(600)
+check("phone: no presenter view (no windows there), the notes button instead", await page.getByRole("button", { name: "Open presenter view" }).count() === 0
+  && await page.getByRole("button", { name: "Show speaker notes" }).count() === 1)
 await page.screenshot({ path: `${OUT}media-slides-phone.png` })
 await swipe(80, 320)
 check("phone: a swipe right goes back", await page.locator("[data-slide-count]").innerText() === "1 / 3")

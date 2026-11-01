@@ -45,8 +45,9 @@ export default definePlugin({
       <p className="text-[15px] leading-[20px] text-muted-foreground">
         Present a note as slides: lines of three dashes (---) split it, and each slide is drawn as the note reads, with its
         images, embeds, math and code, scaled to the screen. Advanced Slides decks present as they do in Obsidian, with their
-        speaker notes (S shows them), fragments and backgrounds. Start presentation from the command palette or the note's
-        menu; arrow keys, a click or a swipe go through the slides, Escape ends it.
+        speaker notes, fragments and backgrounds; S opens the presenter view, a window with the notes, the next slide and a
+        timer. Start presentation from the command palette or the note's menu; arrow keys, a click or a swipe go through the
+        slides, Escape ends it.
       </p>
     </Panel>
   ),

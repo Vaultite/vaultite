@@ -1386,7 +1386,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Slides: a note as a deck, read as Advanced Slides reads one (plugins/core/slides/slides.ts) ----------
 {
-  const { cssFiles, cssPlaces, cssUrls, parseDeck, isTitleSlide, scopeCss, scopeSelector } = await import("../plugins/core/slides/slides.ts")
+  const { cssFiles, cssPlaces, cssUrls, parseDeck, isTitleSlide, scopeCss, scopeSelector, upcoming, elapsedText } = await import("../plugins/core/slides/slides.ts")
   const mds = (body: string, opts = {}) => parseDeck(body, opts).slides.map((s) => s.md)
   const got = mds("# Launch\n\n---\n\n## Why\n- one\n\n----\n```md\n---\nnot a split\n```\n---\n\n---\n![[chart.png]]\n")
   check("slides: split at --- lines, never inside code, empty ones dropped", got.length === 4 && got[0] === "# Launch" && got[2].includes("not a split") && got[3] === "![[chart.png]]", got)
@@ -1478,6 +1478,11 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && JSON.stringify(cssPlaces("../s.css", "A/B/Deck.md").slice(0, 1)) === '["A/s.css"]' && JSON.stringify(cssPlaces("/s.css", "A/Deck.md")) === '["s.css"]', cssPlaces("css/x.css", "Talks/Deck.md"))
   const urls = cssUrls("a { background: url('img/b.png') } b { src: url(https://f.example/x.woff2) } c { mask: url(#m) } d { x: url(data:image/png;base64,AA) }", "Talks/css", (p) => `raw:${p}`)
   check("slides: a stylesheet's relative url()s load from beside it, addresses kept", urls.includes('url("raw:Talks/css/img/b.png")') && urls.includes("url(https://f.example/x.woff2)") && urls.includes("url(#m)") && urls.includes("url(data:image"), urls)
+
+  const up = (at: number, step: number, count: number) => JSON.stringify(upcoming(at, step, count, 3))
+  check("slides: the presenter's next: the next fragment, else the next slide (none after the last)", up(0, 0, 2) === '{"at":0,"step":1}'
+    && up(0, 2, 2) === '{"at":1,"step":0}' && up(1, Infinity, 1) === '{"at":2,"step":0}' && up(2, 0, 0) === "null" && up(2, 0, 1) === '{"at":2,"step":1}')
+  check("slides: the presenter's timer", elapsedText(0) === "0:00" && elapsedText(245_900) === "4:05" && elapsedText(3_845_000) === "1:04:05" && elapsedText(-5) === "0:00")
 }
 
 // ---------- Slides themes: reveal's and Advanced Slides' themes in the app's colours (plugins/core/slides/themes.ts) ----------

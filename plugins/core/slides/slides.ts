@@ -338,6 +338,22 @@ export function moveOf(a: Slide, b: Slide, opts: DeckOptions = {}): Move {
   }
 }
 
+// ---------- the presenter view ----------
+
+/** What a step forward from slide `at` (`step` of its `count` fragments in) shows, as reveal's "Upcoming": its next
+ *  fragment, else the next slide; null after the last. */
+export function upcoming(at: number, step: number, count: number, n: number): { at: number; step: number } | null {
+  const k = Math.min(step, count)
+  return k < count ? { at, step: k + 1 } : at + 1 < n ? { at: at + 1, step: 0 } : null
+}
+
+/** Time taken, as a timer shows it: 0:00, 4:05, 1:04:05. */
+export function elapsedText(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60
+  const two = (v: number) => String(v).padStart(2, "0")
+  return h ? `${h}:${two(m)}:${two(s % 60)}` : `${m}:${two(s % 60)}`
+}
+
 // ---------- the deck's CSS, kept to the presentation ----------
 
 const CSS_FILE = /^(https:\/\/\S+|[^\s<>"]+\.css([?#]\S*)?)$/i

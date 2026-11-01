@@ -1,12 +1,13 @@
 // A note presented one slide at a time, scaled to fit, with the usual keys, clicks and swipes; it follows the note's
 // changes while shown. Advanced Slides decks (slides.ts) also get their notes, fragments, backgrounds and <style>.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type RefObject, type TouchEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject, type TouchEvent } from "react"
 import { createPortal } from "react-dom"
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from "lucide-react"
-import { activeFile, cn, folderOf, getStore, NoteBody, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, ScreenShare, X } from "lucide-react"
+import { activeFile, cn, folderOf, getStore, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
-import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, CANVAS, type Slide } from "./slides"
+import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, upcoming, CANVAS, type Slide } from "./slides"
+import { openPresenter, Presenter, type Keys, type PresenterWindow } from "./Presenter"
 import { revealTheme } from "./themes"
 import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
 import { slideMotion, type Leaving } from "./transitions"
@@ -184,6 +185,61 @@ function useSheets(path: string, props: Record<string, unknown>) {
 /** Speaker notes, shown or not, for every presentation till the app reloads. */
 let notesShown = false
 
+/** Where a presenter view can open (a window of its own): the desktop app, or a browser with a mouse. */
+const popups = () => isDesktop() && matchMedia("(pointer: fine)").matches
+
+type Source = { store: Store; path: string; fm: string; props: Record<string, unknown>; text: string | null }
+
+/** A slide as the presenter view shows it (now, or what's next), filling its box: background, theme, tone, its
+ *  Markdown or layout scaled to fit and its first `step` fragments in. */
+function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slide; i: number; step: number; onClick?: (e: MouseEvent) => void }) {
+  const { store, path, fm, props, text } = src
+  const stage = useRef<HTMLDivElement>(null)
+  const inner = useRef<HTMLDivElement>(null)
+  const md = slide?.md ?? "", canvas = !!slide?.canvas
+  const fit = useFit(stage, inner, md, canvas)
+  const theme = useMemo(() => revealTheme(props.theme), [props.theme])
+  const draw = useCallback(() => {
+    const el = inner.current
+    if (!el) return
+    if (slide) annotate(el, slide)
+    layOut(el)
+    const frags = fragmentsOf(el), k = Math.min(step, frags.length)
+    frags.forEach((g, j) => g.forEach((f) => { f.classList.toggle("visible", j < k); f.classList.toggle("current-fragment", j === k - 1) }))
+  }, [slide, step])
+  useLayoutEffect(() => {
+    draw()
+    const el = inner.current
+    if (!el) return
+    const mo = new MutationObserver(draw)
+    mo.observe(el, { childList: true, subtree: true })
+    return () => mo.disconnect()
+  }, [draw])
+  const bg = useMemo(() => backgroundOf(slide, props, store, path), [slide, props, store, path])
+  const box = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => { if (slide?.style) box.current?.setAttribute("style", slide.style); else box.current?.removeAttribute("style") }, [slide?.style, i])
+  const title = !slide?.boxes && !canvas && isTitleSlide(md)
+  const content: ReactNode = slide?.boxes ? <Boxes items={slide.boxes} ctx={{ store, path, fm }} /> : md && <NoteBody store={store} path={path} body={md} fm={fm} className="slide-body" />
+  return (
+    <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", bg.tone === "dark" ? "dark" : bg.tone === "light" && "scheme-preview")}
+      data-tone={bg.tone ?? undefined} style={theme?.vars as CSSProperties}>
+      <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col">
+        {bg.style && <div aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
+        <div ref={stage} onClick={onClick} className="relative flex min-h-0 flex-1 cursor-default overflow-hidden px-6 pt-8 pb-16 md:px-16 md:pt-12">
+          <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className="relative m-auto shrink-0">
+            <div ref={inner} key={i} data-deck-slide={i + 1} className={cn("absolute top-0 left-0 origin-top-left", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}
+              style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
+              <div ref={box} className={slide?.cls || undefined}>
+                {text !== null && (canvas ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: CANVAS_H }}>{content}</div> : content)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Presentation({ path, onClose }: { path: string; onClose: () => void }) {
   const exporting = exportAsked.use() === path
   const [text, setText] = useState<string | null>(null)
@@ -194,6 +250,9 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const stage = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const frags = useRef<HTMLElement[][]>([])
+  // How many fragments the slide has, for what the presenter view shows next.
+  const [count, setCount] = useState(0)
+  const screenBox = useRef<HTMLDivElement>(null)
   const store = getStore() as Store
 
   const load = useCallback(() => { textOf(path).then(setText, () => onClose()) }, [path, onClose])
@@ -226,6 +285,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     if (slide) annotate(el, slide)
     layOut(el)
     frags.current = fragmentsOf(el)
+    setCount(frags.current.length)
     const step = Math.min(pos.step, frags.current.length)
     frags.current.forEach((g, k) => g.forEach((f) => { f.classList.toggle("visible", k < step); f.classList.toggle("current-fragment", k === step - 1) }))
   }, [slide, pos.step])
@@ -272,8 +332,9 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const jump = (at: number) => moveTo({ at, step: 0 })
 
   // Full screen where the browser has it (not iPhones: there the presentation fills the page). Leaving it (Escape,
-  // which the browser takes) ends the presentation, unless it was F.
+  // which the browser takes) ends the presentation, unless it was F or the presenter view opening (Chrome leaves it).
   const leaving = useRef(false)
+  const opened = useRef(0)
   const toggleFull = useCallback(() => {
     if (document.fullscreenElement) { leaving.current = true; void document.exitFullscreen().catch(() => {}) }
     else void root.current?.requestFullscreen?.().catch(() => {})
@@ -285,7 +346,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     const change = () => {
       const on = !!document.fullscreenElement
       setFull(on)
-      if (!on && !leaving.current) onClose()
+      if (!on && !leaving.current && Date.now() - opened.current > 1500) onClose()
       leaving.current = false
     }
     document.addEventListener("fullscreenchange", change)
@@ -295,7 +356,35 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     }
   }, [onClose])
 
-  const key = (e: KeyboardEvent) => {
+  // The presenter view: a window of its own (Presenter.tsx), closed with the presentation. Its slides are drawn as on
+  // this screen, at its size.
+  const [presenter, setPresenter] = useState<PresenterWindow | null>(null)
+  const togglePresenter = () => {
+    if (presenter) return setPresenter(null)
+    opened.current = Date.now()
+    const p = openPresenter(`${stem(path)} – Presenter view`, () => setPresenter(null))
+    if (!p) {
+      notify("Allow pop-ups for this site to open the presenter view.")
+      if (hasNotes) setNotes(true)
+      return
+    }
+    setNotes(false)
+    setPresenter(p)
+  }
+  useEffect(() => () => presenter?.close(), [presenter])
+  const [size, setSize] = useState({ w: 1280, h: 800 })
+  useLayoutEffect(() => {
+    const el = screenBox.current
+    if (!el || !presenter) return
+    const measure = () => setSize((s) => (s.w === el.clientWidth && s.h === el.clientHeight) || !el.clientWidth ? s : { w: el.clientWidth, h: el.clientHeight })
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [presenter])
+
+  /** The presentation's keys, in its window and the presenter's (there F is that window's). */
+  const key = (e: Keys, inPresenter = false) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return
     const k = e.key
     if (["ArrowDown", "PageDown", " ", "Enter", "n"].includes(k)) go(1)
@@ -305,7 +394,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     else if (k === "Home") jump(0)
     else if (k === "End") jump(n - 1)
     else if (k === "Escape") onClose()
-    else if (k === "f") toggleFull()
+    else if (k === "f" && !inPresenter) toggleFull()
+    else if (k === "s" && (presenter || popups())) togglePresenter()
     else if (k === "s" && hasNotes) toggleNotes()
     else return
     e.preventDefault()
@@ -318,8 +408,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     const t = e.target as Element
     if (t.closest("[data-wiki], [data-tag]")) { onClose(); return }
     if (t.closest("a, button, audio, video, iframe, input, summary, details, select, textarea, .note-embed, [data-no-nav]")) return
-    if (window.getSelection()?.toString()) return
-    const r = stage.current!.getBoundingClientRect()
+    if ((t.ownerDocument.defaultView ?? window).getSelection()?.toString()) return
+    const r = e.currentTarget.getBoundingClientRect()
     go(e.clientX - r.left < r.width / 3 ? -1 : 1)
   }
   const touch = useRef<{ x: number; y: number } | null>(null)
@@ -348,11 +438,19 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   // A tone other than the app's draws the scheme's other mode (Classic's, for a scheme with one mode).
   const other = bg.tone && bg.tone !== look.mode ? bg.tone : null
   const scheme = other && look.scheme && onlyMode(look.scheme) !== (other === "dark" ? "light" : "dark") ? look.scheme : undefined
-  return createPortal(
-    <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${stem(path)}, slide ${i + 1} of ${n}`} onKeyDown={key}
+  const src: Source = { store, path, fm, props, text }
+  const up = upcoming(i, pos.step, count, n)
+  const canPrev = i > 0 || pos.step > 0
+  const canNext = i < n - 1 || Math.min(pos.step, count) < count
+  const canPopup = popups()
+  const notesBody = (cls?: string) => slide?.notes
+    ? <NoteBody key={i} store={store} path={path} body={slide.notes} fm={fm} className="slide-notes" />
+    : <p className={cn("text-muted-foreground", cls)}>No notes for this slide.</p>
+  return <>{createPortal(
+    <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${stem(path)}, slide ${i + 1} of ${n}`} onKeyDown={(e) => key(e)}
       className="group/slides fixed inset-0 z-[70] flex flex-col bg-background text-foreground outline-none select-none md:flex-row" data-presentation={path} data-keeps-keys>
       <style>{DECK_CSS}{LAYOUT_CSS}{css}</style>
-      <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
+      <div ref={screenBox} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
         data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
         {/* the deck's own CSS reaches what's in [data-deck], never the controls; a theme's --r-* come from above it */}
         <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -375,12 +473,18 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] md:px-4">
           <div className="pointer-events-auto flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover/slides:opacity-100 md:focus-within:opacity-100">
-            <button type="button" aria-label="Previous slide" className={ctl} disabled={i === 0 && !pos.step} onClick={() => go(-1)}><ChevronLeft className="size-5" strokeWidth={2} /></button>
-            <button type="button" aria-label="Next slide" className={ctl} disabled={i === n - 1 && Math.min(pos.step, frags.current.length) >= frags.current.length} onClick={() => go(1)}><ChevronRight className="size-5" strokeWidth={2} /></button>
+            <button type="button" aria-label="Previous slide" className={ctl} disabled={!canPrev} onClick={() => go(-1)}><ChevronLeft className="size-5" strokeWidth={2} /></button>
+            <button type="button" aria-label="Next slide" className={ctl} disabled={!canNext} onClick={() => go(1)}><ChevronRight className="size-5" strokeWidth={2} /></button>
             {hasNotes && (
-              <button type="button" aria-label={notes ? "Hide speaker notes" : "Show speaker notes"} aria-pressed={notes} data-tip="Speaker notes (S)"
+              <button type="button" aria-label={notes ? "Hide speaker notes" : "Show speaker notes"} aria-pressed={notes} data-tip={canPopup ? "Speaker notes" : "Speaker notes (S)"}
                 className={cn(ctl, notes && "text-foreground")} onClick={toggleNotes}>
                 <NotebookText className="size-4" strokeWidth={2} />
+              </button>
+            )}
+            {(canPopup || presenter) && (
+              <button type="button" aria-label={presenter ? "Close presenter view" : "Open presenter view"} aria-pressed={!!presenter} data-tip="Presenter view (S)"
+                className={cn(ctl, "max-md:hidden", presenter && "text-foreground")} onClick={togglePresenter}>
+                <ScreenShare className="size-4" strokeWidth={2} />
               </button>
             )}
             {document.fullscreenEnabled && (
@@ -404,11 +508,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
         <aside aria-label="Speaker notes" data-slide-notes
           className="flex h-[40%] shrink-0 flex-col border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:h-auto md:w-[min(400px,36%)] md:border-t-0 md:border-l md:pb-0">
           <div className="px-4 pt-3 pb-1 text-[15px] text-muted-foreground md:pt-4 md:text-[13px]">Speaker notes</div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 select-text">
-            {slide?.notes
-              ? <NoteBody key={i} store={store} path={path} body={slide.notes} fm={fm} className="slide-notes" />
-              : <p className="pt-2 text-[15px] text-muted-foreground">No notes for this slide.</p>}
-          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 select-text">{notesBody("pt-2 text-[15px]")}</div>
           {next && (
             <div data-next-slide className="truncate border-t border-border px-4 py-2.5 text-[15px] text-muted-foreground md:text-[13px]">
               Next: {nextName(next.md) || `slide ${i + 2}`}
@@ -419,5 +519,12 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
       {exporting && text !== null && <DeckExport path={path} slides={slides} fm={fm} props={props} css={css} />}
     </div>,
     document.body,
-  )
+  )}
+  {presenter && createPortal(
+    <Presenter win={presenter.win} size={size} at={i} n={n} css={<style>{DECK_CSS}{LAYOUT_CSS}{css}</style>}
+      current={<SlideView src={src} slide={slide} i={i} step={pos.step} onClick={click} />}
+      next={up && <SlideView src={src} slide={slides[up.at]} i={up.at} step={up.step} />}
+      notes={notesBody("text-[17px]")} onKey={(e) => key(e, true)} onPrev={() => go(-1)} onNext={() => go(1)} canPrev={canPrev} canNext={canNext} />,
+    presenter.root,
+  )}</>
 }
