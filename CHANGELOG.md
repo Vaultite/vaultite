@@ -18,7 +18,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Pin in the inbox**: Pin (a row's menu, a session's sheet, several selected, `vau inbox pin`) keeps a thread or a
   result on top under Pinned whatever it waits on, until it's done or unpinned.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
-  cache, so a vault's page starts about 180 ms sooner.
+  cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its
   lines, so Obsidian plugins' reading-view post-processors find their section there too.
 - **Import from Notion and Evernote**: the Importer plugin turns Notion's Markdown & CSV export into notes (ids off
