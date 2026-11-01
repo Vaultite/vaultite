@@ -717,6 +717,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
         onContextMenu={(e) => { if (e.target === e.currentTarget) onMenu(e, root) }}
         className={cn("relative flex-1 rounded-[8px] pb-6 transition-colors", scroll && "min-h-0 overflow-y-auto overscroll-contain", dropOn === "" && "drop-target bg-primary/10")}>
         <TreeRows {...kids} />
+        {!shownRows.length && folder === undefined && <li role="none" className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary" data-tree-empty>No files yet.</li>}
       </ul>
     </div>
   )

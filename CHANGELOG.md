@@ -16,6 +16,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   could only say to open a note.
 - **The Links panel says whose links it shows on a tab that isn't a file**: a new tab or a terminal keeps the links
   of the file you were on, now named above them.
+- **An empty vault's file list says so**: Files reads "No files yet." instead of an empty space under its heading.
 - **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **An empty inbox says what comes there**: on a dashboard, it says an agent's questions and reports show up in
