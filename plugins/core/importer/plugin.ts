@@ -89,7 +89,7 @@ plugin.route("GET", "importer/jobs/*", (req) => {
 
 // ---------- operations (core/ops.ts)
 
-const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear", csv: "CSV" }
+const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear", csv: "CSV", roam: "Roam" }
 
 /** A job's summary (what `vau importer.run --wait` prints). */
 export function jobText(job: Job) {
@@ -122,7 +122,8 @@ goes into Keep/: checklists as tasks, labels as tags, archived notes archived, t
 goes into Bear/: highlights and tags with spaces made the vault's, pictures in Bear/Attachments/, trashed notes left
 out. HTML pages (a
 page, or a zip of them: another app's export) go into a folder named as the file: a note per page, links between pages
-as wikilinks, images and other files beside them. A CSV table (or a zip of them) gives a note per row in a folder named as
+as wikilinks, images and other files beside them. Roam (Export all, as JSON) goes into Roam/: a page's blocks as nested lists, TODOs as tasks, block refs as their text,
+daily pages named by their date. A CSV table (or a zip of them) gives a note per row in a folder named as
 the file: its first column the note's name, a Content (or Body, Notes) column its text, the others its properties. Importing again
 adds only what's new (by ext_id);
 notes imported before stay as they are. wait: answer once it's done.
@@ -132,7 +133,7 @@ notes imported before stay as they are. wait: answer once it's done.
   kind: "write",
   lock: false, // the job holds the vault a few files at a time
   params: {
-    path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex or a zip of them, Takeout's zip, Bear's .bear2bk, HTML pages, a CSV)" },
+    path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex or a zip of them, Takeout's zip, Bear's .bear2bk, HTML pages, a CSV, Roam's JSON)" },
     folder: { type: "string", description: "the folder Notion/, Evernote/ or Keep/ goes in (default the setting's: the vault's top)" },
     wait: { type: "boolean", description: "answer once the import is done (else at once, with the job to follow)" },
   },

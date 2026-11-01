@@ -15,7 +15,9 @@ with the file as the body (`?folder=&name=`), or "Import notes from another appâ
   become `==highlights==`, `#tags with spaces#` `#tags-with-spaces`, its pictures go in `Bear/Attachments/`.
 - HTML pages (one, or a zip of them: any app's export, Notion's HTML one too): `<export's name>/<path>/<page>.md`, links
   between pages as wikilinks, images and other files beside them.
+- Roam (its JSON export): a page is `Roam/<Title>.md`, a daily page `Roam/<YYYY-MM-DD>.md` with its title as an
+  alias; blocks are nested list items, `{{[[TODO]]}}` a task, `((refs))` the text they point at.
 - A CSV table (or a zip of them): a note per row in `<file's name>/`, named by its first column; a `Content` (or
   `Body`, `Notes`, `Text`) column is its text, the others its properties (numbers as numbers, empty ones left out).
-- Each note has `ext_id` (`notion-<id>`, `evernote-<hash>`, `keep-<hash>`, `bear-<hash>`, `html-<hash>`, `csv-<hash>`): importing again adds only notes not imported before and
+- Each note has `ext_id` (`notion-<id>`, `evernote-<hash>`, `keep-<hash>`, `bear-<hash>`, `html-<hash>`, `csv-<hash>`, `roam-<hash>`): importing again adds only notes not imported before and
   leaves the others as they are. They're the user's notes from then on: edit them like any.

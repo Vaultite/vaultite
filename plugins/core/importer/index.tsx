@@ -7,7 +7,7 @@ const TINT = "var(--importer)"
 const TOAST = "importer"
 const HEADERS = { "X-Vaultite-Client": "app" }
 
-const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear", csv: "CSV" }
+const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear", csv: "CSV", roam: "Roam" }
 
 function summary(j: Job) {
   if (j.state === "failed") return `Couldn't import ${j.name}: ${j.error ?? "it failed"}`
@@ -38,7 +38,7 @@ async function importFile(file: File) {
 function pickExport() {
   const input = document.createElement("input")
   input.type = "file"
-  input.accept = ".zip,.enex,.bear2bk,.html,.htm,.csv,application/zip,text/html,text/csv"
+  input.accept = ".zip,.enex,.bear2bk,.html,.htm,.csv,.json,application/zip,text/html,text/csv,application/json"
   input.style.display = "none"
   input.addEventListener("change", () => {
     const f = input.files?.[0]
@@ -49,13 +49,13 @@ function pickExport() {
   input.click()
 }
 
-const HOW = "Notion: Settings, Export all workspace content (or a page's menu, Export), as Markdown & CSV. Evernote: a notebook's menu, Export notebook, as ENEX. Google Keep: takeout.google.com with Keep ticked. Bear: File, Backup notes. Any other app: its HTML pages or a CSV table (a note per row), one or a zip. Importing again adds only what's new."
+const HOW = "Notion: Settings, Export all workspace content (or a page's menu, Export), as Markdown & CSV. Evernote: a notebook's menu, Export notebook, as ENEX. Google Keep: takeout.google.com with Keep ticked. Bear: File, Backup notes. Roam: Export all, as JSON. Any other app: its HTML pages or a CSV table (a note per row), one or a zip. Importing again adds only what's new."
 
 function SettingsPanel() {
   return (
     <div>
       <Group>
-        <SettingRow label="Import notes from another app…" sub="Notion, Evernote, Google Keep, Bear, HTML pages or a CSV table: every page, note or row becomes a note" onClick={pickExport} chevron={FileInput} />
+        <SettingRow label="Import notes from another app…" sub="Notion, Evernote, Google Keep, Bear, Roam, HTML pages or a CSV table: every page, note or row becomes a note" onClick={pickExport} chevron={FileInput} />
       </Group>
       <p className="mt-1.5 px-1 text-[13px] leading-[18px] text-muted-foreground">{HOW}</p>
     </div>
@@ -66,7 +66,7 @@ function Preview() {
   return (
     <Panel title="Importer" icon={Import} tint={TINT}>
       <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Brings your notes from Notion, Evernote, Google Keep, Bear and other apps' HTML pages: pick the export with Import notes from another app in the command palette.
+        Brings your notes from Notion, Evernote, Google Keep, Bear, Roam and other apps' HTML pages: pick the export with Import notes from another app in the command palette.
         Pages keep their subpages, links, attachments and database properties; notes their tags, dates, to-dos and attachments.
       </p>
     </Panel>

@@ -192,4 +192,30 @@ export default async ($: VaultTest) => {
   }))
   j = await runJob({ path: "Imports/takeout2.zip" })
   check("importer keep: a picture Takeout renamed (.jpeg as .jpg) is still found", j.state === "done" && j.files === 1 && read("Keep/Photo.md").includes("![[Keep/Attachments/snap.jpg]]") && !j.problems.length, [j, exists("Keep/Photo.md") && read("Keep/Photo.md")])
+  // Roam: its JSON export.
+  const { roamNotes, roamDate } = await import("../../../plugins/core/importer/roam.ts")
+  const graph = [
+    { title: "October 5th, 2026", "create-time": 1790000000000, children: [{ string: "{{[[TODO]]}} Call [[Alice Park]] about ((r1))", uid: "a1" }, { string: "Read __Dune__ ^^today^^ #[[book club]]", uid: "a2", children: [{ string: "ch. 1-3", uid: "a3" }] }] },
+    { title: "Alice Park", children: [{ string: "Plans", heading: 2, uid: "h1", children: [{ string: "the garden plan", uid: "r1" }] }, { string: "Met on [[October 5th, 2026]]", uid: "m1" }] },
+  ]
+  check("importer roam: daily titles as dates", roamDate("October 5th, 2026") === "2026-10-05" && roamDate("Alice Park") === null)
+  const rn2 = roamNotes(graph)
+  check("importer roam: blocks as nested lists, TODO a task, refs as their text, tags, italics, highlights, headings, links to daily pages by date",
+    rn2[0].name === "2026-10-05" && rn2[0].body === "- [ ] Call [[Alice Park]] about the garden plan\n- Read *Dune* ==today== #book-club\n  - ch. 1-3" &&
+    rn2[1].body === "### Plans\n- the garden plan\n- Met on [[2026-10-05|October 5th, 2026]]", rn2)
+  fs.writeFileSync(path.join(VAULT, "Imports/roam-graph.json"), JSON.stringify(graph))
+  j = await runJob({ path: "Imports/roam-graph.json" })
+  check("importer roam: pages in Roam/, a daily page by its date with its title as an alias", j.state === "done" && j.source === "roam" && j.notes === 2 && j.created === 2 &&
+    read("Roam/2026-10-05.md").startsWith("---\naliases: ['October 5th, 2026']\ncreated: '") && exists("Roam/Alice Park.md"), [j, exists("Roam/2026-10-05.md") && read("Roam/2026-10-05.md")])
+  j = await runJob({ path: "Imports/roam-graph.json" })
+  check("importer roam: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 2, j)
+  const odd = roamNotes([{ title: "Projects/Alpha: plan", children: [{ string: "`__init__` and [[x]] in code:\n```\ndef __init__(self): [[1]]\n```", uid: "c1" }] },
+    { title: "Ring", children: [{ string: "a ((r2))", uid: "r1" }, { string: "b ((r1))", uid: "r2" }, { string: "on #[[October 5th, 2026]]", uid: "r3" }] }])
+  check("importer roam: code left as written, a ring of refs stops, a date tag a link to the day",
+    odd[0].body.includes("`__init__` and [[x]] in code:") && odd[0].body.includes("def __init__(self): [[1]]") &&
+    odd[1].body.split("\n")[0] === "- a b a ((r2))" && odd[1].body.includes("on [[2026-10-05|October 5th, 2026]]"), odd.map((n) => n.body))
+  fs.writeFileSync(path.join(VAULT, "Imports/roam-odd.json"), JSON.stringify([{ title: "Projects/Alpha: plan", children: [{ string: "x", uid: "o1" }] }]))
+  j = await runJob({ path: "Imports/roam-odd.json" })
+  check("importer roam: a title a file can't be named keeps it as an alias", read("Roam/Projects Alpha - plan.md").startsWith("---\naliases: ['Projects/Alpha: plan']"), exists("Roam/Projects Alpha - plan.md") && read("Roam/Projects Alpha - plan.md"))
 }
+
