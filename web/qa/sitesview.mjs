@@ -141,7 +141,7 @@ await win.keyboard.press("Escape")
 // Google's door), and a login the listing brings in after the menu opened shows in it as it answers.
 await app.evaluate(() => { globalThis.slow = 1200; globalThis.fix["c-work"].push({ site: "google.com", account: "alice@lighthouse.dev" }) })
 await win.locator("[data-web-page] [data-web-address]:visible").click()
-await win.keyboard.press("Meta+a")
+await win.keyboard.press("ControlOrMeta+a")
 await win.keyboard.type("gmail.com")
 await win.locator("[data-web-page] [data-web-container]:visible").click()
 const first = await items()
