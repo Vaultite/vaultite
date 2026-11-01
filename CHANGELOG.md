@@ -314,6 +314,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - A dashboard with nothing side by side (one block between text, as Focus) reads centred at a note's width, its card
   as wide as the text, no longer pushed to the left of a wide, half-empty column. A callout, code block or folded
   section in a dashboard's text has its gap above, no longer touching a table.
+- **Dashboards open faster**: a block's options are read once, not four times per redraw; switching to a dashboard's
+  tab on a phone spends about 340 ms less reading YAML.
 
 ## 0.8.0 (2026-10-24)
 

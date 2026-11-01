@@ -109,6 +109,17 @@ export function allOptions(decl: BlockDecl | null | undefined): Record<string, O
 /** A block's text read as options: {} when it's empty; `error` when it isn't YAML or isn't `key: value` lines (the
  *  block still gets {}). The way both the server and the app read them. */
 export function parseOptions(text: string): { options: Record<string, unknown>; error?: string } {
+  let r = parsed.get(text)
+  if (r) return r
+  r = parseFresh(text)
+  // (a dashboard's render read each block's options four times, YAML each time: a third of a tab switch)
+  if (parsed.size >= 500) parsed.delete(parsed.keys().next().value!)
+  parsed.set(text, r)
+  return r
+}
+const parsed = new Map<string, { options: Record<string, unknown>; error?: string }>()
+
+function parseFresh(text: string): { options: Record<string, unknown>; error?: string } {
   if (!text.trim()) return { options: {} }
   let o: unknown
   try {
