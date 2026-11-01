@@ -93,8 +93,8 @@ export function onLook(fn: () => void): () => void {
   return () => { looks.delete(fn) }
 }
 
-/** What a picker can show for now: a colour scheme, a font. */
-export type LookPreview = Partial<Pick<Prefs, "scheme" | "interfaceFont" | "textFont" | "monoFont">>
+/** What a picker can show for now: the theme, a colour scheme, density, a font. */
+export type LookPreview = Partial<Pick<Prefs, "theme" | "scheme" | "density" | "interfaceFont" | "textFont" | "monoFont">>
 // Shown for now (the palette's pickers, as the selection moves), saved nowhere.
 let previewing: LookPreview | null = null
 /** Shows those settings on the whole app without saving them; null goes back to the saved ones. */

@@ -42,6 +42,9 @@ export type Command = {
   place?: { name: string; open: () => void }
   /** A setting of a few values (core/choices.ts): the one in use, at its row's end; running it offers the others. */
   value?: () => string
+  /** Left out of the palette, where a picker offers it ("Theme…"): one value of a setting, for the menu bar, hotkeys
+   *  and `vau command`. */
+  unlisted?: boolean
 }
 
 /** A setting: drawn with a switch (palette) or a check (menus), not renamed by its state. */

@@ -7,7 +7,9 @@ import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { opensChoices, setOpens } from "@/core/launcher"
 import { getPrefs, setPrefs, usePrefs, type Animation, type Density, type Theme } from "@/core/prefs"
+import { ANIMATIONS, DENSITIES, THEMES } from "@/core/choices"
 import { SCHEMES } from "@/themes/schemes"
+import { schemeName } from "@/components/SchemeChooser"
 import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
 import { coreSwitch, useSwitches } from "@/core/switches"
 import { SwitchRow } from "@/components/SwitchRow"
@@ -56,7 +58,6 @@ function Tile({ id, name, tip, on, onClick }: { id: string; name: string; tip?: 
   )
 }
 
-const nameOf = (scheme: string) => scheme.startsWith("theme:") ? scheme.slice(6) : SCHEMES.find((s) => s.id === scheme)?.name ?? scheme
 const modeTip = (only?: string) => only ? `${only === "dark" ? "Dark" : "Light"} only` : undefined
 
 /** Every colour scheme: the app's, then the vault's Obsidian themes (an unreadable one a dashed tile saying why), and a
@@ -99,7 +100,7 @@ function SchemeStrip() {
   return <PictureChoice<string> scroll label="Colour scheme" value={scheme} onChange={(id) => setPrefs({ scheme: id })} options={options} />
 }
 
-/** The gallery as a sheet (Settings' More…; the command "Change colour scheme…" is the palette's, SchemeChooser.tsx). */
+/** The gallery as a sheet (Settings' More…; the command "Colour scheme…" is the palette's, SchemeChooser.tsx). */
 export function SchemeGallery() {
   return (
     <>
@@ -189,7 +190,6 @@ function TextSizeRow({ kind, label, sub }: { kind: string; label: string; sub?: 
   )
 }
 
-const THEMES: { value: Theme; label: string }[] = [{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]
 const themePicture = (t: Theme, scene: Scene = "note") => t === "system" ? <SystemPicture scene={scene} /> : <WindowPicture scene={scene} mode={t} />
 
 export function AppearancePanel() {
@@ -203,7 +203,7 @@ export function AppearancePanel() {
           {/* Theme and style side by side, the style wrapping under the theme where they don't fit. A scheme with one mode
               says so beside the label, on its line: it changes what the row says, never the layout. */}
           <div className="flex flex-wrap gap-x-10 gap-y-3 py-2">
-            <SettingRow below data-settings-row="theme" className="min-h-0 w-auto py-0" label={<>Theme{only && <span className="ml-2 text-[13px] leading-none text-muted-foreground">{nameOf(prefs.scheme)} is {only} only</span>}</>}>
+            <SettingRow below data-settings-row="theme" className="min-h-0 w-auto py-0" label={<>Theme{only && <span className="ml-2 text-[13px] leading-none text-muted-foreground">{schemeName(prefs.scheme)} is {only} only</span>}</>}>
               <PictureChoice<Theme> label="Theme" value={prefs.theme} onChange={(theme) => setPrefs({ theme })}
                 options={THEMES.map((t) => ({ ...t, picture: themePicture(t.value) }))} />
             </SettingRow>
@@ -227,11 +227,11 @@ export function AppearancePanel() {
         <Group>
           <SettingRow below label="Density" data-settings-row="density">
             <PictureChoice<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })}
-              options={[{ value: "compact", label: "Compact", picture: <WindowPicture scene="compact" /> }, { value: "comfortable", label: "Comfortable", picture: <WindowPicture scene="comfortable" /> }]} />
+              options={DENSITIES.map((d) => ({ ...d, picture: <WindowPicture scene={d.value} /> }))} />
           </SettingRow>
           <SettingRow stack label="Animations" data-settings-row="animation" preview={animationPreview(prefs.animation)}>
             <Segmented<Animation> label="Animations" value={prefs.animation} onChange={(animation) => setPrefs({ animation })} className="w-full shrink-0 sm:w-[220px]"
-              options={[{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }]} />
+              options={ANIMATIONS} />
           </SettingRow>
           <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
             onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />

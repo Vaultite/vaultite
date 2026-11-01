@@ -13,6 +13,7 @@ import { setPrefs, usePrefs } from "@/core/prefs"
 import { cell } from "@/core/signal"
 import { textSizeKinds } from "@/core/textsize"
 import { allSwitches, placeOf, useSwitches, type SwitchDef } from "@/core/switches"
+import { PLUGIN_UPDATE_POLICIES } from "@/core/choices"
 import { capitalize, cn } from "@/lib/utils"
 import { HotkeysSheet } from "@/pages/Hotkeys"
 import { DenseRows, Group, Logo, Panel, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
@@ -65,7 +66,7 @@ function PluginUpdatesRow() {
   return (
     <SettingRow stack label="Plugin updates" sub={PLUGIN_UPDATES[policy]} data-settings-row="plugin-updates">
       <Segmented<UpdatePolicy> label="Which plugins update on their own" value={policy} onChange={(v) => void setPrefs({ updates: v })} className="w-full shrink-0 sm:w-[260px]"
-        options={[{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]} />
+        options={PLUGIN_UPDATE_POLICIES} />
     </SettingRow>
   )
 }

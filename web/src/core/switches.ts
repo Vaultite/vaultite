@@ -124,8 +124,8 @@ const switchedIn = (): SwitchDef[] => PLUGINS.filter((p) => p.switchIn).map((p) 
 /** Every switch there is now: the app's, those plugins', then the plugins' settings, of the ones that are on. */
 export const allSwitches = (disabled = getPrefs().disabled) => [...CORE, ...switchedIn(), ...pluginSwitches(disabled)]
 
-/** Where Settings has it, and how to go there: its row flashes once it's drawn. */
-export function placeOf(s: SwitchDef) {
+/** Where Settings has it (a switch, or a choice: core/choices.ts), and how to go there: its row flashes once it's drawn. */
+export function placeOf(s: Pick<SwitchDef, "id" | "section" | "plugin">) {
   if (s.plugin) {
     const { id, key } = s.plugin
     return { name: pluginById(id)?.name ?? id, open: () => openPluginSettings(id, key) }

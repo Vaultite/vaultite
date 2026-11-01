@@ -8,6 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
+- **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing
+  mode…, Properties in document…, Plugin updates…, Sort order… and the rest each open their values in the palette, the
+  one in use checked and named at the row's end, the look shown as you move; Enter keeps one (with Undo), Esc goes
+  back, ⌘↵ opens it in Settings. The one-value commands (Use dark theme...) stay for the menu bar, hotkeys and `vau`.
 - **Format note**: the Linter plugin tidies a note's Markdown by rules you choose in its settings (trailing spaces,
   extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
   format a note or a folder (`vau linter.format`).
@@ -269,9 +273,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Health, Appearance and Editor are in titled groups, and theme, density and new tabs are chosen by their picture.
   Beside the theme, Style picks Solid or Glass (the translucent window), Glass unfolding its own options; every colour
   scheme is a picture in one row that scrolls sideways, with Show all for the grid.
-- **Change fonts and the terminal cursor from the palette, previewed as you move**: Change text font…, Change interface
-  font… and Change monospace font… show the whole app in the selected font until Enter keeps it (Esc goes back), as
-  Change colour scheme… does. Terminals now use the monospace font too, and Terminal settings have the cursor's shape
+- **Change fonts and the terminal cursor from the palette, previewed as you move**: Text font…, Interface font… and
+  Monospace font… show the whole app in the selected font until Enter keeps it (Esc goes back), as Colour scheme…
+  does. Terminals now use the monospace font too, and Terminal settings have the cursor's shape
   (block, bar or underline, "Terminal cursor…" in the palette, shown on the terminal as you move) and Blink the terminal
   cursor. Show pinned pages as… and the graph's Colour by… preview the same way.
 - **Name your tabs**: Rename tab… in the palette (and a tab's right-click) turns the palette into a field holding its

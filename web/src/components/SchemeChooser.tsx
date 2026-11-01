@@ -1,4 +1,4 @@
-// The command "Change colour scheme…": every scheme in the palette, the whole app shown in the selected one as the
+// The command "Colour scheme…": every scheme in the palette, the whole app shown in the selected one as the
 // selection moves; Enter keeps it, Esc goes back. Settings' gallery (Appearance.tsx) is the other way in.
 import { choose } from "@/components/Chooser"
 import { getVaultAppearance, onlyMode, previewLook } from "@/core/appearance"
@@ -18,13 +18,16 @@ function Dots({ id }: { id: string }) {
   )
 }
 
+/** A scheme's name ("Gruvbox"; a vault theme's own), the one in use by default. */
+export const schemeName = (scheme = schemeId(getPrefs().scheme)) => scheme.startsWith("theme:") ? scheme.slice(6) : SCHEMES.find((s) => s.id === scheme)?.name ?? scheme
+
 export function chooseScheme() {
   const items = [
     ...SCHEMES.map((s) => ({ id: s.id, label: s.name, detail: s.only ? `${s.only === "dark" ? "Dark" : "Light"} only` : undefined })),
     ...getVaultAppearance().themes.filter((t) => !t.problem).map((t) => ({ id: `theme:${t.name}`, label: t.name, detail: "From your vault" })),
   ].map((it) => ({ ...it, icon: <Dots id={it.id} /> }))
   choose({
-    title: "Change colour scheme", placeholder: "Colour scheme…", items, current: schemeId(getPrefs().scheme),
+    title: "Colour scheme", placeholder: "Colour scheme…", items, current: schemeId(getPrefs().scheme),
     preview: (it) => previewLook(it ? { scheme: it.id } : null),
     onPick: (it) => { void setPrefs({ scheme: it.id }) },
   })

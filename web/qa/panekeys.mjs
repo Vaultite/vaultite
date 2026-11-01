@@ -84,7 +84,7 @@ const dims = () => page.evaluate(() => [...document.querySelectorAll("section[da
 let d = await dims()
 check("on by default: the panes without the focus fade, the focused one doesn't", d.filter((x) => !x.focused).every((x) => x.o > 0.2) && d.find((x) => x.focused)?.o === 0, d)
 await shot("dim-light")
-await command(page, "Use dark theme"); await wait(600)
+await command(page, "Theme…"); await page.keyboard.type("Dark"); await page.keyboard.press("Enter"); await wait(600)
 await shot("dim-dark")
 // The fade follows the focus, cross-fading (mid-way, both are part-faded).
 await page.evaluate(() => document.querySelector("section[data-group]:not([data-focused]) [data-pane-body]")?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })))
@@ -93,7 +93,7 @@ const mid = await dims()
 await wait(400)
 d = await dims()
 check("...the focus moving cross-fades: mid-way part-faded, then the new one clear", mid.some((x) => x.o > 0 && x.o < 0.3) && d.find((x) => x.focused)?.o === 0, [mid, d])
-await command(page, "Use light theme"); await command(page, "Dim inactive panes"); await wait(400)
+await command(page, "Theme…"); await page.keyboard.type("Light"); await page.keyboard.press("Enter"); await wait(300); await command(page, "Dim inactive panes"); await wait(400)
 check("...switched off, nothing dims", (await dims()).every((x) => x.o === 0), await dims())
 
 await ctx.close()

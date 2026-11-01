@@ -31,8 +31,8 @@ import { canRenameTab, chooseTabGroup, renameTab, renameTabGroup } from "@/core/
 import { canReopen, reopenLatest } from "@/core/tabarchive"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
-import { allSwitches, switchCommand } from "@/core/switches"
-import { choiceCommands } from "@/core/choices"
+import { allSwitches, placeOf, switchCommand } from "@/core/switches"
+import { allChoices, choiceCommand } from "@/core/choices"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
@@ -82,8 +82,8 @@ import { ConfirmDialogs } from "@/components/ConfirmDialog"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space, whenIdle } from "@/lib/utils"
 import { canGoSide, focusArea, goSide } from "@/core/keylist"
-import { chooseScheme } from "@/components/SchemeChooser"
-import { chooseFont } from "@/components/FontChooser"
+import { chooseScheme, schemeName } from "@/components/SchemeChooser"
+import { chooseFont, fontSetting } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
 // The app's own pages, which few visits open: loaded when they are.
@@ -147,7 +147,7 @@ function sheet_(...a: Parameters<typeof detail_>): ReturnType<typeof detail_> {
 
 /** The core's own sheets, from their lazy chunks: by the path's kind ("bundle/": one with an id), its title and body. */
 const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.ReactNode]> = {
-  schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Change colour scheme…"
+  schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Colour scheme…"
   fonts: ["Fonts", () => <FontsSheet />], // Settings' Fonts row
   "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />], // a Settings section, where the pane is narrow
   hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
@@ -463,27 +463,30 @@ export default function App() {
     { id: "bundles:save", name: "Save current setup as a bundle…", run: () => void startSave(), icon: PackagePlus },
     { id: "bundles:import", name: "Import a bundle…", run: () => openDetail("bundle-import"), icon: Import },
     { id: "bundles:restore", name: "Restore previous setup", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
-    { id: "theme:light", name: "Use light theme", when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },
-    { id: "theme:dark", name: "Use dark theme", when: () => getPrefs().theme !== "dark", run: () => setPrefs({ theme: "dark" }), icon: Moon },
-    { id: "theme:system", name: "Use the system's light or dark theme", when: () => getPrefs().theme !== "system", run: () => setPrefs({ theme: "system" }), icon: SunMoon },
-    { id: "scheme:gruvbox", name: "Use Gruvbox colours (the default)", when: () => getPrefs().scheme !== "gruvbox", run: () => setPrefs({ scheme: "gruvbox" }), icon: PaletteIcon },
-    { id: "scheme:default", name: "Use Classic colours", when: () => getPrefs().scheme !== "default", run: () => setPrefs({ scheme: "default" }), icon: PaletteIcon },
-    { id: "scheme:choose", name: "Change colour scheme…", run: chooseScheme, icon: PaletteIcon },
-    { id: "font:text", name: "Change text font…", words: "typeface notes", run: () => chooseFont("textFont"), icon: Type },
-    { id: "font:interface", name: "Change interface font…", words: "typeface ui", run: () => chooseFont("interfaceFont"), icon: Type },
-    { id: "font:mono", name: "Change monospace font…", words: "typeface code terminal", run: () => chooseFont("monoFont"), icon: Type },
+    // One value of a choice each, for the menu bar's radio items, hotkeys and `vau command`; the palette offers its
+    // picker instead ("Theme…", core/choices.ts).
+    { id: "theme:light", name: "Use light theme", unlisted: true, when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },
+    { id: "theme:dark", name: "Use dark theme", unlisted: true, when: () => getPrefs().theme !== "dark", run: () => setPrefs({ theme: "dark" }), icon: Moon },
+    { id: "theme:system", name: "Use the system's light or dark theme", unlisted: true, when: () => getPrefs().theme !== "system", run: () => setPrefs({ theme: "system" }), icon: SunMoon },
+    { id: "scheme:gruvbox", name: "Use Gruvbox colours (the default)", unlisted: true, when: () => getPrefs().scheme !== "gruvbox", run: () => setPrefs({ scheme: "gruvbox" }), icon: PaletteIcon },
+    { id: "scheme:default", name: "Use Classic colours", unlisted: true, when: () => getPrefs().scheme !== "default", run: () => setPrefs({ scheme: "default" }), icon: PaletteIcon },
+    // Named as Settings names them, with the one in use, like every setting of a few values (core/choices.ts).
+    { id: "scheme:choose", name: "Colour scheme…", words: "change color colours obsidian themes", run: chooseScheme, icon: PaletteIcon, value: () => schemeName(), place: placeOf({ id: "setting:scheme", section: "appearance" }) },
+    { id: "font:text", name: "Text font…", words: "change typeface notes", run: () => chooseFont("textFont"), icon: Type, ...fontSetting("textFont") },
+    { id: "font:interface", name: "Interface font…", words: "change typeface ui", run: () => chooseFont("interfaceFont"), icon: Type, ...fontSetting("interfaceFont") },
+    { id: "font:mono", name: "Monospace font…", words: "change typeface code terminal", run: () => chooseFont("monoFont"), icon: Type, ...fontSetting("monoFont") },
     { id: "newtab:page", name: "Choose a page for new tabs…", run: chooseNewTabPage, icon: LayoutDashboard },
     { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
     { id: "sidebars:customize", name: "Customize sidebars", run: () => openDetail("sidebars"), icon: SlidersHorizontal },
     { id: "hotkeys:open", name: "Open hotkeys", keys: ["Shift+/"], run: () => openDetail("hotkeys"), icon: Keyboard },
-    // A choice of two, like the theme: the one not in use is offered (the menu bar's radio items).
-    { id: "density:compact", name: "Use compact density", when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },
-    { id: "density:comfortable", name: "Use comfortable density", when: () => getPrefs().density !== "comfortable", run: () => setPrefs({ density: "comfortable" }), icon: UnfoldVertical },
-    ...(["natural", "snappy", "off"] as const).map((animation) => ({ id: `animation:${animation}`, name: animation === "off" ? "Turn animations off" : `Use ${animation} animations`, when: () => getPrefs().animation !== animation, run: () => setPrefs({ animation }), icon: Sparkles })),
-    // "Properties in document": the two not in use, so hidden properties can be brought back from anywhere.
-    { id: "properties:visible", name: "Show properties in notes", when: () => editorSettings().propertiesInDocument !== "visible", run: () => showPropertiesAs("visible"), icon: Tags },
-    { id: "properties:hidden", name: "Hide properties in notes", when: () => editorSettings().propertiesInDocument !== "hidden", run: () => showPropertiesAs("hidden"), icon: EyeOff },
-    { id: "properties:source", name: "Show properties as text while editing", when: () => editorSettings().propertiesInDocument !== "source", run: () => showPropertiesAs("source"), icon: Braces },
+    // The one not in use is offered (the menu bar's radio items); the palette has "Density…" and "Animations…".
+    { id: "density:compact", name: "Use compact density", unlisted: true, when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },
+    { id: "density:comfortable", name: "Use comfortable density", unlisted: true, when: () => getPrefs().density !== "comfortable", run: () => setPrefs({ density: "comfortable" }), icon: UnfoldVertical },
+    ...(["natural", "snappy", "off"] as const).map((animation) => ({ id: `animation:${animation}`, name: animation === "off" ? "Turn animations off" : `Use ${animation} animations`, unlisted: true, when: () => getPrefs().animation !== animation, run: () => setPrefs({ animation }), icon: Sparkles })),
+    // "Properties in document": the two not in use (the palette has "Properties in document…").
+    { id: "properties:visible", name: "Show properties in notes", unlisted: true, when: () => editorSettings().propertiesInDocument !== "visible", run: () => showPropertiesAs("visible"), icon: Tags },
+    { id: "properties:hidden", name: "Hide properties in notes", unlisted: true, when: () => editorSettings().propertiesInDocument !== "hidden", run: () => showPropertiesAs("hidden"), icon: EyeOff },
+    { id: "properties:source", name: "Show properties as text while editing", unlisted: true, when: () => editorSettings().propertiesInDocument !== "source", run: () => showPropertiesAs("source"), icon: Braces },
     // The note's history while the keyboard is beside its text, not in it (a property just removed, a chip clicked).
     { id: "editor:undo", name: "Undo", keys: ["Mod+Z"], when: besideText, run: () => currentEditor()?.undo?.(), icon: Undo2 },
     { id: "editor:redo", name: "Redo", keys: ["Mod+Shift+Z"], when: besideText, run: () => currentEditor()?.redo?.(), icon: Redo2 },
@@ -508,8 +511,8 @@ export default function App() {
   useCommands(settingsCommands, [disabled.join(), enabled.join(), pluginsVersion])
   // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the app's zoom (core/textsize.ts).
   useCommands(() => textSizeCommands(disabled), [disabled.join(), enabled.join()])
-  // Every on/off setting, the app's and the plugins' (core/switches.ts).
-  useCommands(() => [...allSwitches(disabled).map(switchCommand), ...choiceCommands(disabled)], [disabled.join(), enabled.join(), pluginsVersion])
+  // Every setting, the app's and the plugins': on/off (core/switches.ts) and of a few values (core/choices.ts).
+  useCommands(() => [...allSwitches(disabled).map(switchCommand), ...allChoices(disabled).map(choiceCommand)], [disabled.join(), enabled.join(), pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it.
   const popout = isPopout()
   // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).

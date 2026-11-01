@@ -98,7 +98,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const names = useMemo(() => all.filter((c) => c.nameWhenOn).map(commandName).join("\n"), [all, switched])
   const rows = useMemo((): Row[] => {
     // Named as they are now ("Hide left sidebar"), found by either name.
-    const cs = once(available(all).map((c) => (c.nameWhenOn ? { ...c, name: commandName(c), words: [c.words, c.name, c.nameWhenOn].filter(Boolean).join(" ") } : c)))
+    const cs = once(available(all).filter((c) => !c.unlisted).map((c) => (c.nameWhenOn ? { ...c, name: commandName(c), words: [c.words, c.name, c.nameWhenOn].filter(Boolean).join(" ") } : c)))
     if (!q.trim()) {
       const recent = recentCommands()
       const rank = (c: Command) => { const i = recent.indexOf(c.id); return i < 0 ? recent.length : i }

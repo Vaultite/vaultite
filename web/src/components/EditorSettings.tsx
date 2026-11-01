@@ -1,9 +1,10 @@
 // Settings > Editor: how notes are written and laid out (.vaultite/editor.json; core/editorPrefs.ts), Obsidian's settings
 // of the same names. A setting the file doesn't have follows the vault's .obsidian/app.json, else Obsidian's default.
 import type { Store } from "@/core/data"
-import { EDITING_MODES, editorSet, NOTE_VIEWS, PROPERTIES_SHOWN, setEditor, useEditorSettings, type EditingMode, type EditorSettings, type NoteView, type PropertiesShown } from "@/core/editorPrefs"
+import { EDITING_MODES, editorSet, NOTE_VIEWS, PROPERTIES_SHOWN, setEditor, useEditorSettings, type EditingMode, type NoteView, type PropertiesShown } from "@/core/editorPrefs"
 import { useDesktop } from "@/core/platform"
 import { coreSwitch } from "@/core/switches"
+import { indentOf, INDENTS, type Indent } from "@/core/choices"
 import { Group, ResetButton, Section, Segmented, SettingRow } from "@/components/kit"
 import { SwitchRow } from "@/components/SwitchRow"
 import { PluginSwitches } from "@/components/PluginSwitches"
@@ -12,8 +13,6 @@ import { propertiesPreview } from "@/components/SettingPictures"
 /** A switch, with its way back to what the vault or Obsidian says (core/switches.ts). */
 const FlagRow = ({ row }: { row: string }) => <SwitchRow s={coreSwitch(`setting:${row}`)} />
 
-type Indent = "tab" | "2" | "4"
-const indentOf = (e: EditorSettings): Indent => (e.useTab ? "tab" : (String(e.tabSize) as Indent))
 
 export function EditorPanel({ store }: { store: Store }) {
   const e = useEditorSettings(store)
@@ -62,7 +61,7 @@ export function EditorPanel({ store }: { store: Store }) {
                 onClick={() => setEditor({ useTab: null, tabSize: null })} />
               <Segmented<Indent> label="Indent" value={indentOf(e)} className="min-w-0 flex-1 sm:w-[240px] sm:flex-none"
                 onChange={(v) => setEditor(v === "tab" ? { useTab: true } : { useTab: false, tabSize: Number(v) })}
-                options={[{ value: "tab", label: "Tab" }, { value: "2", label: "2 spaces" }, { value: "4", label: "4 spaces" }]} />
+                options={INDENTS} />
             </div>
           </SettingRow>
           <FlagRow row="auto-pair-brackets" />

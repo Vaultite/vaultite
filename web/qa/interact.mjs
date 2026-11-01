@@ -141,7 +141,7 @@ check("a tab's menu has the keyboard", await page.evaluate(() => !!document.acti
 await page.keyboard.press("Escape"); await wait(300)
 check("...Escape: the keyboard back on that tab", (await focus()) === "tab", await focus())
 await page.click(".cm-content"); await wait(150)
-await cmd("Change colour scheme"); await wait(400)
+await cmd("Colour scheme"); await wait(400)
 await page.keyboard.press("Escape"); await wait(400)
 check("a sheet (colour schemes) closed with Escape: back in the editor", (await focus()).startsWith("editor:"), await focus())
 

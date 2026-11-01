@@ -1931,6 +1931,42 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("has words: every word as typed, any order", hasWords("tabs alice", "Alice Park\nOpen tabs") && !hasWords("tabs bob", "Alice Park\nOpen tabs"))
 }
 
+// ---------- Settings of a few values as palette pickers (web/src/core/choicePicker.ts) ----------
+{
+  const cp: Any = await web("core/choicePicker.ts")
+  let value = "natural", shown: string | null = null
+  const toasts: [string, () => void][] = []
+  const def = { id: "setting:animation", name: "Animations", options: () => [{ value: "natural", label: "Natural" }, { value: "snappy", label: "Snappy" }, { value: "off", label: "Off" }],
+    get: () => value, set: (v: string) => { value = v }, preview: (v: string | null) => { shown = v } }
+  const p = cp.choicePicker(def, (text: string, undo: () => void) => toasts.push([text, undo]))
+  check("choices: a picker of its values named as Settings names them, the one in use checked",
+    p.title === "Animations" && p.placeholder === "Animations…" && p.current === "natural" && p.items.map((i: Any) => i.label).join() === "Natural,Snappy,Off", p)
+  p.preview(p.items[2]); const moved = shown; p.preview(null)
+  check("choices: moving shows a value for now, saved nowhere; closing goes back", moved === "off" && shown === null && value === "natural", [moved, shown, value])
+  p.onPick(p.items[0])
+  check("choices: picking the one in use changes nothing, says nothing", value === "natural" && !toasts.length)
+  p.onPick(p.items[1])
+  check("choices: picking another keeps it, saying so with Undo", value === "snappy" && toasts[0]?.[0] === "Animations: Snappy", toasts)
+  toasts[0][1]()
+  check("choices: Undo puts back the one before", value === "natural" && cp.choiceLabel(def) === "Natural")
+  check("choices: no preview where the setting can't show one", cp.choicePicker({ ...def, preview: undefined }, () => {}).preview === undefined)
+
+  // A plugin's enum (its manifest's), numbers too: the default again takes the key out.
+  let data: Record<string, unknown> = {}, over: unknown = "unset"
+  const store = { get: () => data, set: (k: Record<string, unknown>) => { data = Object.fromEntries(Object.entries({ ...data, ...k }).filter(([, v]) => v !== null)) }, preview: (k: unknown) => { over = k } }
+  const decl = { type: "enum", values: [10, 20, 30], default: 20, label: "Row height", labels: { 10: "Short" }, description: "how tall rows are", preview: true }
+  const pc = cp.declChoice({ id: "lists", name: "Lists" }, "height", decl, 20, store)
+  check("choices: a plugin's enum, labelled from its manifest, its default in use", pc.id === "setting:lists:height" && pc.get() === "20" && pc.sub() === "How tall rows are"
+    && pc.options().map((o: Any) => o.label).join() === "Short,20,30" && pc.plugin.key === "height", [pc.get(), pc.options()])
+  pc.set("10"); const set10 = data.height; pc.set("20")
+  check("choices: a plugin's value saved as its own type; the default removes the key", set10 === 10 && !("height" in data), [set10, data])
+  pc.preview("30"); const prev = JSON.stringify(over); pc.preview(null)
+  check("choices: a plugin's enum with preview shows its value for now", prev === '{"height":30}' && over === null, prev)
+  data = { height: 99 }
+  check("choices: a value the file has that isn't one of them reads as the default", pc.get() === "20", pc.get())
+  check("choices: no preview unless the manifest asks", cp.declChoice({ id: "lists", name: "Lists" }, "height", { ...decl, preview: undefined }, 20, store).preview === undefined)
+}
+
 {
   // A :has() on the whole page (:root, html, body) is checked again on every DOM change anywhere: typing in a note
   // recalculated 4x the styles with two of them. Which sidebar is there is an attribute App.tsx sets instead.
