@@ -1,12 +1,14 @@
-// Day planner: a note's timed list items drawn as blocks on a day's hours, side by side where they overlap, with a line
-// at the time it is now on the note's own day (a daily note's date, or any note without one).
+// Day planner: a note's timed list items and its day's calendar events drawn as blocks on the day's hours, side by side
+// where they overlap, with a line at the time it is now on the note's own day (a daily note's date, else today).
 import { useEffect, useState } from "react"
 import { CalendarClock, Check } from "lucide-react"
-import { cn, definePlugin, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
-import { dayOf, type Entry, hhmm, planOf, ticked } from "./plan"
+import { cn, definePlugin, get, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
+import { type CalEvent, dayOf, type Entry, eventsOf, hhmm, merged, planOf, ticked } from "./plan"
 
 const TINT = "var(--day-planner)"
 const HOUR = 48
+/** Calendar events' colour, apart from the note's own items. */
+const EVENT = "var(--blue)"
 
 const nowMinutes = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
 
@@ -34,6 +36,19 @@ function lanes(plan: Entry[]) {
   return out
 }
 
+const NO_EVENTS = { timed: [] as Entry[], allDay: [] as string[] }
+/** The day's calendar events (none when no calendar answers), read when the day changes. */
+function useEvents(day: string, on: boolean) {
+  const [events, setEvents] = useState(NO_EVENTS)
+  useEffect(() => {
+    if (!on) return setEvents(NO_EVENTS)
+    let live = true
+    get<{ events?: CalEvent[] }>(`day-planner/events?day=${day}`).then((r) => { if (live) setEvents(eventsOf(r.events ?? [], day)) }, () => { if (live) setEvents(NO_EVENTS) })
+    return () => { live = false }
+  }, [day, on])
+  return events
+}
+
 /** Tick an item in its note (or untick it): its line, found by its text as it was drawn. */
 async function tick(path: string, e: Entry) {
   try {
@@ -45,20 +60,28 @@ async function tick(path: string, e: Entry) {
 }
 
 function Timeline({ path, body, options, editable }: { path: string; body: string; options: Record<string, unknown>; editable: boolean }) {
-  const plan = planOf(body)
   const now = useNow()
-  const day = dayOf(path)
-  const isToday = !day || day === today()
+  const day = dayOf(path) ?? today()
+  const isToday = day === today()
+  const cal = useEvents(day, !!path && options.calendar !== false)
+  const plan = merged(planOf(body), cal.timed)
   const first = plan.length ? Math.floor(plan[0].start / 60) : 8
   const last = plan.length ? Math.ceil(Math.max(...plan.map((e) => e.end)) / 60) : 18
   const from = Math.max(0, Math.min(23, Number.isFinite(Number(options.start)) && options.start !== undefined ? Number(options.start) : Math.min(8, first)))
   const to = Math.max(from + 1, Math.min(24, Number.isFinite(Number(options.end)) && options.end !== undefined ? Number(options.end) : Math.max(18, last)))
   const y = (min: number) => ((min - from * 60) / 60) * HOUR
   const lane = lanes(plan)
+  const allDay = cal.allDay.length > 0 && (
+    <div className="mb-2 flex flex-wrap gap-1" data-plan-all-day>
+      {cal.allDay.map((t, i) => <span key={i} className="rounded-[6px] px-2 py-0.5 text-[13px]" style={{ background: `color-mix(in oklab, ${EVENT} 16%, var(--background))` }}>{t}</span>)}
+    </div>
+  )
   if (!plan.length) {
+    if (allDay) return allDay
     return <p className="text-[15px] leading-[20px] text-muted-foreground">Nothing planned yet: list items that start with a time, like - 09:00 - 10:00 Standup, show here.</p>
   }
-  return (
+  return (<>
+    {allDay}
     <div className="relative" style={{ height: (to - from) * HOUR }} data-day-planner>
       {Array.from({ length: to - from + 1 }, (_, i) => (
         <div key={i} className="absolute right-0 left-0 flex items-start" style={{ top: i * HOUR }}>
@@ -71,11 +94,13 @@ function Timeline({ path, body, options, editable }: { path: string; body: strin
         const top = Math.max(0, y(e.start)), bottom = Math.min((to - from) * HOUR, y(e.end))
         const { lane: l, of } = lane[i]
         const on = isToday && now >= e.start && now < e.end
+        const event = e.calendar !== undefined, ink = event ? EVENT : TINT
         return (
-          <div key={`${e.line}`} data-plan-item={e.text} data-tip={`${hhmm(e.start)}–${hhmm(e.end)} ${e.text}`}
+          <div key={event ? `event-${i}` : `${e.line}`} data-plan-item={e.text} data-plan-event={event ? "" : undefined}
+            data-tip={`${hhmm(e.start)}–${hhmm(e.end)} ${e.text}${event && e.calendar ? ` · ${e.calendar}` : ""}`}
             className={cn("absolute overflow-hidden rounded-[6px] border-l-[3px] px-2 py-0.5 text-[13px] leading-[17px]", e.done ? "opacity-55" : "", on ? "font-medium" : "")}
             style={{ top: top + 1, height: Math.max(18, bottom - top - 2), left: `calc(52px + (100% - 52px) * ${l / of})`, width: `calc((100% - 52px) / ${of} - 3px)`,
-              borderColor: TINT, background: `color-mix(in oklab, ${TINT} ${on ? 26 : 14}%, var(--background))` }}>
+              borderColor: ink, background: `color-mix(in oklab, ${ink} ${on ? 26 : 14}%, var(--background))` }}>
             {e.done !== null && editable && (
               <button type="button" role="checkbox" aria-checked={!!e.done} aria-label={e.done ? `Not done: ${e.text}` : `Done: ${e.text}`} data-plan-tick
                 onClick={(ev) => { ev.stopPropagation(); void tick(path, e) }}
@@ -94,7 +119,7 @@ function Timeline({ path, body, options, editable }: { path: string; body: strin
         </div>
       )}
     </div>
-  )
+  </>)
 }
 
 const MOCK = "- [x] 08:30 Run\n- 09:00 - 10:00 Standup and planning\n- [ ] 10:00 - 12:00 Write the launch post\n- 12:30 Lunch with Alice Park\n- 14:00 - 15:30 Design review\n- 14:30 Call the bank\n"

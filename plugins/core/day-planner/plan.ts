@@ -1,7 +1,11 @@
 // A day's plan read from a note, for both sides: list items starting with a time ("- [ ] 09:00 - 10:30 Standup",
 // "- 14:00 Lunch"), each lasting to its end time, else to the next one's start, else DEFAULT minutes.
 
-export type Entry = { start: number; end: number; text: string; done: boolean | null; line: number; raw: string }
+export type Entry = { start: number; end: number; text: string; done: boolean | null; line: number; raw: string
+  /** A calendar's event (its calendar's name), drawn beside the note's items; never written anywhere. */
+  calendar?: string }
+/** An event as the calendar op answers it (times local, "YYYY-MM-DDTHH:MM..."). */
+export type CalEvent = { title: string; start: string; end: string | null; all_day: boolean; calendar: string }
 
 export const DEFAULT = 30
 const ITEM = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(\d{1,2})[:.](\d\d)(?:\s*(?:-|–|—|to)\s*(\d{1,2})[:.](\d\d))?\s+(.+?)\s*$/
@@ -46,12 +50,31 @@ export function ticked(text: string, raw: string, on: boolean): string | null {
 
 export const hhmm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`
 
+/** A day's calendar events as entries (those that start or end that day, cut to it), and its all-day ones' titles. */
+export function eventsOf(events: CalEvent[], day: string): { timed: Entry[]; allDay: string[] } {
+  const timed: Entry[] = [], allDay: string[] = []
+  const at = (t: string) => (t.slice(0, 10) < day ? 0 : t.slice(0, 10) > day ? 24 * 60 : Number(t.slice(11, 13)) * 60 + Number(t.slice(14, 16)))
+  for (const e of events) {
+    if (!e.start || e.start.slice(0, 10) > day || (e.end ?? e.start).slice(0, 10) < day) continue
+    // (an all-day event's end is the day after its last)
+    if (e.all_day) { if (!e.end || e.end.slice(0, 10) > day || e.start.slice(0, 10) === day) allDay.push(e.title); continue }
+    const start = at(e.start), end = e.end ? at(e.end) : start + DEFAULT
+    if (end <= start && e.start.slice(0, 10) !== day) continue
+    timed.push({ start, end: Math.max(end, start + 15), text: e.title, done: null, line: -1, raw: "", calendar: e.calendar })
+  }
+  return { timed: timed.sort((a, b) => a.start - b.start), allDay }
+}
+
+/** The note's items and the day's events, in order of their start. */
+export const merged = (plan: Entry[], events: Entry[]) => [...plan, ...events].sort((a, b) => a.start - b.start || a.line - b.line)
+
 /** The plan as text: a line per item, `now` (minutes into the day, when it's that day) marking the one going on. */
-export function planText(plan: Entry[], now: number | null): string {
-  if (!plan.length) return "_Nothing planned: list items starting with a time (`- 09:00 - 10:00 Standup`) show here._"
-  return plan.map((e) => {
+export function planText(plan: Entry[], now: number | null, allDay: string[] = []): string {
+  const head = allDay.length ? `All day: ${allDay.join(", ")}\n\n` : ""
+  if (!plan.length) return `${head}_Nothing planned: list items starting with a time (\`- 09:00 - 10:00 Standup\`) show here._`
+  return head + plan.map((e) => {
     const on = now !== null && now >= e.start && now < e.end
-    return `- ${hhmm(e.start)}–${hhmm(e.end)} ${e.text}${e.done ? " (done)" : ""}${on ? " **(now)**" : ""}`
+    return `- ${hhmm(e.start)}–${hhmm(e.end)} ${e.text}${e.calendar !== undefined ? ` (calendar${e.calendar ? `: ${e.calendar}` : ""})` : ""}${e.done ? " (done)" : ""}${on ? " **(now)**" : ""}`
   }).join("\n")
 }
 

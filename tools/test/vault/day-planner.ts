@@ -19,4 +19,20 @@ export default async ($: VaultTest) => {
   const p2 = planOf(note)
   check("day planner tick: an item's line ticked and unticked, by its text", ticked(note, p2[0].raw, true) === note.replace("- [ ] 09:00", "- [x] 09:00") &&
     ticked(note, p2[1].raw, false) === note.replace("- [x] 10:00", "- [ ] 10:00") && ticked(note, p2[2].raw, true) === null && ticked("changed\n", p2[0].raw, true) === null)
+
+  const { eventsOf, merged } = await import("../../../plugins/core/day-planner/plan.ts")
+  const day = "2026-10-05"
+  const ev = eventsOf([
+    { title: "Standup", start: `${day}T09:15:00`, end: `${day}T09:30:00`, all_day: false, calendar: "Work" },
+    { title: "Flight", start: "2026-10-04T22:00:00", end: `${day}T02:00:00`, all_day: false, calendar: "" },
+    { title: "Offsite", start: day, end: "2026-10-06", all_day: true, calendar: "Work" },
+    { title: "Yesterday", start: "2026-10-04", end: day, all_day: true, calendar: "" },
+    { title: "Tomorrow", start: "2026-10-06T10:00:00", end: "2026-10-06T11:00:00", all_day: false, calendar: "" },
+  ], day)
+  check("day planner calendar: the day's timed events (one from the night before cut to midnight), its all-day ones", ev.timed.map((e) => `${e.start}-${e.end} ${e.text}`).join("|") === "0-120 Flight|555-570 Standup" &&
+    ev.allDay.join() === "Offsite", ev)
+  const both = merged(planOf("- 09:00 Plan\n"), ev.timed)
+  check("day planner calendar: beside the note's items, in order, named as events in the text", planText(both, null, ev.allDay) === "All day: Offsite\n\n- 00:00–02:00 Flight (calendar)\n- 09:00–09:30 Plan\n- 09:15–09:30 Standup (calendar: Work)", planText(both, null, ev.allDay))
+  const [es, eb] = await api("GET", "day-planner/events?day=2026-10-05")
+  check("day planner calendar: the route answers the day's events (none here: no calendars)", es === 200 && Array.isArray(eb.events) && eb.events.length === 0, eb)
 }
