@@ -72,7 +72,12 @@ for (const dark of [false, true]) {
   if (!dark) {
     // The main area scrolls by itself with room kept for its scrollbar: a short page and a long one line up exactly
     // (two core pages the pane scrolls: dashboards are files, drawn full width, and Settings scrolls itself).
-    const edge = () => page.evaluate(() => { const m = document.getElementById("main-scroll"), r = m.querySelector("main").getBoundingClientRect(); return { at: [Math.round(r.left), Math.round(r.right)], scrolls: m.scrollHeight > m.clientHeight } })
+    // (scrolling: the area itself, or a box of the page's own in it, as Plugins and Settings have)
+    const edge = () => page.evaluate(() => {
+      const m = document.getElementById("main-scroll"), r = m.querySelector("main").getBoundingClientRect()
+      const scrolls = [m, ...m.querySelectorAll("main .overflow-y-auto")].some((e) => e.scrollHeight > e.clientHeight)
+      return { at: [Math.round(r.left), Math.round(r.right)], scrolls }
+    })
     await page.goto("about:blank"); await page.goto(`${B}#bundles`); await page.locator("#main-scroll main [data-bundles-page]").waitFor()
     const short = await edge()
     await page.goto("about:blank"); await page.goto(`${B}#plugins`); await page.locator("#main-scroll main [data-plugin-row]").first().waitFor()
