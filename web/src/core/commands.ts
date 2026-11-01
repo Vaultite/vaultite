@@ -64,6 +64,8 @@ const changed = () => { list = [...reg.values()]; knownList = [...known.values()
 /** Add commands (the same id replaces the older one); returns how to take them away again. */
 export function registerCommands(cs: Command[]) {
   cs = cs.filter((c) => guestCommand(c.id))
+  // (none: nothing to tell, as a file that isn't live registers none, redrawing every keys hint as tabs switch)
+  if (!cs.length) return () => {}
   for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name }) }
   changed()
   return () => { for (const c of cs) if (reg.get(c.id) === c) reg.delete(c.id); changed() }
@@ -152,8 +154,8 @@ export const firstKeys = (id: string) => { const c = reg.get(id) ?? known.get(id
 export const commandKeys = (id: string) => { const k = firstKeys(id); return k ? keyHint(k) : "" }
 /** `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys. */
 export function useCommandKeys(id: string, paren = false) {
-  useKnownCommands()
-  const k = commandKeys(id)
+  // (its own keys only: other commands coming and going draw nothing)
+  const k = commandsChanged.use(() => commandKeys(id))
   return paren && k ? ` (${k})` : k
 }
 
