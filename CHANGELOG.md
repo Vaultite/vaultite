@@ -27,6 +27,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Kanagawa, Nord, One and Solarized's weaker variants reads a little stronger everywhere.
 - **A note opened again while it's typed in together joins in**: its new tab's editor failed with an error and didn't
   type with the others.
+- **The outline lights the heading it went to**: clicking a heading in the Outline scrolled to it but lit the one
+  above it, the path bar's height not counted.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".

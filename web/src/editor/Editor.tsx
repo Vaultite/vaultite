@@ -39,6 +39,7 @@ import { usePrefs } from "@/core/prefs"
 import { usePane } from "@/core/pane"
 import { useEditorSettings, type EditorSettings } from "@/core/editorPrefs"
 import { cn, scrollingBox } from "@/lib/utils"
+import { sightOf } from "@/core/sight"
 import { trace } from "@/core/trace"
 
 export type EditorApi = {
@@ -453,8 +454,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       text: () => v.state.doc.toString(),
       scrollTo: (line) => scrollToLine(v, line),
       topLine: () => {
-        const sc = scrollingBox(v.dom)
-        const top = (sc ? sc.getBoundingClientRect().top : 0) + 80
+        // (from under the bars drawn over it, as scrollToLine's margin counts from there: a heading gone to is the one)
+        const top = sightOf(v.dom).top + 80
         const h = top - v.documentTop
         // (never above the body: a hidden frontmatter's lines aren't on screen)
         const first = v.state.doc.lineAt(v.state.field(frontmatter, false) ?? 0).number - 1

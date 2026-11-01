@@ -113,6 +113,9 @@ check("a new tab shows the pinned pages as tiles", tiles.length === drawer.lengt
 await m.screenshot({ path: `${OUT}phone-new-tab.png`, fullPage: true })
 await m.goto(`${B}#settings`); await m.waitForTimeout(1500)
 check("Settings doesn't list the pages (Pinned's settings do)", !(await m.locator("[data-page-row]").count()))
+// (under Features, folded at first)
+const fold = m.locator('[data-rail-fold="Features"]')
+if ((await fold.getAttribute("aria-expanded")) === "false") await fold.tap()
 await m.locator('[data-settings-nav="plugin:pages"]').tap(); await m.waitForTimeout(800)
 check("Pinned's settings: the pages, saying how many are pinned", (await m.locator("dialog[open] [data-page-row]").count()) >= drawer.length &&
   (await m.locator("dialog[open] [data-pages-count]").innerText()).includes(`${drawer.length} pinned`), await m.locator("dialog[open] [data-pages-count]").innerText().catch(() => ""))
