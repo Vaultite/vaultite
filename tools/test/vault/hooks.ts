@@ -79,10 +79,19 @@ export default async ($: VaultTest) => {
       // (an event can come before the next request's sync: a script changed on disk since it was allowed doesn't run)
       await api("POST", "ops/plugin.allow", { id: "wordcount", edits: false })
       const script = path.join(VAULT, WC, "note-changed.mjs"), was = fs.readFileSync(script, "utf8")
-      fs.writeFileSync(script, `import fs from "node:fs"; fs.writeFileSync(process.env.VAULTITE_PLUGIN_STATE + "/changed-by-sync.txt", "ran")\n`)
-      eventsOf(vault).emit("file.changed", { paths: ["Notes/Count me.md"] })
-      await sleep(400)
-      check("hooks: a command whose files changed since this machine allowed them doesn't run", !fs.existsSync(path.join(state, "changed-by-sync.txt")))
+      const runs = () => app.vaultPlugins.hooks.logs.get("wordcount") ?? []
+      const refused = () => runs().filter((r) => r.error?.startsWith("its files changed")).length
+      const before = refused()
+      // A run another event started just before the change can read the new script as it starts: it was allowed when it
+      // started (a slow start on Windows CI read it, 2026-11-01). Only the event after the change, its own path, counts.
+      eventsOf(vault).emit("file.changed", { paths: null })
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r))
+      fs.writeFileSync(script, `import fs from "node:fs"; const ev = JSON.parse(fs.readFileSync(0, "utf8"))
+if (ev.paths?.includes("Notes/After the change.md")) fs.writeFileSync(process.env.VAULTITE_PLUGIN_STATE + "/changed-by-sync.txt", "ran")\n`)
+      eventsOf(vault).emit("file.changed", { paths: ["Notes/After the change.md"] })
+      for (let i = 0; i < 250 && refused() === before; i++) await sleep(20)
+      check("hooks: a command whose files changed since this machine allowed them doesn't run", refused() > before && !fs.existsSync(path.join(state, "changed-by-sync.txt")),
+        runs().slice(-3))
       fs.writeFileSync(script, was)
       await api("POST", "ops/plugin.allow", { id: "wordcount", edits: true })
     }
