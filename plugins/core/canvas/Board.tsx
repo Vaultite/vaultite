@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight,
   ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
-  Palette, Pencil, Plus, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup,
+  ChevronLeft, ChevronRight, Palette, Pencil, Plus, Presentation, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup, X,
 } from "lucide-react"
 import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
 import { BORDERS, colorOf, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
@@ -14,6 +14,7 @@ import { Card, Group, type CardEvents } from "./Card"
 import { Edge } from "./Edges"
 import { edgePath, isImage, px } from "./look"
 import { registerBoard, type BoardKeys } from "./keys"
+import { slidesOf } from "./present"
 
 /** Zoomed out past this, cards are drawn as their colour and name. */
 const FAR_K = 0.3
@@ -231,6 +232,32 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   }
   const zoomBy = (f: number) => { const { w, h } = size(); animateTo(zoomAbout(viewRef.current, viewRef.current.k * f, w / 2, h / 2)) }
   const zoomTo100 = () => { const { w, h } = size(); animateTo(zoomAbout(viewRef.current, 1, w / 2, h / 2)) }
+  // Presenting: each group a slide, shown whole (slidesOf's order); the arrow keys step, Escape ends it.
+  const slides = useMemo(() => slidesOf(doc), [doc])
+  const [slide, setSlide] = useState<number | null>(null)
+  const showSlide = (i: number) => {
+    const g = slides[Math.max(0, Math.min(slides.length - 1, i))]
+    if (!g) return setSlide(null)
+    setSlide(slides.indexOf(g))
+    const { w, h } = size()
+    animateTo(fitView([g], w, h, 40, 4))
+  }
+  const present = () => { setSel(new Set()); setSelEdge(null); setEditing(null); showSlide(0); box.current?.focus() }
+  const endPresenting = () => { setSlide(null); fitAll() }
+  useEffect(() => {
+    if (slide === null) return
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return
+      const go = ["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key) ? 1 : ["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key) ? -1 : 0
+      if (!go && e.key !== "Escape") return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === "Escape") endPresenting(); else showSlide(slide + go)
+    }
+    window.addEventListener("keydown", key, true)
+    return () => window.removeEventListener("keydown", key, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slide, slides])
   // The keyboard's pan and zoom commands (keys.ts) reach this board through these, the latest of them.
   const keyed = useRef<BoardKeys | null>(null)
   keyed.current = {
@@ -897,7 +924,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const cards = doc.nodes.filter((n) => n.type !== "group" && shown(n))
   const handles = editable && interactive && !far && !drag
   const movingEdge = drag?.kind === "end" ? drag.edge : null
-  const toolbarOn = editable && interactive && !drag && !editing && (sel.size > 0 || !!selEdge)
+  const toolbarOn = editable && interactive && !drag && !editing && slide === null && (sel.size > 0 || !!selEdge)
   const edgeOf = (id: string | null) => {
     const e = id ? doc.edges.find((x) => x.id === id) : undefined
     const a = e && byId.get(e.fromNode), b = e && byId.get(e.toNode)
@@ -1010,7 +1037,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
           {editable ? "An empty canvas. Double-click anywhere to add a card, drop notes and files here, or use the buttons below." : "An empty canvas."}
         </div>
       )}
-      {!embed && (
+      {!embed && slide === null && (
         <div className="glass absolute top-3 right-3 flex flex-col items-center gap-0.5 rounded-[12px] p-1 max-md:top-2 max-md:right-2" data-canvas-toolbar="view"
           onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
           <Tool icon={Plus} label="Zoom in" onClick={() => zoomBy(1.25)} />
@@ -1020,6 +1047,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
           </button>
           <Tool icon={Minus} label="Zoom out" onClick={() => zoomBy(0.8)} />
           <Tool icon={Maximize} label="Zoom to fit" keys={fitKeys} onClick={fitAll} />
+          {slides.length > 0 && <Tool icon={Presentation} label="Present its groups" onClick={present} />}
           {editable && <>
             <span className="my-0.5 h-px w-5 shrink-0 bg-border" />
             <Tool icon={Undo2} label="Undo" onClick={() => step(true)} disabled={!undo.current.length} />
@@ -1032,7 +1060,18 @@ export default function Board({ store, text, editable, onChange, place, path }: 
           </>}
         </div>
       )}
-      {!embed && editable && (
+      {slide !== null && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3 max-md:bottom-2">
+          <div className="glass pointer-events-auto flex h-10 items-center gap-0.5 rounded-[12px] px-1 max-md:h-12" data-canvas-toolbar="present"
+            onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            <Tool icon={ChevronLeft} label="Previous" onClick={() => showSlide(slide - 1)} disabled={slide === 0} />
+            <span className="min-w-12 text-center text-[13px] text-muted-foreground tabular-nums" data-canvas-slide>{slide + 1} / {slides.length}</span>
+            <Tool icon={ChevronRight} label="Next" onClick={() => showSlide(slide + 1)} disabled={slide >= slides.length - 1} />
+            <Tool icon={X} label="End presentation" onClick={endPresenting} />
+          </div>
+        </div>
+      )}
+      {!embed && editable && slide === null && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3 max-md:bottom-2">
           <div className="glass pointer-events-auto flex h-10 max-w-full items-center gap-0.5 overflow-x-auto rounded-[12px] px-1 max-md:h-12" data-canvas-toolbar="add"
             onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>

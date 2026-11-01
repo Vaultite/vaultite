@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Slide themes look like themselves**: a deck's `theme:` (black, night, serif, league, dracula and the rest of
   reveal's and Advanced Slides') draws its fonts, heading case and tone in the app's colours.
+- **Present a canvas**: Present in a canvas's toolbar shows its groups one at a time, in the order arrows between them
+  give (else top to bottom, left to right); the arrow keys step through them and Escape ends it.
 - **Day planner**: a block in your daily note draws its timed items (`- 09:00 - 10:30 Standup`, `- 14:00 Lunch`) as a
   timeline of the day, overlapping ones side by side and a line at the time it is now; a task ticks done right on the
   timeline; agents read it as the plan.

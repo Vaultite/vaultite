@@ -27,6 +27,13 @@ export default async ($: VaultTest) => {
     const styled = canvasMarkdown(JSON.stringify({ nodes: [{ id: "a", type: "text", text: "Start", x: 0, y: 0, width: 1, height: 1, color: "4", styleAttributes: { shape: "pill" } },
       { id: "b", type: "text", text: "End", x: 0, y: 0, width: 1, height: 1 }], edges: [{ id: "e", fromNode: "a", toNode: "b", styleAttributes: { path: "dotted" } }] }))
     check("canvas styles: in the text, a card's shape and an arrow's dashes", styled.includes("- Card (green, pill): Start") && styled.includes("(dotted line)"), styled)
+    const { slidesOf } = await import("../../../plugins/core/canvas/present.ts")
+    const g = (id: string, x: number, y: number) => ({ id, type: "group", x, y, width: 100, height: 100 })
+    const nodes = [g("c", 0, 300), g("a", 400, 0), g("b", 0, 0), { id: "t", type: "text", x: 0, y: 0, width: 10, height: 10 }, g("d", 200, 20)]
+    const ids = (edges: { fromNode: string; toNode: string }[]) => slidesOf({ nodes, edges: edges.map((e, i) => ({ id: `e${i}`, ...e })) }).map((n) => n.id).join("")
+    check("canvas present: groups are the slides, in reading order", ids([]) === "bdac", ids([]))
+    check("canvas present: arrows between groups give the order, the rest follow in reading order", ids([{ fromNode: "c", toNode: "a" }, { fromNode: "a", toNode: "b" }]) === "cabd" &&
+      ids([{ fromNode: "a", toNode: "c" }, { fromNode: "c", toNode: "a" }]) === "acbd", ids([{ fromNode: "c", toNode: "a" }, { fromNode: "a", toNode: "b" }]))
   }
   const [cmade] = await api("POST", "file", { path: "Canvases/New.canvas", text: '{\n\t"nodes": [],\n\t"edges": []\n}\n' })
   const [, cread] = await api("GET", "file?path=Canvases/New.canvas")
