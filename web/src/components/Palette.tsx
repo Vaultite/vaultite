@@ -2,7 +2,7 @@
 // picks (⌘ or ⇧ when the caller says), Esc closes. Its frame (PaletteFrame) is any palette-like box's (the Ask box).
 import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { X } from "lucide-react"
-import { keyCaps, keyHint } from "@/core/commands"
+import { keyCaps } from "@/core/commands"
 import { isMac } from "@/core/platform"
 import { useHeldFocus } from "@/core/focus"
 import { useNearEnd } from "@/core/near"
@@ -44,12 +44,13 @@ export function Marked({ text, marks }: { text: string; marks: number[] }) {
   return <>{runs.map(([t, m], i) => (m ? <mark key={i} className="bg-transparent font-semibold text-primary">{t}</mark> : t))}</>
 }
 
-/** Keycaps for a shortcut ("Mod+E"), drawn small at the end of a row. */
-export function Keys({ keys }: { keys: string }) {
+/** Keycaps for a shortcut ("Mod+E"), drawn small at the end of a row; `small` in a line of text (the hints below). */
+export function Keys({ keys, small = false }: { keys: string; small?: boolean }) {
   return (
-    <span className="hidden shrink-0 gap-1 md:flex">
+    <span className={cn("hidden shrink-0 md:flex", small ? "gap-0.5" : "gap-1")}>
       {keyCaps(keys).map((k, i) => (
-        <kbd key={i} className="grid h-[22px] min-w-[22px] place-items-center rounded-[5px] border-[0.5px] border-border bg-foreground/[0.06] px-1.5 font-keys text-[12px] leading-none text-muted-foreground">{k}</kbd>
+        <kbd key={i} className={cn("grid place-items-center border-[0.5px] border-border bg-foreground/[0.06] font-keys leading-none text-muted-foreground",
+          small ? "h-[18px] min-w-[18px] rounded-[4px] px-1 text-[11px]" : "h-[22px] min-w-[22px] rounded-[5px] px-1.5 text-[12px]")}>{k}</kbd>
       ))}
     </span>
   )
@@ -201,11 +202,9 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         ))}
         {drawn < items.length ? <div ref={more} aria-hidden className="h-px" /> : onEnd && <div ref={end} aria-hidden className="h-px" />}
       </div>
-      <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t-[0.5px] border-border px-5 py-2.5 text-[13px] text-muted-foreground md:flex">
+      <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex">
         {hints.map(([k, what]) => (
-          <span key={k} className="whitespace-nowrap">
-            <span className="font-keys font-semibold text-foreground/80">{k.split(" ").map(keyHint).join("")}</span> {what}
-          </span>
+          <span key={k} className="flex items-center gap-1.5 whitespace-nowrap"><Keys keys={k} small />{what}</span>
         ))}
       </div>
     </PaletteFrame>

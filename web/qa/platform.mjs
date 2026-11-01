@@ -42,10 +42,11 @@ await page.locator("body").click({ position: { x: 640, y: 20 } }).catch(() => {}
 await page.keyboard.press(BACK_KEY)
 check("back's keys go back", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(a), 5000), await page.evaluate(() => location.hash))
 
-// The palette: keycaps as text in the quick switcher's footer, Ctrl+P (off a Mac the palette's own key) not taken as ↑.
+// The palette: keycaps in the quick switcher's footer, as its rows draw them; Ctrl+P (off a Mac the palette's own key)
+// not taken as ↑.
 await page.keyboard.press("ControlOrMeta+O"); await wait(500)
-const foot = await page.locator("[role=dialog]").last().textContent()
-check(`the quick switcher's footer says ${MAC ? "⌘↵" : "Ctrl+↵"}`, foot.includes(MAC ? "⌘↵" : "Ctrl+↵"), foot.slice(-200))
+const foot = await page.locator("[role=dialog]").last().locator("span:has(> span > kbd)").evaluateAll((hs) => hs.map((h) => [...h.querySelectorAll("kbd")].map((k) => k.textContent).join(" ") + ": " + h.textContent.replace(/^.*?(?=to )/, "")))
+check(`the quick switcher's footer says ${MAC ? "⌘ ↵" : "Ctrl Enter"} as keycaps`, foot.includes(`${MAC ? "⌘ ↵" : "Ctrl Enter"}: to open in new tab`), foot)
 await page.keyboard.press("Escape")
 await page.keyboard.press("ControlOrMeta+P"); await wait(300)
 await page.keyboard.type("Switch to workspace 2"); await wait(400)
