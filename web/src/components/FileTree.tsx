@@ -329,6 +329,14 @@ function compare(sort: FileSort) {
   return (a: Node, b: Node) => (a.folder !== b.folder ? (a.folder ? -1 : 1) : a.folder ? (sort === "name-desc" ? byName(b, a) : byName(a, b)) : files(a, b))
 }
 
+/** A note's row, the same object while its file's is (a refresh keeps unchanged files' objects): nothing to compare. */
+const fileNodes = new WeakMap<VaultFile, Node>()
+function fileNode(f: VaultFile): Node {
+  let n = fileNodes.get(f)
+  if (!n) fileNodes.set(f, n = { path: f.path, name: stem(f.path), folder: false, file: f, mtime: f.mtime, ctime: f.ctime ?? f.mtime, children: [] })
+  return n
+}
+
 /** `open`: hidden or archived files open in tabs that the tree doesn't show: shown too, with their folders. `prev`: the
  *  last tree, whose order by name is kept for what's still there (the collator, sorting a big vault, is most of a build). */
 function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showArchived = false, prev: Node | null = null): Node {
@@ -346,9 +354,7 @@ function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showAr
     folders.set(f, node)
   }
   for (const [p, node] of folders) if (p) folders.get(folderOf(p))?.children.push(node)
-  for (const f of files.files) {
-    if (shown(f.path)) folders.get(folderOf(f.path))?.children.push({ path: f.path, name: stem(f.path), folder: false, file: f, mtime: f.mtime, ctime: f.ctime ?? f.mtime, children: [] })
-  }
+  for (const f of files.files) if (shown(f.path)) folders.get(folderOf(f.path))?.children.push(fileNode(f))
   for (const o of files.others) {
     // Hidden .md files (in the trash) aren't in the index, so they come as others; they still open in the editor.
     if (shown(o.path)) folders.get(folderOf(o.path))?.children.push({ path: o.path, name: shownName(o.path), folder: false, other: !isDoc(o.path), mtime: o.mtime, ctime: o.ctime ?? o.mtime, children: [] })
@@ -384,9 +390,13 @@ function resorted(kids: Node[], had: Node[], cmp: (a: Node, b: Node) => number) 
 /** The new tree with the last one's nodes wherever nothing a row shows changed (the same objects): every change in the
  *  vault brings a new file list, and only the rows that changed are drawn again (TreeRow). */
 function keepSame(prev: Node | null, next: Node): Node {
-  if (!prev) return next
-  const old = new Map(prev.children.map((c) => [c.path, c]))
-  const children = next.children.map((c) => { const o = old.get(c.path); return o ? keepSame(o, c) : c })
+  if (!prev || prev === next) return next
+  // (the same place first: most rows are where they were)
+  let old: Map<string, Node> | null = null
+  const children = next.children.map((c, i) => {
+    const o = prev.children[i]?.path === c.path ? prev.children[i] : (old ??= new Map(prev.children.map((p) => [p.path, p]))).get(c.path)
+    return o ? keepSame(o, c) : c
+  })
   const same = prev.name === next.name && prev.folder === next.folder && prev.other === next.other && looks(prev.file) === looks(next.file)
     && children.length === prev.children.length && children.every((c, i) => c === prev.children[i])
   return same ? prev : { ...next, children }
