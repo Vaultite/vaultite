@@ -1,7 +1,7 @@
 // An artifact in a sandboxed iframe, this side answering its bridge (reads, file list, storage, links, height, theme).
 // A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { askBeforeOpening } from "./links.ts"
+import { askBeforeOpening, outsideVault } from "./links.ts"
 import { joinShared, type SharedLink } from "./sharing.ts"
 import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, share, stem, tintNames, touches, useVaultChange } from "@vaultite"
 
@@ -63,7 +63,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   // Asking Claude: declined once, it stays declined while this view is open; the calls running, by their ask.
   const declined = useRef(false)
   // Sites the user said yes to opening from it, while this view is open (links.ts).
-  const opened = useRef(new Set<string>()), listed = useRef(false)
+  const opened = useRef(new Set<string>())
   const asking = useRef(new Map<number, WebSocket>())
   // The page's shared state (vau.shared()), joined while this load of it lasts.
   const shared = useRef<SharedLink | null>(null)
@@ -109,7 +109,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
         win.postMessage({ vau: 1, type: "reply", id: d.id, value, error, code, more }, "*")
       // A page from outside the
       // vault (an absolute path) is anyone's: it gets nothing of the vault, keeps no storage, and opens only web links.
-      const outside = path.startsWith("/")
+      const outside = outsideVault(path)
       if (d.type === "ready") { setReady(true); sendTheme() }
       else if (d.type === "height" && typeof d.h === "number") {
         // A page that's always a bit taller than its frame (100vh plus a margin) would grow forever: stop it.
@@ -124,8 +124,8 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
         // (a shared folder's page opens no address for its guest: it would carry what it read out)
         if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) {
           if (share) return
-          const site = askBeforeOpening(reads.current.size > 0 || listed.current, d.url, opened.current)
-          if (site !== null && !(await confirmDialog({ title: `Open ${site}?`, body: `${stem(path)} read your vault, and links to ${d.url.length > 300 ? `${d.url.slice(0, 300)}…` : d.url}`, confirm: "Open", cancel: "Cancel" }))) return
+          const site = askBeforeOpening(path, d.url, opened.current)
+          if (site !== null && !(await confirmDialog({ title: `Open ${site}?`, body: `${stem(path)} can read your vault, and links to ${d.url.length > 300 ? `${d.url.slice(0, 300)}…` : d.url}`, confirm: "Open", cancel: "Cancel" }))) return
           if (site !== null) opened.current.add(site)
           window.open(d.url, "_blank", "noopener,noreferrer")
         }
@@ -139,7 +139,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
         const args = (d.args ?? {}) as Record<string, unknown>
         if (d.op === "read") {
           const p = String(args.path ?? "")
-          if (!p || isHidden(p)) return reply(undefined, `can't read '${p}'`)
+          if (!p || isHidden(p) || outsideVault(p)) return reply(undefined, `can't read '${p}'`)
           try {
             const f = await readFile(p)
             reads.current.set(p, f.mtime)
@@ -150,7 +150,6 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
           }
         } else if (d.op === "files") {
           const pre = String(args.prefix ?? "")
-          listed.current = true
           const s = getStore()
           const all = s ? [...s.files.files, ...s.files.others] : []
           reply(all.filter((f) => f.path.startsWith(pre) && !isHidden(f.path)).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size })))

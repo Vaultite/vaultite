@@ -24,11 +24,16 @@ export default async ($: VaultTest) => {
   }
   {
     // A page's link out (its bridge's `open`): once it read the vault, the user sees where it goes first, once a site.
-    const { askBeforeOpening } = await import("../../../plugins/core/html/links.ts")
+    const { askBeforeOpening, outsideVault } = await import("../../../plugins/core/html/links.ts")
     const said = new Set(["docs.example.com"])
-    check("artifacts: a link out asks first once the page read the vault, naming its site, once per site",
-      askBeforeOpening(false, "https://evil.example/?d=secret", said) === null && askBeforeOpening(true, "https://evil.example/?d=secret", said) === "evil.example" &&
-      askBeforeOpening(true, "https://docs.example.com/x", said) === null && askBeforeOpening(true, "mailto:a@example.com?body=x", said) === "a@example.com")
+    check("artifacts: a page in the vault asks before a link out from its first load (it's given what it kept), naming its site, once per site",
+      askBeforeOpening("Notes/Page.html", "https://evil.example/?d=secret", said) === "evil.example" &&
+      askBeforeOpening("Notes/Page.html", "https://docs.example.com/x", said) === null && askBeforeOpening("Notes/Page.html", "mailto:a@example.com?body=x", said) === "a@example.com")
+    check("artifacts: a page from outside the vault is given nothing of it, so its links open",
+      ["/Users/alice/Page.html", "C:\\Users\\alice\\Page.html", "C:/Users/alice/Page.html", "\\\\server\\share\\Page.html"].every((p) => askBeforeOpening(p, "https://evil.example/", said) === null))
+    check("artifacts: a page reads vault paths, never an absolute one the desktop app opened",
+      ["/etc/passwd", "/Users/alice/secret.md", "C:\\Users\\alice\\x.md", "c:/x.md", "\\\\server\\share\\x.md"].every(outsideVault) &&
+      !["Notes/a.md", "a:b.md", "~/x.md", "Money/Tx.csv"].some(outsideVault))
   }
   // Artifacts (.html) and tables (.csv): in the file list, written like other files, shown as text, their storage.
   write("Money/Spend.html", '<!doctype html><html><head><title>Spend</title><meta name="vaultite:icon" content="wallet"></head>' +
