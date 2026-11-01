@@ -69,6 +69,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Bar({ w, className })`: A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width).
 - `BarKey`
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
+- `BaseLayout`
+- `BaseLayoutCtx`: What a layout draws: the base's file (or the note with its fence), the whole base's YAML, the view's own and its name, its rows.
+- `BaseLayoutDrawn`: What a layout drew, told when the rows or the view change and when it goes.
+- `baseLayoutOf(type)`
+- `baseLayouts()`: The layouts plugins registered, and the one for a view's type.
+- `BaseRows`: A base's rows as a layout gets them: every match, in the view's groups (one, unnamed, when it has none).
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
 - `besideActive(fallback, skip?)`: The folder of the note being written, for a file made from it (a canvas, a drawing, a base): an archived note's as if it weren't (nothing new goes into an archive); `fallback` when it's a page,…
 - `BlockCtx`: What a block gets: the file as in the editor now, its text and that text as YAML options with declared defaults.
@@ -470,6 +476,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readSidebars`
 - `RecentKind`
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
+- `registerBaseLayout(l)`: A layout views can pick: registered until the returned function (a later one of the same type replaces it).
 - `registerCanvas(c)`: A canvas came on screen: registered until it goes (the returned function).
 - `rehit()`: Ask the targets again what a drop where the pointer rests would do: for an answer that changes with time while the pointer is still (a card held over another groups them after a moment: TabSwitcher).
 - `reload()`
@@ -638,6 +645,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
 - `useArchivedTabs()`
+- `useBaseLayouts()`: The registered layouts, followed: a component using it draws again as plugins add theirs.
 - `useBusy()`: A slow action of a button's: `busy` while it runs (`<Button busy>`: it shows it and takes no second press).
 - `useChosen(value)`: A value the user just changed (a switch, a name), shown at once over `value`, the source's: until the source says the same or moves on, or the old one again when the write fails (saying `failed`).
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.

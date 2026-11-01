@@ -1,8 +1,8 @@
 // An Obsidian base (its tab, an embed, a ```base fence) with QueryView's pieces, views as tabs, Obsidian's toolbar. A change
 // here is a small edit to its YAML (baseedit.ts), shown at once, written to its file (an embed's too) or its fence.
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Plus, Search, Table2, X, type LucideIcon } from "lucide-react"
-import { cn, freeName, getStore, menuBelow, newNoteFolder, notify, notifyError, openNew, Panel, post, put, readFile, reload, resolver, today, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
+import { ArrowDown, ArrowUp, Blocks, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Plus, Search, Table2, X, type LucideIcon } from "lucide-react"
+import { baseLayoutOf, cn, freeName, getStore, menuBelow, newNoteFolder, notify, notifyError, openNew, Panel, post, put, readFile, reload, resolver, today, useBaseLayouts, type BaseLayout, type BaseLayoutCtx, type BaseLayoutDrawn, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
 import { ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
 import { parse as parseYaml, stringify } from "yaml"
 import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplayName, setOrder, setSort, setSummary, setViewType } from "./baseedit"
@@ -13,12 +13,15 @@ import { newItem } from "./newitem"
 import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, named, Popover, PropertiesMenu, ResultsButton, ResultsMenu, SortMenu, type BaseEdit } from "./Toolbar"
 
 const ICONS: Record<string, LucideIcon> = { table: Table2, cards: LayoutGrid, list: List, map: MapIcon, kanban: Columns3, board: Columns3, calendar: CalendarDays }
-const iconOf = (type: string) => ICONS[type.toLowerCase()] ?? Table2
+const iconOf = (type: string) => ICONS[type.toLowerCase()] ?? (pluginLayout(type) ? Blocks : Table2)
 /** The layouts a view can have, as Obsidian names them (calendar is this app's). */
 const LAYOUTS: { type: string; label: string }[] = [
   { type: "table", label: "Table" }, { type: "cards", label: "Cards" }, { type: "list", label: "List" },
   { type: "kanban", label: "Board" }, { type: "map", label: "Map" }, { type: "calendar", label: "Calendar" },
 ]
+/** A plugin's layout for a view's type (an Obsidian plugin's Bases view): never one of the app's own, which it draws. */
+const OWN = new Set([...LAYOUTS.map((l) => l.type), "board"])
+const pluginLayout = (type: string) => (OWN.has(type.toLowerCase()) ? null : baseLayoutOf(type))
 /** The summaries a column's menu offers (Obsidian's; Count is this app's). */
 const SUMMARY_NAMES = SUMMARIES.filter((s) => s !== "Count")
 
@@ -46,6 +49,7 @@ async function writeFile(path: string, fn: (t: string) => string) {
 }
 
 export function BaseView({ store, text, path, host, view, place, onChange, setText }: Props) {
+  const extra = useBaseLayouts().filter((l) => !OWN.has(l.type.toLowerCase()))
   const [picked, setShow] = useState<string | null>(view ?? null)
   // (a calendar's month: its arrows', else the view's `month`, else this one; the arrows don't change the file)
   const [moved, setMonth] = useState<string | null>(null)
@@ -175,10 +179,11 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   const menu = (e: React.MouseEvent): void => {
     const names = views.map((v) => v.name), type = views[current]?.type.toLowerCase() ?? "table"
     const items: MenuItem[] = [
-      { label: "Layout", icon: iconOf(type), run: () => {}, items: LAYOUTS.map((l) => ({
+      { label: "Layout", icon: iconOf(type), run: () => {}, items: [...LAYOUTS.map((l) => ({
         label: l.label, icon: iconOf(l.type), checked: l.type === type || (l.type === "kanban" && type === "board"),
         run: () => edit((t) => setViewType(t, current, l.type)),
-      })) },
+      })), ...extra.map((l, i) => ({ label: l.name, icon: Blocks, checked: l.type.toLowerCase() === type, sep: i === 0,
+        run: () => edit((t) => setViewType(t, current, l.type)) }))] },
       { label: "New view", icon: Table2, run: () => { const name = freeViewName(names, "Table"); edit((t) => addView(t, "table", name, current)); setShow(name) } },
       ...(current > 0 ? [{ label: "Show first when embedded", run: () => edit((t) => firstView(t, current)) }] : []),
       ...(views.length > 1 ? [{ label: "Delete view", danger: true, sep: true, run: () => { edit((t) => removeView(t, current), `Deleted ${names[current]}`); setShow(null) } }] : []),
@@ -258,8 +263,11 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
       })}
     </div>
   )
+  // (a view an Obsidian plugin draws: its rows go to it, filtered by the search as the app's own are)
+  const drawnBy = res ? pluginLayout(views[current]?.type ?? "") : null
   const body = error ? <p className="text-[15px] text-muted-foreground" data-base-error>Base: {error.replace(/^Error: /, "")}</p>
     : !res ? <ResultSkeleton view={views[current]?.type.toLowerCase() ?? "table"} rows={rows} />
+    : drawnBy ? <PluginLayout layout={drawnBy} ctx={{ path, host, base: cfg ?? {}, view: vcfg ?? {}, name: views[current]?.name ?? "", rows: { columns: res.columns, groups, total: res.total } }} />
     : words.length && !groups.some((g) => g.rows.length) ? <p className="py-2 text-[15px] text-muted-foreground" data-base-no-match>Nothing matches "{q!.trim()}".</p>
     : <ResultBody res={searched!} groups={groups} resolve={resolve} ctl={ctl} save={save} add={(props) => void newFile(props)} month={month} setMonth={setMonth} fill={fill} />
   const more = lasting && place !== "embed" && res && (
@@ -291,6 +299,27 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
       <div className={cn("min-w-0 px-4", fill ? "flex min-h-0 flex-1 flex-col overflow-y-auto py-3" : "pt-1 pb-4")} data-base-body>{body}</div>
     </div>
   )
+}
+
+/** A view a plugin's layout draws: mounted in its own element, told when its rows or options change. */
+function PluginLayout({ layout, ctx }: { layout: BaseLayout; ctx: BaseLayoutCtx }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const drawn = useRef<BaseLayoutDrawn | null>(null)
+  const latest = useRef(ctx)
+  latest.current = ctx
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    try { drawn.current = layout.mount(el, latest.current) || null } catch (e) { notifyError(e, `${layout.name} couldn't draw this view`) }
+    return () => { try { drawn.current?.destroy?.() } catch (e) { console.error(e) } drawn.current = null; el.replaceChildren() }
+  }, [layout])
+  // (the view's options and its groups are kept while they don't change: a new answer, an edit or a search does)
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) { first.current = false; return }
+    try { drawn.current?.update?.(latest.current) } catch (e) { console.error(e) }
+  }, [ctx.view, ctx.rows.groups])
+  return <div ref={ref} className="min-h-40 min-w-0 flex-1" data-base-plugin-layout={layout.type} />
 }
 
 /** A .base file, as the app draws files a plugin owns (FormatCtx). */

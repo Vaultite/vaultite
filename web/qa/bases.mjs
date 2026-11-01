@@ -97,6 +97,22 @@ await page.screenshot({ path: `${OUT}base-cards-desktop.png` })
 await base.locator('[data-base-view="Gallery"]').click(); await page.waitForTimeout(1200)
 check("a layout this app doesn't draw: a table, and a note saying so", (await base.locator("[data-query-notes]").innerText()).includes("draws gallery views as a table")
   && (await base.locator("table").count()) === 1, await base.locator("[data-query-notes]").innerText())
+// A plugin's layout of that type (an Obsidian plugin's Bases view, through plugin-compat) draws it instead, with its
+// rows, and is in the Layout menu; gone again, the table is back.
+const off = await page.evaluateHandle(() => globalThis.__vaultite.modules["@vaultite"].registerBaseLayout({ type: "gallery", name: "Qa gallery",
+  mount: (el, ctx) => { const draw = (c) => { el.textContent = `${c.name}: ${c.rows.groups.flatMap((g) => g.rows.map((r) => r.title)).sort().join(", ")}` }; draw(ctx); return { update: draw } } }))
+const byPlugin = base.locator('[data-base-plugin-layout="gallery"]')
+await until(async () => (await byPlugin.count()) === 1, 10000).catch(() => {})
+const said = (await byPlugin.count()) ? await byPlugin.innerText() : ""
+check("a plugin's layout draws its view with the rows", said.startsWith("Gallery: ") && said.includes("Lighthouse keeper") && said.includes("North pier") && (await base.locator("table").count()) === 0, said)
+await base.locator("[data-base-menu]").click()
+await page.locator("[role=menu]").getByText("Layout", { exact: true }).hover(); await page.waitForTimeout(400)
+const offered = await page.locator("[role=menu]").getByText("Qa gallery", { exact: true }).count()
+await page.keyboard.press("Escape"); await page.keyboard.press("Escape")
+check("the Layout menu offers it", offered === 1, offered)
+await page.evaluate((f) => f(), off)
+await until(async () => (await base.locator("table").count()) === 1, 10000).catch(() => {})
+check("unregistered, the view is a table again", (await byPlugin.count()) === 0 && (await base.locator("table").count()) === 1)
 
 // Kanban: drag a card to another column; its note's one line changes.
 await base.locator('[data-base-view="Board"]').click(); await page.waitForTimeout(1200)
