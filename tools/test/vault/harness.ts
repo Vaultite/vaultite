@@ -2,7 +2,7 @@
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import path from "node:path"
-import { check, sleep, stopTerminals, tempDir, type Any } from "../lib.ts"
+import { check, sleep, standIn, stopTerminals, tempDir, type Any } from "../lib.ts"
 
 export type { Any }
 export type VaultTest = Awaited<ReturnType<typeof vaultHarness>>
@@ -48,6 +48,11 @@ export async function vaultHarness(from?: string) {
   fs.cpSync(path.join(TOOLS, "fixtures", "claude"), CLAUDE_DIR, { recursive: true })
   fs.cpSync(path.join(TOOLS, "fixtures", "codex"), CODEX_DIR, { recursive: true })
   Object.assign(process.env, { CLAUDE_CONFIG_DIR: CLAUDE_DIR, CODEX_HOME: CODEX_DIR })
+  // Nor this machine's agents (a real one asked for limits writes into the made-up homes): ones that answer nothing,
+  // first on PATH; a test wanting one puts its own before them.
+  const bin = path.join(tmp, "agents-bin")
+  for (const name of ["claude", "codex"]) standIn(bin, name, "process.exitCode = 1\n")
+  process.env.PATH = `${bin}${path.delimiter}${process.env.PATH}`
   // The app's bundles with their installs pinned to a made-up Vaultite/plugins (tools/test/official.ts), which a test
   // reaches through VAULTITE_GITHUB.
   const { officialBundles, officialRepos } = await import("../official.ts")
