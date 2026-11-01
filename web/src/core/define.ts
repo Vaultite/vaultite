@@ -503,6 +503,9 @@ export type Conventions = {
   markdownLinks?: (store: Store) => boolean | undefined
   /** The editor's settings the vault sets (spellcheck, indent...), under the app's own editor.json. */
   editor?: (store: Store) => Partial<EditorSettings> | undefined
+  /** A [[link]] to nothing made the plugin's way, when its name is one of its notes' (a date: that day's daily note, in
+   *  their folder, from their template): the note's path, or null when the name isn't one. */
+  linkedNote?: (store: Store, name: string, from: string) => Promise<string | null>
 }
 /** Which editor a plugin's editor extensions go into: a note (Markdown, live preview or source), a code file, or other
  *  text (JSON, an artifact's HTML, a CSV's source); `path`: its file, when it's one. */

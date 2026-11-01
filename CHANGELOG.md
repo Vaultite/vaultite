@@ -140,6 +140,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Hidden files ask first, however their path is written**: a connected app writing a hidden file (.claude/, .git/)
   waits for your yes even with a line break around the path, and a bare name never finds a hidden file; names with
   line breaks or other control characters are refused.
+- **A link to a day makes that day's daily note**: clicking [[2026-11-05]] when it isn't there yet makes it in the
+  daily notes' folder from their template, not an empty note beside the open one; a template's {{time}} is the time
+  it's made (it was always 12:00), and a date that doesn't exist (2026-02-30) is refused, not read as another day.
+- **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
+  Shift+I and Shift+U read and unread; G I opens the inbox. Each is a command, rebindable in Hotkeys.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.

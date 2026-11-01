@@ -31,6 +31,19 @@ export function newNoteFolder(s: Store | null | undefined, from = ""): string {
   return (s ? ask("newNoteFolder", s, unarchived(from)) : undefined) ?? ""
 }
 
+/** The note a [[link]] to nothing names, made by the first plugin that's on and takes it (a daily note's date): its
+ *  path, or null when none does (the caller makes a plain note). */
+export async function linkedNote(s: Store, name: string, from = ""): Promise<string | null> {
+  const { disabled } = getPrefs()
+  for (const p of PLUGINS) {
+    const fn = p.conventions?.linkedNote
+    if (!fn || !isEnabled(p.id, disabled)) continue
+    const path = await fn(s, name, from)
+    if (path) return path
+  }
+  return null
+}
+
 /** The folder of the note being written, for a file made from it (a canvas, a drawing, a base): an archived note's as
  *  if it weren't (nothing new goes into an archive); `fallback` when it's a page, hidden, or there's none. */
 export function besideActive<T>(fallback: T, skip?: (path: string) => boolean): string | T {

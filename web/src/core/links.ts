@@ -11,8 +11,8 @@ import { runCommandId, runCommandLink } from "@/core/commands"
 import { detailPath } from "@/core/define"
 import { cleanName, createNamed, folderOf, inVault, openView, stem, type VaultFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
-import { newNoteFolder } from "@/core/conventions"
-import { notify } from "@/core/notify"
+import { linkedNote, newNoteFolder } from "@/core/conventions"
+import { notify, notifyError } from "@/core/notify"
 import { active, type LinkTarget } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { WIKI_LINK } from "@/core/markdown"
@@ -154,7 +154,13 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
   if (t) return open(t)
   // (a file of another kind, `[pdf](a.pdf)`, isn't made as a note)
   const clean = /\.(?!md$)[A-Za-z][A-Za-z0-9]{0,9}$/i.test(name) ? "" : cleanName(name)
-  const create = async () => { const f = await createNamed(newNoteFolder(s, from), name); if (f) openAt(f.path, "", { newTab }) }
+  // (a plugin's own kind of note first: [[2026-10-08]] is that day's daily note, where they go and from their template)
+  const create = async () => {
+    try {
+      const path = (await linkedNote(s, name, from)) ?? (await createNamed(newNoteFolder(s, from), name))?.path
+      if (path) openAt(path, "", { newTab })
+    } catch (e) { notifyError(e, `Couldn't make ${name}`) }
+  }
   const maybe = didYouMean(s, name, from)
   if (!maybe.length) return clean ? create() : notify(`No file ${name} in the vault`)
   type Pick = Choice & { to?: Target }

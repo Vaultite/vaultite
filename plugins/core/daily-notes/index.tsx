@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
-import { addDays, Button, definePlugin, Empty, FileEditor, Loading, openFile, Panel, today, type BlockCtx } from "@vaultite"
+import { addDays, Button, definePlugin, Empty, FileEditor, get, Loading, op, openFile, Panel, today, type BlockCtx } from "@vaultite"
 import { DailyPanel, DailyView, dayName, inSentence, ISO, nav, openDay, shownDay, useDay, whose } from "./Day"
 
 /** ```block-day: a day's note (or its `section`) edited in place, stepping to other days; a missing one is started
@@ -41,6 +41,13 @@ export default definePlugin({
     { id: "daily-notes:tomorrow", name: "Open tomorrow's daily note", run: () => openDay(addDays(today(), 1)), label: "Daily note" },
   ],
   blocks: { day: (ctx) => <DayBlock {...ctx} /> },
+  // (a link to a day without a note, [[2026-10-08]], makes it as the commands do: not a stray note beside the open one)
+  conventions: {
+    linkedNote: async (_s, name) => {
+      const day = await get<{ date: string; path: string } | null>(`daily-notes/day?name=${encodeURIComponent(name)}`)
+      return day && (await op<{ path: string }>("daily-note.open", { date: day.date })).path
+    },
+  },
   // Hidden until shown (the sidebar's right-click menu): a scratchpad beside the open note; in the rail, a flyout to
   // jot in.
   sidebar: {

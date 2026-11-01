@@ -213,6 +213,8 @@ export function entryOf(op: Op, plugin: string | null): OpEntry {
 
 const typeName = (v: unknown) => (v === null ? "null" : Array.isArray(v) ? "a list" : typeof v === "object" ? "an object" : `a ${typeof v}`)
 const DATE = /^\d{4}-\d\d-\d\d$/
+/** A YYYY-MM-DD that's a day of the calendar (not 2026-02-30, which Date reads as March 2nd). */
+const isDay = (t: string) => { const ms = DATE.test(t) ? Date.parse(`${t}T00:00:00Z`) : NaN; return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === t }
 
 /** A value read as `s` says, converting text the way a command line gives it ("3", "true", "a,b", JSON): the value, or
  *  a problem (a string) prefixed by its name. */
@@ -224,7 +226,7 @@ function convert(name: string, v: unknown, s: Schema): { ok: true; v: unknown } 
     case "string":
       if (typeof x === "number" || typeof x === "boolean") x = String(x)
       if (typeof x !== "string") return bad(`should be text, not ${typeName(x)}`)
-      if (s.format === "date" && !DATE.test(x.trim())) return bad(`should be a date, YYYY-MM-DD (got '${x}')`)
+      if (s.format === "date" && !isDay(x.trim())) return bad(`should be a date, YYYY-MM-DD (got '${x}')`)
       break
     case "number":
     case "integer":

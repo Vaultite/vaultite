@@ -70,7 +70,10 @@ async function dailyNote(date: string): Promise<{ path: string; made: boolean }>
     const t = plugin.vault.entries.has(`${template}.md`) ? readText(plugin.vault.abs(`${template}.md`)) : null
     if (t === null) throw new OpError(`the daily notes' template ${template}.md isn't there: set another in Daily notes' settings`)
     const fill = plugin.peer("templates")?.exports.fill as ((text: string, title: string, into?: string, now?: Date) => string) | undefined
-    text = fill ? fill(t, name.split("/").pop()!, own, dayOf(date)) : t
+    // ({{date}} is the note's day, {{time}} the time it's made, as Obsidian fills them)
+    const now = new Date(), at = dayOf(date)
+    at.setHours(now.getHours(), now.getMinutes(), now.getSeconds())
+    text = fill ? fill(t, name.split("/").pop()!, own, at) : t
   }
   const made = writeNew(plugin.vault.abs(rel), text)
   await plugin.vault.sync()
@@ -134,8 +137,21 @@ or without \`type: day\`.
   text: (r) => `${r.made ? "Made" : "There's"} ${r.path}.`,
 })
 
-/** A day's note as the `day` block finds it: its path, and whether it's there. Never makes one. */
+/** The date a [[link]]'s name gives a daily note (2026-10-08, or its path from their folder or the top), or null. */
+function linkedDate(name: string) {
+  const { format } = dailySpec(), home = plugin.vault.home("days") ?? "Daily"
+  let rest = name.trim().replace(/\.md$/i, "")
+  if (rest.startsWith(`${home}/`)) rest = rest.slice(home.length + 1)
+  return dateIn(rest, format) ?? (rest.includes("/") ? null : dateIn(rest, format.slice(format.lastIndexOf("/") + 1)))
+}
+
+/** A day's note as the `day` block finds it (or as a link's `name` names one: null when it doesn't): its path, and
+ *  whether it's there. Never makes one. */
 plugin.route("GET", "daily-notes/day", (req) => {
+  if (req.query.name !== undefined) {
+    const date = linkedDate(req.query.name)
+    return date ? { date, path: dayPath(date), exists: !!plugin.vault.get("days", date) } : null
+  }
   const date = ISO.test(req.query.date ?? "") ? req.query.date : today()
   return { date, path: dayPath(date), exists: !!plugin.vault.get("days", date) }
 })
