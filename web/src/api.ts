@@ -42,8 +42,9 @@ export { activeFile, insertOnOwnLine, type ActiveFile } from "@/core/active"
 export { choose, type Choice } from "@/components/Chooser"
 /** The palette's overlay as a frame for a palette-like box of a plugin's own (Terminal's Ask box). */
 export { PaletteFrame } from "@/components/Palette"
-/** The look changing (light or dark, colour scheme, a theme or snippet, fonts), once applied: read colour tokens again. */
-export { onLook } from "@/core/appearance"
+/** The look changing (light or dark, colour scheme, a theme or snippet, fonts), once applied: read colour tokens again.
+ *  `onlyMode(scheme)`: the one mode a scheme has, if it has only one (Dracula: dark). */
+export { onLook, onlyMode } from "@/core/appearance"
 /** An element that copies of the page (a closing pane, a dragged card) can't clone gives them its picture instead. */
 export { offerPicture } from "@/core/snapshot"
 export { pickIcon } from "@/components/IconPicker"

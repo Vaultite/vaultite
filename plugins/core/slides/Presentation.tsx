@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type RefObject, type TouchEvent } from "react"
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from "lucide-react"
-import { activeFile, cn, folderOf, getStore, NoteBody, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
+import { activeFile, cn, folderOf, getStore, NoteBody, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
 import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, type Slide } from "./slides"
+import { revealTheme } from "./themes"
 
 /** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */
 async function textOf(path: string) {
@@ -93,9 +94,14 @@ function toneOf(color: string) {
   tones.set(color, tone)
   return tone
 }
-/** reveal.js themes, by how they look: a deck's theme sets its slides' tone. */
-const DARK_THEMES = /^(black|night|league|blood|moon|dracula|black-contrast)$/i
-const LIGHT_THEMES = /^(white|beige|sky|serif|simple|solarized|white-contrast)$/i
+/** The app's light or dark and colour scheme, as they change. */
+function useLook() {
+  const read = () => { const r = document.documentElement; return `${r.classList.contains("dark") ? "dark" : "light"} ${r.dataset.scheme ?? ""}` }
+  const [look, setLook] = useState(read)
+  useEffect(() => onLook(() => setLook(read())), [])
+  const [mode, scheme] = look.split(" ")
+  return { mode, scheme }
+}
 const IMAGE = /^(https?:|data:image\/)|\.(png|jpe?g|gif|webp|avif|svg|bmp)([?#]|$)/i
 
 /** Fragments as reveal.js draws them; the deck's own CSS vars (--r-*) where the app's would be. */
@@ -120,14 +126,26 @@ export const DECK_CSS = `
 [data-deck] .fragment:is(.highlight-red.visible, .highlight-current-red.current-fragment) { color: var(--red); }
 [data-deck] .fragment:is(.highlight-green.visible, .highlight-current-green.current-fragment) { color: var(--green); }
 [data-deck] .fragment:is(.highlight-blue.visible, .highlight-current-blue.current-fragment) { color: var(--blue); }
+[data-deck] { background-image: radial-gradient(circle at 50% 45%, color-mix(in oklab, var(--r-background-color), white var(--deck-glow)), var(--r-background-color) 75%); }
+[data-deck-theme] .note-prose { font-family: var(--r-main-font); font-size: var(--r-main-font-size); font-weight: var(--r-main-font-weight); line-height: 1.35; }
+[data-deck-theme] .note-prose :is(.h1, .h2, .h3, .h4, .h5, .h6) { margin: var(--r-heading-margin); color: var(--r-heading-color); font-family: var(--r-heading-font);
+  line-height: var(--r-heading-line-height); letter-spacing: var(--r-heading-letter-spacing); text-transform: var(--r-heading-text-transform); text-shadow: var(--r-heading-text-shadow); overflow-wrap: break-word; }
+[data-deck-theme] .note-prose > :is(.h1, .h2, .h3, .h4, .h5, .h6):not(:first-child) { margin-top: 0.8em; }
+${[1, 2, 3, 4, 5, 6].map((n) => `[data-deck-theme] .note-prose .h${n} { font-size: var(--r-heading${n}-size); font-weight: var(--r-heading${n}-font-weight); }`).join("\n")}
+[data-deck-theme] .note-prose .h1 { text-shadow: var(--r-heading1-text-shadow); }
+[data-deck-theme] .note-prose :is(a, .wikilink:not(.missing)) { color: var(--r-link-color); }
+[data-deck-theme] .note-prose :is(strong, b) { color: var(--r-bold-color, inherit); }
+[data-deck-theme] .note-prose :is(em, i, blockquote) { color: var(--r-italic-color, inherit); }
+[data-deck-theme] .note-prose :not(pre) > code { color: var(--r-inline-code-color, inherit); }
+[data-deck-theme] .note-prose li::marker { color: var(--r-list-bullet-color, var(--muted-foreground)); }
+[data-deck-theme] ::selection { color: var(--r-selection-color); background: var(--r-selection-background-color); }
 `
 
 /** A slide's background (its own, else the deck's `bg`), and the tone its text takes to read on it. */
 export function backgroundOf(slide: Slide | undefined, props: Record<string, unknown>, store: Store, path: string) {
   const raw = (slide?.bg ?? (typeof props.bg === "string" ? props.bg : "")).trim()
   const at = slide?.bgAttrs ?? {}
-  const theme = typeof props.theme === "string" ? props.theme : ""
-  let tone: "light" | "dark" | null = DARK_THEMES.test(theme) ? "dark" : LIGHT_THEMES.test(theme) ? "light" : null
+  let tone = revealTheme(props.theme)?.tone ?? null
   let style: CSSProperties | null = null
   const link = /^\[\[([^\]|#]+)[^\]]*\]\]$/.exec(raw)?.[1]
   if (link || IMAGE.test(raw)) {
@@ -206,6 +224,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const slide = slides[i] as Slide | undefined
   const md = slide?.md ?? ""
   const fit = useFit(stage, inner, md)
+  const theme = useMemo(() => revealTheme(props.theme), [props.theme])
+  const look = useLook()
 
   // Annotations and fragments are drawn onto the slide's DOM, again whenever its Markdown is drawn anew.
   const draw = useCallback(() => {
@@ -310,13 +330,17 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const next = slides[i + 1]
   const ctl = "grid size-11 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground md:size-9"
   const empty = !md && !slide?.bg
+  // A tone other than the app's draws the scheme's other mode (Classic's, for a scheme with one mode).
+  const other = bg.tone && bg.tone !== look.mode ? bg.tone : null
+  const scheme = other && look.scheme && onlyMode(look.scheme) !== (other === "dark" ? "light" : "dark") ? look.scheme : undefined
   return createPortal(
     <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${stem(path)}, slide ${i + 1} of ${n}`} onKeyDown={key}
       className="group/slides fixed inset-0 z-[70] flex flex-col bg-background text-foreground outline-none select-none md:flex-row" data-presentation={path} data-keeps-keys>
       <style>{DECK_CSS}{css}</style>
-      <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", bg.tone === "dark" ? "dark" : bg.tone === "light" && "scheme-preview")} data-tone={bg.tone ?? undefined}>
-        {/* the deck's own CSS reaches what's in [data-deck], never the controls */}
-        <div data-deck className="relative flex min-h-0 flex-1 flex-col">
+      <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
+        data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
+        {/* the deck's own CSS reaches what's in [data-deck], never the controls; a theme's --r-* come from above it */}
+        <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col">
           {bg.style && <div aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
           <div ref={stage} onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
             className="relative flex min-h-0 flex-1 cursor-default touch-pan-y overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
@@ -357,7 +381,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           <X className="size-5" strokeWidth={2} />
         </button>
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-foreground/[0.06]" aria-hidden>
-          <div className="h-full bg-primary transition-[width] duration-200" style={{ width: `${((i + 1) / n) * 100}%` }} />
+          <div data-slide-progress className="h-full bg-[var(--r-link-color,var(--primary))] transition-[width] duration-200" style={{ width: `${((i + 1) / n) * 100}%` }} />
         </div>
       </div>
       {notes && hasNotes && (

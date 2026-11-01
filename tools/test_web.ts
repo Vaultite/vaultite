@@ -1421,6 +1421,32 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("slides: a stylesheet's relative url()s load from beside it, addresses kept", urls.includes('url("raw:Talks/css/img/b.png")') && urls.includes("url(https://f.example/x.woff2)") && urls.includes("url(#m)") && urls.includes("url(data:image"), urls)
 }
 
+// ---------- Slides themes: reveal's and Advanced Slides' themes in the app's colours (plugins/core/slides/themes.ts) ----------
+{
+  const { revealTheme, THEME_NAMES } = await import("../plugins/core/slides/themes.ts")
+  const all = ["black", "white", "league", "beige", "sky", "night", "serif", "simple", "solarized", "blood", "moon", "dracula", "black-contrast", "white-contrast", "consult", "mattropolis"]
+  const th = (n: string) => revealTheme(n)!
+  check("slides themes: every reveal and Advanced Slides theme is one", all.every((n) => THEME_NAMES.includes(n) && revealTheme(n)?.name === n) && THEME_NAMES.length === all.length, THEME_NAMES)
+  const dark = THEME_NAMES.filter((n) => th(n).tone === "dark")
+  check("slides themes: their tone", dark.join() === "black,black-contrast,league,night,moon,blood,dracula,mattropolis", dark)
+  check("slides themes: by name in any case, default is black; a CSS file, an unknown name or none keep the app's look", th(" Night ").name === "night" && th("Default").name === "black"
+    && [undefined, "", 3, "css/my-theme.css", "https://x.test/robot.css", "constructor", "__proto__"].every((n) => revealTheme(n) === null))
+  const KEYS = ["--r-background-color", "--r-main-font", "--r-main-font-size", "--r-main-color", "--r-heading-font", "--r-heading-color", "--r-heading-text-transform", "--r-heading1-size", "--r-heading1-font-weight", "--r-link-color"]
+  check("slides themes: each sets reveal's --r-* vars", all.every((n) => KEYS.every((k) => th(n).vars[k])), all.filter((n) => !KEYS.every((k) => th(n).vars[k])))
+  const hex = all.filter((n) => Object.values(th(n).vars).some((v) => /#[0-9a-f]{3,8}\b/i.test(v)))
+  check("slides themes: colours come from the app's tokens, never hex", !hex.length && all.every((n) => /var\(--/.test(th(n).vars["--r-link-color"]) && /var\(--|^white$/.test(th(n).vars["--r-background-color"])), hex)
+  const [black, night, serif, league, dracula, sky] = ["black", "night", "serif", "league", "dracula", "sky"].map(th)
+  check("slides themes: black: Source Sans, upper case, semibold, blue links", black.vars["--r-heading-font"].startsWith("'Source Sans Pro'") && black.vars["--r-heading-text-transform"] === "uppercase"
+    && black.vars["--r-heading2-font-weight"] === "600" && black.vars["--r-link-color"] === "var(--blue)", black.vars)
+  check("slides themes: night: Montserrat, tight, as written, a gold accent", night.vars["--r-heading-font"].startsWith("Montserrat") && night.vars["--r-heading-letter-spacing"] === "-0.03em"
+    && night.vars["--r-heading-text-transform"] === "none" && /--orange.*--yellow/.test(night.vars["--r-link-color"]))
+  check("slides themes: serif: Palatino for headings and text", /Palatino/.test(serif.vars["--r-heading-font"]) && serif.vars["--r-main-font"] === serif.vars["--r-heading-font"] && serif.vars["--r-heading-text-transform"] === "none")
+  check("slides themes: league: League Gothic, its 3D title and glow", league.vars["--r-heading-font"].startsWith("'League Gothic'") && /0 5px 0/.test(league.vars["--r-heading1-text-shadow"]) && !!league.vars["--deck-glow"])
+  check("slides themes: dracula: purple headings, pink links, its coloured bold, italics and code", dracula.vars["--r-heading-color"] === "var(--purple)" && dracula.vars["--r-link-color"] === "var(--pink)"
+    && dracula.vars["--r-bold-color"] === "var(--orange)" && dracula.vars["--r-inline-code-color"] === "var(--green)")
+  check("slides themes: sky: rounded headings; consult: smaller text than black", /--font-rounded/.test(sky.vars["--r-heading-font"]) && parseFloat(th("consult").vars["--r-main-font-size"]) < parseFloat(black.vars["--r-main-font-size"]))
+}
+
 // ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------
 {
   const { addressOf, guessedHttps, hostOf, httpFallback, siteName } = await import("../plugins/core/web-viewer/address.ts")

@@ -34,13 +34,16 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
   one it's in. Class `fragment` (and reveal's `fade-out`, `fade-up`, `highlight-red`... with `data-fragment-index`)
   steps it in; list items marked `+` or `1)` come in one at a time.
 - `<style>` blocks apply to the whole deck while it's presented, never to the app (`.reveal`, `:root` mean the deck;
-  `--r-code-font`, `--r-main-color` and `--r-background-color` count). A `%% comment %%` hides what's in it.
+  `--r-code-font`, `--r-main-color`, `--r-background-color` count; with a named theme every `--r-*`, over the
+  theme's). A `%% comment %%` hides what's in it.
 - `css: [deck.css]` (a list, or names split by commas; beside the note, else from the vault's root) and a `theme:`
   that's a CSS file (`css/my-theme.css`, also found in `.obsidian/plugins/obsidian-advanced-slides/`) or an https
   address: stylesheets kept to the deck like its `<style>`, before it, shown again when one changes.
 - "Export slides as HTML" (the palette, the note's menu) saves the deck as one HTML file that presents itself in any
   browser (keys, clicks, swipes, fragments; S its notes), its images inside it.
 - Frontmatter: `separator`, `verticalSeparator`, `notesSeparator` (regexes for a line), `bg` (every slide's background),
-  `theme` (only light or dark: `black`, `night`... or `white`, `beige`...), `showNotes: true` (notes open).
+  `theme` (reveal's and Advanced Slides' by name: `black` (`default`), `white`, `league`, `beige`, `sky`, `night`,
+  `serif`, `simple`, `solarized`, `blood`, `moon`, `dracula`, `black-contrast`, `white-contrast`, `consult`,
+  `mattropolis`: each its fonts, case and tone in the app's colours), `showNotes: true` (notes open).
 - Not drawn: `<split>` and `<grid>` layouts and `::: block`s (their content shows in order, without the layout),
   transitions, auto-animate, chalkboard, other reveal options.

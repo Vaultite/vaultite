@@ -14,8 +14,9 @@ const read = async (path) => (await (await fetch(`${B}api/file?path=${enc(path)}
 const files = async () => (await (await fetch(`${B}api/files`)).json())
 const del = (path) => fetch(`${B}api/file?path=${enc(path)}`, { method: "DELETE" })
 const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md"
+const THEMED = { night: "Qa media/Night.md", serif: "Qa media/Serif.md", other: "Qa media/Other theme.md" }
 
-for (const p of [MEMO, SLASH, DECK, "Qa media/pic.png"]) await del(p)
+for (const p of [MEMO, SLASH, DECK, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
 // (Slides is off until turned on)
 const plugins = async (method, body) => (await fetch(`${B}api/config/plugins`, { method, headers: json, body: body && JSON.stringify(body) })).json()
 const pluginsBefore = await plugins("GET")
@@ -217,6 +218,64 @@ await page.close()
   await pp.keyboard.press("End"); await wait(300)
   check("export: the image shows", await pp.locator("section.on img").evaluate((i) => i.complete && i.naturalWidth > 0))
   await pp.close(); await page.close()
+}
+
+// ---------- slides themes: reveal's themes in the app's colours ----------
+const themedDeck = (theme, extra = "") => `---\ntheme: ${theme}\n---\n\n${extra}# Launch plan\nA short deck\n\n---\n\n## Why now\n\n- Customers asked for **it**\n- A [link](https://example.com) and \`code\`\n`
+await put(THEMED.night, themedDeck("night"))
+await put(THEMED.serif, themedDeck("serif", "<style>.reveal { --r-link-color: rgb(1, 2, 3); }</style>\n\n"))
+await put(THEMED.other, themedDeck("css/my-theme.css"))
+const lookOf = (page) => page.evaluate(() => {
+  const x = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
+  const lum = (c) => { x.fillStyle = c; x.fillRect(0, 0, 1, 1); const [r, g, b] = x.getImageData(0, 0, 1, 1).data; return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 }
+  const deck = document.querySelector("[data-deck]"), h = deck.querySelector("h1, h2"), p = deck.querySelector(".note-prose"), a = deck.querySelector(".note-prose a")
+  const hs = getComputedStyle(h), bg = getComputedStyle(deck).backgroundColor
+  return { theme: deck.dataset.deckTheme ?? null, font: hs.fontFamily, text: getComputedStyle(p).fontFamily, transform: hs.textTransform, weight: hs.fontWeight, spacing: hs.letterSpacing,
+    bg, bgLum: lum(bg), headLum: lum(hs.color), link: a && getComputedStyle(a).color, bar: getComputedStyle(document.querySelector("[data-slide-progress]")).backgroundColor }
+})
+const looks = {}
+for (const scheme of ["light", "dark"]) {
+  page = await open({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })
+  for (const [name, path] of Object.entries(THEMED)) {
+    await page.goto("about:blank"); await page.goto(`${B}#file/${enc(path)}`); await wait(1500)
+    await palette(page, "Start presentation", 600); await wait(600)
+    looks[`${name}-${scheme}`] = await lookOf(page)
+    await page.screenshot({ path: `${OUT}media-slides-${name}-${scheme}.png` })
+    await page.keyboard.press("ArrowRight"); await wait(400)
+    looks[`${name}-${scheme}`].link = (await lookOf(page)).link
+    await page.screenshot({ path: `${OUT}media-slides-${name}-2-${scheme}.png` })
+    await page.keyboard.press("Escape"); await wait(400)
+  }
+  const night = looks[`night-${scheme}`], serif = looks[`serif-${scheme}`], other = looks[`other-${scheme}`]
+  check(`slides theme night (${scheme}): Montserrat headings, heavy, tight, as written`, night.theme === "night" && night.font.startsWith("Montserrat") && night.transform === "none" && night.weight === "800" && parseFloat(night.spacing) < 0, night)
+  check(`slides theme night (${scheme}): dark, light headings, a gold link that's also the progress bar`, night.bgLum < 0.12 && night.headLum > 0.6 && !!night.link && night.link === night.bar, night)
+  check(`slides theme serif (${scheme}): Palatino headings and text, light, dark headings`, serif.theme === "serif" && /Palatino/.test(serif.font) && /Palatino/.test(serif.text) && serif.transform === "none" && serif.bgLum > 0.75 && serif.headLum < 0.35, serif)
+  check(`slides theme serif (${scheme}): the deck's own --r-* win over the theme's`, serif.link === "rgb(1, 2, 3)", serif.link)
+  check(`slides theme as a CSS file (${scheme}): the app's look`, other.theme === null && other.transform === "none" && !/Palatino|Montserrat/.test(other.font), other)
+  await page.close()
+}
+check("slides themes: the same in the app's light and dark (the scheme's tokens in the theme's tone)", ["night", "serif"].every((n) => JSON.stringify(looks[`${n}-light`]) === JSON.stringify(looks[`${n}-dark`])), looks)
+// Every theme, its second slide, for a look: the deck is rewritten under a running presentation.
+for (const scheme of ["light", "dark"]) {
+  await put(THEMED.night, themedDeck("default"))
+  page = await open({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })
+  await page.goto(`${B}#file/${enc(THEMED.night)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(600); await page.keyboard.press("ArrowRight"); await wait(2500)
+  const all = ["default", "white", "league", "beige", "sky", "night", "serif", "simple", "solarized", "blood", "moon", "dracula", "black-contrast", "white-contrast", "consult", "mattropolis"]
+  const drawn = []
+  for (const t of all) {
+    const want = t === "default" ? "black" : t, now = () => page.evaluate(() => document.querySelector("[data-deck]").dataset.deckTheme)
+    // (written again if the open editor misses it: what's under test is the theme, not the live reload)
+    for (let n = 0; n < 3 && (await now()) !== want; n++) {
+      if (t !== "default" || n) await put(THEMED.night, themedDeck(t, `<!-- ${n} -->\n`))
+      await until(async () => (await now()) === want, 5000).catch(() => {})
+    }
+    await wait(300)
+    drawn.push(await now())
+    await page.screenshot({ path: `${OUT}media-slides-theme-${t}-${scheme}.png` })
+  }
+  check(`slides themes (${scheme}): each draws as itself`, drawn.join() === all.join().replace("default", "black"), drawn)
+  await page.keyboard.press("Escape"); await wait(300); await page.close()
 }
 
 // ---------- print ----------
