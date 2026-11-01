@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { qa, until, wait, workspaceKey } from "./lib/qa.mjs"
+import { PROMPT, qa, until, wait, workspaceKey } from "./lib/qa.mjs"
 import { workspaces, wsDir } from "./lib/wsfiles.mjs"
 const { args: [A, IDA, B, _IDB, VAULT, A_SESSION, OUT = "/tmp/termhost-shots/"], browser, check, done } = await qa(import.meta.url)
 const errs = [] // (listed at the end, not failed)
@@ -33,7 +33,7 @@ async function open(u) {
 const a = await open(A)
 await a.page.goto(`${base(A)}#view/terminal%2F${sid}`)
 check("A: terminal drawn", await until(async () => (await a.page.locator(".xterm-rows").count()) > 0, 10000))
-await until(async () => /%|\$|❯/.test(await a.text()), 8000)
+await until(async () => PROMPT.test(await a.text()), 8000)
 await a.page.locator(".xterm").click()
 await a.page.keyboard.type("echo from-a-$((6*7))"); await a.page.keyboard.press("Enter")
 check("A: the shell answers", await until(async () => /^from-a-42\s*$/m.test(await a.text()), 10000), (await a.text()).slice(-200))
@@ -84,7 +84,7 @@ await b.ctx.close()
 const old = `${sid}old`
 const s = await open(A)
 await s.page.goto(`${base(A)}#view/terminal%2F${old}`)
-await until(async () => /%|\$|❯/.test(await s.text()), 8000)
+await until(async () => PROMPT.test(await s.text()), 8000)
 await s.page.locator(".xterm").click()
 await s.page.keyboard.type("echo old-on-a"); await s.page.keyboard.press("Enter")
 await until(async () => /^old-on-a\s*$/m.test(await s.text()), 10000)

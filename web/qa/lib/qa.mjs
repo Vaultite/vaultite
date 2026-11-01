@@ -155,6 +155,8 @@ export function tailnet() {
   return {}
 }
 
+/** A shell's prompt on screen: zsh's %, bash's $ (# as root, at a line's end), a themed ❯. */
+export const PROMPT = /%|\$|❯|#\s*$/m
 export const terminalText = (page) => page.evaluate(() => [...document.querySelectorAll("[data-terminal]")].map((e) => e.terminalText?.() ?? "").join("\n"))
 
 export const freePort = () => new Promise((resolve) => {

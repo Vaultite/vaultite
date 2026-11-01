@@ -3,7 +3,7 @@
 //   node web/qa/platform.mjs <base url>
 import { execFileSync } from "node:child_process"
 import path from "node:path"
-import { BACK_KEY, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { BACK_KEY, PROMPT, qa, terminalText, until, wait } from "./lib/qa.mjs"
 
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const MAC = process.platform === "darwin"
@@ -90,7 +90,7 @@ if (!MAC) {
   const sid = `qaplat${Date.now().toString(36)}`
   await page.goto("about:blank"); await page.goto(`${B}#view/terminal%2F${sid}`)
   const text = () => terminalText(page)
-  await until(async () => /%|\$|❯/.test(await text()), 10000)
+  await until(async () => PROMPT.test(await text()), 10000)
   await page.locator(".xterm").click()
   await page.keyboard.type("echo zebra")
   await until(async () => (await text()).includes("echo zebra"), 3000)

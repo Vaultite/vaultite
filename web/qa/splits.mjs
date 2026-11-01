@@ -2,7 +2,7 @@
 // layout after a reload (the old one migrating), keyboard focus between panes. WRITES: throwaway server only.
 //   node web/qa/splits.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync } from "node:fs"
-import { openPalette, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { openPalette, PROMPT, qa, terminalText, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/splits-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const notes = readdirSync(`${VAULT}/Notes`).filter((f) => f.endsWith(".md")).sort().slice(0, 3)
@@ -210,7 +210,7 @@ await page.goto(`${B}#view/terminal%2F${sid}`); await wait(300)
 await page.evaluate(() => localStorage.removeItem("vaultite.tabs")); await page.reload(); await wait(1500)
 const text = () => terminalText(page)
 check("terminal drawn", await until(async () => (await page.locator(".xterm-screen").count()) > 0, 8000))
-await until(async () => /%|\$|❯/.test(await text()), 6000)
+await until(async () => PROMPT.test(await text()), 6000)
 await page.locator(".xterm").click()
 await page.keyboard.type("echo pid-$$"); await page.keyboard.press("Enter")
 await until(async () => /^pid-\d+\s*$/m.test(await text()), 8000)

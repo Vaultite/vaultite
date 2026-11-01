@@ -3,7 +3,7 @@
 //   node web/qa/workspaces.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { qa, terminalText, until, wait, workspaceKey } from "./lib/qa.mjs"
+import { PROMPT, qa, terminalText, until, wait, workspaceKey } from "./lib/qa.mjs"
 import { clearWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 const { args: [B, VAULT, OUT = "/tmp/workspaces-shots/"], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -120,7 +120,7 @@ try {
   await page.keyboard.press("Control+Backquote")
   sid = await until(async () => decodeURIComponent(page.url()).match(/terminal\/([a-z0-9]+)/)?.[1], 6000)
   check("a terminal opened in 2", !!sid, page.url())
-  await until(async () => /%|\$|❯/.test(await text()), 8000)
+  await until(async () => PROMPT.test(await text()), 8000)
   await page.locator(".xterm").click()
   await page.keyboard.type("echo pid-$$"); await page.keyboard.press("Enter")
   const pid = (await until(async () => (await text()).match(/pid-(\d+)/)?.[1], 6000))

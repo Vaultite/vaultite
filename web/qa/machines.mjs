@@ -2,7 +2,7 @@
 // listed and ended from here. Runs shells on this machine through both: throwaway servers only.
 //   node web/qa/machines.mjs <base url> <other machine's id> <other machine's base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, terminalText, until } from "./lib/qa.mjs"
+import { PROMPT, qa, terminalText, until } from "./lib/qa.mjs"
 const { args: [B, OTHER, OTHER_URL, OUT = "/tmp/machines-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const other = (await (await fetch(new URL("api/machines", B.endsWith("/") ? B : `${B}/`))).json()).find((m) => m.id === OTHER)
@@ -22,7 +22,7 @@ await page.screenshot({ path: `${OUT}machines.png` })
 const sid = `qa${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${sid}%40${OTHER}`)
 check("the other machine's terminal is drawn", await until(async () => (await page.locator(".xterm-screen").count()) > 0, 8000))
-await until(async () => /%|\$|❯/.test(await text()), 8000)
+await until(async () => PROMPT.test(await text()), 8000)
 await page.locator(".xterm").click()
 await page.keyboard.type("echo at-$VAULTITE_URL"); await page.keyboard.press("Enter")
 const port = new URL(OTHER_URL).port

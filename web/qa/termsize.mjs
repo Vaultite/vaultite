@@ -2,7 +2,7 @@
 // on the server's machine (this script on the same one): throwaway server only.
 //   node web/qa/termsize.mjs <base url>
 import { readFileSync, rmSync } from "node:fs"
-import { qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { PROMPT, qa, terminalText, until, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const sid = `qa${Date.now().toString(36)}s`
 
@@ -18,7 +18,7 @@ const size = () => { try { const [rows, cols] = readFileSync(file, "utf8").trim(
 const becomes = async (want) => { await until(async () => size() === want, 5000); return size() }
 
 const desk = await open({ width: 1280, height: 800 }, false)
-await until(async () => /%|\$|❯/.test(await terminalText(desk)), 8000)
+await until(async () => PROMPT.test(await terminalText(desk)), 8000)
 await desk.locator(".xterm").click()
 // (uutils' stty, Ubuntu 25.10's, sets the terminal even for `size`, which stops a background job: TTOU ignored)
 await desk.keyboard.type(`(trap '' TTOU; while true; do stty size > ${file}.tmp </dev/tty && mv ${file}.tmp ${file}; sleep 0.2; done) &`)

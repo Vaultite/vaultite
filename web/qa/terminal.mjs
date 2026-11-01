@@ -5,7 +5,7 @@ import http from "node:http"
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { apiAt, openPalette, qa, tailnet, terminalText, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, PROMPT, qa, tailnet, terminalText, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -62,7 +62,7 @@ for (const dark of [false, true]) {
 
   await page.goto(`${B}#view/terminal%2F${sid}`)
   check(`${dark ? "dark" : "light"}: terminal drawn`, await until(async () => (await page.locator(".xterm-screen").count()) > 0))
-  await until(async () => /%|\$|❯/.test(await text()), 6000) // a prompt
+  await until(async () => PROMPT.test(await text()), 6000) // a prompt
   await page.locator(".xterm").click()
   await page.keyboard.type("echo hello-$((40+2))")
   await page.keyboard.press("Enter")
@@ -86,7 +86,7 @@ for (const dark of [false, true]) {
     check("exit 3 shows Process exited with code 3", await until(async () => (await page.getByText("Process exited with code 3").count()) > 0))
     await page.screenshot({ path: `${OUT}terminal-exited.png` })
     await page.getByRole("button", { name: "Restart" }).click()
-    check("restart gives a new shell", await until(async () => !(await page.getByText("Process exited").count()) && /%|\$|❯/.test(await text())))
+    check("restart gives a new shell", await until(async () => !(await page.getByText("Process exited").count()) && PROMPT.test(await text())))
     await page.keyboard.type("echo again-$((1+1))"); await page.keyboard.press("Enter")
     check("the new shell answers", await until(async () => /^again-2\s*$/m.test(await text())), (await text()).slice(-300))
     // Scheme change recolours.
@@ -130,7 +130,7 @@ for (const dark of [false, true]) {
   const socks = (sid) => page.evaluate((sid) => window.__socks.filter((s) => s.id === sid), sid)
   const sid = `${id}p`
   await page.goto(`${B}#view/terminal%2F${sid}`)
-  await until(async () => /%|\$|❯/.test(await text()), 8000)
+  await until(async () => PROMPT.test(await text()), 8000)
   await page.locator(".xterm").click()
   await page.keyboard.type("echo parked-$((20+1))"); await page.keyboard.press("Enter")
   await until(async () => (await text()).includes("parked-21"))
@@ -161,12 +161,12 @@ for (const dark of [false, true]) {
   const tabs = () => page.locator('[role="tab"]').count()
   const hid = `${id}h`
   await page.goto(`${B}#view/terminal%2F${hid}`)
-  await until(async () => /%|\$|❯/.test(await text()), 8000)
+  await until(async () => PROMPT.test(await text()), 8000)
   await page.locator(".xterm").click()
   await page.keyboard.press("Control+Backquote") // another terminal in a new tab: the first one's is hidden
   const shown = await until(async () => !!(await page.evaluate((h) => [...document.querySelectorAll("[data-terminal]")].some((e) => e.dataset.terminal !== h), hid))) &&
     await page.evaluate((h) => [...document.querySelectorAll("[data-terminal]")].find((e) => e.dataset.terminal !== h)?.dataset.terminal, hid)
-  await until(async () => /%|\$|❯/.test(await text()), 8000)
+  await until(async () => PROMPT.test(await text()), 8000)
   const n = await tabs()
   vau("terminal", "end", hid)
   check("ended from outside, a hidden terminal's tab closes", await until(async () => (await tabs()) === n - 1), [n, await tabs()])
