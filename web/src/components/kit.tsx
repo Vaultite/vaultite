@@ -394,13 +394,13 @@ export function Foldable({ title, count, big, keep, dflt = true, children, ...re
   )
 }
 
-/** A setting's way back to its default: a small circular arrow before its control. While the setting is
+/** A setting's way back to its default: a small arrow before its control, no taller than a switch. While the setting is
  *  its default (`on` false) it keeps its place but can't be seen or reached, so the control beside it never moves. */
 export function ResetButton({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
   return (
     <button type="button" aria-label={label} data-tip={on ? "Restore default" : undefined} data-reset-default={on || undefined}
       aria-hidden={!on || undefined} tabIndex={on ? undefined : -1} onClick={(e) => { e.stopPropagation(); onClick() }}
-      className={cn("grid size-8 shrink-0 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground", !on && "invisible")}>
+      className={cn("-my-1 grid size-8 shrink-0 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground", !on && "invisible")}>
       <RotateCcw className="size-3.5" strokeWidth={2} />
     </button>
   )

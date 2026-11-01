@@ -54,6 +54,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   One, Paper and Rosé Pine.
 - **A narrow pane's path keeps its folders readable**: squeezed by a split or a sidebar, a folder in the bar over a
   file shows its first letter and an ellipsis ("N… / Lisbon trip"), not a clipped sliver of a letter.
+- **Settings' rows keep one height**: a switch with a way back to its default (Editor's, among others) is no taller
+  than one without, so each section's rows line up at the same rhythm.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.
