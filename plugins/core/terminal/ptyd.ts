@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url"
 import type { IPty } from "node-pty"
 import type { Terminal as Headless } from "@xterm/headless"
 import type { SerializeAddon as Serializer } from "@xterm/addon-serialize"
+import { lineReader } from "./lines.ts"
 import { REPLY, watcher } from "./osc7501.ts"
 
 const SOCK = process.argv[2]
@@ -326,26 +327,19 @@ const server = net.createServer((sock) => {
   }
   conns.add(c)
   lastConn = Date.now()
-  let buf = ""
   sock.setEncoding("utf8")
-  sock.on("data", (chunk: string) => {
-    buf += chunk
-    let nl: number
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl)
-      buf = buf.slice(nl + 1)
-      if (!line.trim()) continue
-      let m: Record<string, unknown>
-      try { m = JSON.parse(line) } catch { continue }
-      try {
-        const out = handle(c, m)
-        // (null: it answers later itself)
-        if (m.re !== undefined && out !== null) c.send({ re: m.re, ...out })
-      } catch (e) {
-        if (m.re !== undefined) c.send({ re: m.re, error: (e as Error).message })
-      }
+  sock.on("data", lineReader((line) => {
+    if (!line.trim()) return
+    let m: Record<string, unknown>
+    try { m = JSON.parse(line) } catch { return }
+    try {
+      const out = handle(c, m)
+      // (null: it answers later itself)
+      if (m.re !== undefined && out !== null) c.send({ re: m.re, ...out })
+    } catch (e) {
+      if (m.re !== undefined) c.send({ re: m.re, error: (e as Error).message })
     }
-  })
+  }))
   sock.on("drain", () => { if (c.session) hold(c.session) })
   const gone = () => {
     if (!conns.delete(c)) return

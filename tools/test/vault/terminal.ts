@@ -299,6 +299,17 @@ export default async ($: VaultTest) => {
     }
     const whole = new Scanner().feed(stream)
     check("osc7501: found and taken out of the output wherever a chunk ends (one begun in an earlier chunk goes on whole)", !bad.length && !whole.out.includes("7501"), bad.slice(0, 3))
+    {
+      // The keeper's newline JSON: every line whole, however it's cut (a long one in many pieces, several in one).
+      const { lineReader } = await import("../../../plugins/core/terminal/lines.ts")
+      const text = `{"a":1}\n{"b":"${"x".repeat(5000)}"}\n\n{"c":3}\n`, cuts: string[][] = []
+      for (const size of [1, 7, 64, 4096, text.length]) {
+        const got: string[] = [], read = lineReader((l) => got.push(l))
+        for (let i = 0; i < text.length; i += size) read(text.slice(i, i + size))
+        cuts.push(got)
+      }
+      check("keeper lines: each whole, however the stream is cut", cuts.every((g) => g.join("\n") + "\n" === text && g.length === 4), cuts.map((g) => g.length))
+    }
     const cancelled = new Scanner().feed("\x1b]7501;state=done\x1b[1mbold")
     check("osc7501: ESC that isn't ST cancels the report, and what it starts goes on", !cancelled.seen.length && cancelled.out === "\x1b[1mbold", cancelled)
     // Records: blocked anywhere wins, else the root's, else its children's; lifetimes; clear; app from an ancestor.

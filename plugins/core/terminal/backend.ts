@@ -9,6 +9,7 @@ import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
+import { lineReader } from "./lines.ts"
 import { REPLY, watcher, type Said } from "./osc7501.ts"
 import { distroOf, kindOf, progName, type ShellKind } from "./shells.ts"
 
@@ -423,23 +424,16 @@ class Wire {
   onClose: (() => void) | null = null
   constructor(sock: net.Socket) {
     this.sock = sock
-    let buf = ""
     sock.setEncoding("utf8")
-    sock.on("data", (chunk: string) => {
-      buf += chunk
-      let nl: number
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl)
-        buf = buf.slice(nl + 1)
-        let m: Record<string, unknown>
-        try { m = JSON.parse(line) } catch { continue }
-        if (typeof m.re === "number" && this.waiting.has(m.re)) {
-          const w = this.waiting.get(m.re)!
-          this.waiting.delete(m.re)
-          if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m)
-        } else for (const fn of this.listeners) fn(m)
-      }
-    })
+    sock.on("data", lineReader((line) => {
+      let m: Record<string, unknown>
+      try { m = JSON.parse(line) } catch { return }
+      if (typeof m.re === "number" && this.waiting.has(m.re)) {
+        const w = this.waiting.get(m.re)!
+        this.waiting.delete(m.re)
+        if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m)
+      } else for (const fn of this.listeners) fn(m)
+    }))
     const end = () => {
       if (this.closed) return
       this.closed = true
