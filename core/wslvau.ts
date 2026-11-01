@@ -5,6 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { writeAtomic } from "./vault.ts"
 import { wslShim } from "./vaushims.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
@@ -23,11 +24,7 @@ export function writeWslVau(o: { exe?: string; dir?: string; env?: Record<string
   const file = path.join(dir, "vau")
   let was = ""
   try { was = fs.readFileSync(file, "utf8") } catch { /* not written yet */ }
-  if (was !== text) {
-    fs.mkdirSync(dir, { recursive: true })
-    fs.writeFileSync(`${file}.tmp`, text, { mode: 0o755 })
-    fs.renameSync(`${file}.tmp`, file)
-  }
+  if (was !== text) writeAtomic(file, text, { mode: 0o755 })
   return dir
 }
 

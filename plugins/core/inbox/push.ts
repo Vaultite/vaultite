@@ -5,7 +5,7 @@ import fs from "node:fs"
 import http2 from "node:http2"
 import path from "node:path"
 import { LOCAL } from "../../../core/plugins.ts"
-import { str } from "../../../core/vault.ts"
+import { str, writeAtomic } from "../../../core/vault.ts"
 
 export type Device = { token: string; env: "sandbox" | "production"; topic: string; name: string; t: number; widgets?: boolean }
 export type Apns = { key_id: string; team_id: string; key: string }
@@ -27,10 +27,7 @@ export function devices(): Device[] {
 }
 
 function save(list: Device[]) {
-  fs.mkdirSync(path.dirname(FILE()), { recursive: true })
-  const tmp = `${FILE()}.${process.pid}.tmp`
-  fs.writeFileSync(tmp, JSON.stringify({ devices: list }, null, 2), { mode: 0o600 })
-  fs.renameSync(tmp, FILE())
+  writeAtomic(FILE(), JSON.stringify({ devices: list }, null, 2), { mode: 0o600 })
 }
 
 /** Add a device, or update it (the same token). Throws on one that isn't a device token. */

@@ -4,6 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { LOCAL } from "./plugins.ts"
+import { writeAtomic } from "./vault.ts"
 import { readBefore } from "./yaml.ts"
 
 const fileFor = (vault: string, what: string) => path.join(LOCAL, "cache", `${what}-${crypto.createHash("sha1").update(path.resolve(vault)).digest("hex").slice(0, 12)}.json`)
@@ -40,9 +41,5 @@ function keepHeaders(file: string) {
 }
 
 function write(file: string, value: unknown) {
-  try {
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(`${file}.tmp`, JSON.stringify(value))
-    fs.renameSync(`${file}.tmp`, file)
-  } catch (e) { console.error("keeping the start's reads:", e) }
+  try { writeAtomic(file, JSON.stringify(value)) } catch (e) { console.error("keeping the start's reads:", e) }
 }
