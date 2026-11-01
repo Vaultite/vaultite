@@ -1,6 +1,6 @@
 // Times in a note that embeds audio or video (a chapter's "2:35", a transcript's "**12:04**") play it from there; the
 // one it's playing through is lit, so a transcript follows along.
-import { RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state"
+import { RangeSetBuilder, StateEffect, StateField, type Extension, type Transaction } from "@codemirror/state"
 import { Decoration, EditorView, ViewPlugin, type DecorationSet } from "@codemirror/view"
 import { getStore, resolver, type EditorCtx } from "@vaultite"
 import { mediaIn } from "./shelves"
@@ -28,6 +28,17 @@ function mediaOf(text: string, path: string) {
   return target && store ? resolver(store)(target, path)?.file ?? null : null
 }
 
+/** Whether the lines a change made hold an embed's start or end. */
+function touchesEmbed(tr: Transaction) {
+  let hit = false
+  tr.changes.iterChangedRanges((_fa, _ta, from, to) => {
+    if (hit) return
+    const doc = tr.newDoc, text = doc.sliceString(doc.lineAt(from).from, doc.lineAt(to).to)
+    hit = text.includes("![[") || text.includes("]]")
+  })
+  return hit
+}
+
 export function timestamps(ctx: EditorCtx): Extension {
   const path = ctx.path
   if (ctx.kind !== "markdown" || !path) return []
@@ -37,6 +48,8 @@ export function timestamps(ctx: EditorCtx): Extension {
       let now = v.now, redo = false
       for (const e of tr.effects) { if (e.is(lit)) now = e.value; if (e.is(again)) redo = true }
       if (!tr.docChanged && !redo && now === v.now) return v
+      // (a note with no media stays so unless a change touches an embed: a keystroke reads only its own lines)
+      if (!v.media && !redo && now === v.now && !touchesEmbed(tr)) return v
       return build(tr.newDoc.toString(), now)
     },
     provide: (f) => EditorView.decorations.from(f, (v) => v.deco),
