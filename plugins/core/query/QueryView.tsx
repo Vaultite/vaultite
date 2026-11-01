@@ -1,7 +1,7 @@
 // A base's views: the files a query matches as a table, cards, list, board or calendar. Changing a value or moving a
 // card writes that one property as a small edit; the table's header changes the view (sort, columns, widths).
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Plus } from "lucide-react"
 import {
   addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
@@ -186,9 +186,11 @@ const rowMenu = (e: React.MouseEvent) => {
 
 /** What a database view draws, by its view: notes on what was left out, then the table, cards, list, board, calendar
  *  or map. `fill`: it has a box of its own to fill (a .base in its tab), so a map takes the height it's given. */
-export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, fill }: {
+export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, fill, add }: {
   res: Result; groups: Result["groups"]; resolve: Resolve; ctl?: TableCtl; save: Save
   month: string; setMonth: (m: string) => void; fill?: boolean
+  /** A new file in the view with these properties (a board's column's +); absent: none is made here. */
+  add?: (props: Record<string, unknown>) => void
 }) {
   const special = res.view === "board" || res.view === "calendar" || res.view === "map"
   return (
@@ -199,7 +201,7 @@ export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, f
         </div>
       ) : null}
       {!res.total && !special ? <Empty>Nothing matches.</Empty>
-        : res.view === "board" ? <Board groups={groups} res={res} resolve={resolve} save={save} />
+        : res.view === "board" ? <Board groups={groups} res={res} resolve={resolve} save={save} add={add} />
         : res.view === "calendar" ? <Calendar groups={groups} res={res} resolve={resolve} month={month} setMonth={setMonth} save={save} />
         : res.view === "map" ? <MapResult groups={groups} res={res} resolve={resolve} fill={fill} />
         : res.view === "table" ? <Table groups={groups} res={res} resolve={resolve} ctl={ctl} save={save} />
@@ -522,8 +524,9 @@ function moveItems(cols: Col[], at: string, move: (c: Col) => void): MenuItem[] 
 type Col = { key: string; name: string | null; value: unknown; rows: Row[] }
 
 /** Columns of the `group` key's values; moving a card (drag, or its menu on phones) writes that key. */
-const Board = memo(function Board({ groups, res, resolve, save }: {
+const Board = memo(function Board({ groups, res, resolve, save, add }: {
   groups: { name: string | null; value?: unknown; rows: Row[] }[]; res: Result; resolve: Resolve; save: (r: Row, key: string, v: unknown) => void
+  add?: (props: Record<string, unknown>) => void
 }) {
   const key = res.group!
   const id = `query-board:${useId()}`
@@ -574,7 +577,15 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
             className={cn("flex w-[232px] shrink-0 flex-col rounded-[10px] bg-foreground/[0.035] p-1.5 transition-shadow",
               hit === c.key && "ring-2 ring-primary")}>
             <div className="flex items-baseline gap-1.5 px-1.5 pt-0.5 pb-1.5 text-[13px] font-semibold text-muted-foreground" data-query-group>
-              <span className="truncate">{c.name ?? "No value"}</span><span className="font-normal tabular-nums">{c.rows.length}</span>
+              <span className="truncate">{c.name ?? "No value"}</span><span className="flex-1 font-normal tabular-nums">{c.rows.length}</span>
+              {/* (a new card in this column: a file with its value, as New makes one) */}
+              {add && propKey(key) && (
+                <button type="button" aria-label={`New in ${c.name ?? "No value"}`} data-tip="New" data-board-add={c.key}
+                  onClick={() => add(c.value === null || c.value === "" ? {} : { [propKey(key)!]: c.value })}
+                  className="-my-1 grid size-6 shrink-0 cursor-pointer place-items-center self-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:size-9">
+                  <Plus className="size-3.5" strokeWidth={2.25} />
+                </button>
+              )}
             </div>
             <div className="flex min-h-10 flex-col gap-1.5">
               {c.rows.slice(0, drawn).map((r) => {

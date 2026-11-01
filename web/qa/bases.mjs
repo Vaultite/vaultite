@@ -116,6 +116,13 @@ await page.waitForTimeout(1500)
 const tide = read(`${F}/Books/Tide tables.md`)
 check("kanban: the move writes that one key (groupBy note.status: status)", tide === "---\ntype: qa-book   # keep this\nstatus: want\npages: 100\nread: 100\nprice: 20\n---\n", tide)
 await page.screenshot({ path: `${OUT}base-board-desktop.png` })
+// A column's +: a new file in it (its status) and in the view (its filter's type), opened in a tab of its own.
+await base.locator('[data-board-add="reading"]').click()
+const fresh = await until(async () => { const h = decodeURIComponent(await page.evaluate(() => location.hash)); return /Untitled[^/]*\.md$/.test(h) && h.replace(/^#file\//, "") }, 8000).catch(() => null)
+let card = ""; try { card = fresh ? read(fresh) : "" } catch {}
+check("kanban: a column's + makes a file with its value, opened", !!fresh && card.includes("status: reading") && card.includes("type: qa-book"), [fresh, card])
+if (fresh) await api("DELETE", `file?path=${encodeURIComponent(fresh)}`)
+await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await page.waitForTimeout(2000)
 
 // Map.
 await base.locator('[data-base-view="Places"]').click()

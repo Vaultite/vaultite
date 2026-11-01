@@ -228,10 +228,10 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   )
 
   // New: a file the view will list (its folder, properties and tags from the filters), opened beside it to fill in.
-  const newFile = async () => {
+  const newFile = async (more: Record<string, unknown> = {}) => {
     if (!cfg || at === null) return
     try {
-      const { folder: asked, props } = newItem(cfg, at)
+      const { folder: asked, props: own } = newItem(cfg, at), props = { ...own, ...more }
       const s = getStore(), folder = asked ?? newNoteFolder(s, host ?? path)
       const name = s ? freeName(s.files, folder, "Untitled") : "Untitled"
       const fm = Object.keys(props).length ? `---\n${stringify(props)}---\n` : ""
@@ -261,7 +261,7 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   const body = error ? <p className="text-[15px] text-muted-foreground" data-base-error>Base: {error.replace(/^Error: /, "")}</p>
     : !res ? <ResultSkeleton view={views[current]?.type.toLowerCase() ?? "table"} rows={rows} />
     : words.length && !groups.some((g) => g.rows.length) ? <p className="py-2 text-[15px] text-muted-foreground" data-base-no-match>Nothing matches "{q!.trim()}".</p>
-    : <ResultBody res={searched!} groups={groups} resolve={resolve} ctl={ctl} save={save} month={month} setMonth={setMonth} fill={fill} />
+    : <ResultBody res={searched!} groups={groups} resolve={resolve} ctl={ctl} save={save} add={(props) => void newFile(props)} month={month} setMonth={setMonth} fill={fill} />
   const more = lasting && place !== "embed" && res && (
     <button type="button" aria-label="View options" data-tip="View options" data-base-menu onClick={menu}
       className="-mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:size-9">
