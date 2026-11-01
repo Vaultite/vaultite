@@ -603,6 +603,10 @@ const unscanned = (rel: string) => rel.split("/").some((n, i, all) => (n.startsW
   n.endsWith(".icloud") || n.includes(".tmp-") || (i < all.length - 1 && CACHES.has(n)))
 const sameStat = (a: Stat, b: Stat) => a.ns === b.ns && a.size === b.size
 const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated"])
+/** What no walk looks at: what the scan leaves out (the trash, a cache, a write's temporary copy) but the settings and
+ *  iCloud's placeholders, and the settings that aren't. */
+const unseen = (rel: string) => NOT_SETTINGS.has(rel.split("/").slice(0, 2).join("/")) ||
+  (unscanned(rel) && !/^\.(vaultite|obsidian)(\/|$)/.test(rel) && !rel.endsWith(".icloud"))
 
 export class Entry {
   rel: string
@@ -769,7 +773,7 @@ export class Vault {
 
   /** Live heard a change on disk: the next read walks the vault. */
   heard(rel: string | null) {
-    if (rel && NOT_SETTINGS.has(rel.split("/").slice(0, 2).join("/"))) return // (what no sync looks at)
+    if (rel && unseen(rel)) return // (what no sync looks at)
     if (rel && this.indexed(rel)) return // (the server's own write, indexed as it wrote it)
     this.stale = true
     this.heardCount++
@@ -778,7 +782,7 @@ export class Vault {
   /** What the watcher heard at once (null: it couldn't say). While the index is vouched for, files are taken on their own
    *  as `reread` takes them (Markdown read off the main thread); anything else (a folder, still downloading) walks. */
   async hear(rels: string[] | null): Promise<boolean> {
-    const told = rels?.filter((r) => !NOT_SETTINGS.has(r.split("/").slice(0, 2).join("/")) && !this.indexed(r))
+    const told = rels?.filter((r) => !unseen(r) && !this.indexed(r))
     if (told && !told.length) return false
     if (!told || this.next || !this.vouched()) {
       for (const r of rels ?? [null]) this.heard(r)
@@ -805,7 +809,7 @@ export class Vault {
 
   /** Whether these changes heard are in the index already (or what no sync looks at). */
   told(rels: Iterable<string>) {
-    for (const r of rels) if (!NOT_SETTINGS.has(r.split("/").slice(0, 2).join("/")) && !this.indexed(r)) return false
+    for (const r of rels) if (!unseen(r) && !this.indexed(r)) return false
     return true
   }
 
