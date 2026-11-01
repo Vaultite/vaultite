@@ -3,7 +3,7 @@
 import { memo, useEffect, useState, type CSSProperties } from "react"
 import { FileText, ImageOff } from "lucide-react"
 import { cn, FileEditor, FileEmbed, Markdown, NoteEditor, rawUrl, readFile, splitFm, useVaultChange, withoutBlocks, type Store } from "@vaultite"
-import { colorOf, type CanvasNode } from "./codec"
+import { colorOf, styleOf, type CanvasNode } from "./codec"
 import { SIDES, DIRS, anchor, type Dir } from "./geometry"
 import { fileName, isImage, px, tint } from "./look"
 import { LinkCard } from "./LinkCard"
@@ -58,6 +58,11 @@ export type CardEvents = {
   open: (n: CanvasNode, newTab: boolean) => void
 }
 
+/** The shapes drawn as polygons (in % of the card's box); the rest are a rounded box. */
+/** A shaped card's text sits in its middle, as in a flowchart. */
+const SHAPED = "grid place-items-center text-center [&>*]:!h-auto [&>*]:max-h-full [&_.canvas-md]:!px-1 [&_.canvas-md]:!py-0"
+const POLYGONS: Record<string, string> = { diamond: "50% 0%, 100% 50%, 50% 100%, 0% 50%", parallelogram: "14% 0%, 100% 0%, 86% 100%, 0% 100%" }
+
 type CardProps = {
   node: CanvasNode; store?: Store; canvas: string
   selected: boolean; editing: boolean; far: boolean; lite: boolean; editable: boolean; target: boolean
@@ -110,10 +115,25 @@ export const Card = memo(function Card({ node: n, store, canvas, selected, editi
           {fileName(file).replace(/\.md$/i, "")}{typeof n.subpath === "string" ? n.subpath : ""}
         </button>
       )}
-      <div className={cn("size-full overflow-hidden rounded-[10px] border-2 bg-card", !far && "shadow-[0_1px_3px_rgb(0_0_0/0.08)]")}
-        style={{ borderColor: target ? "var(--primary)" : c ?? "var(--border)", background: tint(c, 10), outline: selected ? `${px(2)} solid var(--primary)` : undefined, outlineOffset: px(2) }}>
-        {inner}
-      </div>
+      {(() => {
+        const shape = styleOf(n, "shape"), border = styleOf(n, "border"), poly = POLYGONS[shape]
+        const ink = target ? "var(--primary)" : border === "invisible" ? "transparent" : c ?? "var(--border)"
+        const dash = border === "dashed" ? "6 4" : border === "dotted" ? "0 5" : undefined
+        return (
+          <div className={cn("relative size-full overflow-hidden bg-card", !poly && "border-2", !far && !poly && border !== "invisible" && "shadow-[0_1px_3px_rgb(0_0_0/0.08)]",
+            shape === "pill" ? "rounded-full" : shape === "circle" ? "rounded-[50%]" : !poly && "rounded-[10px]")} data-shape={shape || undefined}
+            style={{ borderColor: ink, borderStyle: border === "dashed" || border === "dotted" ? border : undefined, background: tint(c, 10),
+              clipPath: poly ? `polygon(${poly})` : undefined, outline: selected && !poly ? `${px(2)} solid var(--primary)` : undefined, outlineOffset: px(2) }}>
+            {poly ? <>
+              <div className={cn("size-full", SHAPED)} style={{ padding: shape === "diamond" ? "16% 18%" : "0 12%" }}>{inner}</div>
+              <svg className="pointer-events-none absolute inset-0 size-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+                <polygon points={poly.replaceAll("%", "")} fill="none" stroke={selected ? "var(--primary)" : ink} strokeWidth={selected ? 5 : 4} strokeDasharray={dash}
+                  strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+              </svg>
+            </> : shape ? <div className={cn("size-full", SHAPED)} style={{ padding: shape === "circle" ? "12%" : "0 8%" }}>{inner}</div> : inner}
+          </div>
+        )
+      })()}
       {handles && <Handles node={n} selected={selected} resizable={resizable} />}
     </div>
   )

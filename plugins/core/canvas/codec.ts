@@ -71,6 +71,26 @@ export function colorOf(c: unknown): string | null {
   return /^#[0-9a-f]{3,8}$/i.test(c) ? c : null
 }
 
+/** Card shapes and line styles, in `styleAttributes` as other canvas apps keep them, so their files draw the same. */
+export const SHAPES: Record<string, string> = { "": "Rectangle", pill: "Pill", circle: "Circle", diamond: "Diamond", parallelogram: "Parallelogram" }
+export const BORDERS: Record<string, string> = { "": "Solid border", dashed: "Dashed border", dotted: "Dotted border", invisible: "No border" }
+export const LINES: Record<string, string> = { "": "Solid line", "long-dashed": "Long dashes", "short-dashed": "Short dashes", dotted: "Dotted line" }
+/** A node's or edge's style attribute (`shape`, `border`, `path`), "" for none or one this doesn't draw. */
+export function styleOf(x: object, key: "shape" | "border" | "path"): string {
+  const v = ((x as { styleAttributes?: Record<string, unknown> }).styleAttributes)?.[key]
+  const known = key === "shape" ? SHAPES : key === "border" ? BORDERS : LINES
+  return typeof v === "string" && v in known ? v : ""
+}
+/** `x` with one style attribute set ("" removes it, and the object when it's left empty). */
+export function withStyle<T extends object>(x: T, key: string, value: string): T {
+  const was = (x as { styleAttributes?: unknown }).styleAttributes
+  const attrs = { ...((was && typeof was === "object" ? was : {}) as Record<string, unknown>) }
+  if (value) attrs[key] = value; else delete attrs[key]
+  const y = { ...x } as T & { styleAttributes?: Record<string, unknown> }
+  if (Object.keys(attrs).length) y.styleAttributes = attrs; else delete y.styleAttributes
+  return y
+}
+
 /** Whether node `a` lies inside group `g` (its box, a little slack). */
 export const inside = (a: CanvasNode, g: CanvasNode) =>
   a !== g && a.x >= g.x - 1 && a.y >= g.y - 1 && a.x + a.width <= g.x + g.width + 1 && a.y + a.height <= g.y + g.height + 1
@@ -107,7 +127,11 @@ export function canvasMarkdown(text: string): string {
       : n.type === "link" ? `<${n.url ?? ""}>`
       : n.type === "group" ? `the group ${n.label ? `"${n.label}"` : "(no label)"}`
       : quote(String(n.text ?? ""))
-  const colour = (n: CanvasNode | CanvasEdge) => (n.color ? ` (${PRESET_NAMES[String(n.color)]?.toLowerCase() ?? n.color})` : "")
+  // (its colour and, for a card, its shape: "(green, diamond)"; an arrow's dashes: "(dotted line)")
+  const colour = (n: CanvasNode | CanvasEdge) => {
+    const bits = [n.color ? PRESET_NAMES[String(n.color)]?.toLowerCase() ?? String(n.color) : "", styleOf(n, "shape"), styleOf(n, "path") ? LINES[styleOf(n, "path")].toLowerCase() : ""].filter(Boolean)
+    return bits.length ? ` (${bits.join(", ")})` : ""
+  }
   const card = (n: CanvasNode) => {
     if (n.type === "text") {
       const t = String(n.text ?? "").trim()

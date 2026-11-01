@@ -1,9 +1,12 @@
 // A canvas's arrows, each memoized on its two cards so moving a card redraws only its own arrows.
 import { memo } from "react"
 import { cn } from "@vaultite"
-import { colorOf, type CanvasEdge, type CanvasNode } from "./codec"
+import { colorOf, styleOf, type CanvasEdge, type CanvasNode } from "./codec"
 import { head } from "./geometry"
 import { edgePath, px } from "./look"
+
+/** A line style's dashes (round caps make "0 n" dots). */
+const DASHES: Record<string, string | undefined> = { "long-dashed": "14 8", "short-dashed": "6 6", dotted: "0 6" }
 
 type Props = {
   edge: CanvasEdge; from: CanvasNode; to: CanvasNode
@@ -20,7 +23,7 @@ export const Edge = memo(function Edge({ edge: e, from, to, selected, editingLab
     <g data-edge={e.id} className="group/edge" opacity={moving ? 0.3 : 1}>
       <path d={d} fill="none" stroke="transparent" className={cn(interactive && "cursor-pointer")}
         style={{ pointerEvents: interactive ? "stroke" : "none", strokeWidth: `max(14px, ${px(14)})` }} data-canvas-edge={e.id} />
-      <path d={d} fill="none" stroke={ink} strokeWidth={selected ? 3 : 2} strokeLinecap="round"
+      <path d={d} fill="none" stroke={ink} strokeWidth={selected ? 3 : 2} strokeLinecap="round" strokeDasharray={DASHES[styleOf(e, "path")]}
         className={cn(interactive && !selected && "group-hover/edge:stroke-[var(--primary)]")} />
       {(e.toEnd ?? "arrow") === "arrow" && <polygon points={head(pb, c2, 12)} fill={ink} className={cn(interactive && !selected && "group-hover/edge:fill-[var(--primary)]")} />}
       {(e.fromEnd ?? "none") === "arrow" && <polygon points={head(pa, c1, 12)} fill={ink} className={cn(interactive && !selected && "group-hover/edge:fill-[var(--primary)]")} />}

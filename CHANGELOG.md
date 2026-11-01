@@ -10,6 +10,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   timeline of the day, overlapping ones side by side and a line at the time it is now; agents read it as the plan.
 - **Obsidian vaults are offered the Importer and Mind map**: a vault that used Obsidian's Importer or Mind Map plugin
   gets these in their place when it opens (or keeps running the originals).
+- **Canvas shapes and dashed lines**: a card can be a pill, circle, diamond or parallelogram with a dashed, dotted or no
+  border, and an arrow dashed or dotted (Shape and Line style in the toolbar), for flowcharts; files from other canvas
+  apps that use them draw the same.
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
 - **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing

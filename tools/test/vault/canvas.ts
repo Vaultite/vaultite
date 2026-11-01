@@ -19,6 +19,15 @@ export default async ($: VaultTest) => {
   check("canvas: keeps the file's indent (tabs)", writeCanvas(cdoc, boardText).includes('\n\t"nodes"') && writeCanvas(cdoc, JSON.stringify(board, null, 2)).includes('\n  "nodes"'))
   check("canvas: an empty file is an empty canvas; not JSON throws", parseCanvas("").nodes.length === 0 && (() => { try { parseCanvas("{nope"); return false } catch { return true } })())
   check("canvas: an empty canvas as text says so", canvasMarkdown('{"nodes":[],"edges":[]}') === "_An empty canvas._")
+  {
+    const { styleOf, withStyle } = await import("../../../plugins/core/canvas/codec.ts")
+    const n = { id: "a", type: "text", x: 0, y: 0, width: 1, height: 1, styleAttributes: { shape: "diamond", other: 1 } }
+    check("canvas styles: shapes and line styles read, unknown ones are none, setting one keeps the rest", styleOf(n, "shape") === "diamond" && styleOf({ styleAttributes: { shape: "hexagon" } }, "shape") === "" &&
+      JSON.stringify(withStyle(n, "border", "dashed").styleAttributes) === '{"shape":"diamond","other":1,"border":"dashed"}' && !("styleAttributes" in withStyle({ styleAttributes: { path: "dotted" } }, "path", "")))
+    const styled = canvasMarkdown(JSON.stringify({ nodes: [{ id: "a", type: "text", text: "Start", x: 0, y: 0, width: 1, height: 1, color: "4", styleAttributes: { shape: "pill" } },
+      { id: "b", type: "text", text: "End", x: 0, y: 0, width: 1, height: 1 }], edges: [{ id: "e", fromNode: "a", toNode: "b", styleAttributes: { path: "dotted" } }] }))
+    check("canvas styles: in the text, a card's shape and an arrow's dashes", styled.includes("- Card (green, pill): Start") && styled.includes("(dotted line)"), styled)
+  }
   const [cmade] = await api("POST", "file", { path: "Canvases/New.canvas", text: '{\n\t"nodes": [],\n\t"edges": []\n}\n' })
   const [, cread] = await api("GET", "file?path=Canvases/New.canvas")
   check("canvas: a .canvas is a JSON text file", cmade < 300 && cread.kind === null && cread.text.includes('"nodes"'), cread)

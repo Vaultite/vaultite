@@ -4,10 +4,10 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight,
   ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
-  Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
+  Palette, Pencil, Plus, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
 import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
-import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
+import { BORDERS, colorOf, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
 import { Card, Group, type CardEvents } from "./Card"
@@ -384,6 +384,22 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     const current = selEdge ? doc.edges.find((x) => x.id === selEdge)?.color : doc.nodes.find((n) => sel.has(n.id))?.color
     return [{ label: "No colour", checked: !current, run: () => recolour(null) },
       ...Object.entries(PRESET_NAMES).map(([id, label]) => ({ label, checked: current === id, run: () => recolour(id) }))]
+  }
+  /** Shapes and borders for the selected cards, line styles for the selected arrow (one menu each). */
+  const restyle = (key: "shape" | "border" | "path", value: string) => {
+    const d = docRef.current
+    if (selEdge) commit({ ...d, edges: d.edges.map((e) => (e.id === selEdge ? withStyle(e, key, value) : e)) })
+    else commit({ ...d, nodes: d.nodes.map((n) => (sel.has(n.id) ? withStyle(n, key, value) : n)) })
+  }
+  const styleItems = (): MenuItem[] => {
+    if (selEdge) {
+      const e = doc.edges.find((x) => x.id === selEdge), now = e ? styleOf(e, "path") : ""
+      return Object.entries(LINES).map(([v, label]) => ({ label, checked: now === v, run: () => restyle("path", v) }))
+    }
+    const first = doc.nodes.find((n) => sel.has(n.id) && n.type !== "group") ?? doc.nodes.find((n) => sel.has(n.id))
+    const shape = first ? styleOf(first, "shape") : "", border = first ? styleOf(first, "border") : ""
+    return [...Object.entries(SHAPES).map(([v, label]) => ({ label, checked: shape === v, run: () => restyle("shape", v) })),
+      ...Object.entries(BORDERS).map(([v, label], i) => ({ label, checked: border === v, sep: i === 0, run: () => restyle("border", v) }))]
   }
   function patchNode(id: string, patch: Partial<CanvasNode>) {
     const d = docRef.current
@@ -974,12 +990,14 @@ export default function Board({ store, text, editable, onChange, place, path }: 
             <Tool icon={ArrowLeftRight} label="Direction" onClick={(e) => menuBelow(e, directionItems(selEdge))} />
             <Tool icon={Type} label="Edit label" onClick={() => setEditing({ kind: "edge", id: selEdge })} />
             <Tool icon={Palette} label="Colour" onClick={(e) => menuBelow(e, colourItems())} swatch={colorOf(doc.edges.find((x) => x.id === selEdge)?.color)} />
+            <Tool icon={Spline} label="Line style" onClick={(e) => menuBelow(e, styleItems())} />
             <Tool icon={Scan} label="Zoom to selection" onClick={fitSelection} />
             <Tool icon={Trash2} label="Delete" onClick={removeSelected} />
           </> : <>
             {one && (one.type === "text" || isNote(one)) && <Tool icon={Pencil} label="Edit" onClick={() => beginEdit(one)} />}
             {one && (one.type === "file" || one.type === "link") && <Tool icon={ArrowUpRight} label="Open" onClick={(e) => openNode(one, e.metaKey || e.ctrlKey)} />}
             <Tool icon={Palette} label="Colour" onClick={(e) => menuBelow(e, colourItems())} swatch={colorOf(doc.nodes.find((n) => sel.has(n.id))?.color)} />
+            {[...sel].some((id) => doc.nodes.find((n) => n.id === id)?.type !== "group") && <Tool icon={Shapes} label="Shape" onClick={(e) => menuBelow(e, styleItems())} />}
             {sel.size > 1 && <Tool icon={AlignStartVertical} label="Align" onClick={(e) => menuBelow(e, alignItems())} />}
             {(sel.size > 1 || (one && one.type !== "group")) && <Tool icon={GroupIcon} label="Create group" onClick={() => addGroup()} />}
             <Tool icon={Scan} label="Zoom to selection" onClick={fitSelection} />
