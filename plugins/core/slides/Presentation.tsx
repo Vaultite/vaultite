@@ -364,7 +364,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
               : <p className="pt-2 text-[15px] text-muted-foreground">No notes for this slide.</p>}
           </div>
           {next && (
-            <div className="truncate border-t border-border px-4 py-2.5 text-[15px] text-muted-foreground md:text-[13px]">
+            <div data-next-slide className="truncate border-t border-border px-4 py-2.5 text-[15px] text-muted-foreground md:text-[13px]">
               Next: {nextName(next.md) || `slide ${i + 2}`}
             </div>
           )}

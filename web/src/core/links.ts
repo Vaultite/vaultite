@@ -36,8 +36,9 @@ export function plainText(md: string) {
     .replace(/^[ \t]*\|(.*?)\|?[ \t]*$/gm, (_, row: string) => row.split("|").map((c) => c.trim()).join(" "))
     .replace(/^[ \t]*(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(\[[ xX]\][ \t]+)?|\d+[.)](?=[ \t]|$)[ \t]*)/gm, "")
     .replace(/^[ \t]*\[![^\]\n]+\][+-]?[ \t]*/gm, "")
+    .replace(/(^|[^\w\\])(_{1,3})(?=\S)(.*?\S)\2(?!\w)/gm, "$1$3")
     .replace(/(\*\*|__|\*|~~|==|`)/g, "")
-    .replace(/<\/?[a-z][^>\n]*>/gi, "")
+    .replace(/<!--[\s\S]*?-->|<\/?[a-z][^>\n]*>/gi, "")
     .replace(/\\([\\`*_{}[\]()#+\-.!|>~])/g, "$1")
 }
 

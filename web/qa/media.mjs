@@ -114,7 +114,7 @@ await shot.setContent(`<div style="width:320px;height:180px;background:linear-gr
 const png = (await shot.screenshot()).toString("base64")
 await shot.close()
 await fetch(`${B}api/upload?path=${encodeURIComponent("Qa media/pic.png")}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: Buffer.from(png, "base64") })
-await put(DECK, "---\ntype: note\n---\n\n# Quarterly plan\nA short deck\n\n---\n\n## Why now\n\n- Customers asked for it\n- The math: $e^{i\\pi} + 1 = 0$\n\n```ts\nconst answer = 42\n---\n```\n\nnote: Say why now\n\n---\n\n## A picture\n\n![[pic.png|360]]\n")
+await put(DECK, "---\ntype: note\n---\n\n# Quarterly plan\nA short deck\n\n---\n\n## Why now\n\n- Customers asked for it\n- The math: $e^{i\\pi} + 1 = 0$\n\n```ts\nconst answer = 42\n---\n```\n\nnote: Say why now\n\n---\n\n## _A picture_\n\n![[pic.png|360]]\n")
 for (const [scheme, vp] of [["light", { width: 1280, height: 800 }], ["dark", { width: 1280, height: 800 }]]) {
   page = await open({ viewport: vp, colorScheme: scheme })
   await page.goto(`${B}#file/${enc(DECK)}`); await wait(1500)
@@ -132,6 +132,7 @@ for (const [scheme, vp] of [["light", { width: 1280, height: 800 }], ["dark", { 
   check("speaker notes (note:) stay off the slide", !(await page.locator("[data-deck-slide]").innerText()).includes("Say why now") && await notesOf().count() === 0)
   await page.keyboard.press("s"); await wait(400)
   check("S shows them beside it", (await notesOf().innerText().catch(() => "")).includes("Say why now"))
+  check("the next slide's name is plain text", (await page.locator("[data-slide-notes] [data-next-slide]").innerText().catch(() => "")) === "Next: A picture")
   await page.screenshot({ path: `${OUT}media-slides-notes-${scheme}.png` })
   await page.keyboard.press("s"); await wait(300)
   await page.keyboard.press("End"); await wait(800)

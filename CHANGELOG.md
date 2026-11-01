@@ -27,6 +27,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   notch and the home indicator in landscape.
 - **vau suggests the command a typo meant**: `vau serch` asks "Did you mean search?" and `vau bundle shwo` names
   `vau bundle show`, nearest first, instead of every command sharing the first three letters.
+- **Slides' speaker notes name the next slide plainly**: the Next line under the notes no longer shows `_` or an
+  HTML comment from the slide's Markdown; previews and search snippets drop `_italic_` marks too.
 - **Vaultite Main updates without slowing the Mac**: it builds a new version at most once an hour, in the background
   (efficiency cores, disk throttled), in folders Spotlight skips; automatic updates restart only once you've been away
   from the computer for 10 minutes, and a ready update goes in when you quit the app.
