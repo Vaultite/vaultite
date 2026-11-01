@@ -16,7 +16,7 @@
     "socket": 6
   },
   "typing": {
-    "api": 7,
+    "api": 6,
     "apiKB": 7,
     "socket": 6
   },
@@ -31,14 +31,14 @@
     "socket": 9
   },
   "idle": {
-    "requests": 4,
-    "api": 4,
+    "requests": 2,
+    "api": 2,
     "socket": 3
   },
   "outside change": {
-    "requests": 4,
-    "api": 4,
-    "apiKB": 3,
-    "socket": 4
+    "requests": 3,
+    "api": 3,
+    "apiKB": 2,
+    "socket": 3
   }
 }
