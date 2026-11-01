@@ -16,7 +16,8 @@ type Stat = { mtime: number; size: number; ns?: string }
 /** What's kept for a file: its head's stat and hash, and when its last snapshot was taken (ms). */
 type Meta = Stat & { path: string; hash: string; last: number; gone?: boolean }
 /** `version`: the vault's version at the last comparison (nothing to compare while it's the same). */
-type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number }
+/** `seen`: each file's stat (the index's object) at the last look: one still the same isn't compared again. */
+type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object> }
 
 const sha1 = (s: string | Buffer) => crypto.createHash("sha1").update(s).digest("hex")
 const states = new WeakMap<Vault, State>()
@@ -30,7 +31,7 @@ function state(vault: Vault): State {
   fs.mkdirSync(root, { recursive: true })
   fs.writeFileSync(path.join(root, "vault.txt"), real + "\n")
   // The first prune a minute after the start (it looks at every snapshot: not while a server is starting), then hourly.
-  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1 }
+  s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1, seen: new Map() }
   for (const name of fs.readdirSync(root)) {
     if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue } // (a copy a stop cut off)
     const m = readMeta(path.join(root, name))
@@ -84,15 +85,23 @@ async function take(abs: string, to: string): Promise<string | null | undefined>
 let tmpN = 0
 const tmp = (s: State) => path.join(s.root, `tmp-${process.pid}-${++tmpN}`)
 
-/** The files to follow now: Markdown (the index) and text files by kind, any size, none hidden. */
-function candidates(vault: Vault) {
+/** The files to follow now (Markdown, the index's, and text files by kind, none hidden) whose stat isn't the one last
+ *  looked at, and whether a followed file may be gone: an edit compares one file, not every file of a big vault. */
+function candidates(s: State, vault: Vault) {
   const out = new Map<string, Stat>()
-  const ms = (ns: bigint) => Number(ns / 1000000n)
-  for (const [rel, e] of vault.entries) out.set(rel, { mtime: ms(e.stat.ns), size: e.stat.size, ns: String(e.stat.ns) })
-  for (const [rel, st] of vault.others) {
-    if (isTextKind(kindOf(rel))) out.set(rel, { mtime: ms(st.ns), size: st.size, ns: String(st.ns) })
+  let followed = 0, all = 0
+  const look = (rel: string, st: { ns: bigint; size: number }) => {
+    all++
+    if (s.heads.has(rel)) followed++
+    if (s.seen.get(rel) === st) return
+    s.seen.set(rel, st)
+    out.set(rel, { mtime: Number(st.ns / 1000000n), size: st.size, ns: String(st.ns) })
   }
-  return out
+  for (const [rel, e] of vault.entries) look(rel, e.stat)
+  for (const [rel, st] of vault.others) if (isTextKind(kindOf(rel))) look(rel, st)
+  const followedNow = (rel: string) => vault.entries.has(rel) || (vault.others.has(rel) && isTextKind(kindOf(rel)))
+  if (s.seen.size > all) for (const rel of s.seen.keys()) if (!followedNow(rel)) s.seen.delete(rel)
+  return { out, gone: followed < s.heads.size ? [...s.heads.keys()].filter((r) => !followedNow(r) && present(vault, r)) : [] }
 }
 
 function settings() {
@@ -159,7 +168,7 @@ const isOff = (vault: Vault) => {
 export async function follow(vault: Vault) {
   if (isOff(vault)) {
     const s = states.get(vault)
-    if (s) s.version = -1 // turned on again: compare every file
+    if (s) { s.version = -1; s.seen.clear() } // turned on again: compare every file
     return
   }
   const s = state(vault)
@@ -168,20 +177,19 @@ export async function follow(vault: Vault) {
     return
   }
   s.version = vault.version
-  const now = candidates(vault)
+  const { out: now, gone } = candidates(s, vault)
   const added: string[] = [], changed: string[] = []
   for (const [rel, st] of now) {
     const m = s.heads.get(rel)
     if (!m) { if (s.skip.get(rel) !== `${st.mtime}:${st.size}`) added.push(rel) }
     else if (m.mtime !== st.mtime || m.size !== st.size || (m.ns !== undefined && m.ns !== st.ns)) changed.push(rel)
   }
-  const gone = [...s.heads.keys()].filter((r) => !now.has(r) && present(vault, r))
   if (added.length || changed.length || gone.length) {
     const { interval } = settings()
     for (const rel of changed) {
       const m = s.heads.get(rel)!, st = now.get(rel)!, copy = tmp(s)
       const hash = await take(vault.abs(rel), copy)
-      if (hash === undefined) { s.version = -1; continue } // (looked at again next time)
+      if (hash === undefined) { s.version = -1; s.seen.delete(rel); continue } // (looked at again next time)
       if (hash === null) { untrack(s, rel); s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
       if (hash !== m.hash) {
         // The head is the previous content: kept, unless a snapshot was taken less than the interval ago.
@@ -199,7 +207,7 @@ export async function follow(vault: Vault) {
     for (const rel of added) {
       const st = now.get(rel)!, copy = tmp(s)
       const hash = await take(vault.abs(rel), copy)
-      if (hash === undefined) { s.version = -1; continue }
+      if (hash === undefined) { s.version = -1; s.seen.delete(rel); continue }
       if (hash === null) { s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
       s.skip.delete(rel)
       const from = byHash.get(hash)
@@ -237,7 +245,7 @@ plugin.onSync((vault) => {
   if (following) { again = true; return }
   following = (async () => {
     do { again = false; await follow(vault) } while (again)
-  })().catch((e) => console.error("history:", e)).finally(() => { following = null })
+  })().catch((e) => { states.get(vault)?.seen.clear(); console.error("history:", e) }).finally(() => { following = null })
 })
 const timer = setInterval(() => { try { if (plugin.loaded) prune(plugin.vault) } catch (e) { console.error(e) } }, HOUR)
 timer.unref()
