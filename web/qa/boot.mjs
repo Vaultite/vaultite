@@ -60,7 +60,8 @@ async function visit(base, prefix = "") {
   const state = await (await fetch(`${base}api/state`)).json()
   const note = state.notes?.[0]?.id ?? null
   const sizes = { desktop: { viewport: { width: 1280, height: 800 } }, phone: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } }
-  for (const [name, opts] of Object.entries(sizes)) {
+  // (each size in a context of its own, at once: their waits overlap)
+  await Promise.all(Object.entries(sizes).map(async ([name, opts]) => {
     const ctx = await browser.newContext(opts)
     const page = await ctx.newPage()
     page.setDefaultNavigationTimeout(SLOW)
@@ -78,7 +79,7 @@ async function visit(base, prefix = "") {
       errors.length = 0
     }
     await ctx.close()
-  }
+  }))
 }
 
 /** Every file under dir but .vaultite/: path -> its bytes. */
