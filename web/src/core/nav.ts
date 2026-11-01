@@ -1,9 +1,10 @@
 // Detail sheets live in the hash (deep links; Back closes them); one opened from another pushes an entry, Close all.
+import { glide } from "@/core/animation"
 /** Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window. */
 export function scrollPage(top: number, smooth = false) {
   const el = document.getElementById("main-scroll")
   const target = el && getComputedStyle(el).overflowY === "auto" ? el : window
-  target.scrollTo({ top, behavior: smooth ? "smooth" : "auto" })
+  target.scrollTo({ top, behavior: smooth ? glide() : "auto" })
 }
 
 export type Route = { tab: string; detail: string; depth: number; prev: string }

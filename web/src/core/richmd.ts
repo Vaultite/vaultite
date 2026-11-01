@@ -4,6 +4,7 @@ import { isDark } from "@/lib/utils"
 import { onLook } from "@/core/appearance"
 import { haptic } from "@/core/haptics"
 import type { Mounted } from "pele/lazy"
+import { glide } from "@/core/animation"
 
 type Katex = typeof import("katex").default
 let katex: Promise<Katex> | null = null
@@ -183,14 +184,14 @@ export function richClick(e: { target: EventTarget | null; preventDefault: () =>
   if (ref && root.contains(ref)) {
     e.preventDefault(); e.stopPropagation()
     const def = [...root.querySelectorAll<HTMLElement>("[data-footnote-def]")].find((d) => d.dataset.footnoteDef === ref.dataset.footnote)
-    if (def) { def.scrollIntoView({ block: "center", behavior: "smooth" }); flash(def) }
+    if (def) { def.scrollIntoView({ block: "center", behavior: glide() }); flash(def) }
     return true
   }
   const back = t?.closest?.<HTMLElement>("[data-footnote-back]")
   if (back && root.contains(back)) {
     e.preventDefault(); e.stopPropagation()
     const r = [...root.querySelectorAll<HTMLElement>("[data-footnote]")].find((d) => d.dataset.footnote === back.dataset.footnoteBack)
-    if (r) { r.scrollIntoView({ block: "center", behavior: "smooth" }); flash(r) }
+    if (r) { r.scrollIntoView({ block: "center", behavior: glide() }); flash(r) }
     return true
   }
   return false

@@ -34,6 +34,7 @@ import { capitalize, cn, scrollingBox, space } from "@/lib/utils"
 import { listOrders, rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
 import { SidebarHeading } from "@/components/SidebarHeading"
 import { signal } from "@/core/signal"
+import { glide } from "@/core/animation"
 
 // ---------- which folders are open (the current workspace's: core/scope.ts) ----------
 /** A list of open folders kept per workspace, so each desk has its own folders open. */
@@ -124,7 +125,7 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
     if (!box) return flash()
     const by = top ? r.top - seen.top - r.height / 2 : opts.flash ? r.top + r.height / 2 - (seen.top + seen.bottom) / 2
       : r.top < seen.top ? r.top - seen.top : r.bottom - seen.bottom
-    box.scrollBy({ top: by, behavior: opts.flash ? "smooth" : "auto" })
+    box.scrollBy({ top: by, behavior: opts.flash ? glide() : "auto" })
     setTimeout(flash, opts.flash ? 350 : 0)
   }
   requestAnimationFrame(() => go(5))

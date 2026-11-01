@@ -1,6 +1,7 @@
 // Taps answered at once: what a write takes away leaves its list now, what it changes shows changed now, and a slow one
 // shows it's working. The server's answer catches up; a failed write puts things back and says so.
 import { useCallback, useEffect, useRef, useState } from "react"
+import { still } from "@/core/animation"
 import { notifyError } from "@/core/notify"
 import { cell } from "@/core/signal"
 
@@ -8,8 +9,6 @@ import { cell } from "@/core/signal"
 const FOLD = 180
 /** How long something written stays as shown while its source still says otherwise (its next refresh catches up). */
 const LINGER = 15_000
-
-const still = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches
 
 type Phase = "leaving" | "writing" | "done"
 

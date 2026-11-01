@@ -1,14 +1,14 @@
 // Phones: tabs and Back move like a browser's (a page shrinks into its card, Back slides away). Back with the View
-// Transitions API and index.css's `html[data-motion]` rules: without it (iOS < 18) or with Reduce motion, instant.
+// Transitions API and index.css's `html[data-motion]` rules: without it (iOS < 18), with Reduce motion or animations off, instant.
 import { flushSync } from "react-dom"
 import { relockScroll } from "@/core/pagelock"
+import { moves as zooms, still } from "@/core/animation"
 import { cell } from "@/core/signal"
 
 type Kind = "back" | "forward"
 
-/** Whether changes animate: the API is there, and the user hasn't asked for less motion. */
-const moves = () =>
-  typeof document !== "undefined" && typeof document.startViewTransition === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches
+/** Whether changes animate: the API is there, and nothing asks for stillness. */
+const moves = () => typeof document !== "undefined" && typeof document.startViewTransition === "function" && !still()
 
 const VARS = ["--mto", "--mfrom"]
 let running: ViewTransition | null = null
@@ -61,10 +61,6 @@ export function spring(response = 0.3, damping = 1): Spring {
   const easing = typeof CSS !== "undefined" && CSS.supports("transition-timing-function", v) ? v : "cubic-bezier(.2, .9, .1, 1)"
   return { at, ms, easing }
 }
-
-/** Whether the tab list zooms: Web Animations are there, and the user hasn't asked for less motion. */
-export const zooms = () =>
-  typeof document !== "undefined" && typeof document.documentElement.animate === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches
 
 // The page shrinks into its card (a copy of it, the hero), the cards around fade in. Only transforms and opacity move
 // (iOS runs them off the main thread), and only the hero is scaled up: iOS drops the tiles of a big scaled-up layer.

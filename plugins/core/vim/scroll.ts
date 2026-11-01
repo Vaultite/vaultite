@@ -1,7 +1,7 @@
 // Moving through what's on screen outside the editor: the scroller j/k move (a sheet's, else the focused pane's),
 // headings (a note's from its text, so undrawn ones count) and the note's editor itself, for `i`.
 import { EditorView } from "@codemirror/view"
-import { currentFile, runCommandById } from "@vaultite"
+import { currentFile, glide, runCommandById } from "@vaultite"
 import { setPeek } from "./state"
 
 const LINE = 60
@@ -39,7 +39,7 @@ export function scroll(by: "line" | "half" | "page", dir: 1 | -1) {
   const el = scroller()
   if (!el) return
   const step = by === "line" ? LINE : by === "half" ? el.clientHeight / 2 : el.clientHeight - LINE
-  el.scrollBy({ top: dir * step, behavior: by === "line" ? "auto" : "smooth" })
+  el.scrollBy({ top: dir * step, behavior: by === "line" ? "auto" : glide() })
 }
 
 export function scrollSide(dir: 1 | -1) {

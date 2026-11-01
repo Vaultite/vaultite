@@ -11,6 +11,7 @@ import { DenseRows, PageHeader, Segmented, SheetHead } from "@/components/kit"
 import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
 import { Bundles, BundlesActions, type BundlesView } from "@/pages/Bundles"
 import { Plugins, type PluginsView } from "@/pages/Plugins"
+import { glide } from "@/core/animation"
 
 /** Yours or to get, on each tab: kept while the app runs. */
 const bundlesView = cell<BundlesView>("yours")
@@ -68,7 +69,7 @@ const CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 /** Scroll Your plugins to a category's section. */
 function jumpTo(cat: string) {
-  requestAnimationFrame(() => document.querySelector(`[data-setup] [data-plugin-category="${CSS.escape(cat)}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  requestAnimationFrame(() => document.querySelector(`[data-setup] [data-plugin-category="${CSS.escape(cat)}"]`)?.scrollIntoView({ behavior: glide(), block: "start" }))
 }
 
 /** The menu: Bundles and Plugins, each yours or to get, and under Your plugins its categories (each a jump to its

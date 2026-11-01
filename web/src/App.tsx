@@ -63,7 +63,8 @@ import { openNewTab } from "@/core/launcher"
 import { Workspace } from "@/components/Workspace"
 import { Resizer } from "@/components/Resizer"
 import { DragGhost, setPageInfo, useTabInfo, type TabInfo } from "@/components/Tabs"
-import { useLingeringSheet, zooms } from "@/core/motion"
+import { useLingeringSheet } from "@/core/motion"
+import { moves } from "@/core/animation"
 import { closeSwitcher } from "@/core/phoneTabs"
 import { PhoneTab, TabSwitcher } from "@/components/TabSwitcher"
 import { PullActions } from "@/components/PullActions"
@@ -678,7 +679,7 @@ export default function App() {
       )}
 
       <DetailSheet open={!!sheet && !!store} onClose={sheet === "tabs" ? closeSwitcher : closeDetail} path={sheet} depth={depth}
-        still={!desktop && sheet === "tabs" && zooms()} own={sheet === "tabs"}
+        still={!desktop && sheet === "tabs" && moves()} own={sheet === "tabs"}
         onBack={canBack ? backDetail : undefined} backLabel={prevTitle.length <= 12 ? prevTitle : "Back"}
         title={sheetDetail?.title ?? ""} wide={sheetDetail?.wide}>
         {sheetDetail && <Guard key={sheet} what="This sheet" size="tab" reset={sheet}>{sheetDetail.body}</Guard>}

@@ -138,6 +138,8 @@ export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, op
 export { onVaultChange, touches, useVaultChange } from "@/core/live"
 export { DEVICE } from "@/core/device"
 export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
+/** A scroll's `behavior`: smooth, unless Reduce motion or animations off keep things still. */
+export { glide } from "@/core/animation"
 export { backlinks, drawnLink, followLink, linkClick, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type LinkClick, type Target } from "@/core/links"
 /** The links in a line of Markdown, with where each one's target and text are written (core/links.ts, shared with the server). */
 export { linksIn, type LinkSpan } from "../../core/links.ts"

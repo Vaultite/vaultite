@@ -12,6 +12,7 @@ import { cell } from "@/core/signal"
 import { capitalize } from "@/lib/utils"
 import type { SettingDecl } from "../../../core/blocks.ts"
 import { isObj } from "../../../core/values.ts"
+import { glide } from "@/core/animation"
 
 /** Where a plugin's settings are kept. */
 export const settingsFile = (id: string) => `.vaultite/plugins/${id}/data.json`
@@ -129,7 +130,7 @@ export function revealRow(selector: string, within: ParentNode = document) {
   const go = () => {
     const el = within.querySelector<HTMLElement>(selector)
     if (!el) { if (++tries < 20) setTimeout(go, 50); return }
-    el.scrollIntoView({ block: "center", behavior: "smooth" })
+    el.scrollIntoView({ block: "center", behavior: glide() })
     el.classList.remove("reveal-flash"); void el.offsetWidth; el.classList.add("reveal-flash")
   }
   requestAnimationFrame(go)

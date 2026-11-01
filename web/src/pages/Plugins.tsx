@@ -20,6 +20,7 @@ import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/Plug
 import { CATEGORIES, categoryOf, groupOf, OTHER } from "../../../core/categories.ts"
 import { hasWords } from "@/core/fuzzy"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
+import { glide } from "@/core/animation"
 
 /** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
@@ -62,7 +63,7 @@ function pulse(id: string) {
   const flash = () => { row.classList.remove("reveal-flash"); void row.offsetWidth; row.classList.add("reveal-flash") }
   const r = row.getBoundingClientRect()
   if (r.top >= 0 && r.bottom <= innerHeight) return flash()
-  row.scrollIntoView({ behavior: "smooth", block: "center" })
+  row.scrollIntoView({ behavior: glide(), block: "center" })
   setTimeout(flash, 350)
 }
 

@@ -1,6 +1,7 @@
 // A card floating in a corner of the room between the sidebars, like picture in picture (the mini player, agents'
 // pages): where each corner is, and dragging it to another.
 import { useLayoutEffect, useRef, type MouseEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { moves } from "@/core/animation"
 
 export type Corner = "tl" | "tr" | "bl" | "br"
 // Top corners sit under the pane's tab bar and file bar (back, forward), bottom ones over the status bar.
@@ -20,7 +21,7 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
   // Glides from where it was let go to its corner (drawn there already, so the corner's own place is measured).
   const settle = (el: HTMLElement, at: { x: number; y: number }) => {
     const r = el.getBoundingClientRect()
-    if (typeof el.animate !== "function" || matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if (!moves()) return
     el.animate([{ transform: `translate(${at.x - r.left}px, ${at.y - r.top}px)` }, { transform: "none" }], { duration: 320, easing: "cubic-bezier(0.2, 0.9, 0.25, 1.05)" })
   }
   useLayoutEffect(() => {

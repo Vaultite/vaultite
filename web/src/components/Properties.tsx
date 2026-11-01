@@ -11,6 +11,7 @@ import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
 import { keepPropsOpen, propsOpen } from "@/core/viewstate"
 import { cn, plural } from "@/lib/utils"
+import { glide } from "@/core/animation"
 
 function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type, step }: {
   value: string; onCommit: (v: string) => void; readOnly: boolean; placeholder?: string; className?: string
@@ -193,7 +194,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
     const on = (e: Event) => {
       if ((e as CustomEvent).detail !== path) return
       setOpenState(true)
-      requestAnimationFrame(() => box.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }))
+      requestAnimationFrame(() => box.current?.scrollIntoView({ block: "nearest", behavior: glide() }))
     }
     addEventListener("vau:properties", on)
     return () => removeEventListener("vau:properties", on)

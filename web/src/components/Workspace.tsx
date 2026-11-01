@@ -30,6 +30,7 @@ import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 import { watchSliding } from "@/core/sliding"
 import { unsavedIn } from "@/core/unsaved"
+import { glide } from "@/core/animation"
 
 setTabCloser((to, tab, last, moved) => {
   const v = viewFor(to, getPrefs().disabled)
@@ -298,7 +299,7 @@ function Stacked({ group, focused, info, ...p }: Props & { group: Group; focused
     const w = col.offsetWidth
     const lo = (at + 1) * w - r.clientWidth + (n - 1 - at) * SPINE, hi = at * (w - SPINE)
     const to = Math.min(Math.max(r.scrollLeft, lo), hi)
-    if (Math.abs(to - r.scrollLeft) > 1) r.scrollTo({ left: to, behavior: "smooth" })
+    if (Math.abs(to - r.scrollLeft) > 1) r.scrollTo({ left: to, behavior: glide() })
   }, [at, n])
   return (
     <div data-pane-body={group.id} className="relative min-h-0 flex-1">

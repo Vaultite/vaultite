@@ -7,6 +7,7 @@ import { useVaultChange } from "@/core/live"
 import { notify } from "@/core/notify"
 import { cancelRestores } from "@/core/viewstate"
 import { signal } from "@/core/signal"
+import { glide } from "@/core/animation"
 
 export type { Heading }
 
@@ -58,7 +59,7 @@ function tryPending() {
   if (Date.now() > pending.until) { pending = null; return }
   const v = viewOf(pending.path, pending.within)
   const h = v ? null : drawnHeading(pending.path, pending.anchor, pending.within)
-  if (h) { pending = null; cancelRestores(); h.scrollIntoView({ block: "start", behavior: "smooth" }); return }
+  if (h) { pending = null; cancelRestores(); h.scrollIntoView({ block: "start", behavior: glide() }); return }
   if (!v) return
   const { anchor } = pending
   pending = null

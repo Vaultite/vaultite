@@ -26,6 +26,7 @@ import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
 import { spring, unmark, useLingeringSheet } from "@/core/motion"
+import { moves } from "@/core/animation"
 import { cn, plural } from "@/lib/utils"
 import { hasWords } from "@/core/fuzzy"
 import { Drawn, Guard } from "@/components/Guard"
@@ -131,7 +132,7 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
     if (gone.current) return
     gone.current = true
     const c = card.current
-    const g = c && ghostOf(c)
+    const g = c && moves() ? ghostOf(c) : null
     if (c && g) {
       const dx = drag.current?.dx ?? (parseFloat(/translateX\((-?[\d.]+)px\)/.exec(c.style.transform)?.[1] ?? "0") || 0)
       const w = c.offsetWidth, to = (dir ?? 0) * w * 1.3
@@ -141,9 +142,8 @@ function TabCard({ store, tab, info, current, into, lifted, onPick, menu }: { st
           { duration: Math.min(260, Math.max(140, (2 * Math.abs(to - dx)) / Math.max(0.8, Math.abs(v)))), easing: "cubic-bezier(.25, .5, .5, 1)", fill: "forwards" })
         : g.animate([{ transform: "none", opacity: 1 }, { transform: "scale(0.84)", opacity: 0 }], { duration: 180, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "forwards" })
       void flight.finished.finally(() => g.remove())
-      c.style.transition = "none"
-      c.style.opacity = "0"
     }
+    if (c) { c.style.transition = "none"; c.style.opacity = "0" }
     const shut = () => {
       closeTab(tab.id)
       // Still open: its view is asking (or said no). The card comes back; if the tab closes after all, it goes then.

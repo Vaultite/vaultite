@@ -2,7 +2,7 @@
 // `places: false` leaves the list out.
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, MapPin, MapPinOff } from "lucide-react"
-import { cn, detailPath, Empty, get, isArchived, List, openDetail, Panel, type Store } from "@vaultite"
+import { cn, detailPath, Empty, get, glide, isArchived, List, openDetail, Panel, type Store } from "@vaultite"
 import type { Person } from "@plugins/people/types"
 import { colorOf, initials, located, meOf, placesOf, RELATIONS, YOU_COLOR, type Place } from "./places"
 import type { Focus } from "./PeopleMap"
@@ -104,7 +104,7 @@ export function PeoplePlaces({ store, list = true }: { store: Store; list?: bool
     if (pl.me && me) points.push([me.lat, me.lon])
     setFocus((f) => ({ points, seq: (f?.seq ?? 0) + 1 }))
     // The map is above the list: bring it back into view.
-    mapRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    mapRef.current?.scrollIntoView({ behavior: glide(), block: "nearest" })
   }
 
   return (

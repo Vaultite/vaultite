@@ -15,6 +15,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   beside it), and Delete closes the tab the keyboard is on, as its X does.
 - **Mind map of a note's headings**: the Mind map plugin draws a note's headings as a map in a tab (Open mind map)
   or as a block in any page; click a branch to go to that heading, fold the ones you don't need.
+- **Reduce motion keeps everything still**: with the system's Reduce motion or animations off in Settings, the phone's
+  tab list, new tabs and Back no longer zoom or slide, a closed tab card no longer shrinks away, and scrolls to a tab,
+  heading or setting jump instead of gliding.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".
