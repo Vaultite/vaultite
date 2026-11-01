@@ -359,8 +359,12 @@ const BEFORE = 5, AFTER = 50
 /** The write a file with this mtime is from: the one going on then, else the nearest just around it, each side by its
  *  margin (the next request's margin starts before the last one ended; Windows' file clock runs a ms or two ahead). */
 const writeAt = (mtime: number) => {
-  const exact = writes.findLast((x) => mtime >= x.start && mtime <= x.end)
+  // (Date.now() is whole ms: a write that ended at `end` went on until end + 1)
+  const exact = writes.findLast((x) => mtime >= x.start && mtime < x.end + 1)
   if (exact) return exact
+  // A clock that lags (Linux's coarse one) dates a write just before its request began, never after one ended.
+  const next = process.platform !== "win32" && writes.find((x) => mtime < x.start && x.start - mtime <= BEFORE)
+  if (next) return next
   const off = (x: Write) => (mtime < x.start ? (x.start - mtime) / BEFORE : (mtime - x.end) / AFTER)
   let best: Write | undefined
   for (const x of writes) if (off(x) <= 1 && (!best || off(x) <= off(best))) best = x

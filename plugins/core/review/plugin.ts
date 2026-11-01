@@ -21,6 +21,9 @@ const NOTICE_LAG = 10_000
 /** A version is dated by its file's mtime, which Linux takes from a coarse clock: up to a tick (1 to 10 ms) before the
  *  write, so before the request that made it began. */
 const MTIME_LAG = 20
+/** So an AI's own write can be dated just before its request began (Activity ties it to that request, as its BEFORE):
+ *  that version is its text, not the text before. */
+const OWN_LAG = 5
 
 /** An AI app or a coding agent: what Activity calls an agent (an MCP app, the CLI or the API under a coding agent, a
  *  coding agent's own edits). Not the user, vau typed by hand, scripts or changes on disk. */
@@ -103,7 +106,7 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
       if ((opts.path && p !== opts.path) || hidden(p) || end <= (m[p] ?? 0)) continue
       // (a run of writes that went on past the last review: its last one is after it)
       const t0 = e.t > (m[p] ?? 0) ? e.t : end
-      const f = files.get(p) ?? { by: [], first: t0, last: end, start: e.method || t0 > e.t ? t0 : t0 - HOOK_LAG, created: false, own: new Set<Change>() }
+      const f = files.get(p) ?? { by: [], first: t0, last: end, start: e.method || t0 > e.t ? t0 - OWN_LAG : t0 - HOOK_LAG, created: false, own: new Set<Change>() }
       f.own.add(e)
       const who = readable(e.actor.name)
       if (!f.by.some((x) => keyOf(x) === keyOf(who))) f.by.push(who)
