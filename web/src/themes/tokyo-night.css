@@ -26,6 +26,8 @@
     --red: #f52a65; --orange: #b15c00; --yellow: #8c6c3e; --green: #587539; --teal: #118c74;
     --blue: #2e7de9; --indigo: #7847bd; --purple: #9854f1; --pink: #d20065; --gray: #848cb5;
     --h1: var(--blue); --h2: var(--purple); --h3: var(--teal); --h4: var(--green); --h5: var(--yellow); --h6: var(--orange);
+    /* The grey-blue card is darker than most: coloured text a step darker still reads at 4.5:1 in a code block on it. */
+    --ink-hi: 0.46;
     --scrollbar: rgb(97 114 176 / 0.35); --scrollbar-hover: rgb(97 114 176 / 0.55);
     --map-land: #d0d5e3; --map-water: #afc6e8; --map-park: #c6ccc4;
 }
@@ -56,6 +58,7 @@
     --red: #f7768e; --orange: #ff9e64; --yellow: #e0af68; --green: #9ece6a; --teal: #73daca;
     --blue: #7aa2f7; --indigo: #7dcfff; --purple: #bb9af7; --pink: #ff007c; --gray: #565f89;
     --h1: var(--blue); --h2: var(--purple); --h3: var(--teal); --h4: var(--green); --h5: var(--yellow); --h6: var(--orange);
+    --ink-hi: 1;
     --scrollbar: rgb(192 202 245 / 0.2); --scrollbar-hover: rgb(192 202 245 / 0.35);
     --map-land: #16161e; --map-water: #2f3954; --map-park: #2f3831;
 }

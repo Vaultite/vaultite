@@ -23,6 +23,7 @@ import { optionGlyph, optionTrail, pickLink, pluginSuggest, quiet, suggestKeys }
 import { numberGutter } from "./numbers"
 import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
+import { ink } from "@/lib/ink"
 import { getPrefs } from "@/core/prefs"
 import type { SlashItem } from "@/core/define"
 import type { LinkClick } from "@/core/links"
@@ -130,21 +131,21 @@ const fmStyle = HighlightStyle.define([
 ])
 // JSON: the scheme's colours, so every scheme recolours it.
 const jsonStyle = HighlightStyle.define([
-  { tag: tags.propertyName, color: "var(--blue)" },
-  { tag: tags.string, color: "var(--green)" },
-  { tag: tags.number, color: "var(--orange)" },
-  { tag: [tags.bool, tags.null], color: "var(--purple)" },
-  { tag: [tags.brace, tags.squareBracket, tags.separator, tags.punctuation], color: "var(--muted-foreground)" },
+  { tag: tags.propertyName, color: ink("var(--blue)") },
+  { tag: tags.string, color: ink("var(--green)") },
+  { tag: tags.number, color: ink("var(--orange)") },
+  { tag: [tags.bool, tags.null], color: ink("var(--purple)") },
+  { tag: [tags.brace, tags.squareBracket, tags.separator, tags.punctuation], color: ink("var(--muted-foreground)") },
 ])
 // HTML (an artifact's source): the same idea.
 const htmlStyle = HighlightStyle.define([
-  { tag: [tags.tagName, tags.angleBracket], color: "var(--blue)" },
-  { tag: tags.attributeName, color: "var(--orange)" },
-  { tag: [tags.string, tags.attributeValue], color: "var(--green)" },
-  { tag: [tags.keyword, tags.definitionKeyword, tags.modifier], color: "var(--purple)" },
-  { tag: [tags.number, tags.bool, tags.null], color: "var(--orange)" },
-  { tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
-  { tag: [tags.propertyName, tags.function(tags.variableName)], color: "var(--teal)" },
+  { tag: [tags.tagName, tags.angleBracket], color: ink("var(--blue)") },
+  { tag: tags.attributeName, color: ink("var(--orange)") },
+  { tag: [tags.string, tags.attributeValue], color: ink("var(--green)") },
+  { tag: [tags.keyword, tags.definitionKeyword, tags.modifier], color: ink("var(--purple)") },
+  { tag: [tags.number, tags.bool, tags.null], color: ink("var(--orange)") },
+  { tag: tags.comment, color: ink("var(--muted-foreground)"), fontStyle: "italic" },
+  { tag: [tags.propertyName, tags.function(tags.variableName)], color: ink("var(--teal)") },
 ])
 
 /** Code inside ```fences: each language's parser (loaded when a fence names it) and the scheme's code colours, but only

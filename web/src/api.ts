@@ -185,7 +185,7 @@ export { kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
 export { CORNERS, useCornerDrag, type Corner } from "@/components/CornerCard"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
-export { Badged, Bar, Bars, Editable, Empty, FilterField, Foldable, Group, ink, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch, type Dot } from "@/components/kit"
+export { Badged, Bar, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch, type Dot } from "@/components/kit"
 export { switchPreview, type Preview, type PreviewOption } from "@/components/SettingPreview"
 export { Frame } from "@/components/ChoicePictures"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
@@ -253,6 +253,7 @@ export { dismissNotice, errorText, notify, notifyError, type NotifyOptions } fro
 export { announce, announceAgent, type AgentPhase } from "@/core/announce"
 export { plainError } from "../../core/plainerror.ts"
 export { capitalize, cn, plural } from "@/lib/utils"
+export { ink } from "@/lib/ink"
 // A coding agent's usage and sessions (Claude Code, Codex...): the blocks every agent plugin draws, on its own data.
 export { AgentLimits, AgentLimitsChip, AgentModels, agentPlugin, AgentProject, AgentProjects, AgentSessions, AgentUsageBlock, money, openSession, sessionTitle, tokens, useAgentRoute } from "@/components/AgentUsage"
 export type { AgentMock, AgentSource, AgentUsage, Day as AgentDay, LiveSession as AgentLiveSession, Session as AgentSessionSummary, Share as AgentShare, Window as AgentWindow } from "@/components/AgentUsage"

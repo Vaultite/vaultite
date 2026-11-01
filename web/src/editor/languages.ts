@@ -4,6 +4,7 @@ import { LanguageDescription, HighlightStyle, type LanguageSupport } from "@code
 import { languages } from "@codemirror/language-data"
 import { highlightTree, tags as t } from "@lezer/highlight"
 import { StyleModule } from "style-mod"
+import { ink } from "../lib/ink.ts"
 
 /** Names language-data doesn't know by their extension. */
 const ALIAS: Record<string, string> = { env: "properties", conf: "properties", cfg: "properties", plist: "xml", jsonl: "json", ndjson: "json",
@@ -34,23 +35,23 @@ export function languageNamed(name: string): Promise<LanguageSupport | null> {
 }
 
 export const codeStyle = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.definitionKeyword, t.moduleKeyword, t.operatorKeyword, t.modifier, t.self], color: "var(--purple)" },
-  { tag: [t.string, t.special(t.string), t.regexp, t.character, t.attributeValue], color: "var(--green)" },
-  { tag: [t.number, t.bool, t.null, t.atom, t.unit], color: "var(--orange)" },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: "var(--muted-foreground)", fontStyle: "italic" },
-  { tag: [t.typeName, t.className, t.namespace, t.standard(t.typeName)], color: "var(--yellow)" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.function(t.variableName)), t.macroName], color: "var(--blue)" },
-  { tag: [t.propertyName, t.attributeName, t.labelName], color: "var(--teal)" },
-  { tag: [t.tagName, t.angleBracket], color: "var(--red)" },
-  { tag: [t.definition(t.variableName), t.constant(t.variableName), t.standard(t.variableName)], color: "var(--indigo)" },
-  { tag: [t.meta, t.annotation, t.processingInstruction], color: "var(--pink)" },
-  { tag: [t.heading], fontWeight: "bold", color: "var(--h2)" },
+  { tag: [t.keyword, t.controlKeyword, t.definitionKeyword, t.moduleKeyword, t.operatorKeyword, t.modifier, t.self], color: ink("var(--purple)") },
+  { tag: [t.string, t.special(t.string), t.regexp, t.character, t.attributeValue], color: ink("var(--green)") },
+  { tag: [t.number, t.bool, t.null, t.atom, t.unit], color: ink("var(--orange)") },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], color: ink("var(--muted-foreground)"), fontStyle: "italic" },
+  { tag: [t.typeName, t.className, t.namespace, t.standard(t.typeName)], color: ink("var(--yellow)") },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.function(t.variableName)), t.macroName], color: ink("var(--blue)") },
+  { tag: [t.propertyName, t.attributeName, t.labelName], color: ink("var(--teal)") },
+  { tag: [t.tagName, t.angleBracket], color: ink("var(--red)") },
+  { tag: [t.definition(t.variableName), t.constant(t.variableName), t.standard(t.variableName)], color: ink("var(--indigo)") },
+  { tag: [t.meta, t.annotation, t.processingInstruction], color: ink("var(--pink)") },
+  { tag: [t.heading], fontWeight: "bold", color: ink("var(--h2)") },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strong, fontWeight: "bold" },
-  { tag: t.link, color: "var(--blue)", textDecoration: "underline" },
-  { tag: [t.inserted], color: "var(--green)" },
-  { tag: [t.deleted, t.invalid], color: "var(--red)" },
-  { tag: [t.punctuation, t.bracket, t.separator, t.operator], color: "var(--muted-foreground)" },
+  { tag: t.link, color: ink("var(--blue)"), textDecoration: "underline" },
+  { tag: [t.inserted], color: ink("var(--green)") },
+  { tag: [t.deleted, t.invalid], color: ink("var(--red)") },
+  { tag: [t.punctuation, t.bracket, t.separator, t.operator], color: ink("var(--muted-foreground)") },
 ])
 
 let mounted = false

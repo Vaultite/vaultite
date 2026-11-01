@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref } from "react"
 import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { ink } from "@/lib/ink"
 import { plain } from "@/core/data"
 import { haptic } from "@/core/haptics"
 import { copyText } from "@/core/richmd"
@@ -83,10 +84,6 @@ export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon:
     </span>
   )
 }
-
-/** A colour token as text: its lightness held where it reads on a card (--ink-l in index.css; a class is
- *  `text-ink-(--red)`). Fills and icons on their own keep the token. */
-export const ink = (color: string) => `oklch(from ${color} var(--ink-l) c h)`
 
 /** No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new). */
 export function SheetHead({ icon: Icon, tint, kicker, title, sub, children }: {

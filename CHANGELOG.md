@@ -217,7 +217,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   not Markdown's backticks, and lists the allowed ones in words ("isn't one of `done`, `parked` or `seed`").
 - **Coloured text is easier to read**: a card's coloured title and values (People's "Reach out" and "16 d overdue"),
   coloured headings and links in notes and dashboards, and red, green and orange status text (errors, a diff's + and −,
-  "Connected", "Couldn't start") reach 4.5:1 contrast on their card (WCAG AA) in every scheme, light or dark, drawn in a deeper shade
+  "Connected", "Couldn't start"), and code's colours in notes, code files and notebooks reach 4.5:1 contrast on their card
+  or code block (WCAG AA) in every scheme, light or dark, drawn in a deeper shade
   of the same colour (a lighter one in dark schemes); fills and icons keep theirs.
 - **Grey text is easier to read in light schemes**: the sidebar's headings, the status bar, the path over a file and
   every other secondary label reach 4.5:1 contrast on the sidebar (WCAG AA) in Gruvbox, Classic, Catppuccin, Flexoki,

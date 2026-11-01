@@ -102,7 +102,7 @@
     /* Named colours (Apple system colours). Features use these, never raw hex, so a scheme can recolour everything. */
     --red: #ff3b30; --orange: #ff9500; --yellow: #ffcc00; --green: #34c759; --teal: #30b0c7;
     --blue: #007aff; --indigo: #5856d6; --purple: #af52de; --pink: #ff2d55; --gray: #8e8e93;
-    /* A colour as text (kit.tsx's `ink()`, `text-ink-(--red)`): its OKLCH lightness held in this range, so a tint reads
+    /* A colour as text (lib/ink.ts' `ink()`, `text-ink-(--red)`): its OKLCH lightness held in this range, so a tint reads
        at 4.5:1 (WCAG AA) on a card, light or dark, keeping the scheme's hue and chroma. Fills and icons keep the colour. */
     --ink-lo: 0; --ink-hi: 0.48; --ink-l: clamp(var(--ink-lo), l, var(--ink-hi));
     /* Heading colours (editor: reading, live preview and source). Plain here; schemes may colour them. */
@@ -256,7 +256,7 @@
   backdrop-filter: blur(30px) saturate(200%);
   box-shadow: inset 0 1px 0 var(--glass-edge), inset 0 0 0 1px var(--border), var(--glass-shadow);
 }
-/* A colour token as text, at a lightness that reads (--ink-l): `text-ink-(--red)`, as kit.tsx's `ink()` for a style. */
+/* A colour token as text, at a lightness that reads (--ink-l): `text-ink-(--red)`, as lib/ink.ts' `ink()` for a style. */
 @utility text-ink-* {
   color: oklch(from --value([*]) var(--ink-l) c h);
 }
@@ -723,15 +723,15 @@ dialog { --vau-panel-bottom: 0px; }
 }
 /* A notebook's code cells (editor/Notebook.tsx: @lezer/highlight's classHighlighter), in the same colours as code files. */
 .nb-code { font-family: var(--font-code); }
-.nb-code :is(.tok-keyword, .tok-operatorKeyword) { color: var(--purple); }
-.nb-code :is(.tok-string, .tok-string2) { color: var(--green); }
-.nb-code :is(.tok-number, .tok-bool, .tok-atom) { color: var(--orange); }
-.nb-code .tok-comment { color: var(--muted-foreground); font-style: italic; }
-.nb-code :is(.tok-typeName, .tok-className, .tok-namespace) { color: var(--yellow); }
-.nb-code .tok-variableName.tok-definition { color: var(--indigo); }
-.nb-code .tok-propertyName { color: var(--teal); }
-.nb-code :is(.tok-punctuation, .tok-operator) { color: var(--muted-foreground); }
-.nb-code .tok-meta { color: var(--pink); }
+.nb-code :is(.tok-keyword, .tok-operatorKeyword) { color: oklch(from var(--purple) var(--ink-l) c h); }
+.nb-code :is(.tok-string, .tok-string2) { color: oklch(from var(--green) var(--ink-l) c h); }
+.nb-code :is(.tok-number, .tok-bool, .tok-atom) { color: oklch(from var(--orange) var(--ink-l) c h); }
+.nb-code .tok-comment { color: oklch(from var(--muted-foreground) var(--ink-l) c h); font-style: italic; }
+.nb-code :is(.tok-typeName, .tok-className, .tok-namespace) { color: oklch(from var(--yellow) var(--ink-l) c h); }
+.nb-code .tok-variableName.tok-definition { color: oklch(from var(--indigo) var(--ink-l) c h); }
+.nb-code .tok-propertyName { color: oklch(from var(--teal) var(--ink-l) c h); }
+.nb-code :is(.tok-punctuation, .tok-operator) { color: oklch(from var(--muted-foreground) var(--ink-l) c h); }
+.nb-code .tok-meta { color: oklch(from var(--pink) var(--ink-l) c h); }
 /* A bullet in its own column (livePreview BULLET), the dot centred in it. */
 .vau-editor .cm-bullet { display: inline-block; width: 0.95em; text-align: center; text-indent: 0; color: var(--muted-foreground); }
 .vau-editor .cm-listmark { color: var(--muted-foreground); }

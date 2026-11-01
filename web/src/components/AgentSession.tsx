@@ -2,7 +2,8 @@
 // terminal when Terminal is on. `@<machine>` ids are another machine's.
 import { useEffect, useState } from "react"
 import { ChevronRight, CircleAlert, History, SquareTerminal, User } from "lucide-react"
-import { Bar, Empty, ink } from "@/components/kit"
+import { Bar, Empty } from "@/components/kit"
+import { ink } from "@/lib/ink"
 import { Markdown } from "@/components/Markdown"
 import type { AgentSource } from "@/components/AgentUsage"
 import { openAgent } from "@/core/agents"
