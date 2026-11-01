@@ -508,6 +508,9 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
     at(1, 0, 0, 1) === "1,1" && at(1, 1, 0, 1) === "1,3" && at(1, 3, 0, 1) === "1,4" && at(1, 4, 0, 1) === "1,4" && at(2, 1, 0, 1) === "2,3" && at(2, 3, 0, 1) === "2,4"
     && at(0, 0, 1, 0) === "2,0" && at(2, 0, -1, 0) === "0,0" && at(0, 2, 1, 0) === "2,2",
     [at(1, 0, 0, 1), at(1, 1, 0, 1), at(1, 3, 0, 1), at(1, 4, 0, 1), at(2, 1, 0, 1), at(2, 3, 0, 1), at(0, 0, 1, 0), at(2, 0, -1, 0), at(0, 2, 1, 0)])
+  const dup = tt.parseTable("|a|b|\n|-|-|\n|1|x|\n|2|y|")!
+  tt.duplicateRow(dup, 1); tt.duplicateRow(dup, 0)
+  check("tables: a row duplicated under it, never the header", tt.writeTable(dup) === "|a|b|\n|-|-|\n|1|x|\n| 1 | x |\n|2|y|", tt.writeTable(dup))
   const ragged = tt.parseTable("|a|\n|-|\n|1|2|")!
   ragged.rows[1].cells[0] = "3"
   check("tables: a row wider than its header keeps its extra cells as cells change", tt.writeTable(ragged) === "|a|\n|-|\n| 3 | 2 |", tt.writeTable(ragged))

@@ -125,6 +125,8 @@ const average = (ws: number[]) => Math.max(3, Math.round(ws.reduce((a, b) => a +
 const blank = (t: Table): Row => ({ cells: t.align.map(() => "") })
 export const insertRow = (t: Table, at: number) => { t.rows.splice(at, 0, blank(t)) }
 export const deleteRow = (t: Table, r: number) => { t.rows.splice(r, 1) }
+/** A body row's copy put under it. */
+export const duplicateRow = (t: Table, r: number) => { if (r > 0) t.rows.splice(r + 1, 0, { cells: [...t.rows[r].cells] }) }
 export const insertColumn = (t: Table, at: number) => {
   t.align.splice(at, 0, ""); t.widths?.splice(at, 0, average(t.widths))
   for (const r of t.rows) r.cells.splice(at, 0, "")

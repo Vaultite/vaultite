@@ -6,14 +6,14 @@ import { EditorSelection } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
 import type { SyntaxNode } from "@lezer/common"
 import { ArrowDown, ArrowDownAZ, ArrowDownZA, ArrowLeft, ArrowRight, ArrowUp, BetweenHorizontalEnd, BetweenHorizontalStart,
-  BetweenVerticalEnd, BetweenVerticalStart, Code, Columns3, Eraser, Rows3, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react"
+  BetweenVerticalEnd, BetweenVerticalStart, Code, Columns3, CopyPlus, Eraser, Rows3, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react"
 import { menuShowing, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { addDropTarget, edgeScroller, startDrag } from "@/core/drag"
 import { isMac } from "@/core/platform"
 import { blockLines, markdownDrawn } from "@/core/richmd"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
-import { clearCells, columnShares, deleteColumn, deleteRow, edgeFrom, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow,
+import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow,
   parseTable, setWidths, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
 /** What a drawn table needs from the editor around it. */
@@ -300,13 +300,18 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   /** A row's items (`pick`: from its grip, so a moved row stays picked; else the cell `c` in it opens). */
   function rowItems(r: number, c: number, pick: boolean) {
     const then = (to: number): Then => (pick ? { pick: wholeRow(to) } : { open: { r: to, c } })
+    // (rows selected together, this one among them, the header not: all of them deleted)
+    const b = bounds(), many = b && b.r1 > b.r0 && r >= b.r0 && r <= b.r1 && b.r0 > 0 ? b : null
     return {
       above: { label: "Add row above", icon: BetweenHorizontalStart, disabled: r === 0, run: () => change((t) => insertRow(t, r), "input.table", { open: { r, c } }) },
       below: { label: "Add row below", icon: BetweenHorizontalEnd, run: () => change((t) => insertRow(t, r + 1), "input.table", { open: { r: r + 1, c } }) },
       up: { label: "Move row up", icon: ArrowUp, disabled: r < 2, run: () => change((t) => moveRow(t, r, r - 1), "input.table", then(r - 1)) },
       down: { label: "Move row down", icon: ArrowDown, disabled: r === 0 || r === rows() - 1, run: () => change((t) => moveRow(t, r, r + 1), "input.table", then(r + 1)) },
       clear: { label: "Clear row", icon: Eraser, run: () => change((t) => clearCells(t, ...wholeRow(r)), "delete", pick ? { pick: wholeRow(r) } : { open: { r, c } }) },
-      remove: { label: "Delete row", icon: Trash2, danger: true, disabled: r === 0, run: () => change((t) => deleteRow(t, r), "delete", { open: { r, c } }) },
+      dup: { label: "Duplicate row", icon: CopyPlus, disabled: r === 0, run: () => change((t) => duplicateRow(t, r), "input.table", then(r + 1)) },
+      remove: many
+        ? { label: `Delete ${many.r1 - many.r0 + 1} rows`, icon: Trash2, danger: true, run: () => change((t) => { for (let i = many.r1; i >= many.r0; i--) deleteRow(t, i) }, "delete", { open: { r: Math.min(many.r0, rows() - many.r1 + many.r0 - 2), c } }) }
+        : { label: "Delete row", icon: Trash2, danger: true, disabled: r === 0, run: () => change((t) => deleteRow(t, r), "delete", { open: { r, c } }) },
     } satisfies Record<string, MenuItem>
   }
   /** A column's items (`pick`: from its grip, so it stays picked; else the cell in row `r` opens). */
@@ -314,6 +319,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     const then = (to: number): Then => (pick ? { pick: wholeCol(to) } : { open: { r, c: to } })
     const align = (a: Align) => change((t) => { t.align[c] = a }, "input.table", then(c))
     const sort = (desc: boolean) => change((t) => sortRows(t, c, desc), "input.table", then(c))
+    // (columns selected together, this one among them, not every column: all of them deleted)
+    const b = bounds(), many = b && b.c1 > b.c0 && c >= b.c0 && c <= b.c1 && b.c1 - b.c0 + 1 < cols() ? b : null
     return {
       left: { label: "Add column left", icon: BetweenVerticalStart, run: () => change((t) => insertColumn(t, c), "input.table", { open: { r, c } }) },
       right: { label: "Add column right", icon: BetweenVerticalEnd, run: () => change((t) => insertColumn(t, c + 1), "input.table", { open: { r, c: c + 1 } }) },
@@ -328,11 +335,13 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       ] },
       clear: { label: "Clear column", icon: Eraser, disabled: rows() < 2,
         run: () => change((t) => clearCells(t, { r: 1, c }, { r: rows() - 1, c }), "delete", pick ? { pick: wholeCol(c) } : { open: { r, c } }) },
-      remove: { label: "Delete column", icon: Trash2, danger: true, disabled: cols() < 2, run: () => change((t) => deleteColumn(t, c), "delete", { open: { r, c } }) },
+      remove: many
+        ? { label: `Delete ${many.c1 - many.c0 + 1} columns`, icon: Trash2, danger: true, run: () => change((t) => { for (let i = many.c1; i >= many.c0; i--) deleteColumn(t, i) }, "delete", { open: { r, c: Math.min(many.c0, cols() - many.c1 + many.c0 - 2) } }) }
+        : { label: "Delete column", icon: Trash2, danger: true, disabled: cols() < 2, run: () => change((t) => deleteColumn(t, c), "delete", { open: { r, c } }) },
     } satisfies Record<string, MenuItem>
   }
   const sep = (i: MenuItem): MenuItem => ({ ...i, sep: true })
-  const rowMenu = (r: number) => { const x = rowItems(r, 0, true); return [x.above, x.below, sep(x.up), x.down, sep(x.clear), sep(x.remove)] }
+  const rowMenu = (r: number) => { const x = rowItems(r, 0, true); return [x.above, x.below, x.dup, sep(x.up), x.down, sep(x.clear), sep(x.remove)] }
   const colMenu = (c: number) => {
     const x = colItems(c, 0, true)
     return [x.left, x.right, sep(x.toLeft), x.toRight, sep(x.asc), x.desc, sep(x.align), sep(x.clear), sep(x.remove)]
@@ -343,7 +352,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return [
       ...(several ? [{ label: "Clear cells", icon: Eraser, run: () => change((t) => clearCells(t, sel!.a, sel!.h), "delete", { pick: [sel!.a, sel!.h] }) }] : []),
       { ...x.above, sep: !!several }, x.below, sep(y.left), y.right,
-      { label: "Row", icon: Rows3, sep: true, run: () => {}, items: [x.up, x.down, sep(x.clear)] },
+      { label: "Row", icon: Rows3, sep: true, run: () => {}, items: [x.dup, sep(x.up), x.down, sep(x.clear)] },
       { label: "Column", icon: Columns3, run: () => {}, items: [y.toLeft, y.toRight, sep(y.asc), y.desc, sep(y.clear)] },
       y.align,
       sep(x.remove), y.remove,
