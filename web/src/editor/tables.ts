@@ -208,12 +208,28 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return true
   }
 
-  /** `staying`: another of its cells opens next, so its columns stay as they are. */
+  /** `staying`: another of its cells opens next, so its columns stay as they are, and only the cell left is drawn
+   *  again (the whole table drawn per move took 200 ms at 2,000 rows). */
   function close(staying = false) {
     if (!editing) return
+    const { r, c } = editing
     editing = null
     if (!staying) frozen = null
-    paint()
+    if (!staying || !redraw(r, c)) paint()
+  }
+  /** One cell drawn again from its text (as the header of a table of one, so its Markdown draws as in the table). */
+  function redraw(r: number, c: number) {
+    const cell = grid?.[r]?.[c], src = table?.rows[r]?.cells[c]
+    if (!cell || src === undefined) return false
+    const box = document.createElement("div")
+    box.innerHTML = env.render(`| ${src} |\n| --- |\n`)
+    const th = box.querySelector("th")
+    if (!th) return false
+    cell.classList.remove("is-editing")
+    cell.replaceChildren(...th.childNodes)
+    // (what plugins add to drawn Markdown, an icon for a shortcode, as the whole table gets it)
+    markdownDrawn(cell, blockLines(env.line, () => shown, () => view.state.doc.toString()))
+    return true
   }
 
   /** Cells a to h selected together: the cell being edited closes, the keyboard goes to `keeper`. */
