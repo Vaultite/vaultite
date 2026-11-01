@@ -3,7 +3,7 @@
 // against a throwaway server.   node web/qa/tabnames.mjs <base url>
 import { spawnSync } from "node:child_process"
 import path from "node:path"
-import { openPalette, qa, ROOT, SHOTS, until, wait } from "./lib/qa.mjs"
+import { command as run, qa, ROOT, SHOTS, until, wait } from "./lib/qa.mjs"
 
 const { args: [arg], browser, check, watch, done } = await qa(import.meta.url)
 const base = arg.endsWith("/") ? arg : `${arg}/`
@@ -17,20 +17,17 @@ await page.waitForFunction(() => document.querySelector("#root > *"), null, { ti
 await wait(1500)
 const palette = page.locator("[role=dialog]").filter({ has: page.locator("input") }).last()
 const field = palette.locator("input")
-const command = async (name) => {
-  // (the shared opener: off a Mac a terminal keeps Ctrl+P for its shell)
-  await openPalette(page); await wait(300)
-  await page.keyboard.type(name); await wait(300)
-  await page.keyboard.press("Enter"); await wait(500)
-}
+const command = (name) => run(page, name)
 const active = () => page.evaluate(() => document.querySelector('[data-tab-id] [role=tab][aria-selected=true]')?.closest("[data-tab-id]")?.textContent?.trim() ?? "")
 let terminal = ""
 
 try {
   // A view's tab: the name stays on the tab.
   await command("Open terminals in a tab")
+  await until(async () => (await active()).includes("Terminals"), 15_000)
   check("a view's tab opens, named by its view", (await active()).includes("Terminals"), await active())
   await command("Rename tab…")
+  await until(async () => (await field.inputValue()) === "Terminals", 15_000)
   const typed = await field.inputValue().catch(() => null)
   const selected = await field.evaluate((f) => f.selectionStart === 0 && f.selectionEnd === f.value.length).catch(() => false)
   check("Rename tab…: a field holding its name, selected", typed === "Terminals" && selected, typed)
@@ -39,17 +36,17 @@ try {
   await page.keyboard.type("My shells"); await wait(200)
   await page.screenshot({ path: `${SHOTS}tabnames-1-field.png` })
   check("typing offers the rename", (await palette.innerText()).includes('Rename to "My shells"'), await palette.innerText())
-  await page.keyboard.press("Enter"); await wait(400)
+  await page.keyboard.press("Enter"); await until(async () => (await active()).includes("My shells"), 15_000)
   check("Enter renames the tab", (await active()).includes("My shells"), await active())
   await page.screenshot({ path: `${SHOTS}tabnames-2-renamed.png` })
 
   await command("Rename tab…")
   await page.keyboard.press("Backspace"); await wait(200)
   check("emptied, it says Enter gives the automatic name back", (await palette.innerText()).includes('automatic name, "Terminals"'), await palette.innerText())
-  await page.keyboard.press("Enter"); await wait(400)
+  await page.keyboard.press("Enter"); await until(async () => (await active()) === "Terminals", 15_000)
   check("an empty name: the automatic one again", (await active()) === "Terminals", await active())
-  await command("Rename tab…"); await page.keyboard.type("Shells"); await page.keyboard.press("Enter"); await wait(300)
-  await command("Rename tab…"); await page.keyboard.press("Escape"); await wait(300)
+  await command("Rename tab…"); await page.keyboard.type("Shells"); await page.keyboard.press("Enter"); await until(async () => (await active()) === "Shells", 15_000)
+  await command("Rename tab…"); await page.keyboard.press("Escape"); await until(async () => !(await palette.count()), 15_000)
   check("Esc leaves it", (await active()) === "Shells" && !(await palette.count()), await active())
 
   // A terminal: the name is its session's, kept by the server.
@@ -57,10 +54,11 @@ try {
   await until(async () => (await ops("terminal.list")).sessions?.length > 0, 15000)
   terminal = (await ops("terminal.list")).sessions[0]?.id ?? ""
   check("a shell runs", !!terminal, terminal)
-  await wait(1500)
+  await until(async () => (await active()).includes("Terminal"), 15_000)
   await command("Rename tab…")
+  await until(async () => (await palette.innerText()).includes('Rename terminal "Terminal"'), 15_000)
   check("a terminal's field says so", (await palette.innerText()).includes('Rename terminal "Terminal"') && (await field.getAttribute("placeholder")) === "Name this terminal…", await palette.innerText())
-  await page.keyboard.type("Build box"); await page.keyboard.press("Enter"); await wait(300)
+  await page.keyboard.type("Build box"); await page.keyboard.press("Enter"); await until(async () => (await active()).includes("Build box"), 15_000)
   check("its tab shows the name at once", (await active()).includes("Build box"), await active())
   const listed = (await ops("terminal.list")).sessions.find((s) => s.id === terminal)
   check("the server keeps it (terminal.list)", listed?.name === "Build box", listed)
@@ -76,20 +74,21 @@ try {
   check("Add current tab to group… with no groups: a field for the new one's name", (await field.getAttribute("placeholder")) === "Name the new group…", await field.getAttribute("placeholder"))
   await page.keyboard.type("Work"); await wait(200)
   check("it offers a new group so named", (await palette.innerText()).includes('New group "Work"'), await palette.innerText())
-  await page.keyboard.press("Enter"); await wait(500)
   const chip = () => page.evaluate(() => [...document.querySelectorAll("[data-set-chip]")].map((e) => e.textContent?.trim()).join(","))
+  await page.keyboard.press("Enter"); await until(async () => (await chip()) === "Work", 15_000)
   check("the tab is in group Work", (await chip()) === "Work", await chip())
   await command("Rename tab group…")
+  await until(async () => (await field.inputValue()) === "Work", 15_000)
   check("Rename tab group…: its name, selected", (await field.inputValue()) === "Work", await field.inputValue())
   await page.keyboard.type("Ops"); await wait(200)
   await page.screenshot({ path: `${SHOTS}tabnames-4-group-field.png` })
-  await page.keyboard.press("Enter"); await wait(400)
+  await page.keyboard.press("Enter"); await until(async () => (await chip()) === "Ops", 15_000)
   check("the group is renamed", (await chip()) === "Ops", await chip())
   // The view tab (Shells) joins it from the picker.
   await page.locator("[data-tab-id]", { hasText: "Shells" }).first().click(); await wait(300)
   await command("Add current tab to group…")
   check("with groups: they're listed", (await palette.innerText()).includes("Ops"), await palette.innerText())
-  await page.keyboard.press("Enter"); await wait(400)
+  await page.keyboard.press("Enter"); await page.waitForFunction(() => document.querySelectorAll("[data-in-set]").length === 2, null, { timeout: 15_000 }).catch(() => {})
   const inOps = await page.evaluate(() => document.querySelectorAll("[data-in-set]").length)
   check("Enter adds it to the group listed", inOps === 2, inOps)
 
@@ -100,7 +99,8 @@ try {
   await page.keyboard.press("Escape"); await wait(200)
 
   // Reloaded: both names stay.
-  await page.reload(); await page.waitForFunction(() => document.querySelector("[data-tab-id]"), null, { timeout: 20000 }); await wait(2500)
+  await page.reload(); await page.waitForFunction(() => document.querySelector("[data-tab-id]"), null, { timeout: 20000 })
+  await page.waitForFunction(() => { const t = [...document.querySelectorAll("[data-tab-id]")].map((e) => e.textContent).join(); return t.includes("Shells") && t.includes("Release notes") }, null, { timeout: 15_000 }).catch(() => {})
   const labels = await page.evaluate(() => [...document.querySelectorAll("[data-tab-id]")].map((e) => e.textContent?.trim()).join(" | "))
   check("after a reload the tab's and the terminal's names stay", labels.includes("Shells") && labels.includes("Release notes"), labels)
   await page.screenshot({ path: `${SHOTS}tabnames-5-reloaded.png` })

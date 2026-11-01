@@ -85,7 +85,7 @@ await open("Qa target")
 lit = await drag("Qa target/Deep", ["Qa note.md"])
 check("over a top-level file the whole tree highlights", lit.join() === "/", lit)
 check("dropped on a top-level file: at the top level", await exists("Deep") && !(await exists("Qa target/Deep")))
-await api("POST", "file/move", { from: "Deep", to: "Qa target/Deep" }); await page.reload(); await wait(1200)
+await api("POST", "file/move", { from: "Deep", to: "Qa target/Deep" }); await page.reload(); await row("Qa move").waitFor({ timeout: 15_000 }).catch(() => {})
 
 // 5. Refused: a folder into its own child, a file into the folder it's in.
 await open("Qa move")
@@ -157,7 +157,7 @@ check("Shift+Enter makes it and moves there", await exists("Qa new/Here/Draft.md
 // 9. A move through the API (an AI): the pin follows and the app shows it after a reload.
 await api("POST", "file/move", { from: "Qa new/Here/Draft.md", to: "Qa target/Draft.md" })
 check("an API move moves the pin", (await pins()).includes("Qa target/Draft.md") && !(await pins()).some((p) => p.startsWith("Qa new")), await pins())
-await page.reload(); await wait(1500)
+await page.reload(); await page.locator("nav[aria-label=Pages] a", { hasText: "Draft" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
 check("the sidebar shows it after an API move", (await side()).includes("Draft"), await side())
 await fetch(`${B}api/file?path=${encodeURIComponent("Qa target/Draft.md")}`, { method: "DELETE" })
 check("trashing a pinned file drops its pin", !(await pins()).includes("Qa target/Draft.md"), await pins())
@@ -166,8 +166,8 @@ check("trashing a pinned file drops its pin", !(await pins()).includes("Qa targe
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 })
 const m = watch(await phone.newPage())
 await api("POST", "file", { path: "Qa move/Phone.md", text: "From the phone.\n" })
-await m.goto(`${B}#view/files`); await wait(1500)
 const mrow = (p) => m.locator(`[role=tree]:visible div[data-tree-path="${p}"]`).first()
+await m.goto(`${B}#view/files`); await mrow("Qa move").waitFor({ timeout: 15_000 }).catch(() => {})
 if ((await m.locator('[role=tree]:visible div[data-tree-path="Qa move"] > [role=treeitem]').first().getAttribute("aria-expanded")) !== "true") { await mrow("Qa move").locator("button").first().click(); await wait(200) }
 await mrow("Qa move/Phone.md").locator('button[aria-label^="More for"]').click(); await wait(250)
 await m.locator("[role=menu] button", { hasText: "Move file to…" }).click(); await wait(300)
