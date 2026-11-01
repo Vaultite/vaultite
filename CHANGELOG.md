@@ -411,6 +411,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   around it, without reaching the tasks above or below.
 - **Dashboard lists read at phone sizes**: on a phone a list row's title is 17px and its line under it 15px (they were
   15px and 13px), as are a stat's label and note, so lists match the text around them.
+- **Keys over the phone's keyboard take a whole-row tap**: the editing and terminal keys answer a tap anywhere in the
+  row's height, not only on the key's face.
 
 ## 0.8.0 (2026-10-24)
 
