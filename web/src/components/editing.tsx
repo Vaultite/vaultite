@@ -74,8 +74,8 @@ function linkNames(store: Store, from: string) {
 /** What an editor of `from` asks the vault for (the Editor's props): links to suggest and follow, the slash menu, pasted
  *  files saved as attachments. `own` is the text as typed, for [[# headings. */
 export function useVaultEditing(store: Store, from: string, own: () => string) {
-  // (links as written in `from`: the closest file of a name wins)
-  const resolve = useMemo(() => { const r = resolver(store); return (t: string) => r(t, from) }, [store, from])
+  // (links as written in `from`: the closest file of a name wins; the index made at the first link, not per store)
+  const resolve = useMemo(() => { let r: ReturnType<typeof resolver> | null = null; return (t: string) => (r ??= resolver(store))(t, from) }, [store, from])
   // (worked out when [[ is first typed, then kept while the files are the same)
   const names = useMemo(() => { let list: ReturnType<typeof linkNames> | null = null; return () => (list ??= linkNames(store, from)) }, [store, from])
   // eslint-disable-next-line react-hooks/exhaustive-deps

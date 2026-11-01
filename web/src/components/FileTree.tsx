@@ -160,7 +160,7 @@ const canMoveInto = (from: string, folder: string) =>
   folder !== folderOf(from) && folder !== from && !folder.startsWith(`${from}/`) && !(folder && fixed(folder))
 
 /** An archive folder, or in one (People/.archive): hidden in the tree unless archived files are shown. */
-const archives = (p: string) => p.split("/").includes(ARCHIVE_DIR)
+const archives = (p: string) => inArchive(p) || p === ARCHIVE_DIR || p.endsWith(`/${ARCHIVE_DIR}`)
 
 /** The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and
  *  revealing the open file (the heading's buttons have the rest: new, sort, collapse). */

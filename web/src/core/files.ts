@@ -397,11 +397,12 @@ export async function copyFile(path: string) {
 
 /** Every folder that holds something, and the empty ones too, sorted (for the tree). */
 export function folderList(t: FileTree) {
-  const set = new Set(t.folders)
-  for (const f of [...t.files, ...t.others]) {
-    const parts = f.path.split("/")
-    for (let i = 1; i < parts.length; i++) set.add(parts.slice(0, i).join("/"))
-  }
+  // (a folder in the set has its own folders in it too, so each file stops at the first one already there)
+  const set = new Set<string>()
+  const add = (dir: string) => { for (let d = dir; d && !set.has(d); d = d.slice(0, Math.max(0, d.lastIndexOf("/")))) set.add(d) }
+  for (const f of t.folders) add(f)
+  for (const f of t.files) add(f.path.slice(0, Math.max(0, f.path.lastIndexOf("/"))))
+  for (const f of t.others) add(f.path.slice(0, Math.max(0, f.path.lastIndexOf("/"))))
   return [...set].sort()
 }
 

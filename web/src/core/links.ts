@@ -198,11 +198,15 @@ export function linkPlace(s: Store, link: { wiki?: string; url?: string }, from?
   return t?.file ? { file: t.file, anchor } : t?.detail ? { detail: t.detail } : null
 }
 
-/** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`) and aliases. */
-const fileTarget = (f: VaultFile): Target => ({
-  kind: "file", id: f.path.replace(/\.md$/i, ""), title: stem(f.path), detail: "", file: f.path,
-  names: f.aliases, ...(f.archived ? { archived: true } : {}),
-})
+/** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`) and aliases. Kept per
+ *  file object: a refresh keeps unchanged files' objects, so their targets compare as the same at once. */
+const fileTargets = new WeakMap<VaultFile, Target>()
+const fileTarget = (f: VaultFile): Target => {
+  let t = fileTargets.get(f)
+  if (!t) fileTargets.set(f, t = { kind: "file", id: f.path.replace(/\.md$/i, ""), title: stem(f.path), detail: "", file: f.path,
+    names: f.aliases, ...(f.archived ? { archived: true } : {}) })
+  return t
+}
 /** Any other file (an image, a PDF), linked by its name or path with its extension. */
 const otherTarget = (path: string): Target => ({ kind: "file", id: path, title: path.split("/").pop()!, detail: "", file: path, names: [] })
 
