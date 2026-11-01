@@ -13,10 +13,10 @@ const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { ..
 const read = async (path) => (await (await fetch(`${B}api/file?path=${enc(path)}`)).json()).text
 const files = async () => (await (await fetch(`${B}api/files`)).json())
 const del = (path) => fetch(`${B}api/file?path=${enc(path)}`, { method: "DELETE" })
-const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md", LAYOUTS = "Qa media/Layouts.md"
+const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md", LAYOUTS = "Qa media/Layouts.md", MOVES = "Qa media/Transitions.md"
 const THEMED = { night: "Qa media/Night.md", serif: "Qa media/Serif.md", other: "Qa media/Other theme.md" }
 
-for (const p of [MEMO, SLASH, DECK, LAYOUTS, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
+for (const p of [MEMO, SLASH, DECK, LAYOUTS, MOVES, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
 // (Slides is off until turned on)
 const plugins = async (method, body) => (await fetch(`${B}api/config/plugins`, { method, headers: json, body: body && JSON.stringify(body) })).json()
 const pluginsBefore = await plugins("GET")
@@ -125,7 +125,7 @@ for (const [scheme, vp] of [["light", { width: 1280, height: 800 }], ["dark", { 
   check(`slides (${scheme}): three slides, the first shown`, await deck.count() === 1 && await count() === "1 / 3", await count().catch(() => ""))
   check("a title slide", await page.locator("[data-deck-slide] .print-title, [data-deck-slide] h1, [data-deck-slide] .h1").count() >= 1)
   await page.screenshot({ path: `${OUT}media-slides-title-${scheme}.png` })
-  await page.keyboard.press("ArrowRight"); await wait(500)
+  await page.keyboard.press("ArrowRight"); await wait(1000)
   check("→ next: math drawn, a --- inside code isn't a split",
     await count() === "2 / 3" && await page.locator("[data-deck-slide] .katex").count() >= 1 && (await page.locator("[data-deck-slide]").innerText()).includes("const answer = 42\n---"))
   await page.screenshot({ path: `${OUT}media-slides-2-${scheme}.png` })
@@ -136,7 +136,7 @@ for (const [scheme, vp] of [["light", { width: 1280, height: 800 }], ["dark", { 
   check("the next slide's name is plain text", (await page.locator("[data-slide-notes] [data-next-slide]").innerText().catch(() => "")) === "Next: A picture")
   await page.screenshot({ path: `${OUT}media-slides-notes-${scheme}.png` })
   await page.keyboard.press("s"); await wait(300)
-  await page.keyboard.press("End"); await wait(800)
+  await page.keyboard.press("End"); await wait(1000)
   const img = page.locator("[data-deck-slide] img")
   check("End: the last slide, its image from the vault", await count() === "3 / 3" && await img.count() === 1 && await img.evaluate((i) => i.complete && i.naturalWidth > 0))
   await page.screenshot({ path: `${OUT}media-slides-3-${scheme}.png` })
@@ -160,6 +160,7 @@ const swipe = async (x0, x1) => {
 }
 await swipe(320, 80)
 check("phone: a swipe left goes on", await page.locator("[data-slide-count]").innerText() === "2 / 3")
+await wait(600)
 await page.screenshot({ path: `${OUT}media-slides-phone.png` })
 await swipe(80, 320)
 check("phone: a swipe right goes back", await page.locator("[data-slide-count]").innerText() === "1 / 3")
@@ -194,6 +195,87 @@ await page.close()
   await page.close()
   for (const p of [CSS_DECK, SHEET]) await del(p)
 }
+// ---------- slide transitions and auto-animate ----------
+await put(MOVES, "---\ntype: note\ntransition: slide\n---\n\n# One\n\nThe first slide\n\n---\n\n<!-- slide data-transition=\"zoom\" data-transition-speed=\"slow\" bg=\"#203040\" -->\n## Two\n\n- Zooms in, slowly\n- Over a background that fades in\n\n--\n\n## Two, below\n\nComes up from under it\n\n---\n\n<!-- slide data-auto-animate -->\n# Title\n\n---\n\n<!-- slide data-auto-animate -->\n# Title\n##### **Subtitle**\n###### *Author - 2022*\n")
+/** The presentation's own Web Animations (not CSS transitions), as they run now. */
+const moving = (pg) => pg.evaluate(() => document.getAnimations().filter((a) => !(a instanceof CSSTransition) && a.playState === "running" && a.effect?.target?.closest?.("[data-presentation]"))
+  .map((a) => ({ ms: a.effect.getTiming().duration, leaving: !!a.effect.target.closest("[data-slide-leaving]"), tag: a.effect.target.tagName, frames: a.effect.getKeyframes().map((k) => k.transform ?? "").join(" | ") })))
+/** Every animation held at `f` of its way (after its delay), for a screenshot; `end` finishes them. */
+const hold = (pg, f) => pg.evaluate((f) => {
+  for (const a of document.getAnimations()) {
+    const t = a.effect?.getTiming()
+    if (a instanceof CSSTransition || !Number.isFinite(t?.duration) || !Number.isFinite(t.iterations)) continue
+    a.pause(); a.currentTime = (t.delay ?? 0) + t.duration * f
+  }
+}, f)
+const end = (pg) => pg.evaluate(() => { for (const a of document.getAnimations()) if (!(a instanceof CSSTransition) && Number.isFinite(a.effect?.getTiming().iterations)) a.finish() })
+const startMoves = async (pg) => {
+  await pg.goto(`${B}#file/${enc(MOVES)}`); await wait(1500)
+  await palette(pg, "Start presentation", 600); await wait(800)
+}
+for (const scheme of ["light", "dark"]) {
+  page = await open({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })
+  await startMoves(page)
+  const count = () => page.locator("[data-slide-count]").innerText()
+  check(`transitions (${scheme}): nothing moves on the first slide`, await count() === "1 / 5" && (await moving(page)).length === 0)
+  await page.keyboard.press("ArrowRight")
+  await until(async () => (await moving(page)).length >= 2, 3000)
+  let m = await moving(page)
+  const out = m.find((a) => a.leaving), zoom = m.find((a) => !a.leaving && a.frames.includes("scale(0.2)"))
+  check("→ a zoom slide: the one before slides out (the deck's slide, 800 ms), it zooms in (slow: 1200 ms)", out?.frames.includes("translate(-150%, 0") && out.ms === 800 && zoom?.ms === 1200, m)
+  check("… its background fades in, the copy left behind is no slide of its own", m.some((a) => !a.leaving && a.frames === "none | none" && a.ms === 1200)
+    && await page.locator("[data-slide-leaving]").count() === 1 && await page.locator("[data-deck-slide]").count() === 1 && (await page.locator("[data-deck-slide]").innerText()).includes("Zooms in"))
+  await hold(page, 0.3)
+  await page.screenshot({ path: `${OUT}media-slides-zoom-${scheme}.png` })
+  await end(page); await wait(100)
+  check("… and once it's in, the copy is gone", await page.locator("[data-slide-leaving]").count() === 0 && (await moving(page)).length === 0)
+  await page.keyboard.press("ArrowDown")
+  await until(async () => (await moving(page)).length >= 1, 3000)
+  m = await moving(page)
+  check("↓ a vertical slide comes up from below, the zoom slide zooms out past", m.some((a) => !a.leaving && /translate\(0(px)?, 150%\)/.test(a.frames)) && m.some((a) => a.leaving && a.frames.includes("scale(16)")), m)
+  await hold(page, 0.35)
+  await page.screenshot({ path: `${OUT}media-slides-vertical-${scheme}.png` })
+  await end(page)
+  await page.keyboard.press("ArrowRight"); await wait(1200)
+  const head = page.locator("[data-deck-slide] h1")
+  const before = await head.boundingBox()
+  await page.keyboard.press("ArrowRight")
+  await until(async () => (await moving(page)).length >= 1, 3000)
+  m = await moving(page)
+  check("auto-animate: no slide transition, the heading moves from where it was", await count() === "5 / 5" && !m.some((a) => a.leaving) && await page.locator("[data-slide-leaving]").count() === 0
+    && m.some((a) => a.tag === "H1" && a.frames.startsWith("translate(") && a.ms === 1000), m)
+  await hold(page, 0)
+  const at0 = await head.boundingBox()
+  const faded = await page.evaluate(() => getComputedStyle(document.querySelector("[data-deck-slide] h5")).opacity)
+  check("… at its start, the heading is in its old place, the new lines not in yet", Math.abs(at0.y - before.y) < 2 && Math.abs(at0.x - before.x) < 2 && Number(faded) < 0.05, { before, at0, faded })
+  await hold(page, 0.5)
+  await page.screenshot({ path: `${OUT}media-slides-auto-${scheme}.png` })
+  await end(page); await wait(100)
+  const after = await head.boundingBox()
+  check("… and it ends where it now goes, the new lines in", after.y < before.y - 10 && await page.evaluate(() => getComputedStyle(document.querySelector("[data-deck-slide] h5")).opacity) === "1", { before, after })
+  await page.keyboard.press("ArrowLeft"); await wait(80)
+  check("← back: auto-animate the other way too", (await moving(page)).some((a) => a.tag === "H1"))
+  await page.keyboard.press("Escape"); await wait(400)
+  await page.close()
+}
+// Reduce motion: every change is instant.
+page = await open({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" })
+await startMoves(page)
+await page.keyboard.press("ArrowRight"); await wait(150)
+check("reduce motion: the next slide at once, nothing moving, nothing left behind", await page.locator("[data-slide-count]").innerText() === "2 / 5"
+  && (await moving(page)).length === 0 && await page.locator("[data-slide-leaving]").count() === 0)
+await page.keyboard.press("Escape"); await wait(400)
+await page.close()
+// A phone, mid-transition.
+page = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+await startMoves(page)
+await page.keyboard.press("ArrowRight")
+await until(async () => (await moving(page)).length >= 2, 3000)
+await hold(page, 0.3)
+await page.screenshot({ path: `${OUT}media-slides-zoom-phone.png` })
+await end(page)
+await page.keyboard.press("Escape"); await wait(400)
+await page.close()
 
 // Export as HTML: one file that presents itself, its image inside it.
 {
@@ -302,13 +384,13 @@ for (const [scheme, vp, phone] of [["light", { width: 1280, height: 800 }], ["da
   await page.goto(`${B}#file/${enc(LAYOUTS)}`); await wait(1500)
   await palette(page, "Start presentation", 600); await wait(800)
   const near = (a, b) => Math.abs(a - b) < 2
-  const imgs = await page.locator("[data-slide-box=split] img").evaluateAll((is) => is.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, ok: i.complete && i.naturalWidth > 0 } }))
+  const imgs = await page.locator("[data-deck-slide] [data-slide-box=split] img").evaluateAll((is) => is.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, ok: i.complete && i.naturalWidth > 0 } }))
   check(`layouts (${tag}): <split even>: its images side by side, a third each`, imgs.length === 3 && imgs.every((r) => r.ok && near(r.y, imgs[0].y) && near(r.w, imgs[0].w)) && imgs[0].x < imgs[1].x && imgs[1].x < imgs[2].x, imgs)
   await page.screenshot({ path: `${OUT}media-layouts-split-${tag}.png` })
   await page.keyboard.press("ArrowRight"); await wait(600)
-  const cols = await page.locator("[data-slide-box=split] > .note-body > .note-body-md > p").evaluateAll((ps) => ps.map((p) => { const r = p.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width } }))
+  const cols = await page.locator("[data-deck-slide] [data-slide-box=split] > .note-body > .note-body-md > p").evaluateAll((ps) => ps.map((p) => { const r = p.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width } }))
   check(`layouts (${tag}): left="2" right="1": two columns, the left twice as wide, math drawn`, cols.length === 2 && near(cols[0].y, cols[1].y) && cols[1].x > cols[0].x
-    && Math.abs(cols[0].w / cols[1].w - 2) < 0.1 && await page.locator("[data-slide-box] .katex").count() === 1, cols)
+    && Math.abs(cols[0].w / cols[1].w - 2) < 0.1 && await page.locator("[data-deck-slide] [data-slide-box] .katex").count() === 1, cols)
   await page.screenshot({ path: `${OUT}media-layouts-ratio-${tag}.png` })
   await page.keyboard.press("ArrowRight"); await wait(600)
   // (in the slide's own px: offsets, before it's scaled and rotated)
@@ -316,8 +398,8 @@ for (const [scheme, vp, phone] of [["light", { width: 1280, height: 800 }], ["da
     const c = e.closest("[data-slide-canvas]")
     return { x: e.offsetLeft / c.offsetWidth, y: e.offsetTop / c.offsetHeight, w: e.offsetWidth / c.offsetWidth, h: e.offsetHeight / c.offsetHeight, bg: getComputedStyle(e).backgroundColor, color: getComputedStyle(e).color }
   }))
-  const c = await page.locator("[data-slide-canvas]").evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
-  const g = await place("[data-slide-box=grid]")
+  const c = await page.locator("[data-deck-slide] [data-slide-canvas]").evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+  const g = await place("[data-deck-slide] [data-slide-box=grid]")
   const pct = (a, b) => Math.abs(a - b) < 0.005
   check(`layouts (${tag}): grids are placed on a slide of Advanced Slides' shape, on screen`, Math.abs(c.w / c.h - 960 / 700) < 0.01 && c.x >= 0 && c.x + c.w <= vp.width + 1 && c.y >= 0 && c.y + c.h <= vp.height, c)
   check(`layouts (${tag}): drop x y from the top left, negative from the right and bottom, drag their size`, g.length === 3
@@ -325,17 +407,17 @@ for (const [scheme, vp, phone] of [["light", { width: 1280, height: 800 }], ["da
     && g[0].bg === "rgb(255, 0, 0)" && g[2].bg === "rgb(128, 128, 128)", { c, g })
   await page.screenshot({ path: `${OUT}media-layouts-grid-${tag}.png` })
   await page.keyboard.press("ArrowRight"); await wait(600)
-  const [tl, right, later] = await place("[data-slide-box=grid]"), [noise] = (await place("[data-slide-canvas] :is(h3, .h3)")).slice(-1)
+  const [tl, right, later] = await place("[data-deck-slide] [data-slide-box=grid]"), [noise] = (await place("[data-deck-slide] [data-slide-canvas] :is(h3, .h3)")).slice(-1)
   check(`layouts (${tag}): named drops (topleft, right at the default 50 x 100, center), an annotation's drop and bg`, pct(tl.x, 0) && pct(tl.y, 0) && pct(right.x, 0.5) && pct(right.w, 0.5) && pct(right.h, 1)
     && pct(later.x, 0.35) && pct(later.y, 0.375) && pct(noise.x, 0) && pct(noise.y + noise.h, 1) && pct(noise.w, 0.4) && noise.bg === "rgb(0, 0, 0)" && noise.color === "rgb(245, 245, 247)", { tl, right, later, noise })
-  check(`layouts (${tag}): a split inside a grid, side by side`, await page.locator("[data-slide-box=grid] [data-slide-box=split] p").evaluateAll((ps) => ps.length === 2 && ps[0].offsetTop === ps[1].offsetTop && ps[0].offsetLeft < ps[1].offsetLeft))
-  const frag = page.locator("[data-slide-box].fragment")
+  check(`layouts (${tag}): a split inside a grid, side by side`, await page.locator("[data-deck-slide] [data-slide-box=grid] [data-slide-box=split] p").evaluateAll((ps) => ps.length === 2 && ps[0].offsetTop === ps[1].offsetTop && ps[0].offsetLeft < ps[1].offsetLeft))
+  const frag = page.locator("[data-deck-slide] [data-slide-box].fragment")
   check(`layouts (${tag}): frag="1": the grid comes in on the next step`, !(await frag.getAttribute("class")).includes("visible"))
   await page.keyboard.press("ArrowRight"); await wait(900)
   check(`layouts (${tag}): ...then it's in`, (await frag.getAttribute("class")).includes("visible") && await page.locator("[data-slide-count]").innerText() === "4 / 5")
   await page.screenshot({ path: `${OUT}media-layouts-grid2-${tag}.png` })
   await page.keyboard.press("ArrowRight"); await wait(600)
-  const blocks = await page.locator("[data-slide-box=block]").evaluateAll((bs) => bs.map((b) => ({ cls: b.className, bg: getComputedStyle(b).backgroundColor, text: b.innerText, em: !!b.querySelector("em") })))
+  const blocks = await page.locator("[data-deck-slide] [data-slide-box=block]").evaluateAll((bs) => bs.map((b) => ({ cls: b.className, bg: getComputedStyle(b).backgroundColor, text: b.innerText, em: !!b.querySelector("em") })))
   check(`layouts (${tag}): ::: block is a box, its annotation its style, a block in it drawn as Markdown`, blocks.length === 2 && blocks[0].bg === "rgb(255, 0, 0)" && blocks[0].text.includes("Red block")
     && blocks[1].text.includes("Nested") && blocks[1].em && !(await page.locator("[data-deck-slide]").innerText()).includes(":::"), blocks)
   await page.screenshot({ path: `${OUT}media-layouts-block-${tag}.png` })

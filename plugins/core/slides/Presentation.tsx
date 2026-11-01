@@ -6,9 +6,10 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from
 import { activeFile, cn, folderOf, getStore, NoteBody, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
-import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, CANVAS, type Slide } from "./slides"
+import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, CANVAS, type Slide } from "./slides"
 import { revealTheme } from "./themes"
 import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
+import { slideMotion, type Leaving } from "./transitions"
 
 /** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */
 async function textOf(path: string) {
@@ -68,6 +69,7 @@ export function annotate(root: HTMLElement, slide: Slide) {
     if (a.style) target.setAttribute("style", [target.getAttribute("style"), a.style].filter(Boolean).join("; "))
     if (a.bg && CSS.supports("color", a.bg)) { (target as HTMLElement).style.backgroundColor = a.bg; target.classList.add(...toneClass(a.bg).split(" ").filter(Boolean)) }
     if (a.index !== undefined) (target as HTMLElement).dataset.fragmentIndex = String(a.index)
+    for (const [k, v] of Object.entries(a.data ?? {})) target.setAttribute(`data-${k}`, v)
   }
 }
 
@@ -236,18 +238,38 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     return () => mo.disconnect()
   }, [draw])
 
+  // A new slide comes in its way: the one leaving is kept (transitions.ts) till the new one is drawn, a frame later.
+  const [motion] = useState(slideMotion)
+  const gone = useRef<Leaving | null>(null)
+  const layer = useRef<HTMLDivElement>(null)
+  const bgEl = useRef<HTMLDivElement>(null)
+  const tone = () => bg.tone ?? (document.documentElement.classList.contains("dark") ? "dark" : "light")
+  const moveTo = (p: { at: number; step: number }) => {
+    const to = slides[p.at]
+    if (p.at !== i && slide && to && stage.current && inner.current) gone.current = motion.leave(moveOf(slide, to, props), { stage: stage.current, bg: bgEl.current, inner: inner.current }, tone())
+    setPos(p)
+  }
+  useLayoutEffect(() => {
+    if (!gone.current) return
+    const f = requestAnimationFrame(() => {
+      const l = gone.current
+      gone.current = null
+      if (l && layer.current && stage.current && inner.current) motion.arrive(l, layer.current, { stage: stage.current, bg: bgEl.current, inner: inner.current }, tone())
+    })
+    return () => cancelAnimationFrame(f)
+  }, [i]) // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Forward or back a step: a fragment, else a slide (down a column, then on). `col`: a column at a time. */
-  const go = useCallback((d: 1 | -1, col = false) => setPos((p) => {
-    const at = Math.min(p.at, n - 1), count = frags.current.length, step = Math.min(p.step, count)
-    if (d > 0 && step < count) return { at, step: step + 1 }
-    if (d < 0 && step > 0) return { at, step: step - 1 }
+  const go = (d: 1 | -1, col = false) => {
+    const at = Math.min(pos.at, n - 1), count = frags.current.length, step = Math.min(pos.step, count)
+    if (d > 0 && step < count) return setPos({ at, step: step + 1 })
+    if (d < 0 && step > 0) return setPos({ at, step: step - 1 })
     const h = slides[at]?.h ?? 0
     let to = at + d
     if (col) to = d > 0 ? slides.findIndex((s) => s.h > h) : slides.findIndex((s) => s.h === h - 1)
-    if (to < 0 || to >= n) return p
-    return { at: to, step: d < 0 ? Infinity : 0 }
-  }), [n, slides])
-  const jump = (at: number) => setPos({ at, step: 0 })
+    if (to >= 0 && to < n) moveTo({ at: to, step: d < 0 ? Infinity : 0 })
+  }
+  const jump = (at: number) => moveTo({ at, step: 0 })
 
   // Full screen where the browser has it (not iPhones: there the presentation fills the page). Leaving it (Escape,
   // which the browser takes) ends the presentation, unless it was F.
@@ -333,8 +355,9 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
       <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
         data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
         {/* the deck's own CSS reaches what's in [data-deck], never the controls; a theme's --r-* come from above it */}
-        <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col">
-          {bg.style && <div aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
+        <div data-deck data-deck-theme={theme?.name} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          {bg.style && <div ref={bgEl} aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
+          <div ref={layer} aria-hidden className="pointer-events-none absolute inset-0" />
           <div ref={stage} onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
             className="relative flex min-h-0 flex-1 cursor-default touch-pan-y overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
             <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className="relative m-auto shrink-0">

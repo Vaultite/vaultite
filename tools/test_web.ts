@@ -1445,6 +1445,26 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && (bl[0] as any).in[1].in[0] === "blue" && (bl[0] as any).in[2] === "red" && bl[1] === "no color", bl)
   check("slides: layout tags inside code are text", !lay("```\n<split even>\n:::\n```").boxes && !lay("Use `<grid drop=\"center\">` here").boxes)
 
+  const { moveOf } = await import("../plugins/core/slides/slides.ts")
+  const tr = parseDeck('# A\n---\n<!-- slide data-transition="zoom" data-transition-speed="fast" data-background-transition="slide" bg="#000" -->\n# B\n--\n<!-- .slide: data-transition="fade-in convex-out" -->\n# C\n---\n<!-- slide data-auto-animate -->\n# T\n---\n<!-- slide data-auto-animate data-auto-animate-duration="2" -->\n# T\n## Sub <!-- element data-id="sub" data-auto-animate-delay="0.5" -->\n---\n<!-- slide data-auto-animate data-auto-animate-restart -->\n# T\n').slides
+  check("slides: data-transition, -speed and data-auto-animate are the slide's data", tr[1].data.transition === "zoom" && tr[1].data["transition-speed"] === "fast" && tr[1].bgAttrs.transition === "slide" && tr[3].data["auto-animate"] === "" && !tr[1].md.includes("<!--"), tr[1])
+  check("slides: an element annotation's data-* (data-id) are kept", tr[4].els[0]?.data?.id === "sub" && tr[4].els[0]?.data?.["auto-animate-delay"] === "0.5" && !("fragment-index" in (tr[4].els[0]?.data ?? {})), tr[4].els)
+  const m01 = moveOf(tr[0], tr[1])
+  check("slides: a slide comes in its own way, the one before leaves the deck's (slide), at their speeds", m01.in === "zoom" && m01.out === "slide" && m01.inMs === 400 && m01.outMs === 800 && !m01.vertical && !m01.back && !m01.auto, m01)
+  check("slides: a background changing: its data-background-transition, else fade; the same one: none", m01.bg === "slide" && moveOf(tr[1], tr[0]).bg === "fade" && moveOf(tr[3], tr[4]).bg === "none" && moveOf(tr[3], tr[4], { bg: "#fff" }).bg === "none")
+  const m12 = moveOf(tr[1], tr[2]), m21 = moveOf(tr[2], tr[1])
+  check("slides: down a column is vertical; a pair like fade-in convex-out", m12.vertical && m12.in === "fade" && m12.out === "zoom" && m21.out === "convex" && m21.back && m21.vertical, [m12, m21])
+  const fm = { transition: "concave", transitionSpeed: "slow", backgroundTransition: "zoom" }
+  check("slides: frontmatter transition, transitionSpeed, backgroundTransition for the deck", moveOf(tr[0], tr[2], fm).in === "fade" && moveOf(tr[2], tr[3], fm).in === "concave" && moveOf(tr[2], tr[3], fm).inMs === 1200 && moveOf(tr[0], tr[1], fm).out === "concave" && moveOf(tr[1], tr[3], fm).bg === "zoom"
+    && moveOf(tr[0], tr[3], { transition: "none" }).in === "none" && moveOf(tr[0], tr[3], { transition: "bogus" }).in === "slide")
+  const auto = moveOf(tr[3], tr[4])
+  check("slides: two data-auto-animate slides auto-animate, without a slide transition (duration in s, ease)", auto.auto?.ms === 2000 && auto.auto.easing === "ease" && auto.auto.unmatched && auto.in === "none" && auto.out === "none", auto)
+  check("slides: auto-animate needs both, the same id, no restart on the later one, and autoAnimate not false",
+    !moveOf(tr[2], tr[3]).auto && !moveOf(tr[4], tr[5]).auto && !moveOf(tr[5], tr[4]).auto && !!moveOf(tr[4], tr[3]).auto && !moveOf(tr[3], tr[4], { autoAnimate: false }).auto
+    && moveOf(tr[3], tr[4], { autoAnimateUnmatched: false }).auto?.unmatched === false && moveOf(tr[4], tr[3], { autoAnimateDuration: 0.5 }).auto?.ms === 500)
+  const ids = parseDeck('<!-- slide data-auto-animate data-auto-animate-id="a" -->\n# X\n---\n<!-- slide data-auto-animate data-auto-animate-id="b" -->\n# X\n').slides
+  check("slides: different data-auto-animate-ids don't auto-animate", !moveOf(ids[0], ids[1]).auto)
+
   check("slides: the deck's CSS: the page and .reveal are the deck", scopeSelector(":root", "[d]") === "[d]" && scopeSelector(".reveal .slides section h1, .x", "[d]") === "[d] h1, [d] .x"
     && scopeSelector(".reveal.dark p", "[d]") === "[d].dark p" && scopeSelector("html .a", "[d]") === "[d] .a" && scopeSelector(":is(a, b) > c", "[d]") === "[d] :is(a, b) > c")
   const sc = scopeCss("@import url(x.css);\n/* c } */ body { margin: 0 }\n@media (min-width: 1px) { .reveal h2 { color: blue } }\n@font-face { font-family: X; }\n@page { size: A4 }\n.a::after { content: \"}\" }", "[d]")

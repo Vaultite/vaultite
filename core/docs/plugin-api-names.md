@@ -336,6 +336,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `money(v)`
 - `moveInList(delta)`: Move the keyboard `delta` rows (1 down, -1 up), or to the first or last row.
 - `moveManyInto(paths, folder, { before, reveal }?)`: Move several files and folders into a folder, then one toast with Undo for all of them.
+- `moves()`: Whether things move: nothing asks for stillness, and Web Animations are there.
 - `mutate(f)`: Change the store optimistically, after a write: f returns a new store, with new objects where it changed (never one changed in place: the store's objects are also the server's last state, which…
 - `namedIcon(name?)`: An icon by its name (`dumbbell`): one of ICONS, one a plugin adds, any other of Lucide's, or an emoji; null for none.
 - `navigate(dir)`: Back (-1) or forward (1) in the active tab's history.

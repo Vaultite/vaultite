@@ -51,4 +51,11 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
   `animate`, `opacity`, `rotate`, `filter`, `frag`) places a box, the slide then fixed at that shape; an element
   annotation's `drag`/`drop`/`bg` do the same. `::: block` (or `::: <class>`, with an annotation for its style) to
   `:::` is a box. They nest, and what's in them is Markdown.
-- Not drawn: transitions, auto-animate, chalkboard, other reveal options.
+- Transitions as reveal.js draws them: frontmatter `transition` (`none`, `fade`, `slide`, `convex`, `concave`, `zoom`,
+  or a pair like `fade-in slide-out`), `transitionSpeed` (`default`, `fast`, `slow`), `backgroundTransition`; per slide
+  `<!-- slide data-transition="zoom" data-transition-speed="fast" data-background-transition="fade" -->`. Vertical
+  slides move up and down. Off when the system asks for less motion.
+- Auto-animate: `<!-- slide data-auto-animate -->` on two consecutive slides (frontmatter `autoAnimate: false` turns
+  it off, as in reveal.js): what matches (the same heading or text, image, code, or an element annotation's `data-id`)
+  moves from where it was; the rest fades in (`data-auto-animate-duration`, `-easing`, `-id`, `-restart`, `-unmatched`).
+- Not drawn: chalkboard, other reveal options.

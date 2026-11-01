@@ -1,7 +1,7 @@
 // A note's body as slides, read as Obsidian's Advanced Slides reads a deck (separators, notes, annotations, fragments,
 // <style>), never inside code. No imports: tests run it on Node.
 
-export type Annotation = { cls: string; style: string; bg?: string; index?: number; li?: boolean }
+export type Annotation = { cls: string; style: string; bg?: string; index?: number; li?: boolean; data?: Record<string, string> }
 /** A layout box (`<split>`, `<grid>`, a `::: block`): what's in it in order, Markdown or boxes. `kids`: the style each
  *  of its items gets (the blocks its Markdown draws, the boxes in it), `nth`: the k-th one's own. */
 export type Box = { kind: "split" | "grid" | "block"; cls: string; style: string; bg?: string; index?: number; kids: string; nth: string[]; in: (Box | string)[] }
@@ -25,8 +25,10 @@ export type Slide = {
   bgAttrs: Record<string, string>
   cls: string
   style: string
+  /** Its other data-* (`data-transition`, `data-auto-animate`…), by name without `data-`. */
+  data: Record<string, string>
 }
-export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown }
+export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; [fm: string]: unknown }
 
 const SEP = /^\s{0,3}-{3,}\s*$/
 const VSEP = /^\s{0,3}--\s*$/
@@ -210,7 +212,7 @@ const SLIDE_NOTE = /<!--\s*(?:\.slide:|slide\b)([\s\S]*?)-->/g
 const ELEMENT_NOTE = /<!--\s*(?:\.element:|element\b)([\s\S]*?)-->/g
 
 function slideOf(raw: string, h: number, v: number, notesRe: RegExp): Slide {
-  const s: Slide = { md: "", notes: "", h, v, els: [], bgAttrs: {}, cls: "", style: "" }
+  const s: Slide = { md: "", notes: "", h, v, els: [], bgAttrs: {}, cls: "", style: "", data: {} }
   const md: string[] = [], notes: string[] = []
   let inNotes = false, listFrag = 0
   for (const [line, code] of fenced(raw)) {
@@ -231,13 +233,16 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp): Slide {
         else if (k.startsWith("data-background-")) s.bgAttrs[k.slice(16)] = val
         else if (k === "class") s.cls = [s.cls, val].filter(Boolean).join(" ")
         else if (k === "style") s.style = [s.style, val].filter(Boolean).join("; ")
+        else if (k.startsWith("data-")) s.data[k.slice(5)] = val
       }
       return ""
     })
     .replace(ELEMENT_NOTE, (_, a: string) => {
-      const { placed, kids: _k, nth: _n, ...look } = lookOf(attrsOf(a))
+      const at = attrsOf(a)
+      const { placed, kids: _k, nth: _n, ...look } = lookOf(at)
       if (placed) s.canvas = true
-      s.els.push(look)
+      const data = Object.fromEntries(Object.entries(at).filter(([k]) => k.startsWith("data-") && k !== "data-fragment-index").map(([k, v]) => [k.slice(5), v]))
+      s.els.push({ ...look, ...(Object.keys(data).length ? { data } : {}) })
       return `<span class="slide-el-${s.els.length - 1}"></span>`
     })).trim()
   const boxes = layoutOf(s.md, s)
@@ -285,6 +290,52 @@ export function isTitleSlide(md: string): boolean {
   const heads = lines.filter((l) => /^#{1,6}\s/.test(l)).length
   const rest = lines.filter((l) => !/^#{1,6}\s/.test(l))
   return heads > 0 && rest.length <= 1 && rest.every((l) => l.length <= 80 && !/^([-*+]|\d+\.|>|!?\[\[|```|\|)/.test(l))
+}
+
+// ---------- moving from one slide to the next, as reveal.js does ----------
+
+export type Style = "none" | "fade" | "slide" | "convex" | "concave" | "zoom"
+const STYLES = new Set(["none", "fade", "slide", "convex", "concave", "zoom"])
+const SPEEDS: Record<string, number> = { default: 800, fast: 400, slow: 1200 }
+export type Move = {
+  out: Style; in: Style; outMs: number; inMs: number
+  /** The background's way (none when both slides have the same one). */
+  bg: Style
+  vertical: boolean; back: boolean
+  /** Auto-animate (both slides `data-auto-animate`, the same `data-auto-animate-id`): no slide transition then. */
+  auto?: { ms: number; easing: string; unmatched: boolean }
+}
+
+/** A way in or out, from `zoom` or a pair like `fade-in slide-out`; else `fallback`'s. */
+function styleOf(t: unknown, way: "in" | "out", fallback: Style): Style {
+  const words = typeof t === "string" ? t.toLowerCase().split(/\s+/) : []
+  const paired = words.find((x) => x.endsWith(`-${way}`))?.slice(0, -way.length - 1)
+  const w = paired && STYLES.has(paired) ? paired : words.find((x) => STYLES.has(x))
+  return (w as Style | undefined) ?? fallback
+}
+const str = (v: unknown) => (["string", "number", "boolean"].includes(typeof v) ? String(v) : undefined)
+
+/** How the deck goes from slide `a` to `b`: `a` leaves its way, `b` comes in its own (frontmatter `transition`,
+ *  `transitionSpeed`, `backgroundTransition`, `autoAnimate*` for the deck; a slide's data-* over them). */
+export function moveOf(a: Slide, b: Slide, opts: DeckOptions = {}): Move {
+  const deck = styleOf(opts.transition, "in", "slide")
+  const ms = (s: Slide) => SPEEDS[str(s.data["transition-speed"] ?? opts.transitionSpeed) ?? ""] ?? SPEEDS.default
+  const bgOf = (s: Slide) => JSON.stringify([s.bg ?? str(opts.bg) ?? "", { ...s.bgAttrs, transition: "" }])
+  const back = b.h < a.h || (b.h === a.h && b.v < a.v)
+  const later = back ? a : b
+  const on = (s: Slide) => s.data["auto-animate"] !== undefined && s.data["auto-animate"] !== "false"
+  const auto = str(opts.autoAnimate) !== "false" && on(a) && on(b) && (a.data["auto-animate-id"] ?? "") === (b.data["auto-animate-id"] ?? "")
+    && later.data["auto-animate-restart"] === undefined
+  const secs = Number.parseFloat(str(b.data["auto-animate-duration"] ?? opts.autoAnimateDuration) ?? "")
+  return {
+    out: auto ? "none" : styleOf(a.data.transition, "out", styleOf(opts.transition, "out", deck)),
+    in: auto ? "none" : styleOf(b.data.transition, "in", deck),
+    outMs: ms(a), inMs: ms(b),
+    bg: bgOf(a) === bgOf(b) ? "none" : styleOf(b.bgAttrs.transition ?? opts.backgroundTransition, "in", "fade"),
+    vertical: a.h === b.h, back,
+    ...(auto ? { auto: { ms: Number.isFinite(secs) && secs >= 0 ? secs * 1000 : 1000, easing: str(b.data["auto-animate-easing"] ?? opts.autoAnimateEasing) ?? "ease",
+      unmatched: str(b.data["auto-animate-unmatched"] ?? opts.autoAnimateUnmatched) !== "false" } } : {}),
+  }
 }
 
 // ---------- the deck's CSS, kept to the presentation ----------

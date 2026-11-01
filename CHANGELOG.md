@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Slides move between slides**: transitions (fade, slide, convex, concave, zoom, at their speeds) and auto-animate,
+  as Advanced Slides draws them, instant when the system asks for less motion.
 - **Screen readers find their way around the desktop**: the workspace is one main landmark with each pane named
   after its tab, and resize handles say where they sit; tabs used to each be a main landmark of their own.
 - **Table columns fit their text**: in notes, dashboards and the editor, a short cell ("In columns", `wide: true`, a
