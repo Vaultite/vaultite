@@ -1,6 +1,7 @@
 // The command palette (⌘P): commands offered now, fuzzy by name, the used last first; a setting shows its switch or
 // value. A plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
 import { useMemo, useState } from "react"
+import { flushSync } from "react-dom"
 import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
 import { useSwitches } from "@/core/switches"
 import { commandIcon } from "@/core/pages"
@@ -119,8 +120,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       onPick={(c, how) => {
         if (!c) return
         picked()
-        onClose()
-        setTimeout(() => (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)), 0)
+        // Closed and run in one task: a picker the command opens takes its place with no frame between (PaletteFrame).
+        setTimeout(() => { flushSync(onClose); void (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)) }, 0)
       }}
       onSelect={(c) => setSetting(!c ? null : isSetting(c) ? "switch" : c.value ? "choice" : null)}
       section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : undefined)}

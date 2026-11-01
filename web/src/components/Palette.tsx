@@ -244,10 +244,15 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   )
 }
 
+let frameClosed = -Infinity
+
 /** The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held
  *  still under it; Escape or a click outside closes it, and the keyboard goes back. Its children focus their field. */
 export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: string; onClose: () => void; onKeyDown?: (e: KeyboardEvent) => void; children: ReactNode }) {
   useHeldFocus()
+  // One opened as another closed (a command's picker) swaps in place: no fade or zoom, the overlay stays as it was.
+  const [swapped] = useState(() => performance.now() - frameClosed < 50)
+  useLayoutEffect(() => () => { frameClosed = performance.now() }, [])
   // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
   // ContextMenu's menus are; opened before the field is focused.
   const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
@@ -264,10 +269,10 @@ export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: s
     <div data-overlay className="fixed inset-x-0 z-50 flex items-start justify-center px-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:pt-[12vh]"
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}
-        className="absolute inset-0 cursor-default bg-black/30 animate-in fade-in duration-150" />
+        className={cn("absolute inset-0 cursor-default bg-black/30", !swapped && "animate-in fade-in duration-150")} />
       <div role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKey}
         style={{ maxHeight: "min(70dvh, 600px, calc(var(--vvh, 100dvh) - 1.5rem - env(safe-area-inset-top)))" }}
-        className="relative flex w-full max-w-[680px] flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        className={cn("relative flex w-full max-w-[680px] flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl", !swapped && "animate-in fade-in zoom-in-95 duration-150")}>
         {children}
       </div>
     </div>

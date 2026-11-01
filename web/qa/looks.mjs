@@ -99,8 +99,19 @@ try {
     && await until(() => page.getByText("Theme: Light").count()), json("appearance"))
   await page.getByRole("button", { name: "Undo" }).first().click()
   check("Undo puts dark back", await until(() => json("appearance").theme === "dark") && await until(dark), json("appearance"))
-  // One without a preview: Animations, which only changes how things move.
-  await command("Animations…")
+  // One without a preview: Animations, which only changes how things move. Its picker takes the palette's place: a
+  // dialog fully shown on every frame from Enter on, never a frame without one nor a fade in.
+  await page.keyboard.press(`${MOD}+P`)
+  await page.waitForSelector("[role=dialog] input", { timeout: 5000 })
+  await page.keyboard.type("Animations…"); await wait(300)
+  await page.evaluate(() => {
+    const t0 = performance.now(), seen = window.__frames = []
+    const tick = () => { const d = document.querySelector("[role=dialog]"); seen.push(d ? getComputedStyle(d).opacity : "none"); if (performance.now() - t0 < 300) requestAnimationFrame(tick) }
+    requestAnimationFrame(tick)
+  })
+  await page.keyboard.press("Enter"); await wait(400)
+  const frames = await page.evaluate(() => window.__frames)
+  check("the picker swaps in place: a dialog fully shown on every frame", frames.length > 3 && frames.every((o) => o === "1"), frames)
   check("Animations… lists natural, snappy and off, Natural checked", await until(async () => (await opts()).join() === "Natural,Snappy,Off"), await opts())
   await page.keyboard.press("ArrowDown"); await page.keyboard.press("Enter")
   check("...picking Snappy saves it", await until(() => json("appearance").animation === "snappy"), json("appearance"))

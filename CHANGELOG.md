@@ -130,9 +130,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
 - **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing
-  mode…, Properties in document…, Plugin updates…, Sort order… and the rest each open their values in the palette, the
-  one in use checked and named at the row's end, the look shown as you move; Enter keeps one (with Undo), Esc goes
-  back, ⌘↵ opens it in Settings. The one-value commands (Use dark theme...) stay for the menu bar, hotkeys and `vau`.
+  mode…, Properties in document…, Plugin updates…, Sort order… and the rest each open their values in the palette, in
+  its place with no fade between, the one in use checked and named at the row's end, the look shown as you move; Enter
+  keeps one (with Undo), Esc goes back, ⌘↵ opens it in Settings. The one-value commands (Use dark theme...) stay for the menu bar, hotkeys and `vau`.
 - **New in a base**: a base's bar has New, as in Obsidian: a note in the folder its filters ask for, with the
   properties and tags they test for (`status == "reading"`, `file.hasTag("book")`), opened in a tab beside it.
 - **A tab bar is one Tab stop**: Tab goes into a pane's tabs at the one shown and out past them all, instead of
