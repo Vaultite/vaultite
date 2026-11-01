@@ -70,10 +70,10 @@ if (servedBy) {
   process.exit(1)
 }
 let app: App, vault: Vault, live: LiveType
-const ready = open(VAULT_AT, { timing: starting }).then((a) => {
+const ready = open(VAULT_AT, { timing: starting, watch: (v) => { live = new Live(v).start() } }).then((a) => {
   app = a
   vault = a.vault
-  live = watch(new Live(vault).start())
+  watch(live)
   a.scheduler.start()
   keepDownloaded(VAULT_AT, path.join(LOCAL, "icloud.json")) // (a vault in iCloud Drive: so iCloud stops evicting its files)
   for (const p of vault.problemList()) console.log(`vault: ${p.file}: ${p.problem}`)

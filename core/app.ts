@@ -934,7 +934,7 @@ export function jsonOf(body: unknown): string | Buffer {
 
 /** Open a vault: load the plugins, read every file (writing nothing outside .vaultite/). The event loop turns between
  *  steps, so a starting server answers its web app's files meanwhile. */
-export async function open(vaultPath: string, { start = true, timing }: { start?: boolean; timing?: { mark(part: string): void } } = {}) {
+export async function open(vaultPath: string, { start = true, timing, watch }: { start?: boolean; timing?: { mark(part: string): void }; watch?: (vault: Vault) => void } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
   // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the pages of the
   // plugins its pick turns on come when it picks its setup (core/bundles.ts offering).
@@ -943,6 +943,8 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   const app = await new App(vaultPath).init(timing)
   app.vault.startTexts = kept?.texts ?? null
   if (fresh) B.markNew(app.vault)
+  // (watched before it's read: the read is then vouched for, and the first requests don't walk the vault again)
+  watch?.(app.vault)
   if (start) {
     await migrate(app.vault, fresh)
     accessToMachine(app.vault, app.plugins)
