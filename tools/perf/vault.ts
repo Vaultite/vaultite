@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
+import { DONE } from "../../core/migrations.ts"
 
 const ROOT = path.join(import.meta.dirname, "..", "..")
 
@@ -96,6 +97,9 @@ export function makeVault(dir: string, scale = 1) {
   let rows = "date,description,amount\n" // a table, like a finance export
   for (let i = 0; i < 400 * scale; i++) rows += `${day(i % 365)},${pick(WORDS)} ${pick(WORDS)},${(rand() * 200 - 100).toFixed(2)}\n`
   write(dir, "Finance/Transactions.csv", rows)
+  // (a vault made as the app's defaults are now, as the sandbox is: else its first start installs the plugins that
+  // moved out of the app, from GitHub, and every benchmark times that)
+  write(dir, ".vaultite/migrations.json", JSON.stringify({ done: DONE }, null, 2) + "\n")
   return { people: people.length, notes: notes.length }
 }
 
