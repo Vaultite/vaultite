@@ -1,6 +1,7 @@
 // The panes from the keyboard, with the real keys: ⌘D and ⇧⌘D split (in an editor too), ⌃⌘ arrows focus (past the
-// last pane into a sidebar), ⌃⌘] and [ go in order, ⌃⇧⌘ arrows swap, ⌃⌥⌘ arrows resize, ⌃⌘= evens out; Dim inactive
-// panes fades the others, light and dark. WRITES: throwaway server only.
+// last pane into a sidebar), ⌃⌘] and [ go in order, ⌃⇧⌘ arrows swap, ⌃⌥⌘ arrows resize, ⌃⌘= evens out (off a Mac,
+// Alt+Shift focuses, goes in order and evens out); Dim inactive panes fades the others, light and dark. WRITES:
+// throwaway server only.
 //   node web/qa/panekeys.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync, readFileSync } from "node:fs"
 import { command, qa, wait } from "./lib/qa.mjs"
@@ -41,24 +42,27 @@ await press("ControlOrMeta+Shift+D")
 ps = await panes()
 check("⇧⌘D splits down", ps.length === 3 && ps[2].x === ps[1].x && ps[2].y > ps[1].y && ps[2].focused, ps)
 
-if (MAC) {
+// The pane keys' modifiers: ⌃⌘ on a Mac, Alt+Shift elsewhere.
+const P = MAC ? "Meta+Control" : "Alt+Shift", K = MAC ? "⌃⌘" : "Alt+Shift+"
+{
   // ---------- focus ----------
   const [L, TR, BR] = ps
-  await press("Meta+Control+ArrowUp")
-  check("⌃⌘↑ focuses the pane above", (await focused())?.id === TR.id, await panes())
-  await press("Meta+Control+ArrowLeft")
-  check("⌃⌘← focuses the pane to the left, its editor taking the keyboard", (await focused())?.id === L.id && await keyboard() === `editor:${L.id}`, [await panes(), await keyboard()])
-  await press("Meta+Control+ArrowLeft")
+  await press(`${P}+ArrowUp`)
+  check(`${K}↑ focuses the pane above`, (await focused())?.id === TR.id, await panes())
+  await press(`${P}+ArrowLeft`)
+  check(`${K}← focuses the pane to the left, its editor taking the keyboard`, (await focused())?.id === L.id && await keyboard() === `editor:${L.id}`, [await panes(), await keyboard()])
+  await press(`${P}+ArrowLeft`)
   check("...past the last pane, the left sidebar", await keyboard() === "sidebar", await keyboard())
-  await press("Meta+Control+ArrowRight")
+  await press(`${P}+ArrowRight`)
   check("...and back to the pane", await keyboard() === `editor:${L.id}`, await keyboard())
-  await press("Meta+Control+]")
+  await press(`${P}+]`)
   const n1 = (await focused())?.id
-  await press("Meta+Control+]"); await press("Meta+Control+]")
-  check("⌃⌘] goes to the next pane in order, round to the first", n1 === TR.id && (await focused())?.id === L.id, [n1, await focused()])
-  await press("Meta+Control+[")
-  check("⌃⌘[ goes back round to the last", (await focused())?.id === BR.id, await focused())
-
+  await press(`${P}+]`); await press(`${P}+]`)
+  check(`${K}] goes to the next pane in order, round to the first`, n1 === TR.id && (await focused())?.id === L.id, [n1, await focused()])
+  await press(`${P}+[`)
+  check(`${K}[ goes back round to the last`, (await focused())?.id === BR.id, await focused())
+}
+if (MAC) {
   // ---------- moving and resizing ----------
   await press("Meta+Control+ArrowLeft")
   await press("Meta+Control+Shift+ArrowRight")
@@ -72,10 +76,14 @@ if (MAC) {
   ps = await panes()
   const [up, down] = ps.filter((p) => p.x === ps[1].x)
   check("⌃⌥⌘↓ moves its divider down", up.focused && up.h - down.h >= 90, [up, down])
-  await press("Meta+Control+=")
-  ps = await panes()
-  check("⌃⌘= evens every split out", Math.abs(ps[0].w - ps[1].w) <= 2 && Math.abs(ps[1].h - ps[2].h) <= 2, ps)
 }
+// (off a Mac, moving a divider has no default keys: the palette's)
+if (!MAC) { await command(page, "Resize pane left"); await command(page, "Resize pane up"); await wait(400) }
+const before = await panes()
+check("...the splits are uneven first", Math.abs(before[0].w - before[1].w) > 40 && Math.abs(before[1].h - before[2].h) > 40, before)
+await press(`${P}+=`)
+ps = await panes()
+check(`${K}= evens every split out`, Math.abs(ps[0].w - ps[1].w) <= 2 && Math.abs(ps[1].h - ps[2].h) <= 2, [before, ps])
 
 // ---------- Dim inactive panes ----------
 const dims = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => ({

@@ -108,8 +108,8 @@ const DRAW: Record<AppPage["id"], (store: Store, to: string, tab: Tab | null) =>
   settings: (store) => <Suspense><Settings store={store} /></Suspense>,
 }
 const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
-/** A default key only on a Mac (⌃⌘: off one, Ctrl is ⌘ and these would take an editor's own keys). */
-const mac = (k: string) => (isMac ? [k] : undefined)
+/** A pane key: `k` (⌃⌘) on a Mac, `other` elsewhere, where Ctrl is ⌘ and `k` would take an editor's own keys. */
+const mac = (k: string, other?: string) => (isMac ? [k] : other ? [other] : undefined)
 /** The X of the bar's tab that has the keyboard, if it has one (a pinned tab, the last blank one: none). */
 const focusedTabClose = () => {
   const a = document.activeElement
@@ -376,14 +376,14 @@ export default function App() {
     { id: "pane:zoom", name: "Zoom pane", keys: ["Mod+Shift+Enter"], when: () => isDesktop() && canZoom(), run: () => zoomPane(), icon: Maximize2, nameWhenOn: "Unzoom pane", on: isZoomed },
     { id: "pane:float", name: "Float pane", keys: ["Mod+Alt+Enter"], when: () => isDesktop() && (canFloat() || isFloating()), run: toggleFloat, icon: PictureInPicture2,
       nameWhenOn: "Dock pane", on: () => isFloating() },
-    // Past the last pane on a side: into that side's sidebar, and from a sidebar back to the pane (core/keylist.ts).
-    // The panes' keys are ⌃⌘ on a Mac (⌥⌘← and → are Back and Forward, Obsidian's); off one, none take what's typed.
-    { id: "split:focus-left", name: "Focus pane to the left", keys: mac("Mod+Ctrl+ArrowLeft"), when: () => isDesktop() && canGoSide("left"), run: () => goSide("left"), icon: Focus },
-    { id: "split:focus-right", name: "Focus pane to the right", keys: mac("Mod+Ctrl+ArrowRight"), when: () => isDesktop() && canGoSide("right"), run: () => goSide("right"), icon: Focus },
-    { id: "split:focus-top", name: "Focus pane above", keys: mac("Mod+Ctrl+ArrowUp"), when: () => isDesktop() && canGoSide("top"), run: () => goSide("top"), icon: Focus },
-    { id: "split:focus-bottom", name: "Focus pane below", keys: mac("Mod+Ctrl+ArrowDown"), when: () => isDesktop() && canGoSide("bottom"), run: () => goSide("bottom"), icon: Focus },
-    { id: "pane:focus-next", name: "Focus next pane", keys: mac("Mod+Ctrl+]"), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(1), icon: Focus },
-    { id: "pane:focus-previous", name: "Focus previous pane", keys: mac("Mod+Ctrl+["), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(-1), icon: Focus },
+    // ⌃⌘ on a Mac (⌥⌘← is Back); off one Alt+Shift (Alt← is Back, Ctrl+Alt arrows the desktop's workspaces, Ctrl+Alt
+    // AltGr on Windows). Past the last pane on a side: that side's sidebar, and back (core/keylist.ts).
+    { id: "split:focus-left", name: "Focus pane to the left", keys: mac("Mod+Ctrl+ArrowLeft", "Alt+Shift+ArrowLeft"), when: () => isDesktop() && canGoSide("left"), run: () => goSide("left"), icon: Focus },
+    { id: "split:focus-right", name: "Focus pane to the right", keys: mac("Mod+Ctrl+ArrowRight", "Alt+Shift+ArrowRight"), when: () => isDesktop() && canGoSide("right"), run: () => goSide("right"), icon: Focus },
+    { id: "split:focus-top", name: "Focus pane above", keys: mac("Mod+Ctrl+ArrowUp", "Alt+Shift+ArrowUp"), when: () => isDesktop() && canGoSide("top"), run: () => goSide("top"), icon: Focus },
+    { id: "split:focus-bottom", name: "Focus pane below", keys: mac("Mod+Ctrl+ArrowDown", "Alt+Shift+ArrowDown"), when: () => isDesktop() && canGoSide("bottom"), run: () => goSide("bottom"), icon: Focus },
+    { id: "pane:focus-next", name: "Focus next pane", keys: mac("Mod+Ctrl+]", "Alt+Shift+]"), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(1), icon: Focus },
+    { id: "pane:focus-previous", name: "Focus previous pane", keys: mac("Mod+Ctrl+[", "Alt+Shift+["), when: () => isDesktop() && severalPanes(), run: () => focusByOrder(-1), icon: Focus },
     { id: "pane:focus-last", name: "Focus last pane", words: "recent back", when: () => isDesktop() && hasLastPane(), run: focusLastPane, icon: Focus },
     // Moving one swaps it with its neighbour, as Rex does; resizing moves its divider that way, as Ghostty does.
     { id: "pane:move-left", name: "Move pane left", keys: mac("Mod+Ctrl+Shift+ArrowLeft"), when: () => isDesktop() && hasNeighbour("left"), words: "swap", run: () => movePane("left"), icon: MoveLeft },
@@ -394,7 +394,7 @@ export default function App() {
     { id: "pane:resize-right", name: "Resize pane right", keys: mac("Mod+Ctrl+Alt+ArrowRight"), when: () => isDesktop() && canNudge("right"), words: "divider grow shrink", run: () => nudgePane("right"), icon: MoveHorizontal },
     { id: "pane:resize-up", name: "Resize pane up", keys: mac("Mod+Ctrl+Alt+ArrowUp"), when: () => isDesktop() && canNudge("top"), words: "divider grow shrink", run: () => nudgePane("top"), icon: MoveVertical },
     { id: "pane:resize-down", name: "Resize pane down", keys: mac("Mod+Ctrl+Alt+ArrowDown"), when: () => isDesktop() && canNudge("bottom"), words: "divider grow shrink", run: () => nudgePane("bottom"), icon: MoveVertical },
-    { id: "pane:even-out", name: "Even out panes", keys: mac("Mod+Ctrl+="), when: () => isDesktop() && severalPanes(), words: "balance equal sizes splits", run: evenOutAll, icon: Columns3 },
+    { id: "pane:even-out", name: "Even out panes", keys: mac("Mod+Ctrl+=", "Alt+Shift+="), when: () => isDesktop() && severalPanes(), words: "balance equal sizes splits", run: evenOutAll, icon: Columns3 },
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },

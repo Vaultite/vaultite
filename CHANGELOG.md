@@ -241,7 +241,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Panes from the keyboard**: ⌘D splits right and ⇧⌘D down, in a note too (Delete paragraph moves to ⇧⌘⌫, today's
   daily note to ⌥⌘D; ⌘D still bookmarks a web page and duplicates a file tree row). On a Mac, ⌃⌘ and the arrows focus
   the pane that way (past the last one, the sidebar), ⌃⌘] and ⌃⌘[ the next and previous pane, ⌃⇧⌘ and the arrows swap
-  the pane with its neighbour, ⌃⌥⌘ and the arrows move its divider, and ⌃⌘= evens every split out. Split left, Split
+  the pane with its neighbour, ⌃⌥⌘ and the arrows move its divider, and ⌃⌘= evens every split out. On Windows and
+  Linux, Alt+Shift and the arrows focus the pane that way, Alt+Shift+] and [ the next and previous one, and Alt+Shift+=
+  evens the splits out (Ctrl+Alt and the arrows are the desktop's). Split left, Split
   up, Split along the longer side and Focus last pane are in the palette, and the pane commands in Window ▸ Panes.
   Vim's ⌃W J and K (and Space W J and K) move between panes above and below again.
 - **Dim inactive panes**, on by default: a switch in Appearance (`dimPanes`): with the window split, the panes you're
