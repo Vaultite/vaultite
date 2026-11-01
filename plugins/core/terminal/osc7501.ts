@@ -104,9 +104,13 @@ export class Scanner {
     for (let i = 0; i < d.length; i++) {
       const c = d[i]
       switch (this.mode) {
-        case Mode.Text:
-          if (c === ESC) { this.mode = Mode.Esc; start = i; this.passing = false }
+        case Mode.Text: {
+          // (straight to the next ESC: a flood of plain text costs one indexOf, not a step per character)
+          const at = c === ESC ? i : d.indexOf(ESC, i)
+          if (at < 0) { i = d.length; break }
+          i = at; this.mode = Mode.Esc; start = i; this.passing = false
           break
+        }
         case Mode.Esc:
           if (c === "]") { this.mode = Mode.Number; this.num = "" }
           else if (c === "c") { seen.push({ t: "reset" }); this.mode = Mode.Text }
