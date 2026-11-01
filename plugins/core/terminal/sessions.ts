@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react"
-import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type Dot } from "@vaultite"
+import { agentOfTerminal, agentsOn, announceAgent, closeView, confirmDialog, notify, notifyError, op, openView, parseTerminal, type Agent, type AgentPhase, type Dot } from "@vaultite"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
 // registers itself here while it's mounted.
@@ -201,9 +201,20 @@ const listeners = new Set<() => void>()
 let ws: WebSocket | null = null, timer = 0, tries = 0
 const put = (next: Partial<Sessions>) => {
   if (next.list && ending.size) next = { ...next, list: next.list.filter((s) => !ending.has(s.id)) }
+  if (next.list) tell(now.list, next.list)
   now = { ...now, ...next }
   listeners.forEach((f) => f())
   tick()
+}
+const PHASE: Record<string, AgentPhase> = { working: "working", blocked: "waiting", idle: "done", done: "done", error: "failed" }
+/** A screen reader hears an agent's turn end, or that it waits on the user, wherever its tab is: not each list. */
+function tell(was: Session[] | null, list: Session[]) {
+  if (!was) return
+  const before = new Map(was.map((s) => [s.id, s]))
+  for (const s of list) {
+    const a = agentIn(s), b = before.get(s.id)
+    if (a && b) announceAgent(labelOf(s, a), PHASE[b.state ?? ""] ?? null, PHASE[s.state ?? ""] ?? null)
+  }
 }
 // While a cache drains, the list is told again every 15 s, so icons and bars follow the clock between the server's lists.
 let ticking = 0

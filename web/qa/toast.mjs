@@ -1,5 +1,5 @@
-// Toasts (core/notify.ts, components/Toast.tsx): Undo for trash and moves, vau notify, stacking, hover, colours and
-// placement. WRITES "Qa toast/" and appearance.json (put back): throwaway server only.
+// Toasts (core/notify.ts, components/Toast.tsx): Undo for trash and moves, vau notify, what a screen reader is told,
+// stacking, hover, colours and placement. WRITES "Qa toast/" and appearance.json (put back): throwaway server only.
 //   node web/qa/toast.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -26,6 +26,12 @@ await look({ theme: "light", scheme: "default" })
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
+// (how many lines each live region had as it came onto the page: one added with its text is often not read)
+await ctx.addInitScript(() => {
+  window.__regions = []
+  new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.dataset?.announce) window.__regions.push(n.childNodes.length) })
+    .observe(document, { childList: true, subtree: true })
+})
 await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(B).origin })
 const page = watch(await ctx.newPage(), { console: true })
 const shot = (p, name) => p.screenshot({ path: `${OUT}${name}.png` })
@@ -132,7 +138,34 @@ const pinsNow = async () => (await api("GET", "workspaces")).workspaces?.find((w
 check("its Undo unpins it", !(await pinsNow()).includes("Qa toast/Mover.md"), await pinsNow())
 await dismissAll()
 
-// 6. At most three at once; hovering pauses them.
+// 6. Screen readers (core/announce.ts): each toast said from a live region that was there, empty, before it; an
+// error at once; sonner's own region silent (nothing said twice); the keyboard left where it was, Alt+T to the button.
+const regions = await page.$$eval("[data-announce]", (els) => els.map((e) => e.getAttribute("aria-live")))
+check("screen reader: two live regions, polite and assertive", JSON.stringify(regions) === '["polite","assertive"]', regions)
+const added = await page.evaluate(() => window.__regions)
+check("screen reader: each on the page, empty, before anything was said", JSON.stringify(added) === "[0,0]", added)
+check("screen reader: sonner's own region is off", await page.$eval("section[aria-label^=Notifications]", (e) => e.getAttribute("aria-live")) === "off")
+await page.$$eval("[data-announce]", (els) => els.forEach((e) => e.replaceChildren()))
+const said = (live) => page.$eval(`[data-announce=${live}]`, (e) => [...e.children].map((p) => p.textContent))
+const focused = () => page.evaluate(() => { const a = document.activeElement; return a?.closest("[data-sonner-toaster]") ? `toast ${a.textContent}` : a?.outerHTML.slice(0, 120) })
+await page.locator("main, #main-scroll").first().click({ position: { x: 300, y: 300 } }).catch(() => {}); await wait(300)
+const was = await focused()
+vau("notify", "Wrote the monthly review", "--action-open", "Qa toast/Mover.md")
+await wait(600)
+check("screen reader: a toast is said politely, with the key to its button", /^Wrote the monthly review\. Open: \S+$/.test((await said("polite")).join("|")), await said("polite"))
+check("screen reader: the keyboard stays where it was", await focused() === was, [was, await focused()])
+await page.keyboard.press("Alt+T"); await wait(300)
+check("screen reader: Alt+T takes the keyboard to the toast's button", await focused() === "toast Open", await focused())
+await page.keyboard.press("Escape")
+await dismissAll()
+check("and gives it back once the toast goes", await focused() === was, [was, await focused()])
+vau("notify", "The sync failed: the disk is full", "--error")
+await wait(600)
+check("screen reader: an error is said at once (assertive), and only so", JSON.stringify(await said("assertive")) === '["The sync failed: the disk is full"]'
+  && !(await said("polite")).some((t) => t.includes("disk is full")), { polite: await said("polite"), assertive: await said("assertive") })
+await dismissAll()
+
+// 7. At most three at once; hovering pauses them.
 for (let i = 1; i <= 5; i++) vau("notify", `Toast number ${i}`)
 await wait(700)
 const shown = await page.locator("[data-sonner-toast][data-visible=true]").count()
@@ -148,7 +181,7 @@ await page.mouse.move(400, 300)
 await wait(5000)
 check("and it goes when the pointer leaves", !(await toastWith("Hover keeps me").isVisible().catch(() => false)))
 
-// 7. Dark mode and schemes: the toast is drawn in the scheme's card and text.
+// 8. Dark mode and schemes: the toast is drawn in the scheme's card and text.
 for (const [theme, scheme] of [["dark", "default"], ["light", "gruvbox"], ["dark", "nord"], ["light", "catppuccin"]]) {
   await look({ theme, scheme }); await page.reload(); await wait(1500)
   vau("notify", `A toast in ${scheme} ${theme}`, "--action-open", "Qa toast/Mover.md")
@@ -164,7 +197,7 @@ for (const [theme, scheme] of [["dark", "default"], ["light", "gruvbox"], ["dark
 }
 await look({ theme: "light", scheme: "default" })
 
-// 8. Phones (390px): bottom centre, above the bar.
+// 9. Phones (390px): bottom centre, above the bar.
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const ph = watch(await phone.newPage(), { label: "phone" })

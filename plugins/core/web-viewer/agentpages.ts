@@ -1,6 +1,6 @@
 // The pages agents are at work in, as the desktop app tells them (electron/browser/agent.ts): an agent's own (in the
 // background, no tab, or opened as one) and the user's tabs an agent acted in lately.
-import { cell, closeTab, notifyError, openInSet, selectTab, viewsChanged, webPages } from "@vaultite"
+import { announceAgent, cell, closeTab, notifyError, openInSet, selectTab, viewsChanged, webPages } from "@vaultite"
 import { argOf, containerOfProfile } from "./containers"
 
 export type AgentPage = { id: number; tab: string; url: string; title: string; profile: string; by: string; task: string; summary: string
@@ -14,6 +14,8 @@ export type AgentPage = { id: number; tab: string; url: string; title: string; p
 
 export const agentPages = cell<AgentPage[]>([])
 export function setAgentPages(list: AgentPage[]) {
+  const was = new Map(agentPages.get().map((p) => [p.id, p]))
+  for (const p of list) { const b = was.get(p.id); if (b) announceAgent(p.by || "An agent", b.asking ? "waiting" : "working", p.asking ? "waiting" : "working") }
   agentPages.set(list)
   viewsChanged() // (tabs' marks)
 }

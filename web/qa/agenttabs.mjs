@@ -1,5 +1,6 @@
 // Agents' states in their tabs (the sessions socket stood in for): the Terminals panel's order and each tab's dot, on
-// the tab bar, the Tabs panel and the phone's tab list. Writes workspaces: throwaway server only.
+// the tab bar, the Tabs panel and the phone's tab list, and what a screen reader is told as they change. Writes
+// workspaces: throwaway server only.
 //   node web/qa/agenttabs.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -26,9 +27,10 @@ const [working, blocked, unseen, seen, failed] = [
 ]
 const shell = { id: `${id}5`, agent: null, process: "zsh", busy: false, clients: 0, started: now, backend: "vaultite" }
 const LIST = JSON.stringify({ t: "sessions", list: [working, blocked, unseen, seen, failed, shell] })
+let sock = null
 async function standIn(page) {
   // The list as above; each terminal's own socket answers as attached.
-  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { ws.send(LIST) })
+  await page.routeWebSocket(/\/api\/terminals(\?.*)?$/, (ws) => { sock = ws; ws.send(LIST) })
   await page.routeWebSocket(/\/api\/terminal\/[^/?]+/, (ws) => {
     ws.send(JSON.stringify({ t: "attached", fresh: false, tmux: false, scrollback: 1000 }))
     ws.send(JSON.stringify({ t: "size", cols: 80, rows: 24 }))
@@ -66,6 +68,28 @@ check("tab bar: working, ask, unread, none, error", JSON.stringify(bar) === WANT
 const panel = states(await look(D, "[data-open-tab]"))
 check("Tabs panel: the same", JSON.stringify(panel) === WANT, panel)
 await D.screenshot({ path: `${OUT}desktop.png` })
+
+// ---------- screen readers: a turn's end, a wait, a failure said once (core/announce.ts), never each list ----------
+const said = (live) => D.$eval(`[data-announce=${live}]`, (e) => [...e.children].map((p) => p.textContent))
+const send = async (...changed) => {
+  sock.send(JSON.stringify({ t: "sessions", list: [working, blocked, unseen, seen, failed, shell].map((s) => changed.find((c) => c.id === s.id) ?? s) }))
+  await wait(400)
+}
+// (what was said so far, the sandbox's notice, put aside: each line goes by itself after 7 s)
+await D.$$eval("[data-announce]", (els) => els.forEach((e) => e.replaceChildren()))
+const lines = async () => JSON.stringify([...await said("polite"), ...(await said("assertive")).map((t) => `! ${t}`)])
+for (let i = 0; i < 3; i++) await send()
+check("screen reader: the same list again says nothing", await lines() === "[]", await lines())
+await send({ ...working, state: "blocked", kind: "question" })
+check("screen reader: an agent that waits on you is said", await lines() === JSON.stringify(["Working one is waiting for you"]), await lines())
+await send({ ...working, state: "working" })
+await send({ ...working, state: "working" })
+check("screen reader: back at work, nothing", await lines() === JSON.stringify(["Working one is waiting for you"]), await lines())
+await send({ ...working, state: "done" })
+await send({ ...seen, state: "error" })
+check("screen reader: its turn's end is said, a failure interrupts (assertive)",
+  await lines() === JSON.stringify(["Working one is waiting for you", "Working one finished", "! Seen one failed"]), await lines())
+await send()
 
 // ---------- the phone's tab list ----------
 const pctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })

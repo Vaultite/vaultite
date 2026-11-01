@@ -12,12 +12,21 @@ if (typeof window !== "undefined") {
     const to = e.relatedTarget
     if (to instanceof Element ? !to.closest("[data-sonner-toaster]") : byTab(e)) e.stopPropagation()
   }, true)
-  // Only a Tab in is kept to undo: a clicked toast's button goes with it, and sonner gave the keyboard back at its next
-  // draw, out of a palette opened since.
+  // Only a Tab in, or sonner's key (TOAST_KEYS: the list itself), is kept to undo: a clicked toast's button goes with
+  // it, and sonner gave the keyboard back at its next draw, out of a palette opened since.
   addEventListener("focusin", (e) => {
-    if (e.target instanceof Element && e.target.closest("[data-sonner-toaster]") && !byTab(e)) e.stopPropagation()
+    if (!(e.target instanceof Element) || !e.target.closest("[data-sonner-toaster]") || byTab(e)) return
+    if (!e.target.matches("[data-sonner-toaster]")) return e.stopPropagation()
+    // (on to the newest toast's button, the one its announcement named)
+    const front = e.target.querySelector<HTMLElement>("[data-front=true]")
+    const to = front?.querySelector<HTMLElement>("[data-button]") ?? front
+    to?.focus()
   }, true)
 }
+
+// Toasts are read from core/announce.ts's live region (an error at once): sonner's own, polite for all, would say each
+// twice. React sets the attribute once, so it stays off.
+const quiet = (el: HTMLElement | null) => { el?.setAttribute("aria-live", "off") }
 
 export function Toaster({ desktop }: { desktop: boolean }) {
   // Phones: above the bar (components/PhoneBar.tsx, its height: --phone-bar); both: above a bundle's trial bar.
@@ -26,6 +35,6 @@ export function Toaster({ desktop }: { desktop: boolean }) {
     <Sonner position={desktop ? "bottom-right" : "bottom-center"} visibleToasts={3} gap={8} duration={4000}
       offset={desktop ? { bottom: "calc(40px + env(safe-area-inset-bottom) + var(--mini-player) + var(--agents-card) + var(--trial-bar))", right: "calc(16px + env(safe-area-inset-right))" } : phone} mobileOffset={phone} className="vau-toaster"
       icons={{ error: <CircleAlert className="size-4 text-[var(--red)]" strokeWidth={2.25} /> }}
-      toastOptions={{ className: "vau-toast" }} containerAriaLabel="Notifications" />
+      toastOptions={{ className: "vau-toast" }} containerAriaLabel="Notifications" ref={quiet} />
   )
 }

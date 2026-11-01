@@ -24,6 +24,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentMock`: Made-up usage for the demo, times in minutes ago: `daily`, ten days' value repeated over 30 days and growing, each dollar `per` so many tokens and minutes working, a session per so many dollars;…
 - `AgentModels(ctx)`
 - `agentOfTerminal(id, list?)`: The agent a terminal runs, by its id ("codex-<id>", "claude_<account>-<id>", "resume-<name>-<session>", "@<machine>" suffixes), or null for a plain shell (core/terminalids.ts).
+- `AgentPhase`: Where a coding agent is in its turn, in every agent's words: a terminal's state, a chat's.
 - `agentPlugin(src, o)`: A coding agent plugin's definition: its blocks, a session's view, its agent in Terminal, the commands opening it (literal: the server reads them), demo usage.
 - `AgentProject({ src, … })`: In a project file: that project's last 30 days and its sessions (`project: Name` for another).
 - `AgentProjects(ctx)`
@@ -39,6 +40,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentWindow`
 - `AmbientButton({ icon, text, tip, tint, onClick, className })`
 - `AmbientItem`: Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
+- `announce(text, opts?)`: Say `text` to a screen reader: politely, after what it's reading, or `assertive` (an error) at once.
+- `announceAgent(label, was, now)`: Say what matters when agent `label` goes from `was` to `now`: it finished, it waits for the user, it failed.
 - `API_VERSION`
 - `APP_VERSION`
 - `appDevice`: Which app this is, as the server hears it (X-Vaultite-Client: app/<device>, for Activity).

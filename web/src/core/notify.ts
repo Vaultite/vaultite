@@ -2,7 +2,8 @@
 // (sonner), in the plugin API; agents reach it with `vau notify`.
 import { toast } from "sonner"
 import { plainError, plainText, sentence } from "../../../core/plainerror.ts"
-import { runCommandById } from "@/core/commands"
+import { announce } from "@/core/announce"
+import { keyHint, runCommandById } from "@/core/commands"
 import { noteAppError } from "@/core/errors"
 
 export type NotifyOptions = {
@@ -20,6 +21,9 @@ export type NotifyOptions = {
 const MAX = 400
 const short = (text: string) => text.length > MAX ? `${text.slice(0, MAX - 1).trimEnd()}…` : text
 
+/** What takes the keyboard to the newest toast's button (sonner's own key, components/Toast.tsx). */
+export const TOAST_KEYS = "Alt+T"
+
 /** Show a toast. Returns its id (dismissNotice closes it early). */
 export function notify(text: string, opts: NotifyOptions = {}) {
   const { action, kind, id } = opts
@@ -33,6 +37,8 @@ export function notify(text: string, opts: NotifyOptions = {}) {
       },
     },
   }
+  // (read from the app's own live region, sonner's silenced: an error interrupts, and its button's key is said)
+  announce(action ? `${short(text)}. ${action.label}: ${keyHint(TOAST_KEYS)}` : short(text), { assertive: kind === "error" })
   return kind === "error" ? toast.error(short(text), data) : toast(short(text), data)
 }
 

@@ -243,6 +243,8 @@ export { onTrace, trace, type TraceEvent } from "@/core/trace"
 export { span, takeSpans, type Span } from "@/core/spans"
 export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
 export { dismissNotice, errorText, notify, notifyError, type NotifyOptions } from "@/core/notify"
+// What a screen reader is told without the focus moving (toasts say theirs): an agent finished, waits, failed.
+export { announce, announceAgent, type AgentPhase } from "@/core/announce"
 export { plainError } from "../../core/plainerror.ts"
 export { capitalize, cn, plural } from "@/lib/utils"
 // A coding agent's usage and sessions (Claude Code, Codex...): the blocks every agent plugin draws, on its own data.

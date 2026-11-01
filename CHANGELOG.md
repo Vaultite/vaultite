@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Slides draw Advanced Slides' layouts**: `<split>` columns (even, gap, left and right shares, wrap), `<grid>` boxes
   placed by drag and drop on a fixed slide, and `::: block` boxes draw as there, nested, their Markdown as in a note.
+- **Screen readers hear toasts and agents**: every toast is read (an error at once, with the key that reaches its
+  button), and an agent that finishes, waits for you or fails is said wherever its tab is, without reading out each
+  second it works or each word count in the status bar.
 - **Slide themes look like themselves**: a deck's `theme:` (black, night, serif, league, dracula and the rest of
   reveal's and Advanced Slides') draws its fonts, heading case and tone in the app's colours.
 - **Present a canvas**: Present in a canvas's toolbar shows its groups one at a time, in the order arrows between them

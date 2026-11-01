@@ -3,8 +3,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { ArrowUp, Brain, Check, ChevronDown, ChevronRight, CircleAlert, FileText, Folder, Globe, History, ListTodo, Pencil, Search, Square, SquareTerminal,
   Bot, Wrench, X, Ellipsis } from "lucide-react"
-import { Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
-  openAgent, openMenu, openView, plural, splitMachine, textDiff, ink, useScopedState, type DiffLine, type MenuItem } from "@vaultite"
+import { announceAgent, Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
+  openAgent, openMenu, openView, plural, splitMachine, textDiff, ink, useScopedState, type AgentPhase, type DiffLine, type MenuItem } from "@vaultite"
 import type { Entry, Question } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { nameTab, NEW } from "./titles"
@@ -50,6 +50,8 @@ type Live = { ready: boolean; found: boolean; s: Summary | null; title: string; 
   driven: string
   entries: Entry[]; start: number; refused?: string }
 
+const PHASE: Record<Summary["state"], AgentPhase> = { starting: "working", working: "working", waiting: "waiting", idle: "done", error: "failed" }
+
 function useChat(id: string) {
   const map = useRef(new Map<string, Entry>())
   const [live, setLive] = useState<Live>({ ready: false, found: true, s: null, title: "", cwd: "", account: "", model: "", effort: "", tui: null, driven: "", entries: [], start: 0 })
@@ -74,7 +76,11 @@ function useChat(id: string) {
           const e = m.e as Entry
           map.current.set(e.id, e)
           meta.current = { ...meta.current, found: true }
-        } else if (m.t === "state") meta.current = { ...meta.current, s: m.s as Summary | null, found: true }
+        } else if (m.t === "state") {
+          const was = meta.current.s?.state, now = (m.s as Summary | null)?.state
+          announceAgent(meta.current.title || "Claude", was ? PHASE[was] : null, now ? PHASE[now] : null)
+          meta.current = { ...meta.current, s: m.s as Summary | null, found: true }
+        }
         else if (m.t === "tui") { meta.current = { ...meta.current, tui: (m.tui as string | null) ?? null, title: String(m.title || meta.current.title) }; nameTab(id, meta.current.title) }
         else if (m.t === "title") { meta.current = { ...meta.current, title: String(m.title ?? "") }; nameTab(id, meta.current.title) }
         else if (m.t === "refused") meta.current = { ...meta.current, ready: true, refused: String(m.reason ?? "") }
@@ -337,7 +343,7 @@ function Working({ since }: { since: number }) {
   const [, tick] = useState(0)
   useEffect(() => { const t = setInterval(() => { if (!document.hidden) tick((n) => n + 1) }, 1000); return () => clearInterval(t) }, [])
   return (
-    <div className="mt-4 flex items-center gap-2 text-[13px] text-muted-foreground max-md:text-[15px]" data-working aria-live="polite">
+    <div className="mt-4 flex items-center gap-2 text-[13px] text-muted-foreground max-md:text-[15px]" data-working>
       <ClaudeIcon className="breathe size-4" style={{ color: TINT }} />
       Working<span className="text-tertiary tabular-nums">{seconds(Date.now() - since)}</span>
     </div>
