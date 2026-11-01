@@ -80,7 +80,7 @@ await win.keyboard.press("Escape")
   await pop.waitForSelector("[data-tab-id]", { timeout: 20000 })
   check("pop-out: a window of its own, showing the tab", decodeURIComponent(pop.url()).includes(`?popout=`) && decodeURIComponent(pop.url()).includes(note), pop.url())
   check("pop-out: the app's, no sidebars", await pop.evaluate(() => document.documentElement.hasAttribute("data-electron") && document.documentElement.hasAttribute("data-popout") && !document.querySelector("aside[data-side]")))
-  const pad = await pop.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-corner] > [role=tablist]")).paddingLeft))
+  const pad = await pop.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-corner] > [data-tab-bar]")).paddingLeft))
   if (MAC) check("pop-out: its tab bar makes room for the traffic lights", pad >= 76, pad)
   else check("pop-out: its tab bar starts at the edge (no lights)", pad < 40, pad)
   check("pop-out: a second window, laid out like the vault's", await app.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows().length === 2) &&

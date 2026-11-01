@@ -16,7 +16,7 @@ function apply(id) {
 /** The shell's boxes (left, top, width, height). */
 const shell = (page) => page.evaluate(() => {
   const out = {}
-  const SEL = ["[data-status-bar]", "[data-status-bar] [data-ambient]", "[data-steady]", "aside[data-side=left]", "aside[data-side=right]", "main", "[data-pane]", "section[data-group]", "[role=tablist]"]
+  const SEL = ["[data-status-bar]", "[data-status-bar] [data-ambient]", "[data-steady]", "aside[data-side=left]", "aside[data-side=right]", "main", "[data-pane]", "section[data-group]", "[data-tab-bar]"]
   for (const sel of SEL) document.querySelectorAll(sel).forEach((el, i) => {
     const r = el.getBoundingClientRect()
     if (r.width || r.height) out[`${sel}#${i}`] = [r.left, r.top, r.width, r.height].map(Math.round)

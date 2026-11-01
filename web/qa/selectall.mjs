@@ -43,7 +43,7 @@ const inNote = await page.evaluate(() => getSelection().rangeCount > 0 && docume
 check("reading view: ⌘A selects the note's text", got.trim().length > 0 && inNote, got.slice(0, 200))
 check("...and nothing of the sidebars or tab bar", !(await page.evaluate(() => {
   const r = getSelection().rangeCount ? getSelection().getRangeAt(0) : null
-  return !!r && [...document.querySelectorAll("[data-sidebar-body], [role=tablist]")].some((el) => r.intersectsNode(el))
+  return !!r && [...document.querySelectorAll("[data-sidebar-body], [data-tab-bar]")].some((el) => r.intersectsNode(el))
 })))
 await page.screenshot({ path: `${OUT}selectall-reading.png` })
 await done()

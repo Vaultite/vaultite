@@ -108,6 +108,11 @@ const DRAW: Record<AppPage["id"], (store: Store, to: string, tab: Tab | null) =>
 const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
 /** A default key only on a Mac (⌃⌘: off one, Ctrl is ⌘ and these would take an editor's own keys). */
 const mac = (k: string) => (isMac ? [k] : undefined)
+/** The X of the bar's tab that has the keyboard, if it has one (a pinned tab, the last blank one: none). */
+const focusedTabClose = () => {
+  const a = document.activeElement
+  return a?.matches("[data-tab-bar] [role=tab]") ? a.closest("[data-tab-id]")?.querySelector<HTMLElement>(":scope > [data-tab-close]") ?? null : null
+}
 /** The sidebar: open (its edge drags between these px widths, double-click resets) or an icon rail (RAIL: in spacing
  *  units, so it follows density; `railPx` is what it measures now). */
 const SIDEBAR = { min: 200, max: 480, default: 240 }
@@ -395,6 +400,14 @@ export default function App() {
       const t = activeTab()
       if (t.pinned) restTab(t.id); else closeTab(t.id)
     } },
+    // A tab with the keyboard (Tab to it): Delete does what its X does, which a tablist can't hold as a stop of its own.
+    { id: "tab:close-focused", name: "Close the tab that has the keyboard", keys: isMac ? ["Backspace", "Delete"] : ["Delete"], label: "Close tab", icon: X,
+      when: () => !!focusedTabClose(), run: () => {
+        const x = focusedTabClose()!, bar = x.closest<HTMLElement>("[data-tab-bar]")
+        x.click()
+        // (the keyboard stays in the bar, on the tab shown now)
+        requestAnimationFrame(() => bar?.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus())
+      } },
     // (⇧⌘W closes the window: ⌥⇧⌘W, beside ⌥⌘W's Close all other tabs.)
     { id: "pane:close", name: "Close pane", keys: ["Mod+Alt+Shift+W"], when: () => isDesktop() && canClosePane(), run: () => closePane(), icon: SquareX },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },

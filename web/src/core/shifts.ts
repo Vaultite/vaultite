@@ -16,7 +16,7 @@ function named(n: Node | null | undefined): string {
 /** The app's regions, the first that holds a moved element names it. */
 const REGIONS: [string, string][] = [
   ["aside[data-side=left]", "left sidebar"], ["aside[data-side=right]", "right sidebar"], ["[data-status-bar]", "status bar"],
-  ["[role=tablist]", "tabs"], ["[data-pane]", "pane"],
+  ["[data-tab-bar], [role=tablist]", "tabs"], ["[data-pane]", "pane"],
 ]
 function regionOf(n: Node | null | undefined): string {
   const el = n instanceof Element ? n : n?.parentElement

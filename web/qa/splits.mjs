@@ -57,7 +57,7 @@ async function drag(from, [x, y], { drop = true, name } = {}) {
 /** Point in a tab bar just before a tab (or after the last one). */
 async function barSpot(gid, beforeLabel) {
   if (beforeLabel) { const b = await tab(gid, beforeLabel).boundingBox(); return [b.x + 6, b.y + b.height / 2] }
-  const b = await page.locator(`section[data-group="${gid}"] [role=tablist] button[aria-label="New tab"]`).boundingBox()
+  const b = await page.locator(`section[data-group="${gid}"] [data-tab-bar] button[aria-label="New tab"]`).boundingBox()
   return [b.x + b.width + 20, b.y + b.height / 2]
 }
 
@@ -129,7 +129,7 @@ check("closing the right pane leaves one, full width", ps.length === 1 && ps[0].
 // One pane with three tabs.
 await page.goto(`${B}${fileHash(notes[0])}`); await wait(800)
 for (const n of notes.slice(1)) {
-  await page.locator("[role=tablist] button[aria-label='New tab']").click(); await wait(200)
+  await page.locator("[data-tab-bar] button[aria-label='New tab']").click(); await wait(200)
   await page.goto(`${B}${fileHash(n)}`); await wait(800)
 }
 ps = await panes()
@@ -217,7 +217,7 @@ await until(async () => /^pid-\d+\s*$/m.test(await text()), 8000)
 const pid = (await text()).match(/^pid-(\d+)\s*$/m)?.[1]
 check("terminal answers", !!pid, (await text()).slice(-200))
 ps = await panes()
-await page.locator(`section[data-group="${ps[0].id}"] [role=tablist] button[aria-label='New tab']`).click(); await wait(300)
+await page.locator(`section[data-group="${ps[0].id}"] [data-tab-bar] button[aria-label='New tab']`).click(); await wait(300)
 await drag(tab(ps[0].id, "Terminal"), await spot(ps[0].id, "right"))
 ps = await panes()
 check("terminal tab moved into a new split", ps.length === 2 && ps[1].tabs.join() === "Terminal", ps)

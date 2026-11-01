@@ -11,7 +11,8 @@ const still = () => !moves()
 const axisOf = (el: HTMLElement) => (el.closest("[data-tab-bar]") ? "x" : "y")
 /** The gap after it in its list, which it takes with it so nothing jumps when it goes. */
 const gapOf = (el: HTMLElement) => {
-  const p = el.parentElement
+  let p = el.parentElement
+  while (p && getComputedStyle(p).display === "contents") p = p.parentElement
   if (!p) return 0
   const css = getComputedStyle(p)
   return parseFloat(axisOf(el) === "x" ? css.columnGap : css.rowGap) || 0

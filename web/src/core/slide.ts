@@ -65,7 +65,9 @@ export function useSlide(box: RefObject<HTMLElement | null>, order: string[] | n
   }, [box, key, axis])
 }
 
-const slid = (root: HTMLElement) => [...root.children].filter((e): e is HTMLElement => e instanceof HTMLElement && !!e.dataset.slide)
+/** Its items, those in a box drawn as its contents (the tab bar's tablist) too. */
+const slid = (root: Element): HTMLElement[] => [...root.children].flatMap((e) =>
+  !(e instanceof HTMLElement) ? [] : e.dataset.slide ? [e] : getComputedStyle(e).display === "contents" ? slid(e) : [])
 
 /** Where `e` is laid out in `root` (its px, as offsetLeft counts), without the slide it has now: to the fraction, as
  *  offsetLeft isn't (a grid's 51.4px columns drifted a pixel a tile). */

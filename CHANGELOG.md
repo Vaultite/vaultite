@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Screen readers follow the file tree**: the row the keyboard is on is the tree item, so a screen reader says whether
   a folder is open, how deep a row is, where it is among its folder's rows and whether it's selected.
+- **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit
+  beside it), and Delete closes the tab the keyboard is on, as its X does.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".

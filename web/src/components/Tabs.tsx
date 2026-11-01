@@ -487,16 +487,17 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
         <span className={cn("min-w-0 flex-1 fade-end", icons && "@max-[80px]/tab:hidden", active && focused ? "font-medium text-foreground" : active ? "font-medium text-muted-foreground" : "text-muted-foreground")}>{info.label}</span>
         {info.mark && <IconAction action={info.mark} className="ml-auto @max-[80px]/tab:ml-0"><info.mark.icon className={cn("size-3.5 shrink-0", !info.mark.tint && "text-muted-foreground")} strokeWidth={2.25} style={info.mark.tint ? { color: info.mark.tint } : undefined} /></IconAction>}
       </button>
-      {/* A pinned tab's pin, where the X goes: a click unpins it. */}
+      {/* A pinned tab's pin, where the X goes: a click unpins it. Both are the mouse's: a tablist holds only tabs, so the
+          keyboard closes the tab with Delete (tab:close-focused) and unpins it from its menu. */}
       {tab.pinned ? (
-        <button type="button" data-tab-pin data-no-drag aria-label={`Unpin ${info.label}`} data-tip="Unpin tab" onClick={(e) => { e.stopPropagation(); togglePinTab(tab.id) }}
+        <button type="button" data-tab-pin data-no-drag tabIndex={-1} aria-hidden aria-label={`Unpin ${info.label}`} data-tip="Unpin tab" onClick={(e) => { e.stopPropagation(); togglePinTab(tab.id) }}
           className="absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
           <Pin className="size-3.5" strokeWidth={2} />
         </button>
       ) : !only && (
-        <button type="button" data-tab-close data-no-drag aria-label={`Close ${info.label}`} onClick={(e) => { e.stopPropagation(); close(e) }}
+        <button type="button" data-tab-close data-no-drag tabIndex={-1} aria-hidden aria-label={`Close ${info.label}`} onClick={(e) => { e.stopPropagation(); close(e) }}
           className={cn("absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground",
-            active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100")}>
+            active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100")}>
           <X className="size-3.5" strokeWidth={2} />
         </button>
       )}
@@ -674,7 +675,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
   // Nor pane titles (appearance `paneTitles`): a thin strip keeps the drag strip, the handle and X (on hover) and the menu.
   if (!tabBar && !paneTitles) {
     return (
-      <div ref={strip} role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare data-merged={merged || undefined} onContextMenu={menuFor(() => paneTopMenu(group))}
+      <div ref={strip} data-tab-bar={group.id} data-tabs-hidden data-bare data-merged={merged || undefined} onContextMenu={menuFor(() => paneTopMenu(group))}
         className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
         {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
         <div className="h-full min-w-0 flex-1" />
@@ -687,7 +688,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
   if (!tabBar) {
     const i = info(shown)
     return (
-      <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => paneTopMenu(group))}
+      <div data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => paneTopMenu(group))}
         className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
         <div data-pane-title className="flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]">
           {fileIcons && <Badged on={i.badge}><i.icon className={cn("size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} /></Badged>}
@@ -701,13 +702,15 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
     )
   }
   return (
-    <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} onContextMenu={menuFor(() => barMenu(group))}
+    <div data-tab-bar={group.id} onContextMenu={menuFor(() => barMenu(group))}
       onPointerDownCapture={(e) => { pointer.current = e.pointerType }} onPointerLeave={() => { if (held) release() }}
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className="edge-fade-x relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Only the tabs are the tablist (New tab is beside them, not one); laid out as if it weren't there. */}
+        <div role="tablist" aria-label="Open tabs" className="contents">
         {tabs.map((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined
@@ -718,6 +721,7 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
             line={lineOf(t.id)} />
           return chip ? [chip, item] : item
         })}
+        </div>
         {/* Right after the last tab (not pinned to the bar's end); its tab opens there, as in a browser. */}
         <button type="button" onClick={() => openNewTab({ pane: group.id, at: "end" })} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
