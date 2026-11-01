@@ -190,11 +190,14 @@ export function rooms(plugin: Plugin) {
   }
 
   /** The doc to a window, as it is; `alone`: a guest who can't type in it with others (too long) saves by themselves. */
-  function sendState(r: Room, ws: WebSocket, peer: Peer) {
+  /** The room as `ws` joins it; `bare` (a window that saves alone till someone comes) without the doc while it's alone. */
+  function sendState(r: Room, ws: WebSocket, peer: Peer, bare = false) {
     const p = peer.see(r.path)
     if (!r.peers.has(ws) || p === null) return
+    const others = r.peers.size - 1, alone = !!peer.may && r.text.length > GUEST_LIVE_MAX
+    if (bare && !others) return send(ws, { t: "y-state", path: p, edits: peer.edits, alone, others })
     send(ws, { t: "y-state", path: p, u: toBase64(Y.encodeStateAsUpdate(r.doc)), aw: toBase64(encodeAwarenessUpdate(r.aw, [...r.aw.getStates().keys()])),
-      edits: peer.edits, alone: !!peer.may && r.text.length > GUEST_LIVE_MAX, others: r.peers.size - 1 })
+      edits: peer.edits, alone, others })
   }
 
   /** An awareness update from `ws` with its own states only (two at most), each named and coloured as the server knows
@@ -300,7 +303,7 @@ export function rooms(plugin: Plugin) {
         if (fresh) r.peers.set(ws, new Set())
         void inTurn(r, async () => {
           rereadNow(r)
-          sendState(r, ws, peer)
+          sendState(r, ws, peer, m.bare === true)
           if (fresh) counted(r)
         })
         return true

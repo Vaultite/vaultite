@@ -19,7 +19,7 @@ export default async ($: VaultTest) => {
   /** A window: its socket (what it was sent) and its own copy of the note. */
   function win(name: string, peer: Any, note = "Co/N.md") {
     const got: Any[] = [], on: Record<string, () => void> = {}
-    const ws = { readyState: 1, OPEN: 1, send: (t: string) => { const m = JSON.parse(t); got.push(m); if (m.t === "y-state" || m.t === "y") Y.applyUpdate(doc, fromBase64(m.u), "server") }, on: (e: string, fn: () => void) => { on[e] = fn } } as Any
+    const ws = { readyState: 1, OPEN: 1, send: (t: string) => { const m = JSON.parse(t); got.push(m); if ((m.t === "y-state" || m.t === "y") && m.u) Y.applyUpdate(doc, fromBase64(m.u), "server") }, on: (e: string, fn: () => void) => { on[e] = fn } } as Any
     const doc = new Y.Doc(), aw = new Awareness(doc)
     doc.on("update", (u: Uint8Array, origin: unknown) => { if (origin !== "server") co.heard(ws, { t: "y", path: note, u: toBase64(u) }, note) })
     co.add(ws, { name, tint: "blue", edits: true, see: (r: string) => r, ...peer })
@@ -33,6 +33,23 @@ export default async ($: VaultTest) => {
   await co.settled()
   check("cotype: each window hears how many others are in the note", owner.got.filter((m) => m.t === "y-peers").at(-1)?.others === 2)
   check("cotype: each window gets the note as the file has it", [owner, ada, rex].every((w) => w.text.toString() === "# N\n\nfirst line\n"))
+
+  {
+    // A window that saves alone asks `bare`: alone in the note, no doc (its file is what it types into); with another
+    // there, the doc.
+    write("Co/Bare.md", "Bare\n")
+    await $.vault.sync()
+    const one = win("Lucas", { who: you }, "Co/Bare.md"), two = win("Lucas", { who: you }, "Co/Bare.md")
+    co.heard(one.ws, { t: "y-open", path: "Co/Bare.md", bare: true }, "Co/Bare.md")
+    await co.settled()
+    const first = one.got.find((m) => m.t === "y-state")
+    co.heard(two.ws, { t: "y-open", path: "Co/Bare.md", bare: true }, "Co/Bare.md")
+    await co.settled()
+    const second = two.got.find((m) => m.t === "y-state")
+    check("cotype: alone, a bare open gets the room without the doc; a second window the doc", first && first.u === undefined && first.others === 0 &&
+      second?.others === 1 && two.text.toString() === "Bare\n" && one.got.some((m) => m.t === "y-peers" && m.others === 1), [first, second?.others])
+    one.close(); two.close()
+  }
 
   owner.text.insert(owner.text.length, "owner's line\n")
   ada.text.insert(owner.text.toString().indexOf("first line") + 10, " (Ada)")

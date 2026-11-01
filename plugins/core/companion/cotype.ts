@@ -45,7 +45,7 @@ function open(path: string): Room {
   const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
   fresh(r)
   rooms.set(path, r)
-  if (getState().connected) say({ t: "y-open", path })
+  if (getState().connected) say({ t: "y-open", path, bare: true })
   return r
 }
 
@@ -122,7 +122,12 @@ function close(r: Room) {
 function heard(m: Record<string, unknown>) {
   const r = typeof m.path === "string" ? rooms.get(m.path) : undefined
   if (!r) return
-  if (m.t === "y-state" && typeof m.u === "string") {
+  if (m.t === "y-state" && typeof m.u !== "string") {
+    // (alone in it: saving as ever, the doc asked for once someone comes)
+    r.others = Number(m.others) || 0
+    r.alone = m.alone === true
+    if (r.others > 0 && !r.alone) void together(r)
+  } else if (m.t === "y-state" && typeof m.u === "string") {
     unbind(r, "again")
     r.remote = m.remote === true
     fresh(r)
@@ -141,7 +146,7 @@ function heard(m: Record<string, unknown>) {
     // (that machine went, or stopped sharing it: saved here again, and asked for here)
     away(r)
     unbind(r)
-    if (getState().connected) say({ t: "y-open", path: r.path })
+    if (getState().connected) say({ t: "y-open", path: r.path, bare: true })
   } else if (m.t === "y" && typeof m.u === "string") Y.applyUpdate(r.doc, fromBase64(m.u), "server")
   else if (m.t === "aw" && typeof m.u === "string") applyAwarenessUpdate(r.aw, fromBase64(m.u), "server")
   else if (m.t === "y-clash") notify(m.kept === "file" ? "Someone changed the same lines on disk as you typed: theirs stayed" : "Someone changed the same lines on disk as you typed: yours stayed, theirs is in the note's history", { id: "cotype-clash" })
@@ -171,7 +176,7 @@ subscribe(() => {
   if (now === was) return
   was = now
   for (const r of rooms.values()) {
-    if (!now) { away(r); unbind(r) } else say({ t: "y-open", path: r.path })
+    if (!now) { away(r); unbind(r) } else say({ t: "y-open", path: r.path, bare: true })
   }
 })
 

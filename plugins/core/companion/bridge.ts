@@ -124,7 +124,8 @@ export function bridges(plugin: Plugin, local: (ws: WebSocket, m: Record<string,
         const h = hostFor(path), at = w.routed.get(path)
         if (!h) { if (at) leave(w, path); return false }
         if (at !== h.m.id) { if (at) leave(w, path); local(ws, { t: "y-close", path }, path); w.routed.set(path, h.m.id) }
-        toUp(w, ws, h, m)
+        // (typed in there even alone, so the doc always: never `bare`)
+        toUp(w, ws, h, { t: "y-open", path: m.path })
         return true
       }
       if (m.t === "y-close") w.open.delete(path)
