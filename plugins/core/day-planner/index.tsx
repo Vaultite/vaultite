@@ -53,7 +53,7 @@ function useEvents(day: string, on: boolean) {
 async function tick(path: string, e: Entry) {
   try {
     const { text } = await readFile(path)
-    const next = ticked(text, e.raw, !e.done)
+    const next = ticked(text, e.raw, !e.done, e.nth)
     if (next === null) return notify("That item changed: tick it in the note")
     await put("file", { path, text: next, base: text })
   } catch (err) { notifyError(err, "Couldn't tick it") }

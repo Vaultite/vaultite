@@ -20,4 +20,6 @@ export default async ($: VaultTest) => {
   check("linter op: a note formatted", ws === 200 && read("Lint/A.md") === "# A\n\ntext\n" && /^Formatted 1 of 1/.test(wb), [wb, read("Lint/A.md")])
   const [ns] = await api("POST", "ops/linter.format", { path: "Lint/missing.md" })
   check("linter op: no such note is a 404", ns === 404)
+  const listed = "1. Step\n\n    ```sh\n    * glob  \n\n\n    ```\n"
+  check("linter: code in a list item (an indented fence) is left as written", formatMarkdown(listed) === listed, JSON.stringify(formatMarkdown(listed)))
 }

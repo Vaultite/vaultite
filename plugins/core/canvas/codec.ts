@@ -79,7 +79,7 @@ export const LINES: Record<string, string> = { "": "Solid line", "long-dashed": 
 export function styleOf(x: object, key: "shape" | "border" | "path"): string {
   const v = ((x as { styleAttributes?: Record<string, unknown> }).styleAttributes)?.[key]
   const known = key === "shape" ? SHAPES : key === "border" ? BORDERS : LINES
-  return typeof v === "string" && v in known ? v : ""
+  return typeof v === "string" && Object.hasOwn(known, v) ? v : ""
 }
 /** `x` with one style attribute set ("" removes it, and the object when it's left empty). */
 export function withStyle<T extends object>(x: T, key: string, value: string): T {

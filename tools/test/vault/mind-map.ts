@@ -27,4 +27,6 @@ export default async ($: VaultTest) => {
   write("Notes/Map lists.md", "```block-mind-map\n```\n\n# Trip\n## Pack\n- Hat\n- Sunscreen\n## Book\n")
   const [ls, lo] = await api("GET", "render?path=Notes/Map lists.md")
   check("mind map block: lists in its text, lists: false leaves them out", ls === 200 && String(lo).includes("**Trip**\n- Pack\n  - Hat\n  - Sunscreen\n- Book"), lo)
+  check("mind map: a # that's part of a heading stays, closing ones go", headingsIn("# Learning C#\n## F#\n## Plan ##\n").map((h) => h.text).join("|") === "Learning C#|F#|Plan")
+  check("mind map: a ```js line inside a ```` block is code", headingsIn("````\n```js\n# not\n````\n# Yes\n").map((h) => h.text).join() === "Yes")
 }

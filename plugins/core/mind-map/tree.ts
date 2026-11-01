@@ -17,10 +17,13 @@ export function headingsIn(text: string, lists = false): Heading[] {
   let indents: number[] = []
   for (; i < lines.length; i++) {
     const l = lines[i]
-    const f = /^\s{0,3}(`{3,}|~{3,})/.exec(l)
-    if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; continue }
+    // (a fence closes on its own mark, at least as long, alone: a ```js line inside a ```` block is code)
+    const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(l)
+    if (f && !fence) { fence = f[1]; continue }
+    if (f && f[1][0] === fence![0] && f[1].length >= fence!.length && !f[2].trim()) { fence = null; continue }
     if (fence) continue
-    const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(l)
+    // (closing #s only after a space: "# Learning C#" keeps its #)
+    const m = /^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/.exec(l)
     if (m) { out.push({ level: m[1].length, text: m[2].replace(/\s\^[\w-]+$/, ""), line: i }); indents = []; continue }
     const li = lists ? /^([ \t]*)(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?(.+?)\s*$/.exec(l) : null
     if (!li) continue

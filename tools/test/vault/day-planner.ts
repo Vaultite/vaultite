@@ -35,4 +35,10 @@ export default async ($: VaultTest) => {
   check("day planner calendar: beside the note's items, in order, named as events in the text", planText(both, null, ev.allDay) === "All day: Offsite\n\n- 00:00–02:00 Flight (calendar)\n- 09:00–09:30 Plan\n- 09:15–09:30 Standup (calendar: Work)", planText(both, null, ev.allDay))
   const [es, eb] = await api("GET", "day-planner/events?day=2026-10-05")
   check("day planner calendar: the route answers the day's events (none here: no calendars)", es === 200 && Array.isArray(eb.events) && eb.events.length === 0, eb)
+  // Fixes: 24:00 as an end, a fence closed only by its own mark, the right twin ticked.
+  check("day planner: 24:00 ends the day", planOf("- 22:00 - 24:00 Party\n")[0].end === 1440)
+  check("day planner: a ```js line inside a ```` block is code", planOf("````\n```js\n- 09:00 In code\n````\n- 10:00 Real\n").map((e) => e.text).join() === "Real")
+  const twins = "## Mon\n- [ ] 09:00 Standup\n## Tue\n- [ ] 09:00 Standup\n"
+  const tue = planOf(twins).find((e) => e.line === 3)!
+  check("day planner tick: the item ticked, not an earlier one that reads the same", ticked(twins, tue.raw, true, tue.nth) === "## Mon\n- [ ] 09:00 Standup\n## Tue\n- [x] 09:00 Standup\n")
 }

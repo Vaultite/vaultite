@@ -33,11 +33,12 @@ function proseLines(lines: string[]) {
     if (end > 0) { for (; i <= end; i++) prose[i] = false }
   }
   for (; i < lines.length; i++) {
-    const f = /^ {0,3}(`{3,}|~{3,})/.exec(lines[i])
+    // (a fence at any indent: one in a list item is code too; it closes on its own mark, at least as long, alone)
+    const f = /^\s*(`{3,}|~{3,})/.exec(lines[i])
     const t = lines[i].trim()
     const math = t.startsWith("$$") && (t === "$$" || !t.slice(2).includes("$$"))
     if (!f && !math) continue
-    const close = f ? new RegExp(`^ {0,3}${f[1][0] === "`" ? "`" : "~"}{${f[1].length},}\\s*$`) : /\$\$\s*$/
+    const close = f ? new RegExp(`^\\s*${f[1][0] === "`" ? "`" : "~"}{${f[1].length},}\\s*$`) : /\$\$\s*$/
     let j = i + 1
     while (j < lines.length && !close.test(lines[j])) j++
     for (let k = i; k <= Math.min(j, lines.length - 1); k++) prose[k] = false

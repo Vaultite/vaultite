@@ -2,6 +2,8 @@
 // "- 14:00 Lunch"), each lasting to its end time, else to the next one's start, else DEFAULT minutes.
 
 export type Entry = { start: number; end: number; text: string; done: boolean | null; line: number; raw: string
+  /** How many lines before it read the same (ticking finds this one, not an earlier twin). */
+  nth?: number
   /** A calendar's event (its calendar's name), drawn beside the note's items; never written anywhere. */
   calendar?: string }
 /** An event as the calendar op answers it (times local, "YYYY-MM-DDTHH:MM..."). */
@@ -10,25 +12,29 @@ export type CalEvent = { title: string; start: string; end: string | null; all_d
 export const DEFAULT = 30
 const ITEM = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(\d{1,2})[:.](\d\d)(?:\s*(?:-|–|—|to)\s*(\d{1,2})[:.](\d\d))?\s+(.+?)\s*$/
 
-const minutes = (h: string, m: string) => {
+/** HH:MM as minutes into the day, or null; `end`: 24:00 too (midnight, the day's end). */
+const minutes = (h: string, m: string, end = false) => {
   const n = Number(h) * 60 + Number(m)
-  return Number(h) < 24 && Number(m) < 60 ? n : null
+  return (Number(h) < 24 || (end && n === 24 * 60)) && Number(m) < 60 ? n : null
 }
 
 /** The timed items of a note's text (code skipped), in order of their start. */
 export function planOf(text: string): Entry[] {
   const out: Entry[] = []
   let fence: string | null = null
-  text.split("\n").forEach((l, line) => {
-    const f = /^\s{0,3}(`{3,}|~{3,})/.exec(l)
-    if (f) { if (!fence) fence = f[1][0]; else if (f[1][0] === fence) fence = null; return }
+  const lines = text.split("\n")
+  lines.forEach((l, line) => {
+    // (a fence closes on its own mark, at least as long, alone: a ```js line inside a ```` block is code)
+    const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(l)
+    if (f && !fence) { fence = f[1]; return }
+    if (f && f[1][0] === fence![0] && f[1].length >= fence!.length && !f[2].trim()) { fence = null; return }
     if (fence) return
     const m = ITEM.exec(l)
     if (!m) return
     const start = minutes(m[2], m[3])
     if (start === null) return
-    const end = m[4] ? minutes(m[4], m[5]) : null
-    out.push({ start, end: end !== null && end > start ? end : -1, text: m[6], done: m[1] === undefined ? null : m[1] !== " ", line, raw: l })
+    const end = m[4] ? minutes(m[4], m[5], true) : null
+    out.push({ start, end: end !== null && end > start ? end : -1, text: m[6], done: m[1] === undefined ? null : m[1] !== " ", line, raw: l, nth: lines.slice(0, line).filter((x) => x === l).length })
   })
   out.sort((a, b) => a.start - b.start || a.line - b.line)
   out.forEach((e, i) => {
@@ -40,9 +46,10 @@ export function planOf(text: string): Entry[] {
 }
 
 /** A note's text with the item `raw` (its line as it was read) ticked `on` or not, or null when no line is that. */
-export function ticked(text: string, raw: string, on: boolean): string | null {
+export function ticked(text: string, raw: string, on: boolean, nth = 0): string | null {
   const lines = text.split("\n")
-  const i = lines.indexOf(raw)
+  let i = -1
+  for (let k = 0; k <= nth; k++) { i = lines.indexOf(raw, i + 1); if (i < 0) break }
   if (i < 0 || !/\[[ xX]\]/.test(raw)) return null
   lines[i] = raw.replace(/\[[ xX]\]/, on ? "[x]" : "[ ]")
   return lines.join("\n")
