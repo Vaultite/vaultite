@@ -50,7 +50,10 @@ try {
   await op("ui.open", { path: "Alice Park.md", newTab: true })
   // Another page in a pane to the right, with a float (as a tooltip is, layers.ts) over it: the window stays raised.
   await op("ui.open", { path: SITE, split: "right" })
-  check("a page in a pane beside it", await until(async () => (await order()) === "app page", 8000), await order())
+  // (the toasts saying the agent opened these sit over the new pane, raising the window till they leave: an action's
+  // lasts 8 s, and the pointer kept off them so they don't pause)
+  await win.mouse.move(300, 400)
+  check("a page in a pane beside it", await until(async () => (await order()) === "app page", 15000), await order())
   await win.evaluate(() => {
     const d = Object.assign(document.createElement("div"), { id: "qa-float" })
     d.dataset.floats = ""
