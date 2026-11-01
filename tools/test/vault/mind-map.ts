@@ -1,7 +1,7 @@
 import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { api, check, write } = $
+  const { api, check, read, write } = $
   // Mind map (plugins/core/mind-map): a note's headings as a tree, and its block as that tree in text.
   const { headingsIn, treeOf, treeText } = await import("../../../plugins/core/mind-map/tree.ts")
   const text = "---\ntitle: x\n---\n# Goals\n## Ship the [[Beta|beta]] ^b1\n```\n# not a heading\n```\n### Week **one**\n## Hire\n# Risks\n#nottag\n"
@@ -29,4 +29,16 @@ export default async ($: VaultTest) => {
   check("mind map block: lists in its text, lists: false leaves them out", ls === 200 && String(lo).includes("**Trip**\n- Pack\n  - Hat\n  - Sunscreen\n- Book"), lo)
   check("mind map: a # that's part of a heading stays, closing ones go", headingsIn("# Learning C#\n## F#\n## Plan ##\n").map((h) => h.text).join("|") === "Learning C#|F#|Plan")
   check("mind map: a ```js line inside a ```` block is code", headingsIn("````\n```js\n# not\n````\n# Yes\n").map((h) => h.text).join() === "Yes")
+  // The map as a canvas.
+  const { canvasOf } = await import("../../../plugins/core/mind-map/tree.ts")
+  const cv = JSON.parse(canvasOf(treeOf(headingsIn("# A\n## A1\n## A2\n# B\n", true), "Plan"), "Notes/Plan.md"))
+  check("mind map canvas: a card per branch, an arrow to each, a colour per top branch, the root linking the note",
+    cv.nodes.length === 5 && cv.edges.length === 4 && cv.nodes[0].text === "## [[Notes/Plan|Plan]]" && cv.nodes[1].color === "1" && cv.nodes[2].color === "1" && cv.nodes[4].color === "2" &&
+    cv.nodes[1].y === (cv.nodes[2].y + cv.nodes[3].y) / 2 && cv.edges.every((e: { fromSide: string; toSide: string }) => e.fromSide === "right" && e.toSide === "left"), cv)
+  write("Notes/Map canvas.md", "# Goals\n- Ship\n# Risks\n")
+  const [cs, cb] = await api("POST", "ops/mind-map.canvas", { path: "Notes/Map canvas.md" })
+  check("mind map canvas op: a canvas beside the note", cs === 200 && cb.path === "Notes/Map canvas mind map.canvas" && JSON.parse(read(cb.path)).nodes.length === 4, [cs, cb])
+  const [cs2, cb2] = await api("POST", "ops/mind-map.canvas", { path: "Notes/Map canvas.md" })
+  check("mind map canvas op: again, a second canvas, the first kept", cs2 === 200 && cb2.path === "Notes/Map canvas mind map 1.canvas", cb2)
 }
+

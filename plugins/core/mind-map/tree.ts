@@ -63,3 +63,25 @@ export function treeText(root: MindNode, depth = 9): string {
   walk(root, 0)
   return out.length > 1 ? out.join("\n") : `**${root.text}** has no headings yet.`
 }
+
+/** The tree as a canvas (JSON Canvas): a card per branch laid out left to right like the map, arrows from each to its
+ *  branches, each top branch a colour; the root a card linking the note. */
+export function canvasOf(root: MindNode, note: string): string {
+  const W = 260, H = 60, GAP_X = 80, ROW = 90
+  const nodes: Record<string, unknown>[] = [], edges: Record<string, unknown>[] = []
+  let rows = 0
+  const place = (n: MindNode, depth: number, color: string | null): { id: string; y: number } => {
+    const id = `n${nodes.length}`
+    const node: Record<string, unknown> = { id, type: "text", text: depth ? n.text : `## [[${note.replace(/\.md$/i, "")}|${n.text}]]`, x: depth * (W + GAP_X), y: 0, width: W, height: H }
+    if (color) node.color = color
+    nodes.push(node)
+    const kids = n.children.map((c, i) => place(c, depth + 1, color ?? String((i % 6) + 1)))
+    const y = kids.length ? (kids[0].y + kids.at(-1)!.y) / 2 : rows++ * ROW
+    node.y = Math.round(y)
+    for (const k of kids) edges.push({ id: `e${edges.length}`, fromNode: id, fromSide: "right", toNode: k.id, toSide: "left" })
+    return { id, y }
+  }
+  place(root, 0, null)
+  return `${JSON.stringify({ nodes, edges }, null, "\t")}\n`
+}
+

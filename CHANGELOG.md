@@ -97,7 +97,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit
   beside it), and Delete closes the tab the keyboard is on, as its X does.
 - **Mind map of a note**: the Mind map plugin draws a note's headings and the lists under them as a map in a tab
-  (Open mind map) or as a block in any page; click a branch to go there, fold the ones you don't need.
+  (Open mind map) or as a block in any page; click a branch to go there, fold the ones you don't need, or turn it into
+  a canvas beside the note to rearrange it freely.
 - **Reduce motion keeps everything still**: with the system's Reduce motion or animations off in Settings, the phone's
   tab list, new tabs and Back no longer zoom or slide, a closed tab card no longer shrinks away, and scrolls to a tab,
   heading or setting jump instead of gliding.

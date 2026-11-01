@@ -1,8 +1,8 @@
 // Mind map: a note's headings and lists drawn as a map, in a tab (view:mind-map/<path>, or following the file you're on)
 // and as a block. It reads the editor's text as it's typed (useOutline), so the map keeps up.
 import { useMemo } from "react"
-import { Network, SquareArrowOutUpRight } from "lucide-react"
-import { currentFile, definePlugin, notify, openFile, openView, Panel, stem, useFocusedFile, useOutline } from "@vaultite"
+import { LayoutDashboard, Network, SquareArrowOutUpRight } from "lucide-react"
+import { currentFile, definePlugin, notify, notifyError, openFile, openView, Panel, post, stem, useFocusedFile, useOutline } from "@vaultite"
 import { MindMap } from "./MindMap"
 import { headingsIn, treeOf } from "./tree"
 
@@ -11,6 +11,12 @@ const TINT = "var(--mind-map)"
 const openMap = (path?: string | null, split = false) => {
   if (!path || !/\.md$/i.test(path)) return notify("Open a note to see its mind map")
   openView(`mind-map/${path}`, split ? { split: true } : { newTab: true })
+}
+
+/** The note's map as a canvas beside it (the op mind-map.canvas), opened. */
+async function toCanvas(path?: string | null) {
+  if (!path || !/\.md$/i.test(path)) return notify("Open a note to turn its mind map into a canvas")
+  try { openFile((await post<{ path: string }>("ops/mind-map.canvas", { path })).path) } catch (e) { notifyError(e, "Couldn't make the canvas") }
 }
 
 /** The map of `path`'s headings and lists; a click goes to that line (the root: the note). */
@@ -49,8 +55,10 @@ export default definePlugin({
   commands: [
     { id: "mind-map:open", name: "Open mind map", run: () => openMap(currentFile()) },
     { id: "mind-map:open-split", desktop: true, name: "Open mind map in right split", run: () => openMap(currentFile(), true) },
+    { id: "mind-map:canvas", name: "Turn mind map into a canvas", run: () => void toCanvas(currentFile()) },
   ],
-  fileMenu: (path) => (/\.md$/i.test(path) ? [{ label: "Open mind map", icon: Network, section: "more", run: () => openMap(path) }] : []),
+  fileMenu: (path) => (/\.md$/i.test(path) ? [{ label: "Open mind map", icon: Network, section: "more", run: () => openMap(path) },
+    { label: "Turn mind map into a canvas", icon: LayoutDashboard, section: "more", run: () => void toCanvas(path) }] : []),
   blocks: {
     "mind-map": ({ path, options }) => {
       const depth = Math.max(1, Math.min(9, Number(options.depth) || 9))
