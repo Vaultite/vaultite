@@ -54,9 +54,9 @@ app.setName(PKG.productName ?? "Vaultite")
 // Windows: the id its Start menu shortcut carries (natives.cjs writes it into a packaged app), so notifications are its.
 if (WIN && typeof PKG.appId === "string") app.setAppUserModelId(PKG.appId)
 if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process.env.VAULTITE_USER_DATA))
-// Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes (extensions' workers) keep
-// Electron's sandboxed renderer, the one that runs service-worker preloads (app.enableSandbox() would drop --no-sandbox).
-if (app.commandLine.hasSwitch("no-sandbox")) app.commandLine.appendSwitch("enable-sandbox")
+// Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes keep Electron's sandboxed
+// renderer, which runs service-worker preloads; not as root, where Chromium sandboxes nothing and each would die.
+if (app.commandLine.hasSwitch("no-sandbox") && process.getuid?.() !== 0) app.commandLine.appendSwitch("enable-sandbox")
 // VAULTITE_QUIET=1 (web/qa's desktop scripts): windows draw as usual but are never seen or felt (transparent,
 // click-through, never focused, no Dock icon), so a test never pops up over the user's work.
 if (process.env.VAULTITE_QUIET) {

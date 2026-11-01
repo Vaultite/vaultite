@@ -135,6 +135,8 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
   const t = Date.now()
   try {
     const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude, VAULTITE_AGENT_BIN: AGENT_BIN }
+    // (the desktop scripts' app as root, a container's user: Chromium starts only unsandboxed then)
+    if (process.getuid?.() === 0) env.ELECTRON_DISABLE_SANDBOX = "1"
     // (a made-up plugin directory and git repositories, on this machine: web/qa/pluginstore.mjs)
     // (Vaultite's own plugins a bundle installs come from a made-up Vaultite/plugins, never GitHub)
     env.VAULTITE_GITHUB = officialRepos(path.join(tmp, "repos"))
