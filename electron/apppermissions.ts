@@ -11,14 +11,14 @@ const ANYONE = new Set(["fullscreen", "clipboard-sanitized-write"])
 /** Of those, what another machine's window asks the user for first. */
 const ASK = new Set(["media", "geolocation"])
 
-/** Whose page asks: this app's (a server on this machine, its built pages), another machine's window (`remotes`: their
- *  addresses), or anyone else's (a frame in a note, a page a window was sent to). */
-export function whose(url: string, remotes: string[], dist: string): "app" | "remote" | "other" {
+/** Whose page asks: this app's (its vaults' servers here, on `ports`; its built pages), another machine's window
+ *  (`remotes`: their addresses), or anyone else's (a frame in a note, another program's page on this machine). */
+export function whose(url: string, remotes: string[], dist: string, ports: number[]): "app" | "remote" | "other" {
   let u: URL
   try { u = new URL(url) } catch { return "other" }
   if (u.protocol === "file:") { try { const p = fileURLToPath(u); return p.startsWith(dist + path.sep) ? "app" : "other" } catch { return "other" } }
   if (u.protocol !== "http:" && u.protocol !== "https:") return "other"
-  if (u.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) return "app"
+  if (u.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(u.hostname) && ports.includes(Number(u.port || 80))) return "app"
   return remotes.some((r) => { try { return new URL(r).origin === u.origin } catch { return false } }) ? "remote" : "other"
 }
 

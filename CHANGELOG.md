@@ -10,6 +10,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   callout (its width, rotation), and one written inside `inline code` shows as written instead of styling the slide.
 - **Big tables move between cells at once**: in a note's table, moving to another cell draws again only the cell left,
   not the whole table (an arrow in a 2,000-row table took 200 ms, now 26 ms).
+- **Other programs' pages get nothing of the desktop app's permissions**: only its vaults' own pages on this machine
+  may use the microphone, location or pasting without asking; a page another program serves on localhost may not.
 - **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the

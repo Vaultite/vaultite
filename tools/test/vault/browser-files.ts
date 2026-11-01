@@ -6,12 +6,14 @@ export default async ($: VaultTest) => {
     // The desktop app's own windows (electron/apppermissions.ts): what each page may do in the browser engine.
     const { permissionFor, whose } = await import("../../../electron/apppermissions.ts")
     const remotes = ["https://studio.tail1234.ts.net:8447"], dist = "/App/web/dist"
-    const at = (u: string, perm: string) => permissionFor(perm, whose(u, remotes, dist))
+    const at = (u: string, perm: string) => permissionFor(perm, whose(u, remotes, dist, [8793]))
     check("desktop permissions: the app's page gets the microphone and pasting, another machine's asks, anyone else's nothing",
       at("http://127.0.0.1:8793/", "media") === "allow" && at("http://127.0.0.1:8793/", "clipboard-read") === "allow" && at("file:///App/web/dist/onboarding.html", "clipboard-sanitized-write") === "allow" &&
       at("https://studio.tail1234.ts.net:8447/", "media") === "ask" && at("https://studio.tail1234.ts.net:8447/", "geolocation") === "ask" && at("https://studio.tail1234.ts.net:8447/", "notifications") === "allow" &&
       at("https://evil.example/", "media") === "deny" && at("https://www.youtube.com/embed/x", "clipboard-read") === "deny" && at("https://www.youtube.com/embed/x", "fullscreen") === "allow" && at("file:///Users/a/x.html", "media") === "deny" &&
       at("http://127.0.0.1:8793/", "display-capture") === "deny" && at("http://127.0.0.1:8793/", "hid") === "deny" && at("https://studio.tail1234.ts.net:8447.evil.example/", "media") === "deny")
+    check("desktop permissions: another program's page on this machine is anyone's, not the app's",
+      at("http://127.0.0.1:3000/", "media") === "deny" && at("http://localhost:5000/", "clipboard-read") === "deny" && at("http://localhost:8793/", "media") === "allow")
     // An extension's offscreen document (electron/browser/extapi.ts) is one of its own pages, as in Chrome.
     const { extensionPage } = await import("../../../electron/browser/crx.ts")
     const id = "abcdefghijklmnopabcdefghijklmnop"

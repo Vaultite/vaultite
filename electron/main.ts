@@ -1798,7 +1798,7 @@ app.on("web-contents-created", (_e, wc) => {
 const remoteAsked = new Map<string, Promise<boolean>>(), remoteYes = new Set<string>()
 function guardPermissions() {
   const s = session.defaultSession
-  const decide = (url: string, perm: string) => permissionFor(perm, whose(url, remotes.map((r) => r.url), DIST))
+  const decide = (url: string, perm: string) => permissionFor(perm, whose(url, remotes.map((r) => r.url), DIST, [...wins.values()].map((w) => w.port)))
   s.setPermissionRequestHandler((wc, perm, ok, details) => {
     const url = details.requestingUrl || wc.getURL(), d = decide(url, perm)
     if (d !== "ask") return ok(d === "allow")
