@@ -3,7 +3,8 @@
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
-import { annotate, backgroundOf, DECK_CSS } from "./Presentation"
+import { Boxes, layOut, LAYOUT_CSS } from "./Layout"
+import { annotate, backgroundOf, CANVAS_H, DECK_CSS } from "./Presentation"
 import { exportAsked } from "./asked"
 import { isTitleSlide, type Slide } from "./slides"
 
@@ -110,7 +111,7 @@ async function build(root: HTMLElement, name: string, deckCss: string) {
 <html lang="${esc(html.lang || "en")}" class="${esc(html.className)}" style="${esc(html.getAttribute("style") ?? "")}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(name)}</title>
 <style>${(await pageCss(root)).replace(/<\/style/gi, "<\\/style")}</style>
-<style>${(DECK_CSS + deckCss + PLAYER_CSS).replace(/<\/style/gi, "<\\/style")}</style></head>
+<style>${(DECK_CSS + LAYOUT_CSS + deckCss + PLAYER_CSS).replace(/<\/style/gi, "<\\/style")}</style></head>
 <body class="${esc(document.body.className)}"><div data-deck>${copy.innerHTML}</div><div class="slide-count"></div><div class="slide-bar"></div>
 <script>${PLAYER}</script></body></html>
 `
@@ -120,6 +121,7 @@ async function build(root: HTMLElement, name: string, deckCss: string) {
 export function DeckExport({ path, slides, fm, props, css }: { path: string; slides: Slide[]; fm: string; props: Record<string, unknown>; css: string }) {
   const root = useRef<HTMLDivElement>(null)
   const store = getStore() as Store
+  const content = (s: Slide) => (s.boxes ? <Boxes items={s.boxes} ctx={{ store, path, fm }} /> : s.md && <NoteBody store={store} path={path} body={s.md} fm={fm} className="slide-body" />)
   useEffect(() => {
     let on = true
     void (async () => {
@@ -128,7 +130,7 @@ export function DeckExport({ path, slides, fm, props, css }: { path: string; sli
       if (!on) return
       for (const sec of el.querySelectorAll<HTMLElement>(":scope > section")) {
         const s = slides[Number(sec.dataset.n)], box = sec.querySelector<HTMLElement>(".slide-box")
-        if (box) { annotate(box, s); if (s.style) box.setAttribute("style", s.style) }
+        if (box) { annotate(box, s); layOut(box); if (s.style) box.setAttribute("style", s.style) }
       }
       const name = `${stem(path)}.html`
       const blob = new Blob([await build(el, stem(path), css)], { type: "text/html" })
@@ -148,8 +150,10 @@ export function DeckExport({ path, slides, fm, props, css }: { path: string; sli
         return (
           <section key={n} data-n={n} data-h={s.h} data-v={s.v} className={cn(bg.tone === "dark" ? "dark" : bg.tone === "light" && "scheme-preview")}>
             {bg.style && <div className="slide-bg" style={bg.style} />}
-            <div className={cn("slide-fit", isTitleSlide(s.md) && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}>
-              <div className={cn("slide-box", s.cls)}>{s.md && <NoteBody store={store} path={path} body={s.md} fm={fm} className="slide-body" />}</div>
+            <div className={cn("slide-fit", !s.boxes && !s.canvas && isTitleSlide(s.md) && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}>
+              <div className={cn("slide-box", s.cls)}>{s.canvas
+                ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: CANVAS_H }}>{content(s)}</div>
+                : content(s)}</div>
             </div>
             {s.notes && <aside><div className="pb-1 text-[13px] text-muted-foreground">Speaker notes</div><NoteBody store={store} path={path} body={s.notes} fm={fm} className="slide-notes" /></aside>}
           </section>

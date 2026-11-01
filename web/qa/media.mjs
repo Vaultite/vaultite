@@ -13,10 +13,10 @@ const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { ..
 const read = async (path) => (await (await fetch(`${B}api/file?path=${enc(path)}`)).json()).text
 const files = async () => (await (await fetch(`${B}api/files`)).json())
 const del = (path) => fetch(`${B}api/file?path=${enc(path)}`, { method: "DELETE" })
-const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md"
+const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md", LAYOUTS = "Qa media/Layouts.md"
 const THEMED = { night: "Qa media/Night.md", serif: "Qa media/Serif.md", other: "Qa media/Other theme.md" }
 
-for (const p of [MEMO, SLASH, DECK, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
+for (const p of [MEMO, SLASH, DECK, LAYOUTS, ...Object.values(THEMED), "Qa media/pic.png"]) await del(p)
 // (Slides is off until turned on)
 const plugins = async (method, body) => (await fetch(`${B}api/config/plugins`, { method, headers: json, body: body && JSON.stringify(body) })).json()
 const pluginsBefore = await plugins("GET")
@@ -219,6 +219,22 @@ await page.close()
   check("export: the image shows", await pp.locator("section.on img").evaluate((i) => i.complete && i.naturalWidth > 0))
   await pp.close(); await page.close()
 }
+// Export as HTML keeps a deck's layouts: its grids placed, its splits side by side.
+{
+  page = await open({ viewport: { width: 1280, height: 800 }, acceptDownloads: true })
+  await put(LAYOUTS, "<grid drag=\"40 30\" drop=\"bottomright\" bg=\"rgb(0, 128, 0)\">\nPlaced\n</grid>\n")
+  await page.goto(`${B}#file/${enc(LAYOUTS)}`); await wait(1500)
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), palette(page, "Export slides as HTML", 600)])
+  const file = `${OUT}media-slides-export-layouts.html`
+  await dl.saveAs(file)
+  const pp = await open({ viewport: { width: 1280, height: 800 } })
+  await pp.goto(`file://${file}`); await wait(800)
+  const r = await pp.evaluate(() => { const g = [...document.querySelectorAll("section.on *")].find((e) => getComputedStyle(e).backgroundColor === "rgb(0, 128, 0)"), c = document.querySelector("section.on [data-slide-canvas]").getBoundingClientRect(), b = g?.getBoundingClientRect()
+    return b && { right: Math.round(c.right - b.right), bottom: Math.round(c.bottom - b.bottom), w: Math.round((b.width / c.width) * 100) } })
+  check("export: a grid keeps its place on the slide", r && Math.abs(r.right) <= 2 && Math.abs(r.bottom) <= 2 && Math.abs(r.w - 40) <= 1, r)
+  await pp.screenshot({ path: `${OUT}media-slides-export-layouts.png` })
+  await pp.close(); await page.close()
+}
 
 // ---------- slides themes: reveal's themes in the app's colours ----------
 const themedDeck = (theme, extra = "") => `---\ntheme: ${theme}\n---\n\n${extra}# Launch plan\nA short deck\n\n---\n\n## Why now\n\n- Customers asked for **it**\n- A [link](https://example.com) and \`code\`\n`
@@ -276,6 +292,54 @@ for (const scheme of ["light", "dark"]) {
   }
   check(`slides themes (${scheme}): each draws as itself`, drawn.join() === all.join().replace("default", "black"), drawn)
   await page.keyboard.press("Escape"); await wait(300); await page.close()
+}
+
+// ---------- slides: Advanced Slides' layouts (its docs' decks) ----------
+await put(LAYOUTS, `---\ntype: note\n---\n\n<split even gap="1">\n\n![[pic.png]]\n![[pic.png]]\n![[pic.png]]\n</split>\n\n---\n\n## Two to one\n\n<split left="2" right="1" gap="2">\n\n**Lorem Ipsum** is simply dummy text of the printing and typesetting industry, the standard since the 1500s.\n\nInto electronic typesetting, $e^{i\\pi} + 1 = 0$, remaining essentially unchanged.\n</split>\n\n---\n\n<grid drag="60 55" drop="5 10" bg="red">\n60 x 55\n</grid>\n\n<grid drag="25 55" drop="-5 10" bg="green">\n25 x 55\n</grid>\n\n<grid drag="90 20" drop="5 -10" bg="gray">\n90  x 20\n</grid>\n\n---\n\n<grid drag="40 30" drop="topleft" bg="coral" align="left" pad="0 20px">\n### Top left\n- one\n- two\n</grid>\n\n<grid drop="right" border="4px solid white" rotate="-5">\n<split even>\nA\n\nB\n</split>\n</grid>\n\n### Noise <!-- element drag="40 20" drop="bottomleft" bg="rgb(0,0,0)" -->\n\n<grid drag="30 25" drop="center" bg="green" frag="1" animate="fadeIn">\nLater\n</grid>\n\n---\n\n::: block <!-- element style="background-color: rgb(255, 0, 0); padding: 8px" -->\n\nRed block\n\n::: block\nNested, *in* Markdown\n:::\n:::\n\nAfter it\n`)
+for (const [scheme, vp, phone] of [["light", { width: 1280, height: 800 }], ["dark", { width: 1280, height: 800 }], ["dark", { width: 390, height: 844 }, true]]) {
+  page = await open({ viewport: vp, colorScheme: scheme, ...(phone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}) })
+  const tag = phone ? "phone" : scheme
+  await page.goto(`${B}#file/${enc(LAYOUTS)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(800)
+  const near = (a, b) => Math.abs(a - b) < 2
+  const imgs = await page.locator("[data-slide-box=split] img").evaluateAll((is) => is.map((i) => { const r = i.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, ok: i.complete && i.naturalWidth > 0 } }))
+  check(`layouts (${tag}): <split even>: its images side by side, a third each`, imgs.length === 3 && imgs.every((r) => r.ok && near(r.y, imgs[0].y) && near(r.w, imgs[0].w)) && imgs[0].x < imgs[1].x && imgs[1].x < imgs[2].x, imgs)
+  await page.screenshot({ path: `${OUT}media-layouts-split-${tag}.png` })
+  await page.keyboard.press("ArrowRight"); await wait(600)
+  const cols = await page.locator("[data-slide-box=split] > .note-body > .note-body-md > p").evaluateAll((ps) => ps.map((p) => { const r = p.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width } }))
+  check(`layouts (${tag}): left="2" right="1": two columns, the left twice as wide, math drawn`, cols.length === 2 && near(cols[0].y, cols[1].y) && cols[1].x > cols[0].x
+    && Math.abs(cols[0].w / cols[1].w - 2) < 0.1 && await page.locator("[data-slide-box] .katex").count() === 1, cols)
+  await page.screenshot({ path: `${OUT}media-layouts-ratio-${tag}.png` })
+  await page.keyboard.press("ArrowRight"); await wait(600)
+  // (in the slide's own px: offsets, before it's scaled and rotated)
+  const place = (sel) => page.locator(sel).evaluateAll((es) => es.map((e) => {
+    const c = e.closest("[data-slide-canvas]")
+    return { x: e.offsetLeft / c.offsetWidth, y: e.offsetTop / c.offsetHeight, w: e.offsetWidth / c.offsetWidth, h: e.offsetHeight / c.offsetHeight, bg: getComputedStyle(e).backgroundColor, color: getComputedStyle(e).color }
+  }))
+  const c = await page.locator("[data-slide-canvas]").evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+  const g = await place("[data-slide-box=grid]")
+  const pct = (a, b) => Math.abs(a - b) < 0.005
+  check(`layouts (${tag}): grids are placed on a slide of Advanced Slides' shape, on screen`, Math.abs(c.w / c.h - 960 / 700) < 0.01 && c.x >= 0 && c.x + c.w <= vp.width + 1 && c.y >= 0 && c.y + c.h <= vp.height, c)
+  check(`layouts (${tag}): drop x y from the top left, negative from the right and bottom, drag their size`, g.length === 3
+    && pct(g[0].x, 0.05) && pct(g[0].y, 0.1) && pct(g[0].w, 0.6) && pct(g[0].h, 0.55) && pct(g[1].x + g[1].w, 0.95) && pct(g[2].y + g[2].h, 0.9)
+    && g[0].bg === "rgb(255, 0, 0)" && g[2].bg === "rgb(128, 128, 128)", { c, g })
+  await page.screenshot({ path: `${OUT}media-layouts-grid-${tag}.png` })
+  await page.keyboard.press("ArrowRight"); await wait(600)
+  const [tl, right, later] = await place("[data-slide-box=grid]"), [noise] = (await place("[data-slide-canvas] :is(h3, .h3)")).slice(-1)
+  check(`layouts (${tag}): named drops (topleft, right at the default 50 x 100, center), an annotation's drop and bg`, pct(tl.x, 0) && pct(tl.y, 0) && pct(right.x, 0.5) && pct(right.w, 0.5) && pct(right.h, 1)
+    && pct(later.x, 0.35) && pct(later.y, 0.375) && pct(noise.x, 0) && pct(noise.y + noise.h, 1) && pct(noise.w, 0.4) && noise.bg === "rgb(0, 0, 0)" && noise.color === "rgb(245, 245, 247)", { tl, right, later, noise })
+  check(`layouts (${tag}): a split inside a grid, side by side`, await page.locator("[data-slide-box=grid] [data-slide-box=split] p").evaluateAll((ps) => ps.length === 2 && ps[0].offsetTop === ps[1].offsetTop && ps[0].offsetLeft < ps[1].offsetLeft))
+  const frag = page.locator("[data-slide-box].fragment")
+  check(`layouts (${tag}): frag="1": the grid comes in on the next step`, !(await frag.getAttribute("class")).includes("visible"))
+  await page.keyboard.press("ArrowRight"); await wait(900)
+  check(`layouts (${tag}): ...then it's in`, (await frag.getAttribute("class")).includes("visible") && await page.locator("[data-slide-count]").innerText() === "4 / 5")
+  await page.screenshot({ path: `${OUT}media-layouts-grid2-${tag}.png` })
+  await page.keyboard.press("ArrowRight"); await wait(600)
+  const blocks = await page.locator("[data-slide-box=block]").evaluateAll((bs) => bs.map((b) => ({ cls: b.className, bg: getComputedStyle(b).backgroundColor, text: b.innerText, em: !!b.querySelector("em") })))
+  check(`layouts (${tag}): ::: block is a box, its annotation its style, a block in it drawn as Markdown`, blocks.length === 2 && blocks[0].bg === "rgb(255, 0, 0)" && blocks[0].text.includes("Red block")
+    && blocks[1].text.includes("Nested") && blocks[1].em && !(await page.locator("[data-deck-slide]").innerText()).includes(":::"), blocks)
+  await page.screenshot({ path: `${OUT}media-layouts-block-${tag}.png` })
+  await page.close()
 }
 
 // ---------- print ----------

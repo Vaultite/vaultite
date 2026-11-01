@@ -6,8 +6,9 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from
 import { activeFile, cn, folderOf, getStore, NoteBody, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
-import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, type Slide } from "./slides"
+import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, CANVAS, type Slide } from "./slides"
 import { revealTheme } from "./themes"
+import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
 
 /** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */
 async function textOf(path: string) {
@@ -19,9 +20,12 @@ async function textOf(path: string) {
 const BASE = 720
 const MAX = 2.2
 const MIN = 0.6
+/** A slide with placed boxes is a fixed one, BASE wide, of Advanced Slides' shape. */
+export const CANVAS_H = Math.round((BASE * CANVAS.h) / CANVAS.w)
 
-/** Scale `inner` (laid out BASE wide, or the stage's width when narrower) to fit `stage`. */
-function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown) {
+/** Scale `inner` (laid out BASE wide, or the stage's width when narrower; `canvas`: always, scaled down to fit) to fit
+ *  `stage`. */
+function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown, canvas = false) {
   const [fit, setFit] = useState({ w: BASE, scale: 1, h: 0 })
   const measure = useCallback(() => {
     const s = stage.current, el = inner.current
@@ -29,12 +33,12 @@ function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDi
     const cs = getComputedStyle(s)
     const aw = s.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
     const ah = s.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-    const w = Math.max(240, Math.min(BASE, aw))
+    const w = canvas ? BASE : Math.max(240, Math.min(BASE, aw))
     if (Math.abs(el.offsetWidth - w) > 0.5) el.style.width = `${w}px`
     const h = el.offsetHeight
-    const scale = Math.max(MIN, Math.min(MAX, aw / w, h ? ah / h : MAX))
+    const scale = Math.max(canvas ? 0 : MIN, Math.min(MAX, aw / w, h ? ah / h : MAX))
     setFit((f) => (f.w === w && Math.abs(f.scale - scale) < 0.005 && f.h === h ? f : { w, scale, h }))
-  }, [stage, inner])
+  }, [stage, inner, canvas])
   useLayoutEffect(measure, [measure, key])
   useEffect(() => {
     const ro = new ResizeObserver(measure)
@@ -62,6 +66,7 @@ export function annotate(root: HTMLElement, slide: Slide) {
     if (!a || !target || !root.contains(target)) continue
     target.classList.add(...a.cls.split(/\s+/).filter(Boolean))
     if (a.style) target.setAttribute("style", [target.getAttribute("style"), a.style].filter(Boolean).join("; "))
+    if (a.bg && CSS.supports("color", a.bg)) { (target as HTMLElement).style.backgroundColor = a.bg; target.classList.add(...toneClass(a.bg).split(" ").filter(Boolean)) }
     if (a.index !== undefined) (target as HTMLElement).dataset.fragmentIndex = String(a.index)
   }
 }
@@ -78,22 +83,6 @@ function fragmentsOf(root: HTMLElement): HTMLElement[][] {
   return [...[...at].sort((a, b) => a[0] - b[0]).map((e) => e[1]), ...rest]
 }
 
-/** Light or dark, for a background colour; null when it isn't one (or is see-through). */
-const tones = new Map<string, "light" | "dark" | null>()
-function toneOf(color: string) {
-  if (tones.has(color)) return tones.get(color)!
-  let tone: "light" | "dark" | null = null
-  const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true })
-  if (c && CSS.supports("color", color)) {
-    c.fillStyle = color
-    c.fillRect(0, 0, 1, 1)
-    const [r, g, b, a] = c.getImageData(0, 0, 1, 1).data
-    const lin = (v: number) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
-    if (a >= 128) tone = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) < 0.18 ? "dark" : "light"
-  }
-  tones.set(color, tone)
-  return tone
-}
 /** The app's light or dark and colour scheme, as they change. */
 function useLook() {
   const read = () => { const r = document.documentElement; return `${r.classList.contains("dark") ? "dark" : "light"} ${r.dataset.scheme ?? ""}` }
@@ -223,7 +212,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const i = Math.min(pos.at, n - 1)
   const slide = slides[i] as Slide | undefined
   const md = slide?.md ?? ""
-  const fit = useFit(stage, inner, md)
+  const canvas = !!slide?.canvas
+  const fit = useFit(stage, inner, md, canvas)
   const theme = useMemo(() => revealTheme(props.theme), [props.theme])
   const look = useLook()
 
@@ -232,6 +222,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     const el = inner.current
     if (!el) return
     if (slide) annotate(el, slide)
+    layOut(el)
     frags.current = fragmentsOf(el)
     const step = Math.min(pos.step, frags.current.length)
     frags.current.forEach((g, k) => g.forEach((f) => { f.classList.toggle("visible", k < step); f.classList.toggle("current-fragment", k === step - 1) }))
@@ -326,17 +317,19 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const box = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => { if (slide?.style) box.current?.setAttribute("style", slide.style); else box.current?.removeAttribute("style") }, [slide?.style, i])
 
-  const title = isTitleSlide(md)
+  const title = !slide?.boxes && !canvas && isTitleSlide(md)
   const next = slides[i + 1]
   const ctl = "grid size-11 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground md:size-9"
-  const empty = !md && !slide?.bg
+  const empty = !md && !slide?.bg && !slide?.boxes
+  const ctx = { store, path, fm }
+  const content = slide?.boxes ? <Boxes items={slide.boxes} ctx={ctx} /> : md && <NoteBody store={store} path={path} body={md} fm={fm} className="slide-body" />
   // A tone other than the app's draws the scheme's other mode (Classic's, for a scheme with one mode).
   const other = bg.tone && bg.tone !== look.mode ? bg.tone : null
   const scheme = other && look.scheme && onlyMode(look.scheme) !== (other === "dark" ? "light" : "dark") ? look.scheme : undefined
   return createPortal(
     <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${stem(path)}, slide ${i + 1} of ${n}`} onKeyDown={key}
       className="group/slides fixed inset-0 z-[70] flex flex-col bg-background text-foreground outline-none select-none md:flex-row" data-presentation={path} data-keeps-keys>
-      <style>{DECK_CSS}{css}</style>
+      <style>{DECK_CSS}{LAYOUT_CSS}{css}</style>
       <div className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
         data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
         {/* the deck's own CSS reaches what's in [data-deck], never the controls; a theme's --r-* come from above it */}
@@ -349,9 +342,9 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
                 className={cn("absolute top-0 left-0 origin-top-left select-text", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}
                 style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
                 <div ref={box} className={slide?.cls || undefined}>
-                  {text !== null && (md
-                    ? <NoteBody store={store} path={path} body={md} fm={fm} className="slide-body" />
-                    : empty && <p className="text-center text-muted-foreground">This note is empty.</p>)}
+                  {text !== null && (canvas
+                    ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: CANVAS_H }}>{content}</div>
+                    : content || (empty && <p className="text-center text-muted-foreground">This note is empty.</p>))}
                 </div>
               </div>
             </div>

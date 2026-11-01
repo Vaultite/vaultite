@@ -1404,7 +1404,42 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("slides: <!-- .slide: --> gives the slide a class and style", frag.cls === "big" && frag.style === "color: red")
   check("slides: an element annotation is a marker where it was", frag.md === 'Fade in <span class="slide-el-0"></span>' && frag.els[0].cls === "fragment" && frag.els[0].index === 2, frag)
   check("slides: + and 1) list items are fragments, - ones aren't", lst.els.length === 3 && lst.els.every((e) => e.li && e.cls === "fragment") && !lst.md.split("\n")[0].includes("slide-el"), lst)
-  check("slides: <split> and ::: block lines are left out, their content kept", mds("<split even>\n\nA\n\nB\n</split>\n::: block\nC\n:::")[0] === "A\n\nB\nC")
+  const lay = (body: string) => parseDeck(body).slides[0]
+  const sp = lay("<split even gap=\"3\">\n\n![[a.png]]\n![[b.png]]\n</split>\n::: block\nC\n:::")
+  const [split, block] = sp.boxes as any[]
+  check("slides: <split even gap>: a row whose items share it, 3em apart; each image line its own item", split.kind === "split" && split.style.includes("--split-gap: 3em") && split.kids.includes("flex: 1")
+    && split.in.length === 1 && split.in[0] === "![[a.png]]\n\n![[b.png]]" && !sp.canvas, sp.boxes)
+  check("slides: ::: block is a block box, its Markdown kept (and the slide's md is all of it, in order)", block.kind === "block" && block.cls === "block" && block.in[0] === "C" && sp.md === "![[a.png]]\n\n![[b.png]]\n\nC", sp)
+  const lr = lay("<split left=\"2\" right=\"1\">\nA\n\nB\n</split>").boxes![0] as any, wr = lay("<split wrap=\"4\" no-margin>\nA\n</split>").boxes![0] as any
+  check("slides: <split left right>: its first and second items' shares; wrap: so many to a row; no-margin: no gaps", JSON.stringify(lr.nth.slice(0, 2)) === '["flex: 2","flex: 1"]'
+    && lr.style.includes("--split-gap: 0px") && wr.kids.includes("calc((100% - var(--split-gap) * 3) / 4)") && wr.kids.includes("margin: 0"), { lr, wr })
+  const nest = lay("<grid drag=\"40 30\" drop=\"topleft\">\n<split even>\nA\n\nB\n</split>\n</grid>\n<split>\n<split>\nX\n</split>\n</split>")
+  check("slides: layouts nest (a split in a grid, a split in a split)", nest.canvas && (nest.boxes![0] as any).in[0].kind === "split" && (nest.boxes![1] as any).in[0].kind === "split" && (nest.boxes![1] as any).in[0].in[0] === "X", nest.boxes)
+  // (Advanced Slides' own test decks, test/gridComponent.unit.test.ts, and the styles its snapshots have)
+  const place = (drag: string, drop: string) => (lay(`<grid ${drag ? `drag="${drag}" ` : ""}drop="${drop}">\nA\n</grid>`).boxes![0] as any).style.match(/left: [^;]+; top: [^;]+; width: [^;]+; height: [^;]+/)?.[0]
+  check("slides: a grid's drop: x y, negative from the right and bottom, px of a 960 x 700 slide, named places; drag its size (50 x 100 when left out)",
+    place("60 55", "5 10") === "left: 5%; top: 10%; width: 60%; height: 55%" && place("25 55", "-5 10") === "left: 70%; top: 10%; width: 25%; height: 55%"
+    && place("30 30", "-40px 40px") === "left: 65.833%; top: 5.714%; width: 30%; height: 30%" && place("40 40", "-5 -20") === "left: 55%; top: 40%; width: 40%; height: 40%"
+    && place("", "right") === "left: 50%; top: 0%; width: 50%; height: 100%" && place("55 50", "topright") === "left: 45%; top: 0%; width: 55%; height: 50%"
+    && place("25 20", "center") === "left: 37.5%; top: 40%; width: 25%; height: 20%" && place("80 30", "bottom") === "left: 10%; top: 70%; width: 80%; height: 30%", place("30 30", "-40px 40px"))
+  const flexOf = (at: string) => (lay(`<grid drag="100 100" drop="0 0" ${at}>\nA\n</grid>`).boxes![0] as any).style.match(/flex-direction: [^;]+; align-items: [^;]+; justify-content: [^;]+/)?.[0]
+  check("slides: a grid's flow and align place its items as Advanced Slides does", flexOf("") === "flex-direction: column; align-items: center; justify-content: center"
+    && flexOf('flow="row" align="left"') === "flex-direction: row; align-items: center; justify-content: space-evenly" && flexOf('flow="col" align="left"') === "flex-direction: column; align-items: flex-start; justify-content: space-evenly"
+    && flexOf('flow="col" align="bottomright"') === "flex-direction: column; align-items: flex-end; justify-content: flex-end" && flexOf('flow="row" align="top"') === "flex-direction: row; align-items: flex-start; justify-content: space-evenly"
+    && flexOf('justify-content="space-between"') === "flex-direction: column; align-items: center; justify-content: space-between", flexOf('flow="row" align="top"'))
+  const look = lay('<grid drag="30 25" drop="5 15" bg="#B565A7" filter="blur(10px)" rotate="-15" border="4px solid white" pad="0 50px" opacity="0.5" animate="fadeIn slower" frag="2">\nA\n</grid>\n+ One').boxes!
+  const lg = look[0] as any
+  check("slides: a grid's bg, filter, rotate, border, pad, opacity, animate and frag", lg.bg === "#B565A7" && ["filter: blur(10px)", "transform: rotate(-15deg)", "border: 4px solid white", "padding: 0 50px", "opacity: 0.5"].every((x) => lg.style.includes(x))
+    && lg.cls === "fadeIn slower fragment" && lg.index === 2, lg)
+  check("slides: a fragment list's items count from 1, beside a grid's frag", lay("+ One\n+ Two").els.map((e) => e.index).join() === "1,2")
+  const st = lay("<grid drag=\"100 45\" drop=\"top\" flow=\"row\" align=\"stretch\">\nA\n</grid>").boxes![0] as any
+  check("slides: align=\"stretch\" fills the grid with its items", st.cls === "stretch-row" && st.kids.includes("height: 100%; width: 1%"), st)
+  const note = lay('### Noise <!-- element drag="55 50" drop="bottomright" bg="rgb(0,0,0)" -->')
+  check("slides: an element annotation's drag, drop and bg place it too", note.canvas && note.els[0].bg === "rgb(0,0,0)" && note.els[0].style.includes("left: 45%; top: 50%"), note.els)
+  const bl = lay('::: block <!-- element style="background-color: red;" -->\n\nred\n\n::: block <!-- element style="background-color: blue;" -->\n\nblue\n\n:::\n\nred\n\n:::\n\nno color').boxes!
+  check("slides: ::: block <!-- element style -->: the block's style, blocks in blocks, what's after outside", (bl[0] as any).style === "background-color: red;" && (bl[0] as any).in[1].style === "background-color: blue;"
+    && (bl[0] as any).in[1].in[0] === "blue" && (bl[0] as any).in[2] === "red" && bl[1] === "no color", bl)
+  check("slides: layout tags inside code are text", !lay("```\n<split even>\n:::\n```").boxes && !lay("Use `<grid drop=\"center\">` here").boxes)
 
   check("slides: the deck's CSS: the page and .reveal are the deck", scopeSelector(":root", "[d]") === "[d]" && scopeSelector(".reveal .slides section h1, .x", "[d]") === "[d] h1, [d] .x"
     && scopeSelector(".reveal.dark p", "[d]") === "[d].dark p" && scopeSelector("html .a", "[d]") === "[d] .a" && scopeSelector(":is(a, b) > c", "[d]") === "[d] :is(a, b) > c")

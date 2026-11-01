@@ -45,5 +45,10 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
   `theme` (reveal's and Advanced Slides' by name: `black` (`default`), `white`, `league`, `beige`, `sky`, `night`,
   `serif`, `simple`, `solarized`, `blood`, `moon`, `dracula`, `black-contrast`, `white-contrast`, `consult`,
   `mattropolis`: each its fonts, case and tone in the app's colours), `showNotes: true` (notes open).
-- Not drawn: `<split>` and `<grid>` layouts and `::: block`s (their content shows in order, without the layout),
-  transitions, auto-animate, chalkboard, other reveal options.
+- Layouts: `<split even gap="2" left="2" right="1" wrap="3" no-margin>` puts what's in it side by side (each block, or
+  image line, a column); `<grid drag="w h" drop="x y">` (percents of a 960 x 700 slide, px, negative from the right
+  and bottom, or `topleft`, `center`, `bottom`...; with `flow`, `align`, `justify-content`, `pad`, `bg`, `border`,
+  `animate`, `opacity`, `rotate`, `filter`, `frag`) places a box, the slide then fixed at that shape; an element
+  annotation's `drag`/`drop`/`bg` do the same. `::: block` (or `::: <class>`, with an annotation for its style) to
+  `:::` is a box. They nest, and what's in them is Markdown.
+- Not drawn: transitions, auto-animate, chalkboard, other reveal options.
