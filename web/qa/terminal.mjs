@@ -115,6 +115,20 @@ for (const dark of [false, true]) {
     check("restart gives a new shell", await until(async () => !(await page.getByText("Process exited").count()) && PROMPT.test(await text())))
     await page.keyboard.type("echo again-$((1+1))"); await page.keyboard.press("Enter")
     check("the new shell answers", await until(async () => /^again-2\s*$/m.test(await text())), (await text()).slice(-300))
+    // A vault file named in the output is a link: hovered it's underlined (xterm.js's pointer), clicked it opens.
+    await page.keyboard.type("clear; stty size; printf 'wrote Notes/Lisbon trip.md\\n'"); await page.keyboard.press("Enter")
+    await until(async () => /^wrote /m.test(await text()))
+    const spot = await page.evaluate(() => {
+      const rows = document.querySelector("[data-terminal]").terminalText().split("\n"), s = document.querySelector(".xterm-screen").getBoundingClientRect()
+      const [r, c] = rows.find((l) => /^\d+ \d+$/.test(l)).split(" ").map(Number), y = rows.findIndex((l) => l.startsWith("wrote "))
+      return { x: s.x + 9.5 * s.width / c, y: s.y + (y + 0.5) * s.height / r }
+    })
+    await page.mouse.move(spot.x, spot.y)
+    check("a vault file in the output is a link", await until(async () => (await page.locator(".xterm-cursor-pointer").count()) > 0, 3000))
+    await page.mouse.click(spot.x, spot.y)
+    check("clicking it opens the note", await until(async () => (await page.locator('[role="tab"]', { hasText: "Lisbon trip" }).count()) > 0, 5000))
+    await page.locator('[role="tab"]', { hasText: "Terminal" }).first().click()
+    await page.locator(`[data-terminal="${sid}"]`).click()
     // Scheme change recolours.
     const before = await page.evaluate(() => getComputedStyle(document.querySelector(".xterm-scrollable-element")).backgroundColor)
     await page.evaluate(() => { const h = document.documentElement; if (h.dataset.scheme) delete h.dataset.scheme; else h.dataset.scheme = "gruvbox" }); await wait(300)

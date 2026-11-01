@@ -47,6 +47,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Glance for you.
 - **The inbox's shelves**: Pinned, Active (what waits on you first, then results and messages, the latest first) and
   Working, with Snoozed and Settled folded below; on the Inbox page and the inbox block.
+- **Vault files in a terminal are links**: a note or file an agent or command prints (`Notes/Lisbon trip.md`, with
+  `./` or the vault's full path) is underlined on hover and opens in the app when clicked, ⌘-click in a new tab.
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
 - **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing

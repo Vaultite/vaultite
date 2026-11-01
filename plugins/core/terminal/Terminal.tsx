@@ -2,13 +2,13 @@
 // tap brings up the keyboard and a row of the keys a phone's lacks sits above it.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, TextSelect } from "lucide-react"
-import { Terminal as XTerm, type ITheme } from "@xterm/xterm"
+import { Terminal as XTerm, type ILink, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { countText, FindField, FindTools, floatingBar, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
@@ -72,6 +72,59 @@ function findLook(): NonNullable<ISearchOptions["decorations"]> {
     activeMatchBackground: hex(mix(bg, orange, 0.5)), activeMatchBorder: hex(orange), activeMatchColorOverviewRuler: hex(orange) }
   done()
   return out
+}
+
+/** The vault's files by their last 4 characters, longest first, kept while its file list is the same object. */
+let byTail: { tree: unknown; map: Map<string, string[]> } | null = null
+function vaultFiles() {
+  const tree = getStore()?.files
+  if (!tree) return null
+  if (byTail?.tree === tree) return byTail.map
+  const map = new Map<string, string[]>()
+  for (const { path } of [...tree.files, ...tree.others]) if (path.length >= 4) {
+    const tail = path.slice(-4), list = map.get(tail)
+    if (list) list.push(path); else map.set(tail, [path])
+  }
+  for (const list of map.values()) list.sort((a, b) => b.length - a.length)
+  byTail = { tree, map }
+  return map
+}
+const BOUND = /[\s"'`([<{=,]/
+
+/** The vault's files named on a terminal row (as the vault has them, after ./ or under the vault's folder), as links that
+ *  open them: what an agent says it wrote is a click away. */
+function fileLinks(t: XTerm, y: number): ILink[] | undefined {
+  const line = t.buffer.active.getLine(y - 1)
+  if (!line) return
+  // The row's text, and each character's column (a wide one takes two)
+  const at: number[] = []
+  let text = ""
+  for (let x = 0; x < t.cols; x++) {
+    const cell = line.getCell(x)
+    if (!cell || !cell.getWidth()) continue
+    const ch = cell.getChars() || " "
+    for (let k = 0; k < ch.length; k++) at.push(x)
+    text += ch
+  }
+  const files = vaultFiles(), vault = getStore()?.vault.path
+  if (!files || !vault || !text.includes(".")) return
+  const root = `${vault.replace(/\/+$/, "")}/`, links: ILink[] = []
+  // (each place an extension ends: the files whose last 4 characters end there)
+  for (const m of text.matchAll(/\.[\w-]{1,10}(?=$|[\s"'`)\]>}:;,!?.])/g)) {
+    const end = m.index + m[0].length
+    for (const path of files.get(text.slice(end - 4, end)) ?? []) {
+      let start = end - path.length
+      if (start < 0 || text.slice(start, end) !== path) continue
+      if (text.slice(0, start).endsWith(root)) start -= root.length
+      else if (text.slice(0, start).endsWith("./")) start -= 2
+      if (start > 0 && !BOUND.test(text[start - 1])) continue
+      if (links.length && at[start] <= links[links.length - 1].range.end.x - 1) break
+      links.push({ text: path, range: { start: { x: at[start] + 1, y }, end: { x: at[end - 1] + 1, y } },
+        activate: (e) => openFile(path, { newTab: linkClick(e).newTab }) })
+      break
+    }
+  }
+  return links.length ? links : undefined
 }
 
 /** Puts text on this device's clipboard. Safari only allows it during a tap or key press, and a program's copy arrives
@@ -220,6 +273,7 @@ function create(id: string): Live {
   t.loadAddon(new WebLinksAddon((e, uri) => openWebLink(uri, linkClick(e))))
   const search = new SearchAddon({ highlightLimit: MAX })
   t.loadAddon(search)
+  const files = t.registerLinkProvider({ provideLinks: (y, done) => done(fileLinks(t, y)) })
   const box = document.createElement("div")
   box.style.width = box.style.height = "100%"
   const osc = t.parser.registerOscHandler(52, osc52)
@@ -489,7 +543,7 @@ function create(id: string): Live {
       if (gone) return
       gone = true
       clearTimeout(timer); cancelAnimationFrame(wheelFrame)
-      offLook(); offSettings(); osc.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
+      offLook(); offSettings(); osc.dispose(); files.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)
       document.removeEventListener("visibilitychange", onShown)
