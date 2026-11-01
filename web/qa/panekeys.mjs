@@ -44,9 +44,9 @@ check("⇧⌘D splits down", ps.length === 3 && ps[2].x === ps[1].x && ps[2].y >
 
 // The pane keys' modifiers: ⌃⌘ on a Mac, Alt+Shift elsewhere.
 const P = MAC ? "Meta+Control" : "Alt+Shift", K = MAC ? "⌃⌘" : "Alt+Shift+"
+const [L, TR, BR] = ps
 {
   // ---------- focus ----------
-  const [L, TR, BR] = ps
   await press(`${P}+ArrowUp`)
   check(`${K}↑ focuses the pane above`, (await focused())?.id === TR.id, await panes())
   await press(`${P}+ArrowLeft`)
