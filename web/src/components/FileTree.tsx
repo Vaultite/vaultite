@@ -329,8 +329,9 @@ function compare(sort: FileSort) {
   return (a: Node, b: Node) => (a.folder !== b.folder ? (a.folder ? -1 : 1) : a.folder ? (sort === "name-desc" ? byName(b, a) : byName(a, b)) : files(a, b))
 }
 
-/** `open`: hidden or archived files open in tabs that the tree doesn't show: shown too, with their folders. */
-function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showArchived = false): Node {
+/** `open`: hidden or archived files open in tabs that the tree doesn't show: shown too, with their folders. `prev`: the
+ *  last tree, whose order by name is kept for what's still there (the collator, sorting a big vault, is most of a build). */
+function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showArchived = false, prev: Node | null = null): Node {
   const root: Node = { path: "", name: "", folder: true, mtime: 0, ctime: 0, children: [] }
   const folders = new Map<string, Node>([["", root]])
   // Archive folders (core/fileprops.ts) are left out unless shown; an archived file open in a tab shows, like a hidden one.
@@ -354,9 +355,30 @@ function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showAr
   }
   for (const p of extra) folders.get(folderOf(p))?.children.push({ path: p, name: shownName(p), folder: false, other: !isDoc(p), mtime: 0, ctime: 0, children: [] })
   const cmp = compare(sort)
-  const order = (n: Node) => { n.children.sort(cmp); n.children.forEach(order) }
-  order(root)
+  const byName = sort === "name" || sort === "name-desc"
+  const order = (n: Node, was?: Node) => {
+    n.children = byName && was ? resorted(n.children, was.children, cmp) : n.children.sort(cmp)
+    if (!n.children.some((c) => c.folder)) return
+    const old = was && new Map(was.children.filter((c) => c.folder).map((c) => [c.path, c]))
+    for (const c of n.children) if (c.folder) order(c, old?.get(c.path))
+  }
+  order(root, prev && sorts.get(prev) === sort ? prev : undefined)
   return root
+}
+const sorts = new WeakMap<Node, FileSort>() // (each tree drawn, by its sort: another's order isn't kept)
+
+/** `kids` in the order `had` has them, the new ones put in their places: the same as sorting, with only those compared. */
+function resorted(kids: Node[], had: Node[], cmp: (a: Node, b: Node) => number) {
+  const at = new Map(had.map((c, i) => [c.folder ? `/${c.path}` : c.path, i]))
+  const out: Node[] = [], fresh: Node[] = []
+  for (const k of kids) (at.has(k.folder ? `/${k.path}` : k.path) ? out : fresh).push(k)
+  out.sort((a, b) => at.get(a.folder ? `/${a.path}` : a.path)! - at.get(b.folder ? `/${b.path}` : b.path)!)
+  for (const f of fresh) {
+    let lo = 0, hi = out.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cmp(out[mid], f) <= 0) lo = mid + 1; else hi = mid }
+    out.splice(lo, 0, f)
+  }
+  return out
 }
 
 /** The new tree with the last one's nodes wherever nothing a row shows changed (the same objects): every change in the
@@ -424,7 +446,11 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   if (!sameTree(shape.current, store.files, fileSort)) shape.current = store.files
   const files = shape.current
   const last = useRef<Node | null>(null)
-  const root = useMemo(() => (last.current = keepSame(last.current, build(files, fileSort, [...(openHidden ? openHidden.split("\n") : []), ...(openArchived ? [openArchived] : [])], showArchived))),
+  const root = useMemo(() => {
+    last.current = keepSame(last.current, build(files, fileSort, [...(openHidden ? openHidden.split("\n") : []), ...(openArchived ? [openArchived] : [])], showArchived, last.current))
+    sorts.set(last.current, fileSort)
+    return last.current
+  },
     [files, fileSort, openHidden, openArchived, showArchived])
   const opened = folder === undefined ? treeOpen : pinsOpen
   const open = opened.useAll()

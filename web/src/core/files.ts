@@ -47,12 +47,12 @@ export type FileText = { path: string; text: string; mtime: number; size?: numbe
 /** A file's name as the app shows it: without .md, or the extension of a page a plugin draws (an artifact's .html, a
  *  table's .csv: named like notes, FileFormat.page); other files keep theirs. */
 export function stem(path: string) {
-  const name = path.split("/").pop()!
+  const name = path.slice(path.lastIndexOf("/") + 1)
   if (/\.md$/i.test(name)) return name.slice(0, -3)
   const ext = pageExt(name)
   return ext ? name.slice(0, -ext.length - 1) : name
 }
-export const folderOf = (path: string) => path.split("/").slice(0, -1).join("/")
+export const folderOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/")))
 /** The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as
  *  text and a picture of them. (A file copied in Finder brings its name as text, which isn't its own.) */
 export function pastedFiles(d: DataTransfer | null | undefined): File[] {
