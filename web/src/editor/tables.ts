@@ -13,7 +13,7 @@ import { isMac } from "@/core/platform"
 import { blockLines, markdownDrawn } from "@/core/richmd"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
-import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow,
+import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, fillDown, insertColumn, insertRow, moveColumn, moveRow,
   parseTable, setWidths, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
 /** What a drawn table needs from the editor around it. */
@@ -458,6 +458,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       e.preventDefault()
       if (e.shiftKey) select(sel.a, to); else open(to.r, to.c)
     } else if (mod && e.key === "a") { e.preventDefault(); select({ r: 0, c: 0 }, { r: rows() - 1, c: cols() - 1 }) }
+    // (⌘D fills down, as in a spreadsheet: the selection's top row into the rest, one row from the row above)
+    else if (mod && !e.shiftKey && e.key.toLowerCase() === "d") { e.preventDefault(); const { a, h } = sel; change((t) => { fillDown(t, a, h) }, "input.paste", { pick: [a, h] }) }
     else if (!mod && (e.key === "Backspace" || e.key === "Delete")) { e.preventDefault(); const { a, h } = sel; change((t) => clearCells(t, a, h), "delete", { pick: [a, h] }) }
     else if (!mod && (e.key === "Escape" || e.key === "Enter" || e.key === "Tab" || e.key === "F2")) { e.preventDefault(); open(sel.h.r, sel.h.c) }
   })

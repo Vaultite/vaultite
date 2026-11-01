@@ -152,6 +152,15 @@ export const moveColumn = (t: Table, from: number, to: number) => {
 export function clearCells(t: Table, a: Cell, b: Cell) {
   for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r++) for (let c = Math.min(a.c, b.c); c <= Math.max(a.c, b.c); c++) t.rows[r].cells[c] = ""
 }
+/** ⌘D, as a spreadsheet's: rows r0..r1 of columns c0..c1 take the top row's cells; one row takes the row above's (never
+ *  the header's). False when there's nothing to copy from. */
+export function fillDown(t: Table, a: Cell, b: Cell): boolean {
+  const r0 = Math.min(a.r, b.r), r1 = Math.max(a.r, b.r), c0 = Math.min(a.c, b.c), c1 = Math.max(a.c, b.c)
+  const from = r0 === r1 ? r0 - 1 : r0
+  if (from < 1) return false
+  for (let r = from + 1; r <= r1; r++) for (let c = c0; c <= c1; c++) t.rows[r].cells[c] = t.rows[from].cells[c]
+  return true
+}
 /** Text (as typed: line breaks, pipes) into the cells from `at` on, rows and columns added where it runs past them. */
 export function fillCells(t: Table, at: Cell, cells: string[][]) {
   const cols = Math.max(...cells.map((r) => r.length))

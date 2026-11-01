@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **A card added to a board's column**: each column of a base's board has a +, a new note with that column's value
   (and what the view's filters ask for), opened in a tab beside it.
+- **Fill down in tables**: with cells of a note's table selected, ⌘D (Ctrl+D) fills them down from the top row, as in
+  a spreadsheet; one row selected takes the row above's.
 - **Slides read annotations as Advanced Slides does**: one on the line under a callout or quote styles the whole
   callout (its width, rotation), and one written inside `inline code` shows as written instead of styling the slide.
 - **Big tables move between cells at once**: in a note's table, moving to another cell draws again only the cell left,

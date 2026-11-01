@@ -296,4 +296,14 @@ await until(() => cell(1, 0, t6).evaluate((td) => !!td.querySelector("svg")), 80
 await cell(1, 0, t6).click({ position: { x: 30, y: 8 } }); await wait(200)
 await page.keyboard.press("Tab"); await wait(300)
 check("a cell moved on from draws its shortcode's icon again", await until(() => cell(1, 0, t6).evaluate((td) => !!td.querySelector("svg")), 5000).catch(() => false))
+
+// ---- ⌘D fills down, as a spreadsheet's ----
+await put(MORE, "| Task | Owner |\n| --- | --- |\n| Ship | Alice Park |\n| Docs |  |\n| Tests |  |\n\nEnd\n")
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(MORE)}`); await wait(1500)
+const t4 = ed.locator(".cm-block-table table")
+await cell(1, 1, t4).click({ position: { x: 3, y: 3 } }); await wait(200)
+await page.keyboard.press("Shift+ArrowDown"); await page.keyboard.press("Shift+ArrowDown"); await wait(200)
+await page.keyboard.press("ControlOrMeta+d"); await wait(400)
+check("⌘D fills the selected cells down from the top one", await saved(async () => (await read(MORE)).includes("| Docs | Alice Park |\n| Tests | Alice Park |")), await read(MORE))
+check("and the app's own ⌘D (split right) doesn't run", await page.locator("[data-pane]").count() === 1)
 await done()

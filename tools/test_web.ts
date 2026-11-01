@@ -527,6 +527,11 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   const dup = tt.parseTable("|a|b|\n|-|-|\n|1|x|\n|2|y|")!
   tt.duplicateRow(dup, 1); tt.duplicateRow(dup, 0)
   check("tables: a row duplicated under it, never the header", tt.writeTable(dup) === "|a|b|\n|-|-|\n|1|x|\n| 1 | x |\n|2|y|", tt.writeTable(dup))
+  const fd = tt.parseTable("|a|b|\n|-|-|\n|1|x|\n|2|y|\n|3|z|")!
+  const down = (a: [number, number], h: [number, number]) => { const t = tt.parseTable(tt.writeTable(fd))!; const ok = tt.fillDown(t, { r: a[0], c: a[1] }, { r: h[0], c: h[1] }); return ok ? tt.writeTable(t).split("\n").slice(2).join(";") : "no" }
+  check("tables: ⌘D fills down from the selection's top row; one row from the row above, never the header",
+    down([1, 0], [3, 0]) === "|1|x|;| 1 | y |;| 1 | z |" && down([3, 1], [3, 1]) === "|1|x|;|2|y|;| 3 | y |" && down([1, 0], [1, 1]) === "no",
+    [down([1, 0], [3, 0]), down([3, 1], [3, 1]), down([1, 0], [1, 1])])
   const ragged = tt.parseTable("|a|\n|-|\n|1|2|")!
   ragged.rows[1].cells[0] = "3"
   check("tables: a row wider than its header keeps its extra cells as cells change", tt.writeTable(ragged) === "|a|\n|-|\n| 3 | 2 |", tt.writeTable(ragged))
