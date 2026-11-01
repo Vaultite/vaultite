@@ -2,12 +2,12 @@
 // base's YAML (baseedit.ts) as it's used, the results following.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
-import { ArrowUpDown, Code, Copy, PencilLine, Sigma, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
+import { ArrowUpDown, Code, Copy, Eye, EyeOff, PencilLine, Sigma, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
 import { choose, cn, copyText, FilterField, folderOf, menuBelow, notify, notifyError, openFile, post, SortableList, useDismiss, type MenuItem } from "@vaultite"
-import { csvText, keyOf, label, markdownRows, rowsOf, sortOf, type Result } from "./query"
+import { csvText, groupName, keyOf, label, markdownRows, rowsOf, sortOf, type Result } from "./query"
+import { parse as parseExpr, same } from "./expr"
 import { countText } from "./QueryView"
-import { removeProperty, setDisplayName, setFilters, setFormula, setGroupBy, setLimit, setOrder, setSort } from "./baseedit"
-import { parse as parseExpr } from "./expr"
+import { removeProperty, setDisplayName, setFilters, setFormula, setGroupBy, setGroupOrder, setLimit, setOrder, setSort } from "./baseedit"
 import { obj, viewsOf, type BaseConfig } from "./bases"
 import { condOf, countOf, exprOf, FILE_OPS, NO_VALUE, treeOf, valueOf, type Cond, type Group, type Item, type Op } from "./filters"
 
@@ -159,9 +159,20 @@ export const groupOf = (v: Record<string, unknown>): { key: string; desc: boolea
     ? { key: keyOf(g.property), desc: String(g.direction ?? "").toUpperCase() === "DESC" } : null
 }
 
+/** A group's row in the Group menu: its value as written in `groupOrder` (null: no value), its name, its count. */
+type GroupRow = { id: string; value: unknown; name: string | null; n: number }
+const NONE_ID = "\0none"
+/** What `groupOrder` holds for a group: its value when that's plain (a number stays a number), else its name. */
+const stored = (r: { value: unknown; name: string | null }) =>
+  r.name === null ? null : r.value !== null && typeof r.value !== "object" ? r.value : r.name
+
 export function GroupMenu({ e }: { e: BaseEdit }) {
   const v = viewsOf(e.cfg)[e.at] ?? {}
   const g = groupOf(v)
+  const order = g && Array.isArray(v.groupOrder) ? v.groupOrder as unknown[] : null
+  // (a manual order turned back to automatic while the menu is open comes back as it was, as in Obsidian)
+  const [removed, setRemoved] = useState<unknown[] | null>(null)
+  const [adding, setAdding] = useState(false)
   const set = (next: typeof g) => e.edit((t) => setGroupBy(t, e.at, next))
   const props = allProps(e.cfg, e.res, e.columns)
   // (a board's columns are its groups: it can change them, not lose them)
@@ -178,20 +189,98 @@ export function GroupMenu({ e }: { e: BaseEdit }) {
     )
   }
   const [up, down] = dirs(e.res, g.key)
+  // The groups: those groupOrder lists, in its order (from the YAML, so a change shows at once), then the rest by name.
+  const known = e.res?.group === g.key ? e.res.allGroups ?? [] : []
+  const nameOf = (x: unknown) => (x === null || x === undefined || x === "" ? null : groupName(x))
+  const match = (a: string | null, b: string | null) => (a === null || b === null ? a === b : same(a, b))
+  const shown: GroupRow[] = []
+  for (const x of order ?? []) {
+    const name = nameOf(x)
+    if (shown.some((r) => match(r.name, name))) continue
+    const k = known.find((r) => match(r.name, name))
+    shown.push({ id: name ?? NONE_ID, value: x ?? null, name: k ? k.name : name, n: k?.n ?? 0 })
+  }
+  const hidden: GroupRow[] = known.filter((k) => !shown.some((r) => match(r.name, k.name)))
+    .map((k) => ({ id: k.name ?? NONE_ID, value: stored(k), name: k.name, n: k.n }))
+    .sort((a, b) => (a.name === null ? 1 : b.name === null ? -1 : a.name.localeCompare(b.name, undefined, { numeric: true })))
+  const write = (next: unknown[] | null) => e.edit((t) => setGroupOrder(t, e.at, next))
+  const manual = (on: boolean) => {
+    if (on === !!order) return
+    if (on) {
+      // (every group shown, in the order they're in now: turning manual changes nothing until a group is moved or hidden)
+      write(removed ?? known.map(stored))
+      setRemoved(null)
+    } else { setRemoved(order); write(null) }
+  }
+  const toggle = (r: GroupRow, on: boolean) => write(on ? [...shown.map((x) => x.value), r.value] : shown.filter((x) => x.id !== r.id).map((x) => x.value))
+  const add = (text: string) => {
+    setAdding(false)
+    const t = text.trim()
+    if (!t) return
+    const was = [...shown, ...hidden].find((r) => match(r.name, t))
+    if (was && shown.includes(was)) return
+    write([...shown.map((x) => x.value), was ? was.value : t])
+  }
+  const anyShown = shown.length > 0
+  const groupRow = (r: GroupRow, on: boolean) => (
+    <label className={cn(row, "min-w-0 flex-1 cursor-pointer gap-2 rounded-[6px] px-1 text-[13px] hover:bg-foreground/[0.04] pointer-coarse:text-[15px]", !on && "text-muted-foreground")}
+      data-base-group={r.name ?? ""} data-shown={on || undefined}>
+      <input type="checkbox" checked={on} className="size-3.5 shrink-0 accent-[var(--primary)] pointer-coarse:size-5" onChange={() => toggle(r, !on)} />
+      <span className="min-w-0 flex-1 truncate">{r.name ?? "No value"}</span>
+      <span className="shrink-0 text-[12px] text-tertiary tabular-nums">{r.n}</span>
+    </label>
+  )
   return (
     <div className="flex flex-col gap-0.5" data-base-group-menu>
       <div className={row} data-base-group-by={g.key}>
         <span className="shrink-0 px-1 text-[13px] text-muted-foreground pointer-coarse:text-[15px]">Group by</span>
-        <button type="button" className={cn(pill, "flex-1")} onClick={() => pickProp("Group by", props, e.cfg, (k) => set({ ...g, key: k }), g.key)}>
+        <button type="button" className={cn(pill, "flex-1")} onClick={() => pickProp("Group by", props, e.cfg, (k) => {
+          // (another property's groups are other values: its groups all show, in order)
+          if (k !== g.key) e.edit((t) => setGroupOrder(setGroupBy(t, e.at, { ...g, key: k }), e.at, null))
+        }, g.key)}>
           <span className="truncate">{propLabel(e.cfg, g.key)}</span>
         </button>
-        <button type="button" className={pill} data-base-group-dir={g.desc ? "desc" : "asc"} onClick={(ev) => menuBelow(ev, [
-          { label: up, checked: !g.desc, run: () => set({ ...g, desc: false }) },
-          { label: down, checked: g.desc, run: () => set({ ...g, desc: true }) },
-        ])}>{g.desc ? down : up}</button>
+        <button type="button" className={pill} data-base-group-dir={order ? "manual" : g.desc ? "desc" : "asc"} onClick={(ev) => menuBelow(ev, [
+          { label: up, checked: !order && !g.desc, run: () => { manual(false); if (g.desc) set({ ...g, desc: false }) } },
+          { label: down, checked: !order && g.desc, run: () => { manual(false); if (!g.desc) set({ ...g, desc: true }) } },
+          { label: "Manual", checked: !!order, run: () => manual(true) },
+        ])}>{order ? "Manual" : g.desc ? down : up}</button>
         {!board && <button type="button" aria-label="Remove grouping" data-tip="Remove" className={iconBtn}
           onClick={() => set(null)}><Trash2 className="size-4" strokeWidth={2} /></button>}
       </div>
+      {order && (
+        <div className="mt-1 flex flex-col border-t-[0.5px] border-border pt-1" data-base-groups>
+          {shown.length ? (
+            <SortableList ids={shown.map((r) => r.id)} onMove={(a, b) => {
+              const next = [...shown], from = next.findIndex((r) => r.id === a), to = next.findIndex((r) => r.id === b)
+              next.splice(to, 0, ...next.splice(from, 1))
+              write(next.map((r) => r.value))
+            }}>
+              {(id) => (
+                <div className="flex items-center">
+                  <GripVertical className="size-4 shrink-0 cursor-grab text-tertiary" strokeWidth={2} aria-hidden />
+                  {groupRow(shown.find((r) => r.id === id)!, true)}
+                </div>
+              )}
+            </SortableList>
+          ) : null}
+          {adding && (
+            <div className={cn(row, "pl-4")}>
+              <input autoFocus placeholder="Value" aria-label="New group" data-base-new-group className={cn(field, "flex-1")}
+                onKeyDown={(ev) => { if (ev.key === "Enter") { ev.preventDefault(); add(ev.currentTarget.value) } else if (ev.key === "Escape") { ev.stopPropagation(); setAdding(false) } }}
+                onBlur={(ev) => add(ev.target.value)} />
+            </div>
+          )}
+          {hidden.map((r) => <div key={r.id} className="pl-4">{groupRow(r, false)}</div>)}
+          <div className="mt-1 flex items-center justify-between border-t-[0.5px] border-border pt-1">
+            <button type="button" className={addBtn} data-base-add-group onClick={() => setAdding(true)}><Plus className="size-4" strokeWidth={2} />Add group</button>
+            <button type="button" className={addBtn} data-base-groups-all={anyShown ? "hide" : "show"}
+              onClick={() => write(anyShown ? [] : [...shown, ...hidden].map((r) => r.value))}>
+              {anyShown ? <EyeOff className="size-4" strokeWidth={2} /> : <Eye className="size-4" strokeWidth={2} />}{anyShown ? "Hide all" : "Show all"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

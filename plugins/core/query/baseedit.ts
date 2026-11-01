@@ -167,12 +167,23 @@ export function setFilters(text: string, i: number | null, filters: unknown): st
   return out(d)
 }
 
-/** View `i`'s grouping (`groupBy: {property, direction}`; null: none). */
+/** View `i`'s grouping (`groupBy: {property, direction}`; null: none, and no `groupOrder` either). */
 export function setGroupBy(text: string, i: number, group: { key: string; desc: boolean } | null): string {
   const d = doc(text)
   const v = viewAt(d, i)
   if (!v) return text
   put(d, v, "groupBy", group ? { property: propId(group.key, written(d)), direction: group.desc ? "DESC" : "ASC" } : undefined)
+  if (!group) put(d, v, "groupOrder", undefined)
+  return out(d)
+}
+
+/** View `i`'s groups shown, in order (`groupOrder`, Obsidian's manual order: null in it is no value); null: every
+ *  group, in groupBy's direction. */
+export function setGroupOrder(text: string, i: number, order: unknown[] | null): string {
+  const d = doc(text)
+  const v = viewAt(d, i)
+  if (!v) return text
+  put(d, v, "groupOrder", order ? order.map((x) => x ?? null) : undefined)
   return out(d)
 }
 
@@ -217,7 +228,7 @@ export function removeProperty(text: string, key: string): string {
       const rest = Object.fromEntries(Object.entries(o).filter(([x]) => !named(x)))
       put(d, m, k, Object.keys(rest).length ? rest : undefined)
     }
-    if (plainObj(v.groupBy) && named(v.groupBy.property)) put(d, m, "groupBy", undefined)
+    if (plainObj(v.groupBy) && named(v.groupBy.property)) { put(d, m, "groupBy", undefined); put(d, m, "groupOrder", undefined) }
   })
   if (plainObj(cfg?.properties) && Object.keys(cfg.properties).some(named)) {
     const rest = Object.fromEntries(Object.entries(cfg.properties).filter(([x]) => !named(x)))
@@ -241,7 +252,7 @@ export function addView(text: string, type: string, name: string, from?: number)
   const vs = views(d)
   const src = from !== undefined && isMap(vs.items[from]) ? (vs.items[from] as import("yaml").YAMLMap).toJSON() as Record<string, unknown> : {}
   const copy: Record<string, unknown> = { type, name }
-  for (const k of ["filters", "order", "sort", "groupBy", "summaries", "limit", "coordinates", "markerColor", "markerIcon"]) if (src[k] !== undefined) copy[k] = src[k]
+  for (const k of ["filters", "order", "sort", "groupBy", "groupOrder", "summaries", "limit", "coordinates", "markerColor", "markerIcon"]) if (src[k] !== undefined) copy[k] = src[k]
   vs.add(d.createNode(copy))
   return out(d)
 }

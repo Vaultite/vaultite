@@ -71,6 +71,6 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
   }
   for (const k of ["coordinates", "markerColor", "markerIcon", "date", "month", "image", "imageFit"]) if (typeof v[k] === "string") opts[k] = v[k]
   for (const k of ["cardSize", "imageAspectRatio"]) if (typeof v[k] === "number") opts[k] = v[k]
-  if (Array.isArray(v.groups) && v.groups.length) opts.groups = v.groups.map(String)
+  if (Array.isArray(v.groupOrder) && opts.group) opts.groupOrder = v.groupOrder
   return { opts, views, index, notes }
 }

@@ -309,8 +309,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   less work on the server at 50,000 notes).
 - **vau tells a mistyped command from a failed one**: a missing or bad argument now exits 2, like an unknown command,
   and a command that fails exits 1; `vau --help` says so.
-- **Database views' Group and Results menus**: a base's bar groups its rows by a property (in either direction),
-  and its count opens Results: a limit, the results copied as a Markdown table or CSV, or saved as a CSV beside it.
+- **Database views' Group and Results menus**: a base's bar groups its rows by a property (in either direction, or
+  Manual: groups dragged into order, hidden, shown or added, as Obsidian's `groupOrder`; a kanban's `groups` key is now
+  that), a click on a group's heading folds it, and its count opens Results: a limit, the results copied as a Markdown
+  table or CSV, or saved as a CSV beside it.
 - **vau errors name flags only where they mean them**: a word in an error that happens to be a parameter's name
   stays a word ("no entry for" no longer reads "no --entry for"); a parameter the server names is its flag or <arg>.
 - **The app starts with less to download**: it asks only for the actions a file's menu offers, not the whole

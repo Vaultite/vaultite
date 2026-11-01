@@ -25,7 +25,7 @@ const DAY1 = `${MONTH}-03`, DAY2 = `${MONTH}-${now.getDate() === 20 ? "21" : "20
 await put(`${F}/Tasks/Write docs.md`, `---\ntype: qa-task   # keep this\nstatus: idea\ndue: ${DAY1}\n---\n\nNotes.\n`)
 await put(`${F}/Tasks/Fix map.md`, `---\ntype: qa-task\nstatus: doing\ndue: ${DAY1} 18:00\n---\n`)
 await put(`${F}/Tasks/Ship app.md`, `---\ntype: qa-task\nstatus: done\ndue: ${TODAY}\n---\n`)
-await put(`${F}/Board.md`, base([inF("/Tasks"), 'type == "qa-task"'], "type: kanban\nname: Qa board\ngroupBy: {property: status, direction: ASC}\ngroups: [idea, doing, done]\norder: [file.name, due]", "wide: true\n") + "\n"
+await put(`${F}/Board.md`, base([inF("/Tasks"), 'type == "qa-task"'], "type: kanban\nname: Qa board\ngroupBy: {property: status, direction: ASC}\ngroupOrder: [idea, doing, done, null]\norder: [file.name, due]", "wide: true\n") + "\n"
   + base([inF("/Tasks"), 'type == "qa-task"'], "type: calendar\nname: Qa calendar\ndate: due", "wide: true\n"))
 await put(`${F}/Views.md`, base([inF(), 'type == "qa-person"'], "type: table\nname: Qa people\norder: [file.name, relation, location, every_days, tags, with]\nsort: [{property: file.name, direction: ASC}]") + "\n"
   + base([inF(), 'type == "qa-person"'], "type: cards\nname: Qa cards\norder: [file.name, relation, every_days]") + "\n"

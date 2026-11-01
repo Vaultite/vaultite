@@ -35,6 +35,9 @@ export type Result = {
   sort: SortKey[]
   /** The key rows are grouped by (a board's columns). */
   group?: string | null
+  /** Every group the rows make, shown or not, in the view's own order, with its count: what the Group menu lists.
+   *  `shown`: `groupOrder` lists it (only when the view has one). */
+  allGroups?: { name: string | null; value: unknown; n: number; shown?: boolean }[]
   /** A calendar's date key and month ("2026-09"). */
   date?: string; month?: string
   /** Summaries under the columns (the rows shown). */
@@ -303,7 +306,7 @@ export function compile(o: Opts) {
   }
   const keyName = (k: unknown) => (typeof k === "string" ? keyOf(k) : "")
   return {
-    inScope, where, outByArchive, hidesArchived: arch === false, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
+    inScope, where, outByArchive, hidesArchived: arch === false, sort, view, limit, offset, group, groupDesc, groupOrder: orderOf(o.groupOrder), date, month, columns: list(o.columns).map(keyOf),
     title: typeof o.title === "string" ? o.title : "",
     coordinates: keyName(o.coordinates) || "coordinates", markerColor: keyName(o.markerColor), markerIcon: keyName(o.markerIcon),
     image: keyName(o.image), cards: cardLook(o),
@@ -327,6 +330,10 @@ export function dayOf(v: unknown): string | null {
   const m = typeof v === "string" ? /^(\d{4}-\d{2}-\d{2})(?=$|[ T])/.exec(v.trim()) : null
   return m ? m[1] : null
 }
+
+/** Bases' `groupOrder`: the groups shown, in order (null: no value); absent, every group in `groupBy`'s direction. */
+const orderOf = (v: unknown): { name: string | null; value: unknown }[] | null =>
+  Array.isArray(v) ? v.map((x) => (blank(x) ? { name: null, value: null } : { name: groupName(x), value: x })) : null
 
 /** A group's name for a value: its text ("" when it has none; a list's values joined). */
 export const groupName = (v: unknown) =>
@@ -524,6 +531,7 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     return row
   })
   const groups: Group[] = []
+  let allGroups: Result["allGroups"]
   if (date) {
     // A calendar: a group per day, in order.
     const by = new Map<string, Row[]>()
@@ -541,15 +549,29 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
       g.rows.push(r)
       by.set(name, g)
     }
-    // A board shows the groups it lists even when nobody is in them, and always "No value" (a place to clear it).
-    if (q.view === "board") {
-      for (const name of q.groups) if (![...by.keys()].some((k) => same(k, name))) by.set(name, { name, value: name, rows: [] })
-      if (!by.has("")) by.set("", { name: null, value: null, rows: [] })
-    }
-    // The listed ones first, in their order; the rest after, in order (Bases' direction: DESC, the other way); no value last.
-    const rank = (k: string) => { const i = q.groups.findIndex((g) => k && same(k, g)); return i < 0 ? q.groups.length : i }
+    // In groupBy's direction, no value last; a groupOrder shows only what it lists, in its order (a board each column
+    // it lists, even empty; elsewhere a group with nothing in it isn't drawn). Without one a board always has No value.
     const dir = q.groupDesc ? -1 : 1
-    for (const k of [...by.keys()].sort((a, b) => rank(a) - rank(b) || (!a || !b ? compare(a, b) : compare(a, b) * dir))) groups.push(by.get(k)!)
+    const auto = [...by.keys()].sort((a, b) => (!a || !b ? compare(a, b) : compare(a, b) * dir))
+    const order = q.groupOrder
+    if (order) {
+      const picked = new Set<string>(), listed: NonNullable<Result["allGroups"]> = []
+      for (const { name, value } of order) {
+        const k = name === null ? "" : auto.find((x) => x && same(x, name)) ?? name
+        if (picked.has(k.toLowerCase())) continue
+        picked.add(k.toLowerCase())
+        const g = by.get(k)
+        listed.push({ name: k || null, value: g ? g.value ?? null : value, n: g?.rows.length ?? 0, shown: true })
+        if (g) groups.push(g)
+        else if (q.view === "board") groups.push({ name: k || null, value, rows: [] })
+      }
+      const rest = auto.filter((k) => !picked.has(k.toLowerCase())).map((k) => by.get(k)!)
+      allGroups = [...listed, ...rest.map((g) => ({ name: g.name, value: g.value ?? null, n: g.rows.length, shown: false }))]
+    } else {
+      if (q.view === "board" && !by.has("")) auto.push("")
+      for (const k of auto) groups.push(by.get(k) ?? { name: null, value: null, rows: [] })
+      allGroups = groups.map((g) => ({ name: g.name, value: g.value ?? null, n: g.rows.length }))
+    }
   } else groups.push({ name: null, rows })
 
   // Summaries: a column's values in the rows shown (and in each group's, when there are several).
@@ -596,8 +618,8 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     allKeys = [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 300).map(([k]) => k)
   }
   return {
-    title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: rows.length, ...(q.offset ? { offset: q.offset } : {}), sort,
-    ...(q.group ? { group: q.group } : {}), ...(date ? { date, month } : {}), ...(summaries ? { summaries } : {}),
+    title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: groups.reduce((n, g) => n + g.rows.length, 0), ...(q.offset ? { offset: q.offset } : {}), sort,
+    ...(q.group ? { group: q.group } : {}), ...(allGroups ? { allGroups } : {}), ...(date ? { date, month } : {}), ...(summaries ? { summaries } : {}),
     ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(q.view === "cards" && q.cards ? { cards: q.cards } : {}), ...(notes.length ? { notes } : {}), ...(archived.length ? { archivedHidden: archived.length } : {}), ...(Object.keys(types).length ? { types } : {}),
     ...(allKeys ? { keys: allKeys } : {}),
   }

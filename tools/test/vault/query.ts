@@ -115,12 +115,22 @@ export default async ($: VaultTest) => {
     check("a ```base fence reads as a Markdown table", md.includes("### Test people") && md.includes("| Name | Relation | Every days |")
       && md.indexOf("[[Alice Park]]") < md.indexOf("[[Bob Lee]]") && md.includes("| [[Bob Lee]] | family | 7 |"), md)
 
-    // Boards: a column per value of the group key, the listed ones first (even empty), "No value" last.
-    const board = run({ type: "qtest", view: "board", group: "relation", groups: ["mentor", "friend"], columns: ["file", "every_days"] }, recs)
-    check("board: listed columns first (empty ones too), the rest after, no value last",
+    // Boards: a column per value of the group key, "No value" last; Bases' groupOrder: only those, in its order (empty too).
+    const every = run({ type: "qtest", view: "board", group: "relation", columns: ["file", "every_days"] }, recs)
+    check("board: a column per value, in order, no value last (even empty)",
+      JSON.stringify(every.groups.map((x: Any) => [x.name, x.rows.map((r: Any) => r.title)])) === '[["Family",["Bob Lee"]],["friend",["Alice Park","Lee Park"]],[null,[]]]', every.groups)
+    const board = run({ type: "qtest", view: "board", group: "relation", groupOrder: ["mentor", "friend"], columns: ["file", "every_days"] }, recs)
+    check("board: groupOrder's columns only, in its order, empty ones too",
       JSON.stringify(board.groups.map((x: Any) => [x.name, x.value, x.rows.map((r: Any) => r.title)])) ===
-        '[["mentor","mentor",[]],["friend","friend",["Alice Park","Lee Park"]],["Family","Family",["Bob Lee"]],[null,null,[]]]'
-      && board.group === "relation", board.groups)
+        '[["mentor","mentor",[]],["friend","friend",["Alice Park","Lee Park"]]]'
+      && board.group === "relation" && board.shown === 2, board.groups)
+    check("board: the menu's list has the hidden ones after",
+      JSON.stringify(board.allGroups) === '[{"name":"mentor","value":"mentor","n":0,"shown":true},{"name":"friend","value":"friend","n":2,"shown":true},{"name":"Family","value":"Family","n":1,"shown":false}]', board.allGroups)
+    const ordered = run({ type: "qtest", group: { property: "relation", direction: "DESC" }, groupOrder: [null, "mentor", "FAMILY"] }, recs)
+    check("table: groupOrder's groups that have files (null: no value; any case)",
+      JSON.stringify(ordered.groups.map((x: Any) => x.name)) === '["Family"]' && ordered.shown === 1 && ordered.total === 3, ordered.groups)
+    const desc = run({ type: "qtest", group: { property: "relation", direction: "DESC" } }, recs)
+    check("table: groups the other way with DESC", JSON.stringify(desc.groups.map((x: Any) => x.name)) === '["friend","Family"]', desc.groups)
     const linked = run({ from: "Q/", view: "board", group: "with" }, recs)
     check("board: a column's value is what its files have (a link stays a link)", linked.groups[0].name === "Bob Lee" && linked.groups[0].value === "[[Bob Lee]]"
       && linked.groups[1].name === null && linked.groups[1].rows.length === 2, linked.groups)
@@ -142,7 +152,7 @@ export default async ($: VaultTest) => {
     check("calendar: a bad month says so", /month is YYYY-MM/.test(why), why)
 
     // As text, and a card moved: the app writes that one key (PUT /api/file with its base) and the board follows.
-    write("Query test/Board.md", "---\ntags: [Trip]\n---\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: kanban\n    name: Test board\n    groupBy: {property: relation, direction: ASC}\n    groups: [friend, family, mentor]\n    order: [file.name, every_days]\n```\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: calendar\n    name: Test calendar\n    date: met\n    month: 2026-09\n```\n")
+    write("Query test/Board.md", "---\ntags: [Trip]\n---\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: kanban\n    name: Test board\n    groupBy: {property: relation, direction: ASC}\n    groupOrder: [friend, family, mentor, null]\n    order: [file.name, every_days]\n```\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: calendar\n    name: Test calendar\n    date: met\n    month: 2026-09\n```\n")
     write("Query test/Alice Park.md", "---\ntype: qtest\nrelation: friend\nevery_days: 30\nmet: 2026-09-12\n---\n\nHi.\n")
     let [, bmd] = await api("GET", "render?path=Query test/Board.md")
     check("a kanban reads as a section per column (its groups first, even empty), a bullet per file", bmd.includes("### Test board") && bmd.includes("#### friend (1)\n\n- [[Alice Park]] · 30")
@@ -151,7 +161,7 @@ export default async ($: VaultTest) => {
     check("a calendar reads as its month (the view's), a bullet per file by date", bmd.includes("### Test calendar\n\n#### September 2026\n\n- 2026-09-12 · [[Alice Park]]"), bmd)
     const before = read("Query test/Bob Lee.md")
     ;[code] = await api("PUT", "file", { path: "Query test/Bob Lee.md", text: before.replace("relation: family", "relation: mentor"), base: before })
-    ;[, qr] = await api("POST", "query", { from: "Query test/", type: "qtest", view: "board", group: "relation", groups: ["friend", "family", "mentor"] })
+    ;[, qr] = await api("POST", "query", { from: "Query test/", type: "qtest", view: "board", group: "relation", groupOrder: ["friend", "family", "mentor", null] })
     check("a moved card: one line changes (its comment stays), the board has it in its new column", code === 200
       && read("Query test/Bob Lee.md") === "---\ntype: qtest\nrelation: mentor\nevery_days: 7 # weekly\n---\n"
       && JSON.stringify(qr.groups.map((x: Any) => [x.name, x.rows.length])) === '[["friend",1],["family",0],["mentor",1],[null,0]]', qr.groups)

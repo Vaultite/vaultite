@@ -22,7 +22,8 @@ views:
     order: [file.name, author, formula.left]      # the columns
     sort: [{property: formula.left, direction: DESC}]
     columnSize: {note.author: 180}                 # a column's width (px)
-    groupBy: {property: note.status, direction: ASC}   # a kanban's columns
+    groupBy: {property: note.status, direction: ASC}   # a heading per value (a kanban's columns)
+    groupOrder: [reading, done, null]                  # only these groups, in this order (null: no value)
     limit: 20
     summaries: {formula.left: Sum, note.current_page: rounded}
 ```
@@ -37,12 +38,14 @@ views:
   clears it, and Enter or Tab saves and moves on.
 - What the app changes in a view is written to its YAML, as Obsidian writes it (a fence in its note, an embed in its
   .base): a heading's menu (sort, rename: `displayName`, summarize, hide), dragging a heading (`order`) or its edge
-  (`columnSize`), and the bar's Results (`limit`), Group (`groupBy`), Sort, Filter (the base's and the view's `filters`) and Properties
+  (`columnSize`), and the bar's Results (`limit`), Group (`groupBy`; Manual: `groupOrder`), Sort, Filter (the base's and the view's `filters`) and Properties
   (`order`) menus. Its Search only narrows what's shown, never the YAML. Its New makes a note the view lists: in its
   `file.inFolder` folder, with the `prop == value` properties and `file.hasTag` tags its filters' `and`s hold.
-- Keys this app adds to a view: a `kanban` is a column per value of `groupBy`
-  (and No value), `groups: [idea, building]` first, even empty; moving a card (drag, or its … menu) writes that key.
-  A `calendar` is a month by `date: started` (default `date`, else `created`), `month: 2026-09` to start there;
+- Groups: a heading per value of `groupBy` (a click folds it, for now only), in its direction, no value last. With
+  `groupOrder` only the groups it lists show, in its order: a `kanban` has a column for each, even empty; elsewhere a
+  group nothing's in isn't drawn. A kanban without it has every value and a No value column; moving a card (drag, or
+  its … menu) writes groupBy's key.
+- Keys this app adds to a view: a `calendar` is a month by `date: started` (default `date`, else `created`), `month: 2026-09` to start there;
   dragging an item to another day rewrites the date. A `map` pins each file at `coordinates: note.place` (default
   `coordinates`: `[lat, lon]` or `"lat, lon"`), coloured by `markerColor` (an app colour's name or a CSS colour), with
   `markerIcon` (a lucide name).

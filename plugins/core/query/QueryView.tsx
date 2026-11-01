@@ -6,7 +6,7 @@ import {
   addDays, Bar, cn, dateText, dow, edgeScroller, Empty, isMac, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
-import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
+import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Group, type Result, type Row } from "./query"
 
 export const TINT = "var(--indigo)"
 type Resolve = ReturnType<typeof resolver>
@@ -193,6 +193,12 @@ export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, f
   add?: (props: Record<string, unknown>) => void
 }) {
   const special = res.view === "board" || res.view === "calendar" || res.view === "map"
+  // Groups folded under their headings (a table's, cards', a list's): for now only, as in Obsidian; the file's untouched.
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const fold = (g: Group) => setFolded((was) => { const next = new Set(was), k = g.name ?? "\0"; if (!next.delete(k)) next.add(k); return next })
+  const shown = useMemo(() => (special || !folded.size ? groups
+    : groups.map((g) => (folded.has(g.name ?? "\0") ? { ...g, rows: [], summaries: undefined, n: g.rows.length } : g))), [groups, folded, special])
+  const heads = groups.length > 1 || !!groups[0]?.name
   return (
     <div className={cn("space-y-4 [contain:inline-size]", fill && res.view === "map" && "flex h-full flex-col")} data-query={res.view} data-keylist onContextMenu={rowMenu}>
       {res.notes?.length ? (
@@ -201,14 +207,15 @@ export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, f
         </div>
       ) : null}
       {!res.total && !special ? <Empty>Nothing matches.</Empty>
+        : !res.shown && !groups.length && res.view !== "calendar" && res.view !== "map" ? <Empty>Every group is hidden: the Group menu shows them.</Empty>
         : res.view === "board" ? <Board groups={groups} res={res} resolve={resolve} save={save} add={add} />
         : res.view === "calendar" ? <Calendar groups={groups} res={res} resolve={resolve} month={month} setMonth={setMonth} save={save} />
         : res.view === "map" ? <MapResult groups={groups} res={res} resolve={resolve} fill={fill} />
-        : res.view === "table" ? <Table groups={groups} res={res} resolve={resolve} ctl={ctl} save={save} />
-        : groups.map((g, i) => (
+        : res.view === "table" ? <Table groups={shown} res={res} resolve={resolve} ctl={ctl} save={save} fold={heads ? fold : undefined} />
+        : shown.map((g, i) => (
           <div key={g.name ?? `-${i}`}>
-            {(groups.length > 1 || g.name) && <GroupHead name={g.name} n={g.rows.length} />}
-            {res.view === "cards" ? <Cards rows={g.rows} res={res} resolve={resolve} /> : <Lines rows={g.rows} res={res} resolve={resolve} />}
+            {heads && <GroupHead g={g} fold={fold} />}
+            {g.rows.length ? res.view === "cards" ? <Cards rows={g.rows} res={res} resolve={resolve} /> : <Lines rows={g.rows} res={res} resolve={resolve} /> : null}
           </div>
         ))}
     </div>
@@ -229,11 +236,20 @@ const opener = {
   cancel: () => window.clearTimeout(pending),
 }
 
-const GroupHead = ({ name, n }: { name: string | null; n: number }) => (
-  <div className="mb-1 flex items-baseline gap-1.5 text-[13px] font-semibold text-muted-foreground" data-query-group>
-    <span className="truncate">{name ?? "No value"}</span><span className="font-normal tabular-nums">{n}</span>
-  </div>
-)
+/** A group as drawn: folded, it has no rows and `n` says how many it has. */
+type Shown = Group & { n?: number }
+/** A group's heading, a click folding or unfolding it. */
+const GroupHead = ({ g, fold }: { g: Shown; fold?: (g: Group) => void }) => {
+  const folded = g.n !== undefined
+  return (
+    <button type="button" aria-expanded={!folded} disabled={!fold} onClick={(e) => { e.stopPropagation(); fold?.(g) }}
+      className={cn("-ml-1 mb-1 flex max-w-full items-center gap-1 rounded-[6px] py-0.5 pr-1.5 pl-1 text-left text-[13px] font-semibold text-muted-foreground",
+        fold && "cursor-pointer hover:bg-foreground/[0.05] hover:text-foreground")} data-query-group={g.name ?? ""} data-folded={folded || undefined}>
+      <ChevronRight className={cn("size-3.5 shrink-0 transition-transform duration-150", !folded && "rotate-90")} strokeWidth={2.25} aria-hidden />
+      <span className="truncate">{g.name ?? "No value"}</span><span className="ml-0.5 font-normal tabular-nums">{g.n ?? g.rows.length}</span>
+    </button>
+  )
+}
 
 /** A column at least this wide, when resized (Obsidian's least). */
 const MIN_WIDTH = 40
@@ -243,9 +259,9 @@ type Cursor = { path: string; key: string; i: number }
 
 /** One table for every group (so the columns line up), each group under a heading row. Its header (`ctl`): a click
  *  opens a column's menu, dragging one moves it, its right edge resizes it. Focused, a spreadsheet's cell cursor. */
-const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
-  groups: { name: string | null; rows: Row[]; summaries?: Record<string, unknown> }[]; res: Result; resolve: Resolve; ctl?: TableCtl
-  save: (r: Row, key: string, v: unknown) => void
+const Table = memo(function Table({ groups, res, resolve, ctl, save, fold }: {
+  groups: Shown[]; res: Result; resolve: Resolve; ctl?: TableCtl
+  save: (r: Row, key: string, v: unknown) => void; fold?: (g: Group) => void
 }) {
   const [editing, setEditing] = useState<string | null>(null)
   const dropped = useRef(false) // Escape: the blur that follows doesn't save
@@ -370,10 +386,10 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
               })}
             </tr>
           </thead>
-        {groups.map((g, gi) => upTo[gi] < drawn && (
+        {groups.map((g, gi) => (upTo[gi] < drawn || (!g.rows.length && upTo[gi] <= drawn)) && (
         <tbody key={g.name ?? `-${gi}`}>
           {(groups.length > 1 || g.name) && (
-            <tr><td colSpan={res.columns.length} className={cn("pb-0.5", gi ? "pt-4" : "pt-2")}><GroupHead name={g.name} n={g.rows.length} /></td></tr>
+            <tr><td colSpan={res.columns.length} className={cn("pb-0.5", gi ? "pt-4" : "pt-2")}><GroupHead g={g} fold={fold} /></td></tr>
           )}
           {g.rows.slice(0, drawn - upTo[gi]).map((r, ri) => (
             <tr key={r.path} data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, !!(e.target as HTMLElement).closest("[data-editable]")) }}
