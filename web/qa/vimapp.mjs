@@ -108,7 +108,7 @@ await page.locator(".cm-line", { hasText: "Paragraph 1.2" }).first().click(); aw
 
 // / finds; n goes from match to match.
 await page.keyboard.press("/"); await wait(300)
-const bar = await page.locator("[data-vim-find]").boundingBox(), status = await page.locator("[data-status-bar]").boundingBox()
+const bar = await page.locator("[data-vim-find]").boundingBox(), status = await page.locator("[data-status-bar]:not([data-status-left])").boundingBox()
 check("the find bar is above the status bar", !!bar && (!status || bar.y + bar.height <= status.y + 1))
 await page.keyboard.type("needle"); await wait(300)
 check("/ counts the matches, the ones not drawn yet and in a table too, not a link's address", await page.getByText("4 matches").count() === 1)
