@@ -637,6 +637,20 @@ export function summaryText(v: unknown): string {
   return text(v)
 }
 
+/** Every row shown as one table, its cells as text (a file by its name, `links`: as [[its name]]): what a view's results copy
+ *  and export. */
+export function rowsOf(res: Result, links = false): string[][] {
+  const name = (r: Row) => (links ? `[[${r.title}]]` : r.title)
+  return [res.columns.map((c) => c.label), ...res.groups.flatMap((g) => g.rows.map((r) => res.columns.map((c) => (c.key === "file" ? name(r) : text(r.values[c.key])))))]
+}
+
+/** Rows as CSV (RFC 4180: a cell with a comma, quote or line break quoted). */
+export const csvText = (rows: string[][]) => rows.map((r) => r.map((v) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v)).join(",")).join("\r\n") + "\r\n"
+
+/** Rows as a Markdown table, the first its header. */
+export const markdownRows = (rows: string[][]) =>
+  [rows[0], rows[0].map(() => "---"), ...rows.slice(1)].map((r) => `| ${r.map(cell).join(" | ")} |`).join("\n")
+
 /** The result as Markdown for agents: a table per group, a section per board column, bullets by date or place. What was
  *  left out (a filter that doesn't parse) comes first, in italics. */
 export function markdown(res: Result, level = 2): string {

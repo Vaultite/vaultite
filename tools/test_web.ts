@@ -1500,6 +1500,17 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("bases: a display name in properties, removed again with nothing left behind",
     named === `${st}properties:\n  price:\n    displayName: Cost\n` && edit.setDisplayName(named, "price", "") === st, named)
   check("bases: a summary for a column", edit.setSummary(st, 0, "price", "Sum").endsWith("    x-plugin: {keep: me}\n    summaries:\n      price: Sum\n"), edit.setSummary(st, 0, "price", "Sum"))
+  const grouped = edit.setGroupBy(st, 0, { key: "status", desc: true })
+  check("bases: a view grouped by a property, as Obsidian writes it, and ungrouped again",
+    grouped === `${st}    groupBy:\n      property: note.status\n      direction: DESC\n` && edit.setGroupBy(grouped, 0, null) === st, grouped)
+  check("bases: a limit written, none removes it", edit.setLimit(st, 0, 20.4) === `${st}    limit: 20\n` && edit.setLimit(`${st}    limit: 20\n`, 0, null) === st, edit.setLimit(st, 0, 20.4))
+  {
+    const q = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "query", "query.ts")).href)
+    const res = { columns: [{ key: "file", label: "Name" }, { key: "note", label: "Note" }],
+      groups: [{ name: "a", rows: [{ title: "Dune", values: { note: 'a "b", c' } }] }, { name: "b", rows: [{ title: "Emma", values: { note: ["x", "y|z"] } }] }] }
+    check("bases: results as CSV, quoted where needed", q.csvText(q.rowsOf(res)) === 'Name,Note\r\nDune,"a ""b"", c"\r\nEmma,"x, y|z"\r\n', q.csvText(q.rowsOf(res)))
+    check("bases: results as a Markdown table, files as links", q.markdownRows(q.rowsOf(res, true)) === '| Name | Note |\n| --- | --- |\n| [[Dune]] | a "b", c |\n| [[Emma]] | x, y\\|z |', q.markdownRows(q.rowsOf(res, true)))
+  }
   const filtered = edit.setFilters("# top\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n", 0, { and: ['status == "done"', '!file.hasTag("x")'] })
   check("bases: a view's filters written, an expression starting ! quoted", filtered === "# top\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n    filters:\n      and:\n        - status == \"done\"\n        - '!file.hasTag(\"x\")'\n", filtered)
   check("bases: the base's filters removed, the comment above them kept", edit.setFilters("# top\nfilters: x\nviews: []\n", null, undefined) === "# top\nviews: []\n")

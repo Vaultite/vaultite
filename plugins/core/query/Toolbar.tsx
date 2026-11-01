@@ -2,10 +2,11 @@
 // base's YAML (baseedit.ts) as it's used, the results following.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
-import { ArrowUpDown, Code, Ellipsis, GripVertical, List, ListFilter, Plus, Trash2, X } from "lucide-react"
-import { choose, cn, FilterField, menuBelow, SortableList, useDismiss, type MenuItem } from "@vaultite"
-import { keyOf, label, sortOf, type Result } from "./query"
-import { setFilters, setOrder, setSort } from "./baseedit"
+import { ArrowUpDown, Code, Copy, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
+import { choose, cn, copyText, FilterField, folderOf, menuBelow, notify, notifyError, openFile, post, SortableList, useDismiss, type MenuItem } from "@vaultite"
+import { csvText, keyOf, label, markdownRows, rowsOf, sortOf, type Result } from "./query"
+import { countText } from "./QueryView"
+import { setFilters, setGroupBy, setLimit, setOrder, setSort } from "./baseedit"
 import { obj, viewsOf, type BaseConfig } from "./bases"
 import { condOf, countOf, exprOf, FILE_OPS, NO_VALUE, treeOf, valueOf, type Cond, type Group, type Item, type Op } from "./filters"
 
@@ -79,21 +80,21 @@ const iconBtn = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-
 const addBtn = "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[13px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:h-10 pointer-coarse:text-[15px]"
 const field = "h-7 min-w-0 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:border-primary pointer-coarse:h-9 pointer-coarse:text-[16px]"
 
-/** A toolbar button: its icon, and how many it holds when any (2 sorts). */
-export function BarButton({ refTo, icon: Icon, name, count, open, onClick }: {
-  refTo: RefObject<HTMLButtonElement | null>; icon: typeof List; name: string; count?: number; open: boolean; onClick: () => void
+/** A toolbar button: its icon, and how many it holds when any (2 sorts); `on`: in use, with nothing to count. */
+export function BarButton({ refTo, icon: Icon, name, count, on, open, onClick }: {
+  refTo: RefObject<HTMLButtonElement | null>; icon: typeof List; name: string; count?: number; on?: boolean; open: boolean; onClick: () => void
 }) {
   return (
     <button ref={refTo} type="button" aria-label={name} data-tip={open ? undefined : name} aria-haspopup="dialog" aria-expanded={open} data-base-button={name}
       onClick={onClick}
       className={cn("flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:h-9 pointer-coarse:px-2",
-        count ? "text-primary" : "text-muted-foreground", open && "bg-foreground/[0.08] text-foreground")}>
+        count || on ? "text-primary" : "text-muted-foreground", open && "bg-foreground/[0.08] text-foreground")}>
       <Icon className="size-4" strokeWidth={2} />
       {count ? <span className="tabular-nums">{count}</span> : null}
     </button>
   )
 }
-export const BUTTONS = { sort: ArrowUpDown, filter: ListFilter, properties: List }
+export const BUTTONS = { group: Layers, sort: ArrowUpDown, filter: ListFilter, properties: List }
 
 // ---------- Sort
 
@@ -139,6 +140,108 @@ export function SortMenu({ e }: { e: BaseEdit }) {
         onClick={() => pickProp("Sort by", props.filter((k) => !sort.some((x) => x.key === k)), e.cfg, (k) => set([...sort, { key: k, desc: false }]))}>
         <Plus className="size-4" strokeWidth={2} />Add sort
       </button></div>
+    </div>
+  )
+}
+
+// ---------- Group
+
+/** The property a view's rows are grouped by (`groupBy`), each group under its value, in one direction. */
+export const groupOf = (v: Record<string, unknown>): { key: string; desc: boolean } | null => {
+  const g = obj(v.groupBy)
+  return g && typeof g.property === "string" && g.property.trim()
+    ? { key: keyOf(g.property), desc: String(g.direction ?? "").toUpperCase() === "DESC" } : null
+}
+
+export function GroupMenu({ e }: { e: BaseEdit }) {
+  const v = viewsOf(e.cfg)[e.at] ?? {}
+  const g = groupOf(v)
+  const set = (next: typeof g) => e.edit((t) => setGroupBy(t, e.at, next))
+  const props = allProps(e.cfg, e.res, e.columns)
+  // (a board's columns are its groups: it can change them, not lose them)
+  const board = e.res?.view === "board"
+  if (!g) {
+    return (
+      <div className="flex flex-col gap-0.5" data-base-group-menu>
+        <p className="px-1 py-1 text-[13px] text-muted-foreground">Not grouped. Group to see the results under each value of a property.</p>
+        <div><button type="button" className={addBtn} data-base-add-group-by
+          onClick={() => pickProp("Group by", props, e.cfg, (k) => set({ key: k, desc: false }))}>
+          <Plus className="size-4" strokeWidth={2} />Group by
+        </button></div>
+      </div>
+    )
+  }
+  const [up, down] = dirs(e.res, g.key)
+  return (
+    <div className="flex flex-col gap-0.5" data-base-group-menu>
+      <div className={row} data-base-group-by={g.key}>
+        <span className="shrink-0 px-1 text-[13px] text-muted-foreground pointer-coarse:text-[15px]">Group by</span>
+        <button type="button" className={cn(pill, "flex-1")} onClick={() => pickProp("Group by", props, e.cfg, (k) => set({ ...g, key: k }), g.key)}>
+          <span className="truncate">{propLabel(e.cfg, g.key)}</span>
+        </button>
+        <button type="button" className={pill} data-base-group-dir={g.desc ? "desc" : "asc"} onClick={(ev) => menuBelow(ev, [
+          { label: up, checked: !g.desc, run: () => set({ ...g, desc: false }) },
+          { label: down, checked: g.desc, run: () => set({ ...g, desc: true }) },
+        ])}>{g.desc ? down : up}</button>
+        {!board && <button type="button" aria-label="Remove grouping" data-tip="Remove" className={iconBtn}
+          onClick={() => set(null)}><Trash2 className="size-4" strokeWidth={2} /></button>}
+      </div>
+    </div>
+  )
+}
+
+// ---------- Results
+
+/** The results' count, a button opening their menu (a narrow bar: the number alone). */
+export function ResultsButton({ refTo, res, open, onClick }: { refTo: RefObject<HTMLButtonElement | null>; res: Result; open: boolean; onClick: () => void }) {
+  return (
+    <button ref={refTo} type="button" aria-label="Results" aria-haspopup="dialog" aria-expanded={open} data-base-button="Results" data-base-count onClick={onClick}
+      className={cn("flex h-7 shrink-0 cursor-pointer items-center rounded-[6px] px-1.5 text-[13px] text-muted-foreground tabular-nums hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:h-9 pointer-coarse:px-2",
+        open && "bg-foreground/[0.08] text-foreground")}>
+      <span className="@sm:hidden">{res.shown < res.total ? `${res.shown}/${res.total}` : res.total}</span>
+      <span className="hidden @sm:inline">{countText(res)}</span>
+    </button>
+  )
+}
+
+/** How many results a view shows (`limit`), and its results copied as a table or saved as a CSV beside its base. */
+export function ResultsMenu({ e, path, title }: { e: BaseEdit; path: string; title: string }) {
+  const v = viewsOf(e.cfg)[e.at] ?? {}
+  const limit = typeof v.limit === "number" && v.limit > 0 ? v.limit : null
+  const setTo = (t: string) => {
+    const n = Math.trunc(Number(t.trim()))
+    const next = t.trim() && Number.isFinite(n) && n > 0 ? n : null
+    if (next !== limit) e.edit((x) => setLimit(x, e.at, next))
+  }
+  const rows = () => (e.res ? rowsOf(e.res) : [])
+  const copy = async (md: boolean) => {
+    if (!e.res) return
+    await copyText(md ? markdownRows(rowsOf(e.res, true)) : csvText(rows()))
+    notify(md ? "Copied as a Markdown table" : "Copied as CSV")
+  }
+  const save = async () => {
+    try {
+      const name = title.replace(/[\\/:*?"<>|#^[\]]+/g, " ").trim() || "Results"
+      const f = await post<{ path: string }>("file", { path: `${folderOf(path) ? `${folderOf(path)}/` : ""}${name}.csv`, text: csvText(rows()), unique: true })
+      notify(`Saved ${f.path.split("/").pop()}`, { action: { label: "Open", run: () => openFile(f.path) } })
+    } catch (err) { notifyError(err, "Couldn't save the results") }
+  }
+  const act = "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] px-1 text-left text-[13px] hover:bg-foreground/[0.06] pointer-coarse:min-h-11 pointer-coarse:text-[15px]"
+  const empty = !e.res?.shown
+  return (
+    <div className="flex flex-col gap-0.5" data-base-results>
+      <label className={cn(row, "gap-2 px-1 text-[13px] pointer-coarse:text-[15px]")}>
+        <span className="flex-1">Limit</span>
+        <input key={limit ?? ""} type="number" inputMode="numeric" min={1} defaultValue={limit ?? ""} placeholder="None" aria-label="Limit" data-base-limit
+          className={cn(field, "w-24 text-right tabular-nums")}
+          onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur() }}
+          onBlur={(ev) => setTo(ev.target.value)} />
+      </label>
+      <div className="mt-1 border-t-[0.5px] border-border pt-1">
+        <button type="button" className={act} disabled={empty} data-base-copy="markdown" onClick={() => void copy(true)}><Copy className="size-4 text-muted-foreground" strokeWidth={2} />Copy as Markdown table</button>
+        <button type="button" className={act} disabled={empty} data-base-copy="csv" onClick={() => void copy(false)}><Copy className="size-4 text-muted-foreground" strokeWidth={2} />Copy as CSV</button>
+        <button type="button" className={act} disabled={empty} data-base-save-csv onClick={() => void save()}><FileSpreadsheet className="size-4 text-muted-foreground" strokeWidth={2} />Save as CSV</button>
+      </div>
     </div>
   )
 }

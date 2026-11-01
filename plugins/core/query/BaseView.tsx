@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Table2, X, type LucideIcon } from "lucide-react"
 import { cn, menuBelow, notify, notifyError, Panel, put, readFile, resolver, today, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
-import { countText, ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
+import { ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
 import { parse as parseYaml } from "yaml"
 import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplayName, setOrder, setSort, setSummary, setViewType } from "./baseedit"
 import { obj, pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
 import { keyOf, label, sortOf, type Result } from "./query"
 import { SUMMARIES } from "./expr"
-import { BarButton, BUTTONS, filterCount, FilterMenu, Popover, PropertiesMenu, SortMenu, type BaseEdit } from "./Toolbar"
+import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, Popover, PropertiesMenu, ResultsButton, ResultsMenu, SortMenu, type BaseEdit } from "./Toolbar"
 
 const ICONS: Record<string, LucideIcon> = { table: Table2, cards: LayoutGrid, list: List, map: MapIcon, kanban: Columns3, board: Columns3, calendar: CalendarDays }
 const iconOf = (type: string) => ICONS[type.toLowerCase()] ?? Table2
@@ -169,27 +169,32 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   }
 
   // The toolbar's menus: one open at a time, under its button.
-  const [open, setOpen] = useState<"sort" | "filter" | "properties" | null>(null)
-  const refs = { sort: useRef<HTMLButtonElement>(null), filter: useRef<HTMLButtonElement>(null), properties: useRef<HTMLButtonElement>(null) }
+  type Menu = "results" | "group" | "sort" | "filter" | "properties"
+  const [open, setOpen] = useState<Menu | null>(null)
+  const refs = { results: useRef<HTMLButtonElement>(null), group: useRef<HTMLButtonElement>(null), sort: useRef<HTMLButtonElement>(null),
+    filter: useRef<HTMLButtonElement>(null), properties: useRef<HTMLButtonElement>(null) }
   const be: BaseEdit | null = cfg && at !== null ? { cfg, at, res, columns, edit } : null
-  const NAMES = { sort: "Sort", filter: "Filter", properties: "Properties" } as const
-  const counts = { sort: sort?.length ?? 0, filter: cfg && at !== null ? filterCount(cfg, at) : 0, properties: 0 }
+  const NAMES = { results: "Results", group: "Group", sort: "Sort", filter: "Filter", properties: "Properties" } as const
+  const counts = { group: 0, sort: sort?.length ?? 0, filter: cfg && at !== null ? filterCount(cfg, at) : 0, properties: 0 }
+  // (a calendar's days and a map's places are its own layout: neither groups, a calendar has no columns)
+  const bar = (["group", "sort", "filter", "properties"] as const).filter((k) => !(k === "group" && (res?.view === "calendar" || res?.view === "map")) && !(k === "properties" && res?.view === "calendar"))
   const tools = be && res && (
     <div className="flex shrink-0 items-center gap-0.5" data-base-tools>
-      {(["sort", "filter", "properties"] as const).filter((k) => k !== "properties" || res.view !== "calendar").map((k) => (
-        <BarButton key={k} refTo={refs[k]} icon={BUTTONS[k]} name={NAMES[k]} count={counts[k]} open={open === k} onClick={() => setOpen(open === k ? null : k)} />
+      <ResultsButton refTo={refs.results} res={res} open={open === "results"} onClick={() => setOpen(open === "results" ? null : "results")} />
+      {bar.map((k) => (
+        <BarButton key={k} refTo={refs[k]} icon={BUTTONS[k]} name={NAMES[k]} count={counts[k]} on={k === "group" && !!vcfg && !!groupOf(vcfg)} open={open === k} onClick={() => setOpen(open === k ? null : k)} />
       ))}
       {open && (
         <Popover anchor={refs[open]} label={NAMES[open]} close={() => setOpen(null)} wide={open === "filter"}>
-          {open === "sort" ? <SortMenu e={be} /> : open === "filter" ? <FilterMenu key={current} e={be} /> : <PropertiesMenu e={be} />}
+          {open === "results" ? <ResultsMenu e={be} path={path} title={views[current]?.name ?? "Results"} />
+            : open === "group" ? <GroupMenu e={be} />
+            : open === "sort" ? <SortMenu e={be} /> : open === "filter" ? <FilterMenu key={current} e={be} /> : <PropertiesMenu e={be} />}
         </Popover>
       )}
     </div>
   )
 
   const fill = place === "page" || place === "sheet"
-  // (a narrow bar keeps its room for the views and the buttons)
-  const count = res && <span className="hidden shrink-0 text-[13px] text-muted-foreground tabular-nums @sm:inline" data-base-count>{countText(res)}</span>
   const tabs = views.length > 1 && (
     // (the tabs scroll sideways; their right edge fades, so one cut off there reads as more to scroll to)
     <div className="-ml-1 flex min-w-0 flex-1 gap-0.5 edge-fade-x overflow-x-auto pr-4 pl-1 [scrollbar-width:none]" role="tablist" data-base-views>
@@ -220,7 +225,7 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
   if (place === "fence") {
     return (
       <Panel title={views[current]?.name ?? "Base"} icon={iconOf(views[current]?.type ?? "table")} tint={TINT} className="@container min-w-0"
-        action={<div className="flex items-center gap-1.5">{count}{tools}{more}</div>}>
+        action={<div className="flex items-center gap-1.5">{tools}{more}</div>}>
         {tabs && <div className="-mt-1 mb-3 flex">{tabs}</div>}
         {body}
       </Panel>
@@ -232,7 +237,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
         {tabs || <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] font-medium" data-base-view={views[0]?.name}>
           {views[0] && (() => { const Icon = iconOf(views[0].type); return <><Icon className="size-3.5 shrink-0" strokeWidth={2.25} /><span className="truncate">{views[0].name}</span></> })()}
         </div>}
-        {count}
         {tools}
         {more}
       </div>

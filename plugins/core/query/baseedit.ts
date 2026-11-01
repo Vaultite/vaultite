@@ -167,6 +167,24 @@ export function setFilters(text: string, i: number | null, filters: unknown): st
   return out(d)
 }
 
+/** View `i`'s grouping (`groupBy: {property, direction}`; null: none). */
+export function setGroupBy(text: string, i: number, group: { key: string; desc: boolean } | null): string {
+  const d = doc(text)
+  const v = viewAt(d, i)
+  if (!v) return text
+  put(d, v, "groupBy", group ? { property: propId(group.key, written(d)), direction: group.desc ? "DESC" : "ASC" } : undefined)
+  return out(d)
+}
+
+/** View `i`'s most results shown (`limit`; null: every one). */
+export function setLimit(text: string, i: number, limit: number | null): string {
+  const d = doc(text)
+  const v = viewAt(d, i)
+  if (!v) return text
+  put(d, v, "limit", limit && limit > 0 ? Math.trunc(limit) : undefined)
+  return out(d)
+}
+
 /** Set view `i`'s layout (`type`). */
 export function setViewType(text: string, i: number, type: string): string {
   const d = doc(text)
