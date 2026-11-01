@@ -1,0 +1,19 @@
+{
+  "id": "day-planner",
+  "icon": "calendar-clock",
+  "category": "life",
+  "offByDefault": true,
+  "name": "Day planner",
+  "description": "Your daily note's plan as a timeline: list items that start with a time (- 09:00 - 10:30 Standup) become blocks on the day, with a line at the time it is now.",
+  "replaces": { "obsidian": ["obsidian-day-planner"] },
+  "tint": "orange",
+  "blocks": {
+    "day-planner": {
+      "description": "the note's timed list items (- [ ] 09:00 - 10:30 Standup, - 14:00 Lunch) as a timeline of the day; one without an end lasts until the next",
+      "options": {
+        "start": { "type": "number", "min": 0, "max": 23, "description": "the first hour shown (left out: 8, or earlier for an earlier item)" },
+        "end": { "type": "number", "min": 1, "max": 24, "description": "the last hour shown (left out: 18, or later for a later item)" }
+      }
+    }
+  }
+}
