@@ -771,12 +771,12 @@ export class Vault {
     this.heardCount++
   }
 
-  /** What the watcher heard at once (null: it couldn't say). Markdown files already indexed are read again on their own
-   *  while the index is vouched for; anything else (new, gone, not Markdown, still downloading) walks. */
+  /** What the watcher heard at once (null: it couldn't say). While the index is vouched for, files are taken on their own
+   *  as `reread` takes them (Markdown read off the main thread); anything else (a folder, still downloading) walks. */
   async hear(rels: string[] | null): Promise<boolean> {
     const told = rels?.filter((r) => !NOT_SETTINGS.has(r.split("/").slice(0, 2).join("/")) && !this.indexed(r))
     if (told && !told.length) return false
-    if (!told || this.next || !this.vouched() || told.some((r) => !this.entries.has(r))) {
+    if (!told || this.next || !this.vouched()) {
       for (const r of rels ?? [null]) this.heard(r)
       return this.synced({ trusting: true })
     }
@@ -784,15 +784,11 @@ export class Vault {
     return this.lock(async () => {
       if (!this.vouched()) return this.sync()
       const stats = told.map((r) => fs.statSync(this.abs(r), { bigint: true, throwIfNoEntry: false }))
-      if (stats.some((st) => !st?.isFile())) return this.sync()
-      const { texts, late } = await this.readAll(told)
-      if (late.length || texts.size < told.length) return this.sync()
-      told.forEach((rel, i) => this.read(rel, statFrom(stats[i]!), texts.get(rel)))
-      this.version++
-      for (const fn of this.hooks) {
-        try { fn(this) } catch (e) { console.error(e) }
-      }
-      return true
+      if (this.walks(told, stats)) return this.sync()
+      const md = told.filter((r, i) => stats[i] && r.endsWith(".md"))
+      const { texts, late } = await this.readAll(md)
+      if (late.length || texts.size < md.length) return this.sync()
+      return this.take(told, stats, texts)
     })
   }
 
@@ -827,8 +823,19 @@ export class Vault {
   async reread(rels: string[]): Promise<boolean> {
     if (!this.vouched()) return this.sync()
     const stats = rels.map((rel) => fs.statSync(this.abs(rel), { bigint: true, throwIfNoEntry: false }))
-    if (rels.some((rel, i) => unscanned(rel) || (stats[i] ? !stats[i]!.isFile() || evicted(this.abs(rel), stats[i]!) ||
-      (rel.includes("/") && !this.folders.includes(rel.slice(0, rel.lastIndexOf("/")))) : this.folders.includes(rel)))) return this.sync()
+    if (this.walks(rels, stats)) return this.sync()
+    return this.take(rels, stats)
+  }
+
+  /** Whether one of `rels` (with its stat now) needs a walk: a folder, a hidden path, one in a folder the index doesn't
+   *  know, a placeholder. */
+  private walks(rels: string[], stats: (fs.BigIntStats | undefined)[]) {
+    return rels.some((rel, i) => unscanned(rel) || (stats[i] ? !stats[i]!.isFile() || evicted(this.abs(rel), stats[i]!) ||
+      (rel.includes("/") && !this.folders.includes(rel.slice(0, rel.lastIndexOf("/")))) : this.folders.includes(rel)))
+  }
+
+  /** `rels` into the index as they are now (gone, another file, a note: its text if read already), then the hooks. */
+  private take(rels: string[], stats: (fs.BigIntStats | undefined)[], texts?: Map<string, string | Error>) {
     let changed = false
     for (const [i, rel] of rels.entries()) {
       const st = stats[i] ? statFrom(stats[i]!) : null, e = this.entries.get(rel), other = this.others.get(rel)
@@ -839,7 +846,7 @@ export class Vault {
       } else if (!rel.endsWith(".md")) {
         if (!other || !sameStat(other, st)) { this.others.set(rel, st); this.version++; changed = true }
       } else if (!e || !sameStat(e.stat, st) || e.broken) {
-        this.read(rel, st)
+        this.read(rel, st, texts?.get(rel))
         changed = true
       }
     }

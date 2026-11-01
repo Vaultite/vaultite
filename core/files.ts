@@ -748,7 +748,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         forget(vault, rel)
         vault.moved(rel, null, trashed) // what follows files (plugin.onMove: pinned pages) lets it go
       }
-      await vault.sync()
+      await vault.reread([rel])
       return { ok: true, ...(trashed ? { trashed } : {}) }
     }
     // Saving a settings file opened by its path (hidden files off): only one that's there; or making one at its exact
@@ -769,7 +769,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       if (why) throw new HTTPError(403, why)
       text = newText(vault, target, text) // what plugins add to a new file (plugin.onCreate, onCreateFile)
       writeAtomic(vault.abs(target), text)
-      await vault.sync()
+      await vault.reread([target])
       await vault.fillIn(target, null) // (a note's id and dates)
       return reply(201, read(vault, target))
     }
@@ -807,7 +807,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       else text = vault.saving(rel, cur, text) // (what plugins set in the same write: plugin.onSave)
       const before = vault.entries.get(rel) ?? null
       if (cur !== text) writeText(vault.abs(rel), text)
-      await (cur === null ? vault.sync() : vault.reread([rel]))
+      await vault.reread([rel])
       // An edit in the app: plugins may fill things in (a note's id and dates), and the editor gets the result.
       if (cur !== text) await vault.fillIn(rel, before)
       const f = read(vault, rel)
