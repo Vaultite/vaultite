@@ -420,19 +420,21 @@ class MathInline extends WidgetType {
 }
 
 /** A footnote reference, [^1], as its number; hover shows the note, a click goes to it. */
+// (where its note is, looked up when clicked: typing above that would make every reference new, each keystroke)
 class FootnoteRef extends WidgetType {
-  label: string; n: number; tip: string; at: number
-  constructor(label: string, n: number, tip: string, at: number) { super(); this.label = label; this.n = n; this.tip = tip; this.at = at }
-  eq(o: FootnoteRef) { return o.label === this.label && o.n === this.n && o.tip === this.tip && o.at === this.at }
+  label: string; n: number; tip: string; found: boolean
+  constructor(label: string, n: number, tip: string, found: boolean) { super(); this.label = label; this.n = n; this.tip = tip; this.found = found }
+  eq(o: FootnoteRef) { return o.label === this.label && o.n === this.n && o.tip === this.tip && o.found === this.found }
   toDOM(view: EditorView) {
     const s = document.createElement("sup")
-    s.className = `cm-footnote-ref${this.at < 0 ? " is-missing" : ""}`
+    s.className = `cm-footnote-ref${this.found ? "" : " is-missing"}`
     s.textContent = String(this.n || this.label)
     if (this.tip) s.dataset.tip = this.tip
     s.addEventListener("mousedown", (e) => {
-      if (this.at < 0 || this.at > view.state.doc.length) return
+      const at = footnotes(view.state.doc).defs.get(this.label)?.at
+      if (at === undefined) return
       e.preventDefault()
-      view.dispatch({ effects: EditorView.scrollIntoView(textStart(view.state, this.at), { y: "center" }) })
+      view.dispatch({ effects: EditorView.scrollIntoView(textStart(view.state, at), { y: "center" }) })
     })
     return s
   }
@@ -1121,7 +1123,7 @@ function inline(view: EditorView): DecorationSet {
           const a = l.from + m.index, b = a + m[0].length
           if (!live || touched(state, a, b)) { out.push(mark("cm-footnote-mark").range(a, b)); continue }
           const def = notes.defs.get(m[1])
-          out.push(Decoration.replace({ widget: new FootnoteRef(m[1], notes.num.get(m[1]) ?? 0, def?.text.slice(0, 300) ?? "", def ? def.at : -1) }).range(a, b))
+          out.push(Decoration.replace({ widget: new FootnoteRef(m[1], notes.num.get(m[1]) ?? 0, def?.text.slice(0, 300) ?? "", !!def) }).range(a, b))
         }
       }
       if (live) inlineMarks(state, l, tree, out, pcache)
