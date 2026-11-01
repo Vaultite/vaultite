@@ -1,5 +1,6 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
+import { cell } from "@/core/signal"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { share } from "@/core/share"
 import { SharedWith } from "@/components/SharedWith"
@@ -224,6 +225,22 @@ setDetailRedirect((path) => {
   return d?.def.file && s ? d.def.file(s, d.args) : null
 })
 
+type PaletteKind = "search" | "launcher" | "commands" | "tabs"
+/** The palette open, a cell of its own: opening or closing one draws only it, not the whole app. */
+const paletteOpen = cell<PaletteKind | null>(null)
+const setPalette = (p: PaletteKind | null | ((was: PaletteKind | null) => PaletteKind | null)) => paletteOpen.set(typeof p === "function" ? p(paletteOpen.get()) : p)
+const closePalette = () => paletteOpen.set(null)
+const Palettes = memo(function Palettes({ store }: { store: Store | null }) {
+  const palette = paletteOpen.use()
+  return (
+    <>
+      {(palette === "search" || palette === "launcher") && store && <SearchPalette key={palette} store={store} launcher={palette === "launcher"} onClose={closePalette} />}
+      {palette === "commands" && <CommandPalette onClose={closePalette} />}
+      {palette === "tabs" && store && <TabSearch store={store} onClose={closePalette} />}
+    </>
+  )
+})
+
 export default function App() {
   const { tab, detail, depth, prev } = useRoute()
   // The tab list stays on screen a moment after it's left, while the page grows out of it (core/motion.ts).
@@ -307,7 +324,6 @@ export default function App() {
   const prevTitle = canBack && store ? sheet_(store, prev, disabled, tabInfo).title : ""
   const sheetDetail = store && sheet ? sheet_(store, sheet, disabled, tabInfo) : null
   // The quick switcher (⌘O), the command palette (⌘P) or Search tabs (⌘⇧A); their commands are below.
-  const [palette, setPalette] = useState<"search" | "launcher" | "commands" | "tabs" | null>(null)
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
   const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
@@ -648,9 +664,7 @@ export default function App() {
         {sheetDetail && <Guard key={sheet} what="This sheet" size="tab" reset={sheet}>{sheetDetail.body}</Guard>}
       </DetailSheet>
 
-      {(palette === "search" || palette === "launcher") && store && <SearchPalette key={palette} store={store} launcher={palette === "launcher"} onClose={() => setPalette(null)} />}
-      {palette === "commands" && <CommandPalette onClose={() => setPalette(null)} />}
-      {palette === "tabs" && store && <TabSearch store={store} onClose={() => setPalette(null)} />}
+      <Palettes store={store} />
       <FolderPicker />
       <Chooser />
       <DownloadingNotice store={store} />
