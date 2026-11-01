@@ -5,6 +5,12 @@ import fs from "node:fs"
 import path from "node:path"
 import zlib from "node:zlib"
 
+/** `url` as one of extension `id`'s own pages (relative to its root), or null when it names any other address. */
+export function extensionPage(id: string, url: string) {
+  const base = `chrome-extension://${id}/`
+  try { const href = new URL(url, base).href; return href.startsWith(base) ? href : null } catch { return null }
+}
+
 /** An extension's id from its public key (DER): the first 16 bytes of its SHA-256, each nibble a letter a-p. */
 export function idOfKey(key: Buffer) {
   return [...crypto.createHash("sha256").update(key).digest().subarray(0, 16)]

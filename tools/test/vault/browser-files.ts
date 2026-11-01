@@ -12,6 +12,15 @@ export default async ($: VaultTest) => {
       at("https://studio.tail1234.ts.net:8447/", "media") === "ask" && at("https://studio.tail1234.ts.net:8447/", "geolocation") === "ask" && at("https://studio.tail1234.ts.net:8447/", "notifications") === "allow" &&
       at("https://evil.example/", "media") === "deny" && at("https://www.youtube.com/embed/x", "clipboard-read") === "deny" && at("https://www.youtube.com/embed/x", "fullscreen") === "allow" && at("file:///Users/a/x.html", "media") === "deny" &&
       at("http://127.0.0.1:8793/", "display-capture") === "deny" && at("http://127.0.0.1:8793/", "hid") === "deny" && at("https://studio.tail1234.ts.net:8447.evil.example/", "media") === "deny")
+    // An extension's offscreen document (electron/browser/extapi.ts) is one of its own pages, as in Chrome.
+    const { extensionPage } = await import("../../../electron/browser/crx.ts")
+    const id = "abcdefghijklmnopabcdefghijklmnop"
+    check("extensions: an offscreen document is only the extension's own page",
+      extensionPage(id, "offscreen.html") === `chrome-extension://${id}/offscreen.html` && extensionPage(id, "/a/b.html?x=1") === `chrome-extension://${id}/a/b.html?x=1` &&
+      extensionPage(id, `chrome-extension://${id}/o.html`) === `chrome-extension://${id}/o.html` && extensionPage(id, "https://example.com/") === null &&
+      extensionPage(id, "//example.com/x") === null && extensionPage(id, `chrome-extension://${"b".repeat(32)}/o.html`) === null &&
+      extensionPage(id, `chrome-extension://${id}@example.com/`) === null && extensionPage(id, "file:///etc/hosts") === null && extensionPage(id, "javascript:alert(1)") === null,
+      [extensionPage(id, "//example.com/x"), extensionPage(id, "https://example.com/")])
   }
   // The Browser's files in .vaultite: the blocked elements list (the note it was, moved there once) and each site's
   // style; their ops, and what the app gets of them in /api/state.

@@ -20,7 +20,7 @@ import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, plainText, sentence } from "../core/plainerror.ts"
-import { runsCode } from "../core/opening.ts"
+import { inVault, runsCode } from "../core/opening.ts"
 import { permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
@@ -529,8 +529,8 @@ function guard(win: AppWindow, origin: string) {
     }
     if (url.startsWith(origin + "/api/raw?")) { // a vault file that isn't text (an image, a PDF): the Mac's app for it
       const w = [...wins.values()].find((x) => x.win === win)
-      const rel = new URL(url).searchParams.get("path")
-      if (w && rel && !rel.split("/").includes("..")) openVaultFile(path.join(w.vault.path, rel))
+      const rel = new URL(url).searchParams.get("path"), abs = w && rel ? inVault(w.vault.path, rel) : null
+      if (abs) openVaultFile(abs)
     } else void openLink(url)
     return { action: "deny" }
   })
@@ -1656,7 +1656,7 @@ async function appLink(url: string) {
   try { rest = decodeURIComponent(u.pathname.replace(/^\/+/, "")) } catch { return }
   const what = u.hostname.toLowerCase()
   if (what === "bundle") { const r = parseRepo(rest); if (!r) return; rest = repoText(r) }
-  else if (what === "command" ? !/^[\w:.-]+$/.test(rest) : what !== "open" || !rest || rest.split("/").some((x) => x === ".." || x.startsWith("."))) return
+  else if (what === "command" ? !/^[\w:.-]+$/.test(rest) : what !== "open" || !rest || rest.split(/[\\/]/).some((x) => x === ".." || x.startsWith("."))) return
   let w: Win | null = focusedVault()
   if (!w) {
     const last = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0]
@@ -1666,7 +1666,9 @@ async function appLink(url: string) {
   if (!w) return
   if (what === "open") {
     // (a note named without its .md, as a [[link]] names it)
-    if (!path.extname(rest) && fs.existsSync(path.join(w.vault.path, `${rest}.md`))) rest += ".md"
+    const abs = inVault(w.vault.path, rest)
+    if (!abs) return
+    if (!path.extname(rest) && fs.existsSync(`${abs}.md`)) rest += ".md"
     if (!fs.existsSync(path.join(w.vault.path, rest))) return
     send(w, rest)
   } else {
@@ -1778,6 +1780,13 @@ function ejectImages() {
     console.error("eject:", e)
   }
 }
+
+// A page that sets no window.open handler of its own opens nothing (one it sets later replaces this), and none attaches a
+// <webview> (the app has none).
+app.on("web-contents-created", (_e, wc) => {
+  wc.setWindowOpenHandler(() => ({ action: "deny" }))
+  wc.on("will-attach-webview", (e) => e.preventDefault())
+})
 
 /** The default session's permissions (the app's windows, another machine's, the frames a note shows): electron/apppermissions.ts.
  *  Another machine's window asks for the microphone, camera and location, once a launch per site. */

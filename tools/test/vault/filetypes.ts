@@ -20,6 +20,16 @@ export default async ($: VaultTest) => {
     check("opening: a link named like a document to what would run is shown, not opened", runsCode(path.join(VAULT, "Open/Report.pdf")) && runsCode(path.join(VAULT, "Open/x.terminal")) &&
       !runsCode(path.join(VAULT, "Open/Real.pdf")) && ["a.chm", "b.jnlp", "c.iso", "d.xll", "e.mobileconfig", "f.pyz"].every((n) => runsCode(path.join(VAULT, "Open", n))))
     fs.rmSync(path.join(VAULT, "Open"), { recursive: true })
+    // The desktop app's links into a vault (/api/raw, vaultite://open/): a path that would leave it isn't opened, on
+    // Windows by its backslashes too.
+    const { inVault } = await import("../../../core/opening.ts")
+    const W = path.win32, P = path.posix
+    check("opening: a path leaving the vault is refused, on Windows and elsewhere",
+      inVault("C:\\Vault", "Notes\\a.md", W) === "C:\\Vault\\Notes\\a.md" && inVault("C:\\Vault", "Notes/a.md", W) === "C:\\Vault\\Notes\\a.md" &&
+      inVault("C:\\Vault", "..\\..\\x.exe", W) === null && inVault("C:\\Vault", "a\\..\\..\\Vault2\\x", W) === null && inVault("C:\\Vault", "D:\\x", W) === null &&
+      inVault("C:\\Vault", "\\\\host\\share\\x", W) === null && inVault("C:\\", "x.md", W) === "C:\\x.md" &&
+      inVault("/v", "a/b.md", P) === "/v/a/b.md" && inVault("/v", "../v2/x", P) === null && inVault("/v", "/etc/x", P) === null && inVault("/v", "a\\..\\..\\x", P) === "/v/a\\..\\..\\x",
+      [inVault("C:\\Vault", "..\\..\\x.exe", W), inVault("/v", "../v2/x", P)])
   }
   write("Code/clean.py", "import csv\n\n\ndef total(rows):\n    return sum(r['amount'] for r in rows)\n")
   write("Code/win.txt", "one\r\ntwo\r\n")

@@ -2,6 +2,7 @@
 // id) and windows (a vault window), the toolbar button, events about pages, permissions, cookies, native messaging.
 import { dialog, ipcMain, Notification, webFrameMain, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent, type ServiceWorkerMain, type Session, type WebContents, type WebFrameMain } from "electron"
 import { allPages, appWindows, focusedWindow, tell, tellAll, windowById, windowOfPage, type EnginePage, type EngineWindow } from "./engine.ts"
+import { extensionPage } from "./crx.ts"
 import { dirOf, get, imageOf, manifestOf, nativeHost, said, change, type Installed } from "./extstore.ts"
 import { spawn, type ChildProcess } from "node:child_process"
 import crypto from "node:crypto"
@@ -438,6 +439,8 @@ const CALLS: Record<string, Call> = {
   "cookies.getAllCookieStores": (c) => [{ id: "0", tabIds: pagesIn(c.s).map((p) => p.wc.id) }],
 
   "offscreen.createDocument": (c, d: { url?: string } = {}) => {
+    const url = extensionPage(c.ext.id, String(d.url ?? ""))
+    if (!url) throw new Error("The offscreen document must be one of the extension's own pages.")
     const key = `${c.ext.id}`
     let byExt = offscreen.get(c.s)
     if (!byExt) offscreen.set(c.s, (byExt = new Map()))
@@ -445,7 +448,7 @@ const CALLS: Record<string, Call> = {
     const view = new WebContentsView({ webPreferences: { session: c.s, sandbox: true, contextIsolation: true, nodeIntegration: false } })
     byExt.set(key, view)
     view.webContents.once("destroyed", () => byExt.delete(key))
-    return view.webContents.loadURL(new URL(String(d.url ?? ""), `chrome-extension://${c.ext.id}/`).href).then(() => undefined)
+    return view.webContents.loadURL(url).then(() => undefined)
   },
   "offscreen.closeDocument": (c) => { const v = offscreen.get(c.s)?.get(c.ext.id); if (v && !v.webContents.isDestroyed()) v.webContents.close() },
   "offscreen.hasDocument": (c) => !!offscreen.get(c.s)?.get(c.ext.id),
