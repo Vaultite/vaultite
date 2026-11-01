@@ -222,8 +222,11 @@ function makeAutosave(path: string, initial: string, options: Options) {
       recheck = false
       const before = s.disk
       try {
-        // (a big file is read again only when it changed since: the change is often this view's own save)
-        if (!known && s.mtime && before.length > LEAN_PAST && (await get<{ mtime: number }>(`file/info?path=${encodeURIComponent(where())}`)).mtime === s.mtime) return
+        // (a long text is read again only when its file changed since: the change is often this view's own save)
+        if (!known && s.mtime && before.length > LEAN_PAST) {
+          const info = await get<{ mtime: number; size: number }>(`file/info?path=${encodeURIComponent(where())}`)
+          if (info.mtime === s.mtime && info.size === new TextEncoder().encode(before).length) return
+        }
         const r = known ?? await readFile(where())
         // Anything saved meanwhile makes this answer old: the save brought the new text.
         if (!s.alive || s.disk !== before || saving || timer || s.conflict || r.text === before) return

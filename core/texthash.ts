@@ -1,8 +1,8 @@
 // A quick fingerprint of a text and one edit between two texts: what an editor's save sends instead of its text and
 // base, and gets back instead of the file (core/files.ts PUT, web autosave).
 
-/** An open text past this is read again after a change only when its file's time moved (often its own save). */
-export const LEAN_PAST = 1 << 20
+/** An open text past this is read again after a change only when its file's time or size moved (often its own save). */
+export const LEAN_PAST = 8 << 10
 
 /** Two FNV-1a hashes over its UTF-16 units (64 bits), and its length. */
 export function textHash(t: string): string {
