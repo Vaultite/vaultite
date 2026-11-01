@@ -1,14 +1,15 @@
 // An Obsidian base (its tab, an embed, a ```base fence) with QueryView's pieces, views as tabs, Obsidian's toolbar. A change
 // here is a small edit to its YAML (baseedit.ts), shown at once, written to its file (an embed's too) or its fence.
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowDown, ArrowUp, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Search, Table2, X, type LucideIcon } from "lucide-react"
-import { cn, menuBelow, notify, notifyError, Panel, put, readFile, resolver, today, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
+import { ArrowDown, ArrowUp, Calculator, CalendarDays, Columns3, Ellipsis, EyeOff, LayoutGrid, List, Map as MapIcon, PencilLine, Plus, Search, Table2, X, type LucideIcon } from "lucide-react"
+import { cn, freeName, getStore, menuBelow, newNoteFolder, notify, notifyError, openNew, Panel, post, put, readFile, reload, resolver, today, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
 import { ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
-import { parse as parseYaml } from "yaml"
+import { parse as parseYaml, stringify } from "yaml"
 import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplayName, setOrder, setSort, setSummary, setViewType } from "./baseedit"
 import { obj, pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
 import { keyOf, label, sortOf, text as shownText, type Result } from "./query"
 import { SUMMARIES } from "./expr"
+import { newItem } from "./newitem"
 import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, named, Popover, PropertiesMenu, ResultsButton, ResultsMenu, SortMenu, type BaseEdit } from "./Toolbar"
 
 const ICONS: Record<string, LucideIcon> = { table: Table2, cards: LayoutGrid, list: List, map: MapIcon, kanban: Columns3, board: Columns3, calendar: CalendarDays }
@@ -212,6 +213,10 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
         <BarButton key={k} refTo={refs[k]} icon={BUTTONS[k]} name={NAMES[k]} count={counts[k]} on={k === "group" && !!vcfg && !!groupOf(vcfg)} open={open === k} onClick={() => setOpen(open === k ? null : k)} />
       ))}
       <BarButton refTo={searchRef} icon={Search} name="Search" on={!!q} open={q !== null} onClick={() => setQ(q === null ? "" : null)} />
+      <button type="button" aria-label="New" data-tip="New file in this view" data-base-new onClick={() => void newFile()}
+        className="flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground pointer-coarse:h-9 pointer-coarse:px-2">
+        <Plus className="size-4" strokeWidth={2} /><span className="hidden @md:inline">New</span>
+      </button>
       {open && (
         <Popover anchor={refs[open]} label={NAMES[open]} close={() => setOpen(null)} wide={open === "filter"}>
           {open === "results" ? <ResultsMenu e={be} path={path} title={views[current]?.name ?? "Results"} />
@@ -221,6 +226,20 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
       )}
     </div>
   )
+
+  // New: a file the view will list (its folder, properties and tags from the filters), opened beside it to fill in.
+  const newFile = async () => {
+    if (!cfg || at === null) return
+    try {
+      const { folder: asked, props } = newItem(cfg, at)
+      const s = getStore(), folder = asked ?? newNoteFolder(s, host ?? path)
+      const name = s ? freeName(s.files, folder, "Untitled") : "Untitled"
+      const fm = Object.keys(props).length ? `---\n${stringify(props)}---\n` : ""
+      const f = await post<{ path: string }>("file", { path: `${folder ? `${folder}/` : ""}${name}.md`, text: fm, unique: true })
+      await reload()
+      openNew(f.path, { newTab: true })
+    } catch (e) { notifyError(e, "Couldn't make a new file") }
+  }
 
   const fill = place === "page" || place === "sheet"
   const tabs = views.length > 1 && (

@@ -36,7 +36,8 @@ views:
 - What the app changes in a view is written to its YAML, as Obsidian writes it (a fence in its note, an embed in its
   .base): a heading's menu (sort, rename: `displayName`, summarize, hide), dragging a heading (`order`) or its edge
   (`columnSize`), and the bar's Results (`limit`), Group (`groupBy`), Sort, Filter (the base's and the view's `filters`) and Properties
-  (`order`) menus. Its Search only narrows what's shown, never the YAML.
+  (`order`) menus. Its Search only narrows what's shown, never the YAML. Its New makes a note the view lists: in its
+  `file.inFolder` folder, with the `prop == value` properties and `file.hasTag` tags its filters' `and`s hold.
 - Keys this app adds to a view: a `kanban` is a column per value of `groupBy`
   (and No value), `groups: [idea, building]` first, even empty; moving a card (drag, or its … menu) writes that key.
   A `calendar` is a month by `date: started` (default `date`, else `created`), `month: 2026-09` to start there;

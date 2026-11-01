@@ -12,6 +12,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   mode…, Properties in document…, Plugin updates…, Sort order… and the rest each open their values in the palette, the
   one in use checked and named at the row's end, the look shown as you move; Enter keeps one (with Undo), Esc goes
   back, ⌘↵ opens it in Settings. The one-value commands (Use dark theme...) stay for the menu bar, hotkeys and `vau`.
+- **New in a base**: a base's bar has New, as in Obsidian: a note in the folder its filters ask for, with the
+  properties and tags they test for (`status == "reading"`, `file.hasTag("book")`), opened in a tab beside it.
 - **Format note**: the Linter plugin tidies a note's Markdown by rules you choose in its settings (trailing spaces,
   extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
   format a note or a folder (`vau linter.format`).

@@ -291,6 +291,13 @@ await page.locator("[data-base-search]").press("Escape")
 check("search: Escape clears it", (await rows()).length === 2 && (await page.locator("[data-base-search]").inputValue()) === "")
 await page.locator("[data-base-search]").press("Escape")
 check("search: Escape again closes it, the base's file as it was", (await page.locator("[data-base-search]").count()) === 0 && read(`${F}/Qa.base`) === beforeSearch)
+// New: a file the view lists (the view's type == "qa-book" filter as its property), opened in a tab of its own.
+await base.locator("[data-base-new]").click()
+const opened = await until(async () => { const h = decodeURIComponent(await page.evaluate(() => location.hash)); return /Untitled[^/]*\.md$/.test(h) && h.replace(/^#file\//, "") }, 8000).catch(() => null)
+let made = ""; try { made = opened ? read(opened) : "" } catch {}
+check("new: a file with the view's properties, opened", !!opened && made.includes("type: qa-book"), [opened, made])
+if (opened) await api("DELETE", `file?path=${encodeURIComponent(opened)}`)
+await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await page.waitForTimeout(2000)
 // Keyboard: a cell edited, Tab to the next editable one.
 await base.locator(`[data-query-row="${F}/Books/Harbour lights.md"] td`).nth(2).dblclick()
 await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("done"); await page.keyboard.press("Tab")

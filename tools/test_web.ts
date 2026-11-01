@@ -1606,6 +1606,11 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const nested = "filters:\n  or:\n    - file.hasTag(\"a\") # tagged\n    - and:\n        - price > 2\n"
   check("bases: a filter changed keeps the comments of the rest", edit.setFilters(nested, null, { or: ['file.hasTag("a")', { and: ["price > 3"] }] }) === nested.replace("price > 2", "price > 3"),
     edit.setFilters(nested, null, { or: ['file.hasTag("a")', { and: ["price > 3"] }] }))
+  const ni = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "query", "newitem.ts")).href)
+  const made = ni.newItem({ filters: { and: ['file.inFolder("Books/")', 'type == "book"', { or: ['status == "a"', 'status == "b"'] }] },
+    views: [{ type: "table", filters: { and: ["pages == 300", "done == true", 'file.hasTag("#read")', "project == this", 'note["due date"] == "2026-10-01"', "price > 3"] } }] }, 0)
+  check("bases: a new file in a view: its folder, the properties and tags every match has", JSON.stringify(made) === JSON.stringify({ folder: "Books",
+    props: { type: "book", pages: 300, done: true, "due date": "2026-10-01", tags: ["read"] } }), made)
   const fl = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "query", "filters.ts")).href)
   const conds = ['status == "done"', "price > 10", '!file.inFolder("A/B")', 'note["due date"] >= date("2026-01-01")', '!tags.contains("ai")', "status.isEmpty()"]
   check("bases: filter expressions read as conditions and written back the same", conds.every((s) => { const c = fl.condOf(s); return c && fl.exprOf({ ...c, src: undefined }) === s }),
