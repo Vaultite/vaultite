@@ -117,7 +117,7 @@ if (f) {
   check("vault link opens the note", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes("QA/QA note.md")), await page.evaluate(() => location.hash))
 }
 
-// A page that read nothing of the vault opens its links without asking.
+// A page in the vault asks before a link out even when it read nothing: it's given what it kept from its first load.
 writeFileSync(`${VAULT}/QA/QA plain.html`, `<!doctype html><p>plain</p><a id="ext" href="https://example.com/">example</a><script>window.__t = { ready: 1 }</script>`)
 await page.goto(`${B}#file/${enc("QA/QA plain.html")}`)
 let plain = null
@@ -125,8 +125,11 @@ await until(async () => { plain = page.frames().find((x) => x.url().includes("/v
 if (plain) {
   const pop = popup()
   await plain.click("#ext")
+  const ask = await asked()
+  check("a page that read nothing still asks before opening a site", !!ask && /Open example\.com\?/.test(await ask.innerText()), await ask?.innerText())
+  if (ask) await page.click("dialog[data-confirm] [data-confirm-ok]")
   const p2 = await pop
-  check("a page that read nothing opens a link without asking", !!p2 && !(await page.$("dialog[data-confirm]")), p2?.url())
+  check("… and opens it after yes", !!p2 && p2.url().startsWith("https://example.com"), p2?.url())
   if (p2) await p2.close()
 } else check("a page that read nothing opens", false)
 
