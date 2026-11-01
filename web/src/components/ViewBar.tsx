@@ -16,7 +16,9 @@ function NavButtons() {
   const tab = tabs.find((t) => t.id === active)
   const back = useCommandKeys("nav:back", true), forward = useCommandKeys("nav:forward", true)
   return (
-    <div className="flex shrink-0 items-center">
+    // (a pane too narrow for the bar's buttons: forward, then back wrap out of sight, so the view's buttons stay put)
+    <div className="flex h-7 min-w-0 flex-wrap items-center overflow-clip [overflow-clip-margin:4px]">
+
       <button type="button" onClick={() => navigate(-1)} disabled={!canNavigate(tab, -1)} aria-label="Navigate back" data-tip={`Navigate back${back}`} className={barButton}>
         <ArrowLeft className="size-4" strokeWidth={2} />
       </button>
@@ -33,7 +35,9 @@ export function ViewBar({ children, right, className }: { children?: ReactNode; 
   return (
     <div ref={ref} data-view-bar className={cn("sight-top sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
       <NavButtons />
-      <div data-view-bar-fill className="flex min-w-0 flex-1 items-center">{children}</div>
+      {/* (squeezed past what its crumbs can shrink to, it cuts them off rather than drawing them under the buttons;
+          the margin keeps focus rings) */}
+      <div data-view-bar-fill className="flex min-w-0 flex-1 items-center overflow-clip [overflow-clip-margin:4px]">{children}</div>
       {right}
     </div>
   )
