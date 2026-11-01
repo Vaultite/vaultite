@@ -47,7 +47,7 @@ const paneText = (pane) => shown(pane).evaluate((el) => [...el.querySelectorAll(
 const row = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"]`).first()
 const expanded = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"] > [role=treeitem]`).first().getAttribute("aria-expanded")
 const unfold = async (p) => { if ((await expanded(p)) !== "true") { await row(p).locator("button").first().click(); await until(async () => (await expanded(p)) === "true", 2000) } }
-const backlinks = async (p) => Object.keys((await api("GET", `file/linked?path=${encodeURIComponent(p)}`)).lines ?? {}).sort()
+const backlinks = async (p) => ((await api("GET", `file/linked?path=${encodeURIComponent(p)}`)).linked ?? []).map((l) => l.path).sort()
 
 // The app: one pane on the linking note, a second on the note to rename.
 await page.goto(`${B}#file/${encodeURIComponent(linker)}`)

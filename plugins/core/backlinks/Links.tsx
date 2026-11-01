@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FileQuestion, FileText, Globe, NotebookPen, SquareArrowOutUpRight } from "lucide-react"
 import {
-  backlinks, Bar, cn, createNamed, Foldable, get, getStore, HeadingButton, isDesktop, newNoteFolder, openDetail, openFile, openInSplit, openView, post, resolver,
+  Bar, cn, createNamed, Foldable, get, getStore, HeadingButton, isDesktop, newNoteFolder, openDetail, openFile, openInSplit, openView, post, resolver,
   SidebarHeading, snippet, startDrag, stem, useFocusedFile, useHeldHeight, useKeptCount, useLive, useNearEnd, useVaultChange, viewInfo, type SidebarCtx, type Store,
 } from "@vaultite"
 import { siteOf } from "./weblinks"
@@ -16,23 +16,13 @@ const isMd = (p: string) => /\.md$/i.test(p)
 /** Unlinked mentions come this many more at a time, as the list is scrolled to its end. */
 const PAGE = 100
 
-/** Everything the panel shows for `path`. */
+/** What GET file/linked answers (core/files.ts): the files linking to `path`, newest first, each with the line its
+ *  first link there is on, and `path`'s own links as written. */
+type FileLinked = { path: string; linked: { path: string; line: string }[]; links: string[] }
+
+/** Everything the panel shows for `path`: what links to it and what it links to come from the server, which keeps them
+ *  by edit (in a big vault the store holds no links: they were half of it). */
 function useLinks(store: Store, path: string) {
-  const linked = useMemo(() => (path ? backlinks(store, path) : []), [store, path])
-  const outgoing = useMemo(() => {
-    const f = store.files.files.find((x) => x.path === path)
-    if (!f) return []
-    const resolve = resolver(store)
-    const seen = new Map<string, Out>()
-    for (const t of f.links) {
-      const r = resolve(t, path)
-      const key = r ? r.file || r.detail || r.id : `?${t.split("#")[0].trim().toLowerCase()}`
-      if (r?.file === path || seen.has(key)) continue
-      seen.set(key, { key, title: r ? (r.file ? stem(r.file) : r.title) : t.split("#")[0].trim(), file: r?.file, detail: r?.detail || undefined })
-    }
-    // Resolved first, then the ones that go nowhere yet.
-    return [...seen.values()].sort((a, b) => Number(!a.file && !a.detail) - Number(!b.file && !b.detail))
-  }, [store, path])
   // Unlinked mentions read the notes' text: asked again whenever a note changes (not a hidden file; a time, not a
   // counter: useLive shares one answer between the same addresses for a few seconds, and two panels' counters would collide).
   const [v, setV] = useState(() => Date.now())
@@ -42,10 +32,24 @@ function useLinks(store: Store, path: string) {
   const { data } = useLive<Unlinked>(path && isMd(path) ? `backlinks/unlinked?path=${encodeURIComponent(path)}&limit=${limit}` : null, v)
   const unlinked = path && isMd(path) ? data ?? null : { total: 0, files: 0, mentions: [] }
   const more = () => { if (data && data.mentions.length < data.total && data.mentions.length >= limit) setLimit(limit + PAGE) }
-  // The line each linked mention is on (the store has only links' targets): asked before the store has them, so a kept
-  // answer draws with them.
-  const lines = useLive<{ lines: Record<string, string> }>(path ? `file/linked?path=${encodeURIComponent(path)}` : null, v).data?.lines
-  return { linked, lines, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
+  // (an answer for the file shown before stands for none: the next one is on its way)
+  const got = useLive<FileLinked>(path ? `file/linked?path=${encodeURIComponent(path)}` : null, v).data
+  const answer = got?.path === path ? got : null
+  const linked = useMemo(() => answer?.linked.map((l) => ({ ...l, title: stem(l.path) })) ?? null, [answer])
+  const outgoing = useMemo(() => {
+    if (!answer) return null
+    const resolve = resolver(store)
+    const seen = new Map<string, Out>()
+    for (const t of answer.links) {
+      const r = resolve(t, path)
+      const key = r ? r.file || r.detail || r.id : `?${t.split("#")[0].trim().toLowerCase()}`
+      if (r?.file === path || seen.has(key)) continue
+      seen.set(key, { key, title: r ? (r.file ? stem(r.file) : r.title) : t.split("#")[0].trim(), file: r?.file, detail: r?.detail || undefined })
+    }
+    // Resolved first, then the ones that go nowhere yet.
+    return [...seen.values()].sort((a, b) => Number(!a.file && !a.detail) - Number(!b.file && !b.detail))
+  }, [store, path, answer])
+  return { linked, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
 }
 
 function Item({ icon: Icon, title, context, faint, onOpen, action, tip, path }: {
@@ -104,15 +108,14 @@ function Looking({ count }: { count: number }) {
   )
 }
 
-/** The files linking to `path`. Their lines come after their names: till then each keeps a line's room, and the list
- *  the height it had last time in that place (`at`), as a line can take two. */
-function Linked({ path, at, linked, lines, open }: { path: string; at: string; linked: { file: { path: string }; title: string }[]; lines?: Record<string, string>; open: (p: string) => void }) {
+/** The files linking to `path`, each with the line its link is on. The list keeps the height it had last time in that
+ *  place (`at`), as a line can take two. */
+function Linked({ path, at, linked, open }: { path: string; at: string; linked: { path: string; title: string; line: string }[]; open: (p: string) => void }) {
   const held = useHeldHeight<HTMLDivElement>(`links:linked:${at}:${path}`, true, true)
   return (
     <div ref={held} className="flex flex-col gap-px">
-      {linked.map(({ file, title }) => (
-        <Item key={file.path} icon={FileText} title={title} onOpen={() => open(file.path)} path={file.path}
-          context={lines ? lines[file.path] && snippet(lines[file.path]) : <span aria-busy><Bar w="85%" /></span>} />
+      {linked.map((l) => (
+        <Item key={l.path} icon={FileText} title={l.title} onOpen={() => open(l.path)} path={l.path} context={l.line && snippet(l.line)} />
       ))}
     </div>
   )
@@ -120,9 +123,10 @@ function Linked({ path, at, linked, lines, open }: { path: string; at: string; l
 
 /** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
 export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
-  const { linked, lines, outgoing, unlinked, more, refresh } = useLinks(store, path)
+  const { linked, outgoing, unlinked, more, refresh } = useLinks(store, path)
   const [busy, setBusy] = useState("")
   const looking = useKeptCount(`links:unlinked:${path}`, unlinked ? unlinked.mentions.length : undefined, 0, 6)
+  const lookingLinked = useKeptCount(`links:linked:${path}`, linked ? linked.length : undefined, 0, 6)
   const open = (p: string, e?: { metaKey: boolean; ctrlKey: boolean }) => openFile(p, { newTab: !!(e?.metaKey || e?.ctrlKey), pane })
   const link = async (m: Mention) => {
     const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
@@ -133,8 +137,8 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   }
   return (
     <div className="flex flex-col" data-links-for={path}>
-      <Foldable data-links-group="linked" keep="links.linked" title="Linked mentions" count={linked.length}>
-        {linked.length ? <Linked path={path} at={pane ? "tab" : "panel"} linked={linked} lines={lines} open={open} /> : empty("Nothing links here yet.")}
+      <Foldable data-links-group="linked" keep="links.linked" title="Linked mentions" count={linked ? linked.length : null}>
+        {!linked ? <Looking count={lookingLinked} /> : linked.length ? <Linked path={path} at={pane ? "tab" : "panel"} linked={linked} open={open} /> : empty("Nothing links here yet.")}
       </Foldable>
       <Foldable data-links-group="unlinked" keep="links.unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
         {!unlinked ? <Looking count={looking} /> : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
@@ -154,8 +158,8 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
           <More key={unlinked.mentions.length} onNear={more}>{unlinked.total - unlinked.mentions.length} more…</More>
         )}</> : empty(isMd(path) ? "Its name isn't written anywhere else." : "Only notes have mentions.")}
       </Foldable>
-      <Foldable data-links-group="outgoing" keep="links.outgoing" title="Outgoing links" count={outgoing.length}>
-        {outgoing.length ? outgoing.map((o) => {
+      <Foldable data-links-group="outgoing" keep="links.outgoing" title="Outgoing links" count={outgoing ? outgoing.length : null}>
+        {!outgoing ? <Looking count={0} /> : outgoing.length ? outgoing.map((o) => {
           const to = o.file, detail = o.detail
           return (
             <Item key={o.key} icon={to || detail ? FileText : FileQuestion} title={o.title} faint={!to && !detail}

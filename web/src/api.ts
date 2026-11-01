@@ -147,7 +147,7 @@ export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scroll
 export { glide } from "@/core/animation"
 /** Where on screen what's in an element's scroller can be seen: under the bars drawn over it, above those under it. */
 export { sightOf } from "@/core/sight"
-export { backlinks, drawnLink, followLink, linkClick, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type LinkClick, type Target } from "@/core/links"
+export { drawnLink, followLink, linkClick, linkPlace, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type LinkClick, type Target } from "@/core/links"
 /** The links in a line of Markdown, with where each one's target and text are written (core/links.ts, shared with the server). */
 export { linksIn, type LinkSpan } from "../../core/links.ts"
 /** A link's right-click menu, the same wherever one is drawn: open it, copy it, and (`edit`) change it where it's written. */

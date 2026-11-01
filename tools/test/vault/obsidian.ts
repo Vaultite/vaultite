@@ -11,7 +11,7 @@ export default async ($: VaultTest) => {
   write("Obs/Obs C.md", "![[Obs D]]\n")
   write("Obs/Obs D.md", "D says hi.\n\n![[Obs C]]\n")
   let [, obsFiles] = await api("GET", "files")
-  const obsB = obsFiles.files.find((f: Any) => f.path === "Obs/Obs B.md")
+  const [, obsB] = await api("GET", "file/linked?path=Obs/Obs B.md")
   check("obsidian: [[Note#Heading]], [[Note#^id]], Markdown links and embeds all link the note", obsB.links.filter((t: string) => t === "Obs/Obs A" || t === "Obs A").length >= 5, obsB.links)
   const obsA = obsFiles.files.find((f: Any) => f.path === "Obs/Obs A.md")
   check("obsidian: a file's tags are its frontmatter's and its inline #tags (not in code or comments)", same(obsA.tags, ["compat", "obs/inline"]), obsA.tags)

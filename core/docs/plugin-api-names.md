@@ -65,7 +65,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `askText(o)`: The palette as a text field: Enter gives what's typed (trimmed; `label` names the row it makes), an empty Enter `onBlank` where there is one, Esc nothing.
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
-- `backlinks(s, path)`: Backlinks to a file: the files that link to it.
 - `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (an agent at work, waiting for you), the same wherever the icon is.
 - `Bar({ w, className })`: A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width).
 - `BarKey`
@@ -323,7 +322,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `markdownDrawn(el, lines?)`
 - `markdownHtml(text, { inline, from }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for…
 - `markNew(path)`
-- `mentions(s, is, except?)`: Files that link to something (a note, a person), newest first.
 - `menuAbove(e, items)`: For a button at the bottom (the status bar): the menu above it.
 - `menuBelow(e, items)`: For a … button: the menu under it.
 - `menuFor(items)`: For onContextMenu: the menu at the pointer (nothing if there are no items; never the browser's).

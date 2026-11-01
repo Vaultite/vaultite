@@ -111,6 +111,7 @@ const ENDPOINTS: [string, string, string, unknown?][] = [
   ["search a word", "GET", `api/search?q=${q(SEARCH)}`],
   ["search two words", "GET", `api/search?q=${q(`${SEARCH} the`)}`],
   ["unlinked mentions", "GET", `api/backlinks/unlinked?path=${q(NOTE)}`],
+  ["links panel (the most linked note)", "GET", `api/file/linked?path=${q(RENAME)}`],
   ["tags", "GET", "api/tags"],
 ]
 
@@ -150,7 +151,7 @@ try {
   ws.onmessage = (m) => { if (JSON.parse(String(m.data)).type === "change") told?.() }
   await new Promise((r) => { ws.onopen = r })
   let v = (await time("GET", "api/state?since=0")).json().v as string
-  const after: Record<string, number[]> = { "change told after an edit": [], "state patch after an edit": [], "files after an edit": [], "graph after an edit": [], "search after an edit": [] }
+  const after: Record<string, number[]> = { "change told after an edit": [], "state patch after an edit": [], "files after an edit": [], "links panel after an edit": [], "graph after an edit": [], "search after an edit": [] }
   let patchBytes = 0
   for (let i = 0; i < RUNS; i++) {
     const heard = new Promise<void>((r) => { told = r })
@@ -162,9 +163,19 @@ try {
     v = st.json().v; patchBytes = st.bytes
     after["state patch after an edit"].push(st.ms)
     after["files after an edit"].push((await time("GET", "api/files")).ms)
+    after["links panel after an edit"].push((await time("GET", `api/file/linked?path=${q(RENAME)}`)).ms)
     after["graph after an edit"].push((await time("GET", "api/graph")).ms)
     after["search after an edit"].push((await time("GET", `api/search?q=${q(SEARCH)}`)).ms)
   }
+  // A new note linking to the most linked one (an AI writing one): what the Links panel asks then.
+  after["links panel after a new note"] = []
+  for (let i = 0; i < RUNS; i++) {
+    const heard = new Promise<void>((r) => { told = r })
+    fs.writeFileSync(path.join(VAULT, `Bench new ${i}.md`), `About [[${stemOf(RENAME)}]].\n`)
+    await heard
+    after["links panel after a new note"].push((await time("GET", `api/file/linked?path=${q(RENAME)}`)).ms)
+  }
+  for (let i = 0; i < RUNS; i++) fs.rmSync(path.join(VAULT, `Bench new ${i}.md`))
   ws.close()
   for (const [name, ms] of Object.entries(after)) endpoints[name] = { median: median(ms), ...(name.startsWith("state") ? { bytes: patchBytes } : {}) }
   result.endpoints = endpoints

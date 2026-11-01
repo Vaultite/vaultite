@@ -13,7 +13,7 @@ import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } f
 import { merge3 } from "./textedit.ts"
 import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
-import { fenced } from "./links.ts"
+import { fenced, linkResolver } from "./links.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
@@ -124,7 +124,7 @@ function linksOf(e: Entry, vault: Vault | null = null) {
 
 
 /** A Markdown file's row in the tree. */
-function row(vault: Vault, rel: string, e: Entry): Item {
+function row(rel: string, e: Entry): Item {
   const aliases = e.fm.aliases
   // How it shows in the tree, tabs and the sidebar (a dashboard's icon and colour, the plugin that brought it), if the file says.
   const look: Item = {}
@@ -134,7 +134,7 @@ function row(vault: Vault, rel: string, e: Entry): Item {
     ...look,
     path: rel, type: e.type, kind: e.kind ? e.kind.collection : null, title: typeof title === "string" ? title : String(title),
     aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String),
-    mtime: ms(e.stat.ns), ctime: e.stat.born, size: e.stat.size, links: linksOf(e, vault).map(([t]) => t),
+    mtime: ms(e.stat.ns), ctime: e.stat.born, size: e.stat.size,
     problems: e.problems.length,
     ...(e.archived ? { archived: true } : {}),
     // Frontmatter tags and inline #tags (the Tags panel, the tag sheet)
@@ -143,8 +143,8 @@ function row(vault: Vault, rel: string, e: Entry): Item {
   }
 }
 
-// Rows are worked out once per read of a file (an Entry is new each time its file is read), except for files with
-// Markdown links, which resolve against the other files there are now (mdTarget). Frozen: serialized once.
+// Rows are worked out once per read of a file (an Entry is new each time its file is read). Frozen: serialized once.
+// Links aren't in them: at 24,000 notes they were half the tree, and the Links panel asks for one file's (file/linked).
 const rows = new WeakMap<Entry, { row: Item; excluded?: Item }>()
 const otherRows = new WeakMap<object, Item>() // (by the file's stat: new each time it changed)
 // The tree as of a vault version (it bumps on any change: a file, another file, a folder) and the plugins drawing pages
@@ -170,7 +170,7 @@ function pagePlugins(vault: Vault) {
   return LOADED.filter((p) => !off.has(p.id) && Object.keys(p.services).some((k) => k.startsWith("looks:")))
 }
 
-/** Every file and folder, for the tree, links and backlinks: the same frozen object while the vault is unchanged, so
+/** Every file and folder, for the tree and links: the same frozen object while the vault is unchanged, so
  *  it's serialized once. Its rows are shared: don't change them. */
 export function tree(vault: Vault): Tree {
   let hit = trees.get(vault)
@@ -180,10 +180,7 @@ export function tree(vault: Vault): Tree {
     for (const rel of sortedKeys(vault, "entries")) {
       const e = vault.entries.get(rel)!
       let r = rows.get(e)
-      if (!r) {
-        r = { row: Object.freeze(row(vault, rel, e)) }
-        if (!e.body.includes("](")) rows.set(e, r)
-      }
+      if (!r) rows.set(e, r = { row: Object.freeze(row(rel, e)) })
       files.push(vault.excluded(rel) ? r.excluded ??= Object.freeze({ ...r.row, excluded: true }) : r.row)
     }
     // Files a plugin makes pages (its `looks:<ext>`: an artifact, a table) are files you open, like notes, named by their
@@ -200,7 +197,7 @@ export function tree(vault: Vault): Tree {
         continue
       }
       const look = looks(vault, r, base.mtime) ?? {}
-      files.push({ ...look, ...base, type: null, kind: null, title: look.title ?? stemOf(r).replace(/\.[^.]+$/, ""), aliases: [], links: [], problems: 0, blocks: [] })
+      files.push({ ...look, ...base, type: null, kind: null, title: look.title ?? stemOf(r).replace(/\.[^.]+$/, ""), aliases: [], problems: 0, blocks: [] })
     }
     hit = { version: vault.version, settings: vault.settingsVersion, pages, tree: Object.freeze({ files, others, folders: [...vault.folders] }) }
     trees.set(vault, hit)
@@ -698,20 +695,90 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
   }
 }
 
-/** The files linking to `rel`, each with the line its first link there is on (the Links panel's linked mentions: the
- *  tree has only links' targets). Only links whose target names it (its name, an alias) are resolved. */
-function linkedLines(vault: Vault, rel: string): Record<string, string> {
-  const files = tree(vault).files, aliases = (files.find((f) => f.path === rel)?.aliases ?? []) as string[]
-  const names = new Set([stemOf(rel), ...aliases].map((n) => n.toLowerCase()))
-  const named = (t: string) => { const k = t.split("#")[0].split("^")[0].trim().toLowerCase(); return names.has(k) || names.has(k.slice(k.lastIndexOf("/") + 1)) }
-  const out: Record<string, string> = {}
-  for (const f of files) {
-    if (f.path === rel || !(f.links as string[]).some(named)) continue
-    const e = vault.entries.get(f.path)
-    const hit = e && linksOf(e, vault).find(([t]) => named(t) && vault.resolveLink(t, f.path) === rel)
-    if (hit) out[f.path] = context(hit[1])
+// Who links to what (GET /api/file/linked, the Links panel), kept up by edits: an edit resolves its note's links again,
+// a file come, gone or renamed (or new aliases) those of the notes with a link of its name; never all of them again.
+type Linked = { version: number; resolve: (t: string, from?: string) => string | null
+  /** each file's link names (its aliases, archived), by path; other files' "" */
+  names: Map<string, string>
+  /** each note's read, the paths its links go to and the names they're written with */
+  out: Map<string, { e: Entry; to: string[]; named: string[] }>
+  /** the notes linking to a path, and those with a link by a name (lowercase: its last part) */
+  into: Map<string, Set<string>>; byName: Map<string, Set<string>> }
+const linkIndexes = new WeakMap<Vault, Linked>()
+const aliasesOf = (e: Entry) => { const a = e.fm.aliases; return (Array.isArray(a) ? a : a ? [a] : []).map(String) }
+const nameKey = (e: Entry) => `${aliasesOf(e).join("\u0001")}${e.archived ? "\u0002" : ""}`
+const linkName = (t: string) => t.slice(t.lastIndexOf("/") + 1).trim().toLowerCase()
+const putIn = (m: Map<string, Set<string>>, k: string, v: string) => { let s = m.get(k); if (!s) m.set(k, s = new Set()); s.add(v) }
+const takeOut = (m: Map<string, Set<string>>, k: string, v: string) => { const s = m.get(k); if (s?.delete(v) && !s.size) m.delete(k) }
+
+function linkIndex(vault: Vault): Linked {
+  const ix = linkIndexes.get(vault)
+  if (ix?.version === vault.version) return ix
+  if (!ix) {
+    const made: Linked = { version: vault.version, resolve: linkResolver(vault.linkFiles()), names: new Map(), out: new Map(), into: new Map(), byName: new Map() }
+    for (const [rel, e] of vault.entries) { made.names.set(rel, nameKey(e)); add(vault, made, rel, e) }
+    for (const rel of vault.others.keys()) made.names.set(rel, "")
+    linkIndexes.set(vault, made)
+    return made
   }
-  return out
+  // What changed since: notes read again, and files whose names links find changed (come, gone, new aliases).
+  const reread: string[] = [], named = new Set<string>(), nameOf = (rel: string, e?: Entry) => {
+    const n = rel.slice(rel.lastIndexOf("/") + 1).toLowerCase(), dot = n.lastIndexOf(".")
+    named.add(n)
+    if (dot > 0) named.add(n.slice(0, dot))
+    for (const a of e ? aliasesOf(e) : []) named.add(a.trim().toLowerCase())
+  }
+  for (const [rel, e] of vault.entries) {
+    const had = ix.out.get(rel)
+    if (had?.e === e) continue
+    reread.push(rel)
+    const key = nameKey(e)
+    if (!had || ix.names.get(rel) !== key) { if (had) nameOf(rel, had.e); nameOf(rel, e); ix.names.set(rel, key) }
+  }
+  for (const rel of vault.others.keys()) if (!ix.names.has(rel)) { nameOf(rel); ix.names.set(rel, "") }
+  const gone: string[] = []
+  for (const [rel] of ix.names) {
+    if (vault.entries.has(rel) || vault.others.has(rel)) continue
+    gone.push(rel)
+    nameOf(rel, ix.out.get(rel)?.e)
+  }
+  for (const rel of gone) { ix.names.delete(rel); drop(ix, rel); ix.out.delete(rel) }
+  const redo = new Set(reread)
+  if (named.size) {
+    ix.resolve = linkResolver(vault.linkFiles())
+    for (const n of named) for (const rel of ix.byName.get(n) ?? []) redo.add(rel)
+  }
+  for (const rel of redo) { drop(ix, rel); add(vault, ix, rel, vault.entries.get(rel)!) }
+  ix.version = vault.version
+  return ix
+}
+function add(vault: Vault, ix: Linked, rel: string, e: Entry) {
+  const written = linksOf(e, vault).map(([t]) => t)
+  const to = [...new Set(written.map((t) => ix.resolve(t, rel)).filter((p): p is string => !!p && p !== rel))]
+  const named = [...new Set(written.map(linkName))]
+  ix.out.set(rel, { e, to, named })
+  for (const p of to) putIn(ix.into, p, rel)
+  for (const n of named) putIn(ix.byName, n, rel)
+}
+function drop(ix: Linked, rel: string) {
+  const had = ix.out.get(rel)
+  if (!had) return
+  for (const p of had.to) takeOut(ix.into, p, rel)
+  for (const n of had.named) takeOut(ix.byName, n, rel)
+}
+
+/** The files linking to `rel`, newest first, each with the line its first link there is on, and the targets of its own
+ *  links as written (the app resolves them, with plugins' names). */
+function linkedTo(vault: Vault, rel: string): { path: string; linked: { path: string; line: string }[]; links: string[] } {
+  const ix = linkIndex(vault), from = [...ix.into.get(rel) ?? []]
+  const at = (p: string) => vault.entries.get(p)!.stat.ns
+  from.sort((a, b) => (at(a) === at(b) ? cmp(a, b) : at(b) > at(a) ? 1 : -1))
+  const linked = from.map((p) => {
+    const hit = linksOf(vault.entries.get(p)!, vault).find(([t]) => ix.resolve(t, p) === rel)
+    return { path: p, line: hit ? context(hit[1]) : "" }
+  })
+  const e = vault.entries.get(rel)
+  return { path: rel, linked, links: e ? linksOf(e, vault).map(([t]) => t) : [] }
 }
 
 /** The file routes, or undefined if the request isn't one of them. */
@@ -727,7 +794,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     return query.total === "1" ? found : found.results
   }
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
-  if (route === "file/linked" && method === "GET") return { lines: linkedLines(vault, clean(query.path, false, vault, true)) }
+  if (route === "file/linked" && method === "GET") return linkedTo(vault, clean(query.path, false, vault, true))
   if (route === "file") {
     if (method === "GET") {
       const p = String(query.path ?? "")

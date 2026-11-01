@@ -973,7 +973,7 @@ export class Vault {
 
   /** Every file as links see it: its path and aliases (its name is its title: `title:` and `name:` aren't link names).
    *  With `names` (lowercase), only `also` and the files a link by one of them could find: of that name, or that alias. */
-  private linkFiles(names?: Set<string>, also?: Map<string, string>): LinkFile[] {
+  linkFiles(names?: Set<string>, also?: Map<string, string>): LinkFile[] {
     const out: LinkFile[] = []
     const named = (rel: string) => {
       const n = rel.slice(rel.lastIndexOf("/") + 1).toLowerCase(), dot = n.lastIndexOf(".")

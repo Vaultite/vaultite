@@ -85,13 +85,8 @@ export class Folder {
   }
 
   /** The tree (GET files) as the guest's: their files and folders, by their paths. */
-  tree(t: { files: Item[]; others: Item[]; folders: string[] }, body: (rel: string) => string | undefined = () => undefined) {
-    // (links as written, wiki links only: a Markdown link by path is resolved only when its file is there, which would
-    // tell what's outside the folder)
-    const rows = (list: Item[]) => list.flatMap((r) => {
-      const p = this.see(String(r.path))
-      return p === null ? [] : [{ ...r, path: p, ...(r.links ? { links: wikiTargets(body(String(r.path)) ?? "") } : {}) }]
-    })
+  tree(t: { files: Item[]; others: Item[]; folders: string[] }) {
+    const rows = (list: Item[]) => list.flatMap((r) => { const p = this.see(String(r.path)); return p === null ? [] : [{ ...r, path: p }] })
     return { files: rows(t.files), others: rows(t.others), folders: t.folders.flatMap((f) => { const p = this.see(f); return p === null ? [] : [p] }) }
   }
 
@@ -275,6 +270,13 @@ export class Gateway {
     if (key === "GET file") return this.json(res, 200, theirs(await api("GET", `file?path=${encodeURIComponent(f.at(q.path))}`) as Item))
     if (key === "GET file/info") return this.json(res, 200, theirs(await api("GET", `file/info?path=${encodeURIComponent(f.at(q.path))}`) as Item))
     if (key === "GET raw") return this.raw(req, res, f.at(q.path))
+    if (key === "GET file/linked") {
+      // Their files linking to it, and its own links as written: wikilinks only (a Markdown link by path is resolved
+      // only when its file is there, which would tell what's outside the folder).
+      const rel = f.at(q.path), t = await api("GET", `file/linked?path=${encodeURIComponent(rel)}`) as { linked: { path: string; line: string }[] }
+      const linked = t.linked.flatMap((l) => { const p = f.see(l.path); return p === null ? [] : [{ ...l, path: p }] })
+      return this.json(res, 200, { path: f.see(rel), linked, links: wikiTargets(this.plugin.vault.entries.get(rel)?.body ?? "") })
+    }
     if (key === "GET search") {
       if (this.limited(`search:${g.id}`, SEARCHES)) return this.json(res, 429, { error: "too many searches at once: wait a moment" })
       if (!plainQuery(q.q ?? "")) throw new HTTPError(400, "search here takes words and phrases, not /regular expressions/, path: or folder:")
@@ -353,7 +355,7 @@ export class Gateway {
   async state(g: Guest, f: Folder) {
     return {
       vault: { path: g.share.folder.split("/").pop(), problems: [] },
-      files: f.tree(await this.plugin.host.api("GET", "files") as Parameters<Folder["tree"]>[0], (rel) => this.plugin.vault.entries.get(rel)?.body),
+      files: f.tree(await this.plugin.host.api("GET", "files") as Parameters<Folder["tree"]>[0]),
       config: { appearance: {}, plugins: { disabled: [], enabled: [] }, hotkeys: {}, sidebars: { left: ["files:files"], right: [], collapsed: [] } },
       // (what draws it, not where it came from or what the owner was told of it)
       vaultPlugins: (await this.plugin.host.api("GET", "plugins") as Item[]).filter((p) => VIEWS.includes(p.id) && p.on && p.loaded)

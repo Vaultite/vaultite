@@ -9,6 +9,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An Obsidian vault's hotkeys carry over**: `.obsidian/hotkeys.json`'s keys for the commands Vaultite has too (the
   palette, quick switcher, tabs, splits, list and heading commands...) apply, under `.vaultite/hotkeys.json`'s, and
   Settings ▸ Hotkeys marks them Obsidian's keys.
+- **Big vaults load half the data**: the app no longer gets every note's links with the file list (at 24,000 notes,
+  6.8 MB instead of 12.3), and the Links panel asks the server for one note's links, which it keeps up by edit rather
+  than going through all of them after each change. Plugin API 5: `backlinks`, `mentions` and the file rows' `links`
+  are gone; GET /api/file/linked has a file's links and what links to it.
 - **A card added to a board's column**: each column of a base's board has a +, a new note with that column's value
   (and what the view's filters ask for), opened in a tab beside it.
 - **Fill down in tables**: with cells of a note's table selected, ⌘D (Ctrl+D) fills them down from the top row, as in

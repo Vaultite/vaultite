@@ -279,15 +279,3 @@ export function shortestLink(s: Store, path: string, from?: string): string {
  *  another folder. */
 const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
 
-/** Files that link to something (a note, a person), newest first. */
-export function mentions(s: Store, is: (t: Target) => boolean, except?: string) {
-  const resolve = resolver(s)
-  const out: { file: VaultFile; title: string }[] = []
-  for (const f of s.files?.files ?? []) {
-    if (f.path === except) continue
-    if (f.links.some((t) => { const r = resolve(t, f.path); return !!r && is(r) })) out.push({ file: f, title: stem(f.path) })
-  }
-  return out.sort((a, b) => b.file.mtime - a.file.mtime)
-}
-/** Backlinks to a file: the files that link to it. */
-export const backlinks = (s: Store, path: string) => mentions(s, (t) => t.file === path, path)
