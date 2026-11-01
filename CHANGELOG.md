@@ -32,6 +32,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
   Shift+I and Shift+U read and unread; G I opens the inbox. In a session's sheet J and K go to the next and previous
   session, E marks it done, P pins, R replies. Each is a command, rebindable in Hotkeys.
+- **Code blocks without a language sit evenly**: no empty label line over their code; the copy button shows beside
+  the first line, in notes and on dashboards.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.

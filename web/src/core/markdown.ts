@@ -260,7 +260,7 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
         const name = (lang ?? "").trim().split(/\s+/)[0]
         if (name.toLowerCase() === "mermaid") return `<div class="md-mermaid" data-mermaid>${esc(text)}</div>\n`
         const cls = name ? ` class="language-${esc(name)}"` : ""
-        return `<div class="md-code"><div class="md-code-head"><span class="md-code-lang">${esc(name)}</span>` +
+        return `<div class="md-code${name ? "" : " md-code-bare"}"><div class="md-code-head"><span class="md-code-lang">${esc(name)}</span>` +
           `<button type="button" class="md-copy" data-copy aria-label="Copy" data-tip="Copy">${COPY_ICON}</button></div>` +
           `<pre><code${cls}>${esc(text.replace(/\n$/, ""))}\n</code></pre></div>\n`
       },

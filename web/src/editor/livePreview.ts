@@ -976,7 +976,7 @@ function inline(view: EditorView): DecorationSet {
             if (name === "FencedCode" && live && !touchedLines(state, n.from, n.to) && !lang.startsWith("block-")) {
               const open = state.doc.line(first), closed = marks.length > 1 && last > first
               const code = last - first > (closed ? 1 : 0) ? state.sliceDoc(state.doc.line(first + 1).from, state.doc.line(closed ? last - 1 : last).to) : ""
-              out.push(line("cm-fence-top").range(open.from))
+              out.push(line(lang.trim() ? "cm-fence-top" : "cm-fence-top cm-fence-bare").range(open.from))
               out.push(Decoration.replace({ widget: new FenceHead(lang.split(/\s/)[0], code) }).range(open.from, open.to))
               if (closed) {
                 const end = state.doc.line(last)

@@ -951,7 +951,12 @@ dialog { --vau-panel-bottom: 0px; }
   .cm-fence-top.is-hover .cm-fence-copy, .md-code:hover .md-copy, .cm-fence-copy:focus-visible, .md-copy:focus-visible, .is-copied { opacity: 1; }
 }
 .vau-editor .cm-fence-bottom { font-size: 0; line-height: 0; padding-bottom: 10px; }
-.md-code { border-radius: 10px; background: color-mix(in srgb, var(--foreground) 5%, transparent); padding: 6px 14px 10px; }
+/* A fence without a language has no label to show: no header line, its copy button beside its first line. */
+.vau-editor .cm-fence-top.cm-fence-bare { position: relative; font-size: 0; line-height: 0; padding-top: 18px; }
+.vau-editor .cm-fence-bare .cm-fence-head { position: absolute; z-index: 1; top: 18px; right: 14px; width: auto; }
+.md-code { position: relative; border-radius: 10px; background: color-mix(in srgb, var(--foreground) 5%, transparent); padding: 6px 14px 10px; }
+.md-code-bare { padding-top: 10px; }
+.md-code-bare > .md-code-head { position: absolute; z-index: 1; top: 10px; right: 14px; }
 .md-code + * { margin-top: 14px; }
 .md-code > pre { background: none !important; border: 0 !important; padding: 0 !important; margin: 0 !important; border-radius: 0 !important; }
 .note-prose .md-code, .dash-prose .md-code { margin: 0 0 14px; }
