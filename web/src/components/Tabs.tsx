@@ -60,8 +60,17 @@ function tabMenu(tab: Tab, last: boolean, count: number, group: Group, bar = fal
 /** Right-click on a pane's top while the tab bar is off (its title strip, or a file's bar that's its title row): the
  *  tab on screen's menu, then the pane's, as the tab's row in the Tabs panel has them. */
 function paneTopMenu(group: Group): MenuItem[] {
-  const i = Math.max(0, group.tabs.findIndex((t) => t.id === group.active))
-  return [...ownItems(group.tabs[i], i === group.tabs.length - 1, group.tabs.length), ...barMenu(group).map((it, k) => (k ? it : { ...it, sep: true }))]
+  const i = Math.max(0, group.tabs.findIndex((t) => t.id === group.active)), view = viewPaneItems(group)
+  return [...view, ...ownItems(group.tabs[i], i === group.tabs.length - 1, group.tabs.length).map((it, k) => (k || !view.length ? it : { ...it, sep: true })),
+    ...barMenu(group, false).map((it, k) => (k ? it : { ...it, sep: true }))]
+}
+
+/** What the view on screen in a pane offers at its top (its `paneMenu`: the Browser's Hide page bar). */
+function viewPaneItems(group: Group): MenuItem[] {
+  const tab = group.tabs.find((t) => t.id === group.active) ?? group.tabs[0]
+  const v = tab?.to.startsWith("view:") ? viewFor(tab.to, getPrefs().disabled) : null
+  if (!v?.on || !v.def.paneMenu) return []
+  try { return v.def.paneMenu(v.arg, tab.id) } catch { return [] }
 }
 
 function ownItems(tab: Tab, last: boolean, count: number): MenuItem[] {
@@ -213,12 +222,13 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
 
 /** How a pane shows its tabs: stacked or in a row, and the tab bar on or off (appearance `tabBar`); and closing it,
  *  pinned tabs too. Also the menu of the bar's empty space. */
-function barItems(group: Group): MenuItem[] {
+function barItems(group: Group, view = true): MenuItem[] {
   const { paneTitles } = getPrefs(), tabBar = tabBarOn()
   // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone). (A pop-out's
   // bar is drawn for want of a sidebar: nothing to switch there.)
   const vertical = tabsInSidebar()
   return [
+    ...(view ? viewPaneItems(group).map((it, k) => (k ? it : { ...it, sep: true })) : []),
     { label: group.stacked ? "Unstack tabs" : "Stack tabs", icon: Layers, sep: true, run: () => toggleStacked(group.id) },
     ...commandItems("tab:sidebar"),
     ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
@@ -228,12 +238,12 @@ function barItems(group: Group): MenuItem[] {
 }
 
 /** Right-click on a tab bar's empty space. */
-function barMenu(group: Group): MenuItem[] {
+function barMenu(group: Group, view = true): MenuItem[] {
   return [
     { label: "New tab", icon: Plus, run: () => openNewTab({ pane: group.id, at: "end" }) },
     ...commandItems("tab:reopen", "tab:search"),
     ...(hasMainWindow() ? [{ label: "Move all to main window", icon: AppWindow, run: () => moveToMain(group.tabs.map((t) => t.id)) }] : []),
-    ...barItems(group),
+    ...barItems(group, view),
   ]
 }
 

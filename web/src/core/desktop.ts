@@ -207,8 +207,9 @@ export type WebEvent =
   | { type: "close"; tab: string }
   /** The pointer moved over a page near the window's left or right edge, or just left there (window CSS px). */
   | { type: "pointer"; x: number; y: number }
-  /** The pointer reached page `id`'s top edge (`at`), or left it: a hidden page bar slides in. */
-  | { type: "top"; id: number; at: boolean }
+  /** The pointer is at page `id`'s top edge (`at`; told again while it stays, `now`: it clicked there), or left it: a
+   *  hidden page bar slides in. */
+  | { type: "top"; id: number; at: boolean; now?: boolean }
   | { type: "focus"; id: number }
   /** Page `id`'s cursor changed (Electron's name: "pointer", "text"...), shown over it while the window lets the pointer
    *  through. Older builds don't tell it. */

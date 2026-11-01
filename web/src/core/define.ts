@@ -267,6 +267,9 @@ export type ViewDef = {
   /** Whether its tab, unpinned, archives itself once unseen a while (Tabs' setting); a function says per tab (a page
    *  playing sound doesn't). Unset: yes, unless closing it ends something (keepsTab, onClose, confirmClose). */
   archives?: boolean | ((arg: string, tab: string) => boolean)
+  /** Items for its pane's top while its tab is on screen (the tab bar's empty space; with the tab bar off, the pane's
+   *  title or strip, first there): the Browser's Hide page bar. */
+  paneMenu?: (arg: string, tab: string) => FileMenuItem[]
   /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session); `tab`: its id. */
   tabMenu?: (arg: string, tab: string) => (FileMenuItem & { danger?: boolean })[]
   /** The arg its pin keeps (Pinned; null: this one can't be): unset, its arg as is (none: `view:<name>`, in Pinned's

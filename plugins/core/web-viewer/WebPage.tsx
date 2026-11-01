@@ -1,7 +1,7 @@
 // A web page in a tab: a slim bar over the desktop app's native page. While anything of the app covers the box, the
 // window goes over its pages and shows the live page through a hole (layers.ts).
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, PanelTopClose, PanelTopOpen, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
+import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
   Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
@@ -22,7 +22,7 @@ import { Passkey } from "./Passkey"
 import { bookmark, forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setOnScreen, setPlayer, settingsRead, setTitle, shown, takeUnheard, type FindAsk } from "./state"
 import { FindBar, findOpen, setFindOpen, type Found } from "./FindBar"
 import { siteIcon } from "./icons"
-import { setBarHidden, usePageBar } from "./pagebar"
+import { pageBarItem, usePageBar } from "./pagebar"
 import { agentPages, doneAsk, pauseAgents, toBackground, working, WORKING_MS } from "./agentpages"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
@@ -63,7 +63,7 @@ const stillWeb = (id: string) => {
 }
 
 function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: WebPages }) {
-  const { group, tab = "" } = usePane()
+  const { group, tab = "", hidden: tabHidden } = usePane()
   // (a tab's container never changes under its page: index.tsx draws a page afresh for another)
   const { container, url: arg } = splitArg(tabArg)
   const setArg = (url: string) => setTabArg(argOf(url, container))
@@ -102,7 +102,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // the tab shows something else (closing it ends it too: onTabClose). A new web tab has none till an address is typed.
   const blank = !ownPage(arg)
   // (hidden, it slides over the page: never the pane's title row; a new tab keeps it out, its address is what's used)
-  const { hidden: barHid, out: barOut } = usePageBar(web, id, bar, blank)
+  const { hidden: barHid, out: barOut } = usePageBar(web, id, tabHidden ? undefined : group, bar, blank)
   usePaneTopBar(bar, !barHid)
   /** The address the tab had when it got its page: one that went on in the background (an agent's) isn't sent back. */
   const taken = useRef("")
@@ -374,11 +374,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       { label: "Show full history", icon: History, sep: list.length > 0, run: () => openView("web-history", { newTab: true }) },
     ])
   }
-  const barItem = (sep = false): MenuItem => (barHid
-    ? { label: "Always show page bar", icon: PanelTopOpen, sep, run: () => void setBarHidden(false) }
-    : { label: "Hide page bar", icon: PanelTopClose, sep, run: () => void setBarHidden(true) })
   // (its own buttons and the address have menus of their own)
-  const barMenu = (e: React.MouseEvent) => { if (!(e.target as Element).closest("button, input, [role=listbox]")) menuFor(() => [barItem()])(e) }
+  const barMenu = (e: React.MouseEvent) => { if (!(e.target as Element).closest("button, input, [role=listbox]")) menuFor(() => [pageBarItem()])(e) }
   return (
     <div className={cn("relative flex h-full min-h-0 flex-col", barHid && "overflow-hidden")} data-web-page={id || ""}>
       {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
@@ -392,7 +389,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           onMenu={id && state.forward ? (el) => void places(el, 1) : undefined} className="@max-xs/bar:hidden" />
         <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")}
           onNewTab={state.loading ? undefined : () => inNewTab(state.url)} />
-        <AddressBar url={state.url} tab={tab} more={() => [barItem()]} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
+        <AddressBar url={state.url} tab={tab} more={() => [pageBarItem()]} blank={blank} draft={draft} setDraft={setDraft} inputRef={address} onGo={go} onTurn={turn} onTarget={setTarget}
           onLeave={() => { if (id) void web.go(id, "focus") }}
           lead={<ContainerButton container={into.container} url={drafting ? target ?? "" : state.url || arg} why={into.why} pick={pickContainer} manage={manageContainers} />}
           trail={id > 0 && onWeb ? <>{state.zoom && <ZoomButton zoom={state.zoom} reset={() => void web.go(id, "zoom-reset")} />}<ShieldsButton id={id} url={state.url} loading={state.loading} /></> : null} />
@@ -415,7 +412,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           ...(id ? [{ label: "Picture in picture", icon: PictureInPicture2, run: () => void pictureInPicture(web, id) }] : []),
           ...withSep(actionItems(actions.filter((a) => a.kind !== "save"))),
           ...withSep(extensionItems(ext, at)),
-          barItem(true),
+          pageBarItem(true),
         ]} />
         <Progress loading={id > 0 && state.loading && !state.error} />
       </div>

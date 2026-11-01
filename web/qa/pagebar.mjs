@@ -1,7 +1,8 @@
 // The Browser's page bar hidden (setting `pageBar`), in the desktop app (Electron), against a made-up page this script
 // serves on 127.0.0.1: the page fills its tab; the bar slides over it once the pointer rests at the page's top, and
-// goes once the pointer has left it; the address focused keeps it out; a new tab has it out; the bar's right-click
-// shows it again.
+// goes once the pointer has left it; a quick move up and a click at the top bring it; with the tab bar off, the strip
+// above the pane brings it (resting, clicked) and its right-click starts with the bar's switch; the address focused
+// keeps it out; a new tab has it out; the bar's right-click shows it again.
 // WRITES: the throwaway vault only.
 //   node web/qa/pagebar.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -34,6 +35,7 @@ await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
 await app.evaluate(({ BaseWindow }) => { const w = BaseWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1280, height: 800 }); w.focus() })
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const appearance = (o) => fetch(`${origin}/api/config/appearance`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 const setting = (o) => fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) })
 const open = async (to) => { await ui({ action: "open", path: to, newTab: true }); await wait(500) }
 
@@ -49,12 +51,19 @@ const look = () => app.evaluate(({ BaseWindow }) => {
   const bar = view?.querySelector("[data-web-bar]")
   return { viewTop: view?.getBoundingClientRect().top, bar: bar?.getAttribute("data-web-bar-hidden") ?? "shown", barBottom: bar?.getBoundingClientRect().bottom }
 })) }))
-/** The pointer moved in the visible page, at (x, y) in its own CSS px. */
-const moveInPage = (x, y) => app.evaluate(({ BaseWindow }, [x, y]) => {
+/** The pointer moved (or `type`: clicked) in the visible page, at (x, y) in its own CSS px. */
+const moveInPage = (x, y, type = "mouseMove") => app.evaluate(({ BaseWindow }, [x, y, type]) => {
   const w = BaseWindow.getAllWindows()[0]
   const v = w.contentView.children.find((c) => c.webContents && c.webContents !== w.webContents && c.getVisible())
-  v?.webContents.sendInputEvent({ type: "mouseMove", x, y })
-}, [x, y])
+  v?.webContents.sendInputEvent({ type, x, y, ...(type === "mouseMove" ? {} : { button: "left", clickCount: 1 }) })
+}, [x, y, type])
+/** The pointer off the bar, over the page's middle, till the bar's gone. */
+const away = async () => {
+  const b = await win.locator("[data-web-box]:visible").boundingBox()
+  await win.mouse.move(b.x + 300, b.y + 400)
+  await win.mouse.move(b.x + 320, b.y + 420)
+  return until(async () => (await look()).bar === "in", 4000)
+}
 
 // ---------- shown: the bar above the page ----------
 await open(`view:web/${SITE}/read`)
@@ -83,6 +92,39 @@ await moveInPage(400, 1)
 await moveInPage(400, 200)
 await wait(500)
 check("the pointer passing the top: the bar stays away", (await look()).bar === "in", await look())
+
+// ---------- a quick move up lands in its band; a click there brings it at once ----------
+await moveInPage(400, 300)
+await moveInPage(400, 6)
+check("a quick move up to the page's top (not its very edge) brings the bar", await until(async () => (await look()).bar === "out", 3000), await look())
+check("… and it goes again", await away(), await look())
+await moveInPage(400, 300)
+await moveInPage(400, 2, "mouseDown")
+await moveInPage(400, 2, "mouseUp")
+check("a click at the page's top brings it", await until(async () => (await look()).bar === "out", 1000), await look())
+check("… and it goes again", await away(), await look())
+
+// ---------- the tab bar off: the strip above the pane brings it ----------
+await appearance({ tabBar: false, paneTitles: false })
+const strip = win.locator("[data-tab-bar][data-tabs-hidden][data-bare]:visible").first()
+check("the tab bar off: a strip above the pane", await until(() => strip.isVisible(), 5000))
+let sb = await strip.boundingBox()
+await win.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2)
+check("the pointer resting on the strip brings the bar", await until(async () => (await look()).bar === "out", 2000), await look())
+await win.mouse.move(sb.x + sb.width / 2 + 40, sb.y + sb.height / 2)
+await wait(600)
+check("… which stays while the pointer is on the strip", (await look()).bar === "out", await look())
+check("… and goes once it's left", await away(), await look())
+sb = await strip.boundingBox()
+await win.mouse.click(sb.x + sb.width / 3, sb.y + sb.height / 2)
+check("a click on the strip brings it", await until(async () => (await look()).bar === "out", 1000), await look())
+await win.mouse.click(sb.x + sb.width / 3, sb.y + sb.height / 2, { button: "right" })
+const stripItems = await until(async () => { const t = await win.locator("[role=menu] [role^=menuitem]").allInnerTexts(); return t.length ? t : null }, 3000) ?? []
+check("the strip's right-click starts with Always show page bar", stripItems[0]?.startsWith("Always show page bar"), stripItems)
+await win.keyboard.press("Escape")
+await away()
+await appearance({ tabBar: true })
+await until(async () => !(await strip.isVisible()), 5000)
 
 // ---------- the address focused keeps it out ----------
 await win.locator("[data-web-address]").first().focus()

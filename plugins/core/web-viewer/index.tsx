@@ -20,7 +20,7 @@ import { AgentsCard, agentsCardShown, showAgentsCard } from "./AgentsCard"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { editStyle, useLookBackground, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
-import { barHidden, setBarHidden } from "./pagebar"
+import { barHidden, pageBarItem, setBarHidden } from "./pagebar"
 import { switcherSearch } from "./switcher"
 
 const WebPage = lazy(() => import("./WebPage"))
@@ -290,6 +290,8 @@ export default definePlugin({
       // (a tab's page is its own, whatever else shows the address; moved to another window, it goes along)
       // (once the window paints behind it again, as WebPage lets go of one; not if it's back by then: ⌘⇧T)
       onTabClose: (_arg, tab, moved) => void painted().then(() => { if (!panesOf(getTabLayout().root).some((g) => g.tabs.some((t) => t.id === tab))) void webPages?.close(tab, moved) }),
+      // (its pane's top: the strip or title over a hidden page bar, the tab bar's empty space)
+      paneMenu: () => (webPages ? [pageBarItem()] : []),
       tabMenu: (arg, tab) => {
         const { url } = splitArg(arg), sound = soundOf(arg)
         return [

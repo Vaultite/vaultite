@@ -46,4 +46,6 @@
   `remote:` call that answers a cookie or signs out: anything on the tailnet that reaches a server could ask it.
 - The page bar hidden (`pageBar`, pagebar.ts) lies over the box, slid out: out, it covers the page's top, so the window
   is raised over the page (layers.ts) and hears the pointer leave it. The window never hears the pointer over a page:
-  electron/web.ts tells when it's at the page's top (`top`), as it tells the window's edges for the sidebars.
+  electron/web.ts tells when it's at the page's top (`top`, again while it stays: the page hears nothing while the bar's
+  over it), as it tells the window's edges for the sidebars. The pane's top above it (Tabs.tsx's `data-tabs-hidden`
+  strip or title, the window's to hear) brings it too, and its menu starts with the bar's switch (the view's `paneMenu`).
