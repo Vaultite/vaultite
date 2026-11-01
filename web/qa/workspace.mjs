@@ -50,7 +50,7 @@ for (const dark of [false, true]) {
     await shot("sort-menu")
     await page.locator("[role=menu] button", { hasText: "File name (Z to A)" }).click(); await wait(400)
     // (restored to what the vault had at the end of this block)
-    const top = await tree.locator(':scope > li[aria-level="1"] > div button[data-tip]').allInnerTexts()
+    const top = await tree.locator('[role=treeitem][aria-level="1"]').allInnerTexts()
     const folders = top.filter((_, i) => i < 5)
     check("Z to A reverses the list", folders.join() === [...folders].sort((a, b) => b.localeCompare(a)).join(), top.slice(0, 6))
     await head("Change sort order").click(); await wait(200)
@@ -64,7 +64,7 @@ for (const dark of [false, true]) {
     check("right-click on a page: the browser's menu is blocked", blocked)
     check("...and no menu shows", !(await page.locator("[role=menu]").count()))
     await page.locator("aside [role=tree] button", { hasText: /^Notes$/ }).first().click(); await wait(300)
-    await tree.locator('li[aria-level="2"] button[data-tip]').first().click({ button: "right" }); await wait(200)
+    await tree.locator('[role=treeitem][aria-level="2"]').first().click({ button: "right" }); await wait(200)
     check("right-click on a file: its menu", (await page.locator("[role=menu] button").allInnerTexts()).includes("Rename"))
     await page.keyboard.press("Escape"); await wait(100)
   }
@@ -137,7 +137,7 @@ for (const dark of [false, true]) {
     // Folder crumb: reveals and pulses the folder in the tree.
     await head("Collapse all").click().catch(() => {}); await wait(200)
     await bar.locator("button", { hasText: /^Notes$/ }).click(); await wait(600)
-    check("folder crumb opens the folder in the tree", await tree.locator("[data-tree-path='Notes']").locator("xpath=ancestor::li[1]").getAttribute("aria-expanded") === "true")
+    check("folder crumb opens the folder in the tree", await tree.locator("[data-tree-path='Notes']").locator("[role=treeitem]").getAttribute("aria-expanded") === "true")
     check("...and pulses it", await tree.locator("[data-tree-path='Notes'].reveal-flash").count() === 1)
     await shot("crumb-reveal")
     // Rename by clicking the name.

@@ -236,7 +236,7 @@ try {
   const gpFile = path.join(OBSIDIAN, ".vaultite/plugins.json")
   check("it starts from Standard too, nothing pinned", JSON.stringify(gp.pinned) === "[]"
     && !((fs.existsSync(gpFile) ? JSON.parse(fs.readFileSync(gpFile, "utf8")) : {}).enabled ?? []).includes("people"), gp)
-  const rows = await gw.evaluate(() => [...document.querySelectorAll("[role=tree] [role=treeitem] > :first-child")].map((e) => e.textContent.trim()))
+  const rows = await gw.evaluate(() => [...document.querySelectorAll("[role=tree] [role=treeitem]")].map((e) => e.textContent.trim()))
   check("the file tree shows its notes", rows.some((t) => /Welcome/.test(t)) && !rows.some((t) => /vaultite|^Dashboards$/.test(t)), rows)
   await gw.screenshot({ path: path.join(SHOTS, "9-own-folder.png") })
   // Its Settings, Codex made the companion's: Codex turned on there (its page the one file it brings).

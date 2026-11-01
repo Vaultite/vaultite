@@ -56,7 +56,7 @@ const palette = async (page, q) => {
 /** A file's folder opened in the tree, if it's folded (a page load starts with folders folded). */
 async function unfold(page, path) {
   const folder = path.split("/").slice(0, -1).join("/")
-  if (folder && (await page.locator(`[role=tree] li:has(div[data-tree-path="${folder}"]):not(:has(li div[data-tree-path="${folder}"]))`).first().getAttribute("aria-expanded")) !== "true") {
+  if (folder && (await page.locator(`[role=tree] div[data-tree-path="${folder}"] > [role=treeitem]`).first().getAttribute("aria-expanded")) !== "true") {
     await page.locator(`div[data-tree-path="${folder}"] button`).first().click(); await wait(300)
   }
 }

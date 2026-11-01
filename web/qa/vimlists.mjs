@@ -21,7 +21,7 @@ const where = () => page.evaluate(() => {
     tag: a?.tagName ?? null, xterm: !!a?.matches(".xterm-helper-textarea"),
   }
 })
-const expanded = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"]`)?.closest("[role=treeitem]")?.getAttribute("aria-expanded"), p)
+const expanded = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"]`)?.querySelector("[role=treeitem]")?.getAttribute("aria-expanded"), p)
 const focusRow = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"] [data-keyrow]`)?.focus(), p)
 const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
 

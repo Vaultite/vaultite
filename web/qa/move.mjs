@@ -25,7 +25,7 @@ const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}move-${name}.png` })
 const row = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"]`).first()
 const side = () => page.locator("nav[aria-label=Pages] a").allInnerTexts()
-const expanded = (p) => page.locator(`aside [role=tree] li:has(div[data-tree-path="${p}"]):not(:has(li div[data-tree-path="${p}"]))`).first().getAttribute("aria-expanded")
+const expanded = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"] > [role=treeitem]`).first().getAttribute("aria-expanded")
 const open = async (p) => { if ((await expanded(p)) !== "true") { await row(p).locator("button").first().click(); await wait(150) } }
 const highlighted = () => page.evaluate(() => [...document.querySelectorAll("aside .drop-target")].map((el) =>
   el.getAttribute("role") === "tree" ? "/" : el.querySelector("div[data-tree-path]")?.getAttribute("data-tree-path")))
@@ -168,7 +168,7 @@ const m = watch(await phone.newPage())
 await api("POST", "file", { path: "Qa move/Phone.md", text: "From the phone.\n" })
 await m.goto(`${B}#view/files`); await wait(1500)
 const mrow = (p) => m.locator(`[role=tree]:visible div[data-tree-path="${p}"]`).first()
-if ((await m.locator('[role=tree]:visible li:has(div[data-tree-path="Qa move"]):not(:has(li div[data-tree-path="Qa move"]))').first().getAttribute("aria-expanded")) !== "true") { await mrow("Qa move").locator("button").first().click(); await wait(200) }
+if ((await m.locator('[role=tree]:visible div[data-tree-path="Qa move"] > [role=treeitem]').first().getAttribute("aria-expanded")) !== "true") { await mrow("Qa move").locator("button").first().click(); await wait(200) }
 await mrow("Qa move/Phone.md").locator('button[aria-label^="More for"]').click(); await wait(250)
 await m.locator("[role=menu] button", { hasText: "Move file to…" }).click(); await wait(300)
 await m.screenshot({ path: `${OUT}move-phone-picker.png` })

@@ -53,7 +53,7 @@ const origin = new URL(B).origin
   const menu = page.locator("[role=menu]").first()
   const items = () => menu.locator(":scope > button").allInnerTexts()
   const openFolder = async (p) => {
-    if ((await row(p).evaluate((el) => el.closest("li").getAttribute("aria-expanded"))) !== "true") { await row(p).locator("button").first().click(); await wait(200) }
+    if ((await row(p).evaluate((el) => el.querySelector("[role=treeitem]").getAttribute("aria-expanded"))) !== "true") { await row(p).locator("button").first().click(); await wait(200) }
   }
   await page.goto(B); await wait(1500)
   await openFolder("Qa menu")
@@ -236,7 +236,7 @@ const origin = new URL(B).origin
   const shot = (name) => m.screenshot({ path: `${OUT}filemenu-phone-${name}.png` })
   await m.goto(`${B}#view/files`); await wait(1500)
   const mrow = (p) => m.locator(`[role=tree]:visible div[data-tree-path="${p}"]`).first()
-  if ((await m.locator('[role=tree]:visible li:has(div[data-tree-path="Qa menu"]):not(:has(li div[data-tree-path="Qa menu"]))').first().getAttribute("aria-expanded")) !== "true") { await mrow("Qa menu").locator("button").first().click(); await wait(200) }
+  if ((await m.locator('[role=tree]:visible div[data-tree-path="Qa menu"] > [role=treeitem]').first().getAttribute("aria-expanded")) !== "true") { await mrow("Qa menu").locator("button").first().click(); await wait(200) }
   await mrow("Qa menu/Hist.md").locator('button[aria-label^="More for"]').tap(); await wait(250)
   const pm = await m.locator("[role=menu] > button").allInnerTexts()
   check("phone …: duplicate, copy path, more, delete", ["Duplicate", "Copy path", "More", "Delete"].every((x) => pm.includes(x)), pm)
@@ -273,7 +273,7 @@ const origin = new URL(B).origin
   await mrow("Qa menu/Hist.md").locator('button[aria-label^="More for"]').tap(); await wait(250)
   await m.locator("[role=menu] button", { hasText: /^Delete$/ }).tap(); await wait(800)
   for (const f of [".trash", ".trash/Qa menu"]) {
-    if ((await mrow(f).evaluate((el) => el.closest("li").getAttribute("aria-expanded"))) !== "true") { await mrow(f).locator("button").first().click(); await wait(200) }
+    if ((await mrow(f).evaluate((el) => el.querySelector("[role=treeitem]").getAttribute("aria-expanded"))) !== "true") { await mrow(f).locator("button").first().click(); await wait(200) }
   }
   await m.locator('[role=tree]:visible div[data-tree-path^=".trash/Qa menu/Hist"]').first().locator('button[aria-label^="More for"]').tap(); await wait(250)
   await m.locator("[role=menu] button", { hasText: "Delete permanently" }).tap(); await wait(400)

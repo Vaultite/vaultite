@@ -96,7 +96,7 @@ const open = async (w, h, mobile = false) => {
       if (getComputedStyle(p).overflowY === "visible") continue
       const b = p.getBoundingClientRect(); top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom)
     }
-    return { open: row.closest("[role=treeitem]")?.getAttribute("aria-expanded"), inSight: r.top >= top && r.bottom <= bottom }
+    return { open: row.querySelector("[role=treeitem]")?.getAttribute("aria-expanded"), inSight: r.top >= top && r.bottom <= bottom }
   }, folder)
   check("the path bar's folder opens in the file tree, in sight", seen?.open === "true" && seen.inSight, seen)
   await page.screenshot({ path: `${OUT}folder.png` })

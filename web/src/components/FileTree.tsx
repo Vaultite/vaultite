@@ -730,18 +730,18 @@ function usePluginRows(store: Store, disabled: string[]) {
   }, [store, disabled])
 }
 /** A row of the drawn tree: a file or folder at its depth, or (`more`) a long folder's "Show N more" after its files. */
-type Item = { key: string; n: Node; depth: number; more?: { hidden: number; all: boolean } }
+type Item = { key: string; n: Node; depth: number; pos: number; size: number; more?: { hidden: number; all: boolean } }
 /** The rows in sight once folders open, in order: what the tree draws (core/virtual.ts draws only those near the screen). */
 function flatten(top: Node, depth: number, open: ReadonlySet<string>, limit: number, all: ReadonlySet<string>, keep: (string | undefined)[]) {
   const out: Item[] = []
   const walk = (n: Node, d: number) => {
     const showsAll = all.has(n.path)
     const { shown, hidden, long } = capped(n.children, limit, showsAll, keep)
-    for (const c of shown) {
-      out.push({ key: c.path, n: c, depth: d })
+    shown.forEach((c, i) => {
+      out.push({ key: c.path, n: c, depth: d, pos: i + 1, size: shown.length })
       if (c.folder && open.has(c.path) && c.children.length) walk(c, d + 1)
-    }
-    if (long && (showsAll || hidden > 0)) out.push({ key: moreKey(n.path), n, depth: d, more: { hidden, all: showsAll } })
+    })
+    if (long && (showsAll || hidden > 0)) out.push({ key: moreKey(n.path), n, depth: d, pos: 0, size: 0, more: { hidden, all: showsAll } })
   }
   walk(top, depth)
   return out
@@ -771,8 +771,8 @@ function Guides({ depth, rows }: { depth: number; rows: Rows }) {
 }
 
 /** A file or folder in the tree. */
-const TreeRow = memo(function TreeRow({ n, depth, index, rows, isOpen, selected, renaming, dropHere, dragging, draggingMany }: {
-  n: Node; depth: number; index: number; rows: Rows; isOpen: boolean; selected: boolean; renaming: boolean; dropHere: boolean; dragging: string | null; draggingMany: boolean
+const TreeRow = memo(function TreeRow({ n, depth, pos, size, index, rows, isOpen, selected, renaming, dropHere, dragging, draggingMany }: {
+  n: Node; depth: number; pos: number; size: number; index: number; rows: Rows; isOpen: boolean; selected: boolean; renaming: boolean; dropHere: boolean; dragging: string | null; draggingMany: boolean
 }) {
   const picked = useSelected(SELECT, n.path)
   const { compact, fileIcons, disabled, pane, on } = rows
@@ -798,7 +798,7 @@ const TreeRow = memo(function TreeRow({ n, depth, index, rows, isOpen, selected,
   }
   return (
     // (the gap under a row is the item's, so a row measures with it: core/virtual.ts)
-    <li role="treeitem" aria-level={depth + 1} aria-expanded={n.folder ? isOpen : undefined} aria-selected={selected || undefined} data-vi={index}
+    <li role="none" data-vi={index}
       className={cn("relative scroll-mt-10 pb-px", dropHere && "drop-target")}>
       {renaming ? (
         <div data-tree-path={n.path} data-tree-folder={n.folder || undefined}
@@ -823,7 +823,10 @@ const TreeRow = memo(function TreeRow({ n, depth, index, rows, isOpen, selected,
           className={cn(decor?.row?.className, "group relative flex items-center rounded-[5px] transition-colors", rowH,
             selected ? "bg-foreground/[0.08] font-medium" : !dragging && "hover:bg-foreground/[0.04]",
             (dragging === n.path || (picked && draggingMany)) && "opacity-50")}>
-          <button type="button" data-keyrow onClick={click} onAuxClick={(e) => { if (e.button === 1 && !n.folder) { e.preventDefault(); openFile(n.path, { newTab: true, pane }) } }}
+          {/* The treeitem is the button the keyboard is on, so a screen reader says its state; level, set size and position
+              because the tree is flat and drawn in part. */}
+          <button type="button" data-keyrow role="treeitem" aria-level={depth + 1} aria-setsize={size} aria-posinset={pos}
+            aria-expanded={n.folder ? isOpen : undefined} aria-selected={selected || picked} aria-current={selected ? "page" : undefined} onClick={click} onAuxClick={(e) => { if (e.button === 1 && !n.folder) { e.preventDefault(); openFile(n.path, { newTab: true, pane }) } }}
             data-tip={n.name} data-tip-side="right" data-tip-trunc data-archived={archived || undefined}
             className={cn("flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-8 text-left", compact ? "h-full" : "min-h-11 self-stretch", archived && "opacity-50")} style={{ paddingLeft: space(pad) }}>
             {n.folder
@@ -836,10 +839,11 @@ const TreeRow = memo(function TreeRow({ n, depth, index, rows, isOpen, selected,
             {mark && <span data-file-mark data-tip={mark.tip} className={cn("shrink-0 tabular-nums", compact ? "text-[11px]" : "text-[13px]",
               mark.tone === "orange" ? "text-(--orange)" : "text-(--red)")}>{mark.text}</span>}
           </button>
-          <button type="button" data-no-drag aria-label={`More for ${n.name}`}
+          {/* (a tree holds only its items: on a computer the keyboard opens this menu from the row, Shift+F10) */}
+          <button type="button" data-no-drag aria-label={`More for ${n.name}`} tabIndex={compact ? -1 : undefined} aria-hidden={compact || undefined}
             onClick={(e) => on.current.more(e, n)}
             className={cn("absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground",
-              compact ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : "")}>
+              compact ? "opacity-0 group-hover:opacity-100" : "")}>
             <Ellipsis className="size-4" strokeWidth={2.25} />
           </button>
         </div>
@@ -908,7 +912,7 @@ const TreeRows = memo(function TreeRows({ items, rows, list, active, renaming, r
     const it = items[i]
     if (gap > 0.5) out.push(<li key={`gap:${i}`} role="none" aria-hidden className="pointer-events-none" style={{ height: gap }} />)
     out.push(it.more ? <MoreRow key={it.key} item={it} index={i} rows={rows} /> : (
-      <TreeRow key={it.key} n={it.n} depth={it.depth} index={i} rows={rows} isOpen={it.n.folder && open.has(it.n.path)} selected={!it.n.folder && active === it.n.path}
+      <TreeRow key={it.key} n={it.n} depth={it.depth} pos={it.pos} size={it.size} index={i} rows={rows} isOpen={it.n.folder && open.has(it.n.path)} selected={!it.n.folder && active === it.n.path}
         renaming={renaming === it.n.path} dropHere={it.n.folder && dropOn === it.n.path} dragging={dragging} draggingMany={draggingMany} />
     ))
   }

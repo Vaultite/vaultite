@@ -83,7 +83,7 @@ try {
   const row = await page.$(`[data-pane] [data-tree-path="${DIR}"] > button`) ?? await page.$(`[data-pane] [data-tree-path="${DIR}"]`)
   if (row) {
     // (open already when a search line opened one of its files: the tree reveals the open file)
-    if (await row.evaluate((e) => e.closest("li").getAttribute("aria-expanded") !== "true")) await row.click()
+    if (await row.evaluate((e) => (e.closest("[role=treeitem]") ?? e.querySelector("[role=treeitem]")).getAttribute("aria-expanded") !== "true")) await row.click()
     // (the sidebar has a tree too: the tab's alone)
     const drawn = () => page.$$eval(`[data-pane] [data-tree-path^="${DIR}/"][data-select-key]`, (es) => es.map((e) => e.dataset.treePath))
     const d0 = (await until(async () => { const d = await drawn(); return d.length && d }, 5000) || []).length

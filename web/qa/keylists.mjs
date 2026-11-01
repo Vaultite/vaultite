@@ -16,7 +16,7 @@ const where = () => page.evaluate(() => {
     tag: a?.tagName ?? null, xterm: !!a?.matches(".xterm-helper-textarea"),
   }
 })
-const expanded = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"]`)?.closest("[role=treeitem]")?.getAttribute("aria-expanded"), p)
+const expanded = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"]`)?.querySelector("[role=treeitem]")?.getAttribute("aria-expanded"), p)
 const focusRow = (p) => page.evaluate((p) => document.querySelector(`[data-sidebar-body=left] [data-tree-path="${p}"] [data-keyrow]`)?.focus(), p)
 const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
 const tabCount = () => page.locator("[data-tab-id], [role=tab]").count()
@@ -32,7 +32,7 @@ check(`the tree shows top-level files to open (${topFiles.join(", ")})`, topFile
 await palette(page, "Focus the left sidebar", 600)
 let w = await where()
 check(`Focus the left sidebar: the keyboard is on a row there (${w.row})`, w.side === "left" && !!w.row)
-await page.evaluate(() => document.querySelector("[data-sidebar-body=left] [data-tree-path=Notes]")?.closest("[role=treeitem]")?.getAttribute("aria-expanded") === "true" && document.querySelector("[data-sidebar-body=left] [data-tree-path=Notes] [data-keyrow]")?.click())
+await page.evaluate(() => document.querySelector("[data-sidebar-body=left] [data-tree-path=Notes]")?.querySelector("[role=treeitem]")?.getAttribute("aria-expanded") === "true" && document.querySelector("[data-sidebar-body=left] [data-tree-path=Notes] [data-keyrow]")?.click())
 await focusRow("Notes"); await wait(100)
 check("Notes starts closed", await expanded("Notes") === "false")
 await page.keyboard.press("ArrowRight"); await wait(250)

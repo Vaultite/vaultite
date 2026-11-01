@@ -43,15 +43,12 @@ export function moveInList(delta: number | "first" | "last") {
   return true
 }
 
-/** A row's tree item (the file tree's `li`), else the element around it. */
-const itemOf = (row: HTMLElement) => row.closest<HTMLElement>("[role=treeitem]") ?? row.parentElement
 /** What opens or closes a row's children, and whether they're shown: the row itself (a folder, a group's heading), or
  *  a toggle beside it (a tag's chevron, a search result's lines). Null: it has none. */
 function toggleOf(row: HTMLElement): { el: HTMLElement; open: boolean } | null {
   if (row.hasAttribute("aria-expanded")) return { el: row, open: row.getAttribute("aria-expanded") === "true" }
-  const item = itemOf(row)
+  const item = row.parentElement
   if (!item) return null
-  if (item.getAttribute("role") === "treeitem" && item.hasAttribute("aria-expanded")) return { el: row, open: item.getAttribute("aria-expanded") === "true" }
   const t = item.querySelector<HTMLElement>(":scope > [aria-expanded]")
   return t && t !== row ? { el: t, open: t.getAttribute("aria-expanded") === "true" } : null
 }
@@ -69,21 +66,19 @@ export function foldInList(open: boolean, activate = false) {
     return true
   }
   if (t?.open) { t.el.click(); return true }
-  const item = itemOf(row)
-  const parent = item?.parentElement?.closest<HTMLElement>("[role=treeitem]") ?? flatParent(item)
-  const up = parent?.querySelector<HTMLElement>(ROW)
+  const up = treeParent(row)
   if (up) focusRow(up)
   return true
 }
 
-/** In a flat tree (its items side by side, each its `aria-level`: a long one drawn in part), the item's folder: the
+/** In a flat tree (its rows the treeitems, each its `aria-level`: a long one drawn in part), the row's folder: the
  *  nearest one before it a level up. */
-function flatParent(item: HTMLElement | null | undefined) {
-  const level = Number(item?.getAttribute("aria-level"))
-  if (!item || !(level > 1)) return null
-  for (let p = item.previousElementSibling; p; p = p.previousElementSibling) {
-    if (p.getAttribute("role") === "treeitem" && Number(p.getAttribute("aria-level")) < level) return p as HTMLElement
-  }
+function treeParent(row: HTMLElement) {
+  const level = Number(row.getAttribute("aria-level"))
+  const tree = row.getAttribute("role") === "treeitem" ? row.closest("[role=tree]") : null
+  if (!tree || !(level > 1)) return null
+  const items = [...tree.querySelectorAll<HTMLElement>("[role=treeitem]")]
+  for (let i = items.indexOf(row) - 1; i >= 0; i--) if (Number(items[i].getAttribute("aria-level")) < level) return items[i].matches(ROW) ? items[i] : null
   return null
 }
 
@@ -136,7 +131,7 @@ export function focusSidebar(side: Side) {
 }
 /** The tree row of the file in the focused tab, when it's in sight. */
 function activeFileRow(body: HTMLElement) {
-  const sel = body.querySelector<HTMLElement>("[role=treeitem][aria-selected=true] [data-keyrow]")
+  const sel = body.querySelector<HTMLElement>("[role=treeitem][aria-current=page]")
   return sel && sel.getClientRects().length ? sel : null
 }
 
