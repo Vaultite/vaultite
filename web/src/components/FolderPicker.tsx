@@ -1,6 +1,6 @@
 // A folder from the vault's, fuzzy, in the palette overlay ("/" first when it's one): "Move file to…" and a folder
 // setting. A folder typed that isn't there is offered as new; the move (or the setting) makes it. Mounted once.
-import { useMemo, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import { Folder, FolderPlus } from "lucide-react"
 import { getStore } from "@/core/data"
 import { cleanName, folderList, isHidden } from "@/core/files"
@@ -37,10 +37,10 @@ export function chooseFolder(label: string, onPick: (folder: string) => void) {
   } })
 }
 
-export function FolderPicker() {
+export const FolderPicker = memo(function FolderPicker() {
   const p = subs.use(() => picking)
   return p ? <Picker key={`${p.label}\n${p.not ?? ""}`} p={p} onClose={() => pickFolder(null)} /> : null
-}
+})
 
 type Item = { id: string; path: string; label: string; marks: number[]; create: boolean }
 

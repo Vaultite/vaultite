@@ -1,13 +1,13 @@
 // The keys hint, like Vim's which-key: while a sequence is under way, what each next key does. It waits a moment so
 // a sequence typed quickly never flashes it.
-import { useEffect, useMemo, useState } from "react"
+import { memo, useEffect, useMemo, useState } from "react"
 import { keyHint, nextKeys, usePendingKeys } from "@/core/commands"
 import { keyGroupNames } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 
 const DELAY = 450
 
-export function KeyHints() {
+export const KeyHints = memo(function KeyHints() {
   const steps = usePendingKeys()
   const [shown, setShown] = useState(false)
   useEffect(() => {
@@ -48,4 +48,4 @@ export function KeyHints() {
       </div>
     </div>
   )
-}
+})

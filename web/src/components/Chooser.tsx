@@ -1,6 +1,6 @@
 // Pick one of a list in the palette overlay (`choose` in the plugin API; an agent's `vau choose`, through the server's
 // ask). Mounted once.
-import { isValidElement, useEffect, useMemo, useState, type ReactNode } from "react"
+import { memo, isValidElement, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
 import { answerUi } from "@/core/live"
@@ -54,10 +54,10 @@ export function choose<C extends Choice>(c: Choose<C> | null) {
   if (was && was !== asking) was.onDismiss?.()
 }
 
-export function Chooser() {
+export const Chooser = memo(function Chooser() {
   const c = subs.use(() => asking) as unknown as Choose | null
   return c ? <Picker key={shown} c={c} onClose={() => choose(null)} /> : null
-}
+})
 
 // An agent's list (ui.choose, core/coreops.ts): the index picked, what was typed ({typed}), or null when dismissed or
 // when its time is up (the server has stopped waiting).

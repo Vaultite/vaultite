@@ -1,6 +1,6 @@
 // The app's own menus (openMenu, menuFor), never the browser's, except in text fields where its menu keeps copy, paste
 // and spelling. On touch a finger held still is the right-click (watchHolds), so every menu works on phones.
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
+import { memo, Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronLeft, ChevronRight, Ellipsis, Search, type LucideIcon } from "lucide-react"
 import { commandName, isOn, isSetting, keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
@@ -246,7 +246,7 @@ const typing = (t: EventTarget | null) =>
   t instanceof Element && !!t.closest("input, textarea, [contenteditable=''], [contenteditable='true'], .cm-content")
 
 /** Mounted once (App): draws the open menu, keeps the browser's menu away and makes a held finger a right-click. */
-export function ContextMenus() {
+export const ContextMenus = memo(function ContextMenus() {
   const o = subs.use(() => open)
   // A drag began (a finger that held a row, opening its menu, then moved): the menu goes.
   const dragging = useDragging()
@@ -260,7 +260,7 @@ export function ContextMenus() {
     return () => { document.removeEventListener("contextmenu", block); unhold() }
   }, [])
   return o ? createPortal(<Menu key={`${o.at.x},${o.at.y}`} at={o.at} items={o.items} up={o.up} again={o.again} />, document.body) : null
-}
+})
 
 function Menu({ at, items, up, again }: { at: MenuAt; items: MenuItem[]; up?: boolean; again?: () => MenuItem[] }) {
   usePageLock()

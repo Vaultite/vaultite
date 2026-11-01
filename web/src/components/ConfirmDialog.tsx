@@ -1,6 +1,6 @@
 // The confirm dialog for destructive actions that can't be undone; never the browser's confirm(). Anything undoable
 // doesn't ask: it acts, then offers Undo in a toast. With a field, it asks for a secret (an agent's `vau secret`).
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
@@ -59,10 +59,10 @@ async function readGiven(f: File): Promise<Given> {
   return { value: btoa(bin), base64: true }
 }
 
-export function ConfirmDialogs() {
+export const ConfirmDialogs = memo(function ConfirmDialogs() {
   const a = subs.use(() => asking)
   return a ? createPortal(<Dialog key={a.title + (a.body ?? "")} a={a} />, document.body) : null
-}
+})
 
 function Dialog({ a }: { a: Ask }) {
   const ref = useRef<HTMLDialogElement>(null)

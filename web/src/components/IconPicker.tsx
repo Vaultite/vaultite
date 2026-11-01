@@ -1,6 +1,6 @@
 // Pick an icon in the palette overlay: Lucide's by name or tag ("music" finds guitar), or an emoji. Mounted once;
 // `pickIcon` asks.
-import { useEffect, useMemo, useState } from "react"
+import { memo, useEffect, useMemo, useState } from "react"
 import { Check } from "lucide-react"
 import { isEmoji, loadIconTags } from "@/core/icons"
 import { ICONS, namedIcon } from "@/core/pages"
@@ -16,10 +16,10 @@ const subs = signal()
 /** Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji; `onClose` runs as it closes, picked or not. */
 export function pickIcon(a: IconAsk | null) { asking = a; subs.notify() }
 
-export function IconPicker() {
+export const IconPicker = memo(function IconPicker() {
   const a = subs.use(() => asking)
   return a ? <Picker key={a.title} a={a} onClose={() => { pickIcon(null); a.onClose?.() }} /> : null
-}
+})
 
 type Row = { id: string; marks: number[]; about?: string }
 const LIMIT = 120

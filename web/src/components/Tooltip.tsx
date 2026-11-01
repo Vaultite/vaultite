@@ -1,6 +1,6 @@
 // Hover tooltips from `data-tip` (no wrapper; `data-tip-side`, `data-tip-trunc`). Mouse only, and never while a
 // button is held (a drag: what it would say is under way).
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left" | "right" }
@@ -8,7 +8,7 @@ type Tip = { text: string; x: number; y: number; side: "top" | "bottom" | "left"
 const DELAY = 450
 const WARM = 500 // after one hides, the next shows without waiting for this long
 
-export function Tooltips() {
+export const Tooltips = memo(function Tooltips() {
   const [tip, setTip] = useState<Tip | null>(null)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -69,7 +69,7 @@ export function Tooltips() {
     }
   }, [])
   return tip ? createPortal(<Bubble tip={tip} />, document.body) : null
-}
+})
 
 function Bubble({ tip }: { tip: Tip }) {
   const ref = useRef<HTMLDivElement>(null)

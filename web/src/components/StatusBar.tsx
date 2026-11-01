@@ -199,7 +199,7 @@ const fitRank = (x: BarItem) => (x.key === "core:characters" ? 1 : x.ambient ? 2
 /** Whose room never narrows while one file is open (useSteady): the counts, and plugins' items after them. */
 const steady = (x: BarItem) => x.key === "core:words" || x.key === "core:characters" || !!x.status?.after
 
-export function StatusBar() {
+export const StatusBar = memo(function StatusBar() {
   const { disabled, enabled, statusBar, statusBarMore, statusBarLeft, density, interfaceFont, snippets } = usePrefs()
   // What the bar's width depends on but the file: a change lets go of the widths held for the setup before.
   const setup = JSON.stringify([statusBar, statusBarMore, statusBarLeft, disabled, enabled, density, interfaceFont, snippets])
@@ -362,7 +362,7 @@ export function StatusBar() {
       </div>
     </>
   )
-}
+})
 
 /** The left corner's width on the right one (`--status-left`), which stops short of it: set as the page lays itself out,
  *  never drawn again for it. */
