@@ -36,7 +36,7 @@ plugin.kind(new Kind({
       source: truthy(fm.source) ? str(fm.source) : "", created: fm.created ?? null, updated: fm.updated ?? null, origin: truthy(fm.origin) ? str(fm.origin) : "",
       agent: truthy(fm.agent) ? str(fm.agent) : "", session: truthy(fm.session) ? str(fm.session) : "", terminal: truthy(fm.terminal) ? str(fm.terminal) : "",
       machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, pinned: fm.pinned === true, body,
-    }, STATUSES.includes(status) ? [] : [`status \`${status}\` is not one of ['new', 'done']`]]
+    }, STATUSES.includes(status) ? [] : [`status \`${status}\` isn't one of \`new\` or \`done\``]]
   },
   render: (r) => [{ status: r.status || "new", from: r.from || null, source: r.source || null, created: r.created, updated: r.updated || null, origin: r.origin || null,
     agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null }, r.body || ""],

@@ -33,6 +33,7 @@ import { FormatBox, FormatGuard } from "@/components/FormatView"
 import { Drawn, Guard } from "@/components/Guard"
 import { FileBar } from "@/components/FileBar"
 import { TimelineSection } from "@/components/Timeline"
+import { Markdown } from "@/components/Markdown"
 import { usePane } from "@/core/pane"
 import { usePrefs } from "@/core/prefs"
 import { useEditorSettings } from "@/core/editorPrefs"
@@ -900,8 +901,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       Edits from {fmtAgo(leftover.t)} weren't saved before the app closed.</Banner>}
     {strict && badJson && <Banner tone="warn">Invalid JSON (saved as it is): {badJson}</Banner>}
     {status.kind === "error" && <Banner tone="warn" actions={[["Try again", () => save(true)]]}>Couldn't save{status.message ? `: ${status.message}` : ""}</Banner>}
-    {!!problems.length && <Banner tone="info">
-      {problems.length === 1 ? problems[0] : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`}</Banner>}
+    {!!problems.length && <Banner tone="info"><Markdown inline text={problems.length === 1 ? sentence(problems[0])
+      : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`} /></Banner>}
   </>
   // A file from outside the vault: right-click it (around its text, on an image) to copy it in.
   const outsideMenu = outside ? (e: MouseEvent) => {
@@ -999,6 +1000,8 @@ function InTrash({ path, note = "" }: { path: string; note?: string }) {
     </Banner>
   )
 }
+
+const sentence = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
 /** A note over the file, and what can be done about it (`actions`: [label, run], a falsy one left out). */
 function Banner({ tone, icon: Icon = AlertTriangle, actions = [], children }: {

@@ -9,14 +9,14 @@ export const plugin = new Plugin(import.meta.url)
 const KINDS = ["idea", "note"]
 const STATUSES = ["seed", "exploring", "parked", "done"]
 const CONTENT = ["title", "body", "tags", "kind", "status"]
-const pyList = (xs: string[]) => `[${[...xs].sort().map((x) => `'${x}'`).join(", ")}]`
+const oneOf = (xs: string[]) => [...xs].sort().map((x) => `\`${x}\``).join(", ").replace(/, ([^,]*)$/, " or $1")
 
 function parse(fm: Item, body: string, stem: string): [Item, string[]] {
   const problems: string[] = []
   const kind = truthy(fm.kind) ? fm.kind : "note"
-  if (!KINDS.includes(kind)) problems.push(`kind \`${str(kind)}\` is not one of ${pyList(KINDS)}`)
+  if (!KINDS.includes(kind)) problems.push(`kind \`${str(kind)}\` isn't one of ${oneOf(KINDS)}`)
   const status = truthy(fm.status) ? fm.status : null
-  if (status && !STATUSES.includes(status)) problems.push(`status \`${str(status)}\` is not one of ${pyList(STATUSES)}`)
+  if (status && !STATUSES.includes(status)) problems.push(`status \`${str(status)}\` isn't one of ${oneOf(STATUSES)}`)
   return [{
     title: truthy(fm.title) ? str(fm.title) : stem, body, tags: splitTags(fm.tags).join(", "),
     kind, status, journal: hasTag(tagsOf(fm, body), "journal"),

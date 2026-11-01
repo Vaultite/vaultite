@@ -36,6 +36,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   session, E marks it done, P pins, R replies. Each is a command, rebindable in Hotkeys.
 - **Code blocks without a language sit evenly**: no empty label line over their code; the copy button shows beside
   the first line, in notes and on dashboards.
+- **A file's problems read as sentences**: the note over a file that can't be fully read shows its values as code,
+  not Markdown's backticks, and lists the allowed ones in words ("isn't one of `done`, `parked` or `seed`").
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.

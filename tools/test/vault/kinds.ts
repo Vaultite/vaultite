@@ -17,7 +17,7 @@ export default async ($: VaultTest) => {
   check("notes: and doesn't duplicate one it has", /\ntags: \[journal\]\n/.test(read(`${jn2.id}.md`)), read(`${jn2.id}.md`))
   check("notes: kind journal in GET /api/notes means journal entries", (await api("GET", "notes?kind=journal"))[1].every((n: Any) => n.journal) &&
     (await api("GET", "notes?kind=journal"))[1].some((n: Any) => n.title === "Inline journal"))
-  check("notes: another kind is a problem", (write("Notes/Odd kind.md", "---\ntype: note\nkind: memo\n---\n\nx\n"), (await api("GET", "state"))[1].vault.problems.some((x: Any) => x.file === "Notes/Odd kind.md" && x.problem.includes("['idea', 'note']"))))
+  check("notes: another kind is a problem", (write("Notes/Odd kind.md", "---\ntype: note\nkind: memo\n---\n\nx\n"), (await api("GET", "state"))[1].vault.problems.some((x: Any) => x.file === "Notes/Odd kind.md" && x.problem.includes("isn't one of `idea` or `note`"))))
   fs.rmSync(path.join(VAULT, "Notes/Odd kind.md"))
   await api("POST", "people", { name: "Zed Nosort", relation: "friend" })
   write("People/Aaron Nosort.md", "---\ntype: person\nrelation: friend\n---\n\nHand made.\n")
