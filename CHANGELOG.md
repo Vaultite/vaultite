@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals copy and paste the Windows way**: on Windows, Ctrl+C copies the selection (with nothing selected it
+  still stops the program), Ctrl+V pastes, and a right-click copies the selection or else pastes, as in Windows
+  Terminal; Ctrl+V used to reach the shell as ^V, so cmd, Git Bash and WSL pasted nothing.
 - **Table columns resize**: drag a column's edge in a table's header to set the widths, kept in the separator's
   dashes as Pandoc reads them (so plain Markdown); double-click the edge to fit the columns to their text again.
 - **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer

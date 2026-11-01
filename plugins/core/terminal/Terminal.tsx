@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -217,6 +217,14 @@ function create(id: string): Live {
       }
       return false
     }
+    // Windows, as Windows Terminal: Ctrl+C copies a selection (else it's ^C) and Ctrl+V pastes.
+    if (isWindows && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && (e.code === "KeyV" || (e.code === "KeyC" && t.hasSelection()))) {
+      if (e.type === "keydown") {
+        e.stopPropagation()
+        if (e.code === "KeyC") { e.preventDefault(); copy(t.getSelection()); t.clearSelection() }
+      }
+      return false
+    }
     return e.type !== "keydown" || !(e.ctrlKey || e.metaKey || e.altKey)
       || (e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code)) || !appShortcut(e)
   })
@@ -395,6 +403,14 @@ function create(id: string): Live {
   box.addEventListener("paste", onPaste, true)
   // (marked so the desktop app's window doesn't take the drop first and open the file in a tab: core/desktop.ts)
   box.dataset.fileDrop = ""
+  // Windows: a right-click copies the selection, else pastes, as Windows Terminal's does.
+  const onRightClick = (e: MouseEvent) => {
+    if (!isWindows || touchScreen()) return
+    e.preventDefault(); e.stopPropagation()
+    if (t.hasSelection()) { copy(t.getSelection()); t.clearSelection() } else void readClipboard(t, sendFiles).catch((err) => { if ((err as Error)?.name !== "NotAllowedError") notifyError(err, "Couldn't paste") })
+    t.focus()
+  }
+  box.addEventListener("contextmenu", onRightClick, true)
   box.addEventListener("dragover", onDragOver)
   box.addEventListener("drop", onDrop)
   box.addEventListener("pointerdown", flushCopy, true)
