@@ -1,9 +1,9 @@
 // Day planner: a note's timed list items drawn as blocks on a day's hours, side by side where they overlap, with a line
 // at the time it is now on the note's own day (a daily note's date, or any note without one).
 import { useEffect, useState } from "react"
-import { CalendarClock } from "lucide-react"
-import { cn, definePlugin, Panel, today } from "@vaultite"
-import { dayOf, type Entry, hhmm, planOf } from "./plan"
+import { CalendarClock, Check } from "lucide-react"
+import { cn, definePlugin, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
+import { dayOf, type Entry, hhmm, planOf, ticked } from "./plan"
 
 const TINT = "var(--day-planner)"
 const HOUR = 48
@@ -34,7 +34,17 @@ function lanes(plan: Entry[]) {
   return out
 }
 
-function Timeline({ path, body, options }: { path: string; body: string; options: Record<string, unknown> }) {
+/** Tick an item in its note (or untick it): its line, found by its text as it was drawn. */
+async function tick(path: string, e: Entry) {
+  try {
+    const { text } = await readFile(path)
+    const next = ticked(text, e.raw, !e.done)
+    if (next === null) return notify("That item changed: tick it in the note")
+    await put("file", { path, text: next, base: text })
+  } catch (err) { notifyError(err, "Couldn't tick it") }
+}
+
+function Timeline({ path, body, options, editable }: { path: string; body: string; options: Record<string, unknown>; editable: boolean }) {
   const plan = planOf(body)
   const now = useNow()
   const day = dayOf(path)
@@ -66,6 +76,12 @@ function Timeline({ path, body, options }: { path: string; body: string; options
             className={cn("absolute overflow-hidden rounded-[6px] border-l-[3px] px-2 py-0.5 text-[13px] leading-[17px]", e.done ? "opacity-55" : "", on ? "font-medium" : "")}
             style={{ top: top + 1, height: Math.max(18, bottom - top - 2), left: `calc(52px + (100% - 52px) * ${l / of})`, width: `calc((100% - 52px) / ${of} - 3px)`,
               borderColor: TINT, background: `color-mix(in oklab, ${TINT} ${on ? 26 : 14}%, var(--background))` }}>
+            {e.done !== null && editable && (
+              <button type="button" role="checkbox" aria-checked={!!e.done} aria-label={e.done ? `Not done: ${e.text}` : `Done: ${e.text}`} data-plan-tick
+                onClick={(ev) => { ev.stopPropagation(); void tick(path, e) }}
+                className="mr-1.5 inline-grid size-3.5 cursor-pointer place-items-center rounded-[4px] border-[1.5px] align-[-2px] text-background"
+                style={{ borderColor: TINT, background: e.done ? TINT : "transparent" }}>{e.done ? <Check className="size-2.5" strokeWidth={3.5} /> : null}</button>
+            )}
             <span className={cn(e.done && "line-through")}>{e.text}</span>
             {bottom - top >= 34 && <span className="block text-[11px] tabular-nums text-muted-foreground">{hhmm(e.start)}–{hhmm(e.end)}</span>}
           </div>
@@ -86,11 +102,11 @@ const MOCK = "- [x] 08:30 Run\n- 09:00 - 10:00 Standup and planning\n- [ ] 10:00
 export default definePlugin({
   blocks: {
     // ```block-day-planner: the note's plan.
-    "day-planner": ({ path, body, options }) => (
-      <Panel title="Day plan" icon={CalendarClock} tint={TINT}><Timeline path={path} body={body} options={options} /></Panel>
+    "day-planner": ({ path, body, options, setProperty }) => (
+      <Panel title="Day plan" icon={CalendarClock} tint={TINT}><Timeline path={path} body={body} options={options} editable={!!setProperty} /></Panel>
     ),
   },
   preview: () => (
-    <Panel title="Day plan" icon={CalendarClock} tint={TINT}><Timeline path="" body={MOCK} options={{ start: 8, end: 16 }} /></Panel>
+    <Panel title="Day plan" icon={CalendarClock} tint={TINT}><Timeline path="" body={MOCK} options={{ start: 8, end: 16 }} editable={false} /></Panel>
   ),
 })

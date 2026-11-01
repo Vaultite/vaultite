@@ -13,4 +13,10 @@ export default async ($: VaultTest) => {
   write("Daily/2020-01-02.md", "# Plan\n\n```block-day-planner\n```\n\n- [ ] 09:00 - 10:00 Standup\n- 13:00 Gym\n")
   const [st, out] = await api("GET", "render?path=Daily/2020-01-02.md")
   check("day planner block: rendered as the plan (another day: no now)", st === 200 && String(out).includes("- 09:00–10:00 Standup\n- 13:00–13:30 Gym") && !String(out).includes("(now)"), out)
+
+  const { ticked } = await import("../../../plugins/core/day-planner/plan.ts")
+  const note = "# Day\n\n- [ ] 09:00 Standup\n- [x] 10:00 Email\n- 11:00 Walk\n"
+  const p2 = planOf(note)
+  check("day planner tick: an item's line ticked and unticked, by its text", ticked(note, p2[0].raw, true) === note.replace("- [ ] 09:00", "- [x] 09:00") &&
+    ticked(note, p2[1].raw, false) === note.replace("- [x] 10:00", "- [ ] 10:00") && ticked(note, p2[2].raw, true) === null && ticked("changed\n", p2[0].raw, true) === null)
 }

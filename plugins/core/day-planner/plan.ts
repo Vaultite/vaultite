@@ -1,7 +1,7 @@
 // A day's plan read from a note, for both sides: list items starting with a time ("- [ ] 09:00 - 10:30 Standup",
 // "- 14:00 Lunch"), each lasting to its end time, else to the next one's start, else DEFAULT minutes.
 
-export type Entry = { start: number; end: number; text: string; done: boolean | null; line: number }
+export type Entry = { start: number; end: number; text: string; done: boolean | null; line: number; raw: string }
 
 export const DEFAULT = 30
 const ITEM = /^\s*[-*+]\s+(?:\[([ xX])\]\s+)?(\d{1,2})[:.](\d\d)(?:\s*(?:-|–|—|to)\s*(\d{1,2})[:.](\d\d))?\s+(.+?)\s*$/
@@ -24,7 +24,7 @@ export function planOf(text: string): Entry[] {
     const start = minutes(m[2], m[3])
     if (start === null) return
     const end = m[4] ? minutes(m[4], m[5]) : null
-    out.push({ start, end: end !== null && end > start ? end : -1, text: m[6], done: m[1] === undefined ? null : m[1] !== " ", line })
+    out.push({ start, end: end !== null && end > start ? end : -1, text: m[6], done: m[1] === undefined ? null : m[1] !== " ", line, raw: l })
   })
   out.sort((a, b) => a.start - b.start || a.line - b.line)
   out.forEach((e, i) => {
@@ -33,6 +33,15 @@ export function planOf(text: string): Entry[] {
     e.end = Math.min(next ? next.start : e.start + DEFAULT, e.start + DEFAULT * 4, 24 * 60)
   })
   return out
+}
+
+/** A note's text with the item `raw` (its line as it was read) ticked `on` or not, or null when no line is that. */
+export function ticked(text: string, raw: string, on: boolean): string | null {
+  const lines = text.split("\n")
+  const i = lines.indexOf(raw)
+  if (i < 0 || !/\[[ xX]\]/.test(raw)) return null
+  lines[i] = raw.replace(/\[[ xX]\]/, on ? "[x]" : "[ ]")
+  return lines.join("\n")
 }
 
 export const hhmm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`
