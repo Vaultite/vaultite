@@ -42,6 +42,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Focus you can see in every scheme**: the ring around what has the keyboard, and around a file tree or list row
   reached with the arrows, stands out at least 3:1 from what's behind it; Ayu, Everforest, Nord, Solarized and Tokyo
   Night light had rings too faint to find.
+- **Skip to content**: on a computer, the first Tab shows Skip to content, which goes past the sidebar into the
+  page you're on, as F6 does.
 - **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
   Shift+I and Shift+U read and unread; G I opens the inbox. In a session's sheet J and K go to the next and previous
   session, E marks it done, P pins, R replies. Each is a command, rebindable in Hotkeys.

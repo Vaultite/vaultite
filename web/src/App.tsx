@@ -79,7 +79,7 @@ import { ContextMenus } from "@/components/ContextMenu"
 import { ConfirmDialogs } from "@/components/ConfirmDialog"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space, whenIdle } from "@/lib/utils"
-import { canGoSide, goSide } from "@/core/keylist"
+import { canGoSide, focusArea, goSide } from "@/core/keylist"
 import { chooseScheme } from "@/components/SchemeChooser"
 import { chooseFont } from "@/components/FontChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
@@ -539,6 +539,13 @@ export default function App() {
 
   return (
     <>
+      {/* The first Tab stop, seen only while it has the keyboard: past the sidebar into the focused pane, as F6 goes. */}
+      {desktop && (
+        <button type="button" data-skip-link data-overlay onClick={() => focusArea()}
+          className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-1.5 focus-visible:left-1/2 focus-visible:z-[90] focus-visible:h-7 focus-visible:-translate-x-1/2 focus-visible:cursor-pointer focus-visible:rounded-[6px] focus-visible:bg-popover focus-visible:px-2.5 focus-visible:text-[13px] focus-visible:font-medium focus-visible:text-popover-foreground focus-visible:shadow-lg">
+          Skip to content
+        </button>
+      )}
       {/* Desktop: the sidebar. Folded, it's an icon rail where only the width changes, so every icon stays put (RAIL in
           Sidebar.tsx, all offsets in spacing units). Right-click it to pick which panels show. */}
       {/* Behind a hidden sidebar slid in, the page dims a little (index.css: it starts once the sidebar is in, so

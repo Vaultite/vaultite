@@ -277,9 +277,13 @@ function nextArea(by: 1 | -1) {
   const i = all.indexOf(areaOfFocus())
   const to = all[i < 0 ? (by > 0 ? 0 : all.length - 1) : (i + by + all.length) % all.length]
   if (to === "left" || to === "right") return focusSidebar(to)
-  focusGroup(to)
-  if (focusPane(to)) return
-  const pane = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(to)}"]`)
+  focusArea(to)
+}
+/** Give the keyboard to a pane: its text, else the first thing in it to press. */
+export function focusArea(gid = getWorkspace().focus) {
+  focusGroup(gid)
+  if (focusPane(gid)) return
+  const pane = document.querySelector<HTMLElement>(`[data-pane="${CSS.escape(gid)}"]`)
   ;(pane && tabbable(pane)[0])?.focus()
 }
 
