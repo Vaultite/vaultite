@@ -415,6 +415,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   row's height, not only on the key's face.
 - **A blank tab's Connect your AI cards line up**: they sit within the page's margins, in line with its headings and
   pinned tiles, no longer reaching almost to a phone's edges.
+- **A person's page at phone sizes**: where they live and their tags read at 15px on a phone, and a tap-to-change
+  field (a person's context, where they live) takes a taller tap.
 
 ## 0.8.0 (2026-10-24)
 

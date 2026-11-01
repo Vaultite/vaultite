@@ -446,7 +446,7 @@ export function Editable({ value, set, placeholder, className, children }: {
   return (
     <span role="button" tabIndex={0} data-no-edit data-tip={value ? `Change ${placeholder.replace(/^Add /, "")}` : undefined}
       onClick={(e) => { if (!(e.target as Element).closest("a")) setEditing(true) }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
-      className={cn("-mx-1 cursor-text rounded-[6px] px-1 hover:bg-foreground/[0.04]", !value && "text-tertiary", className)}>
+      className={cn("-mx-1 cursor-text rounded-[6px] px-1 hover:bg-foreground/[0.04] max-md:relative max-md:after:absolute max-md:after:inset-x-0 max-md:after:-inset-y-2", !value && "text-tertiary", className)}>
       {value ? children ?? value : placeholder}
     </span>
   )

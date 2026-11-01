@@ -234,7 +234,7 @@ export function PersonBlock({ fm, body, path, setProperty }: BlockCtx) {
             <Editable value={context} set={edit("context")} placeholder="Add how you know them" />
           </p>
           {(location || !!tags.length || setProperty) && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px]">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px] max-md:text-[15px]">
               {(location || setProperty) && (
                 <span className="mr-1 flex items-center gap-1 text-muted-foreground">
                   <MapPin className="size-3.5 shrink-0" strokeWidth={2.25} />
