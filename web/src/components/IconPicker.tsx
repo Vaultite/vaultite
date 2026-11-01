@@ -7,7 +7,7 @@ import { ICONS, namedIcon } from "@/core/pages"
 import { isMac } from "@/core/platform"
 import { fuzzy } from "@/core/fuzzy"
 import { Bar } from "@/components/kit"
-import { Marked, Palette } from "@/components/Palette"
+import { Marked, NoMatches, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
 export type IconAsk = { title: string; current?: string; onPick: (name: string) => void; onClose?: () => void }
@@ -73,7 +73,7 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
   return (
     <Palette label={a.title} placeholder="Search icons, or type an emoji…" query={q} setQuery={setQ} items={rows} onClose={onClose}
       onPick={(r) => { if (!r) return; onClose(); a.onPick(r.id) }}
-      empty={tags ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No icon matches "{q.trim()}".</p> : <Skeleton />}
+      empty={tags ? <NoMatches what="No icon matches" query={q} /> : <Skeleton />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(isMac ? [["Ctrl+Mod+Space", "for an emoji"] as [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(r) => {
         const Icon = namedIcon(r.id) // (as it will be drawn once picked: an app's own icon over Lucide's of that name)

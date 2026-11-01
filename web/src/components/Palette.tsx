@@ -56,6 +56,16 @@ export function Keys({ keys, small = false }: { keys: string; small?: boolean })
   )
 }
 
+/** A palette's `empty` when nothing matches what was typed ("No command matches “foo”"), as Settings' search says it;
+ *  `then` is what Enter does instead, on a line below. */
+export function NoMatches({ what, query, then }: { what: string; query: string; then?: string }) {
+  return (
+    <p className="px-3 py-6 text-center text-[15px] text-muted-foreground" data-no-matches>
+      {what} “{query.trim()}”{then && <><br />{then}</>}
+    </p>
+  )
+}
+
 type Pointer = { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }
 type RowProps<T> = {
   id: string; item: T; i: number; selected: boolean; look: unknown; draw: (item: T, selected: boolean) => ReactNode

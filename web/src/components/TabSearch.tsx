@@ -10,7 +10,7 @@ import { closedTabs, findOpen, reopenClosed, selectTab, tabsByRecent, useWorkspa
 import { reopenArchived, useArchivedTabs } from "@/core/tabarchive"
 import { closeTabMoving } from "@/core/tabfold"
 import { leaves, vaultPath, type Tab, type TabSet } from "../../../core/layout.ts"
-import { Marked, Palette } from "@/components/Palette"
+import { Marked, NoMatches, Palette } from "@/components/Palette"
 import { SetLabel, setName, useTabLabels, type TabInfo } from "@/components/Tabs"
 import { Badged } from "@/components/kit"
 import { cn } from "@/lib/utils"
@@ -104,7 +104,7 @@ export function TabSearch({ store, onClose }: { store: Store; onClose: () => voi
     <Palette label="Search tabs" placeholder="Search tabs…" query={q} setQuery={setQ} items={rows} onClose={onClose} onPick={pick} onKey={onKey}
       onSelect={(r) => { selected.current = r?.id ?? null }}
       start={open.length > 1 ? 1 : 0} section={(r) => r.section}
-      empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No tabs match "{query}".</p>}
+      empty={<NoMatches what="No tabs match" query={query} />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to open"], [CLOSE, "to close tab"], ["Escape", "to dismiss"]]}
       row={(r) => <TabRow r={r} />} />
   )

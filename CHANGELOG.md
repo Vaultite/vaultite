@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   format a note or a folder (`vau linter.format`).
 - **The inbox's verbs: pin, settle, snooze, wake**: Done is Settle (its folded list Settled) and Unsnooze is Wake, in
   the app and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox done` and `inbox.done` still work.
+- **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers and the other choosers
+  write what was typed in curly quotes with no full stop ("No command matches “foo”"), from one shared line.
 - **Screen readers follow the file tree**: the row the keyboard is on is the tree item, so a screen reader says whether
   a folder is open, how deep a row is, where it is among its folder's rows and whether it's selected.
 - **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit

@@ -13,7 +13,7 @@ import { openDetail } from "@/core/nav"
 import { completeTyped, launcherText, search, suggestions, typedHits, typedOwned, typedTurns, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
-import { Marked, Palette, useFinderQuery } from "@/components/Palette"
+import { Marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 
 type Found = { path: string; title: string; context: string; mtime: number; archived?: boolean }
@@ -141,7 +141,7 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
       heading={!q.trim() ? "Recent files and pages" : node && !plain ? explain(node) : undefined}
       section={(h) => (h.id === "search-tab" ? "More" : sections.has(h.id) ? sections.get(h.id) || undefined : plain && h.id.startsWith("text-") ? "In files" : undefined)}
       empty={error ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">{error}</p>
-        : q.trim() && <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Nothing matches "{q.trim()}". Enter makes a note with that name.</p>}
+        : q.trim() && <NoMatches what="Nothing matches" query={q} then="Enter makes a note with that name" />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ...(launcher ? [["Enter", "to open in new tab"]] as [string, string][] : [["Enter", "to open"], ["Mod+Enter", "to open in new tab"]] as [string, string][]),
         ...(turns ? [["Alt+ArrowUp Alt+ArrowDown", `to change ${turns}`]] as [string, string][] : []), ["Shift+Enter", "to create"], ["Escape", "to dismiss"]]}
       row={(h) => (<>

@@ -7,7 +7,7 @@ import { cleanName, folderList, isHidden } from "@/core/files"
 import { post } from "@/core/http"
 import { notifyError } from "@/core/notify"
 import { fuzzy } from "@/core/fuzzy"
-import { Marked, Palette } from "@/components/Palette"
+import { Marked, NoMatches, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
 
@@ -66,7 +66,7 @@ function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
         const h = shift ? items.find((x) => x.create) : it
         if (h) pick(h)
       }}
-      empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No folder matches "{q.trim()}".</p>}
+      empty={<NoMatches what="No folder matches" query={q} />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", `to ${p.verb}`], ["Shift+Enter", "to make the folder"], ["Escape", "to dismiss"]]}
       row={(h) => (
         <>

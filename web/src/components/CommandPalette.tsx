@@ -8,7 +8,7 @@ import { isEnabled, names, pluginById, setSwitch, switchedOn, usePlugins, type P
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { fuzzy, hasWords } from "@/core/fuzzy"
-import { Keys, Marked, Palette, useFinderQuery } from "@/components/Palette"
+import { Keys, Marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
 /** `plugin`: a row that switches a plugin, which is now on or off. */
@@ -124,7 +124,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       }}
       onSelect={(c) => setSetting(!c ? null : isSetting(c) ? "switch" : c.value ? "choice" : null)}
       section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : undefined)}
-      empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No command matches "{q.trim()}".</p>}
+      empty={<NoMatches what="No command matches" query={q} />}
       hints={setting
         ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", setting === "switch" ? "to switch" : "to choose"], ["Mod+Enter", "to open in Settings"], ["Escape", "to dismiss"]]
         : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to use"], ["Escape", "to dismiss"]]}

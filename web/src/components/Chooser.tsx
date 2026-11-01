@@ -5,7 +5,7 @@ import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
 import { answerUi } from "@/core/live"
 import { fuzzy } from "@/core/fuzzy"
-import { Marked, Palette } from "@/components/Palette"
+import { Marked, NoMatches, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
 export type Choice = { id: string; label: string; detail?: string
@@ -103,7 +103,7 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
       onPick={(it) => {
         if (it) { show(null); c.onPick(it) } else if (!q.trim() && c.onBlank) { show(null); c.onBlank() }
       }} heading={c.heading}
-      empty={c.empty ?? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Nothing matches "{q.trim()}".</p>}
+      empty={c.empty ?? <NoMatches what="Nothing matches" query={q} />}
       hints={field ? [["Enter", "to confirm"], ["Escape", "to cancel"]] : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ["Escape", "to dismiss"]]}
       row={(h) => (
         <>
