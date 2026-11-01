@@ -78,6 +78,9 @@ function osc52(data: string) {
   return true
 }
 
+/** How much drawn output a page tells the server about at once (plugin.ts paces the shell by it). */
+const ACK = 128 << 10
+
 /** How much of a pasted file goes in one message. */
 const PIECE = 1 << 20
 
@@ -290,12 +293,20 @@ function create(id: string): Live {
     sock.binaryType = "arraybuffer"
     ws = sock
     sock.onopen = () => opening.mark("socket")
+    // What it has drawn, told back a piece at a time: the server holds the shell's output while this page is far behind,
+    // so a flood stays a screenful away from ⌃C rather than megabytes.
+    let drawn = 0
+    const parsed = (n: number) => () => {
+      if ((drawn += n) < ACK || ws !== sock) return
+      send(JSON.stringify({ t: "ack", n: drawn }))
+      drawn = 0
+    }
     sock.onmessage = (e) => {
       if (typeof e.data !== "string") {
-        // (a callback only until its first output is drawn: the span is done then, and a burst is many messages)
-        if (!replayNext) return t.write(new Uint8Array(e.data as ArrayBuffer), shown ? undefined : firstOutput)
+        const bytes = new Uint8Array(e.data as ArrayBuffer), done = parsed(bytes.length)
+        if (!replayNext) return t.write(bytes, shown ? done : () => { firstOutput(); done() })
         replayNext = false; replaying = true
-        return t.write(new Uint8Array(e.data as ArrayBuffer), () => { replaying = false; firstOutput() })
+        return t.write(bytes, () => { replaying = false; firstOutput(); done() })
       }
       let msg: { t?: string; fresh?: boolean; tmux?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean
         scrollback?: number }

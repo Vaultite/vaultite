@@ -47,6 +47,8 @@ type Shell = {
   title: string; attached: Set<Conn>
   /** Output read while the headless terminal still parses the last piece: written (and passed on) as one. */
   queued: string; parsing: boolean
+  /** Its pty not read for now (hold). */
+  held: boolean
   /** Its program's OSC 7501 (osc7501.ts): the probe answered here, reports taken out of its output and kept. */
   status: ReturnType<typeof watcher>; told?: ReturnType<typeof setTimeout>
 }
@@ -56,15 +58,28 @@ const conns = new Set<Conn>()
 /** The screen and its whole history, for a page that comes back. */
 const picture = (s: Shell) => s.ser.serialize({ scrollback: s.term.options.scrollback })
 
+/** Output waiting here (to be parsed, or unread by a server) past which the pty isn't read: its program waits. */
+const HOLD = 1 << 20
+
 /** Passed on to the attached connections that have their picture (one that's waiting for it has this in it). */
 function forward(s: Shell, d: string) {
   for (const c of s.attached) if (c.ready) c.send({ t: "data", d })
+  hold(s)
+}
+
+/** The pty is read only while what it said can go on: parsed here, and read by the servers (one holds its connection
+ *  while its pages catch up: plugin.ts, pace). */
+function hold(s: Shell) {
+  const full = s.queued.length > HOLD || [...s.attached].some((c) => c.sock.writableLength > HOLD)
+  if (full === s.held) return
+  s.held = full
+  try { if (full) s.pty.pause(); else s.pty.resume() } catch { /* ended */ }
 }
 
 /** Output into the headless terminal, then on once parsed. While a piece is being parsed what follows waits and goes as
  *  one: a burst arrives in the pty's 30-byte reads, and one message each would cost every hop more than the bytes. */
 function output(s: Shell, d: string) {
-  if (s.parsing) { s.queued += d; return }
+  if (s.parsing) { s.queued += d; if (s.queued.length > HOLD) hold(s); return }
   s.parsing = true
   s.term.write(d, () => {
     forward(s, d)
@@ -124,7 +139,7 @@ function create(m: Record<string, unknown>) {
     try { p.write(REPLY) } catch { /* ended */ }
   })
   const s: Shell = { id, pty: p, name: String(m.name || path.basename(String(m.file))), term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set(), status,
-    queued: "", parsing: false }
+    queued: "", parsing: false, held: false }
   term.onTitleChange((t) => { s.title = t })
   // Its answers to the programs' questions, only while no page is there to answer.
   term.onData((d) => { if (!s.attached.size) try { p.write(d) } catch { /* ended */ } })
@@ -331,9 +346,10 @@ const server = net.createServer((sock) => {
       }
     }
   })
+  sock.on("drain", () => { if (c.session) hold(c.session) })
   const gone = () => {
     if (!conns.delete(c)) return
-    c.session?.attached.delete(c)
+    if (c.session) { c.session.attached.delete(c); hold(c.session) }
     c.session = null
     lastConn = Date.now()
   }

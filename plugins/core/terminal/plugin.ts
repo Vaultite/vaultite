@@ -26,6 +26,8 @@ export const plugin = new Plugin(import.meta.url)
 
 /** How much output a terminal client may be behind before it's dropped (it reconnects and gets the replay). */
 const BEHIND = 16 << 20
+/** Output a page may have to draw before its shell is held (its program waits on a full pty), and when it goes on. */
+const HOLD = 1 << 20, GO = 256 << 10, STALL = 3000
 /** Lines of history every terminal keeps, whatever its backend (the setting `scrollback`): the page's, the keeper's and
  *  tmux's, all given back to a page that comes back. */
 const scrollback = () => clamp(plugin.settings().scrollback, 100, 1_000_000, 10_000)
@@ -86,6 +88,26 @@ type Session = {
   opened?: string // how its start went, for its first tab's span: "spare 12ms", "new 95ms"
   blocked?: boolean // macOS keeps its shell from the folder its agent runs in: its tabs say so
   queued: string // output not sent yet: what one read of the backend brought, sent as one message (flush)
+  owed: Map<WebSocket, number> // bytes sent to each page and not yet drawn, as far as it tells (Terminal.tsx's acks)
+  acks: Set<WebSocket> // the pages that tell (an older one doesn't: never waited for)
+  held: boolean // its output held for the pages to catch up (pace)
+  stall?: ReturnType<typeof setTimeout> // while held: a page that draws nothing in STALL stops setting the pace
+}
+
+const sent = (s: Session, ws: WebSocket, n: number) => s.owed.set(ws, (s.owed.get(ws) ?? 0) + n)
+
+/** Holds the shell's output while every page that tells what it drew is HOLD behind, so ⌃C in a flood is answered at
+ *  once; the fastest sets the pace (a slower one past BEHIND is dropped, as before). */
+function pace(s: Session) {
+  let least = Infinity
+  for (const ws of s.acks) least = Math.min(least, s.owed.get(ws) ?? 0)
+  const hold = least !== Infinity && least > HOLD
+  clearTimeout(s.stall)
+  // (a page asleep on a live socket, or in a hidden browser tab, mustn't stall an agent's work: left behind, it's dropped)
+  if (hold || s.held) s.stall = setTimeout(() => { for (const ws of s.acks) if (s.owed.get(ws)! > GO) s.acks.delete(ws); pace(s) }, STALL)
+  if (hold === s.held || (!hold && least !== Infinity && least > GO)) return
+  s.held = hold
+  if (hold) s.link.pause?.(); else s.link.resume?.()
 }
 
 /** Sends what the backend said since the last flush to the pages, as one message; called once the read that brought
@@ -100,7 +122,9 @@ function flush(s: Session) {
     // without end: dropped, it reconnects and gets the replay.
     if (ws.bufferedAmount > BEHIND) { ws.terminate(); continue }
     ws.send(bytes)
+    sent(s, ws, bytes.length)
   }
+  pace(s)
 }
 const sessions = new Map<string, Session>()
 
@@ -694,7 +718,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   const link = await backend.attach(id, cols, rows)
   timing.mark("attach")
   const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: new Tail(scrollback()), pending: new Set(), ended: false,
-    opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "" }
+    opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "", owed: new Map(), acks: new Set(), held: false }
   link.onData((data) => {
     if (!link.snapshot) s.out.push(data)
     // (a burst comes as many messages in one read: the microtask runs once that read's are all in)
@@ -702,6 +726,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     s.queued += data
   })
   link.onExit(async (exit) => {
+    clearTimeout(s.stall)
     flush(s)
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
@@ -783,11 +808,14 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     s.link.snapshot((picture) => {
       flush(s) // (what came before the picture is in it: not for this page)
       s.pending.delete(ws)
-      if (picture && ws.readyState === ws.OPEN) ws.send(Buffer.from(picture, "utf8"))
+      if (!picture || ws.readyState !== ws.OPEN) return
+      const bytes = Buffer.from(picture, "utf8")
+      ws.send(bytes)
+      sent(s, ws, bytes.length)
     })
   } else {
     const replay = fresh ? "" : s.out.text()
-    if (replay) ws.send(Buffer.from(replay, "utf8"))
+    if (replay) { const bytes = Buffer.from(replay, "utf8"); ws.send(bytes); sent(s, ws, bytes.length) }
     // The backend draws its screen again (the replay can end mid-screen).
     if (!fresh) s.link.redraw?.()
   }
@@ -800,9 +828,14 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
       if (buf.includes(13)) setTimeout(listChanged, 400)
       return
     }
-    let msg: { t?: string; cols?: number; rows?: number; id?: string; name?: string; data?: string; last?: boolean; lines?: number }
+    let msg: { t?: string; cols?: number; rows?: number; id?: string; name?: string; data?: string; last?: boolean; lines?: number; n?: number }
     try { msg = JSON.parse(buf.toString("utf8")) } catch { return }
     if (msg.t === "resize") resize(s, clamp(msg.cols, 2, 1000, s.link.cols), clamp(msg.rows, 1, 500, s.link.rows))
+    else if (msg.t === "ack" && Number.isSafeInteger(msg.n)) {
+      s.owed.set(ws, Math.max(0, (s.owed.get(ws) ?? 0) - msg.n!))
+      s.acks.add(ws)
+      pace(s)
+    }
     else if (msg.t === "close") end(s)
     else if (msg.t === "scroll") { if (Number.isInteger(msg.lines) && msg.lines) s.link.scroll?.(msg.lines!) }
     else if (msg.t === "upload") {
@@ -816,6 +849,8 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     for (const f of uploads.values()) fs.rmSync(f, { force: true }) // (cut off: never pasted)
     s.clients.delete(ws)
     s.pending.delete(ws)
+    s.owed.delete(ws)
+    if (s.acks.delete(ws)) pace(s)
     listChanged()
   })
 }

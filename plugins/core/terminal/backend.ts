@@ -64,6 +64,9 @@ export interface Link {
   redraw?(): void
   /** Scroll its history (a backend that `redraws`): lines up, negative down. */
   scroll?(lines: number): void
+  /** Stop reading its output until resume (its program waits once the pty is full): the pages are behind. */
+  pause?(): void
+  resume?(): void
   /** Let go of it: the shell keeps running. */
   close(): void
 }
@@ -306,6 +309,8 @@ export function ptyLink(p: IPty, extra: Partial<Pick<Link, "redraw" | "scroll" |
     onExit: (fn) => { p.onExit(async ({ exitCode, signal }) => fn(extra.exit ? await extra.exit(exitCode, signal ?? 0) : { code: exitCode, signal: signal ?? 0 })) },
     redraw: extra.redraw,
     scroll: extra.scroll,
+    pause: () => p.pause(),
+    resume: () => p.resume(),
     close: () => hangup(p),
   }
   return link
@@ -334,6 +339,8 @@ export async function mirrored(link: Link, scrollback = limits.scrollback()): Pr
     onExit: (fn) => link.onExit(fn),
     snapshot: (fn) => term.write("", () => fn(ser.serialize({ scrollback }))),
     scroll: link.scroll,
+    pause: link.pause && (() => link.pause!()),
+    resume: link.resume && (() => link.resume!()),
     close: () => link.close(),
   }
 }
@@ -586,6 +593,9 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
         onData: (fn) => { data.add(fn) },
         onExit: (fn) => { exits.add(fn) },
         snapshot: (fn) => w.call("snapshot", {}, (m) => fn(String(m.data ?? ""))),
+        // (its connection stops being read: the keeper holds the pty once that's full, ptyd.ts)
+        pause: () => w.sock.pause(),
+        resume: () => w.sock.resume(),
         close: () => { exits.clear(); w.close() },
       }
     },
