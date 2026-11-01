@@ -313,13 +313,46 @@ let made = ""; try { made = opened ? read(opened) : "" } catch {}
 check("new: a file with the view's properties, opened", !!opened && made.includes("type: qa-book"), [opened, made])
 if (opened) await api("DELETE", `file?path=${encodeURIComponent(opened)}`)
 await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await page.waitForTimeout(2000)
-// Keyboard: a cell edited, Tab to the next editable one.
-await base.locator(`[data-query-row="${F}/Books/Harbour lights.md"] td`).nth(2).dblclick()
+// Keyboard: the table is a grid with a cell cursor (rows: Harbour lights, Lighthouse keeper; Name, Pages left, State,
+// Pages). A double-clicked cell edited, Tab saves it and moves the cursor right.
+const HL = `${F}/Books/Harbour lights.md`, LK = `${F}/Books/Lighthouse keeper.md`, hlText = read(HL), lkText = read(LK)
+const cursor = () => base.locator("table[role=grid]").evaluate((t) => {
+  const c = document.getElementById(t.getAttribute("aria-activedescendant") ?? "")
+  return c ? `${c.closest("tr").dataset.queryRow.split("/").pop().replace(".md", "")} ${c.cellIndex}${document.activeElement === t ? "" : " (unfocused)"}` : null
+})
+const key = async (k, want, name) => { await page.keyboard.press(k); await page.waitForTimeout(80); const c = await cursor(); check(`keyboard: ${name}`, c === want, c) }
+await base.locator(`[data-query-row="${HL}"] td`).nth(2).dblclick()
 await page.keyboard.press("ControlOrMeta+a"); await page.keyboard.type("done"); await page.keyboard.press("Tab")
-await waitFile(`${F}/Books/Harbour lights.md`, (t) => t.includes("status: done"))
-const at = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))
-check("keyboard: Tab saves the cell and edits the next one", read(`${F}/Books/Harbour lights.md`).includes("status: done") && at === "Pages of Harbour lights", at)
-await page.keyboard.press("Escape")
+await waitFile(HL, (t) => t.includes("status: done"))
+check("keyboard: Tab saves the cell and moves the cursor right", read(HL).includes("status: done") && await cursor() === "Harbour lights 3", await cursor())
+await key("ArrowDown", "Lighthouse keeper 3", "ArrowDown moves the cursor down")
+await key("ArrowLeft", "Lighthouse keeper 2", "ArrowLeft moves it left")
+await key("Home", "Lighthouse keeper 0", "Home goes to the row's first cell")
+await key("End", "Lighthouse keeper 3", "End to its last")
+await key("ControlOrMeta+ArrowUp", "Harbour lights 3", "Cmd/Ctrl+ArrowUp to the first row")
+await page.screenshot({ path: `${OUT}base-cursor-desktop.png` })
+await page.emulateMedia({ colorScheme: "dark" }); await page.evaluate(() => document.documentElement.classList.add("dark")); await page.waitForTimeout(300)
+await page.screenshot({ path: `${OUT}base-cursor-desktop-dark.png` })
+await page.emulateMedia({ colorScheme: "light" }); await page.evaluate(() => document.documentElement.classList.remove("dark")); await page.waitForTimeout(300)
+await page.keyboard.type("250")
+check("keyboard: typing edits the cell, what's typed replacing its value", await page.evaluate(() => document.activeElement?.value) === "250", await page.evaluate(() => document.activeElement?.value))
+await page.keyboard.press("Enter")
+await waitFile(HL, (t) => t.includes("pages: 250"))
+check("keyboard: Enter writes the file and moves the cursor down", read(HL).includes("pages: 250") && await cursor() === "Lighthouse keeper 3", [await cursor(), read(HL)])
+await page.keyboard.type("9"); await page.keyboard.press("Escape"); await page.waitForTimeout(600)
+check("keyboard: Escape cancels the edit, the cursor on that cell", read(LK) === lkText && await cursor() === "Lighthouse keeper 3"
+  && (await base.locator("td input").count()) === 0, [await cursor(), read(LK)])
+await key("ArrowLeft", "Lighthouse keeper 2", "back to State")
+await page.keyboard.press("Delete")
+await waitFile(LK, (t) => !t.includes("status:"))
+check("keyboard: Delete clears the value (the key removed)", !read(LK).includes("status:") && read(LK).includes("pages: 300"), read(LK))
+await page.keyboard.press("ControlOrMeta+ArrowLeft"); await page.keyboard.press("Delete"); await page.waitForTimeout(400)
+check("keyboard: Delete leaves a value that can't be edited (the name)", (await base.locator(`[data-query-row="${LK}"]`).count()) === 1, await cursor())
+await page.keyboard.press("Enter")
+await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Lighthouse keeper")), 5000).catch(() => {})
+check("keyboard: Enter on a cell that can't be edited opens the row's file", await page.evaluate(() => decodeURIComponent(location.hash).includes("Lighthouse keeper")), await page.evaluate(() => location.hash))
+writeFileSync(`${VAULT}/${HL}`, hlText); writeFileSync(`${VAULT}/${LK}`, lkText)
+await page.goto("about:blank"); await page.goto(url(`${F}/Qa.base`)); await page.waitForTimeout(2500)
 writeFileSync(`${VAULT}/${F}/Qa.base`, BASE)
 await waitFile(`${F}/Qa.base`, (t) => t === BASE); await page.waitForTimeout(1500)
 
@@ -386,6 +419,14 @@ check("every row: the count says all of them; only the first are drawn at once",
 await until(async () => { await many.locator("[data-base-body]").evaluate((e) => { e.scrollTop = e.scrollHeight }); return (await drawn()) === 700 }, 15000, 300).catch(() => {})
 const sum = (await many.locator('[data-query-summaries="all"]').innerText().catch(() => "")).replace(/\s+/g, " ").trim()
 check("every row: scrolling down reaches the last, the summary under all of them", (await drawn()) === 700 && (await many.locator(`[data-query-row="${F}/Many/Row 700.md"]`).count()) === 1 && /^Sum 245.?350$/.test(sum), [await drawn(), sum])
+// The keyboard's row kept drawn: Cmd/Ctrl+ArrowDown on a fresh load goes to the last row, drawn and scrolled to.
+await page.goto("about:blank"); await page.goto(url(`${F}/Many.base`)); await page.waitForTimeout(2500)
+await many.locator("table[role=grid]").focus(); await page.keyboard.press("ControlOrMeta+ArrowDown"); await page.waitForTimeout(500)
+const end = await many.locator("table[role=grid]").evaluate((t) => {
+  const c = document.getElementById(t.getAttribute("aria-activedescendant") ?? ""), r = c?.getBoundingClientRect(), s = t.closest("[data-base-body]").getBoundingClientRect()
+  return c && { row: c.closest("tr").dataset.queryRow, seen: r.top >= s.top && r.bottom <= s.bottom }
+})
+check("every row: Cmd/Ctrl+ArrowDown draws the last row and scrolls to it", end?.row === `${F}/Many/Row 700.md` && end.seen, end)
 
 // Phone.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })

@@ -3,7 +3,7 @@
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Plus } from "lucide-react"
 import {
-  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, isMac, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, rawUrl, Resizer, resolver, rowFileMenu, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
 import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
@@ -238,19 +238,27 @@ const GroupHead = ({ name, n }: { name: string | null; n: number }) => (
 /** A column at least this wide, when resized (Obsidian's least). */
 const MIN_WIDTH = 40
 
+/** The cell the keyboard is on, and its row's place (where the cursor stays if its row leaves). */
+type Cursor = { path: string; key: string; i: number }
+
 /** One table for every group (so the columns line up), each group under a heading row. Its header (`ctl`): a click
- *  opens a column's menu, dragging one moves it, its right edge resizes it. */
+ *  opens a column's menu, dragging one moves it, its right edge resizes it. Focused, a spreadsheet's cell cursor. */
 const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
   groups: { name: string | null; rows: Row[]; summaries?: Record<string, unknown> }[]; res: Result; resolve: Resolve; ctl?: TableCtl
   save: (r: Row, key: string, v: unknown) => void
 }) {
   const [editing, setEditing] = useState<string | null>(null)
   const dropped = useRef(false) // Escape: the blur that follows doesn't save
-  const then = useRef<string | null>(null) // the cell Tab or Enter goes to once this one is saved
+  const seed = useRef<string | null>(null) // the key typed on the cursor, replacing the cell's value
   const { open, cancel } = opener
-  // (every row, drawn as it comes near the screen: the groups take theirs in turn)
-  const total = groups.reduce((n, g) => n + g.rows.length, 0)
-  const [drawn, mark] = useRowsNear(total)
+  const flat = useMemo(() => groups.flatMap((g) => g.rows), [groups])
+  const [at, setAt] = useState<Cursor | null>(null)
+  const row = !at || !flat.length ? -1 : (() => { const j = flat.findIndex((r) => r.path === at.path); return j >= 0 ? j : Math.min(at.i, flat.length - 1) })()
+  const col = at ? Math.max(0, res.columns.findIndex((c) => c.key === at.key)) : 0
+  // (every row, drawn as it comes near the screen: the groups take theirs in turn; the cursor's row always)
+  const total = flat.length
+  const [near, mark] = useRowsNear(total)
+  const drawn = Math.max(near, row + 1)
   const upTo = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.rows.length, 0))
   const id = `query-cols:${useId()}`
   const table = useRef<HTMLTableElement>(null)
@@ -275,18 +283,52 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
   const sized = res.columns.some((c) => width(c.key))
   // (a sized cell's content is a box that wide less the gap after it, so the column is that wide whatever it holds)
   const box = (k: string, last: boolean) => { const w = width(k); return w ? { width: Math.max(w - (last ? 0 : 16), 8) } : undefined }
-  // The cells that can be edited, in order: where Tab, Shift-Tab and Enter go.
-  const cells = () => groups.flatMap((g, gi) => g.rows.slice(0, Math.max(0, drawn - upTo[gi])).flatMap((r) =>
-    res.columns.filter((c) => editable(c.key, r.values[c.key])).map((c) => `${r.path}\0${c.key}`)))
-  const step = (id: string, how: "next" | "prev" | "down") => {
-    const all = cells(), i = all.indexOf(id), key = id.split("\0")[1]
-    if (how === "down") return all.slice(i + 1).find((x) => x.split("\0")[1] === key) ?? null
-    return all[how === "next" ? i + 1 : i - 1] ?? null
+  const gid = useId()
+  const cellId = (i: number, ci: number) => `${gid}c${i}-${ci}`
+  const go = (i: number, ci: number) => {
+    if (!flat.length) return
+    const r = Math.max(0, Math.min(flat.length - 1, i)), c = Math.max(0, Math.min(res.columns.length - 1, ci))
+    setAt({ path: flat[r].path, key: res.columns[c].key, i: r })
+  }
+  // (Tab and Shift-Tab: along the row, on to the next one's start)
+  const along = (i: number, ci: number, by: number) => {
+    const n = res.columns.length, to = Math.max(0, Math.min(flat.length * n - 1, i * n + ci + by))
+    go(Math.floor(to / n), to % n)
+  }
+  const edit = (r: Row, key: string, first: string | null = null) => {
+    cancel(); dropped.current = false; seed.current = first
+    setAt({ path: r.path, key, i: Math.max(0, flat.indexOf(r)) })
+    setEditing(`${r.path}\0${key}`)
+  }
+  useEffect(() => {
+    if (row >= 0 && document.activeElement === table.current) document.getElementById(cellId(row, col))?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row, col])
+  const keys = (e: React.KeyboardEvent) => {
+    if (e.target !== e.currentTarget || e.nativeEvent.isComposing || !flat.length || e.altKey) return
+    const mod = isMac ? e.metaKey : e.ctrlKey, i = Math.max(0, row), last = flat.length - 1, end = res.columns.length - 1
+    const to = ({ ArrowUp: [mod ? 0 : i - 1, col], ArrowDown: [mod ? last : i + 1, col], ArrowLeft: [i, mod ? 0 : col - 1],
+      ArrowRight: [i, mod ? end : col + 1], Home: [mod ? 0 : i, 0], End: [mod ? last : i, end] } as Record<string, number[]>)[e.key]
+    if (to && !e.shiftKey) { e.preventDefault(); go(to[0], to[1]); return }
+    const r = flat[i], key = res.columns[col].key, can = editable(key, r.values[key])
+    if ((e.key === "Enter" || e.key === "F2") && !e.shiftKey) {
+      e.preventDefault()
+      if (can && !mod) edit(r, key)
+      else if (e.key === "Enter") openFile(r.path, { newTab: mod })
+      return
+    }
+    if (!can || e.ctrlKey || e.metaKey) return
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault()
+      if (r.values[key] !== null && r.values[key] !== undefined && r.values[key] !== "") save(r, key, undefined)
+    } else if ([...e.key].length === 1) { e.preventDefault(); edit(r, key, e.key) }
   }
   const sortOf = (k: string) => ctl?.sort.find((s) => s.key === k)
   return (
     <div className="-mx-4 overflow-x-auto px-4" data-query-scroll data-no-edit>
-      <table ref={table} className={cn("min-w-max border-collapse text-[14px]", !sized && "w-full")}>
+      <table ref={table} role="grid" tabIndex={0} aria-activedescendant={row >= 0 && !editing ? cellId(row, col) : undefined}
+        onKeyDown={keys} onFocus={(e) => { if (e.target === e.currentTarget && !at) go(0, 0) }}
+        className={cn("group/grid min-w-max border-collapse text-[14px] outline-none", !sized && "w-full")}>
         <thead>
             <tr className="border-b-[0.5px] border-border">
               {res.columns.map((c, ci) => {
@@ -333,39 +375,44 @@ const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
           {(groups.length > 1 || g.name) && (
             <tr><td colSpan={res.columns.length} className={cn("pb-0.5", gi ? "pt-4" : "pt-2")}><GroupHead name={g.name} n={g.rows.length} /></td></tr>
           )}
-          {g.rows.slice(0, drawn - upTo[gi]).map((r) => (
-            <tr key={r.path} tabIndex={-1} data-keyrow data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, !!(e.target as HTMLElement).closest("[data-editable]")) }}
+          {g.rows.slice(0, drawn - upTo[gi]).map((r, ri) => (
+            <tr key={r.path} data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, !!(e.target as HTMLElement).closest("[data-editable]")) }}
               className="cursor-pointer border-b-[0.5px] border-border hover:bg-foreground/[0.03] [tbody:last-child>&:last-child]:border-0">
               {res.columns.map((c, ci) => {
                 const v = r.values[c.key]
                 const id = `${r.path}\0${c.key}`
                 const can = editable(c.key, v)
-                const last = ci === res.columns.length - 1, w = box(c.key, last)
+                const last = ci === res.columns.length - 1, w = box(c.key, last), i = upTo[gi] + ri, cur = i === row && ci === col
                 const shown = editing === id ? (
-                  <input autoFocus defaultValue={v === null || v === undefined ? "" : typeof v === "boolean" ? (v ? "yes" : "no") : String(v)}
+                  <input autoFocus defaultValue={seed.current ?? (v === null || v === undefined ? "" : typeof v === "boolean" ? (v ? "yes" : "no") : String(v))}
                     aria-label={`${c.label} of ${r.title}`} onClick={(e) => e.stopPropagation()}
+                    onFocus={(e) => { const n = e.currentTarget.value.length; e.currentTarget.setSelectionRange(n, n) }}
                     className={cn("h-7 w-full rounded-[5px] border-[0.5px] border-border bg-background px-1.5 text-[14px] outline-none focus:border-primary", !w && "min-w-[120px]")}
                     onKeyDown={(e) => {
-                      if (e.key === "Escape") { dropped.current = true; setEditing(null) }
-                      // (Tab and Shift-Tab: the next or the one before; Enter: the one below, as in a spreadsheet)
-                      const how = e.key === "Tab" ? (e.shiftKey ? "prev" : "next") : e.key === "Enter" ? "down" : null
-                      if (!how) return
-                      e.preventDefault()
-                      then.current = step(id, how)
-                      e.currentTarget.blur()
+                      if (e.nativeEvent.isComposing) return
+                      // (back to the cursor, which goes on as in a spreadsheet: Enter down, Tab along; Escape drops the change)
+                      if (e.key === "Escape") { dropped.current = true; go(i, ci) }
+                      else if (e.key === "Enter") go(e.shiftKey ? i - 1 : i + 1, ci)
+                      else if (e.key === "Tab") along(i, ci, e.shiftKey ? -1 : 1)
+                      else return
+                      e.preventDefault(); e.stopPropagation()
+                      table.current?.focus({ preventScroll: true })
                     }}
                     onBlur={(e) => {
-                      setEditing(then.current)
-                      then.current = null
+                      setEditing(null)
+                      seed.current = null
                       if (dropped.current) return
                       const to = typed(e.target.value, v)
                       if (to !== (v ?? undefined)) save(r, c.key, to)
                     }} />
                 ) : c.key === "file" ? <span className="font-medium">{r.title}</span> : <Value v={v} resolve={resolve} from={r.path} />
                 return (
-                  <td key={c.key} className={cn("h-9 py-1 pr-4 align-middle last:pr-0", !w && "max-w-[280px] truncate")}
+                  <td key={c.key} id={cellId(i, ci)} role="gridcell" aria-selected={cur || undefined}
+                    className={cn("relative h-9 py-1 pr-4 align-middle last:pr-0", !w && "whitespace-nowrap",
+                      cur && "before:pointer-events-none before:absolute before:inset-y-0.5 before:-left-1.5 before:right-2.5 before:rounded-[6px] before:ring-primary last:before:-right-1.5 group-focus-visible/grid:before:ring-2")}
                     data-editable={can ? "" : undefined} data-tip={can && editing !== id ? "Double-click to edit" : undefined}
-                    onDoubleClick={can ? (e) => { e.stopPropagation(); cancel(); dropped.current = false; setEditing(id) } : undefined}>
+                    onMouseDown={() => { if (!cur) setAt({ path: r.path, key: c.key, i }) }}
+                    onDoubleClick={can ? (e) => { e.stopPropagation(); edit(r, c.key) } : undefined}>
                     {w ? <div className="truncate" style={w}>{shown}</div> : shown}
                   </td>
                 )

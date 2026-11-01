@@ -19,6 +19,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The Links panel says whose links it shows on a tab that isn't a file**: a new tab or a terminal keeps the links
   of the file you were on, now named above them.
 - **An empty vault's file list says so**: Files reads "No files yet." instead of an empty space under its heading.
+- **Database tables by keyboard**: a focused table has a cell cursor, as a spreadsheet: arrows, Home and End move
+  it (with Cmd or Ctrl, to the edges), Enter or F2 edits the cell (else opens its file), typing replaces its value,
+  Delete clears it, and Enter or Tab saves and moves down or right; Escape cancels back to the cell.
 - **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **An empty inbox says what comes there**: on a dashboard, it says an agent's questions and reports show up in

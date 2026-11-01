@@ -32,7 +32,9 @@ views:
 - A base lists every file outside hidden folders, as in Obsidian: attachments, templates and `archived: true` ones too,
   but not the file it's in. Archive folders (`.archive/`) only with a view's `archived: true` (`only`: only archived).
 - Columns left out: the name and the keys most matches have. In the app a row opens its file and a double-click on a
-  plain value changes that property in the file (not a formula's or a file property; Tab and Enter go on to the next).
+  plain value changes that property in the file (not a formula's or a file property). Focused, a table has a cell
+  cursor, as a spreadsheet: arrows move it, Enter or F2 edits (else opens the row), typing replaces the value, Delete
+  clears it, and Enter or Tab saves and moves on.
 - What the app changes in a view is written to its YAML, as Obsidian writes it (a fence in its note, an embed in its
   .base): a heading's menu (sort, rename: `displayName`, summarize, hide), dragging a heading (`order`) or its edge
   (`columnSize`), and the bar's Results (`limit`), Group (`groupBy`), Sort, Filter (the base's and the view's `filters`) and Properties
