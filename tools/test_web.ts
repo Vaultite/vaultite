@@ -490,6 +490,16 @@ check("markdown: a link with no extension, a relative file and any app's scheme 
 const broken = md.renderMarkdown("Vaultite\nLighthouse\n\nNext")
 check("markdown: a line break is a break, as the editor shows it", broken.includes("Vaultite<br>Lighthouse") && broken.includes("<p>Next</p>"), broken)
 
+// A .csv changed a field at a time (plugins/core/tables/csvedit.ts): the rest of its text as it was.
+{
+  const ce = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "tables", "csvedit.ts")).href)
+  const src = '\ufeffa;b;c\r\n1;"x; y";3\r\n4;5\r\n'
+  check("csv: a field changed alone, quoting, separator, BOM and CRLF kept", ce.setCell(src, 1, 1, "x; z") === '\ufeffa;b;c\r\n1;"x; z";3\r\n4;5\r\n'
+    && ce.setCell(src, 2, 0, 'say "hi"') === '\ufeffa;b;c\r\n1;"x; y";3\r\n"say ""hi""";5\r\n' && ce.setCell(src, 2, 2, "6") === '\ufeffa;b;c\r\n1;"x; y";3\r\n4;5;6\r\n',
+    [ce.setCell(src, 1, 1, "x; z"), ce.setCell(src, 2, 0, 'say "hi"'), ce.setCell(src, 2, 2, "6")])
+  check("csv: a row added, after a last line without its break", ce.addRow("a,b\n1,2", 2) === "a,b\n1,2\n,\n" && ce.addRow("a,b\r\n", 2) === "a,b\r\n,\r\n", [ce.addRow("a,b\n1,2", 2), ce.addRow("a,b\r\n", 2)])
+}
+
 // Tables edited cell by cell (editor/tables.ts) rewrite only what changed, in the table's own style.
 const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/tableText.ts")
 {

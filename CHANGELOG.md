@@ -24,6 +24,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   or shown values have every word (the count says how many), leaving the base as it is; Escape clears it.
 - **Duplicate a table row, delete several at once**: a row's menu has Duplicate row, and with rows or columns of a
   note's table selected together, Delete deletes all of them ("Delete 3 rows").
+- **CSV tables edit in place**: double-click a cell of a .csv to change it (Enter goes down, Tab across, Escape
+  cancels) and Add row adds a record; only that field is rewritten, its quotes and separator kept.
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and

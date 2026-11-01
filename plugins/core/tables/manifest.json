@@ -4,5 +4,5 @@
   "category": "formats",
   "alwaysOn": true,
   "name": "Tables",
-  "description": "CSV files (transactions, exports) open as a table you can filter and sort, and ![[Transactions.csv]] shows one in a note."
+  "description": "CSV files (transactions, exports) open as a table you can filter, sort and edit, and ![[Transactions.csv]] shows one in a note."
 }

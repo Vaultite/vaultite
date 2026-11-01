@@ -1,4 +1,4 @@
-// Tables: a .csv opens as a table named like a note and embeds as its rows; editing it is its text. Off, a .csv is
+// Tables: a .csv opens as a table named like a note, its cells edited in place, and embeds as its rows. Off, a .csv is
 // plain text.
 import { Sheet } from "lucide-react"
 import { definePlugin, numberText, parseCsv, type FileFormat } from "@vaultite"
@@ -8,9 +8,9 @@ import { CsvView } from "./Table"
 const count = (text: string) => Math.max(0, parseCsv(text).slice(1).filter((r) => r.some((f) => f !== "")).length)
 
 const format: FileFormat = {
-  exts: ["csv"], icon: Sheet, code: "text", page: true, edit: "source", layout: "inline",
+  exts: ["csv"], icon: Sheet, code: "text", page: true, layout: "inline",
   status: (text) => { const n = count(text); return `${numberText(n)} ${n === 1 ? "row" : "rows"}` },
-  render: ({ text }) => <CsvView text={text} />,
+  render: ({ text, editable, onChange }) => <CsvView text={text} onChange={editable ? onChange : undefined} />,
   embed: ({ text }) => <div className="px-3 pb-3"><CsvView text={text} embed /></div>,
 }
 
