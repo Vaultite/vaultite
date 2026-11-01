@@ -49,7 +49,7 @@ import { keepReads } from "./fmcache.ts"
 const KEEP = 32
 
 /** A state as the app was given it: its version, and its pieces (core/statepatch.ts). */
-type Snap = { v: string; state: Item; piece: SP.Piece; json?: string; patches: Map<string, string> }
+type Snap = { v: string; state: Item; piece: SP.Piece; whole?: Buffer; patches: Map<string, string> }
 
 
 /** The writer for a call made as `who`: the request's own (its terminal, session, model) when it's the same caller. */
@@ -344,13 +344,14 @@ export class App {
   async stateSince(since: string) {
     const now = this.snap(await this.state())
     const v = JSON.stringify(now.v)
-    let out: string
+    let out: string | Buffer
     if (since === now.v) out = `{"v":${v},"since":${v},"patch":null}`
     else if (this.snaps.some((s) => s.v === since)) {
       let patch = now.patches.get(since)
       if (patch === undefined) now.patches.set(since, patch = SP.patchOf(this.snaps.find((s) => s.v === since)!.piece, now.piece) ?? "null")
       out = `{"v":${v},"since":${JSON.stringify(since)},"patch":${patch}}`
-    } else out = `{"v":${v},"state":${now.json ??= SP.jsonOf(now.piece)}}`
+    // (kept as UTF-8 bytes: half a string's size when a character outside Latin-1 makes it two bytes a character)
+    } else out = now.whole ??= Buffer.from(`{"v":${v},"state":${SP.jsonOf(now.piece)}}`)
     return new Text(out, "application/json")
   }
 
@@ -365,7 +366,7 @@ export class App {
     const snap: Snap = { v: `${this.boot}.${++this.seq}`, state, piece, patches: new Map() }
     if (last) {
       snap.patches.set(last.v, patch!)
-      last.json = undefined
+      last.whole = undefined
       last.patches.clear()
     }
     this.snaps.push(snap)

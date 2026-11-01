@@ -260,6 +260,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   lowercases every note to find a plain word (49,000 notes: 110 ms to 56 ms).
 - **The first answers after a start come sooner**: the server watches the vault before reading it, so the app's
   first requests don't walk the whole vault again (0.3-0.5 s less at 49,000 notes).
+- **Loading the app in a big vault takes less**: the whole state the app loads is kept ready as bytes, half the
+  memory, and sent again without converting it (49,000 notes: 300 ms to 150 ms, 60 MB less).
 - **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third
   faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).
