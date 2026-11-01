@@ -74,13 +74,13 @@ for (const dark of [false, true]) {
     // (two core pages the pane scrolls: dashboards are files, drawn full width, and Settings scrolls itself).
     // (scrolling: the area itself, or a box of the page's own in it, as Plugins and Settings have)
     const edge = () => page.evaluate(() => {
-      const m = document.getElementById("main-scroll"), r = m.querySelector("main").getBoundingClientRect()
-      const scrolls = [m, ...m.querySelectorAll("main .overflow-y-auto")].some((e) => e.scrollHeight > e.clientHeight)
+      const m = document.getElementById("main-scroll"), r = m.querySelector("[data-page]").getBoundingClientRect()
+      const scrolls = [m, ...m.querySelectorAll("[data-page] .overflow-y-auto")].some((e) => e.scrollHeight > e.clientHeight)
       return { at: [Math.round(r.left), Math.round(r.right)], scrolls }
     })
-    await page.goto("about:blank"); await page.goto(`${B}#bundles`); await page.locator("#main-scroll main [data-bundles-page]").waitFor()
+    await page.goto("about:blank"); await page.goto(`${B}#bundles`); await page.locator("#main-scroll [data-bundles-page]").waitFor()
     const short = await edge()
-    await page.goto("about:blank"); await page.goto(`${B}#plugins`); await page.locator("#main-scroll main [data-plugin-row]").first().waitFor()
+    await page.goto("about:blank"); await page.goto(`${B}#plugins`); await page.locator("#main-scroll [data-plugin-row]").first().waitFor()
     const long = await until(async () => { const e = await edge(); return e.scrolls && e }, 8000) || await edge()
     check("a scrollbar appearing doesn't shift the page", !short.scrolls && long.scrolls && JSON.stringify(short.at) === JSON.stringify(long.at), { short, long })
     check("the window itself never scrolls (desktop)", await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight))

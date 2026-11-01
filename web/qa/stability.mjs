@@ -130,8 +130,8 @@ const scrollTo = (page, frac) => page.evaluate((f) => {
 }, frac)
 const anchorNow = (page) => page.evaluate(() => window.__anchor())
 
-const tabLoc = (page, name) => page.locator("section[aria-label=Pane] [data-tab-id]", { has: page.locator("[role=tab]", { hasText: name }) }).first()
-const activeTab = (page) => page.evaluate(() => document.querySelector("section[aria-label=Pane] [role=tab][aria-selected=true]")?.innerText.trim())
+const tabLoc = (page, name) => page.locator("section[data-group] [data-tab-id]", { has: page.locator("[role=tab]", { hasText: name }) }).first()
+const activeTab = (page) => page.evaluate(() => document.querySelector("section[data-group] [role=tab][aria-selected=true]")?.innerText.trim())
 const nameOf = (p) => p.split("/").pop().replace(/\.md$/, "")
 
 async function suite(file, label) {
@@ -145,7 +145,7 @@ async function suite(file, label) {
   await viewsAt(base)("read")
   await page.addInitScript(() => { try { localStorage.removeItem("vaultite.tabViews") } catch {} })
   await page.goto(`${base}${hash(file)}`)
-  await page.waitForSelector("#main-scroll article, #main-scroll main, article.file-view")
+  await page.waitForSelector("#main-scroll article, #main-scroll [data-page], article.file-view")
   if (STEPS.includes("load")) await measure(page, `${label}: load`, null, async () => {}, 2500)
   else await wait(2500)
   const full = await page.evaluate(() => { const b = window.__box(); return b.scrollHeight - b.clientHeight })
@@ -153,7 +153,7 @@ async function suite(file, label) {
   for (const frac of STEPS.includes("tab") && !PHONE ? [0.33, 0.66, 1] : []) {
     await scrollTo(page, frac); await wait(400)
     const a = await anchorNow(page)
-    await page.locator("section[aria-label=Pane] button[aria-label='New tab']").first().click(); await wait(300)
+    await page.locator("section[data-group] button[aria-label='New tab']").first().click(); await wait(300)
     await page.evaluate((h) => { location.hash = h }, hash(OTHER)); await wait(800)
     await measure(page, `${label}: tab back at ${Math.round(frac * 100)}%`, a, async () => {
         await tabLoc(page, nameOf(file)).locator("[role=tab]").click()

@@ -36,7 +36,7 @@ async function inked(sel, name) {
 
 try {
   await page.goto(B)
-  await page.waitForSelector("section[aria-label=Pane]", { timeout: 30000 }); await wait(800)
+  await page.waitForSelector("section[data-group]", { timeout: 30000 }); await wait(800)
   await command(page, "Split right", 600)
   await page.evaluate((s) => { location.hash = `#view/terminal%2F${s}` }, id)
   await until(() => page.$(".xterm-screen canvas"), 10000)
@@ -47,7 +47,7 @@ try {
   const webgl = await page.evaluate(() => !!document.querySelector(".xterm-screen canvas:not(.xterm-link-layer)"))
   check("it draws with WebGL", webgl)
   await wait(500)
-  const pane = await page.evaluate(() => document.querySelector(".xterm").closest("section[aria-label=Pane]").dataset.group)
+  const pane = await page.evaluate(() => document.querySelector(".xterm").closest("section[data-group]").dataset.group)
   const live = await inked(`section[data-group="${pane}"] .xterm-screen`, "live")
 
   // Lifted as a card, by its pane's handle or its tab: the card's copy shows its lines too.

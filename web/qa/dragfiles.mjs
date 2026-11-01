@@ -28,7 +28,7 @@ const shot = (name) => page.screenshot({ path: `${OUT}dragfiles-${name}.png` })
 
 const row = (p) => page.locator(`aside [role=tree] div[data-tree-path="${p}"]`).first()
 const pinRow = (p) => page.locator(`aside nav[aria-label=Pages] [data-pin="${p}"]`).first()
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => {
+const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => {
   const r = s.getBoundingClientRect()
   return { id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), tabs: [...s.querySelectorAll("[role=tab]")].map((t) => t.innerText.trim()),
     active: s.querySelector("[role=tab][aria-selected=true]")?.innerText.trim() }

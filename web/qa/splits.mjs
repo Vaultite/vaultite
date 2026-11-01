@@ -16,7 +16,7 @@ const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}splits-${name}.png` })
 
 /** Every pane, once they're still (core/panemotion.ts): its group, box, tab labels, active tab, and whether it has the focus. */
-const panes = () => page.waitForFunction(() => !document.getAnimations().some((a) => a.id === "pane-motion")).then(() => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => {
+const panes = () => page.waitForFunction(() => !document.getAnimations().some((a) => a.id === "pane-motion")).then(() => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => {
   const r = s.getBoundingClientRect()
   return {
     id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height),

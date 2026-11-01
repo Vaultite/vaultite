@@ -617,12 +617,12 @@ export default function App() {
             </a>
           ))}
         </nav>
+        {/* Its edge (the splits' Resizer): dragged past half its narrowest it folds to the rail, keeping its width, and
+            out again it opens, in one drag. */}
+        {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth); dragOpen = getPrefs().sidebar }} onDrag={(x) => dragSidebar(false, x)}
+          onCancel={() => setPrefs({ sidebar: dragOpen, sidebarWidth: dragFrom })} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
+          className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
       </aside>
-      {/* Its edge (the splits' Resizer): dragged past half its narrowest it folds to the rail, keeping its width, and
-          out again it opens, in one drag. */}
-      {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth); dragOpen = getPrefs().sidebar }} onDrag={(x) => dragSidebar(false, x)}
-        onCancel={() => setPrefs({ sidebar: dragOpen, sidebarWidth: dragFrom })} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
-        className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
       </>}
 
       {showRight && (
@@ -638,13 +638,13 @@ export default function App() {
           <div className="relative flex min-h-0 flex-1 flex-col">
             {store && desktop && <SidebarPanels side="right" store={store} open={rightOpen || hideRight} file={filePath} tab={targetOf(tab)} />}
           </div>
+          {rightOpen && (
+            <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth); dragOpen = getPrefs().rightSidebar }} onDrag={(x) => dragSidebar(true, x)}
+              onCancel={() => setPrefs({ rightSidebar: dragOpen, rightSidebarWidth: dragFrom })}
+              onReset={() => setPrefs({ rightSidebar: true, rightSidebarWidth: 280 })}
+              className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} - 4px)` }} />
+          )}
         </aside>
-      )}
-      {showRight && rightOpen && (
-        <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth); dragOpen = getPrefs().rightSidebar }} onDrag={(x) => dragSidebar(true, x)}
-          onCancel={() => setPrefs({ rightSidebar: dragOpen, rightSidebarWidth: dragFrom })}
-          onReset={() => setPrefs({ rightSidebar: true, rightSidebarWidth: 280 })}
-          className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} - 4px)` }} />
       )}
 
       {desktop ? (

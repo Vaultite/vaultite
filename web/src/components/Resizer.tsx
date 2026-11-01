@@ -1,6 +1,6 @@
 // The one drag-to-resize primitive (sidebar edge, split dividers). While dragging, <body data-resizing> stops size
 // animations and keeps the cursor over iframes; Escape puts it back. Keys: the arrows drag it a step, Enter resets it.
-import { useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
+import { useLayoutEffect, useRef, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 import { cn } from "@/lib/utils"
 
 export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, onReset, resetTip = "reset", className, style }: {
@@ -18,8 +18,17 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
   resetTip?: string
   className?: string; style?: CSSProperties
 }) {
-  const unEscape = useRef<(() => void) | null>(null)
-  const end = () => { unEscape.current?.(); unEscape.current = null; if (!("resizing" in document.body.dataset)) return; delete document.body.dataset.resizing; onEnd?.() }
+  const unEscape = useRef<(() => void) | null>(null), self = useRef<HTMLDivElement>(null)
+  // Where the line sits, as a share of what it divides, for a screen reader (sizes may change without a render).
+  const place = () => {
+    const el = self.current, box = el?.offsetParent ?? document.documentElement
+    if (!el) return
+    const r = el.getBoundingClientRect(), b = box.getBoundingClientRect()
+    const at = horizontal ? (r.top + r.height / 2 - b.top) / b.height : (r.left + r.width / 2 - b.left) / b.width
+    el.setAttribute("aria-valuenow", String(Math.min(100, Math.max(0, Math.round(at * 100 || 0)))))
+  }
+  useLayoutEffect(place, [])
+  const end = () => { unEscape.current?.(); unEscape.current = null; if (!("resizing" in document.body.dataset)) return; delete document.body.dataset.resizing; onEnd?.(); requestAnimationFrame(place) }
   const down = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -48,9 +57,11 @@ export function Resizer({ label, horizontal, onStart, onDrag, onEnd, onCancel, o
     e.preventDefault()
     const r = e.currentTarget.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2
     onStart?.(x, y); onDrag(x + d[0], y + d[1]); onEnd?.()
+    requestAnimationFrame(place)
   }
   return (
-    <div role="separator" tabIndex={0} aria-orientation={horizontal ? "horizontal" : "vertical"} aria-label={label} onKeyDown={key}
+    <div ref={self} role="separator" tabIndex={0} aria-orientation={horizontal ? "horizontal" : "vertical"} aria-label={label} onKeyDown={key}
+      aria-valuemin={0} aria-valuemax={100} onFocus={place}
       data-tip={onReset ? `Drag to resize, double-click to ${resetTip}` : "Drag to resize"}
       onPointerDown={down}
       onPointerMove={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) onDrag(e.clientX, e.clientY) }}

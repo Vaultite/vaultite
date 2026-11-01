@@ -1,12 +1,10 @@
 {
-  "aria-required-attr": 46,
   "aria-required-children": 23,
   "color-contrast": 227,
   "label-content-name-mismatch": 20,
-  "landmark-main-is-top-level": 23,
   "meta-viewport": 27,
   "nested-interactive": 2,
   "page-has-heading-one": 15,
-  "region": 33,
+  "region": 10,
   "target-size": 51
 }

@@ -24,7 +24,7 @@ const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
 const shot = (name) => page.screenshot({ path: `${OUT}interact-${name}.png` })
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => ({
+const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => ({
   id: s.dataset.group, x: s.getBoundingClientRect().x, tabs: [...s.querySelectorAll("[role=tab]")].map((t) => t.innerText.trim()),
 })).sort((a, b) => a.x - b.x))
 const tabs = async () => (await panes()).flatMap((p) => p.tabs)

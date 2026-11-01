@@ -16,19 +16,19 @@ const slow = (rate) => cdp.send("Animation.setPlaybackRate", { playbackRate: rat
 const shot = (name) => page.screenshot({ path: `${OUT}${name}.png` })
 const still = () => page.waitForFunction(() => !document.getAnimations().some((a) => a.id === "pane-motion"), null, { timeout: 10000 })
 /** Every pane: its group, its box on screen (with its move's transform) and whether it floats or is zoomed. */
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => {
+const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => {
   const r = s.getBoundingClientRect()
   return { id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), float: "floating" in s.dataset, zoomed: "zoomed" in s.dataset,
     clip: s.getAnimations().length ? getComputedStyle(s).clipPath : "", opacity: Number(getComputedStyle(s).opacity) }
 }))
 const ws = () => page.evaluate(() => JSON.parse(localStorage.getItem("vaultite.tabs")))
-const box = () => page.evaluate(() => { const r = document.querySelector("section[aria-label=Pane]").parentElement.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
+const box = () => page.evaluate(() => { const r = document.querySelector("section[data-group]").parentElement.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } })
 // What remounting would lose: a mark on each pane's body element.
 const mark = () => page.evaluate(() => { for (const b of document.querySelectorAll("[data-pane-body]")) b.qaMark = b.dataset.paneBody })
 const marked = () => page.evaluate(() => [...document.querySelectorAll("[data-pane-body]")].every((b) => b.qaMark === b.dataset.paneBody))
 
 await page.goto(`${B}#file/${encodeURIComponent(`Notes/${note}`)}`)
-await page.waitForSelector("section[aria-label=Pane] [data-tab-id]", { timeout: 30000 })
+await page.waitForSelector("section[data-group] [data-tab-id]", { timeout: 30000 })
 await wait(800)
 const W = await box()
 
@@ -51,7 +51,7 @@ await command(page, "Zoom pane"); await still()
 let ps = await panes(), z = ps.find((p) => p.zoomed)
 check("zoom: the focused pane fills the workspace, the other still drawn under it", !!z && Math.abs(z.w - W.w) < 2 && Math.abs(z.x - W.x) < 2 && ps.length === 2 && (await ws()).zoom === z.id, ps)
 check("zoom: its bar shows it, the others are out of reach", await page.locator(`section[data-group="${z?.id}"] [data-pane-unzoom]`).isVisible()
-  && await page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]:not([data-zoomed])")].every((s) => s.inert)))
+  && await page.evaluate(() => [...document.querySelectorAll("section[data-group]:not([data-zoomed])")].every((s) => s.inert)))
 await shot("zoomed")
 await page.locator("[data-pane-unzoom]").click(); await still()
 ps = await panes()
@@ -63,8 +63,8 @@ await still()
 ps = await panes()
 check("zoom: ⌘⇧↩ zooms; pressed again mid-move it turns back from where it is, and settles", ps.some((p) => p.zoomed) && Math.abs(ps.find((p) => p.zoomed).w - W.w) < 2
   && midway.some((p) => p.zoomed && p.clip) && !(await page.locator("[data-moving]").count()), [midway, ps])
-await page.locator("section[aria-label=Pane]:not([data-zoomed])").first().evaluate((s) => s.inert = false)
-await page.evaluate(() => document.querySelector("section[aria-label=Pane]:not([data-zoomed]) [data-pane-body]").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })))
+await page.locator("section[data-group]:not([data-zoomed])").first().evaluate((s) => s.inert = false)
+await page.evaluate(() => document.querySelector("section[data-group]:not([data-zoomed]) [data-pane-body]").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })))
 await still()
 check("zoom: another pane focused, it's back", !(await panes()).some((p) => p.zoomed) && !(await ws()).zoom)
 
@@ -109,7 +109,7 @@ check("float: ⌥⌘↩ floats it centred on the right; again, unmoved, it docks
 await slow(0.1)
 await command(page, "Close pane", 0)
 await wait(500)
-const gone = await page.evaluate(() => ({ copies: document.querySelectorAll("[data-pane-gone]").length, panes: document.querySelectorAll("section[aria-label=Pane]").length,
+const gone = await page.evaluate(() => ({ copies: document.querySelectorAll("[data-pane-gone]").length, panes: document.querySelectorAll("section[data-group]").length,
   frames: document.querySelectorAll("[data-pane-gone] iframe").length, ids: document.querySelectorAll("[data-pane-gone] [id]").length }))
 await shot("closing-mid")
 check("close: a copy of it fades out, a picture only (no ids, no frames), one pane left", gone.copies === 1 && gone.panes === 1 && !gone.frames && !gone.ids, gone)
@@ -123,7 +123,7 @@ const G = await gapOf()
 let cps = await panes()
 check("cards: on from the palette, the one pane inset by the gap on every side, rounded", G >= 4 && cps.length === 1 && Math.abs(cps[0].x - W.x - G) < 1.5
   && Math.abs(cps[0].w - (W.w - 2 * G)) < 1.5 && Math.abs(cps[0].h - (W.h - 2 * G)) < 1.5
-  && await page.evaluate(() => getComputedStyle(document.querySelector("section[aria-label=Pane]")).borderRadius) === "10px", { G, cps, W })
+  && await page.evaluate(() => getComputedStyle(document.querySelector("section[data-group]")).borderRadius) === "10px", { G, cps, W })
 await command(page, "Split right"); await still()
 cps = await panes()
 const div = await page.locator("[data-workspace] > [role=separator]").first().boundingBox()

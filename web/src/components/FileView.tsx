@@ -994,7 +994,7 @@ function PaneFile({ path, kind, bar, toggle, notices, children, onContextMenu }:
 function PaneScroll({ children }: { children: ReactNode }) {
   return (
     <div className="h-full min-h-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
-      <main className="mx-auto max-w-none px-8 pb-6">{children}</main>
+      <div data-page className="mx-auto max-w-none px-8 pb-6">{children}</div>
     </div>
   )
 }

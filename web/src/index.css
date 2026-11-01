@@ -501,7 +501,7 @@ section[data-lifted] { opacity: 0.45; scale: 0.985; transition: opacity var(--mo
 /* An open sidebar's content is laid out at its open width (App.tsx's --sidebar-open) whatever the sidebar's width while
    it opens: its edge uncovers it, nothing squeezes and reflows each frame. (Its padding and edge take 4 units; the vault's
    bar runs edge to edge.) */
-aside[data-side]:not([data-collapsed]) > :not(nav, [data-lights-ghost]) { min-width: calc(var(--sidebar-open) - var(--spacing) * 4); }
+aside[data-side]:not([data-collapsed]) > :not(nav, [data-lights-ghost], [role=separator]) { min-width: calc(var(--sidebar-open) - var(--spacing) * 4); }
 aside[data-side]:not([data-collapsed]) > nav { min-width: calc(var(--sidebar-open) - 0.5px); }
 
 /* The icon rail (SidebarPanels): a thin line between its groups of icons (the header's items, then each panel's), none

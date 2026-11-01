@@ -25,7 +25,7 @@ const PROBE = () => {
   const seen = () => {
     w.__load.busy = Math.max(w.__load.busy, document.querySelectorAll("[data-pane] [aria-busy=true]").length)
     // (the view's page: the shown pane's main, once its view has drawn something under its bar)
-    const main = [...document.querySelectorAll("[data-pane]:not([data-kept]) > main")].find((m) => m.getClientRects().length && m.children.length > 1)
+    const main = [...document.querySelectorAll("[data-pane]:not([data-kept]) > [data-page]")].find((m) => m.getClientRects().length && m.children.length > 1)
     const h = main ? Math.round(main.getBoundingClientRect().height) : null
     if (h !== null && h !== w.__load.heights.at(-1)) w.__load.heights.push(h)
     requestAnimationFrame(seen)

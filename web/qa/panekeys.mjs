@@ -15,7 +15,7 @@ await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorag
 const page = watch(await ctx.newPage(), { console: true })
 const shot = (name) => page.screenshot({ path: `${OUT}panekeys-${name}.png` })
 
-const panes = () => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane]")].map((s) => {
+const panes = () => page.evaluate(() => [...document.querySelectorAll("section[data-group]")].map((s) => {
   const r = s.getBoundingClientRect()
   return { id: s.dataset.group, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), focused: s.hasAttribute("data-focused") }
 }).sort((a, b) => a.x - b.x || a.y - b.y))

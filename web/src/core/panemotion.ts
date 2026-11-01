@@ -40,7 +40,7 @@ export function landFrom(id: string, rect: DOMRect) { landing.set(id, rect) }
 
 /** Moves `box`'s panes (`[data-group]`, each with a `[data-plate]`) when their places change; `raise`: the pane drawn
  *  over the others while moving (the one the user moved). */
-export function usePaneMotion(box: RefObject<HTMLDivElement | null>, panes: PaneBox[], raise: string) {
+export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox[], raise: string) {
   const key = keyOf(panes)
   const snap = useRef<Snap | "quiet" | null>(null)
   const run = useRef(0)

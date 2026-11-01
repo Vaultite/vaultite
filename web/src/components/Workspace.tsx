@@ -91,7 +91,7 @@ const tile = (r: Rect) => ({ left: along(r.x), top: along(r.y), width: span(r.w)
 export function Workspace(props: Props) {
   const ws = useWorkspace(), { root, focus, zoom } = ws
   const info = useTabInfo(props.store, props.pageInfo)
-  const box = useRef<HTMLDivElement>(null)
+  const box = useRef<HTMLElement>(null)
   const { dividers } = layout(root)
   const all = leaves(root)
   const alone = all.length === 1
@@ -104,12 +104,14 @@ export function Workspace(props: Props) {
   // (its edges follow the sidebars', with their spring: a terminal waits for them to stop, core/sliding.ts)
   useLayoutEffect(() => (box.current ? watchSliding(box.current) : undefined), [])
   return (
-    <div ref={box} data-workspace data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
+    <main ref={box} data-workspace data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
       {drawn.map(({ id, rect, layer }) => {
         const g = all.find((x) => x.id === id)!, float = !!g.float, zoomed = id === zoom
         // (under a zoomed pane: out of the keyboard's reach, and no part of the window's drag strip)
         const under = !!zoom && !zoomed && !float
         const top = !under && !float && rect.y < 1e-6
+        // (named by the tab it shows, so a screen reader moving between panes hears which is which)
+        const named = shownTab(g) ?? g.tabs[0]
         const z = float ? 20 + 3 * (layer - 2) : zoomed ? 11 : undefined
         const at = float ? place(rect) : tile(rect)
         return (
@@ -119,7 +121,7 @@ export function Workspace(props: Props) {
               className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-[10px] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
             {/* A pane not at the workspace's left or top edge draws the line to its neighbour;
                 data-top/corner/right-corner place the desktop title bar and the right sidebar's toggle (index.css). */}
-            <section aria-label="Pane" data-group={id} data-top={top || undefined} data-corner={(top && rect.x < 1e-6) || undefined}
+            <section aria-label={named ? info(named).label : "Empty pane"} data-group={id} data-top={top || undefined} data-corner={(top && rect.x < 1e-6) || undefined}
               data-right-corner={(top && rect.x + rect.w > 1 - 1e-6) || undefined} data-floating={float || undefined} data-zoomed={zoomed || undefined} data-focused={id === focus || undefined}
               data-overlay={float || undefined} inert={under || undefined} data-lifted={lifted === id || undefined}
               onPointerDownCapture={() => focusGroup(id)} onPointerDown={float ? (e) => moveCard(e, id, box) : undefined} style={{ ...at, zIndex: z && z + 2 }}
@@ -133,7 +135,7 @@ export function Workspace(props: Props) {
       })}
       {!zoom && dividers.map((d) => <Divider key={`${d.split.id}:${d.i}`} at={d} box={box} />)}
       <DragGhost info={info} />
-    </div>
+    </main>
   )
 }
 
@@ -185,7 +187,7 @@ function track(e: React.PointerEvent<HTMLElement>, cursor: string, move: (dx: nu
 }
 
 /** A floating pane dragged by its bar's empty part (its tabs and buttons do their own). */
-function moveCard(e: React.PointerEvent<HTMLElement>, id: string, box: React.RefObject<HTMLDivElement | null>) {
+function moveCard(e: React.PointerEvent<HTMLElement>, id: string, box: React.RefObject<HTMLElement | null>) {
   const t = e.target as Element, b = box.current?.getBoundingClientRect(), was = groups().find((g) => g.id === id)?.float
   if (e.button !== 0 || !b || !was || !t.closest("[data-tab-bar]") || t.closest("button, a, input, [data-tab-id], [data-set-chip], [role=separator]")) return
   const r = { x: was.x * b.width, y: was.y * b.height, w: was.w * b.width, h: was.h * b.height }
@@ -198,7 +200,7 @@ function moveCard(e: React.PointerEvent<HTMLElement>, id: string, box: React.Ref
 /** A floating pane's edges and corners, just outside it: drag to resize. */
 const EDGES = [["n", "inset-x-2 -top-1 h-2", "ns"], ["s", "inset-x-2 -bottom-1 h-2", "ns"], ["w", "inset-y-2 -left-1 w-2", "ew"], ["e", "inset-y-2 -right-1 w-2", "ew"],
   ["nw", "-top-1 -left-1 size-3", "nwse"], ["se", "-right-1 -bottom-1 size-3", "nwse"], ["ne", "-top-1 -right-1 size-3", "nesw"], ["sw", "-bottom-1 -left-1 size-3", "nesw"]] as const
-function CardEdges({ id, rect, box, z }: { id: string; rect: Rect; box: React.RefObject<HTMLDivElement | null>; z: number }) {
+function CardEdges({ id, rect, box, z }: { id: string; rect: Rect; box: React.RefObject<HTMLElement | null>; z: number }) {
   const down = (e: React.PointerEvent<HTMLElement>, edge: string, cursor: string) => {
     const b = box.current?.getBoundingClientRect()
     if (e.button !== 0 || !b) return
@@ -433,7 +435,7 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   tab: Tab | null; to: string; view: ReturnType<typeof viewFor>; file: string | null; full: boolean; focused: boolean; shown: boolean
 }) {
   const padded = (wide: boolean, bar: ReactNode, body: ReactNode) => (
-    <main className={cn("mx-auto px-8 pb-6", wide ? "max-w-none" : "max-w-[912px]")}>{bar}{body}</main>
+    <div data-page className={cn("mx-auto px-8 pb-6", wide ? "max-w-none" : "max-w-[912px]")}>{bar}{body}</div>
   )
   const startPage = useNewTabPage(to === "new" ? p.store : null)
   let body: ReactNode = null
@@ -447,11 +449,11 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   else {
     const page = p.page(to)
     if (page?.render && full) body = (
-      <main className="absolute inset-0 flex flex-col">
+      <div data-page className="absolute inset-0 flex flex-col">
         <div className="shrink-0 px-8"><ViewBar>{page.label}</ViewBar></div>
         {/* (a grid stretches the page's root to the box, so what it scrolls is the box's height, not its own) */}
         <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"><Drawn draw={() => page.render!(p.store!, to, tab)} /></div>
-      </main>
+      </div>
     )
     else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!, to, tab)} />)
   }
@@ -465,7 +467,7 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
 }, (was, now) => !was.shown && !now.shown)
 
 /** Between two parts of a split: drag to resize, double-click to make the split's parts equal again. */
-function Divider({ at: d, box }: { at: DividerAt; box: React.RefObject<HTMLDivElement | null> }) {
+function Divider({ at: d, box }: { at: DividerAt; box: React.RefObject<HTMLElement | null> }) {
   const row = d.split.dir === "row"
   const r = d.rect
   const move = (x: number, y: number) => {

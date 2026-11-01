@@ -33,7 +33,7 @@ const pick = async (n) => {
   await page.locator(`${LIST} [data-workspace='${n}']`).click()
   await until(async () => (await lit()) === String(n), 6000)
 }
-const tabs = () => page.$$eval("section[aria-label=Pane] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
+const tabs = () => page.$$eval("section[data-group] [role=tab]", (els) => els.map((t) => t.innerText.trim()))
 const menuItem = (name) => page.locator("[role=menuitemcheckbox], [role=menuitem]", { hasText: typeof name === "string" ? new RegExp(`^${name}$`) : name }).first()
 const treeRow = (p) => page.locator(`aside [data-tree-path="${p}"]`).first()
 const pins = () => page.$$eval("aside [data-pin]", (els) => els.map((e) => e.getAttribute("data-pin")))
@@ -118,7 +118,7 @@ try {
 
   // ---------- a new tab is blank (no home pages) ----------
   const before = (await tabs()).length
-  await page.locator("section[aria-label=Pane] button[aria-label='New tab']").first().click()
+  await page.locator("section[data-group] button[aria-label='New tab']").first().click()
   check("a new tab is blank", !!(await until(async () => { const t = await tabs(); return t.length === before + 1 }, 6000)) && !(await tabs()).some((x) => x.includes("Today")), await tabs())
 
   // ---------- files opened lately, per workspace ----------
@@ -126,7 +126,7 @@ try {
   await page.goto(`${B}#file/${encodeURIComponent("Notes/2026-09-27 journal.md")}`)
   check("opened files are kept in the workspace (core:recent)", !!(await until(() => data()[0]?.state?.["core:recent"]?.[0] === "Notes/2026-09-27 journal.md", 8000)), data()[0]?.state)
   await wait(1000)
-  await page.locator("section[aria-label=Pane] button[aria-label='New tab']").first().click()
+  await page.locator("section[data-group] button[aria-label='New tab']").first().click()
   check("a blank new tab lists them: Recently opened here", !!(await until(() => page.getByText("Recently opened here").count(), 6000)))
   await page.screenshot({ path: `${OUT}2-newtab.png` })
 
