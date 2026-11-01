@@ -3,7 +3,7 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Copy, Ellipsis, MessageSquarePlus, Pin, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, runCommandById, seenArea, share, snippet, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, seenArea, share, snippet, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
@@ -484,7 +484,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
           </div>
         ))}
       </div>
-      {!open && replies.length > 0 && <div className="shrink-0 px-2.5 pt-1 text-[12px] font-medium text-muted-foreground">{replies.length === 1 ? "1 reply" : `${replies.length} replies`}</div>}
+      {!open && replies.length > 0 && <div className="shrink-0 px-2.5 pt-1 text-[12px] font-medium text-muted-foreground">{plural(replies.length, "reply", "replies")}</div>}
       {suggestion && (
         <div className="flex shrink-0 gap-1.5 px-2.5 pt-2">
           <button type="button" className="flex h-7 cursor-pointer items-center gap-1 rounded-[7px] px-2.5 text-[12.5px] font-semibold text-white" style={{ background: tint }} onClick={() => void accept(n)}>

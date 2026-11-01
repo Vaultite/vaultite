@@ -1,7 +1,7 @@
 import { useRef, useState, type MouseEvent } from "react"
 import { ArrowDownToLine, Globe, Monitor, MonitorSmartphone, Pencil, Smartphone, X } from "lucide-react"
 import {
-  cell, del, DEVICE, Empty, fmtAgo, List, Loading, menuBelow, notifyError, openFile, openMenu, openView, Panel, post, removals, Row, useLive,
+  cell, del, DEVICE, Empty, fmtAgo, List, Loading, menuBelow, notifyError, openFile, openMenu, openView, Panel, plural, post, removals, Row, useLive,
   type MenuItem, type Store,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
@@ -127,7 +127,7 @@ function DeviceRow({ d, leaving }: { d: Device; leaving?: "" }) {
   const [renaming, setRenaming] = useState(false)
   const Icon = KIND_ICON[d.kind]
   const items = () => deviceItems(d, () => setRenaming(true))
-  const meta = [d.id === DEVICE && "This device", when(d), `${d.tabs.length} ${d.tabs.length === 1 ? "tab" : "tabs"}`, d.label && d.name].filter(Boolean).join(" · ")
+  const meta = [d.id === DEVICE && "This device", when(d), plural(d.tabs.length, "tab"), d.label && d.name].filter(Boolean).join(" · ")
   return (
     <Row data-device-row={d.id} data-leaving={leaving}
       lead={<span className="relative grid size-5 shrink-0 place-items-center text-muted-foreground"><Icon className="size-4" strokeWidth={2} />

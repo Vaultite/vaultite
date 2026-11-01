@@ -10,7 +10,7 @@ import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumb
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
 import { keepPropsOpen, propsOpen } from "@/core/viewstate"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
 
 function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type, step }: {
   value: string; onCommit: (v: string) => void; readOnly: boolean; placeholder?: string; className?: string
@@ -67,7 +67,7 @@ function Chips({ items, onChange, readOnly }: { items: unknown[]; onChange: (v: 
 }
 
 function summary(v: unknown): string {
-  if (Array.isArray(v)) return `${v.length} ${v.length === 1 ? "item" : "items"}`
+  if (Array.isArray(v)) return plural(v.length, "item")
   if (v && typeof v === "object") return Object.entries(v).map(([k, x]) => `${k}: ${typeof x === "object" ? "…" : String(x)}`).join(", ")
   return String(v ?? "")
 }

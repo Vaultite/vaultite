@@ -44,13 +44,13 @@ async function tidy() {
     const { files } = await op<{ files: string[] }>("archive.tidy", { dry: true })
     if (!files.length) return notify("Every archived file is in an archive folder")
     const ok = await confirmDialog({
-      title: `Move ${files.length} archived file${files.length === 1 ? "" : "s"}?`,
+      title: `Move ${plural(files.length, "archived file")}?`,
       body: "Each goes into an .archive folder inside its own folder. Links to them are updated.", confirm: "Move",
     })
     if (!ok) return
     const r = await op<{ moved: Moved[]; failed: unknown[] }>("archive.tidy")
     await reload()
-    notify(`Moved ${r.moved.length} archived file${r.moved.length === 1 ? "" : "s"}${r.failed.length ? `; ${r.failed.length} couldn't move` : ""}`)
+    notify(`Moved ${plural(r.moved.length, "archived file")}${r.failed.length ? `; ${r.failed.length} couldn't move` : ""}`)
   } catch (e) { notifyError(e, "Couldn't move the archived files") }
 }
 

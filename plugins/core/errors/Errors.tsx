@@ -137,7 +137,7 @@ export function ErrorsList({ options = {} }: { options?: Record<string, unknown>
         <Empty>No errors{source ? ` in the ${source}` : ""}. When the app or the server hits one, it's here.</Empty>
       ) : (
         <>
-          <p className="mb-1 text-[13px] text-muted-foreground">{data.total} kind{data.total === 1 ? "" : "s"} of error, {data.events} time{data.events === 1 ? "" : "s"}{data.total > data.groups.length ? ` (the latest ${data.groups.length})` : ""}</p>
+          <p className="mb-1 text-[13px] text-muted-foreground">{plural(data.total, "kind")} of error, {plural(data.events, "time")}{data.total > data.groups.length ? ` (the latest ${data.groups.length})` : ""}</p>
           <List>
             {groups.map((g) => <GroupRow key={g.id} g={g} open={open === g.id} onToggle={() => setOpen(open === g.id ? null : g.id)}
               onForgot={() => { setOpen(null); reload() }} leaving={leaving(g.id)} />)}

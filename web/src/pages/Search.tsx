@@ -19,7 +19,7 @@ import { Marked } from "@/components/Palette"
 import { menuBelow } from "@/components/ContextMenu"
 import { fileIcon } from "@/components/FileTree"
 import { usePane } from "@/core/pane"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 import { pluginSettings } from "@/core/pluginSettings"
 import { errorText } from "@/core/notify"
@@ -201,7 +201,6 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
   const lines = total > 0
   const phone = !isDesktop()
   const tool = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-9"
-  const counted = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
   return (
     <div data-search-view data-keylist className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
@@ -276,7 +275,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
           <h2 className="mb-1 flex items-baseline gap-2 text-[12px] font-semibold text-muted-foreground">
             {plain ? "In files" : "Files"}
             <span className="font-normal">{failed || (!results || (busy && !results.length) ? <span className="shimmer" aria-busy>Searching…</span> : !results.length ? "Nothing found"
-              : lines ? `${counted(total, "line")} in ${counted(found!.files, "file")}` : counted(found!.files, "file"))}</span>
+              : lines ? `${plural(total, "line")} in ${plural(found!.files, "file")}` : plural(found!.files, "file"))}</span>
           </h2>
           <div className="flex flex-col gap-1">
             {results?.map((r) => {

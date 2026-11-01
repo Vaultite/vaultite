@@ -19,6 +19,7 @@ import { confirmDialog } from "@/components/ConfirmDialog"
 import { pickIcon } from "@/components/IconPicker"
 import { askMove, askMoveMany, newNote, revealInTree } from "@/components/FileTree"
 import { notify, notifyError } from "@/core/notify"
+import { plural } from "@/lib/utils"
 
 /** Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy. */
 export async function copyText(text: string) {
@@ -250,7 +251,6 @@ export function grouped(groups: MenuItem[][]): MenuItem[] {
 
 /** The paths not inside another of them (a folder selected with what's in it moves or goes as one). */
 export const topmost = (paths: string[]) => paths.filter((p) => !paths.some((q) => q !== p && p.startsWith(`${q}/`)))
-const many = (n: number, one: string, more = `${one}s`) => `${n} ${n === 1 ? one : more}`
 
 /** Move several to the trash, then one toast with Undo for all of them. */
 async function trashMany(paths: string[]) {
@@ -258,11 +258,11 @@ async function trashMany(paths: string[]) {
   for (const p of topmost(paths)) {
     try { const t = await deleteFile(p, { quiet: true }); if (t) back.push(t) } catch (e) { notifyError(e) }
   }
-  if (back.length) notify(`Moved ${many(back.length, "item")} to trash`, { action: { label: "Undo", run: async () => { for (const t of back) await restoreFile(t) } } })
+  if (back.length) notify(`Moved ${plural(back.length, "item")} to trash`, { action: { label: "Undo", run: async () => { for (const t of back) await restoreFile(t) } } })
 }
 /** Delete several in the trash for good, asking once. */
 async function deleteManyForGood(paths: string[]) {
-  const ok = await confirmDialog({ title: `Delete ${many(paths.length, "item")} permanently?`, body: "They're deleted for good. This can't be undone.", confirm: "Delete", danger: true })
+  const ok = await confirmDialog({ title: `Delete ${plural(paths.length, "item")} permanently?`, body: "They're deleted for good. This can't be undone.", confirm: "Delete", danger: true })
   if (!ok) return
   for (const p of topmost(paths)) { try { await deleteFile(p) } catch (e) { notifyError(e) } }
 }

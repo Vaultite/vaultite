@@ -18,7 +18,7 @@ import { machinePath, onMachine, useMachines } from "@/core/machines"
 import { notify } from "@/core/notify"
 import { useKeptCount } from "@/core/heights"
 import { useEnabled } from "@/core/plugins"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
 
 /** Which agent, and where its plugin answers. */
 export type AgentSource = {
@@ -387,7 +387,7 @@ export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSou
         <>
           <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Today" value={money(today.cost)} hint={`${tokens(today.tokens)} tokens`} />
-            <Stat label="Working today" value={fmtMin(Math.round(today.active_min))} hint={`${today.sessions} session${today.sessions === 1 ? "" : "s"}`} />
+            <Stat label="Working today" value={fmtMin(Math.round(today.active_min))} hint={plural(today.sessions, "session")} />
             <Stat label={`Last ${days} days`} value={money(data.total.cost)}
               hint={plan ? `${((data.total.cost / plan.monthly!) * (30 / days)).toFixed(1)}x ${plan.name}'s price` : `${tokens(data.total.tokens)} tokens`} />
             <Stat label="Cache hits" value={data.total.cache_hit != null ? `${Math.round(data.total.cache_hit * 100)}%` : "–"} hint="of what it read" />
@@ -396,7 +396,7 @@ export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSou
             data={data.days.map((d) => ({
               label: "",
               value: by === "cost" ? d.cost : d.tokens,
-              tip: [fmtDay(d.date), d.sessions && `${d.sessions} session${d.sessions === 1 ? "" : "s"}`, d.active_min >= 1 && fmtMin(Math.round(d.active_min))].filter(Boolean).join(" · "),
+              tip: [fmtDay(d.date), d.sessions && plural(d.sessions, "session"), d.active_min >= 1 && fmtMin(Math.round(d.active_min))].filter(Boolean).join(" · "),
             }))} />
           <div className="flex justify-between text-[11px] text-muted-foreground">
             <span>{fmtDay(data.days[0].date)}</span><span>Today</span>
@@ -437,7 +437,7 @@ function Shares({ src, options, fm, by }: BlockCtx & { src: AgentSource; by: "pr
   const { data, error, on } = useAgentUsage(src, options, days)
   const list = by === "projects" ? data?.projects.slice(0, 10) : data?.models
   const meta = (x: Share) => by === "models" ? `${tokens(x.tokens)} tokens`
-    : [`${x.sessions} session${x.sessions === 1 ? "" : "s"}`, (x.active_min ?? 0) >= 1 && fmtMin(Math.round(x.active_min!)), x.last && fmtAgo(x.last)].filter(Boolean).join(" · ")
+    : [plural(x.sessions!, "session"), (x.active_min ?? 0) >= 1 && fmtMin(Math.round(x.active_min!)), x.last && fmtAgo(x.last)].filter(Boolean).join(" · ")
   const rows = useKeptCount(`agent:${src.path}:${by}${on}`, list?.length, 3, 10)
   return (
     <Panel title={`${by === "projects" ? "Projects" : "Models"}${on}`} icon={iconFor(src, fm, by === "projects" ? FolderGit2 : Boxes)} tint={src.tint}

@@ -2,7 +2,7 @@
 // by step with the page as it was after each, kept on this Mac a fortnight (electron/browser/agent.ts).
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bot, ChevronLeft, ChevronRight, Globe, Pause, Play } from "lucide-react"
-import { Button, cn, dateText, FilterField, get, notifyError, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, webPages } from "@vaultite"
+import { Button, cn, dateText, FilterField, get, notifyError, plural, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import type { LiveTab } from "./livetabs"
 import { showAppTab } from "./LiveView"
@@ -77,7 +77,7 @@ export function ReplaysView() {
             <SidebarRow key={r.run} icon={Bot} open data-web-replay={r.run} onClick={() => setOpen(r.run)}
               label={<span className="flex min-w-0 items-baseline gap-1.5"><span className="shrink-0 truncate">{groupOf(r)}</span>
                 <span className="min-w-0 truncate text-[12px] text-muted-foreground">{r.summary || r.title || hostOf(r.url)}</span></span>}>
-              <span className="mr-1 shrink-0 text-[11px] text-tertiary">{dateText(r.start, DAY)} · {r.steps} {r.steps === 1 ? "step" : "steps"}</span>
+              <span className="mr-1 shrink-0 text-[11px] text-tertiary">{dateText(r.start, DAY)} · {plural(r.steps, "step")}</span>
             </SidebarRow>
           ))}
         </div>

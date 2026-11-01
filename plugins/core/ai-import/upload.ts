@@ -70,9 +70,9 @@ export function summary(j: Job) {
   const parts = [`${j.created} new`]
   if (j.updated) parts.push(`${j.updated} updated`)
   if (j.unchanged) parts.push(`${j.unchanged} already here`)
-  if (j.skipped) parts.push(`${j.skipped} short one${j.skipped === 1 ? "" : "s"} skipped`)
-  const extra = [j.projects ? `${plural(j.projects, "project")}` : "", j.images ? `${plural(j.images, "image")}` : "",
-    j.files ? `${j.files} long attachment${j.files === 1 ? "" : "s"} as files` : "", j.memories ? `${j.memories} memor${j.memories === 1 ? "y" : "ies"} to review` : ""].filter(Boolean)
+  if (j.skipped) parts.push(`${plural(j.skipped, "short one")} skipped`)
+  const extra = [j.projects ? plural(j.projects, "project") : "", j.images ? plural(j.images, "image") : "",
+    j.files ? `${plural(j.files, "long attachment")} as files` : "", j.memories ? `${plural(j.memories, "memory", "memories")} to review` : ""].filter(Boolean)
   return `${name(j)}: ${j.chats} chats (${parts.join(", ")})${extra.length ? `, ${extra.join(", ")}` : ""}.`
 }
 

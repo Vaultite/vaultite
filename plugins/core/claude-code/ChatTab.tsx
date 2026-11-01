@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { ArrowUp, Brain, Check, ChevronDown, ChevronRight, CircleAlert, FileText, Folder, Globe, History, ListTodo, Pencil, Search, Square, SquareTerminal,
   Bot, Wrench, X, Ellipsis } from "lucide-react"
 import { Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
-  openAgent, openMenu, openView, splitMachine, textDiff, useScopedState, viewsChanged, type DiffLine, type MenuItem } from "@vaultite"
+  openAgent, openMenu, openView, plural, splitMachine, textDiff, useScopedState, viewsChanged, type DiffLine, type MenuItem } from "@vaultite"
 import type { Entry, Question } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
 
@@ -369,7 +369,7 @@ function ToolRow({ t, kids, open, toggle }: { t: Tool; kids: Entry[]; open: bool
         <Icon className={cn("size-3.5 shrink-0 text-muted-foreground max-md:size-4", running && "breathe")} strokeWidth={2} />
         <span className="shrink-0 font-medium text-foreground/80">{toolName(t.name)}</span>
         <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted-foreground max-md:text-[13px]">{t.summary}</span>
-        {steps > 0 && <span className="shrink-0 text-[12px] text-tertiary">{steps} step{steps === 1 ? "" : "s"}</span>}
+        {steps > 0 && <span className="shrink-0 text-[12px] text-tertiary">{plural(steps, "step")}</span>}
         {t.error && <CircleAlert className="size-3.5 shrink-0 text-[var(--red)]" strokeWidth={2.25} aria-label="Failed" />}
         <ChevronRight className={cn("size-3.5 shrink-0 text-tertiary opacity-0 transition group-hover:opacity-100 max-md:opacity-100", open && "rotate-90 opacity-100")} strokeWidth={2.5} />
       </button>

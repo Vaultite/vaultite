@@ -26,7 +26,7 @@ import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
 import { spring, unmark, useLingeringSheet } from "@/core/motion"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
 import { hasWords } from "@/core/fuzzy"
 import { Drawn, Guard } from "@/components/Guard"
 import { HeldView, viewBody } from "@/components/Workspace"
@@ -272,7 +272,7 @@ function GroupCard({ store, set: g, tabs, info, current, lit, onOpen }: { store:
           ))}
           {n > 4 && <span className="grid place-items-center rounded-[8px] bg-background text-[15px] font-semibold text-muted-foreground">+{n - 3}</span>}
         </span>
-        <CardButtons label={`${name}, ${n === 1 ? "1 tab" : `${n} tabs`}`} closeLabel={name} onOpen={onOpen} onClose={() => closeSet(g.id)} />
+        <CardButtons label={`${name}, ${plural(n, "tab")}`} closeLabel={name} onOpen={onOpen} onClose={() => closeSet(g.id)} />
       </div>
     </div>
   )
@@ -459,7 +459,7 @@ function TabsHeader({ title, count, pages, at, menu, more, query, setQuery, item
         <span className="flex max-w-full min-w-0 items-center gap-1.5">
           {Mark && <Mark data-tabs-workspace-icon className="size-[18px] shrink-0" strokeWidth={2} style={here?.tint ? { color: colorVar(here.tint) } : undefined} />}
           <h2 data-tabs-title className="min-w-0 truncate text-[17px] leading-[22px] font-semibold">{title}</h2>
-          <span data-tabs-count className="shrink-0 text-[17px] leading-[22px] text-muted-foreground tabular-nums" aria-label={count === 1 ? "1 tab" : `${count} tabs`}>{count}</span>
+          <span data-tabs-count className="shrink-0 text-[17px] leading-[22px] text-muted-foreground tabular-nums" aria-label={plural(count, "tab")}>{count}</span>
           {menu && <ChevronDown className="size-4 shrink-0 text-muted-foreground" strokeWidth={2.25} />}
         </span>
         {pages.length > 1 && (

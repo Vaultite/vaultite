@@ -6,7 +6,7 @@ import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitc
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { official } from "../../../core/updates.ts"
-import { capitalize, cn } from "@/lib/utils"
+import { capitalize, cn, plural } from "@/lib/utils"
 import { usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
@@ -205,7 +205,7 @@ function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chip
         </button>
       ))}
       <span className="ml-auto flex shrink-0 items-center gap-3 pl-2 text-[15px] text-muted-foreground md:text-[13px]">
-        {count !== null && <span className="tabular-nums" data-plugins-count>{count} {count === 1 ? "plugin" : "plugins"}</span>}
+        {count !== null && <span className="tabular-nums" data-plugins-count>{plural(count, "plugin")}</span>}
         <button type="button" onClick={clear} data-plugins-clear className="cursor-pointer font-medium text-primary hover:opacity-80">Clear all</button>
       </span>
     </div>

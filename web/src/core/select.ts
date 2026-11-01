@@ -7,6 +7,7 @@ import { coarse } from "@/core/haptics"
 import { isMac } from "@/core/platform"
 import { menuShowing, type MenuItem } from "@/components/ContextMenu"
 import { signal } from "@/core/signal"
+import { plural } from "@/lib/utils"
 
 /** What a list's selected things can do together: its rows' right-click and the phone's bar. `noun`: what one and
  *  several are called ("file", "files"). */
@@ -139,7 +140,7 @@ export function selectionMenu(list: string, keys: string[]): MenuItem[] {
 }
 export const countOf = (list: string, n: number) => {
   const [one, many] = lists.get(list)?.noun ?? ["item", "items"]
-  return `${n} ${n === 1 ? one : many} selected`
+  return `${plural(n, one, many)} selected`
 }
 
 /** Phones (no keys): "Select" in a row's menu starts selecting with it. */

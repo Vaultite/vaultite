@@ -1,7 +1,7 @@
 // Vim's bars at the bottom of the focused pane outside the editor: find (/: n and N go on) and the command line (:, run
 // by ex.ts, Tab completes, ↑ ↓ go through history). Escape closes either; the keyboard goes back (useHeldFocus).
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
-import { cn, getStore, stem, useHeldFocus } from "@vaultite"
+import { cn, getStore, plural, stem, useHeldFocus } from "@vaultite"
 import { EX, runEx } from "./ex"
 import { go, search } from "./find"
 import { setLayer } from "./layer"
@@ -50,7 +50,7 @@ export function FindBar() {
     <Bar prompt="/">
       <input autoFocus aria-label="Find in the page" spellCheck={false} value={q} className={field}
         onChange={(e) => { setQ(e.target.value); setCount(search(e.target.value)) }} onKeyDown={key} />
-      {q && <span className="shrink-0 font-sans text-[12px] text-muted-foreground">{count ? `${count} match${count === 1 ? "" : "es"}` : "No matches"}</span>}
+      {q && <span className="shrink-0 font-sans text-[12px] text-muted-foreground">{count ? plural(count, "match", "matches") : "No matches"}</span>}
     </Bar>
   )
 }

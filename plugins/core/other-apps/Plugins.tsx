@@ -50,7 +50,7 @@ export function OtherPlugins() {
     <div data-obsidian-plugins>
       <div className="mb-2 flex items-center gap-3 px-1">
         <p className="min-w-0 flex-1 text-[13px] leading-[18px] text-muted-foreground">
-          This vault has {rows.length} plugin{rows.length === 1 ? "" : "s"} from another app. Run each as it is, or use Vaultite's own where there is one: agents can read what those draw.
+          This vault has {plural(rows.length, "plugin")} from another app. Run each as it is, or use Vaultite's own where there is one: agents can read what those draw.
         </p>
         {idle > 0 && (
           <Button look="primary" className="px-3" disabled={!!busy} data-obsidian-run-all onClick={() => void act("all", async () => {
