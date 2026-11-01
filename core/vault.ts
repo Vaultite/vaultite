@@ -780,11 +780,11 @@ export class Vault {
   }
 
   /** What the watcher heard at once (null: it couldn't say). While the index is vouched for, files are taken on their own
-   *  as `reread` takes them (Markdown read off the main thread); anything else (a folder, still downloading) walks. */
+   *  as `reread` takes them (Markdown read off the main thread); anything else (a new file, a folder, still downloading) walks. */
   async hear(rels: string[] | null): Promise<boolean> {
     const told = rels?.filter((r) => !unseen(r) && !this.indexed(r))
     if (told && !told.length) return false
-    if (!told || this.next || !this.vouched()) {
+    if (!told || this.next || !this.vouched() || told.some((r) => !this.entries.has(r) && !this.others.has(r))) {
       for (const r of rels ?? [null]) this.heard(r)
       return this.synced({ trusting: true })
     }
