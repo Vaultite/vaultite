@@ -75,7 +75,7 @@ await page.bringToFront()
 const before = (await toasts().allInnerTexts()).length
 await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "UserPromptSubmit" })
 await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Stop", last_assistant_message: "Done. Shall I also update the docs?" })
-await wait(1500)
+await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.terminal === term)?.read === true, 15_000)
 ev = await api("GET", "inbox/events")
 const asked = ev.events.find((e) => e.terminal === term)
 const focused = await page.evaluate(() => document.hasFocus())
@@ -100,7 +100,7 @@ check("one thread per session; a quiet turn after leaves its answer to read as i
 const quiet = `qc${Date.now().toString(36)}`
 const toastsBefore = (await toasts().allInnerTexts()).length
 await api("POST", `inbox/hook?agent=claude&terminal=${quiet}`, { hook_event_name: "Stop", cwd: "/tmp/quiet", last_assistant_message: "" })
-await wait(1500)
+await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.terminal === quiet)?.state === "done", 15_000)
 ev = await api("GET", "inbox/events")
 check("a turn done with nothing for you: done, no toast", ev.events.find((e) => e.terminal === quiet)?.state === "done" && (await toasts().allInnerTexts()).length <= toastsBefore, ev.events.find((e) => e.terminal === quiet))
 await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("button", { name: "Open" }).click()

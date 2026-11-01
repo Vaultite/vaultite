@@ -3,7 +3,7 @@
 //   node web/qa/archive.mjs <base url> [out dir]
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 const VAULT = (await api("GET", "vault")).path
@@ -71,9 +71,7 @@ check("Hide archived files: off again", !!(await until(async () => (await api("G
 await api("PUT", "file", { path: `${D}/Keep.md`, text: "---\narchived: true\n---\n\nStill here.\n" })
 await wait(500)
 check("by hand: the key alone doesn't move it", !!read(`${D}/Keep.md`))
-await page.keyboard.press("ControlOrMeta+p"); await wait(300)
-await page.keyboard.type("Move archived files into archive folders"); await wait(300)
-await page.keyboard.press("Enter")
+await palette(page, "Move archived files into archive folders", 0)
 const dialog = page.locator("dialog[open]", { hasText: "archived file" })
 check("tidy: asks first", !!(await until(() => dialog.count())))
 await page.screenshot({ path: `${OUT}archive-3-tidy.png` })
@@ -82,11 +80,9 @@ check("tidy: moved", !!(await until(() => read(`${D}/.archive/Keep.md`))) && !re
 
 // 5. A canvas made from an archived note goes beside it as if it weren't archived, never into .archive/.
 await api("POST", "ops/archive.add", { path: `${D}/Old.md` })
-await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, `${D}/.archive/Old.md`); await wait(1200)
-await page.locator("main .cm-content").first().click(); await wait(300)
-await page.keyboard.press("ControlOrMeta+p"); await wait(300)
-await page.keyboard.type("New canvas"); await wait(300)
-await page.keyboard.press("Enter")
+await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, `${D}/.archive/Old.md`)
+await page.locator(`main .file-view[data-path="${D}/.archive/Old.md"] .cm-content`).first().click({ timeout: 30_000 }); await wait(300)
+await palette(page, "New canvas", 0)
 const canvas = await until(async () => (await api("GET", "files")).files.concat((await api("GET", "files")).others).map((f) => f.path).find((p) => p.startsWith(`${D}/`) && p.endsWith(".canvas")))
 check("New canvas from an archived note: beside it, not in .archive/", !!canvas && !canvas.includes(".archive"), canvas)
 

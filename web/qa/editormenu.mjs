@@ -39,8 +39,10 @@ try {
   }
   const lines = () => disk().split("\n")
   const saved = (want) => until(() => typeof want === "function" ? want(disk()) : disk().includes(want), 4000)
+  /** Once the editor holds `text` (a write to disk reaches it through the server). */
+  const shows = (text) => until(() => page.evaluate((t) => { const el = document.querySelector("[data-pane] .cm-content"); return (el?.cmView?.view ?? el?.cmTile?.view)?.state.doc.toString() === t }, text), 15_000)
   /** The note as it started (the editor merges it in from the disk). */
-  const reset = async (text = START) => { writeFileSync(NOTE, text); await wait(900) }
+  const reset = async (text = START) => { writeFileSync(NOTE, text); await shows(text) }
 
   // ---- with a selection ----
   await select(1)
@@ -61,7 +63,7 @@ try {
     check(`Format ▸ ${name}`, await saved((t) => t.startsWith(`${want}\n`)), lines()[0])
     await reset()
   }
-  writeFileSync(NOTE, "**alpha** ==beta== `x`\n" + START.split("\n").slice(1).join("\n")); await wait(900)
+  writeFileSync(NOTE, "**alpha** ==beta== `x`\n" + START.split("\n").slice(1).join("\n")); await shows(disk())
   // (right-clicked on its text: the line's middle is past it, outside a selection that stops at the hidden last `)
   await select(1); await pick(1, ["Format", "Clear formatting"], { x: 30, y: 10 })
   check("Format ▸ Clear formatting", await saved((t) => t.startsWith("alpha beta x\n")), lines()[0])
@@ -72,7 +74,7 @@ try {
     check(`Paragraph ▸ ${name}`, await saved((t) => t.split("\n")[1] === want), lines()[1])
     await reset()
   }
-  writeFileSync(NOTE, START.replace("gamma", "## gamma")); await wait(900)
+  writeFileSync(NOTE, START.replace("gamma", "## gamma")); await shows(disk())
   await line(2).click(); await pick(2, ["Paragraph", "Body"])
   check("Paragraph ▸ Body takes the heading off", await saved((t) => t.split("\n")[1] === "gamma"), lines()[1])
   await reset()

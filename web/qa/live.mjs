@@ -10,7 +10,7 @@ const read = (p) => readFileSync(abs(p), "utf8")
 const write = (p, t) => { mkdirSync(dirname(abs(p)), { recursive: true }); writeFileSync(abs(p), t) }
 const out = { errs: [], ms: {} }
 /** Poll until fn() is truthy (up to ms); how long it took, or null. */
-async function until(fn, ms = 4000) {
+async function until(fn, ms = 15000) {
   const t = Date.now()
   while (Date.now() - t < ms) { if (await fn().catch(() => false)) return Date.now() - t; await wait(50) }
   return null
@@ -40,7 +40,7 @@ const page = await ctx.newPage()
 page.on("pageerror", (e) => out.errs.push(String(e)))
 page.on("console", (m) => m.type() === "error" && !/WebSocket|ERR_CONNECTION|Failed to load resource/.test(m.text()) && out.errs.push(m.text()))
 const shot = (name) => page.screenshot({ path: `${OUT}live-${name}.png` })
-await page.goto(B); await wait(1500)
+await page.goto(B); await page.locator("aside [role=tree]").waitFor({ timeout: 30_000 })
 await page.evaluate(() => { window.__qaMarker = 1 })
 const marker = () => page.evaluate(() => window.__qaMarker === 1)
 const tree = page.locator("aside [role=tree]")
@@ -49,7 +49,7 @@ const inTree = (name) => tree.locator("button", { hasText: new RegExp(`^${name}$
 // ---------- the file tree ----------
 // By path: Dashboards/Qa live.md has the same name, and the open page's folder (Dashboards) is revealed above it.
 if (!await inTree("Note")) await tree.locator('[data-tree-path="Qa live"] > button').first().click()
-await wait(300)
+await until(async () => await inTree("Note") > 0)
 check("tree: the folder made on disk is there", await inTree("Note") > 0)
 write("Qa live/Made on disk.md", "Hello.\n")
 out.ms.treeNew = await until(async () => await inTree("Made on disk") > 0)
@@ -73,7 +73,7 @@ await page.locator(".cm-line", { hasText: "First line." }).first().click(); awai
 await page.keyboard.type(" Typed", { delay: 40 })
 write("Qa live/Note.md", read("Qa live/Note.md").replace("Third line.", "Third line, edited on disk."))
 await page.keyboard.type(" here.", { delay: 40 })
-await until(async () => read("Qa live/Note.md").includes("Typed here.") && (await content()).includes("edited on disk"), 5000)
+await until(async () => read("Qa live/Note.md").includes("Typed here.") && (await content()).includes("edited on disk"))
 await wait(1200)
 const disk = read("Qa live/Note.md"), shown = await content()
 check("editor: typing during a disk change keeps both, on disk", disk.includes("First line. Typed here.") && disk.includes("Third line, edited on disk.") && disk.includes("Added on disk."), disk)
@@ -83,10 +83,10 @@ check("editor: no conflict banner", await page.locator("text=/changed on disk|wh
 await page.locator(".cm-line", { hasText: "Second line." }).first().click(); await page.keyboard.press("End"); await wait(900)
 write("Qa live/Note.md", read("Qa live/Note.md").replace("First line.", "First line, above.").replace("Added on disk.", "Added on disk, below."))
 await until(async () => (await content()).includes("below."))
-await page.keyboard.type("!", { delay: 40 }); await wait(1200)
+await page.keyboard.type("!", { delay: 40 }); await until(async () => read("Qa live/Note.md").includes("Second line.!"))
 check("editor: two changes on disk around the cursor leave it where it was", read("Qa live/Note.md").includes("Second line.!"), read("Qa live/Note.md"))
 // lines added above what's being read (not typing): it stays where it is on screen
-write("Qa live/Note.md", Array.from({ length: 120 }, (_, i) => `Paragraph ${i}.`).join("\n\n") + "\n"); await wait(1500)
+write("Qa live/Note.md", Array.from({ length: 120 }, (_, i) => `Paragraph ${i}.`).join("\n\n") + "\n"); await until(async () => (await content()).includes("Paragraph 0."))
 await page.evaluate(() => document.activeElement?.blur())
 await page.locator("#main-scroll").evaluate((s) => s.scrollTo(0, 3000)); await wait(400)
 const where = (t) => page.evaluate((t) => { const l = [...document.querySelectorAll(".cm-line")].find((e) => e.textContent === t); return l ? Math.round(l.getBoundingClientRect().top) : null }, t)
@@ -99,8 +99,9 @@ check("editor: lines added above what's being read don't move it", y0 !== null &
 await shot("editor")
 
 // ---------- a dashboard ----------
-await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Dashboards/Qa live.md"); await wait(2000)
+await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Dashboards/Qa live.md")
 const main = page.locator("#main-scroll")
+await main.locator("text=Live count one.").first().waitFor({ timeout: 30_000 }).catch(() => {})
 check("dashboard: drawn", await main.locator("text=Live count one.").count() > 0)
 write("Dashboards/Qa live.md", read("Dashboards/Qa live.md").replace("Live count one.", "Live count two."))
 out.ms.dashText = await until(async () => await main.locator("text=Live count two.").count() > 0)
@@ -114,10 +115,11 @@ check("dashboard: a table embed follows its CSV", out.ms.dashTable !== null)
 await shot("dashboard")
 
 // ---------- an artifact ----------
-await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Qa live/Page.html"); await wait(2500)
+await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Qa live/Page.html")
 // (the artifact runs in a frame of the wrapper the app frames: plugins/core/html/artifacts.ts)
 const frame = page.frameLocator("#main-scroll iframe").first().frameLocator("iframe")
 const rows = () => frame.locator("#n").innerText()
+await until(async () => (await rows()) === "Rows: 3", 30_000)
 check("artifact: drawn from its CSV", (await rows().catch(() => "")) === "Rows: 3", await rows().catch((e) => String(e)))
 write("Qa live/Table.csv", read("Qa live/Table.csv") + "d,4\n")
 out.ms.artifactData = await until(async () => (await rows()) === "Rows: 4")
@@ -143,7 +145,7 @@ await page.locator(".cm-line", { hasText: "Back again." }).first().click(); awai
 await page.keyboard.type(" Typed, then moved.", { delay: 20 })
 await fetch(`${B}api/file/move`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from: "Qa live/Note.md", to: "Qa live 2/Moved note.md" }) })
 out.ms.moved = await until(async () => (await page.evaluate(() => decodeURIComponent(location.hash))).includes("Qa live 2/Moved note.md"))
-await until(async () => read("Qa live 2/Moved note.md").includes("Typed, then moved."), 3000)
+await until(async () => read("Qa live 2/Moved note.md").includes("Typed, then moved."))
 check("a file moved through the API while typing: its tab follows", out.ms.moved !== null, await page.evaluate(() => location.hash))
 check("…and what was typed is saved there", read("Qa live 2/Moved note.md").includes("Back again. Typed, then moved."), read("Qa live 2/Moved note.md"))
 // On disk (mv): nothing says where it went, so the edits not saved yet are offered back.
@@ -153,7 +155,7 @@ renameSync(abs("Qa live 2/Moved note.md"), abs("Qa live 2/Renamed by hand.md"))
 const offer = page.locator("[data-sonner-toast]", { hasText: "before your last edits were saved" })
 out.ms.lost = await until(async () => await offer.count() > 0)
 check("a file renamed on disk while typing: the unsaved edits are offered back", out.ms.lost !== null)
-if (out.ms.lost !== null) { await offer.locator("button", { hasText: "Save them" }).click(); await wait(1200) }
+if (out.ms.lost !== null) { await offer.locator("button", { hasText: "Save them" }).click(); await until(async () => read("Qa live 2/Moved note.md").includes("And again.")) }
 check("…and saved where the file was", (() => { try { return read("Qa live 2/Moved note.md").includes("And again.") } catch { return false } })())
 write("Qa live/Note.md", "Back again.\n")
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, "Qa live/Note.md"); await wait(1500)
@@ -162,7 +164,7 @@ await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` },
 // Closed under it (a phone waking, the server restarting) with a change made meanwhile: it reconnects and gets it.
 await page.evaluate(() => window.__qaSockets.at(-1).close())
 write("Qa live/Note.md", "Back again.\n\nWhile the socket was down.\n")
-out.ms.missed = await until(async () => (await content()).includes("While the socket was down."), 6000)
+out.ms.missed = await until(async () => (await content()).includes("While the socket was down."), 30_000)
 check("a change made while disconnected arrives after it reconnects", out.ms.missed !== null)
 out.sockets = await page.evaluate(() => window.__qaSockets.length)
 check("it reconnected (a new socket)", out.sockets >= 2, out.sockets)
@@ -174,7 +176,7 @@ check("and is live again", out.ms.afterSocket !== null)
 // It follows by patches: after all of the above it's the server's state, and a failed optimistic change is gone.
 const store = () => page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].getStore())
 const serverStore = async () => { const { config: _c, vaultPlugins: _v, appearance: _a, ...s } = await (await fetch(new URL("api/state", B))).json(); return s }
-await wait(1500)
+await until(async () => { const [m, t] = [await store(), await serverStore()]; return Object.keys(t).every((k) => JSON.stringify(m[k]) === JSON.stringify(t[k])) })
 const [mine, theirs] = [await store(), await serverStore()]
 const differ = Object.keys(theirs).filter((k) => JSON.stringify(mine[k]) !== JSON.stringify(theirs[k]))
 check("the store is the server's state", !differ.length && Object.keys(mine).length === Object.keys(theirs).length, differ)

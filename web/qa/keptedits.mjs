@@ -46,7 +46,7 @@ await wait(1200)
 
 // Back to it.
 await page.locator(`[data-tab-id="${tab0}"] [role=tab]`).click()
-await until(async () => (await editor(0).count()) === 1, 5000); await wait(1200)
+await until(async () => (await text(0)).includes("changed on disk"), 15_000)
 check("drawn again with the change from disk", (await text(0)).includes("changed on disk"), await text(0))
 check("the selection is where it was", (await sel()) === "kept-word", await sel())
 await page.keyboard.press("ControlOrMeta+z"); await wait(500)
