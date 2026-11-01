@@ -74,20 +74,20 @@ const browser = await chromium.launch({ executablePath: (await import("./lib/qa.
     check("and it's unpinned", await until(() => !JSON.parse(readFileSync(conf("pages"), "utf8")).pinned.includes(pinned[0])))
   }
 
-  // An Inbox row swiped open, then redrawn (a live change) before Done.
+  // An Inbox row swiped open, then redrawn (a live change) before Settle.
   if (!(await page.locator(D).isVisible().catch(() => false))) await drawer()
   const res = page.locator(`${D} [data-result]`, { hasText: T.redraw }).first()
   await swipe(res, 200)
   await api("POST", "inbox", { title: "Arrives while it's open", body: "Body.", from: "Qa" }); await wait(1800)
-  const done = page.locator(`${D} button[aria-label=Done]:not([data-tip])`).first()
+  const done = page.locator(`${D} button[aria-label=Settle]:not([data-tip])`).first()
   check("a swiped row stays open through a redraw", await done.isVisible().catch(() => false))
-  // A press on Done mustn't close the row first (iOS then drops the click: nothing happened).
+  // A press on Settle mustn't close the row first (iOS then drops the click: nothing happened).
   const db = await done.boundingBox()
   await touch("touchStart", db.x + db.width / 2, db.y + db.height / 2); await wait(300)
   const open = await page.evaluate(() => [...document.querySelectorAll("[data-phone-drawer] [data-swipe-under]")].some((u) => u.getBoundingClientRect().width > 20))
   await touch("touchEnd"); await wait(600)
-  check("pressing Done leaves it open until it acts", open)
-  check("and Done marks it done", (await until(async () => (await status(T.redraw)) === "done")) === true, await status(T.redraw))
+  check("pressing Settle leaves it open until it acts", open)
+  check("and Settle settles it", (await until(async () => (await status(T.redraw)) === "done")) === true, await status(T.redraw))
 
   // The new tab: the same headings and rows.
   await page.goto(`${B}#new`); await wait(1500)
@@ -100,13 +100,13 @@ const browser = await chromium.launch({ executablePath: (await import("./lib/qa.
   await head.tap(); await wait(300)
   const nr = page.locator(`${P} [data-result]`, { hasText: T.newtab }).first()
   await swipe(nr, -200)
-  const nd = page.locator(`${P} button[aria-label=Done]:not([data-tip])`).first()
-  check("an Inbox row on the new tab swiped: Done", await nd.isVisible().catch(() => false))
+  const nd = page.locator(`${P} button[aria-label=Settle]:not([data-tip])`).first()
+  check("an Inbox row on the new tab swiped: Settle", await nd.isVisible().catch(() => false))
   await page.screenshot({ path: `${OUT}newtab.png` })
   await nd.tap().catch(() => {})
-  check("and Done marks it done", (await until(async () => (await status(T.newtab)) === "done")) === true)
+  check("and Settle settles it", (await until(async () => (await status(T.newtab)) === "done")) === true)
 
-  // Done on a slow server, with the note open in a tab: the row goes at once, the tab closes; Undo opens it again.
+  // Settle on a slow server, with the note open in a tab: the row goes at once, the tab closes; Undo opens it again.
   const pathOf = async (title) => `${(await api("GET", "inbox")).find((r) => r.title === title).id}.md`
   const note = await pathOf(T.open)
   await page.route("**/api/inbox/**", async (r) => { if (r.request().method() === "PUT") await wait(1500); await r.continue() })
@@ -115,10 +115,10 @@ const browser = await chromium.launch({ executablePath: (await import("./lib/qa.
   const or = page.locator(`${D} [data-result]`, { hasText: T.open }).first()
   await swipe(or, 200)
   const t0 = Date.now()
-  await page.locator(`${D} button[aria-label=Done]:not([data-tip])`).first().tap()
+  await page.locator(`${D} button[aria-label=Settle]:not([data-tip])`).first().tap()
   const gone = await until(() => page.evaluate((t) => ![...document.querySelectorAll("[data-phone-drawer] [data-result]")]
     .some((el) => el.textContent.includes(t) && el.getBoundingClientRect().height > 4), T.open), 1200)
-  check("Done on a slow server: the row goes at once", gone && Date.now() - t0 < 1000, Date.now() - t0)
+  check("Settle on a slow server: the row goes at once", gone && Date.now() - t0 < 1000, Date.now() - t0)
   const shownNote = () => page.evaluate((p) => decodeURIComponent(location.hash).includes(p), note)
   check("and its note's tab closes", !!(await until(async () => !(await shownNote()), 4000)), await page.evaluate(() => location.hash))
   check("and it's done", (await until(async () => (await status(T.open)) === "done", 6000)) === true)
@@ -127,13 +127,13 @@ const browser = await chromium.launch({ executablePath: (await import("./lib/qa.
   check("Undo opens the note again", !!(await until(shownNote, 6000)), [await page.evaluate(() => location.hash), await status(T.open)])
   await page.unrouteAll()
 
-  // A Done the server refuses: the row comes back, with why.
+  // A Settle the server refuses: the row comes back, with why.
   await page.route("**/api/inbox/**", (r) => r.request().method() === "PUT" ? r.fulfill({ status: 500, contentType: "application/json", body: '{"error":"disk full"}' }) : r.continue())
   if (!(await page.locator(D).isVisible().catch(() => false))) await drawer()
   const fr = page.locator(`${D} [data-result]`, { hasText: T.fails }).first()
   await swipe(fr, 200)
-  await page.locator(`${D} button[aria-label=Done]:not([data-tip])`).first().tap()
-  check("a refused Done says why", !!(await until(() => page.locator("[data-sonner-toast]", { hasText: "disk full" }).count())))
+  await page.locator(`${D} button[aria-label=Settle]:not([data-tip])`).first().tap()
+  check("a refused Settle says why", !!(await until(() => page.locator("[data-sonner-toast]", { hasText: "disk full" }).count())))
   check("and its row comes back", !!(await until(async () => (await fr.boundingBox().catch(() => null))?.height > 20, 4000)))
   await page.unrouteAll()
   await ctx.close()
