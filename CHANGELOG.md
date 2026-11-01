@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A cut-off folder in the path bar shows its name**: hovering a folder squeezed to a letter above a note names the
+  whole folder in its tooltip, over Show in the file tree.
 - **Slides move between slides**: transitions (fade, slide, convex, concave, zoom, at their speeds) and auto-animate,
   as Advanced Slides draws them, instant when the system asks for less motion.
 - **Screen readers find their way around the desktop**: the workspace is one main landmark with each pane named

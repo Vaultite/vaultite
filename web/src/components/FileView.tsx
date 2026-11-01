@@ -197,7 +197,7 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
           return (
             <Fragment key={at}>
               <button type="button" onClick={() => revealInTree(at, { open: true, scroll: true, flash: true })}
-                data-tip="Show in the file tree" className={cn(crumb, "shrink-[1000] text-muted-foreground hover:text-foreground",
+                data-tip="Show in the file tree" data-tip-cut={`${f}\nShow in the file tree`} className={cn(crumb, "shrink-[1000] text-muted-foreground hover:text-foreground",
                   // (squeezed, a letter and its ellipsis stay, never a clipped sliver; a name of two fits anyway)
                   f.length > 2 && "min-w-[2.5em]")}>{f}</button>
               <span aria-hidden className="shrink-0 px-px text-tertiary">/</span>

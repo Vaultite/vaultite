@@ -1,7 +1,7 @@
-// Tooltips say only what can't be seen (web/CLAUDE.md): sidebar rows, the rail, cut-off headings. Pins a note and
-// writes .vaultite/plugins.json and sidebars.json: throwaway only.
+// Tooltips say only what can't be seen (web/CLAUDE.md): sidebar rows, the rail, cut-off headings and path bar folders.
+// Pins a note and writes notes, .vaultite/plugins.json and sidebars.json: throwaway only.
 //   node web/qa/tooltips.mjs <base url> <vault path>
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
@@ -51,6 +51,22 @@ try {
     const t = await tipOf(item)
     check("an outline heading cut off: its whole text", cutOff && t?.startsWith("A heading long") && !t.includes("*"), { cutOff, t })
   } else check("the outline lists the heading", false)
+
+  // The path bar: a folder squeezed to a letter says its whole name, one that fits only what a click does.
+  const deep = Array.from({ length: 6 }, (_, i) => `Folder ${i} with a name long enough to be squeezed`)
+  mkdirSync(path.join(VAULT, ...deep), { recursive: true })
+  writeFileSync(path.join(VAULT, ...deep, "Deep.md"), "# Deep\n")
+  await page.goto("about:blank")
+  await page.goto(`${B}#file/${encodeURIComponent([...deep, "Deep.md"].join("/"))}`)
+  const crumbs = "nav[aria-label='File path'] button[data-tip-cut]"
+  await until(async () => (await page.$$(crumbs)).length === deep.length)
+  const squeezed = await page.$$eval(crumbs, (bs) => bs.map((b) => b.scrollWidth > b.clientWidth))
+  const i = squeezed.indexOf(true)
+  check("a path bar folder is cut off", i >= 0, squeezed)
+  if (i >= 0) {
+    const t = await tipOf(`${crumbs} >> nth=${i}`)
+    check("a cut-off folder: its whole name", t === `${deep[i]}\nShow in the file tree`, t)
+  }
 } catch (e) {
   check("ran through", false, String(e))
 } finally {

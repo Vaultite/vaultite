@@ -1,5 +1,5 @@
-// Hover tooltips from `data-tip` (no wrapper; `data-tip-side`, `data-tip-trunc`). Mouse only, and never while a
-// button is held (a drag: what it would say is under way).
+// Hover tooltips from `data-tip` (no wrapper; `data-tip-side`, `data-tip-trunc`, `data-tip-cut`: what it says instead
+// while its label is cut off). Mouse only, and never while a button is held (a drag: what it would say is under way).
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
@@ -22,18 +22,20 @@ export const Tooltips = memo(function Tooltips() {
       cur = null
       setTip(null)
     }
+    /** Its label, or any part of it (a site and its account), cut off; a label hidden altogether, like a narrow tab's,
+     *  counts as cut off. */
+    const cut = (el: Element) => {
+      const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? (el as HTMLElement)
+      return !t.getClientRects().length || (ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth)
+    }
     /** Something's being dragged or resized (core/drag.ts, Resizer.tsx). */
     const busy = () => "resizing" in document.body.dataset || "dragging" in document.documentElement.dataset
     const show = (el: Element) => {
       if (cur !== el || !el.isConnected || busy()) return
-      const text = el.getAttribute("data-tip")
+      const whenCut = el.getAttribute("data-tip-cut")
+      const text = whenCut && cut(el) ? whenCut : el.getAttribute("data-tip")
       if (!text) return
-      if (el.hasAttribute("data-tip-trunc")) {
-        // Its label, or any part of it (a site and its account), cut off; a label hidden altogether, like a narrow
-        // tab's, counts as cut off.
-        const ts = [...el.querySelectorAll<HTMLElement>(".truncate, .fade-end")], t = ts[0] ?? (el as HTMLElement)
-        if (t.getClientRects().length && !(ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth)) return
-      }
+      if (el.hasAttribute("data-tip-trunc") && !cut(el)) return
       const r = el.getBoundingClientRect()
       const want = el.getAttribute("data-tip-side")
       const side: Tip["side"] = want === "right" || want === "left" ? want : want === "top" || r.bottom + 44 > innerHeight ? "top" : "bottom"
