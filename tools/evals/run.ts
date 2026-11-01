@@ -3,11 +3,10 @@
 import { spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
-import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { parse as parseYaml } from "yaml"
-import { type Any, check, section, skip, stopTerminals, summary, testServer, waitFor } from "../test/lib.ts"
+import { type Any, check, freePort, section, skip, stopTerminals, summary, testServer, waitFor } from "../test/lib.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..")
 const LIVE = process.argv.includes("--live")
@@ -138,10 +137,6 @@ async function deterministic() {
     })
   }
 }
-
-const freePort = () => new Promise<number>((resolve) => {
-  const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address() as net.AddressInfo; s.close(() => resolve(port)) })
-})
 
 /** One run of `claude -p`: its answer, the tools it called and how many failed. */
 function claude(prompt: string, config: string, cwd: string) {
