@@ -99,6 +99,14 @@ export function hiddenIn(doc: CanvasDoc): Set<string> {
   return new Set(doc.nodes.filter((n) => shut.some((g) => inside(n, g))).map((n) => n.id))
 }
 
+/** `next` with folded groups unfolded where a card newly landed inside one, so a drop never vanishes. */
+export function unfoldOnDrop(before: CanvasDoc, next: CanvasDoc): CanvasDoc {
+  const was = hiddenIn(before), shut = new Set(before.nodes.filter((g) => g.collapsed === true).map((g) => g.id))
+  const open = next.nodes.filter((g) => g.type === "group" && g.collapsed === true && shut.has(g.id) && next.nodes.some((n) => !was.has(n.id) && !shut.has(n.id) && inside(n, g)))
+  if (!open.length) return next
+  return { ...next, nodes: next.nodes.map((g) => { if (!open.includes(g)) return g; const y = { ...g }; delete y.collapsed; return y }) }
+}
+
 /** Whether node `a` lies inside group `g` (its box, a little slack). */
 export const inside = (a: CanvasNode, g: CanvasNode) =>
   a !== g && a.x >= g.x - 1 && a.y >= g.y - 1 && a.x + a.width <= g.x + g.width + 1 && a.y + a.height <= g.y + g.height + 1

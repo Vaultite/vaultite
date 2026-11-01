@@ -24,6 +24,10 @@ export default async ($: VaultTest) => {
     const fold = { nodes: [{ id: "g", type: "group", label: "Later", x: 0, y: 0, width: 400, height: 300, collapsed: true }, { id: "in", type: "text", text: "Inside", x: 20, y: 60, width: 100, height: 60 },
       { id: "out", type: "text", text: "Outside", x: 500, y: 0, width: 100, height: 60 }], edges: [] }
     check("canvas fold: a collapsed group hides what's inside it, nothing else", [...hiddenIn(fold)].join() === "in" && hiddenIn({ ...fold, nodes: fold.nodes.map((n) => ({ ...n, collapsed: undefined })) }).size === 0)
+    const { unfoldOnDrop } = await import("../../../plugins/core/canvas/codec.ts")
+    const moved = { ...fold, nodes: fold.nodes.map((n) => (n.id === "out" ? { ...n, x: 200, y: 100 } : n)) }
+    check("canvas fold: a card dropped onto a folded group unfolds it; moving the folded group doesn't", unfoldOnDrop(fold, moved).nodes[0].collapsed === undefined &&
+      unfoldOnDrop(fold, { ...fold, nodes: fold.nodes.map((n) => (n.id === "out" ? n : { ...n, x: n.x + 10 })) }).nodes[0].collapsed === true)
     check("canvas fold: the text says it's collapsed and still lists its cards", canvasMarkdown(JSON.stringify(fold)).includes("### Later (collapsed)\n\n- Card: Inside"), canvasMarkdown(JSON.stringify(fold)))
   }
   {

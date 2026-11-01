@@ -7,7 +7,7 @@ import {
   ChevronLeft, ChevronRight, Palette, Pencil, Plus, Presentation, Redo2, Scan, Scissors, Shapes, Spline, StickyNote, Trash2, Type, Undo2, Ungroup, X,
 } from "lucide-react"
 import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
-import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
+import { BORDERS, colorOf, COLLAPSED_H, hiddenIn, LINES, newId, parseCanvas, PRESET_NAMES, SHAPES, styleOf, unfoldOnDrop, withStyle, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
 import { Card, Group, type CardEvents } from "./Card"
@@ -110,6 +110,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   /** A change the user made: drawn, undoable, saved. `before`: the canvas it started from (a drag's start). */
   const commit = (next: CanvasDoc, before: CanvasDoc = docRef.current) => {
     if (!editable || next === before) return
+    next = unfoldOnDrop(before, next)
     undo.current.push(before)
     if (undo.current.length > 200) undo.current.shift()
     redo.current = []
@@ -819,7 +820,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if ((e.key === "Delete" || e.key === "Backspace") && (sel.size || selEdge)) { e.preventDefault(); removeSelected() }
     else if (mod && k === "z") { e.preventDefault(); step(!e.shiftKey) }
     else if (mod && k === "y") { e.preventDefault(); step(false) }
-    else if (mod && k === "a") { e.preventDefault(); select(doc.nodes.map((n) => n.id)) }
+    else if (mod && k === "a") { e.preventDefault(); const h = hiddenIn(doc); select(doc.nodes.filter((n) => !h.has(n.id)).map((n) => n.id)) }
     else if (mod && k === "d") { e.preventDefault(); dup() }
     else if (mod && k === "g") { e.preventDefault(); if (e.shiftKey) doUngroup(); else addGroup() }
     else if (e.key === "Enter" && sel.size === 1) {
@@ -886,7 +887,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     ] : []),
     { label: "Zoom to fit", icon: Maximize, sep: editable, run: fitAll },
     { label: "Zoom to 100%", run: zoomTo100 },
-    ...(editable ? [{ label: "Select all", run: () => select(docRef.current.nodes.map((n) => n.id)) }] : []),
+    ...(editable ? [{ label: "Select all", run: () => { const h = hiddenIn(docRef.current); select(docRef.current.nodes.filter((n) => !h.has(n.id)).map((n) => n.id)) } }] : []),
   ]
   // A node's or an arrow's menu is opened once the click's selection is drawn: its items read it.
   const pendingMenu = useRef<{ at: Pt; node?: string; edge?: string } | null>(null)
