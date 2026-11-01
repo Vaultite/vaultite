@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
-import { Bot, FileText, LogOut, MessageSquareText, Server, SquareTerminal, SquareX } from "lucide-react"
+import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
 import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
@@ -74,6 +74,13 @@ function Instructions() {
 
 const showInstructions = () => openTab("view:terminal-instructions")
 
+/** The terminal the keyboard is in, else the focused pane's (not under a sheet). */
+function terminalHere() {
+  const at = document.activeElement?.closest("[data-terminal-view]")
+  if (at) return at
+  return document.querySelector("dialog[open]") ? null : document.querySelector("#main-scroll [data-terminal-view]")
+}
+
 export default definePlugin({
   // view:terminal/<session id>: that session's shell, kept across reloads. Agent ids run the agent, and @<machine> ids
   // are another machine's.
@@ -135,6 +142,9 @@ export default definePlugin({
     { id: "terminal:home", name: "Choose where terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },
     { id: "terminal:instructions", name: "Show what agents in terminals are told", run: showInstructions, icon: FileText },
+    // Off a Mac ⌃F is the shell's (forward a character): ⌃⇧F, as terminals there have it.
+    { id: "terminal:find", name: "Find in terminal", keys: isMac ? ["Mod+F"] : ["Ctrl+Shift+F"], when: () => !!terminalHere(),
+      run: () => { const v = terminalHere(); if (v) return preload().then((m) => m.openFind(v)) }, icon: Search },
     { id: "terminal:end", name: "End terminal session", when: () => !!current(), run: () => { const c = current(); if (c) void endForGood(c.id) }, icon: SquareX },
     // Out of the shell without a mouse (Vim's ⌃\ ⌃N), so the app's keys work again. Off a Mac ⌃ is the app's ⌘ and ⌃\
     // toggles the sidebar, so no default there.

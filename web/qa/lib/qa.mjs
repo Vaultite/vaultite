@@ -172,5 +172,7 @@ export const workspaceKey = (n) => `${MAC ? "Control" : "Alt"}+${n}`
 export const BACK_KEY = MAC ? "Meta+Alt+ArrowLeft" : "Alt+ArrowLeft"
 /** A file's menu item showing it where it is. */
 export const REVEAL = MAC ? "Reveal in Finder" : "Show in folder"
+/** Find in terminal's keys: ⌘F on a Mac, Ctrl+Shift+F elsewhere (Ctrl+F is the shell's there). */
+export const TERMINAL_FIND_KEY = MAC ? "Meta+F" : "Control+Shift+F"
 /** Selects the word after the cursor: ⌥⇧→ on a Mac, Ctrl+Shift+→ elsewhere. */
 export const SELECT_WORD = MAC ? "Shift+Alt+ArrowRight" : "Shift+Control+ArrowRight"

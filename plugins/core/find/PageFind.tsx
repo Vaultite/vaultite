@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { SearchQuery } from "@codemirror/search"
-import { cn, numberText, onTabLayoutChange, textRanges, useHeldFocus } from "@vaultite"
-import { field, FindTools, lit, MAX, paintLit, pattern, reveal, scroller } from "./FindBar"
+import { onTabLayoutChange, textRanges, useHeldFocus } from "@vaultite"
+import { lit, paintLit, pattern, reveal, scroller } from "./FindBar"
+import { countText, FindField, FindTools, floatingBar, MAX } from "./tools"
 
 type Spec = { search: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
 
@@ -125,8 +126,7 @@ function PageBar({ find, focus }: { find: PageFind; focus: number }) {
   const { spec, ranges, current, valid } = find
   const total = ranges.length
   const none = !!spec.search && valid && !total, bad = none || !valid
-  const status = !spec.search ? "" : !valid ? "Not a valid regular expression" : none ? "No results"
-    : `${numberText(current + 1)} of ${numberText(total)}${total >= MAX ? "+" : ""}`
+  const status = countText({ search: spec.search, valid, total, current, more: total >= MAX })
   const keys = (e: KeyboardEvent) => {
     if (e.key === "Escape") { e.preventDefault(); close(); return }
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return
@@ -134,14 +134,9 @@ function PageBar({ find, focus }: { find: PageFind; focus: number }) {
     find.step(e.shiftKey ? -1 : 1)
   }
   return (
-    <div data-page-find data-overlay data-find-bar className="fixed z-(--z-page-float) flex items-center gap-0.5 rounded-[8px] max-md:flex-wrap max-md:gap-y-1.5 border-[0.5px] border-border bg-popover p-1 text-popover-foreground shadow-lg"
-      style={{ top: spot.top, left: spot.left, width: spot.width }}>
-      <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
-        <input ref={ref} value={text} placeholder="Find in page" aria-label="Find" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
-          onChange={(e) => { setText(e.target.value); find.set({ search: e.target.value }) }} onKeyDown={keys}
-          className={cn(field, "pr-24", bad ? "ring-[color-mix(in_srgb,var(--red)_55%,transparent)] focus:ring-[color-mix(in_srgb,var(--red)_70%,transparent)]" : "")} />
-        <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
-      </div>
+    <div data-page-find data-overlay data-find-bar className={`fixed z-(--z-page-float) ${floatingBar}`} style={{ top: spot.top, left: spot.left, width: spot.width }}>
+      <FindField inputRef={ref} value={text} placeholder="Find in page" status={status} bad={bad} onKeyDown={keys}
+        onChange={(t) => { setText(t); find.set({ search: t }) }} />
       <FindTools spec={spec} set={(o) => find.set(o)} total={total} step={(by) => find.step(by)} close={close} />
     </div>
   )

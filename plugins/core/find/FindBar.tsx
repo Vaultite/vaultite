@@ -1,18 +1,16 @@
 // The find bar: CodeMirror's search with a panel of the app's own, sticking under the pane's bar while the file
 // scrolls. Loaded when an editor first needs it.
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { createRoot, type Root } from "react-dom/client"
 import { flushSync } from "react-dom"
-import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Regex, WholeWord, X } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { EditorView, keymap, type Panel, type ViewUpdate } from "@codemirror/view"
 import { EditorSelection, Prec, StateEffect, StateField, type EditorState, type Extension, type SelectionRange } from "@codemirror/state"
 import {
   closeSearchPanel, findNext, findPrevious, getSearchQuery, openSearchPanel, replaceAll, replaceNext, search, searchPanelOpen, SearchQuery, setSearchQuery,
 } from "@codemirror/search"
-import { cn, commandKeys, editorOf, keyHint, numberText, openAround, textRanges } from "@vaultite"
-
-/** Counting stops here: a find in a huge file stays quick ("1,000+"). */
-export const MAX = 1000
+import { cn, commandKeys, editorOf, keyHint, openAround, textRanges } from "@vaultite"
+import { badField, countText, field, FindTools, MAX, tool } from "./tools"
 
 type Spec = { search: string; replace: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
 /** A query that finds only what's shown: not in the frontmatter a note's editor hides, nor (outside source mode) in
@@ -118,39 +116,6 @@ function scrollTo(range: SelectionRange, view: EditorView): StateEffect<unknown>
   return shownByBar.of(null)
 }
 
-export const tool = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
-export const field = "h-7 w-full min-w-0 rounded-[6px] bg-card px-2 text-[13px] text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-primary/60 max-md:h-9 max-md:text-[16px]"
-
-export function Toggle({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" aria-label={label} aria-pressed={on} data-tip={label} onClick={onClick} onMouseDown={(e) => e.preventDefault()}
-      className={cn(tool, on && "bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary")}>{children}</button>
-  )
-}
-
-type Options = { caseSensitive: boolean; wholeWord: boolean; regexp: boolean }
-
-/** The options and the buttons after a find field: in a note's bar and the page's. */
-export function FindTools({ spec, set, total, step, close }: { spec: Options; set: (o: Partial<Options>) => void; total: number; step: (by: 1 | -1) => void; close: () => void }) {
-  return (
-    <>
-      <Toggle on={spec.caseSensitive} label="Match case" onClick={() => set({ caseSensitive: !spec.caseSensitive })}><CaseSensitive className="size-4" strokeWidth={2} /></Toggle>
-      <Toggle on={spec.wholeWord} label="Whole word" onClick={() => set({ wholeWord: !spec.wholeWord })}><WholeWord className="size-4" strokeWidth={2} /></Toggle>
-      <Toggle on={spec.regexp} label="Regular expression" onClick={() => set({ regexp: !spec.regexp })}><Regex className="size-4" strokeWidth={2} /></Toggle>
-      <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border max-md:invisible max-md:ml-auto" />
-      <button type="button" aria-label="Previous match" data-tip={`Previous match (${keyHint("Shift+Enter")})`} disabled={!total} onClick={() => step(-1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
-        <ChevronUp className="size-4" strokeWidth={2} />
-      </button>
-      <button type="button" aria-label="Next match" data-tip={`Next match (${keyHint("Enter")})`} disabled={!total} onClick={() => step(1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
-        <ChevronDown className="size-4" strokeWidth={2} />
-      </button>
-      <button type="button" aria-label="Close" data-tip={`Close (${keyHint("Escape")})`} onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool}>
-        <X className="size-4" strokeWidth={2} />
-      </button>
-    </>
-  )
-}
-
 type BarProps = { view: EditorView; query: SearchQuery; count: Count; readOnly: boolean; replacing: boolean; setReplacing: (on: boolean) => void
   /** Bumped to put the keyboard in a field (find, or replace when it's asked for with text to find). */
   focus: { n: number; field: "find" | "replace" } }
@@ -179,8 +144,7 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
   }
   const none = !!query.search && query.valid && count.total === 0
   const bad = none || (!!query.search && !query.valid)
-  const status = !query.search ? "" : !query.valid ? "Not a valid regular expression" : none ? "No results"
-    : `${count.current ? `${numberText(count.current)} of ` : ""}${numberText(count.total)}${count.more ? "+" : ""}${count.current ? "" : count.total === 1 ? " result" : " results"}`
+  const status = countText({ search: query.search, valid: query.valid, total: count.total, current: count.current - 1, more: count.more })
   const canReplace = !readOnly
   return (
     <div className="flex flex-col gap-1 px-1 py-1.5 max-md:gap-1.5" data-find-bar data-replacing={replacing && canReplace ? "" : undefined}>
@@ -194,7 +158,7 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
         <div className="relative min-w-0 flex-1 max-md:order-first max-md:basis-full">
           <input ref={findRef} main-field="true" value={find} placeholder="Find" aria-label="Find" spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
             onChange={(e) => { setFind(e.target.value); set({ search: e.target.value }) }} onKeyDown={(e) => keys(e, "find")}
-            className={cn(field, "pr-28 max-md:pr-24", bad ? "ring-[color-mix(in_srgb,var(--red)_55%,transparent)] focus:ring-[color-mix(in_srgb,var(--red)_70%,transparent)]" : "")} />
+            className={cn(field, "pr-28 max-md:pr-24", bad && badField)} />
           <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
         </div>
         <FindTools spec={query} set={set} total={count.total} step={(by) => (by < 0 ? findPrevious(view) : findNext(view))}

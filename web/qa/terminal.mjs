@@ -5,7 +5,7 @@ import http from "node:http"
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { apiAt, openPalette, PROMPT, qa, tailnet, terminalText, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, PROMPT, qa, tailnet, TERMINAL_FIND_KEY, terminalText, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -79,6 +79,26 @@ for (const dark of [false, true]) {
   await page.locator(".xterm").click()
   await page.keyboard.type("echo same-shell-$$"); await page.keyboard.press("Enter")
   await until(async () => /^same-shell-\d+/m.test(await text()))
+
+  // Find in its scrollback: the bar over its corner counts and lights the matches, takes the current one into view, and
+  // esc gives the keyboard back to the shell.
+  const theme = dark ? "dark" : "light", count = () => page.locator("[data-terminal-find] [data-find-count]").textContent()
+  await page.keyboard.type("seq 1 5000"); await page.keyboard.press("Enter")
+  await until(async () => /^5000\s*$/m.test(await text()))
+  await page.keyboard.press(TERMINAL_FIND_KEY)
+  check(`${theme}: find opens its bar`, await until(async () => (await page.locator("[data-terminal-find] input:focus").count()) === 1))
+  await page.keyboard.type("4999")
+  check(`${theme}: find counts the match`, await until(async () => (await count()) === "1 of 1"), await count())
+  await page.screenshot({ path: `${OUT}terminal-find-${theme}.png` })
+  await page.keyboard.press("ControlOrMeta+A"); await page.keyboard.type("1234")
+  check(`${theme}: find scrolls to a match up the scrollback`, await until(async () => (await count()) === "1 of 1" && /^1234\s*$/m.test(await text())), [await count(), (await text()).slice(0, 80)])
+  await page.keyboard.press("ControlOrMeta+A"); await page.keyboard.type("^49\\d\\d$")
+  await page.locator('[data-terminal-find] button[aria-label="Regular expression"]').click()
+  check(`${theme}: a regular expression finds each, Enter goes to the next`, await until(async () => /^\d+ of 100$/.test(await count())) &&
+    await page.keyboard.press("Enter").then(count).then((c) => /^\d+ of 100$/.test(c)), await count())
+  await page.keyboard.press("Escape")
+  check(`${theme}: esc closes it, back in the shell`, await until(async () => !(await page.locator("[data-terminal-find]").count()) &&
+    page.evaluate(() => !!document.activeElement?.closest(".xterm"))))
 
   if (!dark) {
     // A failed exit: the bar with Restart; Restart starts a new shell in the same tab.

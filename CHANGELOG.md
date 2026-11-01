@@ -76,6 +76,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   type with the others.
 - **The outline lights the heading it went to**: clicking a heading in the Outline scrolled to it but lit the one
   above it, the path bar's height not counted.
+- **Find in a terminal**: ⌘F (Ctrl+Shift+F off a Mac, leaving Ctrl+F to the shell) opens a find bar over the
+  terminal that searches its whole scrollback, with match case, whole word and regular expressions, every match lit
+  and how many there are.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".

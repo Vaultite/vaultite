@@ -1,13 +1,15 @@
 // The terminal view: xterm.js on a WebSocket to the shell, its own chunk, coloured from the app's tokens. On phones a
 // tap brings up the keyboard and a row of the keys a phone's lacks sits above it.
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy } from "lucide-react"
 import { Terminal as XTerm, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, offerPicture, onLook, openMenu, openPermissions, linkClick, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, linkClick, mintedHere, notifyError, offerPicture, onLook, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { countText, FindField, FindTools, floatingBar, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -57,6 +59,17 @@ function theme(): ITheme {
     white: hex(dark ? mix(bg, fg, 0.82) : mix(bg, fg, 0.5)), brightWhite: hex(dark ? fg : mix(bg, fg, 0.35)),
     red, brightRed, green, brightGreen, yellow, brightYellow, blue, brightBlue, magenta, brightMagenta, cyan, brightCyan,
   }
+  done()
+  return out
+}
+
+/** How a find in the terminal lights its matches: as a note's find bar does, in the app's yellow, the current one
+ *  orange (opaque: the search addon wants #RRGGBB). */
+function findLook(): NonNullable<ISearchOptions["decorations"]> {
+  const { read, done } = resolver()
+  const bg = read("--background"), yellow = read("--yellow"), orange = read("--orange")
+  const out = { matchBackground: hex(mix(bg, yellow, 0.32)), matchOverviewRuler: hex(yellow),
+    activeMatchBackground: hex(mix(bg, orange, 0.5)), activeMatchBorder: hex(orange), activeMatchColorOverviewRuler: hex(orange) }
   done()
   return out
 }
@@ -152,7 +165,9 @@ type Status = { kind: "live"; /** macOS keeps it from its agent's folder (the se
 /** A terminal and its socket kept apart from its tab's view: a hidden tab's is parked still connected, so it comes back
  *  at once as it was. The last PARKED stay; the shell keeps running on the server either way. */
 type Live = {
-  id: string; t: XTerm; box: HTMLDivElement
+  id: string; t: XTerm; box: HTMLDivElement; search: SearchAddon
+  /** What its find bar looked for last: shown again when it's opened again. */
+  find: { text: string } & FindOptions
   status: Status; mounted: boolean; ended: boolean; tmuxScroll: boolean
   /** The view showing it: its status, and closing its tab when the shell exits cleanly. */
   view: { status: (s: Status) => void; close: () => void } | null
@@ -195,13 +210,16 @@ function create(id: string): Live {
   if (asked !== undefined) opening.mark("tab")
   const t = new XTerm({
     fontFamily: codeFont(), fontSize: fontSize(textSize("terminal")), lineHeight: 1.15,
-    ...cursor(), scrollback: 10000, allowProposedApi: false, theme: theme(),
+    // (the search addon lights matches with decorations, still a proposed API)
+    ...cursor(), scrollback: 10000, allowProposedApi: true, theme: theme(),
     // Links go where notes' do (the Browser when it's on, ⌘-click the system browser); OSC 8 ones (ls, gh) too.
     linkHandler: { activate: (e, uri) => { if (/^https?:/i.test(uri)) openWebLink(uri, linkClick(e)) } },
   })
   const fit = new FitAddon()
   t.loadAddon(fit)
   t.loadAddon(new WebLinksAddon((e, uri) => openWebLink(uri, linkClick(e))))
+  const search = new SearchAddon({ highlightLimit: MAX })
+  t.loadAddon(search)
   const box = document.createElement("div")
   box.style.width = box.style.height = "100%"
   const osc = t.parser.registerOscHandler(52, osc52)
@@ -228,8 +246,9 @@ function create(id: string): Live {
       }
       return false
     }
+    // Off a Mac ⌃⇧ + a letter types nothing in a shell, so the app may have it (⌃⇧F finds in the terminal).
     return e.type !== "keydown" || !(e.ctrlKey || e.metaKey || e.altKey)
-      || (e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code)) || !appShortcut(e)
+      || (e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code) && (isMac || !e.shiftKey)) || !appShortcut(e)
   })
   // Recolour with the app (its scheme, light or dark, a theme or snippet), and take its monospace font.
   const offLook = onLook(() => {
@@ -448,7 +467,7 @@ function create(id: string): Live {
   document.addEventListener("visibilitychange", onShown)
 
   const l: Live = {
-    id, t, box, status: { kind: "connecting", tries: 0 }, mounted: false, ended: false, tmuxScroll: false, view: null, send, sendFiles, claim,
+    id, t, box, search, find: { text: "", caseSensitive: false, wholeWord: false, regexp: false }, status: { kind: "connecting", tries: 0 }, mounted: false, ended: false, tmuxScroll: false, view: null, send, sendFiles, claim,
     // Once its box is in the page (xterm.js measures its cells there).
     open: () => {
       if (opened) return
@@ -481,6 +500,11 @@ function create(id: string): Live {
   }
   return l
 }
+
+/** Each terminal view's way to open its find bar, by its element ([data-terminal-view]). */
+const finders = new WeakMap<Element, () => void>()
+/** The terminal find command (index.tsx): open the find bar of this view, or put the keyboard back in it. */
+export const openFind = (view: Element) => finders.get(view)?.()
 
 export default function TerminalView({ id, focused, close }: { id: string; focused: boolean; close: () => void }) {
   const host = useRef<HTMLDivElement>(null)
@@ -638,9 +662,19 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   const full = phone && typing && !!area
   useLayoutEffect(() => (full ? () => scrollTo(0, pageAt.current) : undefined), [full])
 
+  // Its find bar: open while `finding` isn't 0, bumped by each ask to put the keyboard back in it.
+  const view = useRef<HTMLDivElement>(null)
+  const [finding, setFinding] = useState(0)
+  useEffect(() => {
+    const el = view.current!
+    finders.set(el, () => setFinding((n) => n + 1))
+    return () => { finders.delete(el) }
+  }, [])
+  const closeFind = () => { setFinding(0); live.current?.t.focus() }
+
   const restart = () => { live.current?.restart(); setRestarts((n) => n + 1) }
   return (
-    <div data-terminal-view className={cn("flex flex-col bg-background", full ? "fixed inset-x-0 z-40 pt-[env(safe-area-inset-top)]" : "relative h-full min-h-[240px] w-full",
+    <div ref={view} data-terminal-view className={cn("flex flex-col bg-background", full ? "fixed inset-x-0 z-40 pt-[env(safe-area-inset-top)]" : "relative h-full min-h-[240px] w-full",
       full && !area.keyboard && "pb-[env(safe-area-inset-bottom)]")}
       style={full ? { top: area.top, height: area.height } : undefined}>
       {status.kind === "live" && status.blocked && (
@@ -652,10 +686,11 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
         </div>
       )}
       {/* (isolate: xterm.js's layers' z-indexes stay inside, under the bars below; WebGL's canvases would cover them) */}
-      <div className="isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
+      <div className="relative isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
         {/* Touch: no browser text selection or callout on a long press (the terminal's menu opens instead), and the
             keyboard's hidden field at 16px, or iOS zooms the page in when it's focused. */}
         <div ref={host} data-terminal={id} className={cn("h-full w-full", touchUi && "select-none [-webkit-touch-callout:none] [&_.xterm-helper-textarea]:!text-[16px]")} />
+        {finding > 0 && live.current && <FindBar l={live.current} ask={finding} close={closeFind} />}
       </div>
       {full && <KeyBar label="Terminal keys" hide={() => touchActions.current.hide()} keys={[
         ...KEYS.map((k) => ({ name: k.name, label: k.label, run: () => touchActions.current.key(k.send) })),
@@ -676,6 +711,58 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
           {status.code === -1 ? "The shell couldn't start" : `Process exited${status.signal ? ` (signal ${status.signal})` : status.code ? ` with code ${status.code}` : ""}`}
         </EndBar>
       )}
+    </div>
+  )
+}
+
+const regexOk = (s: string) => { try { new RegExp(s); return true } catch { return false } }
+
+/** Find in the terminal, over its top right corner: the search addon looks through the scrollback, as you type from the
+ *  newest line up; ↵ goes to the next match down, ⇧↵ up. */
+function FindBar({ l, ask, close }: { l: Live; ask: number; close: () => void }) {
+  const [spec, setSpec] = useState(l.find)
+  const [found, setFound] = useState({ current: -1, total: 0 })
+  const ref = useRef<HTMLInputElement>(null)
+  const look = useRef<ISearchOptions["decorations"]>(undefined)
+  /** `by` 0: found again from the match it's on (typed, an option changed); else the next match down (1) or up (-1). */
+  const run = (s: Live["find"], by: 0 | 1 | -1) => {
+    l.find = s
+    if (!s.text || (s.regexp && !regexOk(s.text))) { l.search.clearDecorations(); setFound({ current: -1, total: 0 }); return }
+    const o: ISearchOptions = { caseSensitive: s.caseSensitive, wholeWord: s.wholeWord, regex: s.regexp, decorations: look.current }
+    if (!by) l.search.clearDecorations() // (a new search: it stays on the selected match if that still matches)
+    if (by > 0) l.search.findNext(s.text, o); else l.search.findPrevious(s.text, o)
+  }
+  const latest = useRef(run)
+  latest.current = run
+  useEffect(() => {
+    const results = l.search.onDidChangeResults((r) => setFound({ current: r.resultIndex, total: r.resultCount }))
+    // The current match is also the terminal's selection, drawn over its highlight: while the bar has the keyboard, the
+    // selection (the terminal's inactive one) takes the current match's colour.
+    const paint = () => {
+      look.current = findLook()
+      l.t.options.theme = { ...l.t.options.theme, selectionInactiveBackground: look.current.activeMatchBackground }
+    }
+    const offLook = onLook(() => { paint(); latest.current(l.find, 0) })
+    paint()
+    latest.current(l.find, 0) // (opened again: what it found last, lit again)
+    return () => { results.dispose(); offLook(); l.search.clearDecorations(); l.t.options.theme = theme() }
+  }, [l])
+  useEffect(() => { ref.current?.focus(); ref.current?.select() }, [ask])
+
+  const set = (o: Partial<Live["find"]>) => { const s = { ...spec, ...o }; setSpec(s); run(s, 0) }
+  const keys = (e: ReactKeyboardEvent) => {
+    if (e.key === "Escape") { e.preventDefault(); close(); return }
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return
+    e.preventDefault()
+    run(spec, e.shiftKey ? -1 : 1)
+  }
+  const valid = !spec.regexp || regexOk(spec.text)
+  const bad = !!spec.text && (!valid || !found.total)
+  const status = countText({ search: spec.text, valid, total: found.total, current: found.current, more: found.total >= MAX })
+  return (
+    <div data-terminal-find data-overlay className={cn("absolute top-2 right-3 z-10 w-[min(440px,calc(100%-24px))]", floatingBar)}>
+      <FindField inputRef={ref} value={spec.text} placeholder="Find in terminal" status={status} bad={bad} onChange={(text) => set({ text })} onKeyDown={keys} />
+      <FindTools spec={spec} set={set} total={found.total} step={(by) => run(spec, by)} close={close} />
     </div>
   )
 }
