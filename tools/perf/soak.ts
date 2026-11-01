@@ -1,5 +1,5 @@
 // Long desktop session on a made-up vault (notes, tabs, panes, panels, terminals, an agent writing; idle still, shown, hidden, a graph), driven through the app's ops with nothing attached (a debugger keeps what the page logs and compiles, so its heap grows by itself): each process's memory and CPU, the page's heap, DOM and timers; growth an hour.
-// node tools/perf/soak.ts [--minutes 30 (0: idle only)] [--scale 10] [--idle 3 (min a phase)] [--phases still,shown,hidden,graph] [--snapshots (attaches CDP from the first)] [--out dir] [--root <checkout>]   not as root; heavy: check `uptime`
+// node tools/perf/soak.ts [--minutes 30 (0: idle only)] [--scale 10] [--idle 3 (min a phase)] [--phases still,shown,hidden,graph] [--snapshots (attaches CDP from the first)] [--budget (exit 1 past it: nightly CI)] [--out dir] [--root <checkout>]   not as root; heavy: check `uptime`
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -11,7 +11,7 @@ const args = process.argv.slice(2)
 const arg = (name: string, dflt: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt }
 const ROOT = path.resolve(arg("root", path.join(import.meta.dirname, "..", "..")))
 const MINUTES = Number(arg("minutes", "30")), SCALE = Number(arg("scale", "10")), IDLE = Number(arg("idle", "3"))
-const SNAPSHOTS = args.includes("--snapshots")
+const SNAPSHOTS = args.includes("--snapshots"), BUDGET = args.includes("--budget")
 const PHASES = arg("phases", "still,shown,hidden,graph").split(",").filter(Boolean) as Phase[]
 type Phase = "still" | "shown" | "hidden" | "graph"
 const MAC = process.platform === "darwin"
@@ -215,7 +215,7 @@ async function sample(phase: string) {
 
 // ---------- the user and an agent
 const notes = () => fs.readdirSync(path.join(VAULT, "Notes")).filter((f) => f.endsWith(".md")).sort()
-let typed = 0, tried = 0, terminals = 0
+let typed = 0, tried = 0, terminals = 0, terminalsTried = 0
 /** Typed at the end of the focused pane's editor, a key at a time, as the editor's input does (the soak's window is
  *  shown inactive, so it can't take focus for real keys). */
 const TYPE = async (text: string) => {
@@ -256,6 +256,7 @@ async function terminal(i: number) {
   await fetch(`${BASE()}api/terminals/${sid}/send`, { method: "POST", headers: CLI,
     body: JSON.stringify({ text: "for i in $(seq 1 3000); do echo line $i of the soak output; done", enter: true }) }).catch(() => {})
   await wait(4000)
+  terminalsTried++
   if (/line 3000 of/.test(JSON.stringify(await op("terminal.screen", { id: sid, lines: 5 }).catch(() => "")))) terminals++
   await command("tab:close")
   await fetch(`${BASE()}api/terminals/${sid}`, { method: "DELETE", headers: CLI }).catch(() => {})
@@ -323,6 +324,24 @@ function report() {
   return lines.join("\n")
 }
 
+/** The budget (--budget): what the loop may leave behind past its first third, what it must have done, idle CPU. */
+function budget() {
+  const loop = samples.filter((s) => s.phase === "loop"), warm = loop[Math.floor(loop.length / 3)], end = loop[loop.length - 1]
+  const idle = (role: string) => Math.max(...PHASES.filter((p) => p !== "graph").map((p) => perMinute(p, (s) => s.procs[role]?.cpu)).filter((x) => !isNaN(x)), 0)
+  const saved = notes().filter((f) => fs.readFileSync(path.join(VAULT, "Notes", f), "utf8").includes(" Soak ")).length
+  const checks: [string, number, number][] = [
+    ["page JS heap growth after the warm-up (MB)", (end.page.heap - warm.page.heap) / 1048576, 8],
+    ["DOM nodes growth after the warm-up", end.page.nodes - warm.page.nodes, 300],
+    ["intervals growth after the warm-up", end.page.intervals - warm.page.intervals, 2],
+    ["sockets left open", end.page.ws, 2], ["terminals left", end.page.xterms, 0], ["editors left", end.page.editors, 0],
+    ["notes not typed in", tried - typed, 0], ["notes typed in, none saved", tried && !saved ? 1 : 0, 0], ["terminals that didn't print", terminalsTried - terminals, 0],
+    ["renderer idle CPU (ms a minute)", idle("renderer"), 3000], ["server idle CPU (ms a minute)", idle("server"), 3000],
+  ]
+  const failed = checks.filter(([, v, max]) => !(v <= max))
+  console.log(`\nbudget: ${failed.length ? `${failed.length} over` : "ok"}\n` + checks.map(([what, v, max]) => `  ${v <= max ? "ok  " : "OVER"} ${what}: ${Math.round(v * 10) / 10} (at most ${max})`).join("\n"))
+  return failed.length === 0
+}
+
 // ---------- run
 step(`vault at ${VAULT} (scale ${SCALE}), out ${OUT}`)
 makeVault(VAULT, SCALE)
@@ -332,7 +351,7 @@ port = await freePort()
 fs.mkdirSync(userData, { recursive: true })
 fs.writeFileSync(path.join(userData, "vaults.json"), JSON.stringify({ vaults: [{ path: VAULT, port, open: true, last: Date.now() }] }))
 process.once("SIGINT", () => { aborted = true })
-let aborted = false
+let aborted = false, within = true
 let stopAgent = () => {}
 try {
   if (SNAPSHOTS) debugPort = await freePort()
@@ -396,6 +415,7 @@ try {
   const result = report()
   console.log(result)
   fs.writeFileSync(path.join(OUT, "report.txt"), result + "\n")
+  if (BUDGET) within = budget()
   if (snaps.page.length >= 3) {
     for (const which of ["page", "server"] as const) {
       const s = survivors(snaps[which])
@@ -416,4 +436,4 @@ try {
   else fs.rmSync(tmp, { recursive: true, force: true })
   console.error(`results in ${OUT}`)
 }
-process.exit(0)
+process.exit(within ? 0 : 1)

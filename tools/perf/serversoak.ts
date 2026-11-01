@@ -1,5 +1,5 @@
 // The server alone for hours (app windows coming and going, an agent writing, idle stretches): its memory, CPU, files, sockets and watches, their growth an hour, the idle CPU.
-// node tools/perf/serversoak.ts [--minutes 120] [--scale 30 | --vault <dir>] [--idle 10 (min, every hour)] [--out r.json] [--root <checkout>]   Linux
+// node tools/perf/serversoak.ts [--minutes 120] [--scale 30 | --vault <dir>] [--idle 10 (min, every hour)] [--out r.json] [--root <checkout>] [--budget (exit 1 past it: nightly CI)]   Linux
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -106,12 +106,14 @@ try {
   log(`up in ${Math.round(performance.now() - t0)} ms on ${fs.readdirSync(VAULT, { recursive: true }).length} files; soaking ${MINUTES} min`)
   for (let i = 0; i < 3; i++) open()
   const end = Date.now() + MINUTES * 60_000
-  let nextSample = 0, phase = "busy", phaseEnd = Date.now() + Math.max(1, 60 - IDLE) * 60_000
+  // (an idle stretch an hour, or once in a shorter run)
+  const BUSY = Math.max(1, Math.min(60, MINUTES) - IDLE)
+  let nextSample = 0, phase = "busy", phaseEnd = Date.now() + BUSY * 60_000
   while (Date.now() < end) {
     if (child.exitCode !== null) throw new Error(`the server exited (${child.exitCode}):\n${said}`)
     if (Date.now() >= phaseEnd) {
       phase = phase === "busy" ? "idle" : "busy"
-      phaseEnd = Date.now() + (phase === "idle" ? IDLE : Math.max(1, 60 - IDLE)) * 60_000
+      phaseEnd = Date.now() + (phase === "idle" ? IDLE : BUSY) * 60_000
       log(`${phase} (${wins.size} windows, ${mine.length} notes of its own)`)
     }
     if (Date.now() >= nextSample) {
@@ -137,8 +139,9 @@ try {
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 }
 
-// ---------- the report: growth an hour (least squares over the busy samples after the first 10 minutes), idle CPU
-const warm = samples.filter((s) => s.at - samples[0].at > 10 * 60_000 && s.phase !== "end")
+// ---------- the report: growth an hour (least squares over the samples after the first 10 minutes, or third), idle CPU
+const WARM = Math.min(10, MINUTES / 3) * 60_000
+const warm = samples.filter((s) => s.at - samples[0].at > WARM && s.phase !== "end")
 const perHour = (k: "rss" | "fds" | "sockets" | "watches") => {
   if (warm.length < 4) return null
   const xs = warm.map((s) => (s.at - warm[0].at) / 3_600_000), ys = warm.map((s) => s[k])
@@ -155,4 +158,16 @@ console.log(`rss ${first.rss} -> ${last.rss} MB (${result.perHour.rssMb ?? "?"} 
   `watches ${first.watches} -> ${last.watches}), idle CPU ${idleCpu ?? "?"}%, ${refreshes} refreshes (slowest ${result.slowestRefreshMs} ms)`)
 if (result.errors.length) console.log(`server errors:\n${result.errors.join("\n")}`)
 if (OUT) fs.writeFileSync(OUT, JSON.stringify({ ...result, samples }, null, 2))
+// (the budget: every window closed, the server lets go of their sockets; no growth past the warm-up; quiet when idle)
+if (process.argv.includes("--budget")) {
+  const checks: [string, number | null, number][] = [
+    ["sockets left after the windows closed", last.sockets - first.sockets, 0], ["files left open", last.fds - first.fds, 3],
+    ["inotify watches growth after the warm-up", last.watches - (warm[0]?.watches ?? first.watches), 2],
+    ["RSS growth an hour after the warm-up (MB)", result.perHour.rssMb, 60], ["idle CPU (%)", idleCpu, 3],
+    ["slowest state refresh (ms)", result.slowestRefreshMs, 5000], ["server errors", result.errors.length, 0],
+  ]
+  const over = checks.filter(([, v, max]) => v !== null && v > max)
+  console.log(`budget: ${over.length ? `${over.length} over` : "ok"}\n` + checks.map(([what, v, max]) => `  ${v === null ? "n/a " : v <= max ? "ok  " : "OVER"} ${what}: ${v ?? "?"} (at most ${max})`).join("\n"))
+  process.exit(over.length ? 1 : 0)
+}
 process.exit(0)

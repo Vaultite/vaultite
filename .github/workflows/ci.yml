@@ -111,3 +111,8 @@ jobs:
       - run: xvfb-run -a npm run qa -- $SCRIPTS
         env:
           SCRIPTS: ${{ inputs.scripts }}
+      # Soaks on a budget: what a short session leaves behind (the server's sockets and files, the page's heap and DOM)
+      - if: ${{ !cancelled() && !inputs.scripts }}
+        run: node tools/perf/serversoak.ts --minutes 12 --scale 10 --idle 3 --budget
+      - if: ${{ !cancelled() && !inputs.scripts }}
+        run: node tools/perf/soak.ts --minutes 10 --scale 3 --idle 1 --phases still,hidden --budget
