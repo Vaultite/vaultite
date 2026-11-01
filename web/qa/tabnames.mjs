@@ -3,7 +3,7 @@
 // against a throwaway server.   node web/qa/tabnames.mjs <base url>
 import { spawnSync } from "node:child_process"
 import path from "node:path"
-import { qa, ROOT, SHOTS, until, wait } from "./lib/qa.mjs"
+import { openPalette, qa, ROOT, SHOTS, until, wait } from "./lib/qa.mjs"
 
 const { args: [arg], browser, check, watch, done } = await qa(import.meta.url)
 const base = arg.endsWith("/") ? arg : `${arg}/`
@@ -18,7 +18,8 @@ await wait(1500)
 const palette = page.locator("[role=dialog]").filter({ has: page.locator("input") }).last()
 const field = palette.locator("input")
 const command = async (name) => {
-  await page.keyboard.press("ControlOrMeta+P"); await wait(300)
+  // (the shared opener: off a Mac a terminal keeps Ctrl+P for its shell)
+  await openPalette(page); await wait(300)
   await page.keyboard.type(name); await wait(300)
   await page.keyboard.press("Enter"); await wait(500)
 }
