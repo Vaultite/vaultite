@@ -429,6 +429,7 @@ let claimTimer: ReturnType<typeof setTimeout> | null = null
 const QUIET = /^(\.vaultite\/(cache|generated|artifacts)\/|\.trash\/|\.git\/)|(^|\/)\.DS_Store$/
 
 plugin.onChange((paths) => {
+  busy()
   if (!paths) return
   const now = Date.now()
   for (const p of paths) {
@@ -723,12 +724,13 @@ let reqs = 0, errs = 0, syncs = 0
 // This minute's requests (ms each), then one Minute per minute: the last 24 h in memory, each written to perf-<date>.
 let cur: { t: number; ms: number[]; errors: number } = { t: Math.floor(Date.now() / MINUTE) * MINUTE, ms: [], errors: 0 }
 let minutes: Minute[] | null = null
-// (sampled only while the server works: always on, its 20 ms timer woke an idle server 50 times a second)
+// (sampled only while the server works, a minute after a write, a change on disk or a slow request: always on, its
+// 20 ms timer woke an idle server 50 times a second; on every request or sync, an open window's polls kept it on)
 const lag = monitorEventLoopDelay({ resolution: 20 })
 let busyAt = 0
 const busy = () => { if (!busyAt) lag.enable(); busyAt = Date.now() }
 plugin.onUnload(() => lag.disable())
-plugin.onSync(() => { syncs++; busy() })
+plugin.onSync(() => { syncs++ })
 
 /** A route as a pattern: its words kept, ids (anything with a digit, a space, a dot, a capital) as *. */
 export function routeOf(route: string) {
@@ -742,7 +744,7 @@ const mb = (n: number) => Math.round(n / 1048576)
 
 /** Count a request; a slow one is listed too (returned, so who it was can be filled in once known). */
 function timing(s: RequestStart, end: RequestEnd, actor: Actor): SlowRequest | null {
-  busy()
+  if (end.ms >= 20 || (s.method !== "GET" && s.method !== "HEAD" && !s.route.startsWith("activity"))) busy()
   rollMinute()
   const key = `${s.method} ${routeOf(s.route)}`
   const a = routes.get(key) ?? { n: 0, errors: 0, total: 0, max: 0, recent: [] }
