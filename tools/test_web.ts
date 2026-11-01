@@ -1406,6 +1406,10 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
   const [bgd, frag, lst] = parseDeck('<!-- slide bg="[[pic.png]]" data-background-opacity="0.5" -->\n## Pic\n---\n<!-- .slide: class="big" style="color: red" -->\nFade in <!-- element class="fragment" data-fragment-index="2" -->\n---\n- Always\n+ First\n+ Second\n1) Third\n').slides
   check("slides: <!-- slide bg --> is the slide's background, its data-background-* its look", bgd.bg === "[[pic.png]]" && bgd.bgAttrs.opacity === "0.5" && bgd.md === "## Pic", bgd)
+  const codeNote = parseDeck('Short syntax: `![](fas fa-envelope)<!-- .element: color="coral" -->`, as written').slides[0]
+  check("slides: an annotation inside inline code is shown, not applied", codeNote.md === 'Short syntax: `![](fas fa-envelope)<!-- .element: color="coral" -->`, as written' && !codeNote.els.length, codeNote)
+  const quoteNote = parseDeck('> [!tip] A tip\n> Its text\n<!-- element style="width:40%" -->\n\nAfter').slides[0]
+  check("slides: an annotation right under a callout is the callout's, not its last line's", /Its text\n\n<span class="slide-el-0"><\/span>/.test(quoteNote.md) && quoteNote.els[0].style.includes("width:40%"), quoteNote.md)
   check("slides: <!-- .slide: --> gives the slide a class and style", frag.cls === "big" && frag.style === "color: red")
   check("slides: an element annotation is a marker where it was", frag.md === 'Fade in <span class="slide-el-0"></span>' && frag.els[0].cls === "fragment" && frag.els[0].index === 2, frag)
   check("slides: + and 1) list items are fragments, - ones aren't", lst.els.length === 3 && lst.els.every((e) => e.li && e.cls === "fragment") && !lst.md.split("\n")[0].includes("slide-el"), lst)

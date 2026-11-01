@@ -222,6 +222,13 @@ function layoutOf(md: string, s: Slide, size: Size): (Box | string)[] | null {
 const SLIDE_NOTE = /<!--\s*(?:\.slide:|slide\b)([\s\S]*?)-->/g
 const ELEMENT_NOTE = /<!--\s*(?:\.element:|element\b)([\s\S]*?)-->/g
 
+const ELEMENT_LINE = /^\s*<!--\s*(?:\.element:|element\b)[\s\S]*-->\s*$/
+/** `text` with `fn` applied outside its inline code spans (`like this`), which show what they hold. */
+function outsideInline(text: string, fn: (s: string) => string): string {
+  const kept: string[] = []
+  return fn(text.replace(/(`+)(?!`)[^\n]*?[^`\n]\1(?!`)/g, (m) => `\u0000${kept.push(m) - 1}\u0000`)).replace(/\u0000(\d+)\u0000/g, (_, k: string) => kept[Number(k)])
+}
+
 function slideOf(raw: string, h: number, v: number, notesRe: RegExp, size: Size): Slide {
   const s: Slide = { md: "", notes: "", h, v, els: [], bgAttrs: {}, cls: "", style: "", data: {} }
   const md: string[] = [], notes: string[] = []
@@ -232,10 +239,12 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp, size: Size)
     if (m) { inNotes = true; md.push(line.slice(0, m.index)); notes.push(line.slice(m.index + m[0].length)); continue }
     // A fragmented list: items marked `+` or `1)` come in one at a time, numbered from 1 (with a grid's `frag`).
     if (!code && /^\s*(?:\+|\d{1,9}\))\s+\S/.test(line)) { s.els.push({ cls: "fragment", style: "", li: true, index: ++listFrag }); md.push(`${line} <span class="slide-el-${s.els.length - 1}"></span>`); continue }
+    // An annotation right under a quote or callout is its, not (a lazy line) its last paragraph's.
+    if (!code && ELEMENT_LINE.test(line) && /^\s*>/.test(md[md.length - 1] ?? "")) md.push("")
     md.push(line)
   }
   s.notes = notes.join("\n").trim()
-  s.md = outsideCode(md.join("\n"), (t) => t
+  s.md = outsideCode(md.join("\n"), (u) => outsideInline(u, (t) => t
     .replace(SLIDE_NOTE, (_, a: string) => {
       const at = attrsOf(a)
       for (const [k, val] of Object.entries(at)) {
@@ -255,7 +264,7 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp, size: Size)
       const data = Object.fromEntries(Object.entries(at).filter(([k]) => k.startsWith("data-") && k !== "data-fragment-index").map(([k, v]) => [k.slice(5), v]))
       s.els.push({ ...look, ...(Object.keys(data).length ? { data } : {}) })
       return `<span class="slide-el-${s.els.length - 1}"></span>`
-    })).trim()
+    }))).trim()
   const boxes = layoutOf(s.md, s, size)
   if (boxes) {
     s.boxes = boxes

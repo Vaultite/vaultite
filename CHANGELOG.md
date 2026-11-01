@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Slides read annotations as Advanced Slides does**: one on the line under a callout or quote styles the whole
+  callout (its width, rotation), and one written inside `inline code` shows as written instead of styling the slide.
 - **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the
