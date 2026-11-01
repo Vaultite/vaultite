@@ -1569,6 +1569,13 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     check("bases: results as CSV, quoted where needed", q.csvText(q.rowsOf(res)) === 'Name,Note\r\nDune,"a ""b"", c"\r\nEmma,"x, y|z"\r\n', q.csvText(q.rowsOf(res)))
     check("bases: results as a Markdown table, files as links", q.markdownRows(q.rowsOf(res, true)) === '| Name | Note |\n| --- | --- |\n| [[Dune]] | a "b", c |\n| [[Emma]] | x, y\\|z |', q.markdownRows(q.rowsOf(res, true)))
   }
+  const fx = "formulas:\n  left: pages - read # pages to go\nviews: []\n"
+  check("bases: a formula added after the others, one changed in its place (its comment kept), one removed",
+    edit.setFormula(fx, "cost", "price * 2") === "formulas:\n  left: pages - read # pages to go\n  cost: price * 2\nviews: []\n"
+    && edit.setFormula(fx, "left", "pages - read - 1") === "formulas:\n  left: pages - read - 1 # pages to go\nviews: []\n"
+    && edit.setFormula(fx, "left", null) === "views: []\n", [edit.setFormula(fx, "cost", "price * 2"), edit.setFormula(fx, "left", "pages - read - 1"), edit.setFormula(fx, "left", null)])
+  const used = "properties:\n  formula.left:\n    displayName: Left\n  note.x: {displayName: X}\nviews:\n  - type: table\n    order: [file.name, formula.left]\n    sort:\n      - property: formula.left\n        direction: ASC\n    summaries:\n      formula.left: Sum\n    groupBy:\n      property: formula.left\n  - type: cards\n    order: [formula.left, x]\n"
+  check("bases: a property removed from every view and its display name", edit.removeProperty(used, "formula.left") === "properties:\n  note.x: {displayName: X}\nviews:\n  - type: table\n    order: [file.name]\n  - type: cards\n    order: [x]\n", edit.removeProperty(used, "formula.left"))
   const filtered = edit.setFilters("# top\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n", 0, { and: ['status == "done"', '!file.hasTag("x")'] })
   check("bases: a view's filters written, an expression starting ! quoted", filtered === "# top\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n    filters:\n      and:\n        - status == \"done\"\n        - '!file.hasTag(\"x\")'\n", filtered)
   check("bases: the base's filters removed, the comment above them kept", edit.setFilters("# top\nfilters: x\nviews: []\n", null, undefined) === "# top\nviews: []\n")

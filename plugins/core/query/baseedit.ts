@@ -185,6 +185,47 @@ export function setLimit(text: string, i: number, limit: number | null): string 
   return out(d)
 }
 
+/** The base's formula `name` (`formulas: {left: pages - read}`), changed in its place or added last; null removes it. */
+export function setFormula(text: string, name: string, expr: string | null): string {
+  const d = doc(text)
+  const now = plainObj(d.toJSON()?.formulas) ? d.toJSON().formulas as Record<string, unknown> : {}
+  const next: Record<string, unknown> = { ...now }
+  if (expr === null) delete next[name]
+  else next[name] = expr
+  put(d, d.contents as YAMLMap, "formulas", Object.keys(next).length ? next : undefined)
+  return out(d)
+}
+
+/** A property gone from the whole base (a formula deleted): every view's columns, sort, widths, summaries and grouping
+ *  by it, and its display name. */
+export function removeProperty(text: string, key: string): string {
+  const d = doc(text)
+  const cfg = d.toJSON() as Record<string, unknown>
+  const named = (k: unknown) => typeof k === "string" && keyOf(k) === key
+  const views = Array.isArray(cfg?.views) ? cfg.views as unknown[] : []
+  views.forEach((v, i) => {
+    const m = plainObj(v) ? viewAt(d, i) : null
+    if (!m || !plainObj(v)) return
+    if (Array.isArray(v.order) && v.order.some(named)) put(d, m, "order", v.order.filter((k) => !named(k)))
+    if (Array.isArray(v.sort) && v.sort.some((s) => plainObj(s) && named(s.property))) {
+      const rest = v.sort.filter((s) => !(plainObj(s) && named(s.property)))
+      put(d, m, "sort", rest.length ? rest : undefined)
+    }
+    for (const k of ["columnSize", "summaries"]) {
+      const o = v[k]
+      if (!plainObj(o) || !Object.keys(o).some(named)) continue
+      const rest = Object.fromEntries(Object.entries(o).filter(([x]) => !named(x)))
+      put(d, m, k, Object.keys(rest).length ? rest : undefined)
+    }
+    if (plainObj(v.groupBy) && named(v.groupBy.property)) put(d, m, "groupBy", undefined)
+  })
+  if (plainObj(cfg?.properties) && Object.keys(cfg.properties).some(named)) {
+    const rest = Object.fromEntries(Object.entries(cfg.properties).filter(([x]) => !named(x)))
+    put(d, d.contents as YAMLMap, "properties", Object.keys(rest).length ? rest : undefined)
+  }
+  return out(d)
+}
+
 /** Set view `i`'s layout (`type`). */
 export function setViewType(text: string, i: number, type: string): string {
   const d = doc(text)

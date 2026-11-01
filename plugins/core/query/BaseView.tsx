@@ -9,7 +9,7 @@ import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplay
 import { obj, pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
 import { keyOf, label, sortOf, text as shownText, type Result } from "./query"
 import { SUMMARIES } from "./expr"
-import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, Popover, PropertiesMenu, ResultsButton, ResultsMenu, SortMenu, type BaseEdit } from "./Toolbar"
+import { BarButton, BUTTONS, filterCount, FilterMenu, groupOf, GroupMenu, named, Popover, PropertiesMenu, ResultsButton, ResultsMenu, SortMenu, type BaseEdit } from "./Toolbar"
 
 const ICONS: Record<string, LucideIcon> = { table: Table2, cards: LayoutGrid, list: List, map: MapIcon, kanban: Columns3, board: Columns3, calendar: CalendarDays }
 const iconOf = (type: string) => ICONS[type.toLowerCase()] ?? Table2
@@ -272,15 +272,6 @@ export function BaseView({ store, text, path, host, view, place, onChange, setTe
       <div className={cn("min-w-0 px-4", fill ? "flex min-h-0 flex-1 flex-col overflow-y-auto py-3" : "pt-1 pb-4")} data-base-body>{body}</div>
     </div>
   )
-}
-
-/** A column's display name in the base, if it has one. */
-function named(cfg: BaseConfig, key: string): string | null {
-  for (const [k, v] of Object.entries(obj(cfg.properties) ?? {})) {
-    const d = obj(v)?.displayName
-    if (keyOf(k) === key && typeof d === "string" && d.trim()) return d.trim()
-  }
-  return null
 }
 
 /** A .base file, as the app draws files a plugin owns (FormatCtx). */

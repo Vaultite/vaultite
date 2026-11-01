@@ -2,11 +2,12 @@
 // base's YAML (baseedit.ts) as it's used, the results following.
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
 import { createPortal } from "react-dom"
-import { ArrowUpDown, Code, Copy, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
+import { ArrowUpDown, Code, Copy, PencilLine, Sigma, Ellipsis, FileSpreadsheet, GripVertical, Layers, List, ListFilter, Plus, Trash2, X } from "lucide-react"
 import { choose, cn, copyText, FilterField, folderOf, menuBelow, notify, notifyError, openFile, post, SortableList, useDismiss, type MenuItem } from "@vaultite"
 import { csvText, keyOf, label, markdownRows, rowsOf, sortOf, type Result } from "./query"
 import { countText } from "./QueryView"
-import { setFilters, setGroupBy, setLimit, setOrder, setSort } from "./baseedit"
+import { removeProperty, setDisplayName, setFilters, setFormula, setGroupBy, setLimit, setOrder, setSort } from "./baseedit"
+import { parse as parseExpr } from "./expr"
 import { obj, viewsOf, type BaseConfig } from "./bases"
 import { condOf, countOf, exprOf, FILE_OPS, NO_VALUE, treeOf, valueOf, type Cond, type Group, type Item, type Op } from "./filters"
 
@@ -20,14 +21,19 @@ const FILE_PROPS: [string, string][] = [
   ["file.backlinks", "Backlinks"], ["file.embeds", "Embeds"],
 ]
 
-/** A property's name in the menus: the base's display name, else its own. */
-export function propLabel(cfg: BaseConfig, key: string): string {
-  if (key === "file.self") return "File"
+/** A property's display name in the base, when it has one. */
+export function named(cfg: BaseConfig, key: string): string | null {
   for (const [k, v] of Object.entries(obj(cfg.properties) ?? {})) {
     const d = obj(v)?.displayName
     if (keyOf(k) === key && typeof d === "string" && d.trim()) return d.trim()
   }
-  return FILE_PROPS.find(([k]) => k === key)?.[1] ?? label(key)
+  return null
+}
+
+/** A property's name in the menus: the base's display name, else its own. */
+export function propLabel(cfg: BaseConfig, key: string): string {
+  if (key === "file.self") return "File"
+  return named(cfg, key) ?? FILE_PROPS.find(([k]) => k === key)?.[1] ?? label(key)
 }
 
 /** Every property a view could show: the matches' frontmatter keys, the file's, the base's formulas (engine keys). */
@@ -250,6 +256,9 @@ export function ResultsMenu({ e, path, title }: { e: BaseEdit; path: string; tit
 
 export function PropertiesMenu({ e }: { e: BaseEdit }) {
   const [q, setQ] = useState("")
+  // (a formula being added (""), or edited (its name))
+  const [formula, setFormulaOpen] = useState<string | null>(null)
+  if (formula !== null) return <FormulaForm e={e} name={formula} done={() => setFormulaOpen(null)} />
   const shown = e.columns
   const set = (keys: string[]) => e.edit((t) => setOrder(t, e.at, keys))
   const rest = allProps(e.cfg, e.res, shown).filter((k) => !shown.includes(k))
@@ -260,6 +269,10 @@ export function PropertiesMenu({ e }: { e: BaseEdit }) {
         onChange={() => set(on ? shown.filter((x) => x !== k) : [...shown, k])} />
       <span className="min-w-0 flex-1 truncate">{propLabel(e.cfg, k)}</span>
       {propLabel(e.cfg, k) !== k && <span className="max-w-[45%] shrink-0 truncate text-[12px] text-tertiary">{k}</span>}
+      {k.startsWith("formula.") && k.slice(8) in (obj(e.cfg.formulas) ?? {}) && (
+        <button type="button" aria-label={`Edit formula ${propLabel(e.cfg, k)}`} data-tip="Edit formula" data-base-edit-formula={k.slice(8)} className={iconBtn}
+          onClick={(ev) => { ev.preventDefault(); setFormulaOpen(k.slice(8)) }}><PencilLine className="size-4" strokeWidth={2} /></button>
+      )}
     </label>
   )
   return (
@@ -280,7 +293,66 @@ export function PropertiesMenu({ e }: { e: BaseEdit }) {
         </SortableList>
       )}
       {rest.some(hit) && <div className="mt-1 border-t-[0.5px] border-border pt-1">{rest.filter(hit).map((k) => <div key={k} className="pl-4">{check(k, false)}</div>)}</div>}
+      <div className="mt-1 border-t-[0.5px] border-border pt-1"><button type="button" className={addBtn} data-base-add-formula onClick={() => setFormulaOpen("")}>
+        <Sigma className="size-4" strokeWidth={2} />Add formula
+      </button></div>
     </div>
+  )
+}
+
+/** A formula's name (the base's key, its display name when it isn't one) and expression, checked as it's typed. */
+const keyName = (n: string) => n.trim().toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, "_").replace(/^_+|_+$/g, "").replace(/^(\p{N})/u, "_$1")
+
+function FormulaForm({ e, name, done }: { e: BaseEdit; name: string; done: () => void }) {
+  const formulas = obj(e.cfg.formulas) ?? {}
+  const editing = name !== ""
+  // (its display name as written, else its key: a name it was never given isn't written when only the formula changes)
+  const [first] = useState(() => (editing ? named(e.cfg, `formula.${name}`) ?? name : ""))
+  const [title, setTitle] = useState(first)
+  const [src, setSrc] = useState(editing ? String(formulas[name] ?? "") : "")
+  const key = editing ? name : keyName(title)
+  // (a mistake is said once the formula is left or saved, not while it's typed)
+  const [tried, setTried] = useState(editing)
+  let error = ""
+  try { if (src.trim()) parseExpr(src) } catch (err) { error = (err as Error).message }
+  const taken = !editing && key in formulas
+  const ready = !!key && !!src.trim() && !error && !taken
+  const save = () => {
+    setTried(true)
+    if (!ready) return
+    const shown = title.trim() && title.trim() !== key ? title.trim() : ""
+    e.edit((t) => {
+      let next = setFormula(t, key, src.trim())
+      if (!editing || title !== first) next = setDisplayName(next, `formula.${key}`, shown)
+      if (!e.columns.includes(`formula.${key}`)) next = setOrder(next, e.at, [...e.columns, `formula.${key}`])
+      return next
+    })
+    done()
+  }
+  return (
+    <form className="flex flex-col gap-2 p-1" data-base-formula={key} onSubmit={(ev) => { ev.preventDefault(); save() }}>
+      <label className="flex flex-col gap-1 text-[12px] font-semibold text-muted-foreground">Name
+        <input autoFocus={!editing} value={title} onChange={(ev) => setTitle(ev.target.value)} placeholder="Pages left" data-base-formula-name
+          className={cn(field, "font-normal text-foreground")} />
+      </label>
+      <label className="flex flex-col gap-1 text-[12px] font-semibold text-muted-foreground">Formula
+        <textarea autoFocus={editing} value={src} onChange={(ev) => setSrc(ev.target.value)} onBlur={() => setTried(true)} rows={3} placeholder="pages - read" spellCheck={false}
+          autoCapitalize="off" autoCorrect="off" data-base-formula-src
+          onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); save() } }}
+          className={cn(field, "h-auto resize-none py-1.5 font-mono text-[12px] font-normal text-foreground pointer-coarse:text-[16px]")} />
+      </label>
+      {((tried && error) || taken) && <p className="text-[12px] text-destructive" data-base-formula-error>{taken ? `There's a formula named ${key} already` : `This formula has a mistake: ${error}.`}</p>}
+      <div className="flex items-center gap-1">
+        {editing && <button type="button" className={cn(addBtn, "text-destructive hover:text-destructive")} data-base-delete-formula
+          onClick={() => { e.edit((t) => removeProperty(setFormula(t, key, null), `formula.${key}`)); done() }}>
+          <Trash2 className="size-4" strokeWidth={2} />Delete</button>}
+        <span className="flex-1" />
+        <button type="button" className={addBtn} onClick={done}>Cancel</button>
+        <button type="submit" disabled={!ready} data-base-formula-save
+          className="inline-flex h-7 cursor-pointer items-center rounded-[6px] bg-primary px-3 text-[13px] font-medium text-primary-foreground disabled:cursor-default disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:text-[15px]">
+          {editing ? "Save" : "Add"}</button>
+      </div>
+    </form>
   )
 }
 

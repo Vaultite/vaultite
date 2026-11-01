@@ -26,6 +26,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   note's table selected together, Delete deletes all of them ("Delete 3 rows").
 - **CSV tables edit in place**: double-click a cell of a .csv to change it (Enter goes down, Tab across, Escape
   cancels) and Add row adds a record; only that field is rewritten, its quotes and separator kept.
+- **Formulas made in a base's menu**: Properties has Add formula, as in Obsidian: a name and an expression, checked
+  for mistakes before it's written, shown as a new column; a formula's pencil edits or deletes it.
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
