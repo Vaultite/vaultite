@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
+import { modesEnforced } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, exists, read } = $
@@ -63,8 +64,7 @@ export default async ($: VaultTest) => {
     await setRoot(false)
     fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n")
     // Rules that can't be read aren't taken for no file (the rewrite would drop the user's own); tried again after a wait.
-    // (Windows has no unreadable mode: chmod there only sets read-only)
-    if (process.platform !== "win32") {
+    if (modesEnforced) {
       const file = path.join(VAULT, ".vaultite/AGENTS.md"), mine = read(".vaultite/AGENTS.md") + "\nKeep this.\n"
       fs.writeFileSync(file, mine)
       fs.chmodSync(file, 0o000)

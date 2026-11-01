@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { modesEnforced } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, vault, write } = $
@@ -143,8 +144,8 @@ export default async ($: VaultTest) => {
       check("daily-note.open: iCloud's copy merges in and is archived; one with its own text is left",
         !t.error && read("Daily/2026-09-22.md") === "---\ntype: day\ndone: [Gym, Stretch]\nmood: good\n---\n\nPlan the week.\n" &&
         !exists("Daily/2026-09-22 2.md") && exists("Daily/.archive/2026-09-22 2.md") && exists("Daily/2026-09-22 3.md"), [t, read("Daily/2026-09-22.md")])
-      // A copy that can't be tidied away now (here, the archive can't be written; Windows has no read-only folders): the note opens all the same.
-      if (process.platform !== "win32") {
+      // A copy that can't be tidied away now (here, the archive can't be written): the note opens all the same.
+      if (modesEnforced) {
         write("Daily/2026-09-22 2.md", "---\ntype: day\n---\n")
         await vault.sync()
         fs.chmodSync(path.join(VAULT, "Daily/.archive"), 0o555)

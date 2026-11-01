@@ -2,6 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { skip } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, check } = $
@@ -11,8 +12,13 @@ export default async ($: VaultTest) => {
   const home = os.homedir()
   const vh = (method: string, route: string, query: Record<string, string>, body: Record<string, unknown> = {}): Promise<Any> =>
     vaultsMod.handle(method, ["vaults", ...route.split("/").filter(Boolean)], query, body, VAULT, async (p) => { opened.push(p) }).catch((e) => e)
-  let vr = await vh("GET", "folders", {})
-  check("vaults: home's folders, hidden ones left out", vr.path === home && !vr.folders.some((f: Any) => f.name.startsWith(".")), vr)
+  let vr: Any
+  // (root's home, /root, is a system folder)
+  if (vaultsMod.refused(home)) skip("vaults: home's folders, hidden ones left out", `home (${home}) is a system folder`)
+  else {
+    vr = await vh("GET", "folders", {})
+    check("vaults: home's folders, hidden ones left out", vr.path === home && !vr.folders.some((f: Any) => f.name.startsWith(".")), vr)
+  }
   vr = await vh("GET", "folders", { path: path.join(home, ".ssh") })
   check("vaults: a hidden folder can't be browsed", vr.status === 403 || vr.status === 404, vr)
   vr = await vh("POST", "open", {}, { path: home })

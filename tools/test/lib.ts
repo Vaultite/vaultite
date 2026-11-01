@@ -46,6 +46,9 @@ export function tempDir(prefix: string) {
   return dir
 }
 
+/** chmod keeps files from being read or written: not on Windows (it only sets read-only), nor as root. */
+export const modesEnforced = process.platform !== "win32" && process.getuid?.() !== 0
+
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** A port nothing listens on now, on 127.0.0.1. */
 export const freePort = () => new Promise<number>((resolve) => {

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { modesEnforced } from "../lib.ts"
 import { tidy } from "../../../core/bundles.ts"
 import { officialRepos, standIn } from "../official.ts"
 import { gitEnv } from "../../../core/gitenv.ts"
@@ -233,8 +234,7 @@ export default async ($: VaultTest) => {
     check("bundles: its guide can be left out", code === 200 && !exists("Guides/How Guided works.md"), code)
     await api("POST", "bundles/restore")
     await api("DELETE", "bundles/pics")
-    // (Windows has no unreadable mode: chmod there only sets read-only)
-    if (process.platform !== "win32") {
+    if (modesEnforced) {
       write(".vaultite/bundles/locked/bundle.json", JSON.stringify({ name: "Locked" }))
       fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o000)
       ;[code, r] = await api("GET", "bundles")

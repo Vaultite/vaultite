@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
-import { skip } from "../lib.ts"
+import { modesEnforced, skip } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, read, sleep, vault, write, TOOLS } = $
@@ -21,8 +21,7 @@ export default async ($: VaultTest) => {
     && (await api("GET", `plugins/lighthouse/${lh.hash}/bundle.js`))[0] === 404 && !app.plugins.some((p) => p.id === "lighthouse"))
   check("vault plugins: a folder with only settings isn't one", !(await vplugin("tide")))
   check("vault plugins: one can't take an app plugin's id", (await vplugin("people"))?.problems[0]?.includes("already has a plugin called 'people'"), await vplugin("people"))
-  // (Windows has no unreadable mode: chmod there only sets read-only)
-  if (process.platform !== "win32") {
+  if (modesEnforced) {
     // A file that can't be read (iCloud hasn't brought it down): a problem, never a crash, and looked at again.
     const shut = path.join(VAULT, ".vaultite/plugins/shut")
     write(".vaultite/plugins/shut/manifest.json", JSON.stringify({ id: "shut", name: "Shut", description: "Made up." }))
