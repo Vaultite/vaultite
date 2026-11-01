@@ -27,10 +27,10 @@ final class WatchDelegate: NSObject, WKApplicationDelegate, UNUserNotificationCe
             ], intentIdentifiers: []),
             UNNotificationCategory(identifier: "reply", actions: [
                 UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Your reply"),
-                UNNotificationAction(identifier: "done", title: "Done", options: []),
+                UNNotificationAction(identifier: "done", title: "Settle", options: []),
             ], intentIdentifiers: []),
             UNNotificationCategory(identifier: "event", actions: [
-                UNNotificationAction(identifier: "done", title: "Done", options: []),
+                UNNotificationAction(identifier: "done", title: "Settle", options: []),
             ], intentIdentifiers: []),
         ])
     }

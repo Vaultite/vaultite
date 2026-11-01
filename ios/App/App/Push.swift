@@ -14,10 +14,10 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         ], intentIdentifiers: []),
         UNNotificationCategory(identifier: "reply", actions: [
             UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Your reply"),
-            UNNotificationAction(identifier: "done", title: "Done", options: []),
+            UNNotificationAction(identifier: "done", title: "Settle", options: []),
         ], intentIdentifiers: []),
         UNNotificationCategory(identifier: "event", actions: [
-            UNNotificationAction(identifier: "done", title: "Done", options: []),
+            UNNotificationAction(identifier: "done", title: "Settle", options: []),
         ], intentIdentifiers: []),
     ]
 
@@ -86,7 +86,7 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         var body: [String: Any] = ["id": id, "answer": answer]
         if let text { body["text"] = text }
         _ = try await Servers.call("POST", "ops/inbox.answer", body)
-        return answer == "approve" ? "Approved" : answer == "deny" ? "Denied" : answer == "reply" ? "Sent" : answer == "done" ? "Done" : "Read"
+        return answer == "approve" ? "Approved" : answer == "deny" ? "Denied" : answer == "reply" ? "Sent" : answer == "done" ? "Settled" : "Read"
     }
 
     /// A local notification: something the user asked for from a notification didn't happen.

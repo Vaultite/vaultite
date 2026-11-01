@@ -41,7 +41,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
   format a note or a folder (`vau linter.format`).
 - **The inbox's verbs: pin, settle, snooze, wake**: Done is Settle (its folded list Settled) and Unsnooze is Wake, in
-  the app and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox done` and `inbox.done` still work.
+  the app, the iPhone's and the watch's notifications, and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox
+  done` and `inbox.done` still work.
 - **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers and the other choosers
   write what was typed in curly quotes with no full stop ("No command matches “foo”"), from one shared line.
 - **Screen readers hear the palettes' headings**: ⌘O's list is named by its heading ("Recent files and pages"), and

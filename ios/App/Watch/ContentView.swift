@@ -210,7 +210,7 @@ struct EventView: View {
                             .disabled(busy)
                         }
                         if e.state != "done" {
-                            Button { act("done") } label: { Label("Done", systemImage: "checkmark.circle") }
+                            Button { act("done") } label: { Label("Settle", systemImage: "checkmark.circle") }
                                 .disabled(busy)
                         }
                     }
