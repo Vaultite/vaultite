@@ -30,6 +30,7 @@ export function all(): Task[] {
   return tasks
 }
 function save() {
+  pollSoon()
   saving ??= setTimeout(() => {
     saving = null
     const since = Date.now() - KEEP_DAYS * 86_400_000
@@ -71,10 +72,19 @@ plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
 })
 
 // An agent in a terminal that tells nothing when its turn ends (Codex before 0.163: no OSC 7501, no hooks) says it in its
-// transcript (agent-turn's `done`): a child at work is read now and then, and the end told to the inbox as a host would.
-const polling = setInterval(() => void poll().catch((e) => console.error("delegate:", e)), 3000)
-polling.unref?.()
-plugin.onUnload(() => clearInterval(polling))
+// transcript (agent-turn's `done`): a child at work is read every 3 s (only while one is), its end told as a host would.
+const reading = (t: Task) => t.state === "working" && !!t.child.terminal
+let polling: ReturnType<typeof setInterval> | null = null
+function pollSoon() {
+  if (polling || !all().some(reading)) return
+  polling = setInterval(() => {
+    if (all().some(reading)) void poll().catch((e) => console.error("delegate:", e))
+    else { clearInterval(polling!); polling = null }
+  }, 3000)
+  polling.unref?.()
+}
+setTimeout(pollSoon, 0).unref?.()
+plugin.onUnload(() => { if (polling) clearInterval(polling) })
 async function poll() {
   for (const t of all()) {
     if (t.state !== "working" || !t.child.terminal) continue
