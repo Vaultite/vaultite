@@ -675,6 +675,28 @@ const st0 = {
 }
 check("state patch: nothing changed is null", through(st0, structuredClone(st0))[1] === null)
 {
+  // A note typed in (its body long): only the edit of its body travels, the rest of it the same objects.
+  const long = structuredClone(st0)
+  for (const n of long.notes) n.body = `${n.title}: ${"words of a long note body. ".repeat(80)}`
+  const next = structuredClone(long)
+  next.notes[3].body = next.notes[3].body.replace("words of", "words typed into")
+  next.notes[9] = { ...next.notes[9], id: "Notes/Other", body: next.notes[9].body + "!" }
+  const [got, patch] = through(long, next), g = got as typeof long
+  check("state patch: a long body edited travels as its edit, another item with its id changed whole", deep(got, next) && !!patch &&
+    patch.length < 3000 && patch.includes('"edit":') && patch.includes("Notes/Other") && g.notes[3].tags === long.notes[3].tags, patch?.slice(0, 300))
+  let ok = true, cur: unknown = long, seed = 3
+  const rnd = (n: number) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n
+  for (let round = 0; round < 100 && ok; round++) {
+    const nx = structuredClone(cur) as typeof long, n = nx.notes[rnd(nx.notes.length)], at = rnd(n.body.length)
+    n.body = n.body.slice(0, at) + "é😀x".slice(0, rnd(4)) + n.body.slice(at + rnd(5))
+    const [g2] = through(cur, nx)
+    ok = deep(g2, nx)
+    cur = g2
+  }
+  check("state patch: 100 rounds of random edits to long bodies", ok)
+  check("state patch: an edit that doesn't fit what the app has throws", (() => { try { sp.applyPatch("abc", { edit: [5, 1, ""] }); return false } catch { return true } })())
+}
+{
   // A long list (frozen items, as the tree's rows): one changed, one gone, one added, one moved far, exact all the same.
   const old: Readonly<{ path: string; n: number }>[] = Array.from({ length: 6000 }, (_, i) => Object.freeze({ path: `f${i}.md`, n: i }))
   const next = [...old]

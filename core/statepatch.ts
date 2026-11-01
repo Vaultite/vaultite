@@ -1,9 +1,11 @@
-// /api/state as a patch since the state the app has, instead of megabytes again on every change. A patch is {set},
-// {keys, drop} or {items: runs of old items and new ones}; what it leaves alone keeps its object, so nothing redraws.
+// /api/state as a patch of the state the app has: {set}, {keys, drop}, {items: runs of old items, new ones, patches of
+// old ones} or a long text's {edit}. What it leaves alone keeps its object, so nothing redraws.
+import { applyEdit, editOf } from "./texthash.ts"
 
 /** A value as pieces of JSON: whole (its JSON), an object's keys, or an array's items (each one's JSON). */
 export type Piece = string | { keys: Map<string, Piece>; from?: object } | { items: string[]; from?: readonly unknown[] }
-export type Patch = { set: unknown } | { keys: Record<string, Patch>; drop?: string[] } | { items: ([number, number] | [unknown])[] }
+export type Patch = { set: unknown } | { keys: Record<string, Patch>; drop?: string[] } | { items: ([number, number] | [unknown] | [number, Patch])[] }
+  | { edit: [number, number, string] }
 
 const isPlain = (x: unknown): x is Record<string, unknown> => {
   if (x === null || typeof x !== "object" || Array.isArray(x)) return false
@@ -73,7 +75,12 @@ export function jsonOf(p: Piece): string {
 export function patchOf(old: Piece, now: Piece): string | null {
   if (old === now) return null
   const set = () => `{"set":${jsonOf(now)}}`
-  if (typeof now === "string") return set()
+  if (typeof now === "string") {
+    // (a long text changed, a note's body as it's typed: only the edit)
+    if (typeof old !== "string" || now.length < LONG || now[0] !== '"' || old[0] !== '"') return set()
+    const e = editOf(JSON.parse(old), JSON.parse(now)), p = `{"edit":[${e.at},${e.cut},${JSON.stringify(e.add)}]}`
+    return p.length < now.length ? p : set()
+  }
   if ("items" in now) {
     if (typeof old === "string" || !("items" in old)) return set()
     const was = old.items
@@ -90,7 +97,9 @@ export function patchOf(old: Piece, now: Piece): string | null {
       let i = -1
       for (let k = pos, end = Math.min(was.length, pos + 64); k < end; k++) if (was[k] === j) { i = k; break }
       if (i < 0 && was.length <= 5000) i = (at ??= indexOf(was)).get(j) ?? -1
-      if (i < 0) out.push(`[${j}]`)
+      const edit = i < 0 && pos < was.length ? itemPatch(was[pos], j) : null
+      if (edit) { out.push(`[${pos},${edit}]`); reused++; pos++ }
+      else if (i < 0) out.push(`[${j}]`)
       else { start = i; n = 1; reused++; pos = i + 1 }
     }
     flush()
@@ -110,15 +119,37 @@ export function patchOf(old: Piece, now: Piece): string | null {
   return `{"keys":{${parts.join(",")}}${drop.length ? `,"drop":${JSON.stringify(drop)}` : ""}}`
 }
 
+const LONG = 256
+/** The patch of an item into the one in its place, when both are the same thing (the same `id` or `path`: a note
+ *  edited) and the patch is the smaller; else null (it's sent whole). */
+function itemPatch(old: string, now: string): string | null {
+  if (now.length < LONG || old[0] !== "{" || now[0] !== "{") return null
+  const a = JSON.parse(old), b = JSON.parse(now), id = (x: Record<string, unknown>) => x.id ?? x.path
+  if (id(a) === undefined || id(a) !== id(b)) return null
+  const p = patchOf(snapshot(a), snapshot(b))
+  return p !== null && p.length < now.length ? p : null
+}
+
 /** The new value: `old` with the patch applied (patchOf's, parsed). What the patch didn't change is the same objects.
  *  Throws when the patch doesn't fit `old` (the caller then asks for the whole state). */
 export function applyPatch(old: unknown, patch: Patch): unknown {
   if ("set" in patch) return patch.set
+  if ("edit" in patch) {
+    const [at, cut, add] = patch.edit, made = typeof old === "string" ? applyEdit(old, { at, cut, add }) : null
+    if (made === null) throw new Error("an edit of a text that isn't there")
+    return made
+  }
   if ("items" in patch) {
     if (!Array.isArray(old)) throw new Error("a patch of items, for something that isn't a list")
     const out: unknown[] = []
     for (const e of patch.items) {
       if (e.length === 1) { out.push(e[0]); continue }
+      if (typeof e[1] === "object") {
+        const [i, p] = e as [number, Patch]
+        if (!(i >= 0 && i < old.length)) throw new Error("a patch of an item that isn't there")
+        out.push(applyPatch(old[i], p))
+        continue
+      }
       const [i, n] = e as [number, number]
       if (!(i >= 0 && n > 0 && i + n <= old.length)) throw new Error("a patch of items that aren't there")
       for (let k = i; k < i + n; k++) out.push(old[k])
