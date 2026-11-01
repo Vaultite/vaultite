@@ -3,12 +3,12 @@
 //   node web/qa/tablecells.mjs <base url> [out dir]
 import { SHOTS, command, fingers, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
-const NOTE = "Qa tablecells/Cells.md", MORE = "Qa tablecells/More.md", WIDE = "Qa tablecells/Widths.md"
+const NOTE = "Qa tablecells/Cells.md", MORE = "Qa tablecells/More.md", WIDE = "Qa tablecells/Widths.md", DASH = "Qa tablecells/Dash.md"
 const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
 // (the editor saves after a pause)
 const saved = (fn) => until(fn, 10000)
 const read = async (path) => (await (await fetch(`${B}api/file?path=${encodeURIComponent(path)}`)).json()).text
-for (const p of [NOTE, MORE, WIDE]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
+for (const p of [NOTE, MORE, WIDE, DASH]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
 await put(NOTE, "Top line\n\n| Where | Free | Note |\n|---|---|---|\n| Laptop | 122G | Up from **32G** on [[Lighthouse]] |\n| Desktop | 95G | `short` |\n\nBottom line\n")
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1, permissions: ["clipboard-read", "clipboard-write"] })
@@ -280,6 +280,21 @@ await page.mouse.dblclick(eb2.x + eb2.width / 2, eb2.y + eb2.height / 2); await 
 check("a double-click on an edge puts the default separator back", await saved(async () => await sepLine() === "|---|:-:|---|"), await read(WIDE))
 check("and draws the table as wide as its text", await tw.evaluate((t) => !t.classList.contains("has-widths")))
 await page.screenshot({ path: `${OUT}/widths-reset.png` })
+
+const SET = `|${"-".repeat(20)}|:${"-".repeat(38)}:|${"-".repeat(20)}|`
+
+// ---- widths drawn wherever Markdown is: a dashboard's text, a table in a callout ----
+const shares = (t) => t.evaluate((t) => { const ws = [...t.rows[0].cells].map((c) => c.getBoundingClientRect().width), s = ws.reduce((a, b) => a + b, 0); return ws.map((w) => Math.round((100 * w) / s)) })
+const SET_TABLE = `| Task | Owner | Notes |\n${SET}\n| Ship the beta | Alice Park | Waiting on review |`
+await put(DASH, `---\ntype: dashboard\n---\n\n${SET_TABLE}\n`)
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(DASH)}`); await wait(2000)
+const dt = page.locator(".dash-prose .md-table-view > table.has-widths")
+check("a dashboard's text draws a table's set widths", await dt.count() === 1 && JSON.stringify(await shares(dt)) === "[25,50,25]", await dt.count() && await shares(dt))
+await page.screenshot({ path: `${OUT}/widths-dashboard.png` })
+await put(WIDE, `Above\n\n> [!note] Plan\n> ${SET_TABLE.split("\n").join("\n> ")}\n\nBelow\n`)
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(WIDE)}`); await wait(1500)
+const ct = ed.locator(".cm-block-callout .md-table-view > table.has-widths")
+check("and so does a table in a callout", await ct.count() === 1 && JSON.stringify(await shares(ct)) === "[25,50,25]", await ct.count() && await shares(ct))
 
 // ---- a row duplicated from its grip; rows selected together deleted at once ----
 await put(MORE, "| Task | Owner |\n| --- | --- |\n| Ship | Alice Park |\n| Docs | Sam |\n| Tests | Lee |\n\nEnd\n")

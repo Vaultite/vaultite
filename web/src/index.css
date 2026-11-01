@@ -319,7 +319,7 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 /* Note reader (Notes tab): Markdown at iOS body size, Apple-style headings, hairline rules. */
 .note-prose { font-size: 17px; line-height: 26px; overflow-wrap: anywhere; }
 .note-prose > :first-child { margin-top: 0; }
-.note-prose :where(p, ul, ol, pre, blockquote, table) { margin: 0 0 14px; }
+.note-prose :where(p, ul, ol, pre, blockquote, table, .md-table-view) { margin: 0 0 14px; }
 .note-prose .h1 { font-size: 24px; line-height: 30px; font-weight: 700; margin: 28px 0 10px; }
 .note-prose .h2 { font-size: 20px; line-height: 25px; font-weight: 700; margin: 28px 0 8px; }
 .note-prose .h3 { font-size: 17px; line-height: 22px; font-weight: 600; margin: 22px 0 6px; }
@@ -356,7 +356,7 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 .note-prose .wikilink { cursor: pointer; }
 /* In a sheet (a book's or a log's notes): the sheet's body size, headings a step smaller. */
 .note-prose.compact { font-size: 15px; line-height: 21px; }
-.note-prose.compact :where(p, ul, ol, pre, blockquote, table) { margin-bottom: 10px; }
+.note-prose.compact :where(p, ul, ol, pre, blockquote, table, .md-table-view) { margin-bottom: 10px; }
 .note-prose.compact > :last-child { margin-bottom: 0; }
 .note-prose.compact .h1 { font-size: 20px; line-height: 25px; margin: 20px 0 8px; }
 .note-prose.compact .h2 { font-size: 17px; line-height: 22px; margin: 18px 0 6px; }
@@ -860,11 +860,13 @@ dialog { --vau-panel-bottom: 0px; }
 .cm-table-edge::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 3px; border-radius: 1.5px; }
 .cm-table-edge:hover, .cm-table-edge.is-active { background: none; }
 .cm-table-edge:hover::after, .cm-table-edge.is-active::after { background: var(--primary); }
-.vau-editor .cm-table-view.is-shared { overflow-x: auto; overscroll-behavior-x: contain; isolation: isolate; }
+/* (the box: the editor's own, or core/markdown.ts' everywhere else Markdown is drawn) */
+.vau-editor .cm-table-view.is-shared, .md-table-view { overflow-x: auto; overscroll-behavior-x: contain; isolation: isolate; }
 .vau-editor .cm-content[contenteditable="true"] .cm-table-view.is-shared { max-width: calc(100% - 24px); }
 @media (pointer: coarse) { .vau-editor .cm-content[contenteditable="true"] .cm-table-view.is-shared { max-width: calc(100% - 30px); } }
-.vau-editor .cm-content .cm-block-table table.has-widths { display: table; width: 100%; max-width: none; table-layout: fixed; }
-.vau-editor .cm-block-table table.has-widths :where(th, td) { min-width: 0; overflow-wrap: break-word; }
+.vau-editor .cm-content .cm-block-table table.has-widths, :is(.note-prose, .dash-prose, .vau-editor .cm-block) .md-table-view > table.has-widths {
+  display: table; width: 100%; max-width: none; overflow-x: visible; margin: 0; table-layout: fixed; }
+:is(.note-prose, .dash-prose, .vau-editor .cm-block) table.has-widths :where(th, td) { min-width: 0; overflow-wrap: break-word; }
 .cm-table-drop { position: absolute; background: var(--primary); border-radius: 1px; pointer-events: none; }
 .cm-table-drop.is-row { height: 2px; margin-top: -1px; }
 .cm-table-drop.is-col { width: 2px; margin-left: -1px; }

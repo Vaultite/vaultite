@@ -55,6 +55,7 @@ Text is **bold**, *italic*, ~~struck~~, `code`, a [link](https://example.com), o
 | Edited | A cell at a time: click one, Tab and Enter move on, right-click for rows, columns and alignment |
 | Reshaped | Grips on a row and a column: click for its menu (move, sort), drag to move it; + adds one |
 | Copied | Drag across cells: copy, clear, or paste a spreadsheet's cells |
+| Sized | Drag a column's edge in the header: its width goes in the separator's dashes, as Pandoc reads them |
 
 ```
 A code block keeps its spacing.

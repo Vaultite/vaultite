@@ -92,6 +92,10 @@ export function setWidths(t: Table, shares: number[] | null) {
   if (t.widths) t.padded = false
 }
 const scaled = (shares: number[]) => { const sum = shares.reduce((a, b) => a + b, 0) || 1; return shares.map((s) => Math.max(3, Math.round((SCALE * s) / sum))) }
+/** The narrowest a column whose width is set is drawn, in the table's ems: narrower, the table scrolls sideways. */
+export const NARROWEST = 5
+/** The width (ems) under which a table with these column shares scrolls sideways rather than squeeze a column. */
+export const sharedMinWidth = (shares: number[]) => Math.min(shares.length * 12, Math.max(...shares.map((f) => NARROWEST / f)))
 
 /** A column's separator `w` long, its colons included. */
 const sized = (a: Align, w: number) => a === "center" ? `:${"-".repeat(w - 2)}:` : a === "right" ? `${"-".repeat(w - 1)}:` : a === "left" ? `:${"-".repeat(w - 1)}` : "-".repeat(w)

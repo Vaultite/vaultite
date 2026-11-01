@@ -14,7 +14,7 @@ import { blockLines, markdownDrawn } from "@/core/richmd"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
 import { clearCells, columnShares, deleteColumn, deleteRow, duplicateRow, edgeFrom, escape, fillCells, fillDown, insertColumn, insertRow, moveColumn, moveRow,
-  parseTable, setWidths, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
+  NARROWEST, parseTable, setWidths, sharedMinWidth, shownText, sortRows, unescape, widen, writeTable, type Align, type Cell, type Table } from "./tableText"
 
 /** What a drawn table needs from the editor around it. */
 export type TableEnv = {
@@ -38,14 +38,11 @@ const STEPS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [
 /** After a change: a cell edited, or cells selected (a row or column moved by its grip stays picked). */
 type Then = { open?: Cell; pick?: [Cell, Cell] }
 let made = 0
-/** The narrowest a column whose width is set is drawn (in the table's ems): narrower, the table scrolls sideways. */
-const NARROWEST = 5
-
 /** A table drawn as wide as the text, its columns in these shares (a `<col>` each); `box` scrolls it sideways. */
 function shareColumns(box: HTMLElement, t: HTMLTableElement, shares: number[]) {
   box.classList.add("is-shared")
   t.classList.add("has-widths")
-  t.style.minWidth = `${Math.min(shares.length * 12, Math.max(...shares.map((f) => NARROWEST / f))).toFixed(2)}em`
+  t.style.minWidth = `${sharedMinWidth(shares).toFixed(2)}em`
   let g = t.querySelector(":scope > colgroup")
   if (!g) { g = document.createElement("colgroup"); t.prepend(g) }
   g.replaceChildren(...shares.map((f) => { const col = document.createElement("col"); col.style.width = `${(f * 100).toFixed(3)}%`; return col }))
@@ -106,6 +103,9 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const paint = () => {
     drawn.classList.remove("is-shared")
     drawn.innerHTML = env.render(shown)
+    // (a table with set widths comes in core/markdown.ts' box: drawn is its box here)
+    const box = drawn.firstElementChild
+    if (box?.classList.contains("md-table-view")) box.replaceWith(...box.childNodes)
     marked = false
     markdownDrawn(drawn, blockLines(env.line, () => shown, () => view.state.doc.toString()))
     const t = drawn.querySelector("table")

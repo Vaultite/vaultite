@@ -585,6 +585,13 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   const fits = tt.parseTable(`| ${"x".repeat(40)} | ${"y".repeat(38)} |\n|---|---|\n| 1 | 2 |`)!
   tt.setWidths(fits, [1, 1])
   check("tables: widths that match the text still read as set", same(tt.parseTable(tt.writeTable(fits))!.widths?.length, 2), tt.writeTable(fits))
+  // Drawn outside the editor (a dashboard's text, an embed): the same widths, in a box that scrolls.
+  const drawnSet = md.renderMarkdown(`| Name | Qty |\n${sep}\n| pear | 10 |\n`), drawnUsual = md.renderMarkdown(usual[1])
+  check("tables: Markdown drawn elsewhere draws set widths", drawnSet.startsWith('<div class="md-table-view"><table class="has-widths" style="min-width: ')
+    && drawnSet.includes('<colgroup><col style="width: 25.000%"><col style="width: 75.000%"></colgroup>') && drawnSet.includes('<td align="right"'), drawnSet)
+  check("tables: and others as they were", drawnUsual.startsWith("<table>\n<thead>") && !drawnUsual.includes("colgroup"), drawnUsual)
+  const inList = md.renderMarkdown(`- item\n\n  | Name | Qty |\n  ${sep}\n  | pear | 10 |\n`)
+  check("tables: a table in a list item keeps its widths", inList.includes("has-widths"), inList)
 }
 {
   const t = tt.parseTable("| Name | Qty | When |\n| --- | --: | --- |\n| pear | 10 | 2026-03-01 |\n| Apple | 9 | 2025-12-31 |\n|  | 1,200 |  |\n| banana | 2.5 | 2026-01-15 |")!

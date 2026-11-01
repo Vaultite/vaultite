@@ -1,6 +1,7 @@
 // Markdown to HTML outside the editor, with its extras (wikilinks, callouts, footnotes, math, mermaid, tags). As in
 // Obsidian, every link is one, raw HTML is drawn (sanitized) and `![[Note]]` is an embed (`data-md-embed`, caller's).
-import { Lexer, Marked, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
+import { Lexer, Marked, Renderer, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
+import { columnShares, parseTable, sharedMinWidth } from "../editor/tableText"
 import { COPY_ICON } from "./richmd"
 import { dropHighlightEmoji, highlightClass, highlightColor } from "./highlights"
 import { esc, sanitizeHtml } from "./sanitize"
@@ -272,6 +273,17 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
         const tag = header ? "th" : "td", inner = this.parser.parseInline(tokens)
         const short = inner.replace(/<[^>]*>/g, "").replace(/&#?\w+;/g, "_").trim().length <= SHORT_CELL
         return `<${tag}${align ? ` align="${align}"` : ""}${short ? ' class="md-cell-short"' : ""}>${inner}</${tag}>\n`
+      },
+      // A table whose separator sets its columns' widths (editor/tableText.ts) draws them as the editor does, in a box
+      // that scrolls once a column would be too narrow. (Past 72 columns first: most tables' separators aren't.)
+      table(token: Tokens.Table) {
+        const sep = token.raw.split("\n", 2)[1] ?? "", t = sep.trim().length > 72 ? parseTable(token.raw.trimEnd()) : null
+        const shares = t && columnShares(t)
+        if (!shares) return false
+        const cols = shares.map((f) => `<col style="width: ${(f * 100).toFixed(3)}%">`).join("")
+        const html = Renderer.prototype.table.call(this, token)
+          .replace("<table>", `<table class="has-widths" style="min-width: ${sharedMinWidth(shares).toFixed(2)}em"><colgroup>${cols}</colgroup>`)
+        return `<div class="md-table-view">${html}</div>\n`
       },
       // A callout: a blockquote whose first line is `[!type] Title`; foldable ones are a <details>.
       blockquote({ tokens }: Tokens.Blockquote) {
