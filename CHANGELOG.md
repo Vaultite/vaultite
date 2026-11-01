@@ -215,12 +215,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Slides take a deck's stylesheets**: `css:` files and a `theme:` that's a CSS file (Advanced Slides' own
   `css/…` themes too) or an address style the presentation, and only it; an edited one shows at once.
 - **Pin in the inbox**: Pin (a row's menu, a session's sheet, several selected, `vau inbox pin`) keeps a thread or a
-  result on top under Pinned whatever it waits on, until it's done or unpinned.
+  result on top under Pinned whatever it waits on, until it's settled or unpinned (Undo pins it again).
 - **Audio covers are always shown as images**: a cover whose tag names a type that isn't an image is served as a
   JPEG.
 - **Only the owner runs commands in the app's window**: palette commands and terminal tabs sent to the window (`vau
   command`, `vau open view:terminal/...`) answer only this machine's owner, as terminals do.
-  result on top under Pinned whatever it waits on, until it's settled or unpinned.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
   cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its

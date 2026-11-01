@@ -3,7 +3,7 @@
 import { useEffect } from "react"
 import { Bot, Check, CheckCheck, Pin, PinOff, RotateCcw, SquareTerminal, X } from "lucide-react"
 import { backDetail, Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
-import { agentOf, answerable, answerAsk, getEvents, markEventsDone, markRead, openSession, pinEvents, SESSION_DETAIL, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, getEvents, markEventsDone, markRead, openSession, pinEvents, unsettle, SESSION_DETAIL, useEvents } from "./events"
 import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
@@ -85,7 +85,7 @@ export function SessionSheet({ id }: { id: string }) {
     void markEventsDone([e.id], to)
     // (dealt with: the sheet goes, as a mail archived does)
     if (to) backDetail()
-    notify(to ? `Settled “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void markEventsDone([e.id], !to) } })
+    notify(to ? `Settled “${e.title}”` : `Back in the inbox: “${e.title}”`, { action: { label: "Undo", run: () => void (to ? unsettle([e]) : markEventsDone([e.id], true)) } })
   }
   const open = () => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine, host: e.host })
   return (

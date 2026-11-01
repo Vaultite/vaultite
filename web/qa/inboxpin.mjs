@@ -44,6 +44,9 @@ await page.keyboard.press("Escape")
 await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).getByRole("button", { name: "Settle" }).click()
 check("done, it leaves Pinned", !!(await until(async () => (await pinned.locator("[data-result]").count()) === 0)))
 check("and isn't pinned any more", !!(await until(async () => (await api("GET", "inbox")).find((r) => r.title === "Lighthouse launch notes")?.pinned !== true)))
+await page.locator("[data-sonner-toast]", { hasText: "Settled “Lighthouse launch notes”" }).getByRole("button", { name: "Undo" }).click()
+check("Undo: back under Pinned, pinned again", !!(await until(async () => (await pinned.locator("[data-result]", { hasText: "Lighthouse launch notes" }).count()) === 1)) &&
+  !!(await until(async () => (await api("GET", "inbox")).find((r) => r.title === "Lighthouse launch notes")?.pinned === true)))
 
 // A phone: Pinned on top, no sideways scroll.
 await api("POST", "inbox/events/pin", { ids: [ask.id] })

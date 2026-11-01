@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, MessageSquareReply, Pin, RotateCcw } from "lucide-react"
 import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
-import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, markUnread, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
+import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, markUnread, onFresh, pinEvents, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
 import { byKey, doneByKey, fileTo, keysOnThreads, press, stepSheet, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
@@ -172,7 +172,7 @@ export default definePlugin({
     { id: "inbox:snooze", name: "Snooze the inbox row", keys: ["B"], when: keysOnInbox, run: snoozeByKey, icon: Clock },
     { id: "inbox:reply", name: "Reply to the inbox row's session", keys: ["R"], when: keysOnThreads,
       run: byKey(replyByKey, (s) => s.querySelector<HTMLTextAreaElement>("textarea[data-reply]")?.focus()), icon: MessageSquareReply },
-    { id: "inbox:pin", name: "Pin or unpin the inbox row", keys: ["P"], when: keysOnThreads, run: byKey(pinByKey, (s) => press(s, "[data-session-pin]")), icon: Pin },
+    { id: "inbox:pin", name: "Pin or unpin the inbox row", keys: ["P"], when: keysOnThreads, run: byKey(pinByKey, (_, id) => { const e = getEvents().events.find((x) => x.id === id); if (e && e.state !== "done") pinEvents([id], !e.pinned) }), icon: Pin },
     { id: "inbox:mark-read", name: "Mark the inbox row read", keys: ["Shift+I"], when: keysOnInbox, run: () => readByKey(true), icon: MailOpen },
     { id: "inbox:mark-unread", name: "Mark the inbox row unread", keys: ["Shift+U"], when: keysOnThreads, run: byKey(() => readByKey(false), (_, id) => { markUnread([id]); backDetail() }), icon: Mail },
     { id: "inbox:read", name: "Mark inbox events read", when: () => getEvents().unread > 0, run: () => markRead(), icon: CheckCheck },

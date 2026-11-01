@@ -320,6 +320,8 @@ function addEvent(given: Omit<InboxEvent, "id" | "t">): InboxEvent {
  *  unread) and they may be (nt). News wakes what's snoozed. */
 function put(e: InboxEvent, old: InboxEvent | null, es: InboxEvent[], news: boolean): InboxEvent {
   if (e.read) delete e.kept
+  // (settled is unpinned, however it got there: the user, or a quiet turn)
+  if (e.state === "done") delete e.pinned
   if (news && e.state === "open") delete e.snoozed
   if (news && e.state === "open" && !e.read && !holdNow() && mayTell(old, e)) e.nt = e.t
   changed([e, ...es.filter((x) => x !== old)])
@@ -706,7 +708,8 @@ plugin.route("POST", "inbox/events/pin", async (req) => {
 export function pinnedAs(e: InboxEvent, on: boolean): InboxEvent {
   if (on) return e.state === "done" ? e : { ...e, pinned: true }
   const { pinned: _, ...rest } = e
-  return rest
+  // (a message read while pinned was kept for it: unpinned, it's settled as a read one is)
+  return isMessage(e) && !e.gate && e.read && e.state === "open" ? { ...rest, state: "done" } : rest
 }
 function pin(ids: Set<string>, on: boolean) {
   for (const old of list().filter((e) => ids.has(e.id) && !!e.pinned !== on)) put(pinnedAs(old, on), old, list(), false)

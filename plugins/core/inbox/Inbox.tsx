@@ -11,7 +11,7 @@ import {
   SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, SESSION_DETAIL, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, SESSION_DETAIL, unsettle, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
@@ -23,7 +23,7 @@ const waiting = (r: InboxItem) => reviewing(r) && !snoozed(r.snoozed)
 const listsOf = (store: Store, events = getEvents().events, fresh?: ReadonlySet<string>) => lists(events, store.inbox ?? [], fresh)
 /** The results waiting for review, newest first (one whose snooze just ended on top): not a thread's report, which its
  *  thread stands for. */
-export const toReview = (store: Store): InboxItem[] => listsOf(store).review
+export const toReview = (store: Store): InboxItem[] => { const l = listsOf(store); return [...l.pinned.results, ...l.review] }
 
 /** Draw again when the next snooze ends, so what comes back shows (and counts) right then. */
 export function useBack(store: Store) {
@@ -84,12 +84,13 @@ function onRow(act: (key: string, row: HTMLElement) => void, leaves = true) {
   const row = keyedRow()
   if (!row) return
   const key = row.dataset.selectKey!
-  const rows = rowsAround(row), i = rows.indexOf(row)
+  const rows = rowsAround(row), i = rows.indexOf(row), list = row.closest(`[data-select-list="${SELECT}"]`)
   const next = leaves ? (rows[i + 1] ?? rows[i - 1])?.dataset.selectKey : undefined
   act(key, row)
   if (!next) return
+  // (in the list it was pressed in: the panel's, the page's or a block's)
   requestAnimationFrame(() => {
-    const to = rowsAround(null).find((r) => r.dataset.selectKey === next) ?? document.querySelector<HTMLElement>(`[data-select-key="${CSS.escape(next)}"]`)
+    const to = list?.querySelector<HTMLElement>(`[data-select-key="${CSS.escape(next)}"]`)
     if (to) keyOf(to)?.focus({ preventScroll: true })
   })
 }
@@ -168,7 +169,7 @@ export function markDone(r: InboxItem, done = true) {
   const now = change(r, { status: done ? "done" : "new" })
   if (next) openFile(pathOf(next))
   if (done) notify(`Settled “${r.title}”`, { action: { label: "Undo", run: async () => {
-    const back = await change(await now, { status: "new" })
+    const back = await change(await now, { status: "new", ...(r.pinned ? { pinned: true } : {}) })
     if (next) openFile(pathOf(back))
   } } })
   return now
@@ -266,11 +267,13 @@ const SELECT = "inbox"
 const resultKey = (r: InboxItem) => `r:${r.id}`, eventKey = (e: InboxEvent) => `e:${e.id}`
 
 /** Done (or back to review) for several: one toast, its Undo for all of them. */
-async function markManyDone(list: InboxItem[], done = true) {
-  const all = await Promise.allSettled(list.map((r) => change(r, { status: done ? "done" : "new", ...(done ? {} : { archived: false }) })))
-  const now = all.flatMap((x) => (x.status === "fulfilled" ? [x.value] : []))
+async function markManyDone(list: InboxItem[], done = true, pinned: boolean[] = []) {
+  const all = await Promise.allSettled(list.map((r, i) => change(r, { status: done ? "done" : "new", ...(done ? {} : { archived: false, ...(pinned[i] ? { pinned: true } : {}) }) })))
+  const ok = list.flatMap((was, i) => { const x = all[i]; return x.status === "fulfilled" ? [{ was, now: x.value }] : [] })
+  const now = ok.map((x) => x.now)
+  // (Undo of a settle pins again what was pinned)
   if (now.length) notify(done ? `Settled ${plural(now.length, "result")}` : `Put back ${plural(now.length, "result")} to review`,
-    { action: { label: "Undo", run: () => void markManyDone(now, !done) } })
+    { action: { label: "Undo", run: () => void markManyDone(now, !done, done ? ok.map((x) => !!x.was.pinned) : []) } })
 }
 
 /** Done (or back in the inbox) for several events: one toast, its Undo for all of them. */
@@ -278,7 +281,7 @@ function markManyEventsDone(evs: InboxEvent[], done = true) {
   if (!evs.length) return
   void markEventsDone(evs.map((e) => e.id), done)
   notify(evs.length === 1 ? (done ? `Settled “${evs[0].title}”` : `Back in the inbox: “${evs[0].title}”`) : (done ? `Settled ${plural(evs.length, "item")}` : `Put back ${plural(evs.length, "item")} in the inbox`),
-    { action: { label: "Undo", run: () => void markEventsDone(evs.map((e) => e.id), !done) } })
+    { action: { label: "Undo", run: () => void (done ? unsettle(evs) : markEventsDone(evs.map((e) => e.id), true)) } })
 }
 
 /** What the selected rows can do: each item only for the kind it's about (results, events), on all of them. */
@@ -604,6 +607,9 @@ function RowReply({ e, close }: { e: InboxEvent; close: (back?: boolean) => void
   )
 }
 
+/** The rows whose reply box is open: still open when the row is drawn anew (its thread moved to another shelf). */
+const replyingTo = new Set<string>()
+
 function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touched?: (id: string) => void }) {
   const read = e.read && !fresh, done = e.state === "done" && !fresh
   const key = eventKey(e), picked = useSelected(SELECT, key)
@@ -614,7 +620,8 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const line = e.preview || (e.body ? snippet(e.body) : "")
   const draft = useHasDraft(draftKey(e))
   const where = standing(e)
-  const [replying, setReplying] = useState(false)
+  const [replying, setOpen] = useState(() => replyingTo.has(e.id))
+  const setReplying = (on: boolean) => { if (on) replyingTo.add(e.id); else replyingTo.delete(e.id); setOpen(on) }
   const inPlace = repliedInPlace(e)
   const reply = () => { haptic("light"); setReplying(!replying); if (!replying) touched?.(e.id) }
   return (

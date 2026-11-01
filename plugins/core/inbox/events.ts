@@ -103,6 +103,12 @@ export function markEventsDone(ids: string[], done = true) {
   return Promise.all(ids.map((id) => op("inbox.settle", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't settle it" : "Couldn't bring it back")(e); return false })
 }
 
+/** Undo a settle: back in the inbox, pinned again if they were. */
+export function unsettle(evs: InboxEvent[]) {
+  const pinned = evs.filter((e) => e.pinned).map((e) => e.id)
+  return markEventsDone(evs.map((e) => e.id), false).then((ok) => { if (ok && pinned.length) pinEvents(pinned, true) })
+}
+
 /** Whether it can be snoozed: not a gate nor a permission asked (they'd wait unseen), nor what's done. */
 export const snoozable = (e: InboxEvent) => !e.gate && e.state !== "done" && !(e.state === "open" && e.ask === "permission")
 
@@ -119,7 +125,8 @@ export function snoozeEvents(ids: string[], until: number | null) {
 export function pinEvents(ids: string[], on: boolean) {
   const want = new Set(ids)
   const before = getEvents().events
-  set(before.map((e) => (!want.has(e.id) || (on && e.state === "done") ? e : { ...e, pinned: on || undefined })))
+  set(before.map((e) => (!want.has(e.id) || (on && e.state === "done") ? e
+    : { ...e, pinned: on || undefined, ...(!on && isMessage(e) && !e.gate && e.read && e.state === "open" ? { state: "done" as const } : {}) })))
   void post("inbox/events/pin", { ids, pinned: on }).catch(undo(before, on ? "Couldn't pin it" : "Couldn't unpin it"))
 }
 
