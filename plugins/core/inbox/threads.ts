@@ -3,9 +3,9 @@
 import { snoozed, snoozeMs } from "./snooze.ts"
 
 /** An event as the lists read it (plugin.ts' InboxEvent). */
-type Ev = { id: string; t: number; kind: string; state: string; read?: boolean; snoozed?: number; link?: string }
+type Ev = { id: string; t: number; kind: string; state: string; read?: boolean; snoozed?: number; link?: string; pinned?: boolean }
 /** A result as the lists read it (an Inbox/ file). */
-type Result = { id: string; status: string; archived?: unknown; snoozed?: string | null; created?: string | null; updated?: string | null }
+type Result = { id: string; status: string; archived?: unknown; snoozed?: string | null; created?: string | null; updated?: string | null; pinned?: boolean }
 
 /** A message: news, dealt with once read (not a session's thread, nor something asking the user). */
 export const isMessage = (e: Pick<Ev, "kind">) => e.kind !== "session" && e.kind !== "waiting"
@@ -21,6 +21,8 @@ export const latestOf = (r: Result, now = Date.now()) => Math.max(snoozeMs(r.upd
 export const joined = (events: Ev[], all = false) => new Set(events.filter((e) => (all || e.state !== "done") && e.link).map((e) => e.link!.replace(/^file:/, "")))
 
 export type Lists<E extends Ev, R extends Result> = {
+  /** What the user pinned, kept on top whatever it waits on until it's done or unpinned, newest first. */
+  pinned: { events: E[]; results: R[] }
   /** Sessions and asks open for the user, newest first. */
   needs: E[]
   /** Results to review (not a thread's record), the latest first. */
@@ -40,15 +42,19 @@ export function lists<E extends Ev, R extends Result>(events: E[], results: R[],
   const here = events.filter((e) => !away(e) && (e.state !== "done" || fresh.has(e.id)))
   const links = joined(events), ever = joined(events, true)
   const open = results.filter((r) => reviewing(r) && !links.has(`${r.id}.md`))
+  const pin = here.filter((e) => e.pinned && e.state !== "done"), rest = here.filter((e) => !pin.includes(e))
+  const review = open.filter((r) => !snoozed(r.snoozed, now)).sort((a, b) => latestOf(b, now) - latestOf(a, now))
   return {
-    needs: here.filter(waitsOnYou),
-    review: open.filter((r) => !snoozed(r.snoozed, now)).sort((a, b) => latestOf(b, now) - latestOf(a, now)),
-    working: here.filter((e) => e.state === "working"),
-    messages: here.filter((e) => isMessage(e) && (e.state === "open" || fresh.has(e.id))),
+    pinned: { events: pin, results: review.filter((r) => r.pinned) },
+    needs: rest.filter(waitsOnYou),
+    review: review.filter((r) => !r.pinned),
+    working: rest.filter((e) => e.state === "working"),
+    messages: rest.filter((e) => isMessage(e) && (e.state === "open" || fresh.has(e.id))),
     snoozed: { events: events.filter(away), results: open.filter((r) => snoozed(r.snoozed, now)) },
     done: { events: events.filter((e) => e.state === "done" && !fresh.has(e.id)), results: results.filter((r) => !reviewing(r) && !ever.has(`${r.id}.md`)) },
   }
 }
 
-/** The badge's count: what needs the user and the results to review. */
-export const countOf = (l: Pick<Lists<Ev, Result>, "needs" | "review">) => l.needs.length + l.review.length
+/** The badge's count: what needs the user and the results to review, pinned or not. */
+export const countOf = (l: Pick<Lists<Ev, Result>, "needs" | "review" | "pinned">) =>
+  l.needs.length + l.review.length + l.pinned.events.filter(waitsOnYou).length + l.pinned.results.length

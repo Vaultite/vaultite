@@ -14,6 +14,8 @@ export type InboxItem = {
   archived?: boolean
   /** Snoozed until then (a local stamp): out of what's to review till it comes back. */
   snoozed?: string | null
+  /** Pinned on top of the inbox till it's done. */
+  pinned?: boolean
   /** An agent's report (inbox.report): who wrote it, its session, the app terminal and the machine it ran on, for the reply. */
   agent?: string; session?: string; terminal?: string; machine?: string
 }
@@ -57,6 +59,8 @@ export type InboxEvent = {
   machine?: string; machineLabel?: string
   /** Snoozed until then (ms): out of the lists till it comes back, unread on top. */
   snoozed?: number
+  /** Pinned on top of the inbox till it's done or unpinned. */
+  pinned?: boolean
   /** The session that delegated this one its task, by its name then (its own thread, if any, by its terminal or session). */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import {
   AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
-  Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, ShieldAlert, Trash2, X,
+  Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
   askMove, askMoveMany, backDetail, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
@@ -11,7 +11,7 @@ import {
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, pinEvents, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
@@ -64,7 +64,7 @@ const pathOf = (r: InboxItem) => `${r.id}.md`
 /** Change a result's fields, on screen at once; it answers the result as it is now (done moves it into Inbox/.archive/:
  *  a new id). */
 function change(r: InboxItem, fields: Record<string, unknown>): Promise<InboxItem> {
-  const now = { ...fields, ...("status" in fields ? { archived: fields.status === "done" } : {}) }
+  const now = { ...fields, ...("status" in fields ? { archived: fields.status === "done", ...(fields.status === "done" ? { pinned: undefined } : {}) } : {}) }
   return optimistic((s) => ({ ...s, inbox: (s.inbox ?? []).map((x) => (x.id === r.id ? { ...x, ...now } as InboxItem : x)) }),
     () => put<InboxItem | null>(`inbox/${encodeURIComponent(r.id)}`, fields).then((out) => out ?? r), "Couldn't change it")
 }
@@ -147,6 +147,26 @@ export function SnoozeSheet({ keys }: { keys: string[] }) {
   )
 }
 
+// ---------- pin: kept on top whatever it waits on, till it's done or unpinned
+
+/** Pin results and events (by selection key), or unpin them: one toast, its Undo for all. */
+export function pinKeys(keys: string[], on: boolean) {
+  const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && open(r) && !!r.pinned !== on)
+  const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && e.state !== "done" && !!e.pinned !== on)
+  const n = results.length + evs.length
+  if (!n) return
+  const apply = (to: boolean) => {
+    for (const r of results) void change({ ...r, pinned: !to }, { pinned: to || null })
+    if (evs.length) pinEvents(evs.map((e) => e.id), to)
+  }
+  apply(on)
+  const what = n === 1 ? `“${results[0]?.title ?? evs[0].title}”` : plural(n, "item")
+  notify(`${on ? "Pinned" : "Unpinned"} ${what}`, { action: { label: "Undo", run: () => apply(!on) } })
+}
+const pinItem = (keys: string[], pinned: boolean): MenuItem => pinned
+  ? { label: "Unpin", icon: PinOff, run: () => pinKeys(keys, false) }
+  : { label: "Pin", icon: Pin, run: () => pinKeys(keys, true) }
+
 // ---------- several at once (selected together: ⌘- or ⇧-click, a phone's Select)
 
 /** The Inbox's selection: results as `r:<id>`, events as `e:<id>`, wherever the Inbox is drawn. */
@@ -182,6 +202,9 @@ function selectionItems(store: Store, keys: string[]): MenuItem[] {
   // (what's snoozed is in the Snoozed list: picked there, it comes back)
   const later = [...results.filter((r) => open(r) && snoozed(r.snoozed)).map(resultKey), ...live.filter((e) => snoozed(e.snoozed)).map(eventKey)]
   const soon = [...fresh.map(resultKey), ...live.filter((e) => snoozable(e) && !snoozed(e.snoozed)).map(eventKey)]
+  const pinnable = [...fresh, ...results.filter((r) => open(r) && snoozed(r.snoozed))], unpinned = [...pinnable.filter((r) => !r.pinned).map(resultKey), ...live.filter((e) => !e.pinned).map(eventKey)]
+  if (unpinned.length) out.push(pinItem(unpinned, false))
+  else if (pinnable.length || live.length) out.push(pinItem([...pinnable.map(resultKey), ...live.map(eventKey)], true))
   if (soon.length) out.push(snoozeMenu(soon))
   if (later.length) out.push({ label: "Unsnooze", icon: AlarmClockOff, run: () => snoozeKeys(later, null) })
   if (dealt.length) out.push({ label: "Back to review", icon: RotateCcw, run: () => void markManyDone(dealt, false) })
@@ -217,6 +240,7 @@ const resultItems = (r: InboxItem): MenuItem[] => [
   { label: "Open", icon: FileText, run: () => openFile(pathOf(r)) },
   ...(r.source && /^https?:/.test(r.source) ? [{ label: "Open the page", icon: Globe, run: () => void window.open(r.source, "_blank", "noopener") }] : []),
   { label: "File to…", icon: FolderInput, sep: true, run: () => fileTo(r) },
+  pinItem([resultKey(r)], !!r.pinned),
   snoozeMenu([resultKey(r)]),
   ...pluginFileGroups(pathOf(r), "inbox").rest.flat().map((it, i) => ({ ...it, sep: i === 0 })),
 ]
@@ -239,6 +263,7 @@ const eventItems = (e: InboxEvent, shownNew: boolean, touched?: (id: string) => 
   shownNew
     ? { label: "Mark as read", icon: MailOpen, run: () => { markRead([e.id]); touched?.(e.id) } }
     : { label: "Mark as unread", icon: Mail, run: () => markUnread([e.id]) },
+  ...(e.state !== "done" ? [pinItem([eventKey(e)], !!e.pinned)] : []),
   ...(snoozable(e) ? [snoozeMenu([eventKey(e)])] : []),
   e.state === "done"
     ? { label: "Back to inbox", icon: RotateCcw, sep: true, run: () => markManyEventsDone([e], false) }
@@ -391,14 +416,15 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   const { unread, events } = useEvents()
   const l = listsOf(store, events)
   // (what needs you always shows; then messages, then what agents work on, up to 8 rows)
-  const { shown: rest, more, all, toggle } = useCap(l.needs, [...l.messages, ...l.working], 8)
+  const { shown: rest, more, all, toggle } = useCap([...l.pinned.events, ...l.needs], [...l.messages, ...l.working], 8)
   useTick()
   useBack(store)
   useInboxSelect(store)
   if (!open) return null
+  const pin = <Pin className="size-3 shrink-0 text-tertiary" strokeWidth={2.25} aria-label="Pinned" />
   const row = (e: InboxEvent) => (
     <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} data-state={e.state} select={eventKey(e)} swipe={() => eventSwipe(e)}
-      label={e.preview || e.body ? `${e.title}: ${e.preview || snippet(e.body!)}` : e.title} tag={<DraftTag to={draftKey(e)} short />}
+      label={e.preview || e.body ? `${e.title}: ${e.preview || snippet(e.body!)}` : e.title} tag={<>{e.pinned && pin}<DraftTag to={draftKey(e)} short /></>}
       time={e.state === "working" ? "working" : fmtAgo(e.t, { short: true })} dim={e.state === "working"}
       icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
       <GateButtons e={e} className={small} size="size-3.5" />
@@ -413,9 +439,10 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
         <HeadingButton icon={Maximize2} label="Open inbox" onClick={openInbox} />
       </SidebarHeading>
       <div className="flex flex-col gap-px pb-1" data-select-list={SELECT}>
+        {l.pinned.events.map(row)}
         {l.needs.map(row)}
-        {l.review.map((r) => (
-          <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} tag={<DraftTag to={pathOf(r)} short />} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
+        {[...l.pinned.results, ...l.review].map((r) => (
+          <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} tag={<>{r.pinned && pin}<DraftTag to={pathOf(r)} short /></>} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
             icon={<Badged on><FileText className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /></Badged>} onClick={() => openFile(pathOf(r))} onContextMenu={menuFor(rowMenu(SELECT, resultKey(r), resultItemsMenu(r)))}>
             <HeadingButton icon={Check} label="Done" onClick={stop(() => { haptic("medium"); void markDone(r) })} />
             <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([resultKey(r)])} />
@@ -423,7 +450,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           </PanelRow>
         ))}
         {rest.map(row)}
-        {!l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you</p>}
+        {!l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you</p>}
         <FoldButton more={more} all={all} toggle={toggle} className="h-7 rounded-[5px] pl-1.5 text-[13px] hover:bg-foreground/[0.04]" />
       </div>
     </div>
@@ -586,7 +613,7 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   useInboxSelect(store)
   // (while the events come, as many skeleton rows as there were last time; none: the Loading line, as tall as "Nothing needs you.")
   const loading = !!ne && !ready
-  const live = ne ? [...l.needs, ...l.working, ...l.messages] : []
+  const live = ne ? [...l.pinned.events, ...l.needs, ...l.working, ...l.messages] : []
   const kept = ne ? `inbox:${dealt ? "page" : "block"}:events` : null
   const rows = useKeptCount(kept, loading ? undefined : live.length)
   // (a row with a body is taller: as many of those as last time too)
@@ -594,9 +621,13 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   const row = (e: InboxEvent) => <EventRow key={e.id} e={e} fresh={fresh?.has(e.id)} touched={touched} />
   const past = dealt && <><Snoozed store={store} /><Settled store={store} fresh={fresh} /></>
   const results = l.review.slice(0, nr)
-  if (!results.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>Nothing needs you.</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
+  // (pinned on top, the latest first, its results and threads together)
+  const pinned = [...(ne ? l.pinned.events.map((e) => ({ at: e.t, row: row(e) })) : []), ...(nr ? l.pinned.results.map((r) => ({ at: latestOf(r), row: <ResultRow key={r.id} r={r} /> })) : [])]
+    .sort((a, b) => b.at - a.at).map((x) => x.row)
+  if (!pinned.length && !results.length && !live.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>Nothing needs you.</Empty>}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
   return (
     <div className="flex flex-col gap-4" data-select-list={SELECT}>
+      <Section title="Pinned" attr="data-inbox-pinned" rows={pinned} max={dealt ? 50 : Math.max(ne, nr)} />
       <Section title="Needs you" attr="data-inbox-needs" rows={ne ? l.needs.map(row) : []} max={dealt ? 50 : ne}
         loading={loading && rows > 0 ? <LoadingRows count={rows} meta={bodies} lead={<span className="size-[18px] shrink-0" />} /> : undefined} />
       <Section title="To review" attr="data-inbox-results" rows={results.map((r) => <ResultRow key={r.id} r={r} />)} max={nr} />

@@ -81,7 +81,7 @@ export function markRead(ids?: string[]) {
   const want = ids ? new Set(ids) : null
   if (!getEvents().events.some((e) => !e.read && (!want || want.has(e.id)))) return
   const before = getEvents().events
-  set(getEvents().events.map((e) => (!e.read && (!want || want.has(e.id)) ? { ...e, read: true, kept: undefined, ...(isMessage(e) && e.state === "open" ? { state: "done" as const } : {}) } : e)))
+  set(getEvents().events.map((e) => (!e.read && (!want || want.has(e.id)) ? { ...e, read: true, kept: undefined, ...(isMessage(e) && e.state === "open" && !e.pinned ? { state: "done" as const } : {}) } : e)))
   void post("inbox/events/read", ids ? { ids } : {}).catch(undo(before, "Couldn't mark it read"))
 }
 
@@ -98,7 +98,7 @@ export function markUnread(ids: string[]) {
 export function markEventsDone(ids: string[], done = true) {
   const want = new Set(ids)
   const before = getEvents().events
-  set(before.map((e) => (!want.has(e.id) ? e : done ? { ...e, state: "done" as const, read: true, kept: undefined, snoozed: undefined, questions: undefined }
+  set(before.map((e) => (!want.has(e.id) ? e : done ? { ...e, state: "done" as const, read: true, kept: undefined, snoozed: undefined, questions: undefined, pinned: undefined }
     : e.state === "done" ? { ...e, state: "open" as const } : e)))
   return Promise.all(ids.map((id) => op("inbox.done", { item: id, ...(done ? {} : { undo: true }) }))).then(() => true, (e) => { undo(before, done ? "Couldn't mark it done" : "Couldn't bring it back")(e); return false })
 }
@@ -113,6 +113,14 @@ export function snoozeEvents(ids: string[], until: number | null) {
   set(before.map((e) => (!want.has(e.id) || e.gate || e.state === "done" || (until !== null && !snoozable(e)) ? e : until !== null ? { ...e, snoozed: until }
     : e.snoozed ? { ...e, state: "open" as const, read: false, snoozed: undefined, t: Date.now() } : e)))
   void post("inbox/events/snooze", { ids, until }).catch(undo(before, "Couldn't snooze it"))
+}
+
+/** Pin events on top of the inbox (till done), or unpin them (`on` false). */
+export function pinEvents(ids: string[], on: boolean) {
+  const want = new Set(ids)
+  const before = getEvents().events
+  set(before.map((e) => (!want.has(e.id) || (on && e.state === "done") ? e : { ...e, pinned: on || undefined })))
+  void post("inbox/events/pin", { ids, pinned: on }).catch(undo(before, on ? "Couldn't pin it" : "Couldn't unpin it"))
 }
 
 /** Seeing the Inbox reads its messages (they're done), but not what the user marked unread, nor a thread or an ask:

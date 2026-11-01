@@ -38,6 +38,10 @@ export default async ($: VaultTest) => {
       check("inbox lists: a message read while shown stays where it was (fresh), not under Done", ids(seen.messages) === "m1" && !seen.done.events.some((e) => e.id === "m1"), seen.messages)
       const after = lists(es.map((e) => (e.id === "s1" ? { ...e, state: "done" } : e)), rs)
       check("inbox lists: its thread done, a report still new is to review again (the thread no longer stands for it)", ids(after.review).includes("Inbox/Fix done · A"), after.review)
+      const pin = lists(es.map((e) => (e.id === "s2" || e.id === "m1" || e.id === "s3" ? { ...e, pinned: true } : e)), rs.map((r) => (r.id === "Inbox/Plants" ? { ...r, pinned: true } : r)))
+      check("inbox lists: what's pinned is on top whatever it waits on, out of the other lists; a done one isn't; the badge counts what's pinned to review",
+        ids(pin.pinned.events) === "s2,m1" && ids(pin.pinned.results) === "Inbox/Plants" && !pin.working.length && !pin.messages.length && !pin.review.length &&
+        ids(pin.done.events) === "s3,m2" && countOf(pin) === 3, pin)
     }
     check("a thread after a quiet turn: what it said stays to read while the same turn goes on; the user's next message, or an ask gone, settles it",
       stillOpen({ state: "open", ask: "answer", turn: "a" }, "a") && stillOpen({ state: "open", ask: "answer" }) && !stillOpen({ state: "open", ask: "answer", turn: "a" }, "b") &&
@@ -930,6 +934,33 @@ export default async ($: VaultTest) => {
     ;[, l] = await api("GET", "inbox/events")
     e = l.events.find((x: Any) => x.id === ev.event.id)
     check("inbox events snooze: marked unread, it's back", e.read === false && !e.snoozed, e)
+
+    await api("POST", "inbox", { title: "Pin me", body: "Keep it on top." })
+    cr = await vau("inbox", "pin", "Inbox/Pin me.md")
+    list = await vau("inbox")
+    check("vau inbox pin: the result is pinned in its file, listed under Pinned, not To review",
+      cr.code === 0 && /^pinned: true$/m.test(read("Inbox/Pin me.md")) && /Pinned:\n  Inbox\/Pin me\.md/.test(list.out) && !/To review:[^]*Pin me/.test(list.out), [cr, list.out])
+    cr = await vau("inbox", "pin", "Inbox/Pin me.md", "--off")
+    check("vau inbox pin --off: unpinned, to review again", cr.code === 0 && !/^pinned: true/m.test(read("Inbox/Pin me.md")) && /Unpinned/.test(cr.out), [cr, read("Inbox/Pin me.md")])
+    await vau("inbox", "pin", "Inbox/Pin me.md")
+    ;[, b] = await api("PUT", "inbox/Pin me", { status: "done" })
+    check("pin: done unpins it", b.status === "done" && !b.pinned && !/^pinned: true/m.test(read("Inbox/.archive/Pin me.md")), b)
+    const [, pe] = await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Pin this event" })
+    ;[st] = await api("POST", "inbox/events/pin", { ids: [pe.event.id] })
+    ;[, l] = await api("GET", "inbox/events")
+    e = l.events.find((x: Any) => x.id === pe.event.id)
+    check("inbox events pin: pinned, still open", st === 200 && e.pinned === true && e.state === "open", e)
+    await api("POST", "inbox/events/read", { ids: [pe.event.id] })
+    ;[, l] = await api("GET", "inbox/events")
+    e = l.events.find((x: Any) => x.id === pe.event.id)
+    check("inbox events pin: a pinned message read stays, till it's done", e.read === true && e.state === "open" && e.pinned === true, e)
+    cr = await vau("inbox")
+    check("vau inbox: a pinned event is listed under Pinned", new RegExp(`Pinned:\\n[^]*\\(${pe.event.id}\\)`).test(cr.out) && !new RegExp(`Messages:[^]*${pe.event.id}`).test(cr.out), cr.out)
+    await api("POST", "inbox/events/done", { ids: [pe.event.id] })
+    ;[, l] = await api("GET", "inbox/events")
+    e = l.events.find((x: Any) => x.id === pe.event.id)
+    cr = await vau("inbox", "pin", pe.event.id)
+    check("inbox events: done unpins it, and what's done can't be pinned", e.state === "done" && !e.pinned && cr.code !== 0, [e, cr])
 
     const nine = new Date(2026, 9, 20, 9, 0)
     check("snooze: a time alone is its next one", parseUntil("07:30", nine)?.getTime() === new Date(2026, 9, 21, 7, 30).getTime() &&

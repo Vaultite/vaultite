@@ -35,11 +35,11 @@ plugin.kind(new Kind({
       title: truthy(fm.title) ? str(fm.title) : stem, status, from: truthy(fm.from) ? str(fm.from) : "",
       source: truthy(fm.source) ? str(fm.source) : "", created: fm.created ?? null, updated: fm.updated ?? null, origin: truthy(fm.origin) ? str(fm.origin) : "",
       agent: truthy(fm.agent) ? str(fm.agent) : "", session: truthy(fm.session) ? str(fm.session) : "", terminal: truthy(fm.terminal) ? str(fm.terminal) : "",
-      machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, body,
+      machine: truthy(fm.machine) ? str(fm.machine) : "", snoozed: truthy(fm.snoozed) ? str(fm.snoozed) : null, pinned: fm.pinned === true, body,
     }, STATUSES.includes(status) ? [] : [`status \`${status}\` is not one of ['new', 'done']`]]
   },
   render: (r) => [{ status: r.status || "new", from: r.from || null, source: r.source || null, created: r.created, updated: r.updated || null, origin: r.origin || null,
-    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null }, r.body || ""],
+    agent: r.agent || null, session: r.session || null, terminal: r.terminal || null, machine: r.machine || null, snoozed: r.snoozed || null, pinned: r.pinned === true || null }, r.body || ""],
   // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
   // so. Taking either back (Back to review, Undo, the same page added again) makes it new, out of the archive.
   prepare(r, old) {
@@ -50,8 +50,9 @@ plugin.kind(new Kind({
     if (done) r.status = "done"
     else if (reopened) r.status = "new"
     r.archived = done
-    // (what's dealt with isn't waiting to come back)
+    // (what's dealt with isn't waiting to come back, nor kept on top)
     if (done || reopened) r.snoozed = null
+    if (done) r.pinned = null
     return r
   },
   // To review first, the latest first (a thread by its last report); then what's dealt with, the last done first. An
@@ -73,9 +74,9 @@ export const latest = (r: Item) => {
 }
 
 /** Results as the inbox's lists read them (threads.ts). */
-type Listed = Item & { id: string; status: string; archived: boolean; snoozed: string | null; created: string | null; updated: string | null }
+type Listed = Item & { id: string; status: string; archived: boolean; snoozed: string | null; created: string | null; updated: string | null; pinned: boolean }
 const asResults = (items: Item[]) => items.map((r): Listed => ({ ...r, id: str(r.id), status: str(r.status), archived: isArchived(r),
-  snoozed: truthy(r.snoozed) ? str(r.snoozed) : null, created: truthy(r.created) ? str(r.created) : null, updated: truthy(r.updated) ? str(r.updated) : null }))
+  snoozed: truthy(r.snoozed) ? str(r.snoozed) : null, created: truthy(r.created) ? str(r.created) : null, updated: truthy(r.updated) ? str(r.updated) : null, pinned: r.pinned === true }))
 
 /** Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this
  *  plugin is on. */
@@ -131,6 +132,8 @@ export type InboxEvent = {
   /** Snoozed until then (ms): out of the lists till it comes back unread, on top, told again. News from its session
    *  wakes it. */
   snoozed?: number
+  /** Pinned by the user: on top of the inbox whatever it waits on, until it's done or unpinned. */
+  pinned?: boolean
   /** The session that delegated this one its task (Delegation), by its name then: the thread says "from" it. */
   parent?: { title: string; agent: string; terminal?: string; session?: string }
 }
@@ -360,10 +363,10 @@ function told(e: InboxEvent) {
   } catch { /* not loaded by an App (a test calling it alone) */ }
 }
 
-/** `e` seen: a message is dealt with by it (done); a session or an ask stays open until it's done. */
+/** `e` seen: a message is dealt with by it (done), unless pinned; a session or an ask stays open until it's done. */
 const readThere = (e: InboxEvent): InboxEvent => {
   const { kept: _, ...rest } = e
-  return { ...rest, read: true, ...(isMessage(e) && e.state === "open" ? { state: "done" as const } : {}) }
+  return { ...rest, read: true, ...(isMessage(e) && e.state === "open" && !e.pinned ? { state: "done" as const } : {}) }
 }
 /** `e` marked unread by hand (kept so), back if it was snoozed: a message read is open again. */
 const unreadThere = (e: InboxEvent): InboxEvent => {
@@ -373,7 +376,7 @@ const unreadThere = (e: InboxEvent): InboxEvent => {
 /** `e` done (dealt with: no longer snoozed, nothing left to pick), or open again (`done` false: Back to inbox). */
 const doneAs = (e: InboxEvent, done: boolean): InboxEvent => {
   if (!done) return e.state === "done" ? { ...e, state: "open" } : e
-  const { snoozed: _, kept: __, questions: ___, ...rest } = e
+  const { snoozed: _, kept: __, questions: ___, pinned: ____, ...rest } = e
   return { ...rest, state: "done", read: true }
 }
 
@@ -684,6 +687,30 @@ plugin.route("POST", "inbox/events/snooze", async (req) => {
   }
   return { unread: unread(local) }
 })
+
+/** Pin events (on top until done or unpinned), or unpin them (`pinned` false); what's done can't be. */
+plugin.route("POST", "inbox/events/pin", async (req) => {
+  await owner(req)
+  const b = (req.body ?? {}) as Item
+  if (!Array.isArray(b.ids) || !b.ids.length) throw new HTTPError(400, "ids: which events to pin")
+  const on = b.pinned !== false
+  const local = !!req.query.local
+  for (const [m, some] of byMachine(b.ids.map(String))) {
+    if (!m) pin(new Set(some), on)
+    else if (!local) await onMachine(m, "POST", "inbox/events/pin?local=1", { ids: some, pinned: on }, (e) => (isOne(e, some) ? pinnedAs(e, on) : e))
+  }
+  return { pinned: on }
+})
+
+/** `e` pinned (or not): only what isn't done yet. */
+export function pinnedAs(e: InboxEvent, on: boolean): InboxEvent {
+  if (on) return e.state === "done" ? e : { ...e, pinned: true }
+  const { pinned: _, ...rest } = e
+  return rest
+}
+function pin(ids: Set<string>, on: boolean) {
+  for (const old of list().filter((e) => ids.has(e.id) && !!e.pinned !== on)) put(pinnedAs(old, on), old, list(), false)
+}
 
 /** `e` snoozed till `until` (out of the lists meanwhile), or woken (null: open, unread, on top, told again); null when
  *  it can't be (a gate or a permission would wait unseen; what's done isn't to come back). */
@@ -1222,7 +1249,7 @@ inbox.snooze take it). done: the latest done ones too.
     const l = lists(ev.events as InboxEvent[], asResults(items ?? []))
     const row = (r: Item) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null })
     const cut = <T>(xs: T[]) => xs.slice(0, limit)
-    return { needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
+    return { pinned: [...l.pinned.events, ...l.pinned.results.map(row)], needs: cut(l.needs), results: cut(l.review.map(row)), working: cut(l.working), messages: cut(l.messages),
       snoozed: [...l.snoozed.results.map((r) => ({ ...row(r), until: str(r.snoozed) })),
         ...l.snoozed.events.map((e) => ({ id: e.id, title: e.title, until: stampOf(new Date(e.snoozed!)) }))],
       done: done ? cut(l.done.events) : l.done.events.length }
@@ -1232,6 +1259,7 @@ inbox.snooze take it). done: the latest done ones too.
     const line = (e: InboxEvent) => `  ${localTime(e.t)}  ${e.read ? " " : "*"} ${e.title}${e.state === "open" && e.ask ? ` [${NEEDS[e.ask] ?? e.ask}]` : ""}` +
       `${e.preview || e.body ? `: ${clip(e.preview || e.body, 160)}` : ""}${e.machineLabel ? ` (on ${e.machineLabel})` : ""}  (${e.id})`
     const list = (title: string, xs: string[]) => { if (xs.length) out.push(`${out.length ? "\n" : ""}${title}:`, ...xs) }
+    list("Pinned", r.pinned.map((x: Item) => (x.path ? `  ${x.path}${x.from ? `  (from ${x.from})` : ""}` : line(x as InboxEvent))))
     list("Needs you", r.needs.map(line))
     list("To review", r.results.map((x: Item) => `  ${x.path}${x.from ? `  (from ${x.from})` : ""}`))
     list("Working on it", r.working.map(line))
@@ -1812,6 +1840,39 @@ morning), a while (30m, 3h, 2d), a local time (2026-10-24 09:00), or now to brin
 })
 
 plugin.op({
+  id: "inbox.pin",
+  cli: "inbox pin",
+  summary: "Pin something in the inbox (a result, or a thread or an event) on top of it, whatever it waits on, until it's done or unpinned.",
+  help: `What the user's Pin does: it stays on top of the inbox, under Pinned, while it's to review or open, an agent works on
+it or it's read; done (or archived) unpins it. off unpins it.
+
+  vau inbox pin "Inbox/Plant care apps compared.md"
+  vau inbox pin lzk3p2-a1b2c3 --off`,
+  kind: "write",
+  params: {
+    item: { type: "string", required: true, description: "the result (Inbox/<Title>.md) or the event's id (vau inbox lists them)" },
+    off: { type: "boolean", description: "unpin it" },
+  },
+  args: ["item"],
+  run: async (p, ctx) => {
+    const item = str(p.item).trim(), on = p.off !== true
+    if (EVENT_ID.test(item)) {
+      const e = await eventFor(ctx, item)
+      if (on && e.state === "done") throw new OpError(`${item} is done: bring it back first (vau inbox done ${item} --undo)`)
+      await ctx.api("POST", "inbox/events/pin", { ids: [e.id], pinned: on })
+      return { item: e.id, title: e.title, pinned: on }
+    }
+    await plugin.vault.sync()
+    const r = resultAt(item)
+    if (!r || r.status !== "new" || isArchived(r)) throw new OpError(`no ${item} to review in the inbox`, 404)
+    await ctx.api("PUT", `inbox/${encodeURIComponent(r.id)}`, { pinned: on || null })
+    return { item: `${r.id}.md`, title: r.title, pinned: on }
+  },
+  text: (r) => `${r.pinned ? "Pinned" : "Unpinned"}: ${r.title ?? r.item}.`,
+  did: (p) => ({ action: "save", text: `${p.off ? "Unpinned" : "Pinned"} ${quoted(p.item)} in the inbox` }),
+})
+
+plugin.op({
   id: "inbox.hold",
   cli: "inbox hold",
   summary: "Hold the inbox: nothing is told (toasts, the Mac's and the phone's notifications) until a time, then one line of what came meanwhile.",
@@ -2118,14 +2179,14 @@ plugin.block("inbox", (ctx) => {
   const o = ctx.options
   const nr = Number(o.results ?? 10), ne = Number(o.events ?? 5)
   const l = lists(plugin.isOff() ? [] : shown(), asResults(plugin.vault.items("inbox")))
-  const results = l.review.slice(0, nr)
-  // (what needs the user first, then what agents work on, then messages)
-  const es = [...l.needs, ...l.working, ...l.messages].slice(0, ne)
+  const results = [...l.pinned.results, ...l.review].slice(0, nr)
+  // (what's pinned and what needs the user first, then what agents work on, then messages)
+  const es = [...l.pinned.events, ...l.needs, ...l.working, ...l.messages].slice(0, ne)
   ctx.source(nr > 0 ? results : [])
   const parts: string[] = []
   if (ne > 0 && es.length) {
     parts.push(`From your agents:\n${bullets(es.map((e) => [fmtAgo(e.t), `${e.title}${e.preview || e.body ? `: ${clip(e.preview || e.body, 200)}` : ""}`,
-      waitsOnYou(e) ? "needs you" : e.state === "working" ? "working on it" : !e.read && "unread", e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")))}`)
+      e.pinned && "pinned", waitsOnYou(e) ? "needs you" : e.state === "working" ? "working on it" : !e.read && "unread", e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")))}`)
   }
   if (nr > 0 && results.length) {
     parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(stampAt(latest(r)))].filter(Boolean).join(" · ")))}`)

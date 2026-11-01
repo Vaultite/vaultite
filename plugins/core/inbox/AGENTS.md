@@ -20,6 +20,7 @@ What it says, as Markdown.
   into `Inbox/.archive/`. A clip lands here with `inbox: true`.
 - Snooze (`vau inbox snooze <path|event id> --until tomorrow`, or 3h, weekend, now...): out of the way until then, then
   back on top, unread, and told again (toast, phone). A snoozed thread stays open meanwhile; news from its session wakes it.
+- Pin (`vau inbox pin <path|event id>`, `--off` unpins): kept on top under Pinned whatever it waits on, until it's done.
 - Hold (`vau inbox hold 30m --label "Practice guitar"`, or 07:30, off): nothing is told (toasts, the Mac's and the phone's
   notifications) until then, on every machine; what came is unread, summed up in one line when it ends.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
