@@ -7,7 +7,7 @@ const TINT = "var(--importer)"
 const TOAST = "importer"
 const HEADERS = { "X-Vaultite-Client": "app" }
 
-const LABEL = { notion: "Notion", evernote: "Evernote" }
+const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep" }
 
 function summary(j: Job) {
   if (j.state === "failed") return `Couldn't import ${j.name}: ${j.error ?? "it failed"}`
@@ -49,13 +49,13 @@ function pickExport() {
   input.click()
 }
 
-const HOW = "Notion: Settings, Export all workspace content (or a page's menu, Export), as Markdown & CSV. Evernote: a notebook's menu, Export notebook, as ENEX. Importing again adds only what's new."
+const HOW = "Notion: Settings, Export all workspace content (or a page's menu, Export), as Markdown & CSV. Evernote: a notebook's menu, Export notebook, as ENEX. Google Keep: takeout.google.com with Keep ticked. Importing again adds only what's new."
 
 function SettingsPanel() {
   return (
     <div>
       <Group>
-        <SettingRow label="Import from Notion or Evernote…" sub="Notion's zip or Evernote's .enex: every page or note becomes a note" onClick={pickExport} chevron={FileInput} />
+        <SettingRow label="Import from Notion, Evernote or Keep…" sub="Notion's zip, Evernote's .enex or Google Takeout's zip: every page or note becomes a note" onClick={pickExport} chevron={FileInput} />
       </Group>
       <p className="mt-1.5 px-1 text-[13px] leading-[18px] text-muted-foreground">{HOW}</p>
     </div>
@@ -66,7 +66,7 @@ function Preview() {
   return (
     <Panel title="Importer" icon={Import} tint={TINT}>
       <p className="text-[15px] leading-[20px] text-muted-foreground">
-        Brings your notes from Notion and Evernote: pick the export with Import from Notion or Evernote in the command palette.
+        Brings your notes from Notion, Evernote and Google Keep: pick the export with Import from Notion, Evernote or Keep in the command palette.
         Pages keep their subpages, links, attachments and database properties; notes their tags, dates, to-dos and attachments.
       </p>
     </Panel>
@@ -74,7 +74,7 @@ function Preview() {
 }
 
 export default definePlugin({
-  commands: [{ id: "importer:import", name: "Import from Notion or Evernote…", run: pickExport }],
+  commands: [{ id: "importer:import", name: "Import from Notion, Evernote or Keep…", run: pickExport }],
   settingsPanel: () => <SettingsPanel />,
   settingsPanelFirst: true,
   preview: () => <Preview />,

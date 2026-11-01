@@ -1,4 +1,4 @@
-// Importer: Notion's and Evernote's exports into notes, one import at a time. The app streams the file onto this
+// Importer: Notion's, Evernote's and Keep's exports into notes, one import at a time. The app streams the file onto this
 // machine's disk (the plugin's own folder: an export with attachments can pass a GB), then it's read in place.
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -89,7 +89,7 @@ plugin.route("GET", "importer/jobs/*", (req) => {
 
 // ---------- operations (core/ops.ts)
 
-const LABEL = { notion: "Notion", evernote: "Evernote" }
+const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep" }
 
 /** A job's summary (what `vau importer.run --wait` prints). */
 export function jobText(job: Job) {
@@ -112,12 +112,14 @@ async function jobOf(id: string, wait: boolean): Promise<Job> {
 
 plugin.op({
   id: "importer.run",
-  summary: "Import Notion's or Evernote's export already in the vault: every page or note a Markdown note, attachments and links kept.",
+  summary: "Import Notion's, Evernote's or Google Keep's export already in the vault: every page or note a Markdown note, attachments and links kept.",
   help: `Notion (Settings > Export all workspace content, or a page's ... > Export, as Markdown & CSV: a zip, sometimes of
 zips) goes into Notion/: names without Notion's ids, subpages in their page's folder, links between pages as wikilinks,
 a database as its CSV and a note per row with the row's properties as frontmatter. Evernote (a notebook's ... > Export
 notebook, as .enex; or a zip of them) goes into Evernote/<notebook>/: tags, dates and source as frontmatter, to-dos as
-tasks, tables, attachments in Attachments/ embedded where they were. Importing again adds only what's new (by ext_id);
+tasks, tables, attachments in Attachments/ embedded where they were. Google Keep (Google Takeout's zip with Keep in it)
+goes into Keep/: checklists as tasks, labels as tags, archived notes archived, trashed ones left out. Importing again
+adds only what's new (by ext_id);
 notes imported before stay as they are. wait: answer once it's done.
 
   vau importer.run Imports/notion-export.zip --wait
@@ -125,8 +127,8 @@ notes imported before stay as they are. wait: answer once it's done.
   kind: "write",
   lock: false, // the job holds the vault a few files at a time
   params: {
-    path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex, or a zip of them)" },
-    folder: { type: "string", description: "the folder Notion/ or Evernote/ goes in (default the setting's: the vault's top)" },
+    path: { type: "string", format: "path", required: true, description: "the export in the vault (Notion's zip, an .enex or a zip of them, Takeout's zip)" },
+    folder: { type: "string", description: "the folder Notion/, Evernote/ or Keep/ goes in (default the setting's: the vault's top)" },
     wait: { type: "boolean", description: "answer once the import is done (else at once, with the job to follow)" },
   },
   args: ["path"],

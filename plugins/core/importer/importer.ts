@@ -1,4 +1,4 @@
-// One import as a job: Notion's zip (maybe of zips) or Evernote's .enex (or a zip of them). Every file gets its path
+// One import as a job: Notion's zip (maybe of zips), Evernote's .enex (or a zip of them), Keep's Takeout. Every file gets its path
 // first, so links point where files land; written a few per hold of the vault; idempotent by `ext_id`.
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -7,6 +7,7 @@ import { setImmediate as turn } from "node:timers/promises"
 import { entryBytes, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
 import { frontmatter, safeName, stamp, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { noteBody, readEnex, type Resource } from "./evernote.ts"
+import { readKeep } from "./keep.ts"
 import { barePath, hrefPath, idOf, notionNote } from "./notion.ts"
 
 import type { Job, Source } from "./job.ts"
@@ -19,7 +20,9 @@ export const newJob = (id: string, name: string): Job =>
 /** The most an .enex is read whole (its attachments are inside, as base64). */
 const ENEX_MAX = 512 << 20
 const BATCH = 20
-const LABEL: Record<Source, string> = { notion: "Notion", evernote: "Evernote" }
+const LABEL: Record<Source, string> = { notion: "Notion", evernote: "Evernote", keep: "Keep" }
+/** A Keep note's JSON in a Takeout zip. */
+const KEEP = /(^|\/)Keep\/[^/]+\.json$/i
 
 type Write = { rel: string; data: () => Promise<Buffer | string>; note: boolean }
 
@@ -100,13 +103,14 @@ function kindOfExport(parts: Zip[] | null, file: string): Source {
     const head = Buffer.alloc(512)
     try { fs.readSync(fd, head, 0, 512, 0) } finally { fs.closeSync(fd) }
     if (/<en-export\b|<!DOCTYPE en-export/i.test(head.toString("utf8"))) return "evernote"
-    throw new Error("this isn't a Notion or Evernote export: Notion's is a zip (Markdown & CSV), Evernote's an .enex file")
+    throw new Error("this isn't a Notion, Evernote or Keep export: Notion's is a zip (Markdown & CSV), Evernote's an .enex file, Keep's a Takeout zip")
   }
   const names = parts.flatMap((z) => z.entries.map((e) => e.name))
   if (names.some((n) => /\.enex$/i.test(n))) return "evernote"
+  if (names.some((n) => KEEP.test(n))) return "keep"
   if (names.some((n) => /\.md$/i.test(n))) return "notion"
   if (names.some((n) => /\.html?$/i.test(n))) throw new Error("this is Notion's HTML export: export again as Markdown & CSV")
-  throw new Error("no notes in this zip: is it Notion's export (Markdown & CSV) or Evernote's .enex files?")
+  throw new Error("no notes in this zip: is it Notion's export (Markdown & CSV), Evernote's .enex files or Keep's Takeout?")
 }
 
 /** Runs the import of `file` (on this machine) into `vault`, updating `job` as it goes. */
@@ -118,6 +122,7 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   job.source = source
   job.folder = join(opts.folder, LABEL[source])
   if (source === "notion") await notion(vault, parts!, job.folder, job)
+  else if (source === "keep") await keep(vault, parts!, job.folder, job)
   else if (parts) {
     for (const z of parts) for (const e of z.entries.filter((x) => /\.enex$/i.test(x.name))) {
       if (e.size > ENEX_MAX) { say(job, `${e.name} is over ${ENEX_MAX >> 20} MB: export that notebook in parts`); continue }
@@ -222,6 +227,45 @@ async function evernote(vault: Vault, xml: string, notebook: string, base: strin
     known.set(ext, rel)
     pending.push({ rel, note: true, data: async () => frontmatter(fm, body) })
     if (pending.length >= BATCH) await flush(vault, pending, job)
+  }
+  await flush(vault, pending, job)
+}
+
+async function keep(vault: Vault, parts: Zip[], dir: string, job: Job) {
+  const known = knownIds(vault, "keep-")
+  const plan = planner(vault)
+  const pending: Write[] = []
+  for (const z of parts) {
+    const byName = new Map(z.entries.map((e) => [e.name, e]))
+    for (const e of z.entries.filter((x) => KEEP.test(x.name))) {
+      let n
+      try { n = readKeep(JSON.parse((await entryBytes(z.file, e)).toString("utf8"))) } catch { n = null }
+      if (!n) { say(job, `${e.name} isn't a Keep note`); continue }
+      if (n.trashed) continue
+      job.notes++
+      const ext = `keep-${crypto.createHash("sha1").update(e.name.split("/").pop()!).digest("hex").slice(0, 16)}`
+      if (known.has(ext)) { job.unchanged++; continue }
+      const folder = e.name.slice(0, e.name.lastIndexOf("/") + 1)
+      const embeds: string[] = []
+      for (const a of n.attachments) {
+        const src = byName.get(folder + a.path) ?? byName.get(a.path)
+        if (!src) { say(job, `${a.path} (in ${n.title}) isn't in the export`); continue }
+        const p = plan.free(join(dir, "Attachments", safeName(a.path.split("/").pop())), (abs) => fs.statSync(abs).size === src.size)
+        if (!p.exists) pending.push({ rel: p.rel, note: false, data: () => entryBytes(z.file, src) })
+        embeds.push(`${EMBEDS.test(a.mime) ? "!" : ""}[[${p.rel}]]`)
+      }
+      const fm: Record<string, unknown> = {}
+      if (n.tags.length) fm.tags = n.tags.map((t) => t.replace(/[\s#,]+/g, "-"))
+      if (n.created) fm.created = stamp(new Date(n.created))
+      if (n.updated) fm.updated = stamp(new Date(n.updated))
+      if (n.archived) fm.archived = true
+      fm.ext_id = ext
+      const body = [n.body, ...embeds].filter(Boolean).join("\n\n")
+      const rel = plan.free(join(dir, `${safeName(n.title)}.md`)).rel
+      known.set(ext, rel)
+      pending.push({ rel, note: true, data: async () => frontmatter(fm, body) })
+      if (pending.length >= BATCH) await flush(vault, pending, job)
+    }
   }
   await flush(vault, pending, job)
 }

@@ -98,4 +98,28 @@ export default async ($: VaultTest) => {
   check("importer: a zip of neither says so", j.state === "failed" && /no notes in this zip/.test(j.error), j)
   const [ts, tb] = await api("POST", "ops/importer.run?as=text", { path: "Imports/Recipes.enex", wait: true })
   check("importer op: run and wait, in words", ts === 200 && /^Evernote: 2 notes in Evernote\/: 0 new, 2 imported before/.test(tb), [ts, tb])
+
+  // Google Keep: a Takeout zip, a JSON file per note.
+  const { readKeep } = await import("../../../plugins/core/importer/keep.ts")
+  const t = 1_790_000_000_000_000
+  const shop = { title: "", textContent: "", listContent: [{ text: "Milk", isChecked: true }, { text: "Eggs", isChecked: false }], labels: [{ name: "Errands" }, { name: "to buy" }],
+    createdTimestampUsec: t, userEditedTimestampUsec: t + 60_000_000, isArchived: false, isTrashed: false }
+  check("importer keep: a checklist note named by its first line, labels as tags", readKeep(shop)?.title === "Untitled" && readKeep(shop)?.body === "- [x] Milk\n- [ ] Eggs" &&
+    readKeep({ textContent: "Call the bank\nabout the card" })?.title === "Call the bank" && readKeep({ foo: 1 }) === null)
+  fs.writeFileSync(path.join(VAULT, "Imports/takeout.zip"), zipFiles({
+    "Takeout/Keep/Shopping.json": JSON.stringify({ ...shop, title: "Shopping" }),
+    "Takeout/Keep/Shopping.html": "<html></html>",
+    "Takeout/Keep/Idea.json": JSON.stringify({ title: "Idea", textContent: "A garden app.", attachments: [{ filePath: "sketch.png", mimetype: "image/png" }],
+      annotations: [{ source: "WEBLINK", title: "Gardens", url: "https://example.com/g" }], isArchived: true, createdTimestampUsec: t }),
+    "Takeout/Keep/sketch.png": Buffer.from([1, 2, 3, 4]),
+    "Takeout/Keep/Old.json": JSON.stringify({ title: "Old", textContent: "gone", isTrashed: true }),
+  }))
+  j = await runJob({ path: "Imports/takeout.zip" })
+  const shopping = read("Keep/Shopping.md"), idea = read("Keep/Idea.md")
+  check("importer keep: notes in Keep/, a trashed one left out, the attachment beside", j.state === "done" && j.source === "keep" && j.notes === 2 && j.created === 2 && j.files === 1 &&
+    exists("Keep/Attachments/sketch.png") && !exists("Keep/Old.md"), j)
+  check("importer keep: tags, dates, tasks; an archived note archived, its link and picture", shopping.startsWith("---\ntags: [Errands, to-buy]\ncreated: '") && shopping.includes("- [x] Milk\n- [ ] Eggs") &&
+    /archived: true/.test(idea) && idea.includes("A garden app.\n\n[Gardens](https://example.com/g)\n\n![[Keep/Attachments/sketch.png]]") && /ext_id: keep-[0-9a-f]{16}/.test(idea), [shopping, idea])
+  j = await runJob({ path: "Imports/takeout.zip" })
+  check("importer keep: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 2 && j.files === 0, j)
 }
