@@ -351,14 +351,17 @@ function describeOp(id: string, b: Record<string, unknown>, byApp: boolean): Did
 
 /** Writes in progress or just done, to tie the files that change on disk to the request that wrote them: a file whose
  *  mtime falls between a write's start and end (Infinity until it ends) is that write's. */
-type Write = { start: number; end: number; paths: string[]; event: ActivityEvent | null }
+type Write = { start: number; end: number; paths: string[]; event: ActivityEvent | null; failed?: boolean }
 const writes: Write[] = []
 /** How far a file's mtime may fall outside its write: a file's clock is coarser than Date.now(), and a write may land as
  *  its answer goes. */
 const BEFORE = 5, AFTER = 50
-/** The write a file with this mtime is from: the one going on then, else the nearest just around it, each side by its
- *  margin (the next request's margin starts before the last one ended; Windows' file clock runs a ms or two ahead). */
-const writeAt = (mtime: number) => {
+/** The write a file with this mtime is from, of those that didn't fail (refused, a request wrote nothing) else any: see
+ *  nearest(). (A lagging file clock can date the next request's write inside a refused one.) */
+const writeAt = (mtime: number) => nearest(writes.filter((x) => !x.failed), mtime) ?? nearest(writes, mtime)
+/** The one going on then, else the nearest just around it, each side by its margin (the next request's margin starts
+ *  before the last one ended; Windows' file clock runs a ms or two ahead). */
+function nearest(writes: Write[], mtime: number) {
   // (Date.now() is whole ms: a write that ended at `end` went on until end + 1)
   const exact = writes.findLast((x) => mtime >= x.start && mtime < x.end + 1)
   if (exact) return exact
@@ -381,7 +384,7 @@ plugin.onRequest((s) => {
   if (w) { writes.push(w); if (writes.length > 100) writes.splice(0, writes.length - 100) }
   return (end: RequestEnd) => {
     const late = timing(s, end, actor)
-    if (w) w.end = Date.now()
+    if (w) { w.end = Date.now(); w.failed = end.status >= 400 }
     // (a call an agent, the CLI or a script got wrong is kept even unrecorded otherwise: what they fail at)
     const did = end.status >= 400 && !byApp && !route.startsWith("activity") ? failed(s.method, route, end)
       : describe(s.method, route, s.query, end.body, byApp || actor.kind === "you")
