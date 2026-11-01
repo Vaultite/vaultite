@@ -45,8 +45,9 @@ jobs:
             ~/Library/Caches/ms-playwright
             ~/AppData/Local/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
+      # (its system libraries only on Linux: on Windows Server --with-deps adds Media Foundation, minutes the tests never use)
       - if: ${{ !cancelled() }}
-        run: npx playwright-core install --with-deps chromium
+        run: npx playwright-core install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
       - if: ${{ !cancelled() }}
         run: npm run build
       - if: ${{ !cancelled() }}
