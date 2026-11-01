@@ -50,6 +50,8 @@ export type Prefs = {
   paneTitles: boolean
   /** With more than one pane, those without the focus fade a little. */
   dimPanes: boolean
+  /** Desktop panes as inset, rounded cards, the window's chrome showing between them; off, flat panes divided by hairlines. */
+  paneCards: boolean
   /** A hidden sidebar folds to its icon rail; off, it's gone, sliding back over the page while the pointer is at its
    *  edge of the window. */
   rails: boolean

@@ -122,6 +122,7 @@ function apply() {
   // (only read under data-translucent: pages show the desktop only while the chrome does)
   root.toggleAttribute("data-translucent-pages", p.translucent && p.translucentPages)
   root.toggleAttribute("data-dim-panes", p.dimPanes)
+  root.toggleAttribute("data-pane-cards", p.paneCards)
   const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "",
     ...(translucency.on ? { translucent: true, ...(p.translucentPages ? { pages: true } : {}) } : {}) }
   if (previewing === null) try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }

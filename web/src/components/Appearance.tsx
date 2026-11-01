@@ -235,7 +235,7 @@ export function AppearancePanel() {
           </SettingRow>
           <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
             onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
-          {["file-icons", "typing-fade", "dim-panes"].map(row)}
+          {["file-icons", "typing-fade", "pane-cards", "dim-panes"].map(row)}
         </Group>
       </Section>
       <Section title="Tabs">

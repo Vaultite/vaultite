@@ -19,6 +19,8 @@ export function paneBoxes({ root, zoom }: Workspace): PaneBox[] {
   return all.map((g) => (g.float ? { id: g.id, rect: g.float, round: true, layer: 2 + stack.indexOf(g.id) }
     : { id: g.id, rect: g.id === zoom ? FULL : tile.get(g.id) ?? FULL, layer: g.id === zoom ? 1 : 0 }))
 }
+/** The room around and between tiled panes, in px (appearance `paneCards`: index.css' --pane-gap; else 0). */
+export const paneGap = (el: Element) => parseFloat(getComputedStyle(el).getPropertyValue("--pane-gap")) || 0
 const keyOf = (panes: PaneBox[]) => panes.map((p) => `${p.id}:${r4(p.rect.x)},${r4(p.rect.y)},${r4(p.rect.w)},${r4(p.rect.h)},${p.layer}`).join("|")
 
 type Box = { x: number; y: number; w: number; h: number }
@@ -71,10 +73,13 @@ export function usePaneMotion(box: RefObject<HTMLDivElement | null>, panes: Pane
     const t = timing("spring")
     if (!s || s === "quiet" || !t.duration) return
     const b = el.getBoundingClientRect(), mine = ++run.current, moving: HTMLElement[] = [], anims: Animation[] = []
+    // (tiled panes as cards: inset by the gap, rounded as floating ones are; Workspace's tile())
+    const g = paneGap(el), cards = g > 0
     for (const p of panes) {
       const sec = sectionOf(el, p.id), plate = plateOf(el, p.id)
       if (!sec || !plate) continue
-      const to = { x: p.rect.x * b.width, y: p.rect.y * b.height, w: p.rect.w * b.width, h: p.rect.h * b.height }
+      const gap = p.round ? 0 : g, W = b.width - gap, H = b.height - gap
+      const to = { x: p.rect.x * W + gap, y: p.rect.y * H + gap, w: p.rect.w * W - gap, h: p.rect.h * H - gap }
       const from = s.rects.get(p.id)
       // A new pane pops in at its place (Rex's split): from a little smaller and clear, over the one making room.
       if (!from) {
@@ -84,7 +89,7 @@ export function usePaneMotion(box: RefObject<HTMLDivElement | null>, panes: Pane
         continue
       }
       if (near(from, to) || to.w < 1 || to.h < 1) continue
-      const dx = from.x - to.x, dy = from.y - to.y, round = p.round ? " round 10px" : ""
+      const dx = from.x - to.x, dy = from.y - to.y, round = p.round || cards ? " round 10px" : ""
       anims.push(sec.animate([
         { transform: `translate(${dx}px, ${dy}px)`, clipPath: `inset(0px ${Math.max(0, to.w - from.w)}px ${Math.max(0, to.h - from.h)}px 0px${round})` },
         { transform: "translate(0px, 0px)", clipPath: `inset(0px 0px 0px 0px${round})` },

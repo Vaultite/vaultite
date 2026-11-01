@@ -119,6 +119,21 @@ function DimPanes({ on }: { on: boolean }) {
   )
 }
 
+/** Two panes split: flat, a line between them, or as cards inset on the sidebar's colour, rounded, room between them
+ *  (exaggerated a little, to read at this size). */
+const paneCards = (on: boolean) => (
+  <Frame>
+    <Side w="20%" />
+    <div className={cn("flex min-w-0 flex-1", on ? "gap-[4px] bg-sidebar p-[4px]" : "")}>
+      {[0, 1].map((i) => (
+        <Pane key={i} className={cn(on ? "overflow-hidden rounded-[5px] bg-background shadow-[0_0_0_0.5px_var(--border),0_1px_3px_rgb(0_0_0/0.12)]" : i && "border-l-[0.5px] border-border")}>
+          <TabBar n={2} /><Note className="px-[6px]" />
+        </Pane>
+      ))}
+    </div>
+  </Frame>
+)
+
 /** A hidden sidebar: as an icon rail (`rail`), or sliding in over the page when the pointer reaches the window's edge.
  *  `shade`: the page dims behind it. `pace`: how it moves (Animations). */
 function Peek({ rail, shade, pace = "natural", pointer }: { rail?: boolean; shade?: boolean; pace?: Animation; pointer?: boolean }) {
@@ -337,6 +352,7 @@ type Pictures = { text: string; draw: (on: boolean) => ReactNode }
 const PICTURES: Record<string, Pictures> = {
   "tab-bar": { text: "On, a pane's tabs show in a bar above it; off, only what's open, without tabs.", draw: tabBar },
   "pane-titles": { text: "With the tab bar off, each pane shows the name of what's open above it.", draw: paneTitles },
+  "pane-cards": { text: "Each pane an inset, rounded card, with the window's colour around and between them.", draw: paneCards },
   "dim-panes": { text: "With the window split, the panes you're not in fade a little, following the focus.", draw: (on) => <DimPanes on={on} /> },
   "file-icons": { text: "Files show their icons in the sidebar and in tabs.", draw: fileIcons },
   "typing-fade": { text: "While you type, the bar above the file fades; it's back when the pointer moves.", draw: (on) => <TypingFade on={on} /> },

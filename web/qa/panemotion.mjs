@@ -116,6 +116,34 @@ check("close: a copy of it fades out, a picture only (no ids, no frames), one pa
 await slow(1); await still(); await wait(100)
 check("close: then gone, the other pane full width", !(await page.locator("[data-pane-gone]").count()) && Math.abs((await panes())[0].w - W.w) < 2)
 
+// Panes as cards (appearance `paneCards`, from the palette): inset by a gap, rounded; the divider is the gap, still dragged.
+await command(page, "Panes as cards"); await wait(300)
+const gapOf = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-workspace]")).getPropertyValue("--pane-gap")))
+const G = await gapOf()
+let cps = await panes()
+check("cards: on from the palette, the one pane inset by the gap on every side, rounded", G >= 4 && cps.length === 1 && Math.abs(cps[0].x - W.x - G) < 1.5
+  && Math.abs(cps[0].w - (W.w - 2 * G)) < 1.5 && Math.abs(cps[0].h - (W.h - 2 * G)) < 1.5
+  && await page.evaluate(() => getComputedStyle(document.querySelector("section[aria-label=Pane]")).borderRadius) === "10px", { G, cps, W })
+await command(page, "Split right"); await still()
+cps = await panes()
+const div = await page.locator("[data-workspace] > [role=separator]").first().boundingBox()
+const between = cps.length === 2 ? cps[1].x - (cps[0].x + cps[0].w) : -1
+check("cards: split, a gap between the two as wide as the one around them, the divider in it", Math.abs(between - G) < 1.5
+  && Math.abs(div.x + div.width / 2 - (cps[0].x + cps[0].w + G / 2)) < 1.5 && Math.abs(cps[1].x + cps[1].w - (W.x + W.w - G)) < 1.5, { cps, div, G })
+await shot("cards-split")
+await page.mouse.move(div.x + div.width / 2, div.y + div.height / 2); await page.mouse.down()
+await page.mouse.move(div.x + div.width / 2 + 100, div.y + div.height / 2, { steps: 6 }); await page.mouse.up(); await still()
+const dragged = await panes()
+check("cards: dragging the gap moves it with the pointer", Math.abs(dragged[0].w - cps[0].w - 100) < 3 && Math.abs(dragged[1].x - (dragged[0].x + dragged[0].w) - G) < 1.5, [cps, dragged])
+await command(page, "Zoom pane"); await still()
+const cz = (await panes()).find((p) => p.zoomed)
+check("cards: zoomed, a card filling the workspace less the gap", !!cz && Math.abs(cz.w - (W.w - 2 * G)) < 1.5 && Math.abs(cz.x - W.x - G) < 1.5, cz)
+await page.locator("[data-pane-unzoom]").click(); await still()
+await command(page, "Close pane"); await still()
+await command(page, "Panes as cards"); await wait(300)
+cps = await panes()
+check("cards: off again, flat panes full width", (await gapOf()) === 0 && cps.length === 1 && Math.abs(cps[0].w - W.w) < 2, cps)
+
 // With animations off, a split is there at once.
 await page.evaluate(() => fetch("/api/prefs", { method: "GET" }).catch(() => {}))
 await page.evaluate(() => { document.documentElement.dataset.animation = "off" })

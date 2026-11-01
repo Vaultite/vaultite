@@ -9,7 +9,7 @@ import { useHeldHeight } from "@/core/heights"
 import { closeTab, focusGroup, groups, quietly, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
 import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
 import { dockPane, evenOut, placeFloat, resize, zoomPane } from "@/core/splits"
-import { paneBoxes, usePaneMotion } from "@/core/panemotion"
+import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
 import { useCommandKeys } from "@/core/commands"
 import { setGroupNamer } from "@/core/tabsets"
 import { layout, leaves, shownTab, tabPath, type Divider as DividerAt, type Group, type Rect } from "../../../core/layout.ts"
@@ -80,6 +80,12 @@ type Props = {
 
 const pct = (n: number) => `${n * 100}%`
 const place = (r: Rect) => ({ left: pct(r.x), top: pct(r.y), width: pct(r.w), height: pct(r.h) })
+// Tiled panes leave --pane-gap around and between them (appearance `paneCards`, index.css; 0 otherwise): shares of what's
+// left once one gap is taken, each pane then a gap in from its share's start.
+const G = "var(--pane-gap)"
+const along = (at: number) => `calc(${at} * (100% - ${G}) + ${G})`
+const span = (n: number) => `calc(${n} * (100% - ${G}) - ${G})`
+const tile = (r: Rect) => ({ left: along(r.x), top: along(r.y), width: span(r.w), height: span(r.h) })
 
 export function Workspace(props: Props) {
   const ws = useWorkspace(), { root, focus, zoom } = ws
@@ -97,24 +103,25 @@ export function Workspace(props: Props) {
   // (its edges follow the sidebars', with their spring: a terminal waits for them to stop, core/sliding.ts)
   useLayoutEffect(() => (box.current ? watchSliding(box.current) : undefined), [])
   return (
-    <div ref={box} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
+    <div ref={box} data-workspace data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
       {drawn.map(({ id, rect, layer }) => {
         const g = all.find((x) => x.id === id)!, float = !!g.float, zoomed = id === zoom
         // (under a zoomed pane: out of the keyboard's reach, and no part of the window's drag strip)
         const under = !!zoom && !zoomed && !float
         const top = !under && !float && rect.y < 1e-6
         const z = float ? 20 + 3 * (layer - 2) : zoomed ? 11 : undefined
+        const at = float ? place(rect) : tile(rect)
         return (
           <Fragment key={id}>
             {/* Under the pane: its colour while it moves (core/panemotion.ts), a zoomed or floating pane's card. */}
-            <div aria-hidden data-plate={id} style={{ ...place(rect), zIndex: z }}
+            <div aria-hidden data-plate={id} style={{ ...at, zIndex: z }}
               className={cn("pointer-events-none absolute bg-background", !layer && "invisible", float && "rounded-[10px] shadow-[0_12px_40px_-8px_rgb(0_0_0/0.35),0_2px_8px_-2px_rgb(0_0_0/0.2)] ring-[0.5px] ring-border")} />
             {/* A pane not at the workspace's left or top edge draws the line to its neighbour;
                 data-top/corner/right-corner place the desktop title bar and the right sidebar's toggle (index.css). */}
             <section aria-label="Pane" data-group={id} data-top={top || undefined} data-corner={(top && rect.x < 1e-6) || undefined}
               data-right-corner={(top && rect.x + rect.w > 1 - 1e-6) || undefined} data-floating={float || undefined} data-zoomed={zoomed || undefined} data-focused={id === focus || undefined}
               data-overlay={float || undefined} inert={under || undefined} data-lifted={lifted === id || undefined}
-              onPointerDownCapture={() => focusGroup(id)} onPointerDown={float ? (e) => moveCard(e, id, box) : undefined} style={{ ...place(rect), zIndex: z && z + 2 }}
+              onPointerDownCapture={() => focusGroup(id)} onPointerDown={float ? (e) => moveCard(e, id, box) : undefined} style={{ ...at, zIndex: z && z + 2 }}
               className={cn("absolute flex min-h-0 min-w-0 flex-col border-border", float ? "overflow-hidden rounded-[10px]" : !zoomed && cn(rect.x > 1e-6 && "border-l", rect.y > 1e-6 && "border-t"))}>
               <TabBar group={g} focused={id === focus} info={info} alone={alone} extra={<PaneState id={id} float={float} zoomed={zoomed} />} />
               {g.stacked ? <Stacked group={g} focused={id === focus} info={info} {...props} /> : <Pane group={g} focused={id === focus} {...props} />}
@@ -442,14 +449,18 @@ function Divider({ at: d, box }: { at: DividerAt; box: React.RefObject<HTMLDivEl
     const b = box.current?.getBoundingClientRect()
     if (!b) return
     // Where the pointer is, as a share of the split's own box; no part narrower than 200px (lower than 120px).
-    const at = row ? ((x - b.left) / b.width - r.x) / r.w : ((y - b.top) / b.height - r.y) / r.h
+    // (with gaps between panes, a share is of the workspace less one gap, starting half a gap in: tile() above)
+    const g = paneGap(box.current!), half = g / 2
+    const at = row ? ((x - b.left - half) / (b.width - g) - r.x) / r.w : ((y - b.top - half) / (b.height - g) - r.y) / r.h
     // (dragged, it follows the pointer at once; a key's step moves there as the layout's changes do)
     const go = () => resize(d.split.id, d.i, at, row ? 200 / (b.width * r.w) : 120 / (b.height * r.h))
     if ("resizing" in document.body.dataset) quietly(go); else go()
   }
+  // (in the middle of the gap between the panes, when there's one)
+  const mid = (at: number) => `calc(${at} * (100% - ${G}) + ${G} / 2 - 3px)`
   const style = row
-    ? { left: `calc(${pct(r.x + d.at * r.w)} - 3px)`, top: pct(r.y), height: pct(r.h), width: 7 }
-    : { top: `calc(${pct(r.y + d.at * r.h)} - 3px)`, left: pct(r.x), width: pct(r.w), height: 7 }
+    ? { left: mid(r.x + d.at * r.w), top: along(r.y), height: span(r.h), width: 7 }
+    : { top: mid(r.y + d.at * r.h), left: along(r.x), width: span(r.w), height: 7 }
   // (Escape puts it back where it was when the drag began)
   const was = useRef(d.at)
   return <Resizer label="Resize the split" horizontal={!row} onStart={() => { was.current = d.at }} onDrag={move}
