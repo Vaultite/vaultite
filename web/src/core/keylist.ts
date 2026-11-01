@@ -242,15 +242,19 @@ if (typeof window !== "undefined") {
 const focused = () => { const a = document.activeElement; return a instanceof HTMLElement && a !== document.body ? a : null }
 
 /** Open the menu of what has the keyboard (its right-click), beside it; in an editor, at the cursor. */
-function openFocusedMenu() {
+function openFocusedMenu(tries = 3) {
   const el = focused()
-  if (!el) return false
-  const sel = window.getSelection()
-  const caret = el.isContentEditable && sel?.rangeCount ? sel.getRangeAt(0).getClientRects()[0] : null
+  if (!el) return
+  const sel = window.getSelection(), at = el.isContentEditable && sel?.focusNode && el.contains(sel.focusNode) ? sel.focusNode : null
+  // (an editor given the keyboard back has its caret at its start, or still outside, until it puts it back a frame later)
+  if (el.isContentEditable && (!at || at === el) && tries > 0) return void requestAnimationFrame(() => openFocusedMenu(tries - 1))
+  const target = at ? (at instanceof Element ? at : at.parentElement) ?? el : el
+  let caret: DOMRect | undefined
+  if (at) { const r = document.createRange(); r.setStart(at, sel!.focusOffset); caret = r.getClientRects()[0] ?? target.getBoundingClientRect() }
   const r = caret ?? el.getBoundingClientRect()
-  const target = caret && sel?.focusNode ? (sel.focusNode instanceof Element ? sel.focusNode : sel.focusNode.parentElement) ?? el : el
-  target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, view: window, button: 2, clientX: r.left + Math.min(r.width, 16), clientY: r.bottom }))
-  return true
+  // (just inside the caret's line: an editor puts its cursor where the right-click is)
+  target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, view: window, button: 2,
+    clientX: caret ? r.left : r.left + Math.min(r.width, 16), clientY: caret ? r.bottom - 1 : r.bottom }))
 }
 
 /** An element drawn as a button or link that isn't one (no Enter of its own). */
@@ -302,8 +306,11 @@ registerCommands([
   { id: "radio:previous", name: "Move to the previous choice", keys: ["ArrowLeft", "ArrowUp"], when: () => !!currentRadio(), run: () => moveInRadios(-1), icon: ArrowLeft },
   { id: "radio:tab-out", name: "Move past the choices", keys: ["Tab"], when: () => !!currentRadio(), run: () => tabPastRadios(false), icon: StepForward },
   { id: "radio:tab-back", name: "Move before the choices", keys: ["Shift+Tab"], when: () => !!currentRadio(), run: () => tabPastRadios(true), icon: StepBack },
-  // (The menu key opens it by itself; Macs have none.)
-  { id: "focus:menu", name: "Open the menu of what has the keyboard", keys: ["Shift+F10"], when: () => !!focused(), run: openFocusedMenu, icon: Menu },
+  // (The menu key opens it by itself; Macs have none. A text field or a terminal keeps the key, and the browser's
+  // menu; from the palette it waits for the keyboard to be given back: core/focus.ts.)
+  { id: "focus:menu", name: "Open the menu of what has the keyboard", keys: ["Shift+F10"], words: "context menu right-click", when: () => !!focused(),
+    keysWhen: () => { const a = document.activeElement; return !typingIn(a) || (a as HTMLElement).isContentEditable },
+    run: () => { setTimeout(() => requestAnimationFrame(() => openFocusedMenu())) }, icon: Menu },
   { id: "focus:activate", name: "Press what has the keyboard", keys: ["Enter"], when: () => !!madeButton() && !typingIn(document.activeElement), run: () => madeButton()?.click(), icon: SquareMousePointer },
   { id: "area:next", name: "Focus the next area", keys: ["F6"], desktop: true, run: () => nextArea(1), icon: StepForward },
   { id: "area:previous", name: "Focus the previous area", keys: ["Shift+F6"], desktop: true, run: () => nextArea(-1), icon: StepBack },
