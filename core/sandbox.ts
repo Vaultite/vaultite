@@ -161,12 +161,12 @@ const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0"
 const q = (s: string) => (/^[\w .,()-]+$/.test(s) && !/^[\d.-]|: |^(true|false|null|yes|no)$/i.test(s) ? s : `'${s.replace(/'/g, "''")}'`)
 
 /** A log file: its frontmatter, its kind's fences (a workout's sets too) and a line of notes. */
-function log(area: string, date: string, title: string, n: number, data: Record<string, string | number | undefined>,
+function log(area: string, date: string, title: string, data: Record<string, string | number | undefined>,
   opts: { duration?: number; body?: string; yaml?: string } = {}) {
   const fm = [
     "---", "type: log", `area: ${area}`, `date: ${date}`,
     ...(opts.duration ? [`duration_min: ${opts.duration}`] : []),
-    `title: ${q(title)}`, "source: sandbox", `ext_id: sandbox-${area}-${date}-${n}`,
+    `title: ${q(title)}`, "source: sandbox", `ext_id: sandbox-${area}-${date}-0`,
     ...(opts.yaml ? [opts.yaml] : []),
     ...Object.entries(data).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => `${k}: ${typeof v === "number" ? v : q(String(v))}`),
     "---", "",
@@ -212,7 +212,7 @@ function gym(date: string, weeksAgo: number) {
     return [`- name: ${l.name}`, "  sets:", ...lines.filter(Boolean)].join("\n")
   })
   const notes = ["Felt strong today.", "Short on sleep, kept it light.", "New best on the first lift.", "Gym was packed; supersetted the last two.", ""]
-  return log("workouts", date, day.title, 0, { kind: "Strength", volume_kg: Math.round(volume), sets }, {
+  return log("workouts", date, day.title, { kind: "Strength", volume_kg: Math.round(volume), sets }, {
     duration: r.int(50, 70), yaml: `exercises:\n${ex.join("\n")}`, body: r.pick(notes),
   })
 }
@@ -247,11 +247,11 @@ function daily(today: string): [string, string][] {
     // Sleep: the night before each day (named by the day you woke up).
     const bed = r.int(22 * 60 + 30, 23 * 60 + 50), wake = r.int(7 * 60, 8 * 60)
     const inBed = 24 * 60 - bed + wake
-    out.push([`Logs/Sleep/${date} Sleep.md`, log("sleep", date, "Sleep", 0, { bed: hm(bed), wake: hm(wake), in_bed_min: inBed }, { duration: inBed - r.int(10, 40) })])
+    out.push([`Logs/Sleep/${date} Sleep.md`, log("sleep", date, "Sleep", { bed: hm(bed), wake: hm(wake), in_bed_min: inBed }, { duration: inBed - r.int(10, 40) })])
     if (ago === 0) {
       // Today so far: breakfast, and the daily note with a plan.
       const [t, kcal, protein, carbs, fat] = r.pick(MEALS.Breakfast)
-      out.push([`Logs/Nutrition/${date} ${t}.md`, log("nutrition", date, t, 0, { meal: "Breakfast", kcal, protein, carbs, fat }, { body: "Estimated from a photo." })])
+      out.push([`Logs/Nutrition/${date} ${t}.md`, log("nutrition", date, t, { meal: "Breakfast", kcal, protein, carbs, fat }, { body: "Estimated from a photo." })])
       out.push([`Daily/${date}.md`, "---\ntype: day\ndone: []\n---\n\nPlan: finish the launch thread draft, call [[Alice Martin]], piano after dinner.\n"])
       continue
     }
@@ -262,15 +262,15 @@ function daily(today: string): [string, string][] {
       for (const meal of ["Breakfast", "Lunch", "Dinner", "Snack"] as const) {
         if (meal === "Snack" && r.chance(0.5)) continue
         const [t, kcal, protein, carbs, fat] = r.pick(MEALS[meal])
-        out.push([`Logs/Nutrition/${date} ${t}.md`, log("nutrition", date, t, 0, { meal, kcal, protein, carbs, fat }, { body: r.chance(0.5) ? "Estimated from a photo." : "" })])
+        out.push([`Logs/Nutrition/${date} ${t}.md`, log("nutrition", date, t, { meal, kcal, protein, carbs, fat }, { body: r.chance(0.5) ? "Estimated from a photo." : "" })])
       }
     }
     // Learning: reading most days, piano on Tuesday, Thursday and Saturday.
     if (ago <= 28 && r.chance(0.7)) {
-      out.push([`Logs/Reading/${date} Project Hail Mary.md`, log("reading", date, "Project Hail Mary", 0, { book_id: "Project Hail Mary", pages: r.int(12, 38) }, { duration: r.int(20, 50) })])
+      out.push([`Logs/Reading/${date} Project Hail Mary.md`, log("reading", date, "Project Hail Mary", { book_id: "Project Hail Mary", pages: r.int(12, 38) }, { duration: r.int(20, 50) })])
     }
     if ([2, 4, 6].includes(wd) && ago <= 42 && !r.chance(0.2)) {
-      out.push([`Logs/Study/${date} Piano practice.md`, log("study", date, "Piano practice", 0, { subject: "Piano", focus: r.pick(PIANO) }, { duration: r.int(25, 45) })])
+      out.push([`Logs/Study/${date} Piano practice.md`, log("study", date, "Piano practice", { subject: "Piano", focus: r.pick(PIANO) }, { duration: r.int(25, 45) })])
     }
     // Daily notes: most days of the last three weeks, with the routines ticked by hand.
     if (ago <= 21 && !r.chance(0.2)) {

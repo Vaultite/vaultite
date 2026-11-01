@@ -42,7 +42,6 @@ export class AppWindow extends BaseWindow {
 
   static fromWebContents(wc: WebContents) { const w = byPage.get(wc); return w && !w.isDestroyed() ? w : null }
   static getAllWindows() { return BaseWindow.getAllWindows().filter((w): w is AppWindow => w instanceof AppWindow) }
-  static fromId(id: number) { const w = BaseWindow.fromId(id); return w instanceof AppWindow ? w : null }
   static getFocusedWindow() { const w = BaseWindow.getFocusedWindow(); return w instanceof AppWindow ? w : null }
   /** Each window as it's made (and every one made before). */
   static each(fn: (w: AppWindow) => void) { made.push(fn); for (const w of AppWindow.getAllWindows()) fn(w) }

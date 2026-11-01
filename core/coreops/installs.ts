@@ -51,7 +51,6 @@ export function installOps(app: App): Op[] {
   const tiers = () => new Map(app.app.map((p) => [p.id, p.tier]))
   /** The vault's plugins but `id`, by folder. */
   const vaultDirs = (id?: string) => new Map([...app.vaultPlugins.found].filter(([x]) => x !== id).map(([x, vp]) => [x, vp.dir]))
-  const blocked = (id: string, version: string, repos: (string | null)[]) => app.index.blockedWhy(id, version, repos)
 
   /** Installed plugins with a newer version and what it changes, from a fetched copy. `auto`: only self-updating ones,
    *  applied, allowed here if this machine allowed them before (a version it skips or rolled back from is left). */
@@ -83,7 +82,7 @@ export function installOps(app: App): Op[] {
         const edited = fs.existsSync(dir) && !asLocked(dir, l)
         const row: Any = { id, name: String(f.manifest.name ?? id), version: l.version, to: String(f.manifest.version ?? ""), tag: f.tag, commit: f.commit, files: changes.files,
           disclosures: changes.disclosures, edited, applied: false }
-        const why = blocked(id, row.to, [l.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
+        const why = app.index.blockedWhy(id, row.to, [l.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
         if (why) row.error = why
         else if (apply && edited && !force) row.error = "its files were changed here since it was installed: pass force to replace them"
         // (one that says it does more beyond the vault than it did waits for the user, even when it updates on its own)

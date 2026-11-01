@@ -137,8 +137,8 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
     return out
   }
   const sub = (label: string, ico: string | undefined, xs: MenuItemConstructorOptions[]) => (xs.length ? { label, icon: icon(ico), submenu: xs } : null)
-  const files = (list: { path: string; title: string }[], ico: string) =>
-    list.map((f) => ({ label: f.title, sublabel: f.path, icon: icon(ico), click: () => ctx.go(f.path) }))
+  const files = (list: { path: string; title: string }[]) =>
+    list.map((f) => ({ label: f.title, sublabel: f.path, icon: icon("file-text"), click: () => ctx.go(f.path) }))
 
   const settings = () => [
     cmd("page:settings", "Settings…", "settings", { key: "Mod+,", always: true }),
@@ -273,8 +273,8 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       cmd("activity:open", "Activity", "activity"),
       cmd("web:open", "Web page…", "globe"),
       sep,
-      sub("Pinned", "pin", files(snap?.pinned ?? [], "file-text")),
-      sub("Recent files", "clock", files(snap?.recent ?? [], "file-text")),
+      sub("Pinned", "pin", files(snap?.pinned ?? [])),
+      sub("Recent files", "clock", files(snap?.recent ?? [])),
     ) },
     { label: "Window", role: "window", submenu: items(
       { role: "minimize" }, MAC ? { role: "zoom" } : { label: "Maximize", click: ctx.maximize },

@@ -121,14 +121,14 @@ function uncaught(kind: "uncaught" | "rejection", e: unknown) {
 const told = new WeakSet<object>()
 /** A failure told in a box: what happened in plain words (core/plainerror.ts), `why` when the error has none to give;
  *  the exact text behind Copy details, and a log when there is one. */
-function failedBox(title: string, e: unknown, o: { win?: AppWindow; why?: string; log?: string } = {}) {
+function failedBox(title: string, e: unknown, o: { why?: string; log?: string } = {}) {
   // (once: openVault tells its own and rethrows to its caller)
   if (typeof e === "object" && e) { if (told.has(e)) return; told.add(e) }
   const { reason, detail } = plainError(e)
   const box = { type: "warning" as const, message: title, detail: reason ? sentence(reason) : o.why ?? "Something went wrong.",
     buttons: ["OK", "Copy details", ...(o.log ? ["Show log"] : [])], defaultId: 0, cancelId: 0 }
   console.error(`vaultite: ${title}:`, detail)
-  void (o.win && !o.win.isDestroyed() ? dialog.showMessageBox(o.win, box) : dialog.showMessageBox(box)).then((r) => {
+  void dialog.showMessageBox(box).then((r) => {
     if (r.response === 1) clipboard.writeText(`${title}\n${detail}`)
     if (r.response === 2 && o.log) void shell.openPath(o.log)
   })

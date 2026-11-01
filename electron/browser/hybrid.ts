@@ -42,12 +42,12 @@ export type RequestType = "ga" | "mc"
 
 /** The QR code's text: the computer's identity key (compressed), the secret, how many tunnel servers it knows, the time,
  *  that it can't be linked (the phone isn't remembered: each sign-in is a scan), and what's asked. */
-export function qrText(o: { identity: Uint8Array; secret: Uint8Array; type: RequestType; now?: number }) {
+export function qrText(o: { identity: Uint8Array; secret: Uint8Array; type: RequestType }) {
   const m = new Map<number, Cbor>([
     [0, o.identity],
     [1, o.secret],
     [2, ASSIGNED.length],
-    [3, Math.floor((o.now ?? Date.now()) / 1000)],
+    [3, Math.floor(Date.now() / 1000)],
     [4, false],
     [5, o.type],
   ])
