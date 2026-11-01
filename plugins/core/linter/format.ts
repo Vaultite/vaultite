@@ -9,6 +9,8 @@ export type Rules = {
   headingSpacing: boolean
   /** `##Title` made `## Title` (not one `#`: that's a tag). */
   headingSpace: boolean
+  /** `>quote` made `> quote`. */
+  quoteSpace: boolean
   /** `## Title ##` made `## Title`. */
   headingMarks: boolean
   /** `*` and `+` bullets made `-`. */
@@ -17,7 +19,7 @@ export type Rules = {
   finalNewline: boolean
 }
 
-export const RULES: Rules = { trailingSpaces: true, blankLines: true, headingSpacing: true, headingSpace: true, headingMarks: true, listMarkers: true, finalNewline: true }
+export const RULES: Rules = { trailingSpaces: true, blankLines: true, headingSpacing: true, headingSpace: true, quoteSpace: true, headingMarks: true, listMarkers: true, finalNewline: true }
 
 /** The rules from settings (a value that isn't a boolean keeps the default). */
 export const rulesOf = (s: Record<string, unknown>): Rules =>
@@ -59,6 +61,7 @@ export function formatMarkdown(text: string, rules: Rules = RULES): string {
     if (!prose[i]) { out.push({ line, prose: false }); continue }
     if (rules.trailingSpaces) line = line.replace(/[ \t]+$/, "")
     if (rules.headingSpace) line = line.replace(/^(#{2,6})(?=[^\s#])/, "$1 ")
+    if (rules.quoteSpace) line = line.replace(/^( {0,3}>+)(?=[^\s>])/, "$1 ")
     const heading = HEADING.test(line)
     if (heading && rules.headingMarks) line = line.replace(/\s+#+\s*$/, "").replace(/^(#{1,6})\s*$/, "$1")
     if (rules.listMarkers && !HR.test(line)) line = line.replace(/^(\s*)[*+](?=[ \t])/, "$1-")
