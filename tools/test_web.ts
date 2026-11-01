@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { registerHooks } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { check, section, summary, tempDir } from "./test/lib.ts"
+import { check, cpuMs, section, summary, tempDir } from "./test/lib.ts"
 const t0 = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -288,8 +288,8 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
   check("diff: random small edits are told right", ok)
   const big = Array.from({ length: 300_000 }, (_, k) => `line ${k}`), edited = big.slice()
   edited.splice(150_000, 1, "changed"); edited.splice(10, 0, "added")
-  const t0 = performance.now(), ops = diffLines(big, edited), took = performance.now() - t0
-  // Loose on purpose: a quadratic diff takes minutes here, and a busy machine once took 3.8 s
+  // (its CPU time, which a busy machine doesn't stretch: a quadratic diff takes minutes here)
+  const { value: ops, ms: took } = cpuMs(() => diffLines(big, edited))
   check("diff: 300k lines, two edits, quickly and exactly", rebuilds(big, edited) && ops.filter((o) => o[0] !== "equal").length === 2 && took < 10_000,
     [ops.length, took])
   const x = Array.from({ length: 50_000 }, (_, k) => String(k % 3)), y = x.slice().reverse()
@@ -470,7 +470,8 @@ check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"),
     pa("a\n$$\nx\n$$") === "a" && pa("a\n<div>\nb") === "a" && pa("a\n[^1]: note") === "a" && pa("a\n> [!note] T\n> b") === "a" && pa("> a\n>> b") === "> a" &&
     pa("p\nh1 | h2\n--|--\nx | y") === "p" && pa("p\nh1 | h2\n--|--\nx | y", 3) === "h1 | h2" && pa("Title\n=====") === "Title" && pa("> a\nb") === "> a\nb")
   check("highlights: the colour list is offered for an opening == and not for a closing one", hl.closesHighlight("==a\nb") && !hl.closesHighlight("a == b ") && !hl.closesHighlight("a") && hl.closesHighlight("x ==y z") && !hl.closesHighlight("==a== b "))
-  check("highlights: unclosed openers are one linear pass", (() => { const t0 = Date.now(); const r = hl.highlightSpans("==x\n".repeat(20000)); return r.length === 0 && Date.now() - t0 < 100 })())
+  const unclosed = cpuMs(() => hl.highlightSpans("==x\n".repeat(20000)))
+  check("highlights: unclosed openers are one linear pass", unclosed.value.length === 0 && unclosed.ms < 100, unclosed.ms)
   check("highlights: spans and comments over a paragraph's text", JSON.stringify(hl.highlightSpans("a ==b\nc== d ==e==")) === '[{"index":2,"length":7,"inner":"b\\nc"},{"index":12,"length":5,"inner":"e"}]'
     && JSON.stringify(hl.commentSpans("x %%a\nb%% y %%")) === "[[2,9]]")
   check("clear formatting: strips a mark over a soft break, not across a blank line",

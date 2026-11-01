@@ -157,9 +157,15 @@ export function section(name: string, fn?: () => Promise<unknown> | unknown): Pr
 export async function busy<T>(fn: () => T | Promise<T>): Promise<{ value: T; ms: number }> {
   const t0 = process.threadCpuUsage()
   const value = await fn()
-  const d = process.threadCpuUsage(t0)
-  return { value, ms: (d.user + d.system) / 1000 }
+  return { value, ms: cpuSince(t0) }
 }
+/** busy() for work that doesn't wait: what it computed, and its CPU time in ms. */
+export function cpuMs<T>(fn: () => T): { value: T; ms: number } {
+  const t0 = process.threadCpuUsage()
+  const value = fn()
+  return { value, ms: cpuSince(t0) }
+}
+const cpuSince = (t0: NodeJS.CpuUsage) => { const d = process.threadCpuUsage(t0); return (d.user + d.system) / 1000 }
 
 export async function waitFor<T>(fn: () => Promise<T> | T, ms = 15000, step = 500): Promise<T | null> {
   const end = Date.now() + ms
