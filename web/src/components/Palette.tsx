@@ -10,8 +10,9 @@ import { dismissKeyboardOnDrag, usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 
 export type Pick = { mod: boolean; shift: boolean }
-/** Rows drawn at first, and how many more each time the list is scrolled near its end. */
-const ROWS = 60
+/** Rows drawn at first, and how many more each time the list is scrolled near its end (within NEAR): past the tallest
+ *  list's foot, as each keystroke draws every one again (60 was four screens of rows a key on a phone). */
+const ROWS = 30, NEAR = "400px"
 
 /** What was typed in ⌘O, ⌘P or the new tab's finder: the other opened over it goes on with it; one opened in the two
  *  minutes after leaving without a pick shows it selected, so typing starts afresh. */
@@ -176,7 +177,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   // (watched again whenever either mark is swapped in: more rows arriving with as many drawn swap the end for more)
   const marks = `${drawn}/${items.length}`
   const more = useRef<HTMLDivElement>(null)
-  useNearEnd(more, () => setLimit(drawn + ROWS), marks)
+  useNearEnd(more, () => setLimit(drawn + ROWS), marks, NEAR)
   const end = useRef<HTMLDivElement>(null)
   useNearEnd(end, () => onEnd?.(), marks, "200px")
   const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })

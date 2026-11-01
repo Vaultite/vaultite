@@ -42,8 +42,8 @@ try {
   // The icon: from the picker, shown for its number.
   await pick("Change icon")
   await page.waitForSelector("[role=dialog] input", { timeout: 5000 })
-  const offered = await until(async () => { const t = await page.$$eval("[role=dialog] [role=option]", (els) => els.map((e) => e.textContent.trim())); return t.length > 40 && t }, 5000)
-  check("Change icon: the app's common icons first, not the alphabet's start", offered?.[0] === "activity" && offered.slice(0, 40).includes("dumbbell") && !offered.slice(0, 40).includes("a-arrow-down"), offered?.slice(0, 6))
+  const offered = await until(async () => { const t = await page.$$eval("[role=dialog] [role=option]", (els) => els.map((e) => e.textContent.trim())); return t.length >= 30 && t }, 5000)
+  check("Change icon: the app's common icons first, not the alphabet's start", offered?.[0] === "activity" && offered.slice(0, 30).includes("dumbbell") && !offered.slice(0, 30).includes("a-arrow-down"), offered?.slice(0, 6))
   await page.keyboard.type("book-open"); await wait(500); await page.keyboard.press("Enter")
   await until(() => workspaces(VAULT)[0]?.icon, 5000)
   check("Change icon: kept in its file", workspaces(VAULT)[0]?.icon === "book-open", workspaces(VAULT)[0])

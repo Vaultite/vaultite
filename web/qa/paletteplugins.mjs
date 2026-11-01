@@ -21,6 +21,13 @@ async function search(q) {
   await page.keyboard.press("Escape"); await wait(100)
   await page.keyboard.press("ControlOrMeta+P"); await page.waitForSelector("[role=option]")
   await page.keyboard.type(q); await wait(200)
+  // (every row: the list draws a page at a time, more as it's scrolled to its end)
+  for (let n = -1, i = 0; i < 20; i++) {
+    const now = await page.locator("#palette-results [role=option]").count()
+    if (now === n) break
+    n = now
+    await page.locator("#palette-results").evaluate((el) => { el.scrollTop = el.scrollHeight }); await wait(150)
+  }
   const rows = await page.locator("#palette-results [role=option]").allInnerTexts()
   const heads = await page.locator("#palette-results [role=presentation]").allInnerTexts()
   return { rows: rows.map((t) => t.split("\n")[0].trim()), heads }
