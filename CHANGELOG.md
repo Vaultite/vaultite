@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   a folder is open, how deep a row is, where it is among its folder's rows and whether it's selected.
 - **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit
   beside it), and Delete closes the tab the keyboard is on, as its X does.
+- **Mind map of a note's headings**: the Mind map plugin draws a note's headings as a map in a tab (Open mind map)
+  or as a block in any page; click a branch to go to that heading, fold the ones you don't need.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".
