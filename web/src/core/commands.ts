@@ -164,24 +164,33 @@ export function useCommandKeys(id: string, paren = false) {
 
 // ---------- hotkeys (.vaultite/hotkeys.json) ----------
 let hotkeys: Record<string, string[]> = {}
-let hotkeysJson = "{}"
+let hotkeysJson = "[{},{}]"
 
-/** The vault's hotkeys arrived (in /api/state, `config.hotkeys`). */
-export function hydrateHotkeys(saved: unknown) {
-  const next: Record<string, string[]> = {}
+// Another app's keys for the commands it has too (an Obsidian vault's hotkeys.json): defaults under the vault's own.
+let seeded: Record<string, string[]> = {}
+
+const keyMap = (saved: unknown) => {
+  const out: Record<string, string[]> = {}
   if (saved && typeof saved === "object" && !Array.isArray(saved)) {
-    for (const [id, v] of Object.entries(saved)) if (Array.isArray(v)) next[id] = v.filter((k): k is string => typeof k === "string" && !!k)
+    for (const [id, v] of Object.entries(saved)) if (Array.isArray(v)) out[id] = v.filter((k): k is string => typeof k === "string" && !!k)
   }
-  const json = JSON.stringify(next)
+  return out
+}
+
+/** The vault's hotkeys arrived (in /api/state, `config.hotkeys`), and another app's (`settingDefaults.hotkeys`). */
+export function hydrateHotkeys(saved: unknown, seeds?: unknown) {
+  const next = keyMap(saved), nextSeeds = keyMap(seeds)
+  const json = JSON.stringify([next, nextSeeds])
   if (json === hotkeysJson) return
   hotkeys = next
+  seeded = nextSeeds
   hotkeysJson = json
   changed()
 }
 
-/** A command's keys in effect: the vault's hotkeys.json if it names the command, else its own defaults and the keys
- *  plugins add to it (`addKeys`). */
-export const keysOf = (c: { id: string; keys?: string[] }) => hotkeys[c.id] ?? (extra.has(c.id) ? [...(c.keys ?? []), ...extra.get(c.id)!] : c.keys ?? [])
+/** A command's keys in effect: the vault's hotkeys.json if it names the command, else another app's (`seeded`), else its
+ *  own defaults and the keys plugins add to it (`addKeys`). */
+export const keysOf = (c: { id: string; keys?: string[] }) => hotkeys[c.id] ?? seeded[c.id] ?? (extra.has(c.id) ? [...(c.keys ?? []), ...extra.get(c.id)!] : c.keys ?? [])
 
 // Keys a plugin gives other commands while it's on (Vim: "Space F F" for Open quick switcher), on top of their own.
 let extra = new Map<string, string[]>()
@@ -198,6 +207,8 @@ export function addKeys(owner: string, keys: Record<string, string[]> | null) {
 }
 /** Whether hotkeys.json sets this command's keys. */
 export const isCustom = (id: string) => id in hotkeys
+/** Whether its keys are another app's (an Obsidian vault's hotkeys.json), hotkeys.json not setting them. */
+export const isSeeded = (id: string) => !(id in hotkeys) && id in seeded
 
 /** Set a command's keys (null: back to its defaults), in hotkeys.json: only that command's line changes (PATCH). */
 export function setHotkeys(id: string, keys: string[] | null) {
@@ -205,7 +216,7 @@ export function setHotkeys(id: string, keys: string[] | null) {
   if (keys === null) delete next[id]
   else next[id] = keys
   hotkeys = next
-  hotkeysJson = JSON.stringify(next)
+  hotkeysJson = JSON.stringify([next, seeded])
   changed()
   return patch("config/hotkeys", { [id]: keys }).then(() => {}, () => { /* offline: it applies here meanwhile */ })
 }

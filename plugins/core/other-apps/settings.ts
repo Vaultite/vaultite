@@ -116,6 +116,55 @@ export function obsidianDefaults(vault: Vault): Record<string, Item> {
   }
   const look = appearance(vault)
   if (Object.keys(look).length) out.appearance = look
+  const bound = hotkeys(vault)
+  if (Object.keys(bound).length) out.hotkeys = bound
+  return out
+}
+
+/** Obsidian's core commands by id, as the app's that do the same (`vau hotkeys --all`). Its plugins' commands need no
+ *  map: plugin-compat runs them under their own ids and reads hotkeys.json itself. */
+export const OBSIDIAN_COMMANDS: Record<string, string> = {
+  "command-palette:open": "palette:open", "switcher:open": "switcher:open", "global-search:open": "search:open-tab",
+  "app:go-back": "nav:back", "app:go-forward": "nav:forward", "app:toggle-left-sidebar": "sidebar:toggle",
+  "app:toggle-right-sidebar": "sidebar:toggle-right", "app:delete-file": "file:delete", "theme:use-dark": "theme:dark",
+  "theme:use-light": "theme:light", "markdown:toggle-preview": "view:toggle", "graph:open": "graph:open", "graph:open-local": "graph:local",
+  "file-explorer:new-file": "file:new", "file-explorer:reveal-active-file": "file:reveal", "file-explorer:move-file": "file:move",
+  "file-explorer:duplicate-file": "file:duplicate", "workspace:edit-file-title": "file:rename", "workspace:copy-path": "file:copy-path",
+  "workspace:new-tab": "tab:new", "workspace:close": "tab:close", "workspace:close-others": "tab:close-others",
+  "workspace:next-tab": "tab:next", "workspace:previous-tab": "tab:previous", "workspace:goto-last-tab": "tab:goto-last",
+  "workspace:undo-close-pane": "tab:reopen", "workspace:toggle-pin": "tab:toggle-pin", "workspace:toggle-stacked-tabs": "tab:toggle-stacked",
+  "workspace:move-to-new-window": "tab:move-to-window", "workspace:open-in-new-window": "tab:open-in-window",
+  "workspace:split-vertical": "split:right", "workspace:split-horizontal": "split:down", "workspace:export-pdf": "export-pdf:pdf",
+  "editor:focus-top": "split:focus-top", "editor:focus-bottom": "split:focus-bottom", "editor:focus-left": "split:focus-left",
+  "editor:focus-right": "split:focus-right", "editor:open-search": "find:open", "editor:open-search-replace": "find:replace",
+  "editor:fold-all": "folding:fold-all", "editor:unfold-all": "folding:unfold-all", "editor:toggle-fold": "folding:toggle",
+  ...Object.fromEntries(["undo", "redo", "insert-link", "insert-wikilink", "insert-footnote", "toggle-blockquote", "clear-formatting",
+    "toggle-bullet-list", "toggle-numbered-list", "toggle-checklist-status", "swap-line-up", "swap-line-down", "delete-paragraph",
+    "indent-list", "unindent-list", "set-heading-0"].map((c) => [`editor:${c}`, `editor:${c}`])),
+  "daily-notes": "daily-notes:today", "insert-template": "templates:insert", "insert-current-date": "templates:insert-current-date",
+  "insert-current-time": "templates:insert-current-time", "note-composer:merge-file": "note-composer:merge-file",
+  "note-composer:split-file": "note-composer:extract", "random-note": "random-note:open", "canvas:new-file": "canvas:new",
+  "file-recovery:open": "history:open", "slides:start": "slides:start", "zk-prefixer": "unique-note:new",
+}
+// (Meta is ⌘ on a Mac, where Obsidian writes Mod for it anyway; Mod and Ctrl mean what they do here)
+const OBSIDIAN_MODS: Record<string, string> = { Mod: "Mod", Meta: "Mod", Ctrl: "Ctrl", Alt: "Alt", Shift: "Shift" }
+
+/** hotkeys.json's keys for the commands the app has too, as hotkeys.json here writes them ({"palette:open": ["Mod+P"]});
+ *  `[]` (its default taken away) too. Not workspace.json: a layout, not settings. */
+function hotkeys(vault: Vault): Record<string, string[]> {
+  const h = obsidianJson(vault, "hotkeys")
+  if (!h) return {}
+  const out: Record<string, string[]> = {}
+  for (const [from, to] of Object.entries(OBSIDIAN_COMMANDS)) {
+    if (!Array.isArray(h[from])) continue
+    const keys = h[from].flatMap((k: Item) => {
+      const mods: (string | undefined)[] = Array.isArray(k?.modifiers) ? k.modifiers.map((m: unknown) => OBSIDIAN_MODS[String(m)]) : []
+      const key = typeof k?.key === "string" ? (k.key === " " ? "Space" : k.key.length === 1 ? k.key.toUpperCase() : k.key) : ""
+      if (!key || mods.some((m) => !m)) return []
+      return [[...["Mod", "Ctrl", "Alt", "Shift"].filter((m) => mods.includes(m)), key].join("+")]
+    })
+    if (keys.length || !h[from].length) out[to] = [...new Set([...out[to] ?? [], ...keys])]
+  }
   return out
 }
 

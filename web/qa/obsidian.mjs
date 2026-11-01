@@ -240,6 +240,19 @@ await page.keyboard.press("Escape")
 await palette(page, "Create new note", 700); await wait(1500)
 check(`a new note goes to newFileFolderPath: ${await page.evaluate(() => decodeURIComponent(location.hash))}`, await page.evaluate(() => decodeURIComponent(location.hash)).then((h) => h.includes(`${"Qa obsidian"}/Inbox/Untitled`)))
 
+// ---- its hotkeys.json: keys for the app's commands too (command-palette:open is palette:open), never written ----
+const hotkeysJson = path.join(VAULT, ".obsidian/hotkeys.json")
+fs.writeFileSync(hotkeysJson, JSON.stringify({ "command-palette:open": [{ modifiers: ["Mod", "Shift"], key: "Y" }] }))
+await until(async () => (await (await fetch(`${B}api/state`)).json()).settingDefaults?.hotkeys?.["palette:open"], 5000)
+await page.reload(); await page.waitForSelector("[data-pane] .cm-content", { timeout: 30000 }); await wait(800)
+await page.keyboard.press("ControlOrMeta+Shift+Y")
+check("hotkeys.json: Obsidian's keys open the palette", !!(await until(() => page.$("[role=dialog] input:focus"), 3000)))
+await page.keyboard.type("Open hotkeys"); await until(() => page.locator("[role=option]", { hasText: "Open hotkeys" }).count(), 3000)
+await page.keyboard.press("Enter")
+check("hotkeys.json: Settings ▸ Hotkeys marks them Obsidian's", !!(await until(() => page.$('[data-hotkey="palette:open"] [data-hotkey-seeded]'), 5000)))
+await page.keyboard.press("Escape"); await wait(300)
+fs.rmSync(hotkeysJson)
+
 // ---- the Design page ----
 await open(await pagePath(B, "Design")) // (the design system's page: the sandbox has it)
 const dash = page.locator(".dash-prose")

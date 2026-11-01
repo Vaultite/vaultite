@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **An Obsidian vault's hotkeys carry over**: `.obsidian/hotkeys.json`'s keys for the commands Vaultite has too (the
+  palette, quick switcher, tabs, splits, list and heading commands...) apply, under `.vaultite/hotkeys.json`'s, and
+  Settings ▸ Hotkeys marks them Obsidian's keys.
 - **A card added to a board's column**: each column of a base's board has a +, a new note with that column's value
   (and what the view's filters ask for), opened in a tab beside it.
 - **Fill down in tables**: with cells of a note's table selected, ⌘D (Ctrl+D) fills them down from the top row, as in

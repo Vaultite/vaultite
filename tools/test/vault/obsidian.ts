@@ -92,6 +92,35 @@ export default async ($: VaultTest) => {
     else fs.writeFileSync(own, had)
   }
   {
+    // Its hotkeys.json: the core commands the app has too, under the vault's own hotkeys.json; never written.
+    const own = path.join(VAULT, ".vaultite/hotkeys.json"), had = fs.existsSync(own) ? read(".vaultite/hotkeys.json") : null
+    fs.rmSync(own, { force: true })
+    const obs = JSON.stringify({
+      "command-palette:open": [{ modifiers: ["Mod", "Shift"], key: "p" }], "app:go-back": [], "editor:swap-line-down": [{ modifiers: ["Alt"], key: "ArrowDown" }, { modifiers: ["Ctrl", "Meta"], key: "j" }],
+      "workspace:split-vertical": [{ modifiers: ["Hyper"], key: "v" }, { modifiers: ["Mod"], key: " " }], "editor:toggle-bold": [{ modifiers: ["Mod"], key: "b" }],
+      "dataview:dataview-force-refresh-views": [{ modifiers: ["Mod"], key: "R" }],
+    })
+    write(".obsidian/hotkeys.json", obs)
+    ;[, s] = await api("GET", "state")
+    check("obsidian: hotkeys.json's keys for the app's commands are defaults of its hotkeys (well-formed ones, [] too); others aren't",
+      same(s.settingDefaults.hotkeys, { "palette:open": ["Mod+Shift+P"], "nav:back": [], "split:right": ["Mod+Space"], "editor:swap-line-down": ["Alt+ArrowDown", "Mod+Ctrl+J"] }) && !s.config.hotkeys?.["palette:open"], s.settingDefaults.hotkeys)
+    let [, rows] = await api("POST", "ops/hotkey.list", {})
+    const row = (id: string) => rows.find((r: Any) => r.id === id)
+    const { OBSIDIAN_COMMANDS } = await import("../../../plugins/core/other-apps/settings.ts")
+    const unknownTo = Object.values(OBSIDIAN_COMMANDS).filter((id) => !row(id))
+    check("obsidian: each core command it maps to is one of the app's", !unknownTo.length, unknownTo)
+    check("obsidian: vau hotkeys shows its keys, marked", same(row("palette:open")?.keys, ["Mod+Shift+P"]) && row("palette:open").note === "Obsidian's keys" && !row("palette:open").changed, row("palette:open"))
+    await api("POST", "ops/hotkey.set", { id: "palette:open", keys: ["Mod+K"] })
+    ;[, rows] = await api("POST", "ops/hotkey.list", {})
+    check("obsidian: the vault's hotkeys.json wins for a command it names", same(row("palette:open")?.keys, ["Mod+K"]) && row("palette:open").changed && !row("palette:open").note, row("palette:open"))
+    check("obsidian: nothing is written to .obsidian/hotkeys.json", read(".obsidian/hotkeys.json") === obs)
+    fs.rmSync(path.join(VAULT, ".obsidian/hotkeys.json"))
+    ;[, s] = await api("GET", "state")
+    check("obsidian: its hotkeys.json gone, its keys go", !s.settingDefaults.hotkeys, s.settingDefaults.hotkeys)
+    if (had === null) fs.rmSync(own, { force: true })
+    else fs.writeFileSync(own, had)
+  }
+  {
     // Its plugins: what stands in for each here (manifests' `replaces`), from the app's and the directory's.
     write(".obsidian/community-plugins.json", JSON.stringify(["recent-files-obsidian", "obsidian-made-up", "made-up-elsewhere"]))
     write(".obsidian/plugins/recent-files-obsidian/manifest.json", JSON.stringify({ id: "recent-files-obsidian", name: "Recent Files" }))

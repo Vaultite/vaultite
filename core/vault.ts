@@ -1387,7 +1387,7 @@ export class Vault {
     const look = (dir: string, file: (name: string) => string | null) => {
       try { return fs.readdirSync(this.abs(`.obsidian/${dir}`)).map(file).filter((f): f is string => f !== null) } catch { return [] }
     }
-    for (const name of ["app.json", "types.json", "daily-notes.json", "templates.json", "appearance.json", "themes", "snippets",
+    for (const name of ["app.json", "types.json", "daily-notes.json", "templates.json", "appearance.json", "hotkeys.json", "themes", "snippets",
       ...look("themes", (n) => `themes/${n}/theme.css`), ...look("snippets", (n) => (n.endsWith(".css") ? `snippets/${n}` : null))]) {
       try {
         const st = fs.statSync(this.abs(`.obsidian/${name}`), { bigint: true })

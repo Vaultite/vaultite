@@ -211,7 +211,8 @@ parses, else text). There's no font size setting: ⌘+ and ⌘- (Ctrl off a Mac)
     cli: "hotkeys",
     summary: "The app's commands with their shortcuts (changed ones from .vaultite/hotkeys.json).",
     help: `Lists the command palette's commands and their keys: the app's defaults, and the ones changed in
-.vaultite/hotkeys.json ({"<command id>": ["Mod+Shift+T"]}; [] = no shortcut). The list is read from the app's source,
+.vaultite/hotkeys.json ({"<command id>": ["Mod+Shift+T"]}; [] = no shortcut), or an Obsidian vault's .obsidian/hotkeys.json
+for the commands it has too (marked Obsidian's keys; .vaultite/hotkeys.json wins). The list is read from the app's source,
 so commands made while it runs (one per view) aren't in it. Without all, only commands that have keys.
 
   vau hotkeys
@@ -220,8 +221,10 @@ so commands made while it runs (one per view) aren't in it. Without all, only co
     params: { all: { type: "boolean", description: "every command, also those without keys" } },
     run: () => {
       const cmds = commandList(vaultPlugins())
-      const over = app.vault.config("hotkeys")
-      const rows: Any[] = cmds.map((x) => ({ ...x, keys: x.id in over ? strings(over[x.id]) : x.keys, changed: x.id in over, defaults: x.keys }))
+      // (an Obsidian vault's hotkeys.json under the vault's own: plugins/core/other-apps)
+      const over = app.vault.config("hotkeys"), seeded = app.vault.configWithDefaults("hotkeys")
+      const rows: Any[] = cmds.map((x) => ({ ...x, keys: x.id in seeded ? strings(seeded[x.id]) : x.keys, changed: x.id in over, defaults: x.keys,
+        ...(!(x.id in over) && x.id in seeded ? { note: [x.note, "Obsidian's keys"].filter(Boolean).join(", ") } : {}) }))
       for (const id of Object.keys(over)) if (!cmds.some((x) => x.id === id)) rows.push({ id, name: "(not in the app's source)", keys: strings(over[id]), changed: true, defaults: [] })
       return rows
     },

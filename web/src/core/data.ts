@@ -316,7 +316,7 @@ function load(): Promise<void> {
         }
         hydratePrefs(all.config, all.settingDefaults)
         setVaultAppearance(all.appearance)
-        hydrateHotkeys(all.config.hotkeys)
+        hydrateHotkeys(all.config.hotkeys, all.settingDefaults?.hotkeys)
         await beforeState?.(all)
         loading?.mark("vault plugins")
         const { config: _config, vaultPlugins: _plugins, appearance: _appearance, ...store } = all

@@ -22,5 +22,7 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
   turning one on turns the other off. More are in Get plugins (Setup ▸ Plugins), under that app's source.
 - Renames and moves update links to the file: wikilinks, embeds and Markdown links (relative, from the vault's top or
   by name alone, as Obsidian's shortest path writes them).
-- Not read: `workspace.json`, hotkeys and appearance.
+- `.obsidian/hotkeys.json`: the keys of the commands the app has too (its core ones matched by id, its plugins' kept
+  under their own ids), under `.vaultite/hotkeys.json`'s; Settings ▸ Hotkeys marks them Obsidian's keys.
+- Not read: `workspace.json` (a layout, not settings).
 - Obsidian is a trademark of Dynalist Inc.; Vaultite is not affiliated with or endorsed by it.

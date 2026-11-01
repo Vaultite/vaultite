@@ -13,6 +13,8 @@ sets that mean the same thing here (and never writes `.obsidian/`):
 - `appearance.json`: the defaults of `.vaultite/appearance.json` (`vau docs app`): `theme` (`obsidian` dark,
   `moonstone` light, `system`), `cssTheme` as the scheme, `enabledCssSnippets`, and the three fonts; `.obsidian/themes/`
   and `.obsidian/snippets/` are listed beside the vault's own. Its accent colour and text size have no match here.
+- `hotkeys.json`: the keys of its core commands the app has too (`command-palette:open` is `palette:open`...), as the
+  defaults of `.vaultite/hotkeys.json` (`vau hotkeys` marks them); its plugins' keys are plugin-compat's, by their ids.
 - `.obsidian/types.json`: its property types (`{"types": {"due": "date"}}`; `multitext` is a list) apply here too,
   under `.vaultite/types.json`'s, which wins for a key both have (`vau docs properties`).
 - Its plugins (`.obsidian/community-plugins.json`): `vau other-apps plugins` lists each with what stands in for it here;
