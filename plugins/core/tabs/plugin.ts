@@ -357,7 +357,7 @@ plugin.op({
   },
   args: ["tabs"],
   run: (p, ctx) => {
-    if (!p.group && !p.tabs?.length) throw new OpError("say which tabs to group (or --group to change one)", 400)
+    if (!p.group && !p.tabs?.length) throw new OpError("say which tabs to group (or `group` to change one)", 400)
     return ask(ctx, { do: "group", ...p })
   },
   text: (r) => `Group ${groupLine({ ...r.group, tabs: r.group.tabs.length })}: ${r.group.tabs.map((t: ReportTab) => t.to).join(", ")}.`,
@@ -376,7 +376,7 @@ plugin.op({
   },
   args: ["tabs"],
   run: (p, ctx) => {
-    if (!p.group && !p.tabs?.length) throw new OpError("say which group (--group) or which tabs", 400)
+    if (!p.group && !p.tabs?.length) throw new OpError("say which `group` or which `tabs`", 400)
     return ask(ctx, { do: "ungroup", ...p })
   },
   text: (r) => (r.ungrouped ? `Ungrouped ${r.ungrouped}.` : `Took ${r.removed.length} tab(s) out of their groups.`),

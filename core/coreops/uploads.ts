@@ -71,14 +71,14 @@ that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-d
     run: async (p, ctx) => {
       const { file, url, data, note } = p as { file?: Any; url?: string; data?: string; note?: string }
       const given = [file, url, data, ctx.input].filter((x) => x !== undefined && x !== "").length
-      if (given > 1) throw new OpError("give one of file, url or data")
+      if (given > 1) throw new OpError("give one of `file`, `url` or `data`")
       const fileId = typeof file?.file_id === "string" ? file.file_id : ""
       const again = fileId && saved.get(fileId)
       if (again && again.until > Date.now()) return { path: again.path, again: true, embed: embedOf(again.path) }
       if (!given) {
         const link = ctx.who.client === "mcp" ? serviceOn(app, "mcp:upload-link") : null
         const made = link ? await link({ name: p.name, folder: p.folder, note } satisfies Pending, ctx.who) : null
-        if (!made) throw new OpError("give the file: file, url, or data (base64)")
+        if (!made) throw new OpError("give the file: `file`, `url`, or `data` (base64)")
         return { link: made.url, expires: made.expires, note: note ?? null }
       }
       // A file that isn't in memory (sent as it is, or downloaded) waits in a folder of its own until it's saved.

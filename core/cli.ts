@@ -625,6 +625,19 @@ async function listed(r: unknown, how: Shape, c: Ctx): Promise<string> {
   return out.join("\n")
 }
 
+/** An op's error as its command line says it: only where the server names a parameter (a problem's leading name, or a
+ *  `name` in backticks), it's the flag (actionOpen is --action-open) or <arg>; `problems`: those not in the message. */
+export function cliError(e: OpEntry, msg: string, problems: string[]): { msg: string; problems: string[] } {
+  const props = e.params.properties ?? {}
+  const shown = (k: string) => (!Object.hasOwn(props, k) ? null : e.args.includes(k) ? `<${k}>` : flagOf(k))
+  const marked = (s: string) => s.replace(/`([A-Za-z_]\w*)`/g, (m, k: string) => shown(k) ?? m)
+  // (a parameter it has no such one of was given as a flag too, or in --params)
+  const lead = (p: string) => p.replace(/^([A-Za-z_][\w-]*)(?=[[.:]| is )/, (m, k: string) => shown(k) ?? (p.includes(" has no such parameter") ? flagOf(k) : m))
+    .replace(/\(did you mean (\w+)\?\)$/, (m, k: string) => (shown(k) ? `(did you mean ${shown(k)}?)` : m))
+  for (const p of problems) msg = msg.replace(p, () => lead(p))
+  return { msg: marked(msg), problems: problems.filter((p) => !msg.includes(lead(p))).map((p) => marked(lead(p))) }
+}
+
 /** Run an op from a command line, printed as `how` says. */
 async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<string> {
   const loc = LOCAL[e.id] ?? {}
@@ -636,12 +649,8 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<st
   const r = await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : "?as=text"}`, params)
   if (r.status >= 400) {
     const b = r.body as Obj
-    // (its parameters named as this command line's flags: actionOpen is --action-open)
-    let msg = String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, "")
-    for (const k of Object.keys(e.params.properties ?? {})) if (!e.args.includes(k)) msg = msg.replace(new RegExp(`(?<![-\\w])${k}\\b(?![\\]>-])`, "g"), flagOf(k))
-    // (what's wrong, when the answer lists it apart: a plugin that can't be installed)
-    const problems = Array.isArray(b?.problems) ? (b.problems as string[]).filter((x) => !msg.includes(x)) : []
-    throw new CliError([msg, ...problems.map((x) => `  - ${x}`)].join("\n"))
+    const said = cliError(e, String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, ""), Array.isArray(b?.problems) ? b.problems as string[] : [])
+    throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"))
   }
   if (out) return loc.out!(r.body, params, given.extra)
   if (list) return await listed(r.body, how, c)

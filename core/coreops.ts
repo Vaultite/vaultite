@@ -230,7 +230,7 @@ id, or nothing.
     },
     run: async ({ items, prompt, current, other, timeout }, ctx) => {
       const list = chooseItems(items as unknown[])
-      if (!list.length && !other) throw new OpError("items is empty: nothing to pick from (with other, it asks for text)")
+      if (!list.length && !other) throw new OpError("`items` is empty: nothing to pick from (with `other`, it asks for text)")
       const at = current === undefined ? -1 : list.findIndex((it) => it.id === current || it.label === current)
       const r = await ctx.ui({ action: "choose", prompt: prompt ?? null, timeout, other: !!other, current: at < 0 ? null : at,
         items: list.map(({ label, detail, icon }) => ({ label, detail, icon })) }).catch(noWindow).catch((e: unknown) => {

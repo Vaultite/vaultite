@@ -577,7 +577,7 @@ plugin.op({
     if (!id) {
       const where = [...new Set(tabs.filter((t) => t.to === shows).map((t) => t.workspace))]
       if (!where.length) throw new OpError(`${target} isn't open in any workspace (vau workspace tabs lists them)`, 404)
-      if (where.length > 1 && !from) throw new OpError(`${target} is open in workspaces ${where.join(" and ")}: say which with from`, 409)
+      if (where.length > 1 && !from) throw new OpError(`${target} is open in workspaces ${where.join(" and ")}: say which with \`from\``, 409)
     }
     if (pane) {
       // The pane that has it, by its group's id (ids repeat between workspaces, so with its workspace).

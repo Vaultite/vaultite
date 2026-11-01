@@ -739,7 +739,7 @@ plan sent back, what to change. mode: the permission mode after an approved plan
     args: ["id"],
     run: async (p) => {
       hostedOr404(p.id)
-      if (!p.model && !p.effort && !p.mode) throw new OpError("model, effort or mode: what to change")
+      if (!p.model && !p.effort && !p.mode) throw new OpError("`model`, `effort` or `mode`: what to change")
       const { s } = await ask("set", { id: p.id, ...(p.model ? { model: p.model } : {}), ...(p.effort ? { effort: p.effort } : {}), ...(p.mode ? { mode: p.mode } : {}) }) as { s: Summary }
       return { id: p.id, model: s.model, effort: s.effort, mode: s.mode }
     },

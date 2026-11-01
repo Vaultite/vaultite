@@ -132,7 +132,7 @@ what changed, so you rarely need another.
 /** Files for a page's file input, read here: the vault's by path, this machine's by absolute path (its owner only). */
 async function filesFor(given: unknown, ctx: OpCtx) {
   const list = (Array.isArray(given) ? given : [given]).map((f) => String(f ?? "").trim()).filter(Boolean)
-  if (!list.length) throw new OpError("upload needs files: vault paths (Attachments/cv.pdf), or absolute paths on this machine")
+  if (!list.length) throw new OpError("upload needs `files`: vault paths (Attachments/cv.pdf), or absolute paths on this machine")
   let size = 0
   return Promise.all(list.map(async (f) => {
     let file: string
@@ -184,7 +184,7 @@ went to another.
   },
   args: ["tab", "action", "ref"],
   run: async (p, ctx) => {
-    if (p.fields && p.action !== "fill") throw new OpError("fields go with fill")
+    if (p.fields && p.action !== "fill") throw new OpError("`fields` go with fill")
     return ask<Acted>("agent:act", p.tab, { action: p.action, ref: p.ref, value: p.value, key: p.key, direction: p.direction, fields: p.fields, diff: p.diff,
       ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, by(ctx, p))
   },
@@ -525,7 +525,7 @@ isn't added again; a folder that isn't there yet gets its heading. links adds ma
   run: async (p) => {
     const given = Array.isArray(p.links) ? p.links as Record<string, unknown>[] : p.url ? [{ url: p.url, title: p.title, folder: p.folder }] : []
     const links: Bookmark[] = given.slice(0, 50_000).map((l) => ({ url: clean(l?.url, 4000), title: clean(l?.title, 300), folder: clean(l?.folder, 300) }))
-    if (!links.length) throw new OpError("give a url, or links")
+    if (!links.length) throw new OpError("give a `url`, or `links`")
     const bad = links.find((l) => !/^https?:\/\/\S+$/i.test(l.url))
     if (bad) throw new OpError(`not a web address: ${bad.url || "(empty)"}`)
     const old = note()
@@ -551,7 +551,7 @@ app's web pages hide what they match as soon as it changes.`
 /** The rule `p` names: whole, or a selector and its site. */
 function ruleFrom(p: { rule?: unknown; site?: unknown }) {
   const r = makeRule(clean(p.rule, 2000), clean(p.site, 300) || undefined)
-  if (!r) throw new OpError("give a rule like youtube.com##ytd-reel-shelf-renderer, or a CSS selector and --site")
+  if (!r) throw new OpError("give a rule like youtube.com##ytd-reel-shelf-renderer, or a CSS selector and `site`")
   return r
 }
 
@@ -655,7 +655,7 @@ user turns a site's style off in the page's Shields menu (setting unstyled).
     const v = ctx.vault
     if (!clean(p.site, 300)) return { sites: siteStyles(v).map((s) => s.site) }
     const site = siteName(clean(p.site, 300))
-    if (!site) throw new OpError("give a site like youtube.com")
+    if (!site) throw new OpError("give a `site` like youtube.com")
     const rel = styleFile(site), had = fs.existsSync(v.abs(rel))
     if (p.remove === true) {
       if (had) v.toTrash(rel)

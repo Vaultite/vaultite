@@ -71,7 +71,7 @@ user's machines. Dismissed, it fails (exit 1) and prints nothing.
       // Not even through MCP's `call`: an AI app (claude.ai, ChatGPT) never gets the user's secrets.
       if (ctx.who.client === "mcp") throw new OpError("not over MCP: secrets stay on the user's machines (vau secret, in a terminal)", 403)
       if (cancel) return ctx.ui({ action: "ask-cancel", key: cancel })
-      if (!prompt?.trim()) throw new OpError("prompt is what to enter (the dialog's title)")
+      if (!prompt?.trim()) throw new OpError("`prompt` is what to enter (the dialog's title)")
       const relayed = !!ctx.who.client?.startsWith("machine/")
       const id: string = key ?? crypto.randomUUID()
       const { self, others } = relayed ? { self: null, others: [] } : await machines(ctx)

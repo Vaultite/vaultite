@@ -67,7 +67,7 @@ export default async ($: VaultTest) => {
   }
   await api("DELETE", "inbox/events")
   cr = await vau("notify")
-  check("vau notify: the text is required", cr.code === 1 && cr.err.includes("text is missing"), cr)
+  check("vau notify: the text is required", cr.code === 1 && cr.err.includes("<text> is missing"), cr)
   const n = uiOf(w2).length
   check("/api/ui notify: empty text, a bad kind or button are refused, nothing sent",
     uiLive.handle("POST", { action: "notify", text: "  " })[1] === 400 && uiLive.handle("POST", { action: "notify", text: "x", kind: "warn" })[1] === 400 &&

@@ -272,7 +272,7 @@ plugin.op({
   },
   args: ["id"],
   run: ({ id, all }) => {
-    if (!id && !all) throw new OpError("say which error (its id), or --all")
+    if (!id && !all) throw new OpError("say which error (its `id`), or `all`")
     return forget(all ? undefined : id)
   },
   text: (r: { forgot: string }) => (r.forgot === "all" ? "Forgot every error." : `Forgot ${r.forgot}.`),

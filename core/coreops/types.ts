@@ -93,7 +93,7 @@ until --apply.
         if (k.file) throw new OpError(`${k.type} is kept in one file (${k.file}), not given to many`)
       }
       const dir = String(folder ?? "").replace(/^\/+|\/+$/g, "")
-      if (dir && !k && !kindNamed(app.vault.kinds, dir)) throw new OpError(`${dir}/ isn't named like a kind's folder: say which with kind (person, note, log...)`)
+      if (dir && !k && !kindNamed(app.vault.kinds, dir)) throw new OpError(`${dir}/ isn't named like a kind's folder: say which with \`kind\` (person, note, log...)`)
       const groups = untyped(app, dir, k)
       const failed: { path: string; why: string }[] = []
       let written = 0

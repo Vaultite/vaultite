@@ -57,7 +57,7 @@ export async function sidebarsTarget(app: App, ctx: Parameters<Op["run"]>[1], p:
   if (p.vault) return null
   const of = serviceOn(app, "sidebars:of")
   if (!of) {
-    if (p.workspace) throw new OpError("Workspaces is off: there's one setup of the sidebars (leave out workspace)")
+    if (p.workspace) throw new OpError("Workspaces is off: there's one setup of the sidebars (leave out `workspace`)")
     return null
   }
   const n = p.workspace ?? await windowWorkspace(ctx)

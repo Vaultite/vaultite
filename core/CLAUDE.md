@@ -30,6 +30,8 @@
 - Everything an agent, a script or a plugin can do is an op (`ops.ts`, the `Op` type; the core's in `coreops/`). From
   the one catalog come `POST /api/ops/<id>`, `vau`, the MCP tools and the docs. Defaults (ids, slugs, `source`) live in
   the op, never in a client.
+- An op's error names a parameter in backticks ("say which with `from`"): `vau` shows only those, and a check's
+  problems' leading names, as flags.
 - An op keeps its request (`{http}`) so the routes it calls apply their owner checks: pass it whenever calling a route
   in-process. Every API call (HTTP, ops' `ctx.api`, `plugin.host.api`, bundles) goes through one path (`App.respond`), and
   writes run under `App.hold` (reentrant): call `run`, `callOp` and the API outside any raw `vault.lock`, or they wait

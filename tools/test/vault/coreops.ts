@@ -164,7 +164,7 @@ export default async ($: VaultTest) => {
     check("write_file: a page written with base changes it and keeps the rest", read("Notes/Long read.md") === longText.replace("Line 10 ", "Line ten "), read("Notes/Long read.md").slice(0, 300))
     await app.runOp("file.edit", { path: "Notes/Long read.md", old: "Line 2999 ", new: "Line two nine nine nine " }, { who: whoOf("mcp", "claude-code") })
     check("edit_file: replaces just that text, the rest kept", read("Notes/Long read.md") === longText.replace("Line 10 ", "Line ten ").replace("Line 2999 ", "Line two nine nine nine "))
-    check("edit_file: text found more than once, or not at all, is refused with what to do", /3000 times.*all: true/.test(await opErr("file.edit", { path: "Notes/Long read.md", old: ` ${"x".repeat(60)}`, new: "y" })) &&
+    check("edit_file: text found more than once, or not at all, is refused with what to do", /3000 times.*set `all`/.test(await opErr("file.edit", { path: "Notes/Long read.md", old: ` ${"x".repeat(60)}`, new: "y" })) &&
       /isn't in/.test(await opErr("file.edit", { path: "Notes/Long read.md", old: "nowhere to be found", new: "y" })))
     await app.runOp("file.edit", { path: "Notes/Long read.md", old: "x".repeat(60), new: "y", all: true })
     check("edit_file: all replaces every one", !read("Notes/Long read.md").includes("xxxx") && read("Notes/Long read.md").split("\n").length === 3001)

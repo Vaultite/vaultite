@@ -190,7 +190,7 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
     },
     args: ["name"],
     run: async ({ name, description, hotkeys, vaultPlugins, workspace, over }, ctx) => {
-      if (!over && !name) throw new OpError("a bundle needs a name (or --over <id> to save changes to one)")
+      if (!over && !name) throw new OpError("a bundle needs a `name` (or `over` <id> to save changes to one)")
       return ctx.api("POST", "bundles", { ...over ? { over } : { name, replace: true }, description, ...hotkeys !== undefined ? { hotkeys } : {},
         ...vaultPlugins !== undefined ? { vaultPlugins } : {}, workspace: workspace ?? await windowWorkspace(ctx) })
     },

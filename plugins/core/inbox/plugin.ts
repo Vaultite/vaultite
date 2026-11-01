@@ -1410,8 +1410,8 @@ two or three plain sentences, no jargon; the push says it too.
   args: ["title"],
   run: async (p, ctx) => {
     const summary = str(p.summary).trim(), tldr = str(p.tldr).trim()
-    if (!summary) throw new OpError("summary: what you did and where to look")
-    if (!tldr) throw new OpError("tldr: what happened and what you need from the user, in two or three plain sentences")
+    if (!summary) throw new OpError("`summary`: what you did and where to look")
+    if (!tldr) throw new OpError("`tldr`: what happened and what you need from the user, in two or three plain sentences")
     const questions = ((p.questions ?? []) as string[]).map((q) => q.replace(/\s+/g, " ").trim()).filter(Boolean)
     const title = reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), str(p.title).trim())
     // Screenshots into the vault: one already there stays where it is, one on this machine is saved as an attachment.
@@ -1531,7 +1531,7 @@ const sessionOfRow = (e: InboxEvent) => ({ terminal: e.terminal ?? "", session: 
  *  session resumed (or a new one told its last answer); the thread is working, and follows the terminal that answers. */
 async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   const line = text.trim().replace(/\s*\n\s*/g, " ")
-  if (!line) throw new OpError("text: the reply")
+  if (!line) throw new OpError("`text`: the reply")
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
   const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
   const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
@@ -1593,7 +1593,7 @@ export function choiceOf(q: Question, given: string): Choice {
 async function pickIn(ctx: OpCtx, e: InboxEvent, picks: string[]) {
   const qs = e.questions, pick = plugin.service(`agent-pick:${e.source}`)
   if (!qs?.length || !e.terminal || e.kind !== "waiting" || !pick) throw new OpError("it doesn't ask anything to pick from now", 409)
-  if (picks.length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`)
+  if (picks.length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`)
   const choices = qs.map((q, i) => choiceOf(q, picks[i]))
   const t = `terminals/${encodeURIComponent(e.terminal)}`
   const squash = (s: string) => s.replace(/\s+/g, "")
@@ -1677,7 +1677,7 @@ same way. A session on another of the Machines gets it through the app there.
     }
     // One line for the agent (a newline typed into its terminal would send it early); the report keeps its lines.
     const lines = str(p.text).trim(), text = lines.replace(/\s*\n\s*/g, " ")
-    if (!text) throw new OpError("text: the reply")
+    if (!text) throw new OpError("`text`: the reply")
     await plugin.vault.sync()
     const r = resultAt(to)
     if (!r) throw new OpError(`no report ${to} in the inbox`, 404)
@@ -1793,8 +1793,8 @@ morning), a while (30m, 3h, 2d), a local time (2026-10-24 09:00), or now to brin
   run: async (p, ctx) => {
     const item = str(p.item).trim(), now = /^(now|off|none)$/i.test(str(p.until).trim())
     const at = now ? null : parseUntil(str(p.until))
-    if (!now && !at) throw new OpError(`until: ${quoted(str(p.until))} isn't a time (tomorrow, evening, weekend, week, 3h, 2d, 2026-10-24 09:00, now)`)
-    if (at && at.getTime() <= Date.now()) throw new OpError("until: that time has passed")
+    if (!now && !at) throw new OpError(`\`until\`: ${quoted(str(p.until))} isn't a time (tomorrow, evening, weekend, week, 3h, 2d, 2026-10-24 09:00, now)`)
+    if (at && at.getTime() <= Date.now()) throw new OpError("`until`: that time has passed")
     if (EVENT_ID.test(item)) {
       await ctx.api("POST", "inbox/events/snooze", { ids: [item], until: at ? at.getTime() : null })
       return { item, until: at ? stampOf(at) : null, when: at ? whenText(at) : null }
@@ -1834,9 +1834,9 @@ hold on now, if any. label says what for ("Practice guitar"), in the line at its
     if (why) throw new OpError(why, 403)
     if (/^(off|now|none)$/i.test(v)) { hold(null); return { hold: null } }
     const at = parseUntil(v)
-    if (!at) throw new OpError(`until: ${quoted(v)} isn't a time (30m, 2h, 07:30, 2026-10-24 09:00, off)`)
-    if (at.getTime() <= Date.now()) throw new OpError("until: that time has passed")
-    if (at.getTime() - Date.now() > DAY) throw new OpError("until: at most a day away")
+    if (!at) throw new OpError(`\`until\`: ${quoted(v)} isn't a time (30m, 2h, 07:30, 2026-10-24 09:00, off)`)
+    if (at.getTime() <= Date.now()) throw new OpError("`until`: that time has passed")
+    if (at.getTime() - Date.now() > DAY) throw new OpError("`until`: at most a day away")
     return { hold: hold(at, clip(p.label, 60)) }
   },
   text: (r) => (r.hold ? `Held until ${whenText(new Date(snoozeMs(r.hold.until)))}${r.hold.label ? ` (${r.hold.label})` : ""}: told of what came then.` : "Not held."),
@@ -1925,7 +1925,7 @@ id from a notification another machine sent is found too.
     if (answer === "pick") {
       if (!host) return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, (picks ?? []).map(str))) }
       const qs = e.questions ?? []
-      if (!qs.length || e.state !== "open" || (picks ?? []).length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`, qs.length ? 400 : 409)
+      if (!qs.length || e.state !== "open" || (picks ?? []).length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`, qs.length ? 400 : 409)
       if (!(await host(e.session!, { picks: qs.map((q, i) => choiceOf(q, str(picks![i]))) }))) throw new OpError("its session no longer asks that", 409)
       moveOn(list().filter((x) => x.id === e.id), "working")
       return { id: e.id, answer, title: e.title, terminal: null }

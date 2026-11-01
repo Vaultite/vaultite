@@ -191,11 +191,11 @@ of them) as the one argument works too.
     const logs = given.map((x) => {
       if (!x || typeof x !== "object" || Array.isArray(x)) throw new OpError("a log is an object: {area, title, date, ...}")
       const title = str(x.title).trim()
-      if (!str(x.area).trim()) throw new OpError("area is missing: the area's slug (workouts, sleep, nutrition...)")
+      if (!str(x.area).trim()) throw new OpError("`area` is missing: the area's slug (workouts, sleep, nutrition...)")
       if (!title) throw new OpError("title is missing: a short title")
       const area = ensureArea(str(x.area).trim())
       const date = str(x.date).trim() || today()
-      if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new OpError(`date is YYYY-MM-DD (got '${date}')`)
+      if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new OpError(`\`date\` is YYYY-MM-DD (got '${date}')`)
       const id = str(x.ext_id).trim() || `${area}-${date}-${slug(title)}`
       // Corrected by another AI than the one that logged it (no source given): the same log, not a second one.
       const before = str(x.source).trim() ? [] : plugin.vault.items("logs").filter((l) => l.ext_id === id && l.area === area)

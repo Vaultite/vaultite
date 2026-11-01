@@ -44,7 +44,7 @@ export default async ($: VaultTest) => {
     t = await run("log.create", { area: "nutrition", date: "2026-09-29", title: "Op bowl", data: { protein: 30 } })
     check("log.create: again corrects it, data merged", !t.error && read(opBowl).includes("kcal: 500") && read(opBowl).includes("protein: 30"), read(opBowl))
     t = await run("log.create", { date: "2026-09-29", title: "No area" })
-    check("log.create: an area is needed", t.error && t.text.includes("area is missing"), t)
+    check("log.create: an area is needed", t.error && t.text.includes("`area` is missing"), t)
     t = await run("log.create", { title: JSON.stringify([{ area: "nutrition", date: "2026-09-29", title: "Op snack" }, { area: "nutrition", date: "2026-09-29", title: "Op tea" }]) })
     check("log.create: a list of logs as JSON", !t.error && t.text.startsWith("Logged 2: ") && exists("Logs/Nutrition/2026-09-29 Op tea.md"), t)
     t = await run("person.timeline-add", { person: "Sammy", kind: "call", text: "Talked about ops", date: "2026-09-27", duration_min: 15 })

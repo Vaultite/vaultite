@@ -1124,7 +1124,7 @@ const Y = { type: "number", description: "on a drawing: a point of it, with x" }
 /** A target from params: the user's file when none is given. */
 function target(p: Record<string, unknown>): Target {
   const path = str(p.path) || focus()?.path
-  if (!path) throw new OpError("the user has no file open: give path")
+  if (!path) throw new OpError("the user has no file open: give `path`")
   return { path, ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}), ...point(p) }
 }
 /** What a drawing doesn't have (a margin, lines to write in): the op that does it there instead. */
@@ -1423,7 +1423,7 @@ moment tells you what they chose.
   params: { find: { ...FIND, description: "the text to change, exactly as in the file" }, replace: { type: "string", required: true, description: "what it becomes" },
     why: { type: "string", description: "a few words on why, by it" }, path: PATH, line: LINE, as: AS },
   run: async (p) => {
-    if (!str(p.find)) throw new OpError("give find: the text to change")
+    if (!str(p.find)) throw new OpError("give `find`: the text to change")
     const name = who(p), t = target(p)
     notOnDrawing(t, "change it with companion draw")
     did(name, "suggest")
@@ -1480,7 +1480,7 @@ plugin.op({
   params: { find: { ...FIND, description: "the text to highlight, exactly as in the file" }, keep: { type: "boolean", description: "keep it in the file, as a highlight of your colour" },
     path: PATH, line: LINE, as: AS },
   run: async (p, ctx) => {
-    if (!str(p.find)) throw new OpError("give find: the text to highlight")
+    if (!str(p.find)) throw new OpError("give `find`: the text to highlight")
     const name = who(p), t = target(p)
     did(name, "highlight")
     if (p.keep) notOnDrawing(t, "keep is for notes; its highlight is your selection there for a while")
@@ -1660,7 +1660,7 @@ came (faster with speed), so you can watch what the session makes of them.
     let ms: Moment[] = []
     if (p.file) ms = fs.readFileSync(String(p.file), "utf8").split("\n").flatMap((l) => { try { return l ? [JSON.parse(l)] : [] } catch { return [] } })
     else if (p.day) ms = log.read(String(p.day))
-    else throw new OpError("give day or file")
+    else throw new OpError("give `day` or `file`")
     ms = ms.filter((m) => m && typeof m.kind === "string").slice(-p.limit)
     const t0 = ms[0]?.t ?? 0
     void (async () => {

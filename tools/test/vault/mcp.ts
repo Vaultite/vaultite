@@ -145,7 +145,7 @@ export default async ($: VaultTest) => {
     t = await tool("upload_file", { data: jpeg.toString("base64"), name: "Lost", note: "Logs/Nowhere.md" })
     check("mcp upload_file: a note that isn't there saves nothing", t.error && !exists("Attachments/Lost.jpg"), t)
     t = await tool("upload_file", { name: "Nothing" })
-    check("mcp upload_file: no file and the vault not on the internet: says what to give", t.error && t.text.includes("file, url, or data"), t)
+    check("mcp upload_file: no file and the vault not on the internet: says what to give", t.error && t.text.includes("`file`, `url`, or `data`"), t)
     t = await tool("upload_file", { url: "http://127.0.0.1:1/x.png" })
     check("mcp upload_file: a local address isn't fetched", t.error && t.text.includes("couldn't download it"), t)
     fs.rmSync(path.join(VAULT, "Attachments"), { recursive: true, force: true })

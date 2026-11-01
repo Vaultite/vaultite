@@ -191,7 +191,7 @@ terminal: --html - < page.html), its links made absolute against the url. inbox 
   },
   args: ["url"],
   run: async (p, ctx) => {
-    if (p.html !== undefined && !/<[a-z!]/i.test(p.html)) throw new OpError("html is the page's HTML itself, not a file's name (from a terminal: --html - < page.html)")
+    if (p.html !== undefined && !/<[a-z!]/i.test(p.html)) throw new OpError("`html` is the page's HTML itself, not a file's name (from a terminal: --html - < page.html)")
     try {
       return await clip({ ...p, ...(p.inbox ? { from: ctx.who.label } : {}) })
     } catch (e) {

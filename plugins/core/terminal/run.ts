@@ -113,7 +113,7 @@ export function runOps(plugin: Plugin, keep: Keep) {
   async function startHere(ctx: OpCtx, rel: string, w: What, account: string, allow: boolean): Promise<Started> {
     // A command comes from the vault, and a synced or shared vault mustn't pick what runs here: this machine says yes once.
     if (w.command && !plugin.allows(`command:${w.command}`)) {
-      if (!allow) throw new OpError(`${COMMAND_UNSEEN} it runs \`${w.command}\`. Ask the user, then run it again with allow`, 409)
+      if (!allow) throw new OpError(`${COMMAND_UNSEEN} it runs \`${w.command}\`. Ask the user, then run it again with \`allow\``, 409)
       plugin.allow(`command:${w.command}`)
     }
     const vars = { path: rel, file: path.join(vaultDir(), rel), title: path.basename(rel).replace(/\.md$/i, ""), vault: vaultDir() }
@@ -173,7 +173,7 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
     },
     args: ["path"],
     run: async ({ path: rel, agent, prompt, command, report, machine, account, open, allow, again }, ctx) => {
-      if (agent && command) throw new OpError("give an agent or a command, not both")
+      if (agent && command) throw new OpError("give an `agent` or a `command`, not both")
       const w: What = command ? { command } : { agent: agent || "claude", ...(prompt ? { prompt } : {}), ...(report === false ? { report } : {}) }
       if (w.agent && !TERMINAL_AGENT.test(w.agent)) throw new OpError(`'${w.agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
       if (account && (!w.agent || !/^[a-z0-9]{1,32}$/.test(account))) throw new OpError(w.agent ? `'${account}' isn't an account's id` : "a command has no accounts")

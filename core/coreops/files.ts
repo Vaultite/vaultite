@@ -162,7 +162,7 @@ From vau, the text comes from --from <file> or stdin, and --base <file> is the f
       const p = String(path).replace(/^\/+/, "")
       // A page of a file written back whole would drop the rest: a page's note, or a file too long for one answer.
       const keep = "use edit_file (vau edit) for the change, or pass base: the text you read, so the rest is kept"
-      if (base === undefined && PAGE_NOTE.test(String(text))) throw new OpError(`text ends with read's note on a page of ${p}: writing it would drop the rest of the file; ${keep}`)
+      if (base === undefined && PAGE_NOTE.test(String(text))) throw new OpError(`\`text\` ends with read's note on a page of ${p}: writing it would drop the rest of the file; ${keep}`)
       if (base === undefined && mcp(ctx.who)) {
         const cur = await ctx.api("GET", `file?path=${enc(p)}`).catch(() => null)
         if (typeof cur?.text === "string" && cur.text.length > MAX_TEXT) throw new OpError(`${p} is longer than one read (${cur.text.length} characters): ${keep}`)
@@ -199,10 +199,10 @@ every time. A change made meanwhile elsewhere in the file is kept.
     run: async ({ path, old, new: by, all }, ctx) => {
       const f = await ctx.api("GET", `file?path=${enc(path)}`)
       const cur = String(f.text ?? ""), from = String(old)
-      if (!from) throw new OpError("old is empty: give the text to replace")
+      if (!from) throw new OpError("`old` is empty: give the text to replace")
       const n = cur.split(from).length - 1
-      if (!n) throw new OpError(`old isn't in ${f.path}: read it again (it may have changed) and copy the text exactly`)
-      if (n > 1 && !all) throw new OpError(`old is in ${f.path} ${n} times: give more text around it so it's found once, or all: true`)
+      if (!n) throw new OpError(`\`old\` isn't in ${f.path}: read it again (it may have changed) and copy the text exactly`)
+      if (n > 1 && !all) throw new OpError(`\`old\` is in ${f.path} ${n} times: give more text around it so it's found once, or set \`all\``)
       const text = all ? cur.split(from).join(String(by)) : cur.replace(from, () => String(by))
       try {
         await ctx.api("PUT", "file", { path: f.path, text, base: cur })

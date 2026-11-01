@@ -106,7 +106,7 @@ type PinsTarget = { label: string; pinned: string[] | null; pin: (path: string, 
 async function target(ctx: OpCtx, { workspace, vault }: { workspace?: number; vault?: boolean }) {
   const own = pinned(plugin.vault)
   const of = plugin.service("pins:of") as ((n: number) => PinsTarget) | null
-  if (!of && workspace) throw new OpError("Workspaces is off: there's one list of pinned pages (leave out workspace)")
+  if (!of && workspace) throw new OpError("Workspaces is off: there's one list of pinned pages (leave out `workspace`)")
   let n: number | null = null
   if (of && !vault) {
     try { const w = workspace ?? (await ctx.ui(null) as Item)?.workspace; n = Number.isInteger(w) ? w as number : null } catch { n = workspace ?? null }
@@ -120,7 +120,7 @@ const numbered = (pins: string[], indent = "") => (pins.length ? pins.map((p, i)
 /** One change, in the list the user sees. */
 async function change(ctx: OpCtx, given: { path: string; before?: string; label?: string; workspace?: number; vault?: boolean }, on: boolean) {
   const { t, label } = await target(ctx, given)
-  if (on && given.label?.trim() && !given.path.startsWith("view:")) throw new OpError("Only a view is named (label): a file or folder shows its own name")
+  if (on && given.label?.trim() && !given.path.startsWith("view:")) throw new OpError("Only a view is named (`label`): a file or folder shows its own name")
   const r = t ? t.pin(given.path, on, given.before) : pinOne(plugin.vault, { path: given.path, pinned: on, ...(given.before ? { before: given.before } : {}) })
   if (on && given.label?.trim()) setLabel(plugin.vault, given.path, given.label)
   return { path: given.path, pinned: r.pinned, label }

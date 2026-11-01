@@ -133,7 +133,7 @@ zone. What matters from one goes where it belongs (a person's timeline, a log), 
   args: ["from"],
   run: async ({ from, to }) => {
     const start = from ?? todayIso(), end = to ?? start
-    if (end < start) throw new OpError("to is before from")
+    if (end < start) throw new OpError("`to` is before `from`")
     if (addDays(start, 92) < end) throw new OpError("at most three months at a time")
     return { from: start, to: end, ...(await events(start, end)) }
   },

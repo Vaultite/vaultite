@@ -190,7 +190,7 @@ parses, else text). There's no font size setting: ⌘+ and ⌘- (Ctrl off a Mac)
     run: ({ key, value: raw, force }) => {
       if (!key) return { appearance: app.vault.configWithDefaults("appearance") }
       const s = APPEARANCE[key]
-      if (!s && !force) throw new OpError(`no appearance setting '${key}'. Keys: ${Object.keys(APPEARANCE).join(", ")} (force for another)`, 404)
+      if (!s && !force) throw new OpError(`no appearance setting '${key}'. Keys: ${Object.keys(APPEARANCE).join(", ")} (\`force\` for another)`, 404)
       if (raw === undefined) return { key, value: app.vault.configWithDefaults("appearance")[key] ?? null }
       const reset = raw === "reset" || (raw === "default" && key !== "scheme")
       const parsed = reset ? null : s ? s.parse(raw) : value(raw)
