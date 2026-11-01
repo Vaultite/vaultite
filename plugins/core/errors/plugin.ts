@@ -71,6 +71,8 @@ function loaded() {
 
 /** The same error within BURST of the last line written for it: counted here and written with the next line. */
 const held = new Map<string, { at: number; n: number; last: ErrorEvent }>()
+// (flushing only while one is held: every 10 s with none, it woke an idle server for nothing)
+let flusher: ReturnType<typeof setInterval> | null = null
 /** The kinds of error a toast told of since the server started: one each, the rest only listed (Errors). */
 const toldOf = new Set<string>()
 
@@ -89,6 +91,8 @@ function record(e: Omit<ErrorEvent, "id">) {
   }
   if (h && h.n) flushHeld(event.id)
   held.set(event.id, { at: event.t, n: 0, last: event })
+  flusher ??= setInterval(flushOld, BURST)
+  flusher.unref()
   append(event)
   const isNew = add(event, true)
   if (isNew) tell(isNew)
@@ -101,12 +105,12 @@ function flushHeld(id: string) {
   append({ ...h.last, n: h.n })
   h.n = 0
 }
-const flusher = setInterval(() => {
+function flushOld() {
   const now = Date.now()
   for (const [id, h] of held) { if (now - h.at >= BURST) { flushHeld(id); held.delete(id) } }
-}, BURST)
-flusher.unref()
-plugin.onUnload(() => { clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
+  if (!held.size && flusher) { clearInterval(flusher); flusher = null }
+}
+plugin.onUnload(() => { if (flusher) clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
 
 /** A new error: a toast saying only where (its text stays here), kept in the inbox, once per kind while the server runs;
  *  not for an older build's file, one the user was already told of, or one that ended the server. */
