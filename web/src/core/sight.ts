@@ -5,8 +5,9 @@ import { keyboardUp } from "@/components/KeyBar"
 import { currentEditor } from "@/core/editors"
 import { scrollingBox } from "@/lib/utils"
 
-/** Drawn over the page at its top, and at its foot. */
-const TOP = "[data-phone-header], [data-view-bar]", FOOT = "[data-phone-bar], [data-key-bar], [data-status-bar]"
+/** Drawn over the page at its top (a phone's header, a pane's view bar), and at its foot (a phone's bar, the keys over
+ *  the keyboard, the status bar): by class, as a selector read the whole page on every keystroke. */
+const TOP = "sight-top", FOOT = "sight-foot"
 
 let edge: HTMLElement | null = null
 /** The visual viewport in client coordinates: Chrome's are the layout viewport's, iOS's the visual viewport's while the
@@ -36,11 +37,11 @@ export function sightOf(el: Element) {
   // (a sheet is drawn over the page's bars; the keys over the keyboard are drawn in it)
   const layer = el.closest("dialog[open]") ?? document
   const over = (b: DOMRect) => b.height > 0 && b.left < box.right && b.right > box.left
-  for (const bar of layer.querySelectorAll(TOP)) {
+  for (const bar of layer.getElementsByClassName(TOP)) {
     const b = bar.getBoundingClientRect()
     if (over(b) && b.top <= top + 1 && b.bottom > top) top = b.bottom
   }
-  for (const bar of layer.querySelectorAll(FOOT)) {
+  for (const bar of layer.getElementsByClassName(FOOT)) {
     const b = bar.getBoundingClientRect()
     if (over(b) && b.bottom >= bottom - 1 && b.top < bottom) bottom = b.top
   }

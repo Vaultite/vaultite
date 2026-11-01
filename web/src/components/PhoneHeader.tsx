@@ -15,7 +15,7 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
   // iOS large titles: the name shows here once the page's own title (FileTitle.tsx) has scrolled away, or if it has none.
   const inSight = titleInSight.use()
   return (
-    <header data-phone-header className="glass-strong fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)] md:hidden">
+    <header data-phone-header className="sight-top glass-strong fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)] md:hidden">
       {/* Three columns, the outer two as wide as each other, so the name stays centred whatever buttons there are. */}
       <div className="grid h-11 grid-cols-[1fr_minmax(0,auto)_1fr] items-center px-1">
         <div className="flex items-center">

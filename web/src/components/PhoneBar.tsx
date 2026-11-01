@@ -121,7 +121,7 @@ export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNew
       {/* Its own group in the browser-like transitions (core/motion.ts), so it stays put while the page moves; the tab
           list's bar takes the name while it's open (one at a time). */}
       <nav ref={nav} data-phone-bar aria-label="Navigation" style={{ viewTransitionName: listOpen ? undefined : "phone-bar", touchAction: "none" }}
-        className="glass-strong fixed inset-x-0 bottom-0 z-30 px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.25rem)] md:hidden">
+        className="sight-foot glass-strong fixed inset-x-0 bottom-0 z-30 px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.25rem)] md:hidden">
         <div className="mx-auto flex max-w-md items-stretch gap-0.5">{BAR.map(button)}</div>
       </nav>
     </>
