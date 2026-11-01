@@ -37,8 +37,10 @@ const say = (job: Job, p: string) => { if (job.problems.length < 10) job.problem
 
 /** Writes and paths for one import: a path free in the vault and in this import, kept per source path. */
 function planner(vault: Vault) {
+  // (by lower case: on a Mac "Ideas.md" and "ideas.md" are one file, so the second would overwrite the first)
   const taken = new Set<string>()
-  const there = (rel: string) => taken.has(rel) || vault.entries.has(rel) || fs.existsSync(vault.abs(rel))
+  const inVault = new Set([...vault.entries.keys()].map((k) => k.toLowerCase()))
+  const there = (rel: string) => taken.has(rel.toLowerCase()) || inVault.has(rel.toLowerCase()) || fs.existsSync(vault.abs(rel))
   return {
     /** `rel`, or "Name 1.ext"... when that's taken; `same` says a file there is this one (an attachment imported before). */
     free(rel: string, same?: (abs: string) => boolean) {
@@ -48,8 +50,8 @@ function planner(vault: Vault) {
       if (inside !== path.resolve(vault.path) && !inside.startsWith(path.resolve(vault.path) + path.sep)) throw new Error(`${rel} is outside the vault`)
       for (let n = 0; ; n++) {
         const p = `${dir}${n ? `${stem} ${n}` : stem}${ext}`
-        if (!there(p)) { taken.add(p); return { rel: p, exists: false } }
-        if (!taken.has(p) && same && fs.existsSync(vault.abs(p)) && same(vault.abs(p))) { taken.add(p); return { rel: p, exists: true } }
+        if (!there(p)) { taken.add(p.toLowerCase()); return { rel: p, exists: false } }
+        if (!taken.has(p.toLowerCase()) && same && fs.existsSync(vault.abs(p)) && same(vault.abs(p))) { taken.add(p.toLowerCase()); return { rel: p, exists: true } }
       }
     },
   }
@@ -115,7 +117,9 @@ function kindOfExport(parts: Zip[] | null, file: string, name: string): Source {
   if (names.some((n) => /\.enex$/i.test(n))) return "evernote"
   if (names.some((n) => KEEP.test(n))) return "keep"
   if (names.some((n) => BUNDLE.test(n))) return "bear"
-  if (names.some((n) => /\.md$/i.test(n))) return "notion"
+  // (Markdown beside HTML pages is a page's readme, unless it's named the way Notion names its pages)
+  const html = names.some((n) => /\.html?$/i.test(n))
+  if (names.some((n) => /\.md$/i.test(n)) && (!html || names.some((n) => /[ -][0-9a-f]{32}\.md$/i.test(n)))) return "notion"
   if (names.some((n) => /\.html?$/i.test(n))) return "html"
   if (names.some((n) => /\.csv$/i.test(n))) return "csv"
   throw new Error("no notes in this zip: is it Notion's export (Markdown & CSV), Evernote's .enex files, Keep's Takeout, Bear's backup, HTML pages or CSV tables?")
@@ -247,23 +251,35 @@ async function keep(vault: Vault, parts: Zip[], dir: string, job: Job) {
   const known = knownIds(vault, "keep-")
   const plan = planner(vault)
   const pending: Write[] = []
+  // Every part's files (a big Takeout comes in several), and how many notes share each file name.
+  const byName = new Map(parts.flatMap((z) => z.entries.map((e) => [e.name, { z, e }] as const)))
+  const names = new Map<string, number>()
+  for (const name of byName.keys()) if (KEEP.test(name)) names.set(name.split("/").pop()!, (names.get(name.split("/").pop()!) ?? 0) + 1)
+  /** An attachment's file: by its path, else by its name with another extension (Takeout writes .jpeg as .jpg). */
+  const fileOf = (folder: string, p: string) => {
+    const hit = byName.get(folder + p) ?? byName.get(p)
+    if (hit) return hit
+    const stem = (folder + p).replace(/\.[^./]+$/, ".")
+    return [...byName.entries()].find(([n]) => n.startsWith(stem) && !n.slice(stem.length).includes("/") && !/\.json$/i.test(n))?.[1]
+  }
   for (const z of parts) {
-    const byName = new Map(z.entries.map((e) => [e.name, e]))
     for (const e of z.entries.filter((x) => KEEP.test(x.name))) {
       let n
       try { n = readKeep(JSON.parse((await entryBytes(z.file, e)).toString("utf8"))) } catch { n = null }
       if (!n) { say(job, `${e.name} isn't a Keep note`); continue }
       if (n.trashed) continue
       job.notes++
-      const ext = `keep-${crypto.createHash("sha1").update(e.name.split("/").pop()!).digest("hex").slice(0, 16)}`
+      // (by its file's name, or its whole path when another note's file has that name)
+      const base = e.name.split("/").pop()!
+      const ext = `keep-${crypto.createHash("sha1").update((names.get(base) ?? 0) > 1 ? e.name : base).digest("hex").slice(0, 16)}`
       if (known.has(ext)) { job.unchanged++; continue }
       const folder = e.name.slice(0, e.name.lastIndexOf("/") + 1)
       const embeds: string[] = []
       for (const a of n.attachments) {
-        const src = byName.get(folder + a.path) ?? byName.get(a.path)
+        const src = fileOf(folder, a.path)
         if (!src) { say(job, `${a.path} (in ${n.title}) isn't in the export`); continue }
-        const p = plan.free(join(dir, "Attachments", safeName(a.path.split("/").pop())), (abs) => fs.statSync(abs).size === src.size)
-        if (!p.exists) pending.push({ rel: p.rel, note: false, data: () => entryBytes(z.file, src) })
+        const p = plan.free(join(dir, "Attachments", safeName(src.e.name.split("/").pop())), (abs) => fs.statSync(abs).size === src.e.size)
+        if (!p.exists) pending.push({ rel: p.rel, note: false, data: () => entryBytes(src.z.file, src.e) })
         embeds.push(`${EMBEDS.test(a.mime) ? "!" : ""}[[${p.rel}]]`)
       }
       const fm: Record<string, unknown> = {}

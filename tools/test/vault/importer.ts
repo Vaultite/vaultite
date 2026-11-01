@@ -177,4 +177,19 @@ export default async ($: VaultTest) => {
     exists("Books read/Hello, world.md") && read("Books read/Dune 1.md").includes("Author: Someone Else"), [j, exists("Books read/Dune.md") && read("Books read/Dune.md")])
   j = await runJob({ path: "Imports/Books read.csv" })
   check("importer csv: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 3, j)
+
+  // Fixes: names that differ only in case, Bear's :: in code-like text, HTML pages with a readme, Keep's renamed pictures.
+  check("importer bear: :: between words isn't a highlight", bearNote("# T\nstd::vector::size and ::this::").body === "std::vector::size and ==this==", bearNote("# T\nstd::vector::size and ::this::").body)
+  fs.writeFileSync(path.join(VAULT, "Imports/Cases.enex"), `<?xml version="1.0"?><en-export><note><title>Ideas</title><content><![CDATA[<en-note>One</en-note>]]></content></note><note><title>ideas</title><content><![CDATA[<en-note>Two</en-note>]]></content></note></en-export>`)
+  j = await runJob({ path: "Imports/Cases.enex" })
+  check("importer: two names that differ only in case get two files (one file on a Mac)", j.created === 2 && exists("Evernote/Cases/Ideas.md") && exists("Evernote/Cases/ideas 1.md"), [j, fs.readdirSync(path.join(VAULT, "Evernote/Cases"))])
+  fs.writeFileSync(path.join(VAULT, "Imports/Docs.zip"), zipFiles({ "README.md": "# Read me\n", "index.html": "<html><body><p>Hi</p></body></html>" }))
+  j = await runJob({ path: "Imports/Docs.zip" })
+  check("importer: HTML pages with a readme are HTML pages, not Notion's", j.state === "done" && j.source === "html", j)
+  fs.writeFileSync(path.join(VAULT, "Imports/takeout2.zip"), zipFiles({
+    "Takeout/Keep/Photo.json": JSON.stringify({ title: "Photo", textContent: "Look", attachments: [{ filePath: "snap.jpeg", mimetype: "image/jpeg" }] }),
+    "Takeout/Keep/snap.jpg": Buffer.from([1, 1]),
+  }))
+  j = await runJob({ path: "Imports/takeout2.zip" })
+  check("importer keep: a picture Takeout renamed (.jpeg as .jpg) is still found", j.state === "done" && j.files === 1 && read("Keep/Photo.md").includes("![[Keep/Attachments/snap.jpg]]") && !j.problems.length, [j, exists("Keep/Photo.md") && read("Keep/Photo.md")])
 }

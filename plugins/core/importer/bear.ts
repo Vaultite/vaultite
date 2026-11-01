@@ -24,7 +24,8 @@ export function bearNote(md: string): { title: string; body: string } {
   const rest = first ? text.slice(first[0].length) : text
   const parts = rest.split(/(^```[\s\S]*?^```[^\n]*$|`[^`\n]+`)/m)
   const body = parts.map((p, i) => (i % 2 ? p : p
-    .replace(/::([^:\n]+?)::/g, "==$1==")
+    // (a highlight's marks touch its text and nothing else: std::vector::size stays as it is)
+    .replace(/(?<![:\w])::(?=\S)([^:\n]+?)(?<=\S)::(?![:\w])/g, "==$1==")
     // (a tag with spaces is closed by a #: the vault's tags can't hold spaces)
     .replace(/(^|\s)#([^\s#][^#\n]*?[^\s#])#(?=\s|$)/g, (_, pre: string, t: string) => `${pre}#${t.replace(/\s+/g, "-")}`))).join("")
   return { title: title || "Untitled", body: body.trim() }
