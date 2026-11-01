@@ -138,12 +138,12 @@ export function Panel({
 export function Stat({ label, value, unit, hint }: { label: string; value: ReactNode; unit?: string; hint?: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[13px] text-muted-foreground">{label}</div>
+      <div className="text-[13px] text-muted-foreground max-md:text-[15px]">{label}</div>
       <div className="num mt-0.5 text-[28px] leading-[34px] font-semibold">
         {value}
         {unit && <span className="ml-0.5 text-[15px] font-semibold text-muted-foreground">{unit}</span>}
       </div>
-      {hint && <div className="text-[13px] text-muted-foreground">{hint}</div>}
+      {hint && <div className="text-[13px] text-muted-foreground max-md:text-[15px]">{hint}</div>}
     </div>
   )
 }
@@ -269,10 +269,10 @@ export function Row({ title, meta, right, lead, className, onOpen, href, wrap, .
     <>
       {lead}
       <div className="min-w-0 flex-1">
-        <div className="line-clamp-2 text-[15px] leading-[20px]">{typeof title === "string" ? plain(title) : title}</div>
-        {meta && <div className={cn("text-[13px] text-muted-foreground", wrap ? "line-clamp-2" : "max-md:line-clamp-2 md:truncate")}>{meta}</div>}
+        <div className="line-clamp-2 text-[15px] leading-[20px] max-md:text-[17px] max-md:leading-[22px]">{typeof title === "string" ? plain(title) : title}</div>
+        {meta && <div className={cn("text-[13px] text-muted-foreground max-md:text-[15px] max-md:leading-[20px]", wrap ? "line-clamp-2" : "max-md:line-clamp-2 md:truncate")}>{meta}</div>}
       </div>
-      {right && <div className="shrink-0 text-[14px] text-muted-foreground tabular-nums">{right}</div>}
+      {right && <div className="shrink-0 text-[14px] text-muted-foreground tabular-nums max-md:text-[15px]">{right}</div>}
       {onOpen && <ChevronRight className="-ml-1.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
     </>
   )

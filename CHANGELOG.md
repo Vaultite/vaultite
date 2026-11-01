@@ -409,6 +409,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   37px), and the field's clear button takes a finger-sized tap.
 - **Task checkboxes are easier to tap on a phone**: a note's checkbox takes a tap twice its width and the line's height
   around it, without reaching the tasks above or below.
+- **Dashboard lists read at phone sizes**: on a phone a list row's title is 17px and its line under it 15px (they were
+  15px and 13px), as are a stat's label and note, so lists match the text around them.
 
 ## 0.8.0 (2026-10-24)
 
