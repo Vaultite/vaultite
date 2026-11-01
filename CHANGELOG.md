@@ -37,6 +37,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **Review lists every AI edit on Linux**: an edit or new file the coarse file clock dated a tick before its call
   began was sometimes credited to the call before it, or left off the list; it's the AI's now.
+- **A row of choices is one Tab stop**: Theme, Colour scheme, Density and every other set of choices take one Tab,
+  landing on the one picked; the arrow keys move among them and Space or Enter picks, as on a Mac.
 - **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
   Shift+I and Shift+U read and unread; G I opens the inbox. In a session's sheet J and K go to the next and previous
   session, E marks it done, P pins, R replies. Each is a command, rebindable in Hotkeys.

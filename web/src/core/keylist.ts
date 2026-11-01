@@ -1,6 +1,6 @@
 // Keyboard lists (`data-keylist` of `data-keyrow` rows; a sidebar is one list): arrows, tree folding from
 // aria-expanded, Enter clicks. All commands, so hotkeys.json rebinds them and Vim's j/k/h/l call the same functions.
-import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, CornerDownLeft, FolderClosed, FolderOpen, LogOut, Menu, PanelLeft, PanelRight, SquareArrowOutUpRight, SquareMousePointer, StepBack, StepForward } from "lucide-react"
+import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpToLine, CornerDownLeft, FolderClosed, FolderOpen, LogOut, Menu, PanelLeft, PanelRight, SquareArrowOutUpRight, SquareMousePointer, StepBack, StepForward } from "lucide-react"
 import { registerCommands, typingIn } from "@/core/commands"
 import { leaves } from "../../../core/layout.ts"
 import { byTab, focusPane } from "@/core/focus"
@@ -179,13 +179,18 @@ function tabPastList(back: boolean) {
   const run = row && runOf(row)
   const rows = run ? rowsIn(run) : []
   if (!rows.length) return false
-  const all = tabbable(row!.closest("dialog[open], [aria-modal=true]") ?? document.body)
-  const edge = back ? rows[0] : rows[rows.length - 1]
-  const out = all.filter((el) => !(run!.contains(el) && ofRow(el)))
+  tabPast(row!, rows, (el) => run!.contains(el) && ofRow(el), back)
+  return true
+}
+/** Move the keyboard from `from` past a run of `items` that's one Tab stop (`back`: before them), over what `inRun`
+ *  says is the run's. */
+function tabPast(from: HTMLElement, items: HTMLElement[], inRun: (el: HTMLElement) => boolean, back: boolean) {
+  const all = tabbable(from.closest("dialog[open], [aria-modal=true]") ?? document.body)
+  const edge = back ? items[0] : items[items.length - 1]
+  const out = all.filter((el) => !inRun(el))
   const pos = (el: HTMLElement) => edge.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING
   const to = back ? out.filter((el) => !pos(el)).at(-1) ?? out.at(-1) : out.find(pos) ?? out[0]
   to?.focus()
-  return true
 }
 
 const lastIn = new WeakMap<HTMLElement, HTMLElement>()
@@ -202,6 +207,38 @@ if (typeof window !== "undefined") {
     if ((e.relatedTarget instanceof Node && run.contains(e.relatedTarget)) || !byTab(e) || el!.matches("input, textarea")) return
     const back = was?.isConnected && was.getClientRects().length ? was : run.querySelector<HTMLElement>(`[aria-selected=true] ${ROW}, ${ROW}[aria-selected=true], ${ROW}[aria-current]:not([aria-current=false])`) ?? r!
     if (back !== el) focusRow(back)
+  })
+}
+
+// ---------- radio groups ----------
+// A radiogroup is one Tab stop (its checked radio); arrows move, Space or Enter picks: passing over a choice isn't one.
+const RADIO = "[role=radiogroup] [role=radio]"
+const currentRadio = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(RADIO) ? a : null }
+const groupOf = (r: HTMLElement) => r.closest<HTMLElement>("[role=radiogroup]")!
+const radiosIn = (g: HTMLElement) => [...g.querySelectorAll<HTMLElement>("[role=radio]")]
+  .filter((r) => groupOf(r) === g && r.getClientRects().length > 0 && !(r as HTMLButtonElement).disabled && !r.closest("[inert]"))
+
+/** Move the keyboard to the next radio of its group (`by` -1: the one before), round from the end. */
+function moveInRadios(by: 1 | -1) {
+  const r = currentRadio()
+  const all = r ? radiosIn(groupOf(r)) : []
+  if (!all.length) return
+  all[(all.indexOf(r!) + by + all.length) % all.length].focus()
+}
+/** Move the keyboard past the radios of its group (`back`: before them). */
+function tabPastRadios(back: boolean) {
+  const r = currentRadio()
+  const all = r ? radiosIn(groupOf(r)) : []
+  if (all.length) tabPast(r!, all, (el) => all.includes(el), back)
+}
+if (typeof window !== "undefined") {
+  addEventListener("focusin", (e) => {
+    const el = e.target instanceof HTMLElement && e.target.matches(RADIO) ? e.target : null
+    if (!el || !byTab(e)) return
+    const g = groupOf(el)
+    if (e.relatedTarget instanceof Node && g.contains(e.relatedTarget)) return
+    const checked = radiosIn(g).find((r) => r.getAttribute("aria-checked") === "true")
+    if (checked && checked !== el) checked.focus()
   })
 }
 
@@ -262,6 +299,10 @@ registerCommands([
   { id: "list:leave", name: "Leave the sidebar", keys: ["Escape"], when: () => onRow() && !!sidebarOfFocus() && !getSelection(), run: leaveList, icon: LogOut },
   { id: "list:tab-out", name: "Move past the list", keys: ["Tab"], when: () => onRow() && !!runOf(currentRow()!), run: () => tabPastList(false), icon: StepForward },
   { id: "list:tab-back", name: "Move before the list", keys: ["Shift+Tab"], when: () => onRow() && !!runOf(currentRow()!), run: () => tabPastList(true), icon: StepBack },
+  { id: "radio:next", name: "Move to the next choice", keys: ["ArrowRight", "ArrowDown"], when: () => !!currentRadio(), run: () => moveInRadios(1), icon: ArrowRight },
+  { id: "radio:previous", name: "Move to the previous choice", keys: ["ArrowLeft", "ArrowUp"], when: () => !!currentRadio(), run: () => moveInRadios(-1), icon: ArrowLeft },
+  { id: "radio:tab-out", name: "Move past the choices", keys: ["Tab"], when: () => !!currentRadio(), run: () => tabPastRadios(false), icon: StepForward },
+  { id: "radio:tab-back", name: "Move before the choices", keys: ["Shift+Tab"], when: () => !!currentRadio(), run: () => tabPastRadios(true), icon: StepBack },
   // (The menu key opens it by itself; Macs have none.)
   { id: "focus:menu", name: "Open the menu of what has the keyboard", keys: ["Shift+F10"], when: () => !!focused(), run: openFocusedMenu, icon: Menu },
   { id: "focus:activate", name: "Press what has the keyboard", keys: ["Enter"], when: () => !!madeButton() && !typingIn(document.activeElement), run: () => madeButton()?.click(), icon: SquareMousePointer },
