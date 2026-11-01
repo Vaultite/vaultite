@@ -13,6 +13,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An idle server stops writing**: it no longer rewrites its schedule's last runs to disk every 30 s when no job ran.
 - **Back on a phone lands where the note was read**: following a link and coming back showed a part of a long note
   further on (the editor's guessed heights moved it); and the sidebar's file tree has rows a finger tall (44px, not 41).
+- **A plugin turned off shows at once on pages open**: a dashboard whose blocks' plugin goes off (People, or People
+  map with it) says why instead of going blank, and blocks follow without a reload; "needs People, which is off"
+  where it said a plugin was off that's switched on.
 - **Day planner**: a block in your daily note draws its timed items (`- 09:00 - 10:30 Standup`, `- 14:00 Lunch`) as a
   timeline of the day, overlapping ones side by side and a line at the time it is now; a task ticks done right on the
   timeline; agents read it as the plan.

@@ -356,6 +356,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `offerPanel(key, side)`: Bring a panel into a sidebar without opening the sidebar (a closed one shows it in its rail): unfolded, and at the end of `side` if it's in neither.
 - `offerPicture(el, draw)`: `el` gives copies of the page its picture as it is now (`draw`; null: copy it as it is), for what a copy can't show of it: a WebGL canvas reads back empty once shown.
 - `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off.
+- `offText(p, disabled?)`: Why a plugin that isn't on isn't ("People map needs People, which is off"): its own switch said off would send the user to a switch that's on.
 - `onActivity(fn)`: Hear what the user does (see noteActivity); returns how to stop.
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
 - `onCanvases(fn)`: Called when a canvas comes or goes.

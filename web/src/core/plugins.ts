@@ -289,17 +289,23 @@ export function useEnabled() {
 
 export const names = (ids: string[] = []) => ids.map((i) => pluginById(i)?.name ?? i).join(" and ")
 
+/** Why a plugin that isn't on isn't ("People map needs People, which is off"): its own switch said off would send the
+ *  user to a switch that's on. */
+export function offText(p: Plugin, disabled = getPrefs().disabled) {
+  const off = (p.requires ?? []).filter((r) => !isEnabled(r, disabled))
+  const why = !switchedOn(p) ? "is off" : p.meta?.approval ? "waits for you to allow it on this machine" : p.problems?.length ? "couldn't load"
+    : off.length ? `needs ${names(off)}, which ${off.length > 1 ? "are" : "is"} off` : "is off"
+  return `${p.name} ${why}`
+}
+
 // A shortcut for a command whose plugin is off, waits to be allowed here or failed to load says so (its id's prefix
 // names a vault plugin that isn't loaded).
 setMissingCommand((id) => {
   const p = PLUGINS.find((x) => x.commands?.some((c) => c.id === id)) ?? pluginById(id.split(":")[0])
   const { disabled } = getPrefs()
   if (!p || isEnabled(p.id, disabled)) return null
-  const off = (p.requires ?? []).filter((r) => !isEnabled(r, disabled))
-  const why = !switchedOn(p) ? "is off" : p.meta?.approval ? "waits for you to allow it on this machine" : p.problems?.length ? "couldn't load"
-    : off.length ? `needs ${names(off)}, which is off` : "is off"
   const keys = keyCaps(keysOf({ id })[0] ?? "").join("")
-  return () => notify(`${keys}: ${p.name} ${why}`, { id: `plugin:${p.id}`, action: { label: "Review", run: () => openDetail(`plugin/${p.id}`) } })
+  return () => notify(`${keys}: ${offText(p, disabled)}`, { id: `plugin:${p.id}`, action: { label: "Review", run: () => openDetail(`plugin/${p.id}`) } })
 })
 
 // The same list until the plugins change: a new one each render made what keys a memo on it (the command palette's

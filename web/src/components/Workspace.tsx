@@ -16,7 +16,7 @@ import { layout, leaves, shownTab, tabPath, type Divider as DividerAt, type Grou
 import { PaneContext } from "@/core/pane"
 import { VaultLoading } from "@/components/VaultLoading"
 import { isPage } from "@/core/pages"
-import { fillsPane, names, openElsewhere, usePluginsVersion, viewFor } from "@/core/plugins"
+import { fillsPane, offText, openElsewhere, switchedOn, usePluginsVersion, viewFor } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
@@ -414,7 +414,7 @@ const PageHeading = memo(function PageHeading({ label }: { label: string }) {
 export function viewBody(store: Store, tab: Tab, to: string, view: ReturnType<typeof viewFor>, focused: boolean) {
   if (!view) return { title: to.slice(5), drawn: null, note: "No plugin draws this tab." }
   const title = view.def.title(view.arg)
-  if (!view.on) return { title, drawn: null, note: `${names([view.plugin.id])} is off. Turn it on in Plugins to open this tab.` }
+  if (!view.on) return { title, drawn: null, note: `${offText(view.plugin)}.${switchedOn(view.plugin) ? "" : " Turn it on in Plugins to open this tab."}` }
   const name = to.slice(5).split("/")[0]
   const ctx = { store, arg: view.arg, focused, close: () => closeTab(tab.id, true), setArg: (arg: string) => replaceTabTarget(tab.id, `view:${name}${arg ? `/${arg}` : ""}`) }
   return { title, drawn: <Drawn draw={() => view.def.render(ctx)} />, note: null }

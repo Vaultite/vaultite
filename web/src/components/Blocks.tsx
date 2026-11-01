@@ -13,7 +13,7 @@ import { blockName, scan } from "../../../core/sections.ts"
 import { innerOf, noteParts, setBlockText, setProp } from "@/core/frontmatter"
 import { errorText, notifyError } from "@/core/notify"
 import { resolver } from "@/core/links"
-import { blockFor } from "@/core/plugins"
+import { blockFor, offText } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { slashItems } from "@/core/slash"
 import { Loading, Switch } from "@/components/kit"
@@ -198,7 +198,7 @@ function Block({ name, text, ctx, disabled, quiet, editing, write }: { name: str
     if (quiet) return null
     return (
       <p className="text-[15px] text-muted-foreground">
-        {plugin ? `${plugin.name} is off, so this ${name} block isn't drawn.` : unnamed || `No plugin draws block-${name}.`}
+        {plugin ? `${offText(plugin, disabled)}, so this ${name} block isn't drawn.` : unnamed || `No plugin draws block-${name}.`}
       </p>
     )
   }

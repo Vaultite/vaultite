@@ -1,7 +1,7 @@
 // A dashboard read: its blocks as a grid of cards (`wide`, `stack`: fenceLayout), off plugins' blocks left out. Cards come back at
 // their last height and carry `data-line`, so the page keeps its shape and editing shows the same part.
 import { useEffect, useMemo, useRef, type ReactNode } from "react"
-import { blockFor, blockOptions, BlockView, cn, EmbedView, fenceLayout, Markdown, blockHeightKey, keepAnchored, segments, textKey, useHeldHeight, type PageCtx } from "@vaultite"
+import { blockFor, blockOptions, BlockView, cn, EmbedView, fenceLayout, Markdown, blockHeightKey, keepAnchored, offText, openDetail, segments, textKey, useHeldHeight, type PageCtx } from "@vaultite"
 
 type Cell = ({ md: string } | { embed: string; height?: number } | { wide: boolean; blocks: { name: string; text: string; nth: number }[] }) & { line: number }
 
@@ -43,9 +43,17 @@ function layout(body: string): Cell[] {
   return cells
 }
 
+/** The plugins whose blocks it leaves out, when that leaves nothing: a page gone blank says why. */
+function allOff(body: string, cells: Cell[], disabled: string[]) {
+  if (cells.length) return []
+  const off = layout(body).flatMap((c) => "blocks" in c ? c.blocks.map((b) => blockFor(b.name, disabled, blockOptions(b.text)).plugin) : [])
+  return [...new Set(off.filter((p): p is NonNullable<typeof p> => !!p))]
+}
+
 export function Dashboard({ ctx }: { ctx: PageCtx }) {
   const { body, disabled } = ctx
   const cells = useMemo(() => cellsOf(body, disabled), [body, disabled])
+  const off = useMemo(() => allOff(body, cells, disabled), [body, cells, disabled])
   const one = useMemo(() => narrow(body, disabled), [body, disabled])
   // Each card's key for its remembered height: what it draws, and which of the same it is (not its place in the file,
   // so a block added above doesn't make the others forget).
@@ -68,6 +76,12 @@ export function Dashboard({ ctx }: { ctx: PageCtx }) {
     // Two columns when its pane is wide enough (a container query: a dashboard in a narrow split gets one) and it's
     // read wide.
     <div className="@container"><div ref={grid} className={cn("grid grid-cols-1 gap-4", !one && "@2xl:grid-cols-2")}>
+      {!!off.length && (
+        <p className="text-[15px] text-muted-foreground" data-dashboard-off={off.map((p) => p.id).join(" ")}>
+          Nothing to show: {off.map((p) => offText(p, disabled)).join("; ")}.{" "}
+          <button type="button" className="cursor-pointer font-medium text-primary" onClick={() => openDetail(`plugin/${off[0].id}`)}>Review</button>
+        </p>
+      )}
       {cells.map((c, i) => "embed" in c ? (
         // (a note, or a part of one, is text: as long as the text around it; a page, a table or a PDF takes the row)
         <Card key={i} at={keys[i]} line={c.line} className={cn("min-w-0", !one && "@2xl:col-span-2", isNote(c.embed) && "max-w-(--line-width)")}><EmbedView target={c.embed} height={c.height} store={ctx.store} from={ctx.path} seen={[ctx.path]} /></Card>

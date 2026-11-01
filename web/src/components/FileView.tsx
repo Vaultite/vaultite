@@ -400,7 +400,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const [override, setOverride] = useState<Mode | null>(fresh && saved === "read" ? tabEdit : kept?.mode ?? null)
   const first = splitFm(initial.text)
   const [fm, setFm] = useState(first.fm)
-  const { disabled } = usePrefs()
+  const { disabled: off, enabled } = usePrefs()
+  // (an opt-in plugin turned off changes `enabled` only: what's drawn from `disabled` redraws on either)
+  const disabled = useMemo(() => [...off], [off, enabled])
   const { props } = useMemo(() => readProps(fm), [fm])
   // Its type, the core's one rule (core/fileprops.ts): its kind's when a kind owns it (the server's row says), else the
   // frontmatter being edited (typing `type: dashboard` shows it at once).
