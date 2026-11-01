@@ -59,6 +59,8 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
     throw new HTTPError(400, `not a path in the vault: '${p ?? "None"}'`)
   }
   if (parts.some((x) => /[*"\\<>:|?]/.test(x))) throw new HTTPError(400, 'names can\'t contain * " \\ < > : | ?')
+  // (a line break or other control character is never in a name: trimmed off the ends, but one inside is refused)
+  if (parts.some((x) => /[\x00-\x1f\x7f]/.test(x))) throw new HTTPError(400, "names can't contain line breaks or other control characters")
   // (Windows drops a trailing dot or space, and its device names aren't files: written, they'd be another file or none)
   if (process.platform === "win32" && parts.some((x) => /[. ]$/.test(x) || DEVICE_NAME.test(x))) {
     throw new HTTPError(400, "Windows names can't end in a dot or a space, or be CON, PRN, AUX, NUL, COM1-9 or LPT1-9")

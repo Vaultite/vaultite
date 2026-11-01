@@ -4,6 +4,7 @@ import { distance } from "./blocks.ts"
 import { actionProblems, type OpAction } from "./actions.ts"
 import type { Readable } from "node:stream"
 import { KNOWN_AGENTS } from "./terminalids.ts"
+import { isHiddenPath } from "./fileprops.ts"
 import type { Item, Vault } from "./vault.ts"
 
 type Any = any
@@ -440,13 +441,15 @@ export function pathAsSaid(tree: { files?: TreeFile[]; others?: TreeFile[]; fold
   const all = [...(tree.files ?? []), ...(tree.others ?? [])].map((f) => f.path)
   const low = p.toLowerCase()
   const stem = (x: string) => { const n = x.split("/").pop()!; return (pages.has(x) ? n.replace(/\.[^.]+$/, "") : n).toLowerCase() }
-  const by = (ok: (x: string) => boolean) => {
-    const hits = all.filter(ok), dash = hits.filter((x) => types.get(x) === "dashboard")
+  // (a hidden file only by its whole path: what was said, not the file it found, is what the MCP gate judged)
+  const named = all.filter((x) => !isHiddenPath(x))
+  const by = (ok: (x: string) => boolean, among = all) => {
+    const hits = among.filter(ok), dash = hits.filter((x) => types.get(x) === "dashboard")
     return hits.length === 1 ? hits[0] : dash.length === 1 ? dash[0] : null
   }
   const tail = low.split("/").pop()!.replace(/\.md$/, "")
   // (a path through a hidden folder, .vaultite/..., is never in the tree: it means that file, not another of its name)
   const hidden = p.split("/").some((s) => s.startsWith("."))
   return all.find((x) => x === p) ?? by((x) => x === `${p}.md`) ?? by((x) => x.toLowerCase() === low || x.toLowerCase() === `${low}.md`) ??
-    by((x) => stem(x) === low) ?? (low.includes("/") && !hidden ? by((x) => stem(x) === tail) : null) ?? p
+    by((x) => stem(x) === low, named) ?? (low.includes("/") && !hidden ? by((x) => stem(x) === tail, named) : null) ?? p
 }

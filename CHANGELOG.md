@@ -117,6 +117,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   can't cover the app.
 - **HTML pages ask before opening outside links**: a page in the vault asks the first time it opens each site
   while it's open, reloads included, and reads only files in the vault.
+- **Hidden files ask first, however their path is written**: a connected app writing a hidden file (.claude/, .git/)
+  waits for your yes even with a line break around the path, and a bare name never finds a hidden file; names with
+  line breaks or other control characters are refused.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.

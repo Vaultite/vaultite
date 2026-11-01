@@ -70,6 +70,10 @@ export default async ($: VaultTest) => {
     check("trust: words that only start with a dot don't, nor the archive, nor a read",
       ["Notes/A.md", ".NET notes", "...and then", ".archive/Old.md", "Notes/v1.2 plan.md"].every((f) => gateOf("file.write", "write", { path: "Notes/x.md", text: f, title: f }, code) === "" ) &&
         gateOf("file.write", "write", { path: ".archive/Old.md" }, code) === "" && gateOf("file.read", "read", { path: ".claude/settings.json" }, code) === "")
+    check("trust: a hidden path with a line break around it waits as the path it's written as; a note's text doesn't",
+      [".claude/settings.json\n", "Code/.git/hooks/pre-commit\r\n", "\n.env"].every((f) => gateOf("file.write", "write", { path: f }, code) !== "")
+        && gateOf("file.move", "write", { from: "Notes/a.md", to: ".claude\n" }, code) !== ""
+        && gateOf("file.write", "write", { path: "Notes/x.md", text: "Hooks live in .claude/settings.json\nso check it.\n" }, code) === "")
     const [hc] = await api("POST", "ops/plugin.allow", { id: "lighthouse", hash: "0000" })
     check("trust: allowing files other than the ones shown is refused", hc === 409 && !(await vplugin()).loaded, hc)
   }

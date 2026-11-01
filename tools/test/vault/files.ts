@@ -87,7 +87,7 @@ export default async ($: VaultTest) => {
   ;[, tr] = await api("GET", "files")
   check("its files leave the index", !tr.files.some((x: Any) => x.path.startsWith("Projects/Sub/")))
   vault.setConfig("files", { ...vault.config("files"), showHidden: false }) // a real vault may show hidden files
-  for (const bad of ["../x.md", ".vaultite/x.md"]) {
+  for (const bad of ["../x.md", ".vaultite/x.md", "Notes/a\nb.md", "Notes/a\u0000.md", "Notes/x.md\u007f"]) {
     ;[code] = await api("PUT", "file", { path: bad, text: "x" })
     check(`can't write ${bad}`, code === 400 || code === 403 || (bad.startsWith(".") && code === 404), code)
   }

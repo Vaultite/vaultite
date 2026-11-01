@@ -39,7 +39,7 @@ const asPath = (v: string) => v.replaceAll("\\", "/").trim().split("/").filter((
 /** A value naming a hidden file or folder anywhere in it (.claude/settings.json, Notes/.git/hooks): where agents' and
  *  other apps' settings live, which run code. Words that only start with a dot (".NET notes") aren't; the archive isn't. */
 const hiddenPath = (v: string) => {
-  if (/[\r\n]/.test(v)) return false
+  if (/[\r\n]/.test(v.trim())) return false // (text, not a path: clean() refuses one with a line break inside)
   const parts = asPath(v).split("/")
   return parts.some((p, i) => p.startsWith(".") && !p.startsWith("..") && p.length > 1 && p.toLowerCase() !== ARCHIVE_DIR && !(i === 0 && p === ".trash")
     && (i < parts.length - 1 || !/\s/.test(p)))

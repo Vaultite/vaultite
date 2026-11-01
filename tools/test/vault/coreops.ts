@@ -109,6 +109,11 @@ export default async ($: VaultTest) => {
     check("pathAsSaid: a view is kept as is, its arg's last slash too", pathAsSaid(saidTree, " view:web/https://example.com/ ") === "view:web/https://example.com/" && pathAsSaid(saidTree, "view:inbox") === "view:inbox")
     check("pathAsSaid: a file's name still finds it", pathAsSaid(saidTree, "work") === "Work.md" && pathAsSaid(saidTree, "Old/Work") === "Work.md")
     check("pathAsSaid: a hidden folder's file is kept, not another of its name", pathAsSaid(saidTree, ".vaultite/pages/Work.md") === ".vaultite/pages/Work.md")
+    // (hidden files listed: Settings shows them) A name never becomes a hidden file: the MCP gate judged the name as said.
+    const hiddenTree = { files: [{ path: ".claude/Notes.md" }, { path: ".archive/Old plan.md" }], others: [{ path: ".vaultite/plugins.json" }, { path: ".claude/settings.local.json" }, { path: "Projects/.env" }], folders: [] }
+    check("pathAsSaid: a name never finds a hidden file, only its whole path does",
+      ["plugins.json", "settings.local.json", "Notes", "x/settings.local.json", ".env"].every((n) => pathAsSaid(hiddenTree, n) === n)
+        && pathAsSaid(hiddenTree, ".CLAUDE/notes") === ".claude/Notes.md" && pathAsSaid(hiddenTree, "old plan") === ".archive/Old plan.md")
 
     // MCP's tools that are ops now: an answer as text for an MCP client (they were checked against the old tools, which
     // are gone, before those went).
