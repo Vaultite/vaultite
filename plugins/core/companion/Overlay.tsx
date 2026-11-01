@@ -2,13 +2,13 @@
 // bar when it's nowhere, Status in index.tsx), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
-import { Check, Copy, Ellipsis, MessageSquarePlus, Pin, Trash2, UserRound, X } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, Trash2, UserRound, X } from "lucide-react"
 import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, seenArea, share, snippet, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sendMoment, startComment, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { agentMenu } from "./session"
-import { nearest } from "./text"
+import { changeAt, nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
 
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it;
@@ -30,6 +30,21 @@ function posIn(v: EditorView, t: { line?: number; find?: string }) {
   if (t.find) { const i = nearest(doc.toString(), t.find, t.line); if (i >= 0) return i }
   return t.line ? doc.line(Math.max(1, Math.min(t.line, doc.lines))).from : null
 }
+
+/** Put the cursor of note `n`'s editor on its next (or previous) change, scrolled to the middle. */
+function stepTo(n: Note, dir: 1 | -1) {
+  const v = n.path ? viewOf(n.path) : null
+  if (!v) return
+  const text = v.state.doc.toString(), head = v.state.selection.main.head
+  const at = (n.changes ?? []).filter((c) => !c.intent && !c.stale).map((c) => changeAt(text, c)).filter((i) => i >= 0).map((i) => v.state.doc.lineAt(i).from).sort((a, b) => a - b)
+  if (!at.length) return
+  const to = dir > 0 ? at.find((x) => x > head) ?? at[0] : [...at].reverse().find((x) => x < head) ?? at[at.length - 1]
+  v.dispatch({ selection: { anchor: to }, scrollIntoView: true })
+  v.focus()
+}
+
+/** What a proposal's card says it is: writing (only placeholders yet), or proposing. */
+const proposes = (n: Note) => ((n.changes ?? []).some((c) => !c.intent) ? "proposes" : "is writing")
 
 /** Where on screen `pos` of `v` is, kept inside its scroller (a cursor at an edge says "up there"); `side` -1: at a
  *  wrapped line's break, the end of the row before. */
@@ -422,7 +437,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
   const ref = useRef<HTMLElement | null>(null), keep = (el: HTMLElement | null) => { ref.current = el }
   const body = useRef<HTMLDivElement>(null)
   const [more, setMore] = useState(false)
-  const writing = n.id === DRAFT, suggestion = n.kind === "suggestion"
+  const writing = n.id === DRAFT, suggestion = n.kind === "suggestion", proposal = n.kind === "proposal"
   const [draft, setDraft] = useState(() => (writing ? getState().draft?.text ?? "" : ""))
   const tint = threadTint(n), author = writing ? (share ? share.guest : "You") : authorOf(n)
   // (a guest closes only their own threads; the user, any)
@@ -463,10 +478,10 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
         open ? "border-transparent shadow-[0_2px_6px_rgb(0_0_0/0.10),0_10px_28px_rgb(0_0_0/0.14)]" : "cursor-pointer border-border/70 shadow-[0_1px_2px_rgb(0_0_0/0.06)] hover:border-border")}
       style={{ transform: `translate(${x}px, ${y}px)`, maxHeight: cap, zIndex: open ? 2 : undefined }}>
       <div className="flex shrink-0 items-center gap-0.5 pt-2 pr-1.5 pl-2.5">
-        <Who name={author} tint={tint} t={writing ? undefined : n.t} suffix={suggestion ? "suggests" : undefined} />
-        {closes && !writing && <button type="button" aria-label={suggestion ? "Reject" : "Resolve"} data-tip={suggestion ? `Reject (${keyHint("Escape")})` : "Resolve"} className={BTN}
-          onClick={() => answer(n.id, suggestion ? "reject" : "dismiss")}>
-          {suggestion ? <X className="size-4" /> : <Check className="size-4" strokeWidth={2.25} />}
+        <Who name={author} tint={tint} t={writing ? undefined : n.t} suffix={suggestion ? "suggests" : proposal ? proposes(n) : undefined} />
+        {closes && !writing && <button type="button" aria-label={suggestion ? "Reject" : proposal ? "Reject all" : "Resolve"} data-tip={suggestion ? `Reject (${keyHint("Escape")})` : proposal ? "Reject all" : "Resolve"} className={BTN}
+          onClick={() => (proposal ? review(n.id, "reject") : answer(n.id, suggestion ? "reject" : "dismiss"))}>
+          {suggestion || proposal ? <X className="size-4" /> : <Check className="size-4" strokeWidth={2.25} />}
         </button>}
         {!writing && items().length > 0 && <button type="button" aria-label="More" data-tip="More" className={BTN} onClick={(e) => menuBelow(e, items())}><Ellipsis className="size-4" /></button>}
       </div>
@@ -474,6 +489,7 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
       <div ref={body} className={cn("min-h-0 px-2.5", open ? "overflow-y-auto overscroll-contain [scrollbar-width:thin]" : "max-h-[62px] overflow-hidden", more && "companion-more")}>
         {n.orphaned && <div className="pt-1.5 text-[12px] text-muted-foreground">Its text was removed</div>}
         {n.text && <div className="pt-1.5 text-foreground"><Markdown text={n.text} className="companion-md" /></div>}
+        {proposal && <Proposal n={n} tint={tint} />}
         {open && replies.map((r, i) => (
           <div key={i} className="mt-2 border-t border-border/50 pt-2">
             <Who small name={replyAuthor(n, r)} tint={replyTint(r)} t={r.t} />
@@ -482,6 +498,16 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
         ))}
       </div>
       {!open && replies.length > 0 && <div className="shrink-0 px-2.5 pt-1 text-[12px] font-medium text-muted-foreground">{plural(replies.length, "reply", "replies")}</div>}
+      {proposal && (n.changes ?? []).some((c) => !c.intent && !c.stale) && (
+        <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2">
+          <button type="button" className="flex h-7 cursor-pointer items-center gap-1 rounded-[7px] px-2.5 text-[12.5px] font-semibold text-white" style={{ background: tint }} onClick={() => review(n.id, "accept")}>
+            <Check className="size-3.5" strokeWidth={2.5} />Accept all
+          </button>
+          <span className="flex-1" />
+          <button type="button" aria-label="Previous change" data-tip={`Previous change (${keyHint("Alt+[")})`} className={BTN} onClick={() => stepTo(n, -1)}><ChevronUp className="size-4" /></button>
+          <button type="button" aria-label="Next change" data-tip={`Next change (${keyHint("Alt+]")})`} className={BTN} onClick={() => stepTo(n, 1)}><ChevronDown className="size-4" /></button>
+        </div>
+      )}
       {suggestion && (
         <div className="flex shrink-0 gap-1.5 px-2.5 pt-2">
           <button type="button" className="flex h-7 cursor-pointer items-center gap-1 rounded-[7px] px-2.5 text-[12.5px] font-semibold text-white" style={{ background: tint }} onClick={() => void accept(n)}>
@@ -512,6 +538,27 @@ const Card = memo(function Card({ n, x, y, folded, open, cap, onHeight, onOpen, 
     </div>
   )
 }, sameProps)
+
+/** A proposal's state on its card: what it's writing (its placeholders), the changes that no longer fit the note, what
+ *  was decided so far. */
+function Proposal({ n, tint }: { n: Note; tint: string }) {
+  const changes = n.changes ?? [], intents = changes.filter((c) => c.intent), stale = changes.filter((c) => c.stale && !c.intent)
+  const ready = changes.length - intents.length - stale.length, done = (n.took ?? 0) + (n.left ?? 0)
+  return (
+    <div className="flex flex-col gap-1 pt-1.5 text-[12px] text-muted-foreground">
+      {ready > 0 && <div data-companion-count>{done > 0 ? `${ready} of ${changes.length - intents.length + done} left` : plural(ready, "change", "changes")}</div>}
+      {intents.map((c) => (
+        <div key={c.id} className="flex items-center gap-1.5"><span className="companion-dots shrink-0" style={{ color: tint }}><i /><i /><i /></span><span className="min-w-0 truncate">{c.intent}</span></div>
+      ))}
+      {stale.length > 0 && (
+        <div className="flex items-center gap-1">
+          <span className="flex-1">{stale.length === 1 ? "1 change no longer fits: its text changed" : `${stale.length} changes no longer fit: their text changed`}</span>
+          <button type="button" className="cursor-pointer rounded-[5px] px-1 font-medium hover:bg-foreground/[0.07] hover:text-foreground" onClick={() => stale.forEach((c) => review(n.id, "reject", c.id))}>Leave</button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /** Add comment, in the margin level with a selection being made (as in a shared doc): it keeps the note's focus. */
 function AddComment({ x, y }: { x: number; y: number }) {
@@ -691,7 +738,7 @@ export function Overlay() {
     return { el, p }
   }
   for (const n of notes) {
-    if (n.kind !== "comment" && n.kind !== "suggestion") continue
+    if (n.kind !== "comment" && n.kind !== "suggestion" && n.kind !== "proposal") continue
     const v = n.path ? viewOf(n.path) : null
     const pos = v ? posIn(v, n) : null
     if (!v || pos === null) continue

@@ -2,7 +2,7 @@
 // files, and what the user does in them, said back. No CodeMirror here: the editor is its own chunk (editor.ts).
 import type { EditorView } from "@codemirror/view"
 import { profileOf } from "./profiles.ts"
-import type { Hunk } from "./text.ts"
+import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
@@ -12,8 +12,10 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 export type How = { agent: string; model: string; effort: string }
 /** A coding agent a plugin runs: whether it's installed here, its models (none: it runs its own) and efforts. */
 export type Harness = { id: string; name: string; installed: boolean; models: { id: string; label: string }[]; efforts: string[] }
-export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
+export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: Reply[]; pinned?: string
+  /** A proposal's changes not decided yet (placeholders while it's written), and how many were taken and left. */
+  changes?: Change[]; took?: number; left?: number
   /** A person's thread (the user's, a guest's: `agent` is their name), and their colour. */
   by?: "user" | "guest"; tint?: string
   /** The agent a person's thread asks (an @name in it), which answers in it. */
@@ -218,6 +220,16 @@ export const pick = (id: string | null) => { if (state.picked !== id) set({ pick
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
   if (verdict !== "reply") set({ notes: state.notes.filter((x) => x.id !== id) })
   say({ t: "answer", id, verdict, text })
+}
+
+/** The user's answer to a proposal: take or leave one change, or all (taken ones are typed in as its agent's). Left
+ *  ones go at once; taken ones as they're typed. */
+export function review(id: string, verdict: "accept" | "reject", change?: string) {
+  if (verdict === "reject") {
+    const n = state.notes.find((x) => x.id === id), rest = (n?.changes ?? []).filter((c) => change && c.id !== change)
+    set({ notes: rest.length ? state.notes.map((x) => (x.id === id ? { ...x, changes: rest } : x)) : state.notes.filter((x) => x.id !== id) })
+  }
+  say({ t: "review", id, verdict, ...(change ? { change } : {}) })
 }
 
 /** Which files this window shows and where the user is (`active`: they did something here). */

@@ -32,7 +32,7 @@ export function offerThreads() {
 
 /** A note's threads, in the note's order (where they are in its editor, else by line). */
 export function threadsOf(notes: Note[], path: string): Note[] {
-  const mine = notes.filter((n) => n.path === path && (n.kind === "comment" || n.kind === "suggestion"))
+  const mine = notes.filter((n) => n.path === path && (n.kind === "comment" || n.kind === "suggestion" || n.kind === "proposal"))
   const v = viewOf(path), doc = v?.state.doc, text = doc?.toString()
   const at = (n: Note) => {
     const i = text && n.find ? nearest(text, n.find, n.line) : -1

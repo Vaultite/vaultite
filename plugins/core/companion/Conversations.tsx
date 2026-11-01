@@ -2,8 +2,8 @@
 // order, open or resolved, who's around atop them. One clicked lights its line; replying and resolving are here.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"
-import { cn, fmtAgo, ink, keyHint, Markdown, op, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
-import { accept, answer, getState, type Note, pick, reopen, subscribe, tintOf } from "./live"
+import { cn, fmtAgo, ink, keyHint, Markdown, op, plural, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
+import { accept, answer, getState, type Note, pick, reopen, review, subscribe, tintOf } from "./live"
 import { cut, follow } from "./Overlay"
 import { Faces } from "./Presence"
 import { threadsOf } from "./threads"
@@ -88,7 +88,8 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
   useEffect(() => { if (picked) ref.current?.scrollIntoView({ block: "nearest" }) }, [picked])
   const go = () => { pick(n.id); follow({ name: n.agent, path: n.path, line: n.line, find: n.find }) }
   const send = () => { const t = draft.trim(); if (t) answer(n.id, "reply", t); setDraft("") }
-  const suggestion = n.kind === "suggestion"
+  const suggestion = n.kind === "suggestion", proposal = n.kind === "proposal"
+  const ready = (n.changes ?? []).filter((c) => !c.intent && !c.stale).length
   const btn = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-9"
   return (
     <div ref={ref} data-companion-thread={n.id} data-picked={picked || undefined} tabIndex={0} aria-label={`${n.agent}'s ${n.kind}${n.line ? `, line ${n.line}` : ""}`}
@@ -101,12 +102,13 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
       <span aria-hidden className="absolute inset-y-2 left-[4px] w-[3px] rounded-full" style={{ background: tint }} />
       <div className="flex min-h-6 items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: ink(tint) }}>
-          {n.agent}{suggestion ? " suggests" : ""}
+          {n.agent}{suggestion ? " suggests" : proposal ? (ready ? ` proposes ${plural(ready, "change", "changes")}` : " is writing") : ""}
           <span className="ml-1.5 font-normal text-tertiary">{resolved && n.dismissed ? fmtAgo(new Date(n.dismissed).toISOString()) : n.line ? `line ${n.line}${n.orphaned ? ", its text was removed" : ""}` : ""}</span>
         </span>
         {resolved ? <button type="button" aria-label="Reopen" data-tip="Reopen" className={btn} onClick={() => { reopen(n.id); pick(n.id) }}><RotateCcw className="size-3.5" /></button>
-          : <button type="button" aria-label={suggestion ? "Reject" : "Resolve"} data-tip={suggestion ? "Reject" : "Resolve"} className={btn} onClick={() => answer(n.id, suggestion ? "reject" : "dismiss")}>
-            {suggestion ? <X className="size-3.5" /> : <Check className="size-3.5" />}
+          : <button type="button" aria-label={suggestion ? "Reject" : proposal ? "Reject all" : "Resolve"} data-tip={suggestion ? "Reject" : proposal ? "Reject all" : "Resolve"} className={btn}
+            onClick={() => (proposal ? review(n.id, "reject") : answer(n.id, suggestion ? "reject" : "dismiss"))}>
+            {suggestion || proposal ? <X className="size-3.5" /> : <Check className="size-3.5" />}
           </button>}
       </div>
       {n.find && (
@@ -128,7 +130,14 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
           </button>
         </div>
       )}
-      {!resolved && !suggestion && picked && (
+      {!resolved && proposal && ready > 0 && (
+        <div className="mt-1.5 flex gap-1.5">
+          <button type="button" className="flex h-7 cursor-pointer items-center gap-1 rounded-[7px] px-2.5 text-[12.5px] font-semibold text-white max-sm:h-9" style={{ background: tint }} onClick={() => review(n.id, "accept")}>
+            <Check className="size-3.5" strokeWidth={2.5} />Accept all
+          </button>
+        </div>
+      )}
+      {!resolved && !suggestion && !proposal && picked && (
         <input autoFocus={!big()} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply" enterKeyHint="send" aria-label="Reply"
           onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() } else if (e.key === "Escape") { e.preventDefault(); pick(null) } }}
           className="mt-1.5 mr-0.5 h-7 rounded-[6px] border border-border bg-transparent px-2 text-[13px] outline-none focus:border-foreground/30 max-sm:h-11 max-sm:text-[17px]" />
@@ -144,7 +153,7 @@ const big = () => matchMedia("(pointer: coarse)").matches
 export function ConversationsIcon({ className, strokeWidth }: { className?: string; strokeWidth?: number }) {
   const s = useSyncExternalStore(subscribe, getState)
   const { path } = useFocusedFile()
-  const mine = s.mode === "off" ? [] : s.notes.filter((n) => n.path === path && (n.kind === "comment" || n.kind === "suggestion"))
+  const mine = s.mode === "off" ? [] : s.notes.filter((n) => n.path === path && (n.kind === "comment" || n.kind === "suggestion" || n.kind === "proposal"))
   return (
     <span className={cn("relative inline-grid place-items-center", className)} data-companion-rail={mine.length || undefined}>
       <MessagesSquare className="size-full" strokeWidth={strokeWidth} />

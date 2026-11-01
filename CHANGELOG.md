@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Big changes from the companion arrive as proposals**: an agent's rewrite shows in the note as tracked changes in its
+  colour (what goes struck through, what comes under it), with one card in the margin; none of it is in the file until
+  you take it. In a change, Tab takes it and Esc leaves it, ⌥] and ⌥[ step through them, and Accept all takes the rest.
+  What you take is the agent's in Review and History. In a table, its changes show cell by cell under it. While it
+  writes, a placeholder shows where the change will land.
+  Agents propose with `vau companion propose`, and an edit replacing more than 6 lines becomes one by itself.
 - **Obsidian plugins' Bases views draw in bases**: a view whose layout is a plugin's (TaskNotes' board and task list,
   for one) shows its files as that plugin draws them, and the view's Layout menu offers them.
 - **Slides draw, point and pace**: while presenting, C draws on the slide and B opens a board to write on (kept per

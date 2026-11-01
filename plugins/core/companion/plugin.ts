@@ -5,12 +5,13 @@ import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentModels, agentIn, agentName, findBin, KNOWN_AGENTS, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
-import { liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
-import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { byUser, liveMarkdown, localDate, type OpCtx, OpError, Plugin, vaultPath, type Who, whoOf } from "../../../core/plugins.ts"
+import { readText, requestWriter, type Vault, type Writer, writeAtomic } from "../../../core/vault.ts"
 import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
 import { rooms } from "./rooms.ts"
-import { type Hunk, nearest } from "./text.ts"
+import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
+import { type Change, changeAt, type Hunk, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
@@ -37,10 +38,14 @@ export type Target = { path?: string; line?: number; find?: string; x?: number; 
  *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
-/** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
- *  a highlight (gone after a while). `anchor`: a comment's line as it read, to find it again without `find`. */
-export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
+/** What an agent leaves in the app: words by its cursor and highlights (gone after a while), a margin comment, a
+ *  suggestion, a proposal (a large change, taken in part). `anchor`: a comment's line as it read, to find it again. */
+export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "proposal" | "highlight"; agent: string; t: number
   text?: string; replace?: string; anchor?: string; replies?: Reply[]
+  /** A proposal's changes not decided yet (its placeholders while it's written); how many were taken and left. */
+  changes?: Change[]; took?: number; left?: number
+  /** Who proposed it, as its request named them: what it takes is written as theirs (Provenance). */
+  writer?: { client: string | null; agent: string | null }
   /** A thread a person started, not an agent: the user, or a shared folder's guest (`agent` is then their name). */
   by?: "user" | "guest"
   /** The agent a person's thread asks (an @name in it): it hears the thread's words and answers in it. */
@@ -342,7 +347,7 @@ function dropNote(id: string) {
 
 // ---------- comments and suggestions kept: a sidecar per note, so they outlive the server and reach other devices
 
-const KEPT = new Set(["comment", "suggestion"])
+const KEPT = new Set(["comment", "suggestion", "proposal"])
 /** Comments the user dismissed, per note, newest last: its history (kept in the sidecar too). */
 const past = new Map<string, Note[]>()
 const PAST = 30
@@ -427,6 +432,7 @@ function follow(p: string) {
   try { text = readText(plugin.vault.abs(p)) } catch { return }
   let changed = false
   for (const n of list) {
+    if (n.kind === "proposal") { if (refind(n, text)) changed = true; continue }
     const found = anchorLine(text, n)
     if (found === null && n.kind !== "comment") { notes.delete(n.id); broadcast({ t: "drop", id: n.id }); changed = true; continue }
     const line = found ?? Math.max(1, Math.min(n.line ?? 1, lineCount(text)))
@@ -506,6 +512,7 @@ plugin.onMove((from, to, trashed) => {
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string, from?: IncomingMessage) {
   const n = notes.get(id)
   if (!n) return
+  if (n.kind === "proposal") return verdict === "reply" ? undefined : void review(id, verdict === "accept" ? "accept" : "reject", undefined, from).catch((e) => console.error(`companion: ${(e as Error).message}`))
   if (verdict === "reply" && text) {
     n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT), t: Date.now() }]
     broadcast({ t: "note", note: n })
@@ -627,6 +634,8 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       reopen(m.id)
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined, req)
+    } else if (m.t === "review" && typeof m.id === "string" && (m.verdict === "accept" || m.verdict === "reject")) {
+      void review(m.id, m.verdict, str(m.change) || undefined, req).catch((e) => console.error(`companion: ${(e as Error).message}`))
     } else if (m.t === "comment") {
       const c = personComment({ by: "user", agent: "" }, str(m.path), m), to = c && mentioned(c.text!)
       if (c && to) askIn(c, to, str(m.selection).slice(0, 20_000), req)
@@ -789,8 +798,8 @@ export function starting(name: string, a: Partial<Agent> = {}, after = seq) {
  *  loop of next), and its name when it isn't the companion. */
 const promptFor = (name: string, chat = false) => [setting("prompt"), chat ? CHAT_WORDS : LOOP_WORDS(name),
   isMain(name) ? "" : chat ? `Your name here is ${name}: asks to @${key(name)} are yours.` : `Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`].filter(Boolean).join(" ")
-const LOOP_WORDS = (name: string) => `Then loop and never stop: run \`${nextCmd(name)}\` (give that command a timeout of 250 seconds or more), which waits for what they do and shows the note's lines around it (no need to read the note again), then act on it with \`vau companion look|say|comment|suggest|edit|highlight\`, then run next again. Never end your turn.`
-const CHAT_WORDS = "What the user does comes to you as messages (moments, with the note's lines around them: no need to read the note again). Act on them with your vaultite-app tools (say, comment, suggest, edit, look, highlight, draw...), not vau companion commands, then end your turn: what they do next comes as your next message. Never wait or poll for moments."
+const LOOP_WORDS = (name: string) => `Then loop and never stop: run \`${nextCmd(name)}\` (give that command a timeout of 250 seconds or more), which waits for what they do and shows the note's lines around it (no need to read the note again), then act on it with \`vau companion look|say|comment|suggest|propose|edit|highlight\`, then run next again. Never end your turn.`
+const CHAT_WORDS = "What the user does comes to you as messages (moments, with the note's lines around them: no need to read the note again). Act on them with your vaultite-app tools (say, comment, suggest, propose, edit, look, highlight, draw...), not vau companion commands, then end your turn: what they do next comes as your next message. Never wait or poll for moments."
 
 // ---------- a fresh session: one that has handled many moments (or read much context) hands over to a new one
 
@@ -902,7 +911,7 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "comment", "suggest", "edit", "look", "highlight", "draw", "clear", "history", "status", "handover"]
+const TOOLS = ["say", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "history", "status", "handover"]
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
 const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau companion").map((c) => `Bash(${c}:*)`)]
 const AS_TOOL = whoOf("cli", "claude-code")
@@ -1438,6 +1447,168 @@ moment tells you what they chose.
   did: (p) => ({ action: "ui", text: `Suggested a change in ${str(p.path) || focus()?.path || "a note"}`, paths: [], by: who(p) }),
 })
 
+// ---------- proposals: a large change as a shadow copy, shown as tracked changes and taken in part
+
+const changeId = () => `c${Math.random().toString(36).slice(2, 6)}`
+const firstLine = (s: string) => s.split("\n")[0] || undefined
+/** A note's text as the app has it (its open editor's typing saved). */
+const textOf = async (ctx: OpCtx, p: string) => String((await ctx.api("GET", `file?path=${encodeURIComponent(p)}`)).text ?? "")
+
+/** A proposal's place (where its card sits): its first change that still fits. True when it moved. */
+function placeAt(n: Note) {
+  const c = n.changes?.find((x) => !x.stale && !x.intent) ?? n.changes?.[0]
+  if (!c || (n.line === c.line && n.find === firstLine(c.find))) return false
+  n.line = c.line
+  if (firstLine(c.find)) n.find = firstLine(c.find); else delete n.find
+  return true
+}
+/** A proposal's changes found again in the note's text (their lines as it changes; stale once their text is gone).
+ *  True when any moved. */
+function refind(n: Note, text: string) {
+  let moved = false
+  for (const c of n.changes ?? []) {
+    const at = changeAt(text, c), line = at < 0 ? c.line : text.slice(0, at).split("\n").length
+    if (line === c.line && !c.stale === at >= 0) continue
+    c.line = line
+    if (at < 0) c.stale = true; else delete c.stale
+    moved = true
+  }
+  if (placeAt(n)) moved = true
+  if (moved) broadcast({ t: "note", note: n })
+  return moved
+}
+
+/** Propose `next` for note `p` (now `cur`): cut into changes, as a new proposal or filling `into` (its placeholders
+ *  go). The frontmatter stays when `next` leaves it out. */
+function proposeText(ctx: OpCtx, name: string, p: string, next: string, cur: string, why = "", into?: Note) {
+  const fm = /^---\n[\s\S]*?\n---\n\n*/.exec(cur)?.[0]
+  if (fm && !next.startsWith("---\n")) next = fm + next.replace(/^\n+/, "")
+  const changes = changesOf(cur, next, changeId)
+  if (!changes.length) throw new OpError("it's the note as it is: nothing to propose")
+  did(name, "propose")
+  setAgent(name, { path: p, line: changes[0].line, state: acting(name) })
+  const writer = { client: ctx.who.client, agent: ctx.who.agent }
+  if (!into) return putNote({ kind: "proposal", agent: name, path: p, line: changes[0].line, ...(firstLine(changes[0].find) ? { find: firstLine(changes[0].find) } : {}), changes, writer, ...(why ? { text: why } : {}) })
+  Object.assign(into, { changes, writer, t: Date.now() }, why ? { text: why } : {})
+  placeAt(into)
+  broadcast({ t: "note", note: into })
+  save(p)
+  return into
+}
+
+/** Take a change: typed in by the window showing the note (else written), as its agent's (Provenance, History). */
+async function take(n: Note, c: Change) {
+  const writer: Writer = n.writer ?? { client: "cli", agent: n.agent }
+  await requestWriter.run(writer, () => applyEdit(apiCtx, agentOf(n.agent), { path: n.path!, find: c.find, line: c.line, text: c.text }, false))
+}
+
+/** Take or leave a proposal's changes: one, or all those not decided (a stale one can only be left; leaving all takes
+ *  its placeholders too). Once none is left it closes, and its agent hears what was taken. */
+export async function review(id: string, verdict: "accept" | "reject", change?: string, from?: IncomingMessage) {
+  const n = notes.get(id)
+  if (!n || n.kind !== "proposal") throw new OpError(`there's no proposal ${id}`, 404)
+  const picked = (n.changes ?? []).filter((c) => (change ? c.id === change : verdict === "reject" || (!c.intent && !c.stale)))
+  if (change && !picked.length) throw new OpError(`proposal ${id} has no change ${change}`, 404)
+  let took = 0, left = 0, failed = 0
+  for (const c of picked) {
+    if (verdict === "accept") {
+      if (c.intent || c.stale) { failed++; continue }
+      try { await take(n, c); took++ } catch { c.stale = true; failed++; continue }
+    } else if (!c.intent) left++
+    n.changes = (n.changes ?? []).filter((x) => x !== c)
+  }
+  n.took = (n.took ?? 0) + took; n.left = (n.left ?? 0) + left
+  const open = n.changes?.length ?? 0
+  if (open) {
+    placeAt(n)
+    broadcast({ t: "note", note: n })
+    save(n.path!)
+  } else {
+    dropNote(id)
+    const all = n.took + n.left
+    addMoment({ kind: n.took ? "accept" : "reject", for: n.agent, item: id, path: n.path, line: n.line,
+      text: `${n.took === all ? "took all" : n.took ? `took ${n.took} of` : "left all"} ${all === 1 ? "the change" : `${all} changes`} of your proposal${n.text ? ` (${cut(n.text, 80)})` : ""}` }, from)
+  }
+  return { id, took, left, failed, open }
+}
+
+plugin.op({
+  id: "companion.propose",
+  cli: "companion propose",
+  summary: "Propose a large change to a note: shown as tracked changes in your colour that the user takes or leaves one by one. None of it is in the file until they take it.",
+  help: `For a change too big to type in before their eyes: a rewrite, a section, several places at once. Give the note as
+you'd have it (text: a shadow copy, which is cut into changes; its frontmatter may be left out), or one stretch (find and
+replace). While you work it out, you may first plant a placeholder where it will land (pending: what's coming; find: the
+text of the line it comes after), then propose with its id to fill it. A companion edit replacing more than ${BIG_EDIT} lines
+becomes a proposal by itself. An accept or reject moment says what they took ("took 3 of 4 changes").
+
+  vau companion propose --path Notes/Plan.md --pending "Risks: checking last week's notes" --find "## Risks"
+  vau companion propose --id n4k2 --path Notes/Plan.md --text "$(cat /tmp/plan.md)" --why "Tighter, risks updated"
+  vau companion propose --find "We could maybe try" --replace "We'll try" --why "Firmer"`,
+  kind: "write",
+  lock: false,
+  params: { text: { type: "string", description: "the whole note as you'd have it (its frontmatter may be left out)" },
+    find: { ...FIND, description: "with replace: the text to change, exactly as in the file; with pending: text of the line it comes after" },
+    replace: { type: "string", description: "what find becomes (empty: removed)" },
+    pending: { type: "string", description: "a placeholder: what you're writing, shown where it will land until you propose" },
+    why: { type: "string", description: "a few words on why, on its card" },
+    id: { type: "string", description: "your proposal to fill (its placeholders), or to add a placeholder to" }, path: PATH, line: LINE, as: AS },
+  run: async (p, ctx) => {
+    const name = who(p), into = p.id ? notes.get(str(p.id)) : undefined
+    if (p.id && (!into || into.kind !== "proposal")) throw new OpError(`there's no proposal ${str(p.id)}`, 404)
+    if (into && key(into.agent) !== key(name)) throw new OpError(`proposal ${into.id} is ${into.agent}'s`, 403)
+    const t = into ? { ...target({ ...p, path: into.path }) } : target(p), path = t.path!
+    notOnDrawing(t, "change it with companion draw")
+    const cur = await textOf(ctx, path)
+    if (str(p.pending)) {
+      if (!t.find && t.line === undefined) throw new OpError("with pending, give find (the text of the line it comes after) or line")
+      const at = t.find ? nearest(cur, t.find, t.line) : -1
+      if (t.find && at < 0) throw new OpError(`"${cut(t.find, 60)}" isn't in the file: read it again and copy the text exactly`)
+      const line = at >= 0 ? cur.slice(0, at).split("\n").length : Math.max(1, Math.min(t.line!, cur.split("\n").length))
+      const c: Change = { id: changeId(), find: at >= 0 ? t.find! : cur.split("\n")[line - 1] ?? "", text: "", line, intent: cut(str(p.pending), 200) }
+      did(name, "propose")
+      setAgent(name, { path, line, find: firstLine(c.find), state: "writing" })
+      if (!into) return putNote({ kind: "proposal", agent: name, path, line, ...(firstLine(c.find) ? { find: firstLine(c.find) } : {}), changes: [c], writer: { client: ctx.who.client, agent: ctx.who.agent } })
+      into.changes = [...(into.changes ?? []), c]
+      placeAt(into)
+      broadcast({ t: "note", note: into })
+      save(path)
+      return into
+    }
+    let next: string
+    if (str(p.text)) next = str(p.text)
+    else if (t.find && p.replace !== undefined) next = editText(cur, { find: t.find, line: t.line, text: str(p.replace) })
+    else throw new OpError("give text (the note as you'd have it), find and replace, or pending")
+    return proposeText(ctx, name, path, next, cur, str(p.why), into)
+  },
+  text: (r: Note) => {
+    const ready = (r.changes ?? []).filter((c) => !c.intent), waits = (r.changes?.length ?? 0) - ready.length
+    if (!ready.length) return `Placeholder planted (proposal ${r.id}): propose with --id ${r.id} and the text to fill it.`
+    const sum = ready.reduce((a, c) => { const x = tally(c); return { come: a.come + x.come, gone: a.gone + x.gone } }, { come: 0, gone: 0 })
+    return `Proposed ${ready.length === 1 ? "1 change" : `${ready.length} changes`} (+${sum.come} −${sum.gone} lines) in ${r.path} (${r.id})${waits ? `, ${waits} placeholder${waits === 1 ? "" : "s"} still waiting` : ""}: the user takes or leaves each.`
+  },
+  did: (p) => ({ action: "ui", text: `Proposed a change to ${str(p.path) || focus()?.path || "a note"}`, paths: [], by: who(p) }),
+})
+
+plugin.op({
+  id: "companion.review",
+  cli: "companion review",
+  summary: "Take or leave an agent's proposal: all its changes, or one (the user's call: agents propose, people decide).",
+  help: `  vau companion review n4k2 accept
+  vau companion review n4k2 reject --change c8f1`,
+  kind: "write",
+  lock: false,
+  params: { id: { type: "string", required: true, description: "the proposal (n4k2)" },
+    verdict: { type: "string", required: true, enum: ["accept", "reject"], description: "accept: take them (written as its agent's); reject: leave them" },
+    change: { type: "string", description: "one of its changes (c8f1); default: all those that still fit" } },
+  args: ["id", "verdict"],
+  run: async (p, ctx) => {
+    if (!byUser(ctx.who)) throw new OpError("only the user takes or leaves a proposal (in the app, or vau typed by hand)", 403)
+    return review(str(p.id), p.verdict === "accept" ? "accept" : "reject", str(p.change) || undefined)
+  },
+  text: (r) => `Took ${r.took}, left ${r.left}${r.failed ? `; ${r.failed} no longer fit${r.failed === 1 ? "s" : ""} the note` : ""}${r.open ? `; ${r.open} still open` : "; it's closed"}.`,
+})
+
 plugin.op({
   id: "companion.edit",
   cli: "companion edit",
@@ -1457,6 +1628,12 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
   run: async (p, ctx) => {
     const name = who(p), t = target(p), after = str(p.after) || undefined
     notOnDrawing(t, "change it with companion draw")
+    // (a big change is never a silent rewrite: it comes as a proposal)
+    if (t.find && linesIn(t.find) > BIG_EDIT) {
+      const cur = await textOf(ctx, t.path!)
+      const n = proposeText(ctx, name, t.path!, editText(cur, { find: t.find, line: t.line, text: str(p.text) }), cur)
+      return { path: t.path, how: "proposed", id: n.id }
+    }
     did(name, "edit")
     const a = setAgent(name, { ...t, ...(after ? { find: after } : {}), state: "writing" })
     try {
@@ -1464,7 +1641,8 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
       return { path: t.path, how }
     } finally { setAgent(name, { state: acting(name) }) }
   },
-  text: (r) => `${r.how === "typed" ? "Typed into" : "Wrote"} ${r.path}.`,
+  text: (r) => (r.how === "proposed" ? `Proposed it in ${r.path} instead (${r.id}): it replaces more than ${BIG_EDIT} lines, so the user takes it or not.`
+    : `${r.how === "typed" ? "Typed into" : "Wrote"} ${r.path}.`),
   did: (p) => edited(p),
 })
 

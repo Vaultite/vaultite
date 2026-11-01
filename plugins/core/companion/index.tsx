@@ -70,7 +70,7 @@ function Status() {
 /** How many agents rest in the status bar's companion, side by side (more rest in the window's corner). */
 const HOMES = 3
 
-const isThread = (n: Note) => n.kind === "comment" || n.kind === "suggestion"
+const isThread = (n: Note) => n.kind === "comment" || n.kind === "suggestion" || n.kind === "proposal"
 
 /** The Conversations panel shown when threads come: a note with some opened, an agent commenting on one on screen. */
 function useOffer() {

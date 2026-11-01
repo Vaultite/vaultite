@@ -171,6 +171,51 @@ export default async ($: VaultTest) => {
   check("companion: taking it is a moment for the agent, and it's gone", r.moments.some((m: Any) => m.kind === "accept" && m.item === id && m.to === "Friday") &&
     !(await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.id === id), r)
 
+  {
+    // Proposals: a large change as tracked changes, taken in part (web/qa/proposals.mjs draws them).
+    const t = await import("../../../plugins/core/companion/proposals.ts")
+    let k = 0
+    const ids = () => `c${k++}`, ch = t.changesOf("a\nb\nc\nd\n", "a\nB\nc\nd\ne\n", ids)
+    check("companion: a proposal is cut into changes found by their lines, one that adds taking the line above along",
+      ch.length === 2 && ch[0].find === "b\n" && ch[0].text === "B\n" && ch[0].line === 2 && ch[1].find === "d\n" && ch[1].text === "d\ne\n" && ch[1].line === 4, ch)
+    const top = t.changesOf("a\n", "x\na\n", ids), tail = t.changesOf("a\nb", "a\nb\nc", ids)
+    check("companion: at the top, the line below it; a last line without its newline keeps it so",
+      top[0].find === "a\n" && top[0].text === "x\na\n" && tail[0].find === "b" && tail[0].text === "b\nc", [top, tail])
+    const P = "Notes/P.md", user = $.sentBy("app/desktop")
+    write(P, "---\ntitle: P\n---\n# Plan\n\nOne\nTwo\nThree\n\n## Risks\n")
+    let [st, r] = await api("POST", "ops/companion.propose", { path: P, pending: "Risks: checking last week", find: "## Risks" })
+    const pid = r.id
+    check("companion: a placeholder is a proposal being written, by the line it comes after", st === 200 && r.kind === "proposal" && r.changes[0].intent === "Risks: checking last week" && r.changes[0].line === 10, [st, r])
+    ;[st, r] = await api("POST", "ops/companion.propose", { id: pid, path: P, text: "# Plan\n\nOne\n2\nThree\n\n## Risks\n- Rain\n", why: "Tighter" })
+    check("companion: proposed with its id, the note (frontmatter left out) fills it: two changes, the file as it was",
+      st === 200 && r.id === pid && r.changes.length === 2 && !r.changes.some((x: Any) => x.intent) && read(P).includes("title: P\n---\n# Plan\n\nOne\nTwo"), [st, r])
+    const [two, rain] = r.changes
+    ;[st, r] = await api("POST", "ops/companion.review", { id: pid, verdict: "accept" })
+    check("companion: an agent can't take its own proposal", st === 403, [st, r])
+    ;[st, r] = await api("POST", "ops/companion.review", { id: pid, verdict: "accept", change: two.id }, user)
+    check("companion: the user takes one change: in the file, the rest still proposed", st === 200 && r.took === 1 && r.open === 1 && read(P).includes("One\n2\nThree") && !read(P).includes("- Rain"), [st, r, read(P)])
+    ;[st, r] = await api("POST", "ops/companion.review", { id: pid, verdict: "reject", change: rain.id }, user)
+    ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: the last one left closes it, and its agent hears what was taken, once",
+      r.moments.filter((m: Any) => m.item === pid).length === 1 && r.moments.some((m: Any) => m.item === pid && m.kind === "accept" && /took 1 of 2 changes/.test(m.text)) &&
+      !(await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.id === pid) && !read(P).includes("- Rain"), r)
+    // A big edit is never typed over the note: it's proposed.
+    write(P, "# Plan\n\n1\n2\n3\n4\n5\n6\n7\n8\n")
+    ;[st, r] = await api("POST", "ops/companion.edit", { path: P, find: "1\n2\n3\n4\n5\n6\n7\n", text: "Seven steps, in short.\n" })
+    check("companion: an edit replacing more than 6 lines comes as a proposal, the note untouched", st === 200 && r.how === "proposed" && read(P).includes("1\n2\n3") &&
+      (await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.id === r.id && n.kind === "proposal"), [st, r])
+    const big = r.id
+    write(P, "# Plan\n\nOne, by hand\n2\n3\n4\n5\n6\n7\n8\n")
+    c.loadAll()
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: a change whose text the user has since changed is stale (it can only be left)", r.notes.find((n: Any) => n.id === big)?.changes?.[0]?.stale === true, r.notes.find((n: Any) => n.id === big))
+    ;[st, r] = await api("POST", "ops/companion.review", { id: big, verdict: "accept" }, user)
+    check("companion: accepting all takes none that's stale; leaving all closes it", st === 200 && r.took === 0 && r.open === 1 && read(P).includes("One, by hand"), [st, r])
+    await api("POST", "ops/companion.review", { id: big, verdict: "reject" }, user)
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: closed", !(await api("POST", "ops/companion.status", {}))[1].notes.some((n: Any) => n.id === big))
+  }
+
   ;[st, r] = await api("POST", "ops/companion.comment", { path: "Notes/A.md", find: "Alice", text: "Alice is away until Monday." })
   c.answer(r.id, "reply", "Then Tuesday")
   ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })

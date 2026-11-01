@@ -6,6 +6,7 @@ import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type T
 import { capitalize, keyHint, notifyError, op, pluginSettings, share, type EditorCtx } from "@vaultite"
 import { cotype } from "./cotype"
 import { accept, answer, asksAtStart, asksSomething, commentAt, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, threadTint, tintOf, views } from "./live"
+import { decide, proposals } from "./proposed"
 import { nearest } from "./text"
 
 /** Its own changes: not the user's, so not said back as theirs. */
@@ -137,6 +138,7 @@ function decorate(view: EditorView, path: string): DecorationSet {
     const p = placeOf(doc, n)
     if (!p) continue
     const style = `--c: ${tintOf(n.agent)}`
+    if (n.kind === "proposal") continue
     if (n.kind === "comment") { anchor(n.id, p, litOf(n)); continue }
     // (the suggestion picked in the panel or the margin: its lines lit)
     if (n.id === picked) {
@@ -566,8 +568,8 @@ export function companionExtension(ctx: EditorCtx): Extension {
   const path = ctx.path
   const keys = Prec.highest(keymap.of([
     ...["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", "Shift-Tab"].map((key) => ({ key, run: chooserKey(key) })),
-    { key: "Tab", run: (v) => { if (chooserKey("Tab")(v)) return true; const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
-    { key: "Escape", run: (v) => { if (chooserKey("Escape")(v)) return true; const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
+    { key: "Tab", run: (v) => { if (chooserKey("Tab")(v)) return true; const n = suggestionAt(v, path); if (!n) return decide(v, path, "accept"); void accept(n); return true } },
+    { key: "Escape", run: (v) => { if (chooserKey("Escape")(v)) return true; const n = suggestionAt(v, path); if (!n) return decide(v, path, "reject"); answer(n.id, "reject"); return true } },
   ]))
-  return [typed, span, sentAt, chooser, watcher(path), chips(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions(path) }]), cotype(path)]
+  return [typed, span, sentAt, chooser, watcher(path), chips(path), proposals(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions(path) }]), cotype(path)]
 }

@@ -4,7 +4,7 @@
   "category": "agents",
   "essential": true,
   "name": "Companion",
-  "description": "A coding agent that stays with you in the app: its cursor follows what you write, and it answers in bubbles, comments on lines (cards in the margin), suggests changes you take with Tab, or writes with you. Write @claude in a note to ask it something, or @ and a name to start another: @opus, @codex, @opus-review. Always-on sessions on this machine: Claude Code's run in the app (its chat), Codex's and OpenCode's in terminals.",
+  "description": "A coding agent that stays with you in the app: its cursor follows what you write, and it answers in bubbles, comments on lines (cards in the margin), suggests changes you take with Tab, proposes larger ones you take change by change, or writes with you. Write @claude in a note to ask it something, or @ and a name to start another: @opus, @codex, @opus-review. Always-on sessions on this machine: Claude Code's run in the app (its chat), Codex's and OpenCode's in terminals.",
   "runsOnServer": true,
   "requires": ["terminal", "claude-code"],
   "enhances": ["claude-code", "codex", "opencode"],

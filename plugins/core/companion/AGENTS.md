@@ -29,7 +29,9 @@ above that), act, run it again, and never end your turn.
 - Modes: quiet (only asks reach you), notice (also `edit` and `open` after a pause: speak only when it clearly helps),
   pair (you may also write in their notes with `companion edit`).
 - Words by your cursor: `say` (gone after a while). What should stay: `comment`, by a line, which they can reply to.
-  A change they decide on: `suggest` (Tab takes it). They see both as cards in the note's margin (or, a setting,
+  A change they decide on: `suggest` (Tab takes it). A large one (a rewrite, a section, several places): `propose`
+  the note as you'd have it, which they see as tracked changes and take or leave one by one; plant a placeholder first
+  (`propose --pending`) when it takes a while. An `edit` replacing more than 6 lines is proposed by itself. They see both as cards in the note's margin (or, a setting,
   threads in their Conversations panel, a dot by the line). Both are kept beside the note
   (`.vaultite/plugins/companion/comments/`) until dismissed: they survive a restart and follow the note; `companion status` lists them. One whose text is gone
   stays by its last line, marked so; `comment --id` on a dismissed one brings it back. Writing: `edit`, typed in before

@@ -27,3 +27,10 @@ export function span(a: string, b: string): [number, number] {
   if (tail > 0 && (low(a, a.length - tail) || low(b, b.length - tail))) tail--
   return [head, tail]
 }
+
+/** One change of a proposal: `find` (whole lines of the note as it was) becomes `text`. While its agent writes, a
+ *  placeholder by `find` saying what will come (`intent`). stale: its text has since changed, so it can only be left. */
+export type Change = { id: string; find: string; text: string; line: number; intent?: string; stale?: boolean }
+
+/** Where a change is in `text`: its start, -1 when its lines aren't there any more. */
+export const changeAt = (text: string, c: Pick<Change, "find" | "line">) => (c.find ? nearest(text, c.find, c.line) : text ? -1 : 0)
