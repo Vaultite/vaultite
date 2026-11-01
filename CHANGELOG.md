@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Vaultite Main updates without slowing the Mac**: it builds a new version at most once an hour, in the background
+  (efficiency cores, disk throttled), in folders Spotlight skips; automatic updates restart only once you've been away
+  from the computer for 10 minutes, and a ready update goes in when you quit the app.
 - **Plugins and bundles install on Windows**: installing from the plugin directory (Obsidian plugins, Glass...) failed
   in the Windows app with EPERM; it fetches only the plugin's own folder now, cleans up after itself, and says when
   git is missing.

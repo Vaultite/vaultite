@@ -2,7 +2,7 @@
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
 import "../core/winspawn.ts" // (first: on Windows no program the main process starts opens a console window)
 import "./dockenv.ts" // (before anything reads the environment)
-import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
+import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, session, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents, type WebPreferences } from "electron"
 import { AppWindow } from "./appwindow.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -1210,9 +1210,17 @@ const RELEASE = app.isPackaged && BUILD?.release === true
 /** Vaultite Dev (see the head of this file); the branch it updates from. */
 const DEV = BUILD?.channel === "dev"
 const BRANCH = (DEV && BUILD?.branch) || "main"
-/** The clone update.sh builds in, and the finished build it leaves next to it (Vaultite Main.app, and its commit). */
-const SOURCE = () => path.join(app.getPath("userData"), "source")
-const NEXT = () => path.join(app.getPath("userData"), "update")
+/** The clone update.sh builds in, and the finished build it leaves next to it (Vaultite Main.app, and its commit).
+ *  .noindex: Spotlight skips them (a .metadata_never_index file no longer works), else it indexed every build's files. */
+const SOURCE = () => path.join(app.getPath("userData"), "source.noindex")
+const NEXT = () => path.join(app.getPath("userData"), "update.noindex")
+/** The clone and build from before .noindex, moved in once: no new clone and npm ci. */
+function moveUnindexed() {
+  for (const [from, to] of [["source", SOURCE()], ["update", NEXT()]]) {
+    const old = path.join(app.getPath("userData"), from)
+    if (fs.existsSync(old) && !fs.existsSync(to)) try { fs.renameSync(old, to) } catch { /* a fresh clone then */ }
+  }
+}
 /** This app's bundle (…/Vaultite Main.app), which an update replaces; on Linux its folder (npm run app:install's). */
 const BUNDLE = MAC ? path.resolve(app.getPath("exe"), "..", "..", "..") : path.dirname(app.getPath("exe"))
 /** What update.sh build leaves in NEXT: the .app, or (Linux) the unpacked app's folder. */
@@ -1242,10 +1250,18 @@ function checkForUpdate(byHand: boolean) {
   if (!byHand && updates === "off") return
   if (RELEASE) return void checkRelease(byHand)
   if (!updatable() || checking || looking) return
+  // A build is minutes of compiling and a 20k-file app copied: on the timer, at most one an hour, however often main moves.
+  if (!byHand && Date.now() - lastBuild() < BUILD_EVERY) return
   looking = true
   void attachedCommit().then((want) => { looking = false; buildUpdate(byHand, want) })
 }
 let looking = false
+const BUILD_EVERY = 60 * 60_000
+/** When the last build started (ms; 0: none yet), kept across restarts: an update's relaunch doesn't build again at once. */
+const BUILT_AT = () => path.join(app.getPath("userData"), "update-started")
+function lastBuild() {
+  try { return Number(fs.readFileSync(BUILT_AT(), "utf8")) || 0 } catch { return 0 }
+}
 
 /** The commit the servers its windows attached to run, when every open window is attached: the app updates to that
  *  rather than the branch's newest, so the two are one version. "" otherwise. */
@@ -1262,8 +1278,9 @@ function buildUpdate(byHand: boolean, want: string) {
   fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${BUILD!.commit.slice(0, 7)}${want ? `, its server ${want.slice(0, 7)}` : ""})\n`)
   let out = ""
   if (byHand) setStatus("Checking for updates…")
-  // On the timer it builds at a low priority: its minutes of compiling never compete with what the user is doing.
-  const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-c", "utility"] : ["nice", "-n", "10"]
+  // On the timer it builds in the background (a Mac's efficiency cores, its disk I/O throttled): its minutes of
+  // compiling and copying never make the user's apps stutter.
+  const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-b"] : ["nice", "-n", "19"]
   const [cmd, ...args] = [...low, SHELL, "-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), BUILD!.repo, BUILD!.commit,
     BRANCH, DEV ? "app:build:dev" : "app:build", ...(want ? [want] : [])]
   const child = checking = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: true })
@@ -1272,7 +1289,10 @@ function buildUpdate(byHand: boolean, want: string) {
     fs.writeSync(log, b)
     out = (out + b.toString()).slice(-4000)
     const building = /^@building (\w+)$/m.exec(b.toString())
-    if (building) setStatus(`Updating ${app.getName()} to ${building[1].slice(0, 7)}…`)
+    if (building) {
+      setStatus(`Updating ${app.getName()} to ${building[1].slice(0, 7)}…`)
+      try { fs.writeFileSync(BUILT_AT(), String(Date.now())) } catch { /* then the next check may build again */ }
+    }
   }
   child.stdout!.on("data", take)
   child.stderr!.on("data", take)
@@ -1328,15 +1348,15 @@ function tell(w: Win) {
 /** The pages that said a restart would lose nothing now (`app:update-safe`). */
 const safeNow = new WeakSet<WebContents>()
 let idleRetry: NodeJS.Timeout | undefined
-/** Automatic: restart into the update once every window (pop-outs too) said so and the browser is idle (agents done);
- *  another machine's window can't say, so not while one is open. */
+/** Automatic: restart into the update once every window (pop-outs too) said so, the user is away from the computer (not
+ *  just this app) and the browser is idle (agents done); another machine's window can't say, so not while one is open. */
 function restartIfSafe() {
   if (updates !== "automatic" || !ready || remoteWins.size) return
   const pages = [...[...wins.values()].map((w) => w.win.webContents), ...popouts.keys()].filter((wc) => !wc.isDestroyed())
   if (!pages.length || !pages.every((wc) => safeNow.has(wc))) return
-  if (!engineBusy()) return restartToUpdate()
-  // (nothing tells when the busy window ends, so look again a little later)
-  idleRetry ??= setTimeout(() => { idleRetry = undefined; restartIfSafe() }, 30_000)
+  if (powerMonitor.getSystemIdleTime() >= 10 * 60 && !engineBusy()) return restartToUpdate()
+  // (nothing tells when the user steps away or the busy window ends, so look again a little later)
+  idleRetry ??= setTimeout(() => { idleRetry = undefined; restartIfSafe() }, 60_000)
 }
 
 /** Show (or, null, take down) what the update is doing in every window. */
@@ -1377,15 +1397,22 @@ function restartToUpdate() {
     // (Windows: the installer runs silently and opens the app again, rather than showing its window)
     return void afterFlush(() => releases!.quitAndInstall(WIN, WIN))
   }
-  if (!ready || ready !== built() || !replaceable()) return
+  if (!install(true)) return
+  restarting(ready!.slice(0, 7))
+  afterFlush(() => app.quit())
+}
+/** update.sh install, once: it waits for this process to end, then swaps the new app in (and opens it, `reopen`). */
+let installing = false
+function install(reopen: boolean) {
+  if (installing || !ready || ready !== built() || !replaceable()) return false
+  installing = true
   stopChecking()
   const log = updateLog()
-  fs.writeSync(log, `${new Date().toISOString()} installing ${ready} into ${BUNDLE}\n`)
-  spawn(SHELL, [path.join(ROOT, "electron", "update.sh"), "install", String(process.pid), BUILT(), BUNDLE, path.basename(app.getPath("exe"))],
+  fs.writeSync(log, `${new Date().toISOString()} installing ${ready} into ${BUNDLE}${reopen ? "" : " as the app quits"}\n`)
+  spawn(SHELL, [path.join(ROOT, "electron", "update.sh"), "install", String(process.pid), BUILT(), BUNDLE, path.basename(app.getPath("exe")), ...(reopen ? [] : ["stay"])],
     { detached: true, stdio: ["ignore", log, log] }).unref()
   fs.closeSync(log)
-  restarting(ready.slice(0, 7))
-  afterFlush(() => app.quit())
+  return true
 }
 /** `quit` once the toast had a beat to draw and the browser's cookies are written (Chromium writes them in batches;
  *  session cookies are the engine's to keep, browser/sessioncookies.ts). */
@@ -1684,7 +1711,13 @@ app.on("before-quit", (e) => {
   e.preventDefault()
   void unloadOnce().finally(() => app.quit())
 })
-app.on("will-quit", () => { for (const w of wins.values()) { w.server?.kill(); w.link?.stop() } stopChecking(); stopApps() })
+app.on("will-quit", () => {
+  for (const w of wins.values()) { w.server?.kill(); w.link?.stop() }
+  stopChecking()
+  stopApps()
+  // Quit with a build ready: it goes in now, while nothing is open, and the next launch runs it.
+  if (!RELEASE && updates !== "off" && updatable()) install(false)
+})
 /** The launch's windows are open (or failed): from then on, closing the last window quits off a Mac. */
 let launched = false
 app.on("window-all-closed", () => {
@@ -1794,6 +1827,7 @@ app.whenReady().then(async () => {
     setTimeout(() => checkForUpdate(false), 10_000)
     setInterval(() => checkForUpdate(false), 4 * 60 * 60_000)
   } else if (updatable()) {
+    moveUnindexed()
     setTimeout(() => checkForUpdate(false), 60_000)
     setInterval(() => checkForUpdate(false), 30 * 60_000)
   }

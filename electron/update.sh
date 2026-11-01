@@ -2,8 +2,9 @@
 # The desktop app's updates, run by electron/main.ts in a login shell (git, node and npm on the PATH): zsh on a Mac,
 # bash on Linux, so plain sh here.
 #   update.sh build <clone> <repo url> <the running app's commit> [<branch> <npm script> <commit>]
-#     the branch's newest (or <commit>), built in a clone of its own into <clone>/../update. Exit 3: the app runs it.
-#   update.sh install <the app's pid> <new .app> <the running .app> [<its executable's name>]
+#     the branch's newest (or <commit>), built in a clone of its own into <clone>/../update.noindex. Exit 3: the app runs it.
+#   update.sh install <the app's pid> <new .app> <the running .app> [<its executable's name> [stay]]
+#     stay: the app quit for good, so it isn't opened again
 set -eu
 # The login shell brings the user's aliases (an `rm -I` prompts, gets no answer and fails every build): none here.
 unalias -a 2>/dev/null || true
@@ -15,7 +16,7 @@ case ${1:-} in
 build)
   src=$2 repo=$3 running=$4 branch=${5:-main} script=${6:-app:build} want=${7:-}
   # The finished build goes here (the .app, then commit, written last): never one half built.
-  next=$(dirname "$src")/update
+  next=$(dirname "$src")/update.noindex
   [ -d "$src/.git" ] || { rm -rf "$src"; git clone --quiet "$repo" "$src"; }
   cd "$src"
   # Where the app says it's from: a clone made before the repo moved would fetch the old one, forever "up to date".
@@ -47,8 +48,10 @@ build)
   echo "$new"
   ;;
 install)
-  pid=$2 new=$3 app=$4 exe=${5:-}
+  pid=$2 new=$3 app=$4 exe=${5:-} stay=${6:-}
   while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+  # Quit for good, it may be opened again meanwhile (its LaunchAgent, the user): never swap an app out from under itself.
+  [ "$stay" = stay ] && pgrep -f "^$app/" >/dev/null && { echo "not installed: $app runs again"; exit 0; }
   # Copied beside it, then swapped in: a copy cut off midway (a full disk) leaves the old app whole. Failed or not, the
   # app opens again (the old one, if anything failed).
   rm -rf "$app.new" "$app.old"
@@ -56,6 +59,7 @@ install)
     if mv "$app.new" "$app"; then rm -rf "$app.old" || true
     else mv "$app.old" "$app" || true; echo "couldn't replace $app"; fi
   else rm -rf "$app.new" || true; echo "couldn't replace $app"; fi
+  [ "$stay" = stay ] && exit 0
   # An app a LaunchAgent runs (its label, not LaunchServices' application.*) starts again under it, so a crash still
   # brings it back; `open` would leave it unwatched.
   if [ "$(uname)" = Darwin ]; then
@@ -66,7 +70,7 @@ install)
   else setsid "$app/$exe" >/dev/null 2>&1 < /dev/null & fi
   ;;
 *)
-  echo "usage: update.sh build <clone> <repo> <commit> [<branch> <script>] | install <pid> <new app> <app>" >&2
+  echo "usage: update.sh build <clone> <repo> <commit> [<branch> <script>] | install <pid> <new app> <app> [<exe> [stay]]" >&2
   exit 2
   ;;
 esac
