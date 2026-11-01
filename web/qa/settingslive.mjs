@@ -49,7 +49,10 @@ write("editor", { propertiesInDocument: "source" })
 check("...as text: the note shows its frontmatter in the text", !!(await both(source)))
 
 // ---------- one window's change: the other and the file
-await palette(a, "Use light theme", 100)
+// (a theme is a value of the palette's Theme… picker, not a command of its own)
+await palette(a, "Theme…", 300)
+const light = a.locator("[role=option]").filter({ hasText: /^\s*Light\s*$/ })
+await until(() => light.count(), 3000); await light.click(); await a.waitForTimeout(100)
 check("Use light theme in one window: appearance.json says so", !!(await until(() => read("appearance")?.theme === "light", 4000)), read("appearance"))
 check("...the other window goes light", !!(await until(async () => !(await look(b)).dark, 6000)), await look(b))
 check("...the rest of the file kept", read("appearance")?.density === "comfortable" && read("appearance")?.lineNumbers === true, read("appearance"))
