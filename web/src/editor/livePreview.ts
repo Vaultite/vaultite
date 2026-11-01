@@ -170,10 +170,11 @@ class Bullet extends WidgetType {
   toDOM() { const s = document.createElement("span"); s.className = "cm-bullet"; s.textContent = "•"; return s }
 }
 
+// (no position of its own: typing above would make every box below it new, drawn again each keystroke)
 class Check extends WidgetType {
-  on: boolean; at: number; writable: boolean
-  constructor(on: boolean, at: number, writable: boolean) { super(); this.on = on; this.at = at; this.writable = writable }
-  eq(o: Check) { return o.on === this.on && o.at === this.at && o.writable === this.writable }
+  on: boolean; writable: boolean
+  constructor(on: boolean, writable: boolean) { super(); this.on = on; this.writable = writable }
+  eq(o: Check) { return o.on === this.on && o.writable === this.writable }
   toDOM(view: EditorView) {
     const box = document.createElement("input")
     box.type = "checkbox"
@@ -189,7 +190,7 @@ class Check extends WidgetType {
     hit.addEventListener("click", (e) => {
       e.preventDefault()
       if (!this.writable || !view.state.facet(previewConfig).writable) return
-      const at = this.at
+      const from = view.posAtDOM(hit), line = view.state.doc.lineAt(from), at = line.from + line.text.indexOf("[", from - line.from)
       const cur = view.state.sliceDoc(at, at + 3)
       if (!/^\[[ xX]\]$/.test(cur)) return
       haptic()
@@ -1047,7 +1048,7 @@ function inline(view: EditorView): DecorationSet {
                 if (end + space.length < ln.to) out.push(mark("cm-task-strike").range(end + space.length, ln.to))
               }
               if (live && !active) {
-                out.push(Decoration.replace({ widget: new Check(on, task.from, cfg.writable) }).range(lm.from, task.to))
+                out.push(Decoration.replace({ widget: new Check(on, cfg.writable) }).range(lm.from, task.to))
                 return
               }
             }
