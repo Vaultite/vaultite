@@ -6,6 +6,7 @@ import { get, send } from "@/core/http"
 import { getPrefs, hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
+import { usePane } from "@/core/pane"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
 import { hydrateHotkeys } from "@/core/commands"
 import type { FileTree } from "@/core/files"
@@ -182,6 +183,10 @@ export function useLive<T>(path: string | null, version?: string | number, files
   const last = useRef<string | null>(null)
   last.current ??= path ? recall(path)?.json ?? "" : ""
   const ask = path && version !== undefined ? `${path}\0${version}` : path
+  // (in a tab kept drawn behind another it doesn't poll, and asks once it's shown again)
+  const kept = useRef(false)
+  kept.current = !!usePane().hidden
+  const again = useRef<((fresh: number) => void) | null>(null)
   useEffect(() => {
     if (!path || !ask || mock) return
     let on = true
@@ -200,11 +205,14 @@ export function useLive<T>(path: string | null, version?: string | number, files
     })
     if (!every) return () => { on = false; off() }
     // (cards polling the same address share a request made in the last half period)
-    const poll = () => { if (!document.hidden) void load(every / 2) }
+    const poll = () => { if (!document.hidden && !kept.current) void load(every / 2) }
+    again.current = (fresh) => void load(fresh)
     const id = setInterval(poll, every)
     document.addEventListener("visibilitychange", poll)
-    return () => { on = false; off(); clearInterval(id); document.removeEventListener("visibilitychange", poll) }
+    return () => { on = false; again.current = null; off(); clearInterval(id); document.removeEventListener("visibilitychange", poll) }
   }, [path, ask, mock, every])
+  const shown = !kept.current
+  useEffect(() => { if (shown && every) again.current?.(every / 2) }, [shown, every])
   if (mock) {
     const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
     return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
