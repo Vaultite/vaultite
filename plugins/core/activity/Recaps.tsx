@@ -5,7 +5,7 @@ import {
   Bookmark, Bot, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, CircleDot, CircleX, Dot, FilePlus, FolderInput, ListPlus, Pencil, Puzzle,
   RotateCcw, Trash2,
 } from "lucide-react"
-import { addDays, Bar, cn, dow, Empty, fmtDay, fmtLongDay, Loading, Markdown, openFile, Panel, plural, Segmented, today, useKeptCount, useLive, type FileCtx, type Store } from "@vaultite"
+import { addDays, Bar, cn, dow, Empty, fmtDay, fmtLongDay, ink, Loading, Markdown, openFile, Panel, plural, Segmented, today, useKeptCount, useLive, type FileCtx, type Store } from "@vaultite"
 import { Chips } from "./Feed"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, type RecapKind, verbOf } from "./recap"
 
@@ -59,7 +59,7 @@ function EntryRow({ e, store, last }: { e: RecapEntry; store: Store; last: boole
         {!last && <span className="absolute inset-y-0 top-7 w-px bg-border" />}
       </div>
       <div className="min-w-0 flex-1 pb-5">
-        {label && <div className="text-[12px] font-semibold leading-[16px] tracking-wide" style={{ color: look.tint }}>{label}</div>}
+        {label && <div className="text-[12px] font-semibold leading-[16px] tracking-wide" style={{ color: ink(look.tint) }}>{label}</div>}
         <div className="text-[15px] leading-[21px] font-medium break-words"><Markdown text={title1} store={store} inline /></div>
         {meta.length > 0 && <div className="text-[13px] leading-[18px] text-muted-foreground break-words"><Markdown text={meta.join(" · ")} store={store} inline /></div>}
         {e.quote.length > 0 && (

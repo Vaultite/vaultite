@@ -387,9 +387,6 @@ const Cursor = memo(function Cursor({ a, spot, said, others, under, shift, age, 
   )
 }, sameProps)
 
-/** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
-export const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
-
 const CLOCK = { hour: "numeric", minute: "2-digit" } as const, DAY = { day: "numeric", month: "short" } as const, YEAR = { ...DAY, year: "numeric" } as const
 /** When, as a shared doc's comment says it: now, 5 min, 4:05 PM (today), Oct 30. */
 function when(t: number) {

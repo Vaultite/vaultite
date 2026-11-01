@@ -4,7 +4,7 @@ import {
   BookOpen, Cake, Flag, Handshake, Mail, MapPin, MessageCircle, MessageSquare, Phone, StickyNote, Users, type LucideIcon,
 } from "lucide-react"
 import {
-  addDays, AddToTimeline, capitalize, cn, dateText, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
+  addDays, AddToTimeline, capitalize, cn, dateText, Editable, Empty, fmtDay, ink, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
   today, WeeksGrid, type BlockCtx, type Store, type TimelineEntry, type TimelineKind,
 } from "@vaultite"
 import { ageOn, birthdayText, bornOn, nearness, nextBirthday, parseBirthday, until, upcoming } from "./birthdays"
@@ -88,7 +88,7 @@ export function PeopleDue({ store }: BlockCtx) {
           {due.map(({ p, st }) => (
             <Row key={p.id} title={p.name} onOpen={open(p)}
               meta={`${lastLine(st.last)} · ${often(p.every_days!)}`}
-              right={<span className="font-medium" style={{ color: TINT }}>{st.overdue ? `${st.overdue} d overdue` : "Due today"}</span>} />
+              right={<span className="font-medium" style={{ color: ink(TINT) }}>{st.overdue ? `${st.overdue} d overdue` : "Due today"}</span>} />
           ))}
         </List>
       )}
@@ -126,7 +126,7 @@ const MONTH_DAY_YEAR = { ...MONTH_DAY, year: "numeric" } as const
 function DayTile({ date, tint }: { date: string; tint?: string }) {
   return (
     <span role="img" aria-label={dateText(parse(date), MONTH_DAY)} className={cn("flex size-10 shrink-0 flex-col items-center justify-center rounded-[8px]", !tint && "bg-muted")}
-      style={tint ? { background: `color-mix(in srgb, ${tint} 14%, transparent)`, color: tint } : undefined}>
+      style={tint ? { background: `color-mix(in srgb, ${tint} 14%, transparent)`, color: ink(tint) } : undefined}>
       <span className={cn("text-[10px] leading-[12px] font-semibold", !tint && "text-muted-foreground")}>{dateText(parse(date), MONTH)}</span>
       <span className="num text-[16px] leading-[18px] font-semibold">{Number(date.slice(8, 10))}</span>
     </span>
@@ -147,7 +147,7 @@ export function PeopleBirthdays({ store, options }: BlockCtx) {
             return (
               <Row key={p.id} title={p.name} onOpen={open(p)} lead={<DayTile date={date} tint={tint} />} data-birthday={days}
                 meta={[dateText(parse(date), WEEKDAY), turns !== null && `turns ${turns}`].filter(Boolean).join(" · ")}
-                right={<span className={cn(tint && "font-medium")} style={tint ? { color: tint } : undefined}>{capitalize(until(days))}</span>} />
+                right={<span className={cn(tint && "font-medium")} style={tint ? { color: ink(tint) } : undefined}>{capitalize(until(days))}</span>} />
             )
           })}
         </List>
@@ -164,7 +164,7 @@ function BirthdayValue({ value }: { value: string }) {
   return (
     <>
       {[dateText(parse(bornOn(b)), b.year !== null ? MONTH_DAY_YEAR : MONTH_DAY), n.days && age !== null && `age ${age}`].filter(Boolean).join(" · ")}
-      {tint && <> · <span className="font-medium whitespace-nowrap" style={{ color: tint }}>{until(n.days)}</span></>}
+      {tint && <> · <span className="font-medium whitespace-nowrap" style={{ color: ink(tint) }}>{until(n.days)}</span></>}
     </>
   )
 }

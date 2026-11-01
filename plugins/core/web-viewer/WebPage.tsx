@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AppWindow, ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Check, ChevronDown, Ellipsis, FileCode2, FileWarning, Globe, History, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, PanelTopClose, PanelTopOpen, Pause, PictureInPicture2, Play, Printer, RotateCw, Scissors,
   Search, ShieldAlert, Undo2, Volume2, VolumeX, WifiOff, X, type LucideIcon } from "lucide-react"
 import {
-  Button, canNavigate, cn, commandKeys, getTabLayout, menuBelow, menuFor, navigate, notify, notifyError, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
+  Button, canNavigate, cn, commandKeys, getTabLayout, ink, menuBelow, menuFor, navigate, notify, notifyError, openInSplit, openMenu, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages,
   type MenuItem, type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -480,7 +480,7 @@ function AskCard({ id }: { id: number }) {
           <MousePointer2 className="size-[18px]" strokeWidth={2.25} style={{ color: "var(--purple)" }} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[12px] font-semibold" style={{ color: "var(--purple)" }}>{page.by} needs you</span>
+          <span className="truncate text-[12px] font-semibold" style={{ color: ink("var(--purple)") }}>{page.by} needs you</span>
           <span className="line-clamp-4 text-[15px] leading-[20px] @max-sm/ask:text-[13px] @max-sm/ask:leading-[18px]" data-web-agent-reason>{page.asking}</span>
         </span>
         <Button look="primary" onClick={() => void doneAsk(id)} data-web-agent-done className="px-4">

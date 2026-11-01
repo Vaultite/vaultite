@@ -2,7 +2,7 @@
 // terminal when Terminal is on. `@<machine>` ids are another machine's.
 import { useEffect, useState } from "react"
 import { ChevronRight, CircleAlert, History, SquareTerminal, User } from "lucide-react"
-import { Bar, Empty } from "@/components/kit"
+import { Bar, Empty, ink } from "@/components/kit"
 import { Markdown } from "@/components/Markdown"
 import type { AgentSource } from "@/components/AgentUsage"
 import { openAgent } from "@/core/agents"
@@ -85,7 +85,7 @@ function Message({ src, e, speaker }: { src: AgentSource; e: Said; speaker?: str
 }
 
 const Kicker = ({ src }: { src: AgentSource }) => (
-  <div className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: src.tint }}>
+  <div className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: ink(src.tint) }}>
     <src.icon className="size-4" />{src.label} session
   </div>
 )

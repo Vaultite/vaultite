@@ -45,7 +45,7 @@ import { Properties } from "@/components/Properties"
 import { effectiveType } from "../../../core/fileprops.ts"
 import { JsonView } from "@/components/JsonView"
 import { barButton, ViewBar } from "@/components/ViewBar"
-import { usePortalHost } from "@/components/kit"
+import { ink, usePortalHost } from "@/components/kit"
 import { useWideSheet } from "@/components/DetailSheet"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { useHeldFocus } from "@/core/focus"
@@ -246,7 +246,7 @@ function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, p
   return (
     <div className={cn("mb-1 flex min-h-8 flex-wrap items-center gap-x-2", !pane && (toggle ? "pr-[75px]" : "pr-[31px]"))}>
       {/* (its folder gives way to the items down to a few letters; past that they wrap, never cut off) */}
-      <span className="flex min-w-16 flex-[1_1_0] items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
+      <span className="flex min-w-16 flex-[1_1_0] items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint && ink(tint) }}>
         <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
         <span className="truncate">{text}</span>
       </span>

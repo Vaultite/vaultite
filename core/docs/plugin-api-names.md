@@ -262,6 +262,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
 - `INCOMING`: The key of what comes in from elsewhere: a gap where it would land, drawn by its list (its `[data-slide]` element, absolutely placed or last in the list; sized like the list's own unless…
+- `ink(color)`: A colour token as text: its lightness held where it reads on a card (--ink-lo/--ink-hi in index.css).
 - `inKeyList()`: The keyboard is on a row of a list.
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.

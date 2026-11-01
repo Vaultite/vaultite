@@ -84,6 +84,10 @@ export function IconTile({ icon: Icon, tint, className, iconClassName }: { icon:
   )
 }
 
+/** A colour token as text: its lightness held where it reads on a card (--ink-lo/--ink-hi in index.css). Fills and
+ *  icons on their own keep the token. */
+export const ink = (color: string) => `oklch(from ${color} clamp(var(--ink-lo), l, var(--ink-hi)) c h)`
+
 /** No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new). */
 export function SheetHead({ icon: Icon, tint, kicker, title, sub, children }: {
   icon: LucideIcon | typeof Logo; tint: string; kicker?: ReactNode; title: ReactNode; sub?: ReactNode; children?: ReactNode
@@ -101,7 +105,7 @@ export function SheetHead({ icon: Icon, tint, kicker, title, sub, children }: {
   return (
     <div className="mb-5">
       {kicker !== undefined && (
-        <div className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
+        <div className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold" style={{ color: ink(tint) }}>
           <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />{kicker}
         </div>
       )}
@@ -124,7 +128,7 @@ export function Panel({
   return (
     <section className={cn("glass rounded-[12px] p-4", className)}>
       {title && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-2" style={{ color: tint ?? "var(--primary)" }}>
+        <div className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-2" style={{ color: ink(tint ?? "var(--primary)") }}>
           {Icon && <Icon className="size-[18px]" strokeWidth={2.25} />}
           <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
           {action && <div className="ml-auto text-foreground">{action}</div>}

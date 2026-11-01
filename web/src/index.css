@@ -102,6 +102,9 @@
     /* Named colours (Apple system colours). Features use these, never raw hex, so a scheme can recolour everything. */
     --red: #ff3b30; --orange: #ff9500; --yellow: #ffcc00; --green: #34c759; --teal: #30b0c7;
     --blue: #007aff; --indigo: #5856d6; --purple: #af52de; --pink: #ff2d55; --gray: #8e8e93;
+    /* A colour as text (kit.tsx's `ink()`): its OKLCH lightness held in this range, so a tint reads at 4.5:1 (WCAG AA)
+       on a card, light or dark, keeping the scheme's hue and chroma. Fills and icons use the colour itself. */
+    --ink-lo: 0; --ink-hi: 0.48;
     /* Heading colours (editor: reading, live preview and source). Plain here; schemes may colour them. */
     --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground);
     --h4: var(--muted-foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
@@ -172,6 +175,7 @@
     --segment-on: #636366;
     --red: #ff453a; --orange: #ff9f0a; --yellow: #ffd60a; --green: #30d158; --teal: #40c8e0;
     --blue: #0a84ff; --indigo: #5e5ce6; --purple: #bf5af2; --pink: #ff375f; --gray: #8e8e93;
+    --ink-lo: 0.8; --ink-hi: 1;
 }
 
 
@@ -330,15 +334,15 @@ html[data-over-pages] .glass-strong { background: linear-gradient(var(--popover)
 :is(.note-prose, .dash-prose, .vau-editor .cm-block) input[type="checkbox"]:disabled { cursor: default; }
 :is(.note-prose, .dash-prose, .vau-editor .cm-block) input[type="checkbox"]:checked { border-color: var(--notes); background: var(--notes) center / 12px no-repeat
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-.note-prose a { color: var(--primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+.note-prose a { color: oklch(from var(--primary) clamp(var(--ink-lo), l, var(--ink-hi)) c h); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
   text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
 .note-prose a:hover { text-decoration-color: currentColor; }
 /* Taller hit area for links inside running text (inline padding doesn't change the line height). */
 .note-prose a { padding-block: 5px; }
-.note-prose .wikilink { color: var(--notes); font-weight: 500; }
-:is(.note-prose, .dash-prose) .wikilink.person { color: var(--people); }
-:is(.note-prose, .dash-prose) .wikilink.book { color: var(--learning); }
-:is(.note-prose, .dash-prose) .wikilink.colleague { color: var(--work); }
+.note-prose .wikilink { color: oklch(from var(--notes) clamp(var(--ink-lo), l, var(--ink-hi)) c h); font-weight: 500; }
+:is(.note-prose, .dash-prose) .wikilink.person { color: oklch(from var(--people) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+:is(.note-prose, .dash-prose) .wikilink.book { color: oklch(from var(--learning) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+:is(.note-prose, .dash-prose) .wikilink.colleague { color: oklch(from var(--work) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
 .note-prose .wikilink.missing { color: var(--muted-foreground); font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; }
 .note-prose .wikilink { cursor: pointer; }
 /* In a sheet (a book's or a log's notes): the sheet's body size, headings a step smaller. */
@@ -667,13 +671,13 @@ dialog { --vau-panel-bottom: 0px; }
 .vau-editor .cm-content ::selection { background: color-mix(in srgb, var(--primary) 22%, transparent); }
 .vau-editor .cm-placeholder { color: var(--muted-foreground); }
 .vau-editor .cm-h { font-weight: 700; }
-.vau-editor .cm-h1 { font-size: 1.625em; line-height: 1.31; padding-top: 8px; color: var(--h1); }
-.vau-editor .cm-h2 { font-size: 1.3125em; line-height: 1.333; padding-top: 6px; color: var(--h2); }
-.vau-editor .cm-h3 { font-size: 1.125em; line-height: 1.39; padding-top: 4px; font-weight: 600; color: var(--h3); }
+.vau-editor .cm-h1 { font-size: 1.625em; line-height: 1.31; padding-top: 8px; color: oklch(from var(--h1) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor .cm-h2 { font-size: 1.3125em; line-height: 1.333; padding-top: 6px; color: oklch(from var(--h2) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor .cm-h3 { font-size: 1.125em; line-height: 1.39; padding-top: 4px; font-weight: 600; color: oklch(from var(--h3) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
 .vau-editor :is(.cm-h4, .cm-h5, .cm-h6) { font-size: 1em; line-height: 1.44; padding-top: 2px; font-weight: 600; }
-.vau-editor .cm-h4 { color: var(--h4); }
-.vau-editor .cm-h5 { color: var(--h5); }
-.vau-editor .cm-h6 { color: var(--h6); }
+.vau-editor .cm-h4 { color: oklch(from var(--h4) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor .cm-h5 { color: oklch(from var(--h5) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor .cm-h6 { color: oklch(from var(--h6) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
 .vau-editor .cm-content > :is(.cm-h:first-child, .cm-frontmatter:first-child + .cm-h) { padding-top: 0; }
 /* The # of a heading (source mode, or live preview on the cursor line): shown, fainter. */
 .vau-editor .cm-hmark { color: color-mix(in srgb, currentColor 45%, var(--card)); font-weight: 500; }
@@ -681,16 +685,16 @@ dialog { --vau-panel-bottom: 0px; }
 .vau-editor .cm-em { font-style: italic; }
 .vau-editor .cm-strike { text-decoration: line-through; color: var(--muted-foreground); }
 .vau-editor .cm-code { font-family: var(--font-code); font-size: 0.85em; background: var(--muted); border-radius: 5px; padding: 0.1em 0.3em; }
-.vau-editor .cm-link { color: var(--primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+.vau-editor .cm-link { color: oklch(from var(--primary) clamp(var(--ink-lo), l, var(--ink-hi)) c h); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
   text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); cursor: pointer; }
 .vau-editor :is(.cm-link-raw, .cm-wikilink-raw) { color: color-mix(in srgb, var(--primary) 85%, var(--foreground)); }
-.vau-editor .cm-wikilink-raw { color: var(--notes); }
-.vau-editor .cm-wikilink { color: var(--notes); font-weight: 500; cursor: pointer; }
+.vau-editor .cm-wikilink-raw { color: oklch(from var(--notes) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor .cm-wikilink { color: oklch(from var(--notes) clamp(var(--ink-lo), l, var(--ink-hi)) c h); font-weight: 500; cursor: pointer; }
 .vau-editor :is(.cm-wikilink, .cm-wikilink-raw).is-missing { color: var(--muted-foreground); font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; }
 /* A link to a person, a book or a colleague: their colour, as in the sheets and dashboards (.note-prose .wikilink). */
-.vau-editor :is(.cm-wikilink, .cm-wikilink-raw, .cm-block .wikilink).person { color: var(--people); }
-.vau-editor :is(.cm-wikilink, .cm-wikilink-raw, .cm-block .wikilink).book { color: var(--learning); }
-.vau-editor :is(.cm-wikilink, .cm-wikilink-raw, .cm-block .wikilink).colleague { color: var(--work); }
+.vau-editor :is(.cm-wikilink, .cm-wikilink-raw, .cm-block .wikilink).person { color: oklch(from var(--people) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor :is(.cm-wikilink, .cm-wikilink-raw, .cm-block .wikilink).book { color: oklch(from var(--learning) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.vau-editor :is(.cm-wikilink, .cm-wikilink-raw, .cm-block .wikilink).colleague { color: oklch(from var(--work) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
 /* Code files (a .py, a .yaml...): monospace, line numbers in a quiet gutter, the active line's number brighter. */
 .vau-editor.is-code .cm-editor { font-size: 13px; }
 .vau-editor.is-code .cm-scroller { font-family: var(--font-code); line-height: 20px; }
@@ -803,7 +807,7 @@ dialog { --vau-panel-bottom: 0px; }
   font-size: 13px; line-height: 18px; color: var(--muted-foreground); white-space: normal; }
 .cm-block-notes { flex: 1; min-width: 0; }
 .cm-block-notes.is-wrong { color: var(--foreground); }
-.cm-block-done { font-weight: 600; color: var(--primary); cursor: pointer; }
+.cm-block-done { font-weight: 600; color: oklch(from var(--primary) clamp(var(--ink-lo), l, var(--ink-hi)) c h); cursor: pointer; }
 .cm-block-options { margin-top: 10px; padding: 6px 12px 8px; border-radius: 10px; background: color-mix(in srgb, var(--foreground) 3%, transparent);
   font-family: var(--font-sans); cursor: default; }
 /* A block that draws nothing still has a place to right-click. */
@@ -858,7 +862,7 @@ dialog { --vau-panel-bottom: 0px; }
 .cm-table-drop[hidden] { display: none; }
 .vau-editor .cm-table-keys { position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; resize: none;
   pointer-events: none; overflow: hidden; }
-.vau-editor .cm-block .wikilink { color: var(--notes); font-weight: 500; cursor: pointer; }
+.vau-editor .cm-block .wikilink { color: oklch(from var(--notes) clamp(var(--ink-lo), l, var(--ink-hi)) c h); font-weight: 500; cursor: pointer; }
 .vau-editor .cm-block .wikilink.missing { color: var(--muted-foreground); font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; }
 .vau-editor .cm-editor[contenteditable="false"] .cm-block, .vau-editor .cm-content[contenteditable="false"] .cm-block { cursor: default; }
 /* Reading has no caret, so CodeMirror's caret helpers around hidden Markdown (images, and so line-break points) go:
@@ -900,18 +904,18 @@ dialog { --vau-panel-bottom: 0px; }
 @media (min-width: 768px) { .dash-prose { font-size: 16px; line-height: 24px; } }
 .dash-prose > :where(:not(:first-child)) { margin-top: 10px; }
 .dash-prose > :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: 22px; }
-.dash-prose h1 { font-size: 1.625em; line-height: 1.31; font-weight: 700; color: var(--h1); }
-.dash-prose h2 { font-size: 1.3125em; line-height: 1.333; font-weight: 700; color: var(--h2); }
-.dash-prose h3 { font-size: 1.125em; line-height: 1.39; font-weight: 600; color: var(--h3); }
+.dash-prose h1 { font-size: 1.625em; line-height: 1.31; font-weight: 700; color: oklch(from var(--h1) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.dash-prose h2 { font-size: 1.3125em; line-height: 1.333; font-weight: 700; color: oklch(from var(--h2) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.dash-prose h3 { font-size: 1.125em; line-height: 1.39; font-weight: 600; color: oklch(from var(--h3) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
 .dash-prose :is(h4, h5, h6) { font-size: 1em; line-height: 1.44; font-weight: 600; }
-.dash-prose h4 { color: var(--h4); }
-.dash-prose h5 { color: var(--h5); }
-.dash-prose h6 { color: var(--h6); }
+.dash-prose h4 { color: oklch(from var(--h4) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.dash-prose h5 { color: oklch(from var(--h5) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.dash-prose h6 { color: oklch(from var(--h6) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
 .dash-prose :is(ul, ol) { padding-left: 1.3em; }
 .dash-prose ul { list-style: disc; }
 .dash-prose ol { list-style: decimal; }
-.dash-prose a { color: var(--primary); }
-.dash-prose .wikilink { color: var(--notes); font-weight: 500; cursor: pointer; }
+.dash-prose a { color: oklch(from var(--primary) clamp(var(--ink-lo), l, var(--ink-hi)) c h); }
+.dash-prose .wikilink { color: oklch(from var(--notes) clamp(var(--ink-lo), l, var(--ink-hi)) c h); font-weight: 500; cursor: pointer; }
 .dash-prose .wikilink.missing { color: var(--muted-foreground); font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; }
 .dash-prose code { font-family: var(--font-code); font-size: 0.9em; }
 .dash-prose :not(pre) > code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--foreground) 7%, transparent); }
@@ -1021,7 +1025,7 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 .vau-editor :is(.cm-block-callout, .cm-block-details) :where(ol) { list-style: decimal; padding-left: 1.35em; }
 .vau-editor :is(.cm-block-callout, .cm-block-details, .cm-block-table) code { font-family: var(--font-code); font-size: 0.85em; background: var(--muted); border-radius: 5px; padding: 0.1em 0.3em; }
 .vau-editor :is(.cm-block-callout, .cm-block-details) pre code { background: none; padding: 0; font-size: 0.875em; }
-.vau-editor :is(.cm-block-callout, .cm-block-details) a:not(.wikilink) { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.vau-editor :is(.cm-block-callout, .cm-block-details) a:not(.wikilink) { color: oklch(from var(--primary) clamp(var(--ink-lo), l, var(--ink-hi)) c h); text-decoration: underline; text-underline-offset: 3px; }
 /* <details><summary> toggles */
 :is(.note-prose, .dash-prose, .vau-editor .cm-block-details) details:not(.callout) > summary { cursor: pointer; font-weight: 600; margin-bottom: 6px; }
 :is(.note-prose, .dash-prose, .vau-editor .cm-block-details) details:not(.callout) { margin: 0 0 14px; }
@@ -1029,7 +1033,7 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 .dash-prose > .callout, .dash-prose > .md-code, .dash-prose > details:not(.callout) { margin: 0; }
 .dash-prose > .callout:not(:first-child), .dash-prose > .md-code:not(:first-child), .dash-prose > details:not(.callout):not(:first-child) { margin-top: 10px; }
 /* Footnotes */
-.footnote-ref, .cm-footnote-ref { font-size: 0.72em; line-height: 0; vertical-align: super; padding: 0 1px; color: var(--primary); cursor: pointer; font-weight: 500; }
+.footnote-ref, .cm-footnote-ref { font-size: 0.72em; line-height: 0; vertical-align: super; padding: 0 1px; color: oklch(from var(--primary) clamp(var(--ink-lo), l, var(--ink-hi)) c h); cursor: pointer; font-weight: 500; }
 .footnote-ref.missing, .cm-footnote-ref.is-missing { color: var(--muted-foreground); cursor: default; }
 .footnotes { margin-top: 20px; padding-top: 10px; border-top: 0.5px solid var(--border); font-size: 0.88em; color: var(--muted-foreground); }
 .footnotes ol { list-style: decimal; padding-left: 1.35em; margin: 0; }

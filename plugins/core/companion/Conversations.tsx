@@ -2,9 +2,9 @@
 // order, open or resolved, who's around atop them. One clicked lights its line; replying and resolving are here.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"
-import { cn, fmtAgo, keyHint, Markdown, op, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
+import { cn, fmtAgo, ink, keyHint, Markdown, op, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
 import { accept, answer, getState, type Note, pick, reopen, subscribe, tintOf } from "./live"
-import { cut, follow, inked } from "./Overlay"
+import { cut, follow } from "./Overlay"
 import { Faces } from "./Presence"
 import { threadsOf } from "./threads"
 
@@ -100,7 +100,7 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
       {/* (its colour as a straight bar clear of the rounded corners) */}
       <span aria-hidden className="absolute inset-y-2 left-[4px] w-[3px] rounded-full" style={{ background: tint }} />
       <div className="flex min-h-6 items-center gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: inked(tint) }}>
+        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: ink(tint) }}>
           {n.agent}{suggestion ? " suggests" : ""}
           <span className="ml-1.5 font-normal text-tertiary">{resolved && n.dismissed ? fmtAgo(new Date(n.dismissed).toISOString()) : n.line ? `line ${n.line}${n.orphaned ? ", its text was removed" : ""}` : ""}</span>
         </span>
@@ -111,13 +111,13 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
       </div>
       {n.find && (
         <div className="mb-1 line-clamp-2 border-l-2 pl-1.5 text-[12px] text-muted-foreground" style={{ borderColor: `color-mix(in srgb, ${tint} 50%, transparent)` }}>
-          {suggestion ? <><span className="line-through">{cut(snippet(n.find), 120)}</span> <span className="font-medium" style={{ color: inked(tint) }}>{cut(snippet(n.replace ?? ""), 120)}</span></> : cut(snippet(n.find), 160)}
+          {suggestion ? <><span className="line-through">{cut(snippet(n.find), 120)}</span> <span className="font-medium" style={{ color: ink(tint) }}>{cut(snippet(n.replace ?? ""), 120)}</span></> : cut(snippet(n.find), 160)}
         </div>
       )}
       {n.text && <Markdown text={n.text} className="companion-md pr-1" />}
       {n.replies?.map((r, i) => (
         <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5 pr-1">
-          <div className="text-[12px] font-semibold text-muted-foreground" style={r.by === "user" ? undefined : { color: inked(tint) }}>{r.by === "user" ? "You" : n.agent}</div>
+          <div className="text-[12px] font-semibold text-muted-foreground" style={r.by === "user" ? undefined : { color: ink(tint) }}>{r.by === "user" ? "You" : n.agent}</div>
           <Markdown text={r.text} className="companion-md" />
         </div>
       ))}

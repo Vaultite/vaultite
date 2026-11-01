@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { ArrowUp, Brain, Check, ChevronDown, ChevronRight, CircleAlert, FileText, Folder, Globe, History, ListTodo, Pencil, Search, Square, SquareTerminal,
   Bot, Wrench, X, Ellipsis } from "lucide-react"
 import { Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
-  openAgent, openMenu, openView, plural, splitMachine, textDiff, useScopedState, type DiffLine, type MenuItem } from "@vaultite"
+  openAgent, openMenu, openView, plural, splitMachine, textDiff, ink, useScopedState, type DiffLine, type MenuItem } from "@vaultite"
 import type { Entry, Question } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
 import { nameTab, NEW } from "./titles"
@@ -442,7 +442,7 @@ function AskCard({ e, id, pending }: { e: Ask; id: string; pending: boolean }) {
   }
   return (
     <div data-entry="ask" data-ask={e.kind} className="rounded-[14px] border-[0.5px] border-border bg-card p-4 shadow-[0_1px_3px_rgb(0_0_0/0.06)] max-md:p-3.5">
-      <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold max-md:text-[15px]" style={{ color: TINT }}>
+      <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold max-md:text-[15px]" style={{ color: ink(TINT) }}>
         <ClaudeIcon className="size-4" />{e.kind === "permission" ? "Permission" : e.kind === "question" ? "Question" : "Plan"}
       </div>
       {e.kind === "permission" ? <Permission e={e} busy={busy} answer={answer} />
