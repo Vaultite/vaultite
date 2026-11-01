@@ -113,7 +113,7 @@ export {
   useTerminalAccount, type AgentAccount, type DefaultPlace, type Place,
 } from "@/core/agents"
 // Your other machines (Machines plugin): their terminals are <id>@<machine>, their API is machines/<machine>/<path>.
-export { fetchMachines, machinePath, onMachine, otherMachines, splitMachine, useMachines, type Machine } from "@/core/machines"
+export { fetchMachines, machinePath, onMachine, otherMachines, severalMachines, splitMachine, useMachines, type Machine } from "@/core/machines"
 // Where the sidebars' setup comes from (.vaultite/sidebars.json, or a plugin that keeps its own: Workspaces).
 export { readSidebars, sameSidebars, savedSidebars, setDefaultSidebars, sidebars, sidebarsChanged, useSidebars, vaultSidebars } from "@/core/plugins"
 // Show a sidebar panel (its sidebar open, it unfolded): revealPanel, else dockAtEnd puts it at the end of a sidebar.

@@ -22,8 +22,16 @@ export function useMachines(): Machine[] | null {
 
 /** The machines, once ([] with the plugin off or when the server doesn't answer). */
 export async function fetchMachines(): Promise<Machine[]> {
-  if (!isEnabled("machines", getPrefs().disabled)) return []
-  try { return await get<Machine[]>("machines") } catch { return [] }
+  if (!isEnabled("machines", getPrefs().disabled)) return (others = false, [])
+  try { const l = await get<Machine[]>("machines"); others = l.some((m) => !m.self); return l } catch { return [] }
+}
+
+let others: boolean | null = null
+/** Whether this vault runs on another machine too (a command about machines is offered only then): false until known,
+ *  asked once in the background. */
+export function severalMachines() {
+  if (others === null) { others = false; void fetchMachines() }
+  return others
 }
 
 /** The other machines that are online and have `plugin` on (all online ones without it). */

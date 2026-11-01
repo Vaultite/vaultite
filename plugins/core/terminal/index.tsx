@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
-import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
+import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
 import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
@@ -138,8 +138,8 @@ export default definePlugin({
     { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", words: "new", run: () => void openTerminal({ split: true }) },
     // A question for an agent that answers in the background (Dictate's ⌘J opens it and dictates into it).
     { id: "terminal:ask", name: "Ask an agent in the background…", when: canRunAgents, run: openAsk, icon: MessageSquareText, label: "Ask" },
-    { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", run: () => void choosePlace(), icon: Server },
-    { id: "terminal:home", name: "Choose where terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
+    { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", when: severalMachines, run: () => void choosePlace(), icon: Server },
+    { id: "terminal:home", name: "Choose where terminals and agents open in this workspace…", when: severalMachines, run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },
     { id: "terminal:instructions", name: "Show what agents in terminals are told", run: showInstructions, icon: FileText },
     // Off a Mac ⌃F is the shell's (forward a character): ⌃⇧F, as terminals there have it.

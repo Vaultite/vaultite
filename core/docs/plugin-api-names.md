@@ -545,6 +545,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
+- `severalMachines()`: Whether this vault runs on another machine too (a command about machines is offered only then): false until known, asked once in the background.
 - `share`
 - `Share`
 - `SheetActions({ children })`: Buttons for the sheet's header, left of Close (a glance's Open in tab).

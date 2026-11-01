@@ -22,6 +22,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   it, and an empty calendar day reads as a calm sentence.
 - **Setup mentions connecting an AI**: the agents step says Claude, ChatGPT and other AI apps can use the vault too,
   and where to connect one once it opens.
+- **The commands leave out other machines until you have one**: choosing which machine a terminal or an agent
+  opens on is offered once the vault runs on another machine too.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the
   view button instead of running under it, and back and forward give way before it leaves the pane.
 - **Slides use templates**: a slide naming `template="[[note]]"` (or a deck's `defaultTemplate`) is drawn in
