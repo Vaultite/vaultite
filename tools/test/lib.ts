@@ -204,6 +204,25 @@ export function report(suite: string, last = 20) {
     console.log(`  ${n}: ${f.n}x, last ${f.at.slice(0, 16)}  ${f.fails.slice(0, 2).join("; ").slice(0, 160)}`)
 }
 
+/** A shard's results (its VAULTITE_TEST_OUT), taken in as this run's: its sections `own` names, and any failure. */
+export function absorb(file: string, own: Set<string>) {
+  const r = JSON.parse(fs.readFileSync(file, "utf8")) as { results: Result[]; sections: SectionRun[] }
+  results.push(...r.results.filter((x) => own.has(x.section) || x.status === "FAIL"))
+  sections.push(...r.sections.filter((x) => own.has(x.name)))
+}
+
+/** Each section's time in the suite's latest kept run that ran it, in ms. */
+export function lastTimes(suite: string) {
+  const ms = new Map<string, number>()
+  try {
+    for (const l of fs.readFileSync(runsFile(), "utf8").split("\n")) {
+      if (!l.includes(`"suite":"${suite}"`)) continue
+      for (const s of (JSON.parse(l) as RunRecord).sections) ms.set(s.name, s.ms)
+    }
+  } catch { /* none yet */ }
+  return ms
+}
+
 /** Prints the totals (and each section's time when there were several), keeps the run, returns the exit code. */
 export function summary(suite: string, t0: number) {
   close()
@@ -216,6 +235,8 @@ export function summary(suite: string, t0: number) {
   console.log(`\n${results.length - fails.length - skips.length} passed, ${fails.length} failed${skips.length ? `, ${skips.length} skipped` : ""}` +
     ` in ${((Date.now() - t0) / 1000).toFixed(1)} s`)
   for (const f of fails) console.log(`  FAIL ${f.name}`)
+  // (a shard of a run in parallel: its parent says the failures and keeps the run)
+  if (process.env.VAULTITE_TEST_OUT) { fs.writeFileSync(process.env.VAULTITE_TEST_OUT, JSON.stringify({ results, sections })); return fails.length ? 1 : 0 }
   // (GitHub shows 10 errors a step)
   for (const f of fails.slice(0, 10)) annotate(`${f.section && !f.name.startsWith(f.section) ? `${f.section}: ` : ""}${f.name}${f.note ? `  -> ${f.note}` : ""}`)
   record(suite, sections.map(({ name, ms, ok, fails }) => ({ name, ms, ok, fails })), Date.now() - t0)

@@ -1,7 +1,8 @@
 # Notes for `tools/`
 
 - The vault test is areas in `tools/test/vault/` on one in-process app: `node tools/test_vault.ts <area>...` runs some,
-  `--list` names them. A new check goes in its area; a new area in `index.ts`.
+  `--list` names them. A new check goes in its area; a new area in `index.ts`. Many areas run in parallel shards, each
+  with its deps (`--jobs 1`: in one process): an area leaves the vault as it found it, and waits on events, not the clock.
 - Tests use made-up data only: agents' homes are `tools/fixtures/<id>` (Vaultite/plugins': `<id>/.test/fixtures`),
   pointed at by env vars (`tools/test/vault/harness.ts`), never this machine's.
 - `tools/test_agents_linux.ts` (not in `npm test`: it starts real terminals on a sandbox server) runs the app's agents
