@@ -5,6 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { camel, flagOf, kebab, opDoc, type OpEntry, usage as opUsage } from "./ops.ts"
+import { distance } from "./blocks.ts"
 import { EVENT_TYPES } from "./events.ts"
 import { servingOf } from "./serving.ts"
 
@@ -657,6 +658,15 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<st
   return json ? JSON.stringify(r.body, null, 2) : e.exact ? String(r.body ?? "") : String(r.body ?? "").replace(/\n+$/, "")
 }
 
+/** The names a mistyped word may have meant, nearest first: a typo's distance away (`serch`: search), or starting
+ *  like it (`work`: workspace); at most 4. */
+function nearby(word: string, names: string[]): string[] {
+  const w = word.toLowerCase(), most = Math.max(1, Math.floor((w.length + 2) / 3))
+  const scored = [...new Set(names)].map((n) => ({ n, d: distance(w, n.toLowerCase()) }))
+    .filter((x) => x.d <= most || x.n.toLowerCase().startsWith(w.slice(0, Math.max(3, w.length - 1))))
+  return scored.sort((x, y) => x.d - y.d).slice(0, 4).map((x) => x.n)
+}
+
 /** Run one command line: [exit code, stdout, stderr]. Nothing is printed (bin/vau prints; tests read). A command is an
  *  operation of the server's catalog, by id or CLI name, else one that runs here (COMMANDS, the plugins'). */
 export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ code: number; out: string; err: string; exact?: boolean }> {
@@ -697,11 +707,14 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     // A group's name (`vau bundle`): the ops under it.
     const group = (ops ?? []).filter((e) => e.cli?.startsWith(`${which} `) || e.id.startsWith(`${which}.`))
     const more = named.length > 1 && !help && !a.flags.help
-    if (group.length) return { code: more ? 2 : 0, out: group.map((e) => `  vau ${(e.cli ?? e.id).padEnd(24)} ${e.summary}`).join("\n") + `\n\n\`vau ${which} <command> --help\` explains one.`, err: more ? `vau: no command '${named.slice(0, 2).join(" ")}'` : "" }
+    if (group.length) {
+      const close = more ? nearby(named[1], group.flatMap((e) => (e.cli?.startsWith(`${which} `) ? [said(e)[1]] : []))) : []
+      return { code: more ? 2 : 0, out: group.map((e) => `  vau ${(e.cli ?? e.id).padEnd(24)} ${e.summary}`).join("\n") + `\n\n\`vau ${which} <command> --help\` explains one.`,
+        err: more ? `vau: no command '${named.slice(0, 2).join(" ")}'${close.length ? `. Did you mean ${close.map((n) => `vau ${which} ${n}`).join(" or ")}?` : ""}` : "" }
+    }
     const every = ops && (await catalog(c))
-    const names = [...all.map((x) => x.name), ...(every ?? []).flatMap((e) => [e.id, e.cli ?? ""]).filter(Boolean)]
-    const near = names.filter((n) => n.startsWith(which.slice(0, 3)))
-    return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.slice(0, 4).join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
+    const near = nearby(which, [...all.map((x) => x.name), ...(every ?? []).flatMap((e) => [e.id, said(e)[0] ?? ""]).filter(Boolean)])
+    return { code: 2, out: "", err: `vau: no command '${which}'.${near.length ? ` Did you mean ${near.join(" or ")}?` : ""} See vau --help${ops ? " (a plugin's commands are there while it's on: vau plugins)" : ` (and ${c.down()})`}.` }
   }
   if (help || a.flags.help) return { code: 0, out: opDoc(op, "#").replace(/^# .*/, `vau ${op.cli ? `${op.cli} (${op.id})` : op.id}`), err: "" }
   c.command = op.cli ?? op.id

@@ -12,6 +12,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   operations catalog (52 KB less on each start over the network).
 - **iPhone on its side keeps clear of the notch**: the sidebars, their toggles and the status bar leave room for the
   notch and the home indicator in landscape.
+- **vau suggests the command a typo meant**: `vau serch` asks "Did you mean search?" and `vau bundle shwo` names
+  `vau bundle show`, nearest first, instead of every command sharing the first three letters.
 - **Vaultite Main updates without slowing the Mac**: it builds a new version at most once an hour, in the background
   (efficiency cores, disk throttled), in folders Spotlight skips; automatic updates restart only once you've been away
   from the computer for 10 minutes, and a ready update goes in when you quit the app.
