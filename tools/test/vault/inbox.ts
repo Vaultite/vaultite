@@ -975,6 +975,14 @@ export default async ($: VaultTest) => {
     cr = await vau("inbox", "pin", pe.event.id)
     check("inbox events: done unpins it, and what's done can't be pinned", e.state === "done" && !e.pinned && cr.code !== 0, [e, cr])
 
+    {
+      // With no phone or watch paired, vau says nothing went, and settle is Settled whichever name it's asked by.
+      const textOf = (id: string) => app.ops().find((o: Any) => o.op.id === id)!.op.text as (r: Any) => string
+      check("vau inbox push: no phone signed up, nothing sent (not \"Sent to 0 devices\")", /^Nothing sent: no phone/.test(textOf("inbox.push")({ sent: 0, failed: [] })) &&
+        textOf("inbox.push")({ sent: 1, failed: [] }) === "Sent to 1 device.")
+      check("vau inbox answer: settle and done read Settled", textOf("inbox.answer")({ answer: "settle", title: "A" }) === "Settled: A." && textOf("inbox.answer")({ answer: "done", title: "A" }) === "Settled: A.")
+    }
+
     const nine = new Date(2026, 9, 20, 9, 0)
     check("snooze: a time alone is its next one", parseUntil("07:30", nine)?.getTime() === new Date(2026, 9, 21, 7, 30).getTime() &&
       parseUntil("9:45", nine)?.getTime() === new Date(2026, 9, 20, 9, 45).getTime() && parseUntil("25:00", nine) === null)

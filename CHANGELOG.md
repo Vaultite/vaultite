@@ -116,6 +116,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers, the other choosers,
   Hotkeys and the phone's tab switcher write what was typed in curly quotes with no full stop ("No command matches
   “foo”").
+  done` and `inbox.done` still work. With no phone paired, `vau inbox push` says nothing was sent.
+- **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers and the other choosers
+  write what was typed in curly quotes with no full stop ("No command matches “foo”"), from one shared line.
 - **Screen readers hear the palettes' headings**: ⌘O's list is named by its heading ("Recent files and pages"), and
   the sections of ⌘O, ⌘P and the tab search ("In files", "Open tabs") are groups named by their headings.
 - **The keys hint draws keycaps**: while a key sequence is under way, its keys, what each next key does and how to

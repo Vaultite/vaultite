@@ -1826,8 +1826,13 @@ plugin.op({
   kind: "write",
   params: { item: { type: "string", required: true, description: "the result (Inbox/<Title>.md) or the event's id (vau inbox lists them)" } },
   args: ["item"],
-  run: async (p, ctx) => ctx.op("inbox.snooze", { item: p.item, until: "now" }),
-  text: (r) => `Woken: ${r.item}.`,
+  run: async (p, ctx) => {
+    const item = str(p.item).trim()
+    // (what isn't snoozed has nothing to wake from: said so, rather than "woken")
+    const was = EVENT_ID.test(item) ? !!(await eventFor(ctx, item)).snoozed : (await plugin.vault.sync(), snoozed(resultAt(item)?.snoozed))
+    return { ...(await ctx.op("inbox.snooze", { item, until: "now" })) as Item, woke: was }
+  },
+  text: (r) => (r.woke ? `Woken, back on top: ${r.item}.` : `Not snoozed: ${r.item}.`),
   did: (p) => ({ action: "save", text: `Woke ${quoted(p.item)} in the inbox` }),
 })
 
@@ -1963,12 +1968,12 @@ plugin.op({
 plugin.op({
   id: "inbox.clear",
   cli: "inbox clear",
-  summary: "Forget the inbox's events: every one, or only the done ones (results in Inbox/ stay).",
+  summary: "Forget the inbox's events: every one, or only the settled ones (results in Inbox/ stay).",
   kind: "destructive",
-  params: { done: { type: "boolean", description: "only the done ones" } },
+  params: { done: { type: "boolean", description: "only the settled ones" } },
   run: async ({ done }, ctx) => ({ ...(await ctx.api("DELETE", `inbox/events${done ? "?done=1" : ""}`)), done: !!done }),
-  text: (r) => (r.done ? "Forgot the done events." : "Forgot every event."),
-  did: ({ done }) => ({ action: "delete", text: done ? "Cleared the inbox's done events" : "Cleared the inbox's events" }),
+  text: (r) => (r.done ? "Forgot the settled events." : "Forgot every event."),
+  did: ({ done }) => ({ action: "delete", text: done ? "Cleared the inbox's settled events" : "Cleared the inbox's events" }),
 })
 
 plugin.op({
@@ -2033,7 +2038,7 @@ id from a notification another machine sent is found too.
     moveOn(list().filter((x) => x.id === e.id), "working")
     return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
   },
-  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "done" ? `Done: ${r.title}.` : r.answer === "reply" || r.answer === "pick" ? `Sent${r.terminal ? ` to ${r.terminal}` : ""}.`
+  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "settle" || r.answer === "done" ? `Settled: ${r.title}.` : r.answer === "reply" || r.answer === "pick" ? `Sent${r.terminal ? ` to ${r.terminal}` : ""}.`
     : `${r.answer === "approve" ? "Approved" : "Denied"}${r.terminal ? ` in ${r.terminal}` : `: ${r.title}`}.`),
 })
 
@@ -2052,7 +2057,9 @@ plugin.op({
   },
   args: ["title"],
   run: async ({ title, body }, ctx) => await ctx.api("POST", "inbox/push", { title, body }),
-  text: (r) => `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}${r.failed.length ? `; failed: ${r.failed.join(", ")}` : ""}.`,
+  // (no phone or watch signed up yet: nothing went anywhere, and it says so)
+  text: (r) => (!r.sent && !r.failed.length ? "Nothing sent: no phone has signed up for notifications on this machine yet (the iPhone app does, once it connects; the watch shows the phone's)."
+    : `Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}${r.failed.length ? `; failed: ${r.failed.join(", ")}` : ""}.`),
 })
 
 /** What the front door (an agent the setting `dispatch` names) is told with a voice note: the setting
