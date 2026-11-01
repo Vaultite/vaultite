@@ -200,8 +200,8 @@ function watcher(path: string) {
       this.decorations = decorate(view, path)
       this.baseline = view.state.doc
       // (the asks already in the note went before: Enter on one isn't asking it again)
-      // (any @name: the agents aren't known yet as it opens)
-      for (let n = 1; n <= view.state.doc.lines; n++) { const t = view.state.doc.line(n).text; if (/(?<![\w@./])@[\w-]/.test(t)) this.asked.push(t) }
+      // (any @name: the agents aren't known yet as it opens; one pass, the regex only on lines with an @)
+      for (const t of view.state.doc.iterLines()) if (t.includes("@") && /(?<![\w@./])@[\w-]/.test(t)) this.asked.push(t)
       this.pending = ChangeSet.empty(view.state.doc.length)
       views.set(view, path)
       queueMicrotask(() => sayWhere())
