@@ -340,6 +340,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   15.6px and 34px), as every other list of the sidebar's on a phone.
 - **Search and the palettes at phone sizes**: on a phone their results are 17px with 44px rows (they were 15px and
   37px), and the field's clear button takes a finger-sized tap.
+- **Task checkboxes are easier to tap on a phone**: a note's checkbox takes a tap twice its width and the line's height
+  around it, without reaching the tasks above or below.
 
 ## 0.8.0 (2026-10-24)
 

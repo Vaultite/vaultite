@@ -181,17 +181,21 @@ class Check extends WidgetType {
     box.className = "cm-task"
     box.disabled = !this.writable
     box.setAttribute("aria-label", this.on ? "Done" : "Not done")
-    box.addEventListener("mousedown", (e) => e.preventDefault())
-    box.addEventListener("click", (e) => {
+    // (in a span a finger wide on touch screens, index.css: an input draws no ::after to widen it on iOS)
+    const hit = document.createElement("span")
+    hit.className = "cm-task-hit"
+    hit.append(box)
+    hit.addEventListener("mousedown", (e) => e.preventDefault())
+    hit.addEventListener("click", (e) => {
       e.preventDefault()
-      if (!view.state.facet(previewConfig).writable) return
+      if (!this.writable || !view.state.facet(previewConfig).writable) return
       const at = this.at
       const cur = view.state.sliceDoc(at, at + 3)
       if (!/^\[[ xX]\]$/.test(cur)) return
       haptic()
       view.dispatch({ changes: { from: at + 1, to: at + 2, insert: this.on ? " " : "x" }, userEvent: "input.toggle" })
     })
-    return box
+    return hit
   }
   ignoreEvent() { return true }
 }

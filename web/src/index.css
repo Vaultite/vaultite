@@ -713,6 +713,8 @@ dialog { --vau-panel-bottom: 0px; }
 .vau-editor .cm-task:checked { border-color: var(--notes); background: var(--notes) center / 11px no-repeat
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 .vau-editor .cm-task:disabled { cursor: default; }
+/* (wider, not taller: a task's neighbours are a line away, and theirs mustn't cover it) */
+@media (pointer: coarse) { .vau-editor .cm-task-hit { display: inline-block; text-indent: 0; padding: 4px 6px 4px 13px; margin: -4px -6px -4px -13px; } }
 .vau-editor .cm-task-done { color: var(--muted-foreground); }
 .vau-editor .cm-task-strike { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted-foreground) 60%, transparent); }
 .vau-editor .cm-indent { display: inline-block; }
