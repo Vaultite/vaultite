@@ -30,7 +30,7 @@ export default async ($: VaultTest) => {
   cr = await vau("panels", "--help")
   check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)
   cr = await vau("errors", "3f9a")
-  check("vau: a word too many names the command under it that takes one", cr.code === 1 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
+  check("vau: a word too many names the command under it that takes one", cr.code === 2 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
   {
     // A parameter becomes its flag only where the server names it: a problem's leading name, or one in backticks.
     const { cliError } = await import("../../../core/cli.ts")
@@ -39,7 +39,7 @@ export default async ($: VaultTest) => {
     check("vau: a word that's a parameter's name stays a word; one the server names is its flag", said.msg === "no entry for Alice Park; give --entry or --new-tab, not `nope`; --new-tab: should be true or false, not a list. Usage: vau lantern.find"
       && said.problems.join("|") === "<id> is missing (which one)|--entri: lantern.find has no such parameter (did you mean --entry?)", said)
     cr = await vau("open", "x.md", "--split", "left")
-    check("vau: a bad value's problem names its flag", cr.code === 1 && cr.err.includes("--split: should be"), cr)
+    check("vau: a bad value's problem names its flag, a mistake in the command line (exit 2)", cr.code === 2 && cr.err.includes("--split: should be"), cr)
   }
   cr = await vau("nope")
   check("vau: an unknown command says so", cr.code === 2 && cr.err.includes("no command 'nope'"), cr)

@@ -60,7 +60,7 @@ hook's JSON from stdin, or from its last argument, and says which app terminal i
       const raw = a.raw ?? []
       const words = sub ? raw.slice(raw.indexOf(sub) + 1) : raw
       const r = await execute([id, ...words], { api: c.api, env: c.env, stdin: c.stdin, url: c.url })
-      if (r.code !== 0) throw new CliError(r.err.replace(/^vau [^:]+: /, ""))
+      if (r.code !== 0) throw new CliError(r.err.replace(/^vau [^:]+: /, ""), r.code === 2)
       return a.flags.json ? done(JSON.parse(r.out), "") : done(null, r.out)
     },
   }],

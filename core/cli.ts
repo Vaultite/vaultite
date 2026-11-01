@@ -40,12 +40,19 @@ export type PluginCli = {
   commands?: Command[]
 }
 
-export class CliError extends Error {}
+/** A command that failed (exit 1), or one written wrong (`usage`: a missing or bad argument, exit 2). */
+export class CliError extends Error {
+  usage: boolean
+  constructor(message: string, usage = false) {
+    super(message)
+    this.usage = usage
+  }
+}
 
 export const done = (data: unknown, text: string): Result => ({ data, text })
 export const flag = (a: Args, k: string) => (typeof a.flags[k] === "string" ? a.flags[k] as string : undefined)
 export const need = (v: string | undefined, what: string, usage: string) => {
-  if (!v) throw new CliError(`${what} is missing. Usage: ${usage}`)
+  if (!v) throw new CliError(`${what} is missing. Usage: ${usage}`, true)
   return v
 }
 
@@ -529,6 +536,7 @@ When you finish something the user should know about, \`vau notify <text>\` tell
 Options: --json (machine-readable output), --count (how many a list answer holds), --paths (its files, one a line),
 --copy (the output on the clipboard too), --url <server>. \`-\` as a value reads stdin. \`vau\` alone in a terminal
 is a prompt (Tab completes, with history).
+Exit status: 0 done, 1 it failed, 2 the command line was wrong (an unknown command, a missing or bad argument).
 Environment: VAULTITE_URL (else the server for the vault you're in, then ${DEFAULT_URL}, then the
 app's other open vaults: the first that answers), VAULTITE_CLIENT (desktop, iphone or web: set by the app's terminal).
 Windows: vau runs in PowerShell, cmd and Git Bash (there cmd expands %VAR% in arguments: such text goes by --from or
@@ -578,7 +586,7 @@ async function opParams(e: OpEntry, argv: string[], c: Ctx, allow = 0): Promise<
     const last = i === e.args.length - 1 && !allow
     params[k] = last && props[k]?.type === "array" ? pos.splice(0) : last && props[k]?.type === "string" ? pos.splice(0).join(" ") : pos.shift()
   })
-  if (pos.length > allow) throw new CliError(`too many arguments (${pos.slice(allow).join(" ")}). ${opUsage(e)}`)
+  if (pos.length > allow) throw new CliError(`too many arguments (${pos.slice(allow).join(" ")}). ${opUsage(e)}`, true)
   if (typeof a.flags.params === "string") Object.assign(params, parseJson(a.flags.params === "-" ? await c.stdin() : a.flags.params))
   for (const [k, v] of Object.entries(a.flags)) {
     if (["url", "params", ...GLOBAL_BOOL].includes(k)) continue
@@ -651,7 +659,8 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<st
   if (r.status >= 400) {
     const b = r.body as Obj
     const said = cliError(e, String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, ""), Array.isArray(b?.problems) ? b.problems as string[] : [])
-    throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"))
+    // (a 400 with problems is the parameters' check: the command line was wrong)
+    throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && Array.isArray(b?.problems))
   }
   if (out) return loc.out!(r.body, params, given.extra)
   if (list) return await listed(r.body, how, c)
@@ -691,7 +700,7 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
       if (a.flags.count || a.flags.paths) return { code: 0, out: await listed(r.data, { count: !!a.flags.count, paths: !!a.flags.paths }, c), err: "" }
       return { code: 0, out: a.flags.json ? JSON.stringify(r.data, null, 2) : r.text, err: "" }
     } catch (e) {
-      if (e instanceof CliError) return { code: 1, out: "", err: `vau ${cmd.name}: ${e.message}` }
+      if (e instanceof CliError) return { code: e.usage ? 2 : 1, out: "", err: `vau ${cmd.name}: ${e.message}` }
       throw e
     }
   }
@@ -729,7 +738,7 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     // (`vau errors 3f9a`: the command under it that takes the word, `vau errors show 3f9a`)
     const under = e.message.startsWith("too many arguments") ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `) && x.args.length) : []
     const hint = under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${rest.find((w) => !w.startsWith("-")) ?? ""}`.trim()).join(" or ")}?` : ""
-    return { code: 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}${hint}` }
+    return { code: e.usage ? 2 : 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}${hint}` }
   }
 }
 

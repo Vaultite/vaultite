@@ -35,7 +35,11 @@ export default async ($: VaultTest) => {
   await vau("command", "sidebar:toggle")
   check("vau command: to the window now in use", uiOf(w2).length === 1 && uiOf(w2)[0].id === "sidebar:toggle" && uiOf(w1).length === 3, [w1.got, w2.got])
   cr = await vau("open", "x.md", "--split", "left")
-  check("vau open: a bad split is refused", cr.code === 1, cr)
+  check("vau open: a bad split is refused", cr.code === 2, cr)
+  cr = await vau("read", "Nowhere/Nothing.md")
+  check("vau: a command that fails is exit 1, not a usage mistake", cr.code === 1, cr)
+  cr = await vau("inbox", "add")
+  check("vau inbox add: a missing title is a usage mistake too (exit 2)", cr.code === 2 && cr.err.includes("title"), cr)
   // vau notify: an event in the inbox (every window toasts it), kept with or without a window.
   cr = await vau("notify", "Wrote", "the review", "--action-open", "Errors")
   let [, inboxNow] = await api("GET", "inbox/events")
@@ -67,7 +71,7 @@ export default async ($: VaultTest) => {
   }
   await api("DELETE", "inbox/events")
   cr = await vau("notify")
-  check("vau notify: the text is required", cr.code === 1 && cr.err.includes("<text> is missing"), cr)
+  check("vau notify: the text is required", cr.code === 2 && cr.err.includes("<text> is missing"), cr)
   const n = uiOf(w2).length
   check("/api/ui notify: empty text, a bad kind or button are refused, nothing sent",
     uiLive.handle("POST", { action: "notify", text: "  " })[1] === 400 && uiLive.handle("POST", { action: "notify", text: "x", kind: "warn" })[1] === 400 &&
