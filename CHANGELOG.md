@@ -17,6 +17,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   write what was typed in curly quotes with no full stop ("No command matches “foo”"), from one shared line.
 - **Screen readers hear the palettes' headings**: ⌘O's list is named by its heading ("Recent files and pages"), and
   the sections of ⌘O, ⌘P and the tab search ("In files", "Open tabs") are groups named by their headings.
+- **The keys hint draws keycaps**: while a key sequence is under way, its keys, what each next key does and how to
+  cancel or go back are keycaps as in the palettes, named as everywhere else (Esc and Backspace off a Mac).
 - **Screen readers follow the file tree**: the row the keyboard is on is the tree item, so a screen reader says whether
   a folder is open, how deep a row is, where it is among its folder's rows and whether it's selected.
 - **Screen readers read the tab bar as tabs**: a pane's tab list holds only its tabs (New tab and the pane's handle sit

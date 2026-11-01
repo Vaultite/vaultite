@@ -126,7 +126,7 @@ export const available = (cs: Command[]) => cs.filter((c) => {
 })
 
 const GLYPH: Record<string, string> = MAC
-  ? { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃", Enter: "↵", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "esc" }
+  ? { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃", Enter: "↵", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "esc", Backspace: "⌫" }
   : { Mod: "Ctrl", Shift: "Shift", Alt: "Alt", Ctrl: "Ctrl", Enter: "Enter", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc" }
 // What ⇧ types on the keys a shortcut names by their place (a US layout), for a step drawn as what it types; a digit
 // stays ⇧1, as drawing tools write it.

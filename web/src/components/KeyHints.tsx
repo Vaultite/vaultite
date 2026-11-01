@@ -1,11 +1,13 @@
 // The keys hint, like Vim's which-key: while a sequence is under way, what each next key does. It waits a moment so
 // a sequence typed quickly never flashes it.
 import { memo, useEffect, useMemo, useState } from "react"
-import { keyHint, nextKeys, usePendingKeys } from "@/core/commands"
+import { Keys } from "@/components/Palette"
+import { nextKeys, usePendingKeys } from "@/core/commands"
 import { keyGroupNames } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 
 const DELAY = 450
+const HINTS = [["Escape", "to cancel"], ["Backspace", "to go back"]] as const
 
 export const KeyHints = memo(function KeyHints() {
   const steps = usePendingKeys()
@@ -31,15 +33,17 @@ export const KeyHints = memo(function KeyHints() {
     <div role="status" aria-label="Keys" className="pointer-events-none fixed inset-x-0 bottom-9 z-50 hidden justify-center px-4 md:flex">
       <div data-floats className="max-h-[50vh] w-full max-w-3xl overflow-hidden rounded-[10px] border-[0.5px] border-border bg-popover text-[13px] text-popover-foreground shadow-lg">
         <div className="flex items-center gap-2 border-b-[0.5px] border-border px-4 py-2 text-muted-foreground">
-          <span className="font-mono text-foreground">{steps.map((s) => keyHint(s)).join(" ")}</span>
+          <Keys keys={steps.join(" ")} />
           {title && <span>{title}</span>}
-          <span className="ml-auto text-[12px]">esc to cancel, ⌫ to go back</span>
+          <span className="ml-auto flex items-center gap-x-4 text-[12px]">
+            {HINTS.map(([k, what]) => <span key={k} className="flex items-center gap-1.5 whitespace-nowrap"><Keys keys={k} small />{what}</span>)}
+          </span>
         </div>
         {rows.length ? (
           <div className="grid grid-cols-1 gap-x-6 gap-y-1 px-4 py-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {rows.map((r) => (
-              <div key={r.step} className="flex min-w-0 items-baseline gap-2">
-                <kbd className="shrink-0 font-mono font-semibold text-primary">{keyHint(r.step)}</kbd>
+              <div key={r.step} className="flex min-w-0 items-center gap-2">
+                <Keys keys={r.step} />
                 <span className="truncate text-muted-foreground">{r.more ? <span className="text-foreground">+{r.label}</span> : r.label}</span>
               </div>
             ))}
