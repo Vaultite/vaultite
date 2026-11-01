@@ -1,0 +1,62 @@
+// A session's row on the Inbox page replies in place: Reply unfolds its last answer and the reply box, Escape folds it,
+// what's sent goes to its session; R does Reply from the keyboard. WRITES the inbox's events: throwaway server only.
+//   node web/qa/inboxrowreply.mjs <base url> [out dir]
+import { mkdirSync } from "node:fs"
+import { devices } from "playwright-core"
+import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+const { args: [B, OUT = "/tmp/inboxrowreply-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+mkdirSync(OUT, { recursive: true })
+const api = apiAt(B)
+await api("DELETE", "inbox/events")
+await api("POST", `inbox/hook?agent=claude&terminal=qr${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: "/tmp/lighthouse",
+  last_assistant_message: "The release needs a **version bump** first.\n\n- Bump to 0.6.1\n- Or keep 0.6.0 and retag\n\nWhich should I do?" })
+const thread = await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.kind === "session" && e.state === "open"), 8000)
+check("a session asking something is open", !!thread)
+
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
+const page = watch(await ctx.newPage(), { console: true, ignore: /favicon|Failed to load resource|WebSocket/ })
+let sent = null
+await page.route("**/api/ops/inbox.reply", (r) => { sent = r.request().postDataJSON(); r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ how: "type" }) }) })
+await page.goto(`${B}#view/inbox`)
+const row = page.locator(`[data-inbox-view] [data-event="${thread.id}"]`)
+await until(() => row.count(), 8000)
+await row.hover()
+await row.locator("[data-row-reply-button]").click()
+const box = page.locator(`[data-row-reply="${thread.id}"]`)
+check("Reply unfolds the last answer and the box under the row", !!(await until(() => box.locator("[data-reply]").count())) && (await box.innerText()).includes("version bump"))
+check("with the keyboard in the box", await page.evaluate(() => document.activeElement?.matches("textarea[data-reply]")))
+await page.keyboard.type("Bump to 0.6.1")
+await wait(300)
+await page.screenshot({ path: `${OUT}1-desktop-reply.png` })
+await page.keyboard.press("Escape")
+check("Escape folds it", !!(await until(async () => (await box.count()) === 0)))
+check("and gives the keyboard back to its row", await page.evaluate((id) => !!document.activeElement?.closest(`[data-event="${id}"]`), thread.id))
+await page.keyboard.press("r")
+check("R unfolds it again, the keyboard in the box", !!(await until(() => box.locator("[data-reply]").count())) && await page.evaluate(() => document.activeElement?.matches("textarea[data-reply]")))
+await page.keyboard.press("Escape")
+await until(async () => (await box.count()) === 0)
+await row.hover()
+await row.locator("[data-row-reply-button]").click()
+check("the draft is still there", (await box.locator("[data-reply]").inputValue()) === "Bump to 0.6.1")
+await page.keyboard.press("Control+Enter")
+check("Ctrl+Enter sends it to the session", !!(await until(() => sent)) && sent.to === thread.id && sent.text === "Bump to 0.6.1", sent)
+check("and the box folds away", !!(await until(async () => (await box.count()) === 0)))
+
+// A phone: Reply on the row, the box in the phone's width.
+const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
+await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
+const ph = watch(await phone.newPage(), { label: "phone" })
+await ph.route("**/api/ops/inbox.reply", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ how: "type" }) }))
+await ph.goto(`${B}#view/inbox`)
+const prow = ph.locator(`[data-inbox-view] [data-event="${thread.id}"]`)
+await until(() => prow.count(), 8000)
+await prow.locator("[data-row-reply-button]").tap()
+const pbox = ph.locator(`[data-row-reply="${thread.id}"] [data-reply]`)
+check("phone: Reply unfolds the box", !!(await until(() => pbox.count())))
+check("phone: no sideways scroll", await ph.evaluate(() => document.documentElement.scrollWidth <= 390))
+await wait(500)
+await ph.screenshot({ path: `${OUT}2-phone-reply.png` })
+
+await browser.close()
+await done()

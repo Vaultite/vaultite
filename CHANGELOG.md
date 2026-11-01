@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer
+  and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
   Shift+I and Shift+U read and unread; G I opens the inbox. Each is a command, rebindable in Hotkeys.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the

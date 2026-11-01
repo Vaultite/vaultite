@@ -1,22 +1,22 @@
 // The Inbox drawn (header button, panel, tab, block): the lists of threads.ts, snoozed and done folded away on the page.
 // Reading only makes a row plain: a thread leaves once it's done.
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import {
   AlarmClockOff, Bell, CalendarClock, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, Clock, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
-  Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
+  Maximize2, ListChecks, MessageCircleQuestion, MessageSquareReply, MoreHorizontal, Pin, PinOff, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  askMove, askMoveMany, backDetail, currentRow, moveInList, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
+  askMove, askMoveMany, backDetail, currentRow, moveInList, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
   notify, notifyError, openDetail, openFile, openMenu, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
   SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, pinEvents, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
 import { useHasDraft } from "./drafts"
-import { DraftTag } from "./Reply"
+import { DraftTag, ReplyBox } from "./Reply"
 
 
 /** Not dealt with yet: to review, or snoozed. */
@@ -112,6 +112,8 @@ export const snoozeByKey = () => onRow((key, row) => {
   if (r ? snoozed(r.snoozed) : e ? snoozed(e.snoozed) : false) return snoozeKeys([key], null)
   if (r ? waiting(r) : e ? snoozable(e) : false) snoozeAtRow([key])(row.getBoundingClientRect())
 }, false)
+/** R: a session's row unfolds its reply box (Reply), the keyboard in it. */
+export const replyByKey = () => onRow((_, row) => row.querySelector<HTMLButtonElement>("[data-row-reply-button]")?.click(), false)
 /** P: pin it on top, or unpin it. */
 export const pinByKey = () => onRow((key) => {
   const r = resultOf(key), e = eventOf(key)
@@ -560,6 +562,25 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
   )
 }
 
+/** What a session asks before it goes on (a permission, a pick, a sign-in, a plan) is answered in its sheet, not by a
+ *  reply; any other session's row takes one in place, under its last answer. */
+const repliedInPlace = (e: InboxEvent) => e.kind === "session" && !answerable(e) && !(e.state === "open" && ["permission", "question", "auth", "plan"].includes(e.ask ?? ""))
+const agentName = (e: InboxEvent, label?: string) => label ?? (e.source ? e.source[0].toUpperCase() + e.source.slice(1) : "the agent")
+
+/** A session's last answer, whole, and the reply box, under its row (Reply, or a draft left there). */
+function RowReply({ e, close }: { e: InboxEvent; close: (back?: boolean) => void }) {
+  const box = useRef<HTMLDivElement>(null)
+  const name = agentName(e, agentOf(e, useAgents())?.label)
+  useEffect(() => { box.current?.querySelector<HTMLTextAreaElement>("textarea[data-reply]")?.focus({ preventScroll: true }); box.current?.scrollIntoView({ block: "nearest" }) }, [])
+  return (
+    <div ref={box} data-row-reply={e.id} className="pb-3 md:pl-[30px]" onKeyDown={(k) => { if (k.key === "Escape") { k.stopPropagation(); close(true) } }}>
+      {e.body && <Markdown text={e.body} className="mb-3 max-h-64 overflow-y-auto break-words text-[15px] md:text-[14px]" />}
+      <ReplyBox to={e.id} name={name} sent={() => { markRead([e.id]); close() }}
+        open={() => openSession({ terminal: e.terminal, session: e.session, agent: e.source, machine: e.machine, host: e.host })} />
+    </div>
+  )
+}
+
 function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touched?: (id: string) => void }) {
   const read = e.read && !fresh, done = e.state === "done" && !fresh
   const key = eventKey(e), picked = useSelected(SELECT, key)
@@ -570,8 +591,12 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const line = e.preview || (e.body ? snippet(e.body) : "")
   const draft = useHasDraft(draftKey(e))
   const where = standing(e)
+  const [replying, setReplying] = useState(false)
+  const inPlace = repliedInPlace(e)
+  const reply = () => { haptic("light"); setReplying(!replying); if (!replying) touched?.(e.id) }
   return (
-    <SwipeRow actions={() => eventSwipe(e)} className={pageSwipe}>
+    <SwipeRow actions={() => [...(inPlace ? [{ label: "Reply", icon: MessageSquareReply, run: () => setReplying(true) }] : []), ...eventSwipe(e)]} className={pageSwipe}>
+    <div>
     <div data-event={e.id} data-kind={e.kind} data-state={e.state} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}
       onContextMenu={menuFor(rowMenu(SELECT, key, eventItems(e, !read, touched)))}
       className={cn("group/ev relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]",
@@ -582,18 +607,25 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
           <span className={cn("line-clamp-2 text-[15px] leading-[20px]", !read && "font-semibold")}>{e.title}</span>
           {(e.body || e.machineLabel || e.parent || draft || where) && <span data-tip={whole ? undefined : line} data-tip-trunc
             className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}><DraftTag to={draftKey(e)} className="mr-1.5 align-[1px]" />
-            {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{(line || e.machineLabel || e.parent) && " · "}</span>}
-            {[e.parent && `from ${parentTitle(e)}`, whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
+            {where && <span data-standing className={cn("font-medium", e.state === "working" ? "text-tertiary" : "text-foreground/80")}>{where}{((line && !replying) || e.machineLabel || e.parent) && " · "}</span>}
+            {/* (unfolded for a reply, its answer is whole under the row) */}
+            {[e.parent && `from ${parentTitle(e)}`, replying ? "" : whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>}
       </button>
       {/* (a request's Approve takes its time's place and Deny its Done's, so the rows stay in line) */}
       <GateButtons e={e} className={iconButton} size="size-4" />
+      {inPlace && (
+        <button type="button" className={cn(iconButton, !replying && "md:invisible md:group-hover/ev:visible", replying && "text-foreground")} aria-label="Reply" data-tip="Reply"
+          aria-expanded={replying} data-row-reply-button onClick={reply}><MessageSquareReply className="size-4" strokeWidth={2.25} /></button>
+      )}
       {!asks && (e.state === "done"
         ? <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Back to inbox" data-tip="Back to inbox" onClick={() => { haptic("medium"); markManyEventsDone([e], false) }}>
           <RotateCcw className="size-4" strokeWidth={2.25} /></button>
         : <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Done" data-tip="Done" data-done onClick={() => { haptic("medium"); markManyEventsDone([e]); touched?.(e.id) }}>
           <Check className="size-4" strokeWidth={2.25} /></button>)}
+    </div>
+    {replying && inPlace && <RowReply e={e} close={(back) => { setReplying(false); if (back) document.querySelector<HTMLElement>(`[data-event="${CSS.escape(e.id)}"] [data-keyrow]`)?.focus({ preventScroll: true }) }} />}
     </div>
     </SwipeRow>
   )

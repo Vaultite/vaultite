@@ -1,12 +1,12 @@
 // The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for what the server says to
 // tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef, useState } from "react"
-import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, Pin, RotateCcw } from "lucide-react"
+import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, MessageSquareReply, Pin, RotateCcw } from "lucide-react"
 import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
-import { doneByKey, fileTo, GateSheet, keysOnInbox, pinByKey, readByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
+import { doneByKey, fileTo, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
 import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
@@ -170,6 +170,7 @@ export default definePlugin({
     { id: "inbox:previous", name: "Move to the previous inbox row", keys: ["K"], when: keysOnInbox, run: () => stepRow(-1), icon: ArrowUp },
     { id: "inbox:done", name: "Mark the inbox row done", keys: ["E"], when: keysOnInbox, run: doneByKey, icon: Check },
     { id: "inbox:snooze", name: "Snooze the inbox row", keys: ["B"], when: keysOnInbox, run: snoozeByKey, icon: Clock },
+    { id: "inbox:reply", name: "Reply to the inbox row's session", keys: ["R"], when: keysOnInbox, run: replyByKey, icon: MessageSquareReply },
     { id: "inbox:pin", name: "Pin or unpin the inbox row", keys: ["P"], when: keysOnInbox, run: pinByKey, icon: Pin },
     { id: "inbox:mark-read", name: "Mark the inbox row read", keys: ["Shift+I"], when: keysOnInbox, run: () => readByKey(true), icon: MailOpen },
     { id: "inbox:mark-unread", name: "Mark the inbox row unread", keys: ["Shift+U"], when: keysOnInbox, run: () => readByKey(false), icon: Mail },
