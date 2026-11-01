@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, ScreenSh
 import { activeFile, cn, folderOf, getStore, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
-import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, templateNames, upcoming, CANVAS, type Slide } from "./slides"
+import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, templateNames, sizeOf, upcoming, type Slide } from "./slides"
 import { openPresenter, Presenter, type Keys, type PresenterWindow } from "./Presenter"
 import { revealTheme } from "./themes"
 import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
@@ -22,25 +22,28 @@ async function textOf(path: string) {
 const BASE = 720
 const MAX = 2.2
 const MIN = 0.6
-/** A slide with placed boxes is a fixed one, BASE wide, of Advanced Slides' shape. */
-export const CANVAS_H = Math.round((BASE * CANVAS.h) / CANVAS.w)
+/** How tall a slide with placed boxes is: BASE wide, of the deck's shape (`width` and `height`). */
+export const canvasH = (props: Record<string, unknown>) => { const s = sizeOf(props); return Math.round((BASE * s.h) / s.w) }
 
+type Bounds = { margin?: number; minScale?: number; maxScale?: number }
 /** Scale `inner` (laid out BASE wide, or the stage's width when narrower; `canvas`: always, scaled down to fit) to fit
- *  `stage`. */
-function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown, canvas = false) {
+ *  `stage`, within the deck's margin and scales. */
+function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown, canvas = false, { margin = 0, minScale, maxScale }: Bounds = {}) {
   const [fit, setFit] = useState({ w: BASE, scale: 1, h: 0 })
   const measure = useCallback(() => {
     const s = stage.current, el = inner.current
     if (!s || !el) return
     const cs = getComputedStyle(s)
+    const room = 1 - margin
     const aw = s.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
     const ah = s.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
     const w = canvas ? BASE : Math.max(240, Math.min(BASE, aw))
     if (Math.abs(el.offsetWidth - w) > 0.5) el.style.width = `${w}px`
     const h = el.offsetHeight
-    const scale = Math.max(canvas ? 0 : MIN, Math.min(MAX, aw / w, h ? ah / h : MAX))
+    const most = maxScale ?? MAX
+    const scale = Math.max(minScale ?? (canvas ? 0 : MIN), Math.min(most, (aw * room) / w, h ? (ah * room) / h : most))
     setFit((f) => (f.w === w && Math.abs(f.scale - scale) < 0.005 && f.h === h ? f : { w, scale, h }))
-  }, [stage, inner, canvas])
+  }, [stage, inner, canvas, margin, minScale, maxScale])
   useLayoutEffect(measure, [measure, key])
   useEffect(() => {
     const ro = new ResizeObserver(measure)
@@ -261,7 +264,7 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
             <div ref={inner} key={i} data-deck-slide={i + 1} className={cn("absolute top-0 left-0 origin-top-left", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}
               style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
               <div ref={box} className={slide?.cls || undefined}>
-                {text !== null && (canvas ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: CANVAS_H }}>{content}</div> : content)}
+                {text !== null && (canvas ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: canvasH(props) }}>{content}</div> : content)}
               </div>
             </div>
           </div>
@@ -306,7 +309,10 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const slide = slides[i] as Slide | undefined
   const md = slide?.md ?? ""
   const canvas = !!slide?.canvas
-  const fit = useFit(stage, inner, md, canvas)
+  // The deck's size (a placed slide is one of its shape, BASE wide) and scale (reveal's 1 is the deck's width).
+  const deckSize = useMemo(() => sizeOf(props), [props])
+  const per = deckSize.w / BASE
+  const fit = useFit(stage, inner, md, canvas, { margin: deckSize.margin, minScale: deckSize.minScale && deckSize.minScale * per, maxScale: deckSize.maxScale && deckSize.maxScale * per })
   const theme = useMemo(() => revealTheme(props.theme), [props.theme])
   const look = useLook()
 
@@ -490,13 +496,13 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           <div ref={layer} aria-hidden className="pointer-events-none absolute inset-0" />
           <div ref={stage} onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
             className="relative flex min-h-0 flex-1 cursor-default touch-pan-y overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
-            <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className="relative m-auto shrink-0">
+            <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className={cn("relative mx-auto shrink-0", deckSize.center && "my-auto")}>
               <div ref={inner} key={i} data-deck-slide={i + 1}
                 className={cn("absolute top-0 left-0 origin-top-left select-text", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}
                 style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
                 <div ref={box} className={slide?.cls || undefined}>
                   {text !== null && (canvas
-                    ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: CANVAS_H }}>{content}</div>
+                    ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: canvasH(props) }}>{content}</div>
                     : content || (empty && <p className="text-center text-muted-foreground">This note is empty.</p>))}
                 </div>
               </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
 import { Boxes, layOut, LAYOUT_CSS } from "./Layout"
-import { annotate, backgroundOf, CANVAS_H, DECK_CSS } from "./Presentation"
+import { annotate, backgroundOf, canvasH, DECK_CSS } from "./Presentation"
 import { exportAsked } from "./asked"
 import { isTitleSlide, type Slide } from "./slides"
 
@@ -152,7 +152,7 @@ export function DeckExport({ path, slides, fm, props, css }: { path: string; sli
             {bg.style && <div className="slide-bg" style={bg.style} />}
             <div className={cn("slide-fit", !s.boxes && !s.canvas && isTitleSlide(s.md) && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}>
               <div className={cn("slide-box", s.cls)}>{s.canvas
-                ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: CANVAS_H }}>{content(s)}</div>
+                ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: canvasH(props) }}>{content(s)}</div>
                 : content(s)}</div>
             </div>
             {s.notes && <aside><div className="pb-1 text-[13px] text-muted-foreground">Speaker notes</div><NoteBody store={store} path={path} body={s.notes} fm={fm} className="slide-notes" /></aside>}

@@ -253,6 +253,23 @@ await page.close()
   for (const p of [T_DECK, TPL]) await del(p)
 }
 
+// Size and scale: a deck's width and height shape its placed slides; maxScale and center: false hold its text.
+{
+  const SIZED = "Qa media/Sized.md"
+  await put(SIZED, "---\nwidth: 1600\nheight: 900\nmaxScale: 0.8\ncenter: false\n---\n\n<grid drag=\"50 50\" drop=\"bottomright\">\nCorner\n</grid>\n\n---\n\n## Top\n\nShort\n")
+  page = await open({ viewport: { width: 1280, height: 800 } })
+  await page.goto(`${B}#file/${enc(SIZED)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(1200)
+  const r = await page.evaluate(() => { const c = document.querySelector("[data-slide-canvas]").getBoundingClientRect(); return c.width / c.height })
+  check("size: a placed slide takes the deck's shape", Math.abs(r - 16 / 9) < 0.02, r)
+  await page.screenshot({ path: `${OUT}media-slides-size.png` })
+  await page.keyboard.press("ArrowRight"); await wait(1200)
+  const t = await page.evaluate(() => { const s = document.querySelector("[data-deck-slide]"); return { scale: Number(/scale\(([\d.]+)\)/.exec(s.style.transform)?.[1]), top: s.getBoundingClientRect().top } })
+  check("size: maxScale holds the text's scale, center: false puts it at the top", t.scale > 1 && t.scale <= 0.8 * 1600 / 720 + 0.01 && t.top < 120, t)
+  await page.keyboard.press("Escape"); await wait(400)
+  await page.close(); await del(SIZED)
+}
+
 // css: files and a theme that's a file: the deck's, live, never the app's.
 {
   const CSS_DECK = "Qa media/Styled.md", SHEET = "Qa media/css/deck.css"

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
+  `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the
   view button instead of running under it, and back and forward give way before it leaves the pane.
 - **Slides use templates**: a slide naming `template="[[note]]"` (or a deck's `defaultTemplate`) is drawn in

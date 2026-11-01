@@ -1386,7 +1386,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Slides: a note as a deck, read as Advanced Slides reads one (plugins/core/slides/slides.ts) ----------
 {
-  const { cssFiles, cssPlaces, cssUrls, parseDeck, isTitleSlide, scopeCss, scopeSelector, upcoming, elapsedText, templateNames } = await import("../plugins/core/slides/slides.ts")
+  const { cssFiles, cssPlaces, cssUrls, parseDeck, sizeOf, isTitleSlide, scopeCss, scopeSelector, upcoming, elapsedText, templateNames } = await import("../plugins/core/slides/slides.ts")
   const mds = (body: string, opts = {}) => parseDeck(body, opts).slides.map((s) => s.md)
   const got = mds("# Launch\n\n---\n\n## Why\n- one\n\n----\n```md\n---\nnot a split\n```\n---\n\n---\n![[chart.png]]\n")
   check("slides: split at --- lines, never inside code, empty ones dropped", got.length === 4 && got[0] === "# Launch" && got[2].includes("not a split") && got[3] === "![[chart.png]]", got)
@@ -1426,6 +1426,11 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && place("30 30", "-40px 40px") === "left: 65.833%; top: 5.714%; width: 30%; height: 30%" && place("40 40", "-5 -20") === "left: 55%; top: 40%; width: 40%; height: 40%"
     && place("", "right") === "left: 50%; top: 0%; width: 50%; height: 100%" && place("55 50", "topright") === "left: 45%; top: 0%; width: 55%; height: 50%"
     && place("25 20", "center") === "left: 37.5%; top: 40%; width: 25%; height: 20%" && place("80 30", "bottom") === "left: 10%; top: 70%; width: 80%; height: 30%", place("30 30", "-40px 40px"))
+  const sized = (parseDeck('<grid drag="480px 270px" drop="960px 540px">\nA\n</grid>', { width: 1920, height: 1080 }).slides[0].boxes![0] as any).style
+  check("slides: a deck's width and height are what a drop's px are of", sized.includes("left: 50%; top: 50%; width: 25%; height: 25%"), sized)
+  const sz = sizeOf({ width: "1280", height: 720, margin: 0.1, minScale: 0.2, maxScale: 3, center: false }), dz = sizeOf({ width: "wide", margin: 2 })
+  check("slides: size and scale from frontmatter, Advanced Slides' size and the app's scale where unset or bad",
+    sz.w === 1280 && sz.h === 720 && sz.margin === 0.1 && sz.minScale === 0.2 && sz.maxScale === 3 && !sz.center && dz.w === 960 && dz.h === 700 && dz.margin === undefined && dz.maxScale === undefined && dz.center, [sz, dz])
   const flexOf = (at: string) => (lay(`<grid drag="100 100" drop="0 0" ${at}>\nA\n</grid>`).boxes![0] as any).style.match(/flex-direction: [^;]+; align-items: [^;]+; justify-content: [^;]+/)?.[0]
   check("slides: a grid's flow and align place its items as Advanced Slides does", flexOf("") === "flex-direction: column; align-items: center; justify-content: center"
     && flexOf('flow="row" align="left"') === "flex-direction: row; align-items: center; justify-content: space-evenly" && flexOf('flow="col" align="left"') === "flex-direction: column; align-items: flex-start; justify-content: space-evenly"

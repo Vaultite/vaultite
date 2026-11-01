@@ -28,7 +28,7 @@ export type Slide = {
   /** Its other data-* (`data-transition`, `data-auto-animate`…), by name without `data-`. */
   data: Record<string, string>
 }
-export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; [fm: string]: unknown }
+export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; width?: unknown; height?: unknown; margin?: unknown; minScale?: unknown; maxScale?: unknown; center?: unknown; [fm: string]: unknown }
 /** A slide template's text (without its frontmatter) by the name in its `[[link]]`, or undefined when it isn't there. */
 export type Templates = (name: string) => string | undefined
 
@@ -83,6 +83,15 @@ function attrsOf(s: string): Record<string, string> {
 
 /** Advanced Slides' slide, which a drop's px are of. */
 export const CANVAS = { w: 960, h: 700 }
+type Size = { w: number; h: number }
+
+/** The deck's size and scale (frontmatter's width, height, margin, minScale, maxScale, center), Advanced Slides'
+ *  defaults where unset; margin and the scales are undefined then, for the app's own. */
+export function sizeOf(opts: DeckOptions) {
+  const num = (v: unknown, lo: number, hi: number) => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN; return Number.isFinite(n) && n >= lo && n <= hi ? n : undefined }
+  return { w: num(opts.width, 100, 10000) ?? CANVAS.w, h: num(opts.height, 100, 10000) ?? CANVAS.h, margin: num(opts.margin, 0, 0.5),
+    minScale: num(opts.minScale, 0.01, 100), maxScale: num(opts.maxScale, 0.01, 100), center: opts.center !== false && opts.center !== "false" }
+}
 const NAMED: Record<string, [number, number]> = { topleft: [0, 0], top: [0.5, 0], topright: [1, 0], left: [0, 0.5], center: [0.5, 0.5], right: [1, 0.5], bottomleft: [0, 1], bottom: [0.5, 1], bottomright: [1, 1] }
 /** Where `align` puts a grid's items: across, then along (`even`: spread out). */
 const ALIGN: Record<string, [string, string]> = { topleft: ["start", "start"], topright: ["end", "start"], bottomright: ["end", "end"], bottomleft: ["start", "end"],
@@ -92,18 +101,18 @@ const round = (n: number) => +n.toFixed(3)
 
 /** A drop's box as percents of the slide (left, top, width, height): x and y from the left and top, negative from the
  *  right and bottom, or a named place; px are of CANVAS (all of them with `absolute`). Null when it doesn't read. */
-function placeOf(drag: string | undefined, drop: string, abs: boolean): number[] | null {
+function placeOf(drag: string | undefined, drop: string, abs: boolean, size = CANVAS): number[] | null {
   const nums = (v: string) => v.trim().replace(/(\d)\s*x\s*(?=-?\d)/gi, "$1 ").split(/\s+/)
   const pct = (v: string | undefined, max: number) => (!v || !/^-?\d*\.?\d+(px)?$/i.test(v) ? NaN : /px$/i.test(v) || abs ? Number.parseFloat(v) / max * 100 : Number(v))
-  const [w, h] = nums(drag ?? (abs ? "480px 700px" : "50 100")).map((v, k) => pct(v, k ? CANVAS.h : CANVAS.w))
+  const [w, h] = nums(drag ?? (abs ? `${size.w / 2}px ${size.h}px` : "50 100")).map((v, k) => pct(v, k ? size.h : size.w))
   const named = NAMED[drop.trim().toLowerCase()]
-  const [x, y] = named ? [(100 - w) * named[0], (100 - h) * named[1]] : nums(drop).map((v, k) => pct(v, k ? CANVAS.h : CANVAS.w))
+  const [x, y] = named ? [(100 - w) * named[0], (100 - h) * named[1]] : nums(drop).map((v, k) => pct(v, k ? size.h : size.w))
   const out = [x < 0 ? 100 + x - w : x, y < 0 ? 100 + y - h : y, w, h]
   return out.length === 4 && out.every(Number.isFinite) ? out.map(round) : null
 }
 
 /** What a grid's, a split's or an annotation's attributes draw, as Advanced Slides draws them. */
-function lookOf(at: Record<string, string>, kind?: Box["kind"]) {
+function lookOf(at: Record<string, string>, kind?: Box["kind"], size = CANVAS) {
   const cls = [...(at.class ?? "").split(/\s+/), ...(at.animate ?? "").split(/\s+/)], st: string[] = [], kids: string[] = [], nth: string[] = []
   const index = Number.parseInt(at.frag ?? at["data-fragment-index"] ?? "", 10)
   if ("frag" in at) cls.push("fragment")
@@ -112,7 +121,7 @@ function lookOf(at: Record<string, string>, kind?: Box["kind"]) {
   if (at.border) st.push(`border: ${at.border}`, "box-sizing: border-box")
   if (at.filter) st.push(`filter: ${at.filter}`)
   if (at.rotate) st.push(`transform: rotate(${/deg$/.test(at.rotate) ? at.rotate : `${at.rotate}deg`})`)
-  const place = at.drop ? placeOf(at.drag, at.drop, at.absolute === "true") : null
+  const place = at.drop ? placeOf(at.drag, at.drop, at.absolute === "true", size) : null
   if (place) st.push("margin: 0", "position: absolute", `left: ${place[0]}%`, `top: ${place[1]}%`, `width: ${place[2]}%`, `height: ${place[3]}%`)
   if (at.align || at.drop) {
     const row = at.flow === "row", a = (at.align ?? "").toLowerCase(), [across, along] = ALIGN[a] ?? ["center", "center"]
@@ -148,7 +157,7 @@ const IMAGE_LINE = /^\s*!(?:\[[^\]]*\]\([^)]*\)|\[\[[^\]]+\]\])\s*(?:<span class
 
 /** The slide's Markdown as layout boxes (`<split>`, `<grid>`, `::: block` lines; outside code), or null without any.
  *  An annotation on a `:::` line is its block's; what's left open closes at the slide's end. */
-function layoutOf(md: string, s: Slide): (Box | string)[] | null {
+function layoutOf(md: string, s: Slide, size: Size): (Box | string)[] | null {
   const root: (Box | string)[] = [], open: Box[] = []
   let buf: string[] = [], any = false
   const into = () => (open.length ? open[open.length - 1].in : root)
@@ -162,7 +171,7 @@ function layoutOf(md: string, s: Slide): (Box | string)[] | null {
   const start = (kind: Box["kind"], at: Record<string, string>, closed = false) => {
     flush()
     any = true
-    const { placed, ...look } = lookOf(at, kind)
+    const { placed, ...look } = lookOf(at, kind, size)
     if (placed) s.canvas = true
     const box: Box = { kind, ...look, in: [] }
     into().push(box)
@@ -213,7 +222,7 @@ function layoutOf(md: string, s: Slide): (Box | string)[] | null {
 const SLIDE_NOTE = /<!--\s*(?:\.slide:|slide\b)([\s\S]*?)-->/g
 const ELEMENT_NOTE = /<!--\s*(?:\.element:|element\b)([\s\S]*?)-->/g
 
-function slideOf(raw: string, h: number, v: number, notesRe: RegExp): Slide {
+function slideOf(raw: string, h: number, v: number, notesRe: RegExp, size: Size): Slide {
   const s: Slide = { md: "", notes: "", h, v, els: [], bgAttrs: {}, cls: "", style: "", data: {} }
   const md: string[] = [], notes: string[] = []
   let inNotes = false, listFrag = 0
@@ -241,13 +250,13 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp): Slide {
     })
     .replace(ELEMENT_NOTE, (_, a: string) => {
       const at = attrsOf(a)
-      const { placed, kids: _k, nth: _n, ...look } = lookOf(at)
+      const { placed, kids: _k, nth: _n, ...look } = lookOf(at, undefined, size)
       if (placed) s.canvas = true
       const data = Object.fromEntries(Object.entries(at).filter(([k]) => k.startsWith("data-") && k !== "data-fragment-index").map(([k, v]) => [k.slice(5), v]))
       s.els.push({ ...look, ...(Object.keys(data).length ? { data } : {}) })
       return `<span class="slide-el-${s.els.length - 1}"></span>`
     })).trim()
-  const boxes = layoutOf(s.md, s)
+  const boxes = layoutOf(s.md, s, size)
   if (boxes) {
     s.boxes = boxes
     const flat = (b: (Box | string)[]): string[] => b.flatMap((x) => (typeof x === "string" ? [x] : flat(x.in)))
@@ -301,7 +310,7 @@ function templated(raw: string, notesRe: RegExp, templates: Templates, def?: str
  *  comments (%% … %%) are left out first, so what they hide (a <style>, a `note:`) does nothing. */
 export function parseDeck(body: string, opts: DeckOptions = {}, templates: Templates = () => undefined): { slides: Slide[]; css: string } {
   const sep = lineRegex(opts.separator, SEP), vsep = lineRegex(opts.verticalSeparator, VSEP), notesRe = lineRegex(opts.notesSeparator, NOTES, "i")
-  const css: string[] = []
+  const css: string[] = [], size = sizeOf(opts)
   const strip = (t: string) => outsideCode(t, (x) => x
     .replace(/%%[\s\S]*?%%/g, "")
     .replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_, c: string) => { css.push(c.trim()); return "" }))
@@ -320,7 +329,7 @@ export function parseDeck(body: string, opts: DeckOptions = {}, templates: Templ
     let v = 0
     for (const lines of col) {
       const raw = lines.join("\n"), md = raw.trim() && (def || TEMPLATE.test(raw)) ? strip(templated(raw, notesRe, templates, def)) : raw
-      const s = slideOf(md, h, v, notesRe)
+      const s = slideOf(md, h, v, notesRe, size)
       if (!s.md && !s.notes && !s.bg && !s.boxes) continue
       slides.push(s)
       v++

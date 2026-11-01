@@ -46,6 +46,9 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
   address: stylesheets kept to the deck like its `<style>`, before it, shown again when one changes.
 - "Export slides as HTML" (the palette, the note's menu) saves the deck as one HTML file that presents itself in any
   browser (keys, clicks, swipes, fragments; S its notes), its images inside it.
+- Frontmatter `width` and `height` (960 × 700): the shape of a slide with placed grids, and what their px are of;
+  `margin`, `minScale`, `maxScale` (reveal's: 1 is the deck's width) bound how it's scaled; `center: false` puts
+  slides at the top.
 - Frontmatter: `separator`, `verticalSeparator`, `notesSeparator` (regexes for a line), `bg` (every slide's background),
   `theme` (reveal's and Advanced Slides' by name: `black` (`default`), `white`, `league`, `beige`, `sky`, `night`,
   `serif`, `simple`, `solarized`, `blood`, `moon`, `dracula`, `black-contrast`, `white-contrast`, `consult`,
