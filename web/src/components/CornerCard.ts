@@ -59,8 +59,8 @@ export function useCornerDrag(corner: Corner, setCorner: (c: Corner) => void) {
       const r = el.getBoundingClientRect()
       el.style.transform = ""
       // Where it would coast to: a flick throws it to the far corner of the room between the sidebars.
-      const root = getComputedStyle(document.documentElement)
-      const left = parseFloat(root.getPropertyValue("--left-sidebar")) || 0, right = parseFloat(root.getPropertyValue("--right-sidebar")) || 0
+      const room = (side: string) => document.querySelector(`aside[data-side="${side}"]:not([data-peek])`)?.getBoundingClientRect().width ?? 0
+      const left = room("left"), right = room("right")
       const still = u.timeStamp - last.t > 80
       const cx = r.left + r.width / 2 + (still ? 0 : v.x * 180), cy = r.top + r.height / 2 + (still ? 0 : v.y * 180)
       const next = `${cy < innerHeight / 2 ? "t" : "b"}${cx < (left + innerWidth - right) / 2 ? "l" : "r"}` as Corner

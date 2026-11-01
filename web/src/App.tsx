@@ -111,6 +111,7 @@ const mac = (k: string) => (isMac ? [k] : undefined)
  *  units, so it follows density; `railPx` is what it measures now). */
 const SIDEBAR = { min: 200, max: 480, default: 240 }
 const railPx = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing")) || 0.25) * 16 * RAIL
+const INSET_L = "env(safe-area-inset-left)", INSET_R = "env(safe-area-inset-right)"
 const sidebarPx = (w: number) => Math.round(Math.min(SIDEBAR.max, Math.max(SIDEBAR.min, w || SIDEBAR.default)))
 let dragFrom = SIDEBAR.default, dragOpen = true
 /** A sidebar's edge dragged to x (the right one's from the right): narrower than halfway between the rail and its
@@ -481,7 +482,8 @@ export default function App() {
   const popout = isPopout()
   // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).
   const hideLeft = desktop && !popout && !rails && !sidebar
-  const side = popout || hideLeft ? "0px" : sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)
+  // (a phone on its side: its notch's room, env(safe-area-inset-*), is added to the sidebar there or takes its place)
+  const side = popout ? "0px" : hideLeft ? INSET_L : `calc(${sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)} + ${INSET_L})`
   const header = shownHeaderItems(disabled, sidebarHeader)
   // The right sidebar is there while
   // panels are in it; with none it takes no room, only its dimmed toggle (a click opens it empty to drop panels in).
@@ -492,7 +494,7 @@ export default function App() {
   const rightOpen = hasRight ? rightSidebar : emptyRight
   const showRight = !popout && (hasRight || emptyRight)
   const hideRight = desktop && showRight && !rails && !rightOpen
-  const rside = showRight && !hideRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
+  const rside = popout ? "0px" : showRight && !hideRight ? `calc(${rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)} + ${INSET_R})` : INSET_R
   const peek = usePeek(hideLeft, hideRight && hasRight)
   const leftOpen = sidebar || hideLeft
   // The traffic lights go with the sidebar they sit in; it slides out once they're gone, inert only then (an inert one
@@ -532,7 +534,7 @@ export default function App() {
       {!popout && <>
       <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && !leftIn} onContextMenu={menuFor(panelMenu)}
         className={cn(
-          "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
+          "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-[calc(--spacing(2)+env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] pb-[max(--spacing(2),env(safe-area-inset-bottom))]",
           "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
           hideLeft && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
         )} style={{ "--sidebar-open": `${sidebarPx(sidebarWidth)}px`, ...(hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }) } as React.CSSProperties}>
@@ -585,7 +587,7 @@ export default function App() {
         <aside data-side="right" data-collapsed={!(rightOpen || hideRight) || undefined} data-peek={hideRight ? peek === "right" : undefined} inert={hideRight && peek !== "right"}
           onContextMenu={menuFor(() => panelMenu(undefined, "right"))}
           className={cn(
-            "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-2 pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
+            "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)+env(safe-area-inset-right))] pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
             "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
             hideRight && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
           )} style={{ "--sidebar-open": `${sidebarPx(rightSidebarWidth)}px`, ...(hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }) } as React.CSSProperties}>

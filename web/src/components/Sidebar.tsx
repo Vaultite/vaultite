@@ -211,7 +211,7 @@ export function SidebarToggle({ side, open, empty, onClick, className, style }: 
     <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick} style={style}
       aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
       className={cn("fixed top-[calc(env(safe-area-inset-top)+--spacing(1.5))] z-30 hidden size-7 cursor-pointer place-items-center rounded-[5px] transition-[color,background-color,box-shadow,scale] duration-(--motion-fast) ease-(--ease-out) hover:bg-foreground/[0.06] hover:text-foreground md:grid",
-        side === "left" ? "left-2" : "right-2",
+        side === "left" ? "left-[calc(env(safe-area-inset-left)+--spacing(2))]" : "right-[calc(env(safe-area-inset-right)+--spacing(2))]",
         hit ? "scale-110 bg-primary/15 text-primary ring-1 ring-primary" : dragging ? "bg-primary/[0.06] text-primary ring-1 ring-primary/40" : empty ? "text-tertiary" : "text-muted-foreground", className)}>
       <Icon className="size-[18px]" strokeWidth={1.75} />
     </button>
