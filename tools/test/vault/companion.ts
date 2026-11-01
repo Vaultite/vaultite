@@ -392,6 +392,15 @@ export default async ($: VaultTest) => {
     check("companion: a version it wrote names it in History", h.versions.some((v: Any) => v.by === "Ada"), h.versions)
     await call("review.revert", { path: R }, user)
     check("companion: the user reverts its edits like any AI's", read(R) === "# Plans\n\nCall Alice friday\n", read(R))
+    // A comment or a suggestion leaves the note as it is: Review keeps no version of it first.
+    await $.sleep(20)
+    await api("PUT", "file", { path: R, text: read(R) + "\nMore\n", base: read(R) }, $.sentBy("app/desktop"))
+    const versions = async () => (await api("GET", `history?path=${R}`))[1].versions.length
+    const was = await versions()
+    await call("companion.comment", { path: R, find: "More", text: "Why?", as: "Ada" })
+    await call("companion.suggest", { path: R, find: "More", replace: "Less", as: "Ada" })
+    await call("companion.clear", { as: "Ada" })
+    check("companion: a comment or a suggestion keeps no version of the note", await versions() === was, [was, await versions()])
     // Typed into a window: the app's save of that note is the agent's while it types, and the user's again after.
     const typing = service($.app.plugins, "activity:typing") as (p: string, name: string, ms: number) => boolean
     const save = async (text: string) => {

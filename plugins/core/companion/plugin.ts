@@ -1385,7 +1385,8 @@ it: with id (the comment's), your words join its thread.
 
   vau companion comment "Alice moved this to Thursday." --path Notes/Plans.md --find "Meet Alice"
   vau companion comment "Yes, both work." --id n12`,
-  kind: "read",
+  kind: "write",
+  lock: false,
   params: { text: { type: "string", required: true, description: "the comment (Markdown, short)" }, id: { type: "string", description: "a comment to reply in" },
     path: PATH, line: LINE, find: FIND, as: AS },
   args: ["text"],
@@ -1409,6 +1410,7 @@ it: with id (the comment's), your words join its thread.
     return putNote({ kind: "comment", agent: name, text: str(p.text), ...t, ...(anchor ? { anchor } : {}) })
   },
   text: (r) => `Commented (${r.id}).`,
+  did: (p) => ({ action: "ui", text: `Commented in ${str(p.path) || focus()?.path || "a note"}`, paths: [], by: who(p) }),
 })
 
 plugin.op({
@@ -1420,7 +1422,8 @@ moment tells you what they chose.
 
   vau companion suggest --path Notes/Idea.md --find "recieve" --replace "receive"
   vau companion suggest --find "We could maybe try" --replace "We'll try" --why "Firmer"`,
-  kind: "read",
+  kind: "write",
+  lock: false,
   params: { find: { ...FIND, description: "the text to change, exactly as in the file" }, replace: { type: "string", required: true, description: "what it becomes" },
     why: { type: "string", description: "a few words on why, by it" }, path: PATH, line: LINE, as: AS },
   run: async (p) => {
@@ -1432,6 +1435,7 @@ moment tells you what they chose.
     return putNote({ kind: "suggestion", agent: name, ...t, replace: str(p.replace), ...(str(p.why) ? { text: str(p.why) } : {}) })
   },
   text: (r) => `Suggested (${r.id}).`,
+  did: (p) => ({ action: "ui", text: `Suggested a change in ${str(p.path) || focus()?.path || "a note"}`, paths: [], by: who(p) }),
 })
 
 plugin.op({
@@ -1549,7 +1553,8 @@ plugin.op({
   id: "companion.clear",
   cli: "companion clear",
   summary: "Take back your comments and suggestions (one by id, or all of yours).",
-  kind: "read",
+  kind: "write",
+  lock: false,
   params: { id: { type: "string", description: "the item (n12); default: all of yours" }, as: AS },
   run: async (p) => {
     // (an agent's own: never a person's thread)
@@ -1558,6 +1563,7 @@ plugin.op({
     return { cleared: gone.length }
   },
   text: (r) => `Cleared ${r.cleared}.`,
+  did: (p) => ({ action: "ui", text: p.id ? `Took back ${str(p.id)}` : "Took back its comments and suggestions", paths: [], by: who(p) }),
 })
 
 plugin.op({

@@ -180,6 +180,9 @@ export default async ($: VaultTest) => {
         refused === "Lighthouse bot has read-only access to this vault: the user can change it in Connections." && !exists("Notes/Sneaky.md") && listed.includes("People/Sam Park.md"), [refused, listed])
       check("public mcp read-only: an unknown op is unknown, a write grant isn't refused", accessRefusal("A", "read", null, "nope.x").startsWith("No operation")
         && accessRefusal("A", undefined, app.catalog().find((e) => e.id === "note.create")!, "note.create") === "")
+      const marks = ["companion.comment", "companion.suggest", "companion.clear"].map((id) => app.catalog().find((e) => e.id === id))
+      check("public mcp read-only: Companion's comments and suggestions in the user's notes are refused, saying is not",
+        marks.every((e) => e && accessRefusal("A", "read", e, e.id) !== "") && accessRefusal("A", "read", app.catalog().find((e) => e.id === "companion.say")!, "companion.say") === "", marks.map((e) => e?.kind))
     }
     {
       // Connect (plugins/core/mcp/connect.ts): Vaultite Cloud's signed header for the handle's owner.

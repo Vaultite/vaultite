@@ -63,6 +63,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   ↵ and esc, and find's buttons no longer show ⇧↵ there.
 - **Tables jump like a spreadsheet**: in a note's table, ⌘ or Ctrl and an arrow goes to the end of the filled cells
   (⇧ selects to there), and with cells selected Home and End go to the row's ends, ⌘ Home and ⌘ End the table's.
+- **Read-only connections leave notes alone**: an app connected with read-only access can no longer leave Companion
+  comments or suggestions in your notes, or take them back.
 - **Terminals copy and paste the Windows way**: on Windows, Ctrl+C copies the selection (with nothing selected it
   still stops the program), Ctrl+V pastes, and a right-click copies the selection or else pastes, as in Windows
   Terminal; Ctrl+V used to reach the shell as ^V, so cmd, Git Bash and WSL pasted nothing.

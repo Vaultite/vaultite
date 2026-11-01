@@ -302,10 +302,10 @@ function madeByAi(rel: string) {
   plugin.writeCache({ made: Object.fromEntries([...Object.entries(made()).filter(([, t]) => t > old), [rel, Date.now()]]) })
 }
 
-/** Before an AI's write, the file's text is kept as a version, whatever File history's interval: the review's diff
- *  starts from it. A file that wasn't there and is after is one it made. */
+/** Before an AI's write (not one that only shows something: did ui), the file's text is kept as a version: the review's
+ *  diff starts from it. A file that wasn't there and is after is one it made. */
 plugin.around("*", async (call, next) => {
-  if (call.kind === "read" || !isAi(call.who)) return next()
+  if (call.kind === "read" || !isAi(call.who) || plugin.host.did(call.op, call.params)?.action === "ui") return next()
   const fresh: string[] = []
   for (const k of ["path", "from", "file"]) {
     const v = call.params[k]
