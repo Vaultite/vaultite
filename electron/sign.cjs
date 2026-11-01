@@ -114,7 +114,9 @@ function staple(file, tries = 5) {
 // build without it drops every cookie: update.sh (it greps this file) never goes back to one; start.ts sets it.
 async function fuses(context) {
   const { FuseVersion, FuseV1Options } = require("@electron/fuses")
-  await context.packager.addElectronFuses(context, { version: FuseVersion.V1, [FuseV1Options.EnableCookieEncryption]: true })
+  await context.packager.addElectronFuses(context, { version: FuseVersion.V1, [FuseV1Options.EnableCookieEncryption]: true,
+    // (NODE_OPTIONS and --inspect are ignored, by the servers and terminals run as Node too: nothing they start may use them)
+    [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false, [FuseV1Options.EnableNodeCliInspectArguments]: false })
 }
 
 exports.default = async function sign(context) {

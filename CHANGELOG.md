@@ -82,6 +82,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the vault opens nothing, and an extension's offscreen page loads only its own files.
 - **Only the app's own pages reach its API from a browser**: an image, script or frame on another site's page, or in an
   interactive page, gets nothing; links opened in a tab and command-line clients work as before.
+- **The desktop app ignores Node's debugging settings**: NODE_OPTIONS and the --inspect flags no longer change how the
+  built app or its servers run.
 - **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer
   and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **Review lists every AI edit on Linux**: an edit or new file the coarse file clock dated a tick before its call
