@@ -79,9 +79,9 @@
     --secondary: rgb(120 120 128 / 0.12);
     --secondary-foreground: #1c1c1e;
     --muted: rgb(120 120 128 / 0.12);
-    /* secondaryLabel, but opaque (secondaryLabel over a card): lucide icons draw several overlapping paths, and a
-       translucent stroke colour darkens wherever they cross. Keep icon colours opaque; see .text-tertiary below. */
-    --muted-foreground: #86868b;
+    /* secondaryLabel, opaque (lucide's overlapping paths darken where a translucent stroke crosses: .text-tertiary) and
+       darker: 4.5:1 (WCAG AA) on --sidebar, as each scheme's is where its own text leaves room for it. */
+    --muted-foreground: #69696e;
     --accent: rgb(120 120 128 / 0.12);
     --accent-foreground: #1c1c1e;
     --destructive: #ff3b30;

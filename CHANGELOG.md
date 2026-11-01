@@ -40,6 +40,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the first line, in notes and on dashboards.
 - **A file's problems read as sentences**: the note over a file that can't be fully read shows its values as code,
   not Markdown's backticks, and lists the allowed ones in words ("isn't one of `done`, `parked` or `seed`").
+- **Grey text is easier to read in light schemes**: the sidebar's headings, the status bar, the path over a file and
+  every other secondary label reach 4.5:1 contrast on the sidebar (WCAG AA) in Gruvbox, Classic, Catppuccin, Flexoki,
+  One, Paper and Rosé Pine.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.
