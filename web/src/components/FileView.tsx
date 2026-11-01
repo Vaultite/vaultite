@@ -117,14 +117,15 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
     enter.current = false
     rename(path, v, settle, !focus, mode && { mode, write }).then((ok) => { if (!ok) { setV(name); if (write) onEnter?.() } })
   }
+  // (still the page's heading while it's a field: a screen reader lists it, and reads its text)
   return (
-    <textarea ref={ref} id={sheet ? "sheet-title" : undefined} value={v} rows={1} spellCheck={false} aria-label="File name"
+    <h1 className={TITLE}><textarea ref={ref} id={sheet ? "sheet-title" : undefined} value={v} rows={1} spellCheck={false} aria-label="File name"
       onChange={(e) => setV(e.target.value)} onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") { e.preventDefault(); enter.current = true; (e.target as HTMLTextAreaElement).blur() }
         if (e.key === "Escape") { setV(name); (e.target as HTMLTextAreaElement).blur() }
       }}
-      className={cn(TITLE, "resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted-foreground")} />
+      className="block w-full resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted-foreground" /></h1>
   )
 })
 

@@ -447,11 +447,21 @@ export function Editable({ value, set, placeholder, className, children }: {
         className={cn("-mx-1 w-[calc(100%+8px)] min-w-0 rounded-[6px] bg-foreground/[0.06] px-1 outline-none placeholder:text-muted-foreground", className)} />
     )
   }
+  const look = cn("-mx-1 cursor-text rounded-[6px] px-1 hover:bg-foreground/[0.04] max-md:relative max-md:after:absolute max-md:after:inset-x-0 max-md:after:-inset-y-2", !value && "text-tertiary", className)
+  const change = `Change ${placeholder.replace(/^Add /, "")}`
+  // What it draws may hold links, which can't sit inside a button: the keyboard's way in is a button of its own.
+  if (value && children) return (
+    <span data-no-edit data-tip={change} onClick={(e) => { if (!(e.target as Element).closest("a, button")) setEditing(true) }} className={look}>
+      {children}
+      <button type="button" aria-label={change} onClick={() => setEditing(true)}
+        className="sr-only focus-visible:not-sr-only focus-visible:ml-1 focus-visible:rounded-[4px] focus-visible:px-1 focus-visible:text-[12px] focus-visible:text-muted-foreground">Change</button>
+    </span>
+  )
   return (
-    <span role="button" tabIndex={0} data-no-edit data-tip={value ? `Change ${placeholder.replace(/^Add /, "")}` : undefined}
+    <span role="button" tabIndex={0} data-no-edit data-tip={value ? change : undefined}
       onClick={(e) => { if (!(e.target as Element).closest("a")) setEditing(true) }} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); setEditing(true) } }}
-      className={cn("-mx-1 cursor-text rounded-[6px] px-1 hover:bg-foreground/[0.04] max-md:relative max-md:after:absolute max-md:after:inset-x-0 max-md:after:-inset-y-2", !value && "text-tertiary", className)}>
-      {value ? children ?? value : placeholder}
+      className={look}>
+      {value || placeholder}
     </span>
   )
 }
