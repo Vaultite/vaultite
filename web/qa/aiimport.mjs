@@ -67,7 +67,7 @@ await page.locator(".cm-content", { hasText: "Biscuit" }).first().waitFor({ time
 // (a note opens with the cursor at its start, which shows a block there as its source: read it instead)
 await palette(page, "Switch to reading view", 0)
 const card = page.locator("[data-memory-add]").first()
-await card.waitFor({ timeout: 15_000 }).catch(() => {})
+await page.locator("[data-memory-add]", { hasText: "Tick the ones to add" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
 check("Review memories opens the list, its card says nothing is ticked", (await card.innerText()) === "Tick the ones to add", await card.innerText().catch(() => null))
 await page.screenshot({ path: `${OUT}review.png` })
 const rel = "Chats/ChatGPT/Memories to review.md"
