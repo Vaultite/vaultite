@@ -43,7 +43,8 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
   if (label === "desktop") {
     const mini = page.locator("[data-mini-player]")
     if (await page.locator("[data-sidebar-toggle=right]").getAttribute("aria-expanded") !== "true") { await page.locator("[data-sidebar-toggle=right]").click(); await wait(500) }
-    const side = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--right-sidebar")) || 0)
+    // (the sidebar as drawn: --right-sidebar is a calc() of its width and the window's inset)
+    const side = await page.evaluate(() => document.querySelector("aside[data-side=right]")?.getBoundingClientRect().width ?? 0)
     const r0 = await mini.boundingBox()
     check("desktop: the mini player keeps clear of the right sidebar", side > 100 && r0 && r0.x + r0.width <= viewport.width - side - 8, { r0, side })
     await page.screenshot({ path: `${OUT}player-mini-sidebar-${label}.png` })
