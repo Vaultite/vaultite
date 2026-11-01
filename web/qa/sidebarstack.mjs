@@ -191,7 +191,8 @@ try {
   await page.click('[data-settings-row="sidebars"]'); await wait(500)
   await page.click('[aria-label="Scroll sidebar panels separately"]'); await wait(600)
   check("Settings' switch: sidebarScroll is sidebar", (await api("config/appearance")).sidebarScroll === "sidebar", await api("config/appearance"))
-  check("...and no dividers then", !(await page.$(`${L} [role=separator]`)))
+  // (the panels' dividers: not the sidebar's own edge, a separator too)
+  check("...and no dividers then", !(await page.$(`${L} [role=separator][aria-label^="Resize "]:not([aria-label^="Resize the "])`)))
   await page.goBack(); await wait(300); await page.goBack(); await wait(500)
 
   // ---------- scrolling as one (sidebarScroll: sidebar): a long file tree, the sidebar the one scroller ----------
