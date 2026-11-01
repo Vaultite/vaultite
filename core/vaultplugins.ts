@@ -109,7 +109,7 @@ registerHooks({
     if (mod) {
       if (!requiresOf(dir).includes(mod[1])) return refuse(`a plugin imports only from plugins it \`requires\``)
       const url = moduleUrl(mod[1], mod[2], true)
-      return url ? next(url, context) : refuse(`${mod[1]} isn't loaded, or doesn't export '${mod[2]}'`)
+      return url ? asModule(next(url, context)) : refuse(`${mod[1]} isn't loaded, or doesn't export '${mod[2]}'`)
     }
     const core = VAULT_CORE.exec(spec)
     if (core) return next(pathToFileURL(path.join(ROOT, "core", `${core[1]}.ts`)).href, context)

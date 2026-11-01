@@ -12,6 +12,8 @@ export default async ($: VaultTest) => {
   write(".vaultite/plugins/beacon/manifest.json", man("beacon", { exports: ["lamp", "keeper"] }))
   write(".vaultite/plugins/beacon/lamp.ts", "let lit = 0\nexport const beam = () => `on ${++lit}`\n")
   // (a backend's module: Node's, never in the browser)
+  // (in a folder whose package.json says commonjs, as a code project's may: its modules still load as ES modules)
+  write(".vaultite/plugins/beacon/package.json", JSON.stringify({ type: "commonjs" }))
   write(".vaultite/plugins/beacon/keeper.ts", 'import os from "node:os"\nexport const host = () => typeof os.hostname()\n')
   write(".vaultite/plugins/beacon/plugin.ts", route("beacon", 'import { beam } from "./lamp.ts"'))
   write(".vaultite/plugins/anchor/manifest.json", man("anchor", { requires: ["beacon"] }))
