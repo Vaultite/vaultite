@@ -436,6 +436,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   finger-sized remove button, and the field to add one no longer shrinks to a sliver.
 - **No invisible buttons on touch screens**: a property's remove button and an unlinked mention's Link show on a phone,
   where there's no hover to bring them out (they were there, unseen, under the finger).
+- **iPhone on its side, the rest of the way**: toasts and corner cards keep clear of the notch and home indicator, and
+  the palettes drop their keyboard hints on a phone held sideways, for more results.
 
 ## 0.8.0 (2026-10-24)
 

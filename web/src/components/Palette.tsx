@@ -202,7 +202,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         ))}
         {drawn < items.length ? <div ref={more} aria-hidden className="h-px" /> : onEnd && <div ref={end} aria-hidden className="h-px" />}
       </div>
-      <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex">
+      <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex [@media(pointer:coarse)_and_(max-height:500px)]:hidden">
         {hints.map(([k, what]) => (
           <span key={k} className="flex items-center gap-1.5 whitespace-nowrap"><Keys keys={k} small />{what}</span>
         ))}

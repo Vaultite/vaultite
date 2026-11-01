@@ -7,8 +7,8 @@ export type Corner = "tl" | "tr" | "bl" | "br"
 export const CORNERS: Record<Corner, string> = {
   tl: "top-22 left-[calc(var(--left-sidebar,0px)+1rem)]",
   tr: "top-22 right-[calc(var(--right-sidebar,0px)+1rem)]",
-  bl: "bottom-10 left-[calc(var(--left-sidebar,0px)+1rem)]",
-  br: "bottom-10 right-[calc(var(--right-sidebar,0px)+1rem)]",
+  bl: "bottom-[calc(--spacing(10)+env(safe-area-inset-bottom))] left-[calc(var(--left-sidebar,0px)+1rem)]",
+  br: "bottom-[calc(--spacing(10)+env(safe-area-inset-bottom))] right-[calc(var(--right-sidebar,0px)+1rem)]",
 }
 
 /** Dragging a corner card anywhere (a click still clicks), and where it lands: the corner it was thrown towards, as
