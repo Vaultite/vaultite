@@ -104,7 +104,7 @@ export function HotkeysSheet() {
             </div>
           )
         })}
-        {!rows.length && <div className="py-3 text-[13px] text-muted-foreground">No command matches.</div>}
+        {!rows.length && <div className="py-3 text-[13px] text-muted-foreground">No command matches “{query.trim()}”</div>}
       </div>
     </>
   )

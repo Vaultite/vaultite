@@ -96,8 +96,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The inbox's verbs: pin, settle, snooze, wake**: Done is Settle (its folded list Settled) and Unsnooze is Wake, in
   the app, the iPhone's and the watch's notifications, and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox
   done` and `inbox.done` still work.
-- **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers and the other choosers
-  write what was typed in curly quotes with no full stop ("No command matches “foo”"), from one shared line.
+- **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers, the other choosers,
+  Hotkeys and the phone's tab switcher write what was typed in curly quotes with no full stop ("No command matches
+  “foo”").
 - **Screen readers hear the palettes' headings**: ⌘O's list is named by its heading ("Recent files and pages"), and
   the sections of ⌘O, ⌘P and the tab search ("In files", "Open tabs") are groups named by their headings.
 - **The keys hint draws keycaps**: while a key sequence is under way, its keys, what each next key does and how to

@@ -664,7 +664,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
           <div className={grid} data-select-list={TABS}>
             {found ? found.map(card) : open ? inOrder(open.tabs).map(card) : cards(inOrder(all))}
           </div>
-          {found && !found.length && <p className="py-10 text-center text-[17px] text-muted-foreground">No tabs match</p>}
+          {found && !found.length && <p className="py-10 text-center text-[17px] text-muted-foreground">No tabs match “{query?.trim()}”</p>}
         </div>
       </Pager>
       <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.s.id} lit={hit?.kind === "out"} />
