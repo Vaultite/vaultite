@@ -16,8 +16,20 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-desktop-perf-"))
 
 type Launch = { window: number; page: number; paint: number; ready: number; renderer: number; app: number; server: number }
 
-/** CPU milliseconds of the main process's server.ts child (ps: [[dd-]hh:]mm:ss.cc). */
+/** CPU milliseconds of the main process's server.ts child: Linux's /proc (ps there counts whole seconds), else ps
+ *  ([[dd-]hh:]mm:ss.cc). */
 function serverCpu(parent: number) {
+  if (process.platform === "linux") {
+    for (const pid of fs.readdirSync("/proc").filter((d) => /^\d+$/.test(d))) {
+      try {
+        // (after the command's closing paren: state, ppid, ... utime and stime are fields 14 and 15, in clock ticks)
+        const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8"), f = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+        if (Number(f[1]) !== parent || !fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").includes("server.ts")) continue
+        return (Number(f[11]) + Number(f[12])) * 10 // (100 ticks a second)
+      } catch { /* gone meanwhile */ }
+    }
+    return 0
+  }
   const out = execFileSync("/bin/ps", ["-Aww", "-o", "pid=,ppid=,time=,command="], { encoding: "utf8" })
   const line = out.split("\n").find((l) => { const [, ppid, , ...cmd] = l.trim().split(/\s+/); return Number(ppid) === parent && cmd.join(" ").includes("server.ts") })
   if (!line) return 0
@@ -28,7 +40,8 @@ async function launch(root: string, dir: string): Promise<Launch> {
   const t0 = performance.now(), epoch = Date.now()
   const app = await _electron.launch({
     executablePath: path.join(root, "node_modules", ".bin", "electron"), args: [root, "--vault", path.join(dir, "vault")],
-    env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(dir, "userData"), VAULTITE_LOCAL: path.join(dir, "local") },
+    // (a temp folder each root's own: Node's compile cache, kept there, is empty for the first launch and never shared)
+    env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(dir, "userData"), VAULTITE_LOCAL: path.join(dir, "local"), TMPDIR: path.join(dir, "t") },
   })
   try {
     const win = await app.firstWindow()
@@ -47,9 +60,11 @@ async function launch(root: string, dir: string): Promise<Launch> {
   }
 }
 
+// (Chromium won't run as root without its sandbox, and the app keeps the sandbox on)
+if (process.platform === "linux" && process.getuid?.() === 0) { console.error("desktop: Electron doesn't run as root: run this as another user"); process.exit(1) }
 const runs = ROOTS.map(() => [] as Launch[])
 try {
-  ROOTS.forEach((_, i) => makeVault(path.join(tmp, String(i), "vault"), SCALE))
+  ROOTS.forEach((_, i) => { makeVault(path.join(tmp, String(i), "vault"), SCALE); fs.mkdirSync(path.join(tmp, String(i), "t")) })
   for (let n = 0; n < LAUNCHES; n++) {
     for (const [i, root] of ROOTS.entries()) runs[i].push(await launch(root, path.join(tmp, String(i))))
   }
