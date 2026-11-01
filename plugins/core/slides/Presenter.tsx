@@ -55,7 +55,7 @@ export function openPresenter(title: string, gone: () => void): PresenterWindow 
 }
 
 /** `children` (a slide as drawn on a screen `size`), scaled down into the box, the shape of that screen. */
-function Screen({ size, label, children }: { size: { w: number; h: number }; label: string; children: ReactNode }) {
+export function Screen({ size, label, bare, children }: { size: { w: number; h: number }; label: string; bare?: boolean; children: ReactNode }) {
   const frame = useRef<HTMLDivElement>(null)
   const [k, setK] = useState(0)
   useLayoutEffect(() => {
@@ -70,7 +70,7 @@ function Screen({ size, label, children }: { size: { w: number; h: number }; lab
   }, [size.w, size.h])
   return (
     <div ref={frame} className="flex min-h-0 min-w-0 flex-1 items-start">
-      <div role="img" aria-label={label} className="relative shrink-0 overflow-hidden rounded-[10px] bg-background ring-1 ring-border"
+      <div role="img" aria-label={label} className={cn("relative shrink-0 overflow-hidden bg-background", !bare && "rounded-[10px] ring-1 ring-border")}
         style={{ width: size.w * k, height: size.h * k }}>
         <div className="absolute top-0 left-0 flex origin-top-left flex-col" style={{ width: size.w, height: size.h, transform: `scale(${k})` }}>{children}</div>
       </div>
@@ -94,14 +94,15 @@ const CLOCK = { hour: "numeric", minute: "2-digit" } as const
 const label = "px-1 pb-1.5 text-[13px] text-muted-foreground"
 const ctl = "grid size-9 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
 
-export function Presenter({ win, size, at, n, current, next, notes, css, onKey, onPrev, onNext, canPrev, canNext }: {
+export type Timer = { start: number; paused: number | null }
+export function Presenter({ win, size, at, n, current, next, notes, css, timer, setTimer, total, onKey, onPrev, onNext, canPrev, canNext }: {
   win: Window; size: { w: number; h: number }; at: number; n: number; current: ReactNode; next: ReactNode | null; notes: ReactNode; css: ReactNode
+  /** The presentation's timer (it's from when it started); `total`: its timeForPresentation (s), 0 for none. */
+  timer: Timer; setTimer: (f: (t: Timer) => Timer) => void; total: number
   onKey: (e: Keys) => void; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean
 }) {
   const root = useRef<HTMLDivElement>(null)
   const now = useNow(win)
-  // The timer: from when the view opened, less what was paused.
-  const [timer, setTimer] = useState(() => ({ start: Date.now(), paused: null as number | null }))
   const taken = (timer.paused ?? now) - timer.start
   const pause = () => setTimer((t) => (t.paused === null ? { ...t, paused: Date.now() } : { start: t.start + Date.now() - t.paused, paused: null }))
   const reset = () => setTimer((t) => ({ start: Date.now(), paused: t.paused === null ? null : Date.now() }))
@@ -143,7 +144,8 @@ export function Presenter({ win, size, at, n, current, next, notes, css, onKey, 
         <button type="button" aria-label="Previous slide" data-tip="Previous slide" className={ctl} disabled={!canPrev} onClick={onPrev}><ChevronLeft className="size-5" strokeWidth={2} /></button>
         <button type="button" aria-label="Next slide" data-tip="Next slide" className={ctl} disabled={!canNext} onClick={onNext}><ChevronRight className="size-5" strokeWidth={2} /></button>
         <span className="flex-1" />
-        <span className={cn("text-[22px] font-medium tabular-nums", timer.paused !== null && "text-muted-foreground")} data-timer aria-label="Time taken">{elapsedText(taken)}</span>
+        <span className={cn("text-[22px] font-medium tabular-nums", timer.paused !== null && "text-muted-foreground", total && taken >= total * 1000 && "text-[var(--red)]")} data-timer aria-label="Time taken">{elapsedText(taken)}</span>
+        {total > 0 && <span className="pl-1 text-[22px] tabular-nums text-muted-foreground" data-timer-total aria-label="Time for the presentation">/ {elapsedText(total * 1000)}</span>}
         <button type="button" aria-label={timer.paused === null ? "Pause timer" : "Resume timer"} data-tip={timer.paused === null ? "Pause timer" : "Resume timer"} className={ctl} onClick={pause}>
           {timer.paused === null ? <Pause className="size-4" strokeWidth={2} /> : <Play className="size-4" strokeWidth={2} />}
         </button>

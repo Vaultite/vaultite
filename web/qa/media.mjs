@@ -283,6 +283,44 @@ await page.close()
   await page.close(); await del(SMALL)
 }
 
+// Reveal's plugins: ink on a slide and a board (C, B), the laser pointer (Q), the time bar, the overview (O).
+{
+  const TIMED = "Qa media/Timed.md"
+  await put(TIMED, "---\ntheme: night\ntimeForPresentation: 3\n---\n\n# Timed\n\n---\n\n## Two\n\n---\n\n## Three\n")
+  page = await open({ viewport: { width: 1280, height: 800 } })
+  await page.goto(`${B}#file/${enc(TIMED)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(1000)
+  const count = () => page.locator("[data-slide-count]").innerText()
+  check("time bar: timeForPresentation fills a bar", await page.locator("[data-time-bar=on]").count() === 1)
+  await page.keyboard.press("c"); await wait(300)
+  await page.mouse.move(400, 300); await page.mouse.down()
+  for (let k = 1; k <= 8; k++) await page.mouse.move(400 + k * 40, 300 + k * 20)
+  await page.mouse.up(); await wait(200)
+  check("ink: C draws on the slide, without moving on", await page.locator("[data-slide-ink=slide] path").count() === 1 && await count() === "1 / 3" && await page.locator("[data-ink-bar]").count() === 1)
+  await page.keyboard.press("b"); await wait(300)
+  await page.mouse.move(500, 400); await page.mouse.down(); await page.mouse.move(700, 450); await page.mouse.up(); await wait(200)
+  check("ink: B is a board to write on, apart from the slide", await page.locator("[data-slide-ink=board] path").count() === 1 && await page.locator("[data-slide-ink=slide] path").count() === 1)
+  await page.keyboard.press("z"); await wait(200)
+  check("ink: Z takes back the last line", await page.locator("[data-slide-ink=board] path").count() === 0)
+  await page.screenshot({ path: `${OUT}media-slides-board.png` })
+  await page.keyboard.press("b"); await page.keyboard.press("c"); await wait(300)
+  check("ink: C again stops drawing; what's drawn stays, the bar goes", await page.locator("[data-ink-bar]").count() === 0 && await page.locator("[data-slide-ink=slide] path").count() === 1)
+  await page.keyboard.press("q"); await page.mouse.move(640, 300); await wait(200)
+  check("laser: Q points where the mouse is", await page.locator("[data-laser]").evaluate((d) => d.style.opacity === "1" && d.style.transform.includes("px")))
+  await page.screenshot({ path: `${OUT}media-slides-laser.png` })
+  await page.keyboard.press("q"); await wait(3200)
+  check("time bar: past the time, it says so", await page.locator("[data-time-bar=over]").count() === 1)
+  await page.keyboard.press("o"); await wait(1200)
+  check("overview: O shows every slide, the current one picked", await page.locator("[data-overview-slide]").count() === 3 && await page.locator("[data-overview-slide='1'][aria-selected=true]").count() === 1)
+  await page.screenshot({ path: `${OUT}media-slides-overview.png` })
+  await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight"); await page.keyboard.press("Enter"); await wait(800)
+  check("overview: arrows and Enter go to a slide", await count() === "3 / 3" && await page.locator("[data-overview]").count() === 0)
+  await page.keyboard.press("Home"); await wait(800)
+  check("ink: a slide keeps what was drawn on it", await page.locator("[data-slide-ink=slide] path").count() === 1)
+  await page.keyboard.press("Escape"); await wait(400)
+  await page.close(); await del(TIMED)
+}
+
 // css: files and a theme that's a file: the deck's, live, never the app's.
 {
   const CSS_DECK = "Qa media/Styled.md", SHEET = "Qa media/css/deck.css"

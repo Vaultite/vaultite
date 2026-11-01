@@ -2,12 +2,13 @@
 // changes while shown. Advanced Slides decks (slides.ts) also get their notes, fragments, backgrounds and <style>.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type RefObject, type TouchEvent } from "react"
 import { createPortal } from "react-dom"
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, ScreenShare, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, LayoutGrid, Maximize2, Minimize2, NotebookText, Pencil, ScreenShare, X } from "lucide-react"
 import { activeFile, cn, folderOf, getStore, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
 import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, templateNames, sizeOf, upcoming, type Slide } from "./slides"
-import { openPresenter, Presenter, type Keys, type PresenterWindow } from "./Presenter"
+import { openPresenter, Presenter, Screen, type Keys, type PresenterWindow } from "./Presenter"
+import { Ink, InkBar, Laser, Overview, overviewKeys, TimeBar, TOOLS_CSS, type InkColor, type Stroke } from "./Tools"
 import { revealTheme } from "./themes"
 import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
 import { slideMotion, type Leaving } from "./transitions"
@@ -329,6 +330,16 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const css = useMemo(() => scopeCss(`${sheets}\n${deck.css}`, "[data-deck]"), [sheets, deck.css])
   const { slides } = deck
   const hasNotes = slides.some((s) => s.notes)
+  // Reveal's plugins (Tools.tsx): the laser pointer, ink on slides and boards (kept while presenting), the overview.
+  const [laser, setLaser] = useState(false)
+  const [pen, setPen] = useState<InkColor | null>(null)
+  const [color, setColor] = useState<InkColor>("red")
+  const [board, setBoard] = useState(false)
+  const [ink, setInk] = useState<Record<string, Stroke[]>>({})
+  const [overview, setOverview] = useState(false)
+  // The time taken (the presenter view's timer), against frontmatter's timeForPresentation (s).
+  const [timer, setTimer] = useState(() => ({ start: Date.now(), paused: null as number | null }))
+  const total = Number(props.timeForPresentation) > 0 ? Number(props.timeForPresentation) : 0
   const [notes, setNotes] = useState(() => notesShown || props.showNotes === true)
   useEffect(() => { if (props.showNotes === true) setNotes(true) }, [props.showNotes])
   const toggleNotes = () => setNotes((v) => (notesShown = !v))
@@ -442,19 +453,27 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const [size, setSize] = useState({ w: 1280, h: 800 })
   useLayoutEffect(() => {
     const el = screenBox.current
-    if (!el || !presenter) return
+    if (!el || (!presenter && !overview)) return
     const measure = () => setSize((s) => (s.w === el.clientWidth && s.h === el.clientHeight) || !el.clientWidth ? s : { w: el.clientWidth, h: el.clientHeight })
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [presenter])
+  }, [presenter, overview])
 
   /** The presentation's keys, in its window and the presenter's (there F is that window's). */
   const key = (e: Keys, inPresenter = false) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return
     const k = e.key
-    if (["ArrowDown", "PageDown", " ", "Enter", "n"].includes(k)) go(1)
+    if (overviewKeys.current?.(k)) { e.preventDefault(); e.stopPropagation(); return }
+    const sheet = `${board ? "board" : "slide"}:${i}`
+    if ((pen || board) && (k === "z" || k === "Delete")) setInk((m) => ({ ...m, [sheet]: k === "z" ? (m[sheet] ?? []).slice(0, -1) : [] }))
+    else if ((pen || board) && k === "Escape") { setPen(null); setBoard(false) }
+    else if (k === "c") setPen((p) => (p ? null : color))
+    else if (k === "b") { setBoard((b) => !b); setPen((p) => p ?? color) }
+    else if (k === "q") setLaser((v) => !v)
+    else if (k === "o") setOverview(true)
+    else if (["ArrowDown", "PageDown", " ", "Enter", "n"].includes(k)) go(1)
     else if (["ArrowUp", "PageUp", "Backspace", "p"].includes(k)) go(-1)
     else if (k === "ArrowRight") go(1, true)
     else if (k === "ArrowLeft") go(-1, true)
@@ -510,13 +529,20 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const canPrev = i > 0 || pos.step > 0
   const canNext = i < n - 1 || Math.min(pos.step, count) < count
   const canPopup = popups()
+  const sheet = `${board ? "board" : "slide"}:${i}`
+  const addStroke = (st: Stroke) => setInk((m) => ({ ...m, [sheet]: [...(m[sheet] ?? []), st] }))
+  const thumb = (k: number) => (
+    <div className="flex w-full" style={{ aspectRatio: `${size.w} / ${size.h}` }}>
+      <Screen size={size} label={`Slide ${k + 1}`} bare><SlideView src={src} slide={slides[k]} i={k} step={Infinity} /></Screen>
+    </div>
+  )
   const notesBody = (cls?: string) => slide?.notes
     ? <NoteBody key={i} store={store} path={path} body={slide.notes} fm={fm} className="slide-notes" />
     : <p className={cn("text-muted-foreground", cls)}>No notes for this slide.</p>
   return <>{createPortal(
     <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${stem(path)}, slide ${i + 1} of ${n}`} onKeyDown={(e) => key(e)}
       className="group/slides fixed inset-0 z-[70] flex flex-col bg-background text-foreground outline-none select-none md:flex-row" data-presentation={path} data-keeps-keys>
-      <style>{DECK_CSS}{LAYOUT_CSS}{css}</style>
+      <style>{DECK_CSS}{LAYOUT_CSS}{TOOLS_CSS}{css}</style>
       <div ref={screenBox} className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground", other && "scheme-preview", other === "dark" && "dark")}
         data-tone={bg.tone ?? undefined} data-scheme={scheme} style={theme?.vars as CSSProperties}>
         {/* the deck's own CSS reaches what's in [data-deck], never the controls; a theme's --r-* come from above it */}
@@ -535,6 +561,10 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
                   </SlideFrame>}
                 </div>
               </div>
+              {text !== null && fit.h > 0 && <>
+                <Ink key={`slide-${i}`} w={fit.w} h={fit.h} strokes={ink[`slide:${i}`] ?? []} pen={board ? null : pen} onStroke={addStroke} />
+                {board && <Ink key={`board-${i}`} board w={fit.w} h={fit.h} strokes={ink[`board:${i}`] ?? []} pen={pen} onStroke={addStroke} />}
+              </>}
             </div>
           </div>
         </div>
@@ -542,6 +572,9 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           <div className="pointer-events-auto flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover/slides:opacity-100 md:focus-within:opacity-100">
             <button type="button" aria-label="Previous slide" className={ctl} disabled={!canPrev} onClick={() => go(-1)}><ChevronLeft className="size-5" strokeWidth={2} /></button>
             <button type="button" aria-label="Next slide" className={ctl} disabled={!canNext} onClick={() => go(1)}><ChevronRight className="size-5" strokeWidth={2} /></button>
+            <button type="button" aria-label="All slides" data-tip="All slides (O)" className={ctl} onClick={() => setOverview(true)}><LayoutGrid className="size-4" strokeWidth={2} /></button>
+            <button type="button" aria-label={pen ? "Stop drawing" : "Draw on the slide"} aria-pressed={!!pen} data-tip="Draw (C)" className={cn(ctl, pen && "text-foreground")}
+              onClick={() => setPen((p) => (p ? null : color))}><Pencil className="size-4" strokeWidth={2} /></button>
             {hasNotes && (
               <button type="button" aria-label={notes ? "Hide speaker notes" : "Show speaker notes"} aria-pressed={notes} data-tip={canPopup ? "Speaker notes" : "Speaker notes (S)"}
                 className={cn(ctl, notes && "text-foreground")} onClick={toggleNotes}>
@@ -567,6 +600,12 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           className={cn(ctl, "absolute top-[max(env(safe-area-inset-top),0.5rem)] right-2 opacity-100 transition-opacity md:top-3 md:right-3 md:opacity-0 md:group-hover/slides:opacity-100 md:focus:opacity-100")}>
           <X className="size-5" strokeWidth={2} />
         </button>
+        {(pen || board) && <InkBar color={color} board={board} canUndo={!!ink[sheet]?.length} onColor={(c) => { setColor(c); setPen(c) }}
+          onUndo={() => setInk((m) => ({ ...m, [sheet]: (m[sheet] ?? []).slice(0, -1) }))} onClear={() => setInk((m) => ({ ...m, [sheet]: [] }))}
+          onBoard={() => { setBoard((b) => !b); setPen((p) => p ?? color) }} onDone={() => { setPen(null); setBoard(false) }} />}
+        {laser && <Laser area={screenBox} />}
+        {overview && <Overview n={n} at={i} label={(k) => nextName(slides[k]?.md ?? "")} thumb={thumb} onPick={(k) => { setOverview(false); jump(k) }} onClose={() => setOverview(false)} />}
+        {total > 0 && <TimeBar total={total} start={timer.start} paused={timer.paused} />}
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-foreground/[0.06]" aria-hidden>
           <div data-slide-progress className="h-full bg-[var(--r-link-color,var(--primary))] transition-[width] duration-200" style={{ width: `${((i + 1) / n) * 100}%` }} />
         </div>
@@ -588,7 +627,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     document.body,
   )}
   {presenter && createPortal(
-    <Presenter win={presenter.win} size={size} at={i} n={n} css={<style>{DECK_CSS}{LAYOUT_CSS}{css}</style>}
+    <Presenter win={presenter.win} size={size} at={i} n={n} css={<style>{DECK_CSS}{LAYOUT_CSS}{css}</style>} timer={timer} setTimer={setTimer} total={total}
       current={<SlideView src={src} slide={slide} i={i} step={pos.step} onClick={click} />}
       next={up && <SlideView src={src} slide={slides[up.at]} i={up.at} step={up.step} />}
       notes={notesBody("text-[17px]")} onKey={(e) => key(e, true)} onPrev={() => go(-1)} onNext={() => go(1)} canPrev={canPrev} canNext={canNext} />,

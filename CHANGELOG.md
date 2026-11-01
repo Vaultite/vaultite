@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Obsidian plugins' Bases views draw in bases**: a view whose layout is a plugin's (TaskNotes' board and task list,
   for one) shows its files as that plugin draws them, and the view's Layout menu offers them.
+- **Slides draw, point and pace**: while presenting, C draws on the slide and B opens a board to write on (kept per
+  slide), Q is a laser pointer, O shows every slide to jump to, and `timeForPresentation` fills a time bar, as in
+  Advanced Slides' chalkboard, pointer, overview and elapsed time bar.
 - **Agents read notes sooner after an edit in big vaults**: a note's links are found without making the vault's link
   index again unless a file came, went or got new aliases (rendering a note after an edit at 24,000 notes: 55 ms to 10).
 - **An Obsidian vault's hotkeys carry over**: `.obsidian/hotkeys.json`'s keys for the commands Vaultite has too (the

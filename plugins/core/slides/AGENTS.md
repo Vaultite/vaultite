@@ -68,4 +68,7 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
 - Auto-animate: `<!-- slide data-auto-animate -->` on two consecutive slides (frontmatter `autoAnimate: false` turns
   it off, as in reveal.js): what matches (the same heading or text, image, code, or an element annotation's `data-id`)
   moves from where it was; the rest fades in (`data-auto-animate-duration`, `-easing`, `-id`, `-restart`, `-unmatched`).
-- Not drawn: chalkboard, other reveal options.
+- Reveal's plugins, the app's way: C draws on the slide (colours, Z undo, Delete clears), B a board to write on, both kept
+  per slide while presenting; Q a laser pointer; O every slide at a glance (arrows, Enter); frontmatter
+  `timeForPresentation` (s) a bar filling over that time, red past it, and the presenter view's timer out of it.
+- Not drawn: other reveal options (menu: the overview stands in).
