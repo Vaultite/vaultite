@@ -364,7 +364,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         ] : [
           Prec.highest(fenceMenu), Prec.highest(plugged.current.of([])),
           leaving, sight, history(), conflicts,
-          EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged() }),
+          EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged(u) }),
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
           prose.current.of(writing(settings, doc)),
           EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),

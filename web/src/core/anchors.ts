@@ -1,5 +1,7 @@
 // Places in a file (`#Heading`, `#^id`), found in the text as it is on screen: every Markdown editor registers here.
 // Where a heading or block is: core/sections.ts, shared with the server.
+import type { Text } from "@codemirror/state"
+import type { ViewUpdate } from "@codemirror/view"
 import { useEffect, useMemo, useState } from "react"
 import { anchorKey, anchorLine, headingsOf, type Heading } from "../../../core/sections.ts"
 import { openFile, readFile, stem } from "@/core/files"
@@ -36,8 +38,19 @@ export function registerDoc(d: DocView) {
   setTimeout(tryPending, 30)
   return () => { const i = docs.indexOf(d); if (i >= 0) docs.splice(i, 1); changed() }
 }
-/** An editor's text changed (the outline follows it). */
-export const docChanged = () => changed()
+const OUTLINED = /^\s{0,3}(?:#{1,6}(?:\s|$)|=+\s*$|-+\s*$|`{3}|~{3})|^\s*(?:[-*+]|\d+[.)])(?:\s|$)/
+/** An editor's text changed: the outline (and the mind map's lists) follows it when they could have (a line added or
+ *  taken away, or a heading, list item, underline or fence touched), not for each letter typed in a paragraph. */
+export function docChanged(u: ViewUpdate) {
+  const a = u.startState.doc, b = u.state.doc
+  let moved = a.lines !== b.lines
+  const heads = (doc: Text, from: number, to: number) => {
+    for (let n = doc.lineAt(from).number, end = Math.min(doc.lineAt(to).number + 1, doc.lines); n <= end; n++) if (OUTLINED.test(doc.line(n).text)) return true
+    return false
+  }
+  if (!moved) u.changes.iterChangedRanges((fa, ta, fb, tb) => { moved ||= heads(a, fa, ta) || heads(b, fb, tb) })
+  if (moved) changed()
+}
 
 /** The editor showing this file that's on screen, the focused pane's first; `within`: only one inside it. */
 function viewOf(path: string, within?: Element | null): DocView | null {
