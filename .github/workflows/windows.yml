@@ -17,6 +17,12 @@ jobs:
       run:
         shell: bash
     steps:
+      # (Defender scans what npm unpacks here, where the x64 images exclude their drives: not node_modules, npm's cache or
+      # Playwright's browsers; what the tests write still is)
+      - shell: powershell
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE\node_modules", "$env:LOCALAPPDATA\npm-cache", "$env:LOCALAPPDATA\ms-playwright"
+          "::notice title=Defender::real-time protection $((Get-MpComputerStatus).RealTimeProtectionEnabled), skipping $((Get-MpPreference).ExclusionPath -join ', ')"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
