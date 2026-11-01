@@ -1,6 +1,6 @@
 // The status bar (desktop): ambient items and the focused file's (usePublish) in two corners, as in Vim: left the user's
 // (Vim's mode, the companion), right the file's. Hidden by right-click or the palette, dragged between them (core/statusbar.ts).
-import { memo, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
+import { memo, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { Ellipsis, PanelBottom } from "lucide-react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
 import { Catch, Drawn } from "@/components/Guard"
@@ -200,7 +200,6 @@ const fitRank = (x: BarItem) => (x.key === "core:characters" ? 1 : x.ambient ? 2
 const steady = (x: BarItem) => x.key === "core:words" || x.key === "core:characters" || !!x.status?.after
 
 export function StatusBar() {
-  const s = statusSubs.use(() => status_)
   const { disabled, enabled, statusBar, statusBarMore, statusBarLeft, density, interfaceFont, snippets } = usePrefs()
   // What the bar's width depends on but the file: a change lets go of the widths held for the setup before.
   const setup = JSON.stringify([statusBar, statusBarMore, statusBarLeft, disabled, enabled, density, interfaceFont, snippets])
@@ -210,7 +209,7 @@ export function StatusBar() {
   useBarCommands(bar.all)
   // Counted after the keystroke is on screen: a long note's count takes a few milliseconds. The file comes late with
   // its text, so a file just opened is never measured (useSteady) with the last one's counts.
-  const late = useSettled(s)
+  const late = useSettled()
   const body = late?.body ?? "", fm = late?.fm ?? ""
   const head = late?.head, path = late?.path ?? ""
   // What plugins' items get: the file as typed (theirs are drawn after the keystroke too).
@@ -223,7 +222,7 @@ export function StatusBar() {
   const counts = useCounts(path, body, text, code, nb)
   // (a plugin's item that throws is left out, its error in Errors: the bar is on every desktop tab, so it'd stop the app)
   const item_ = (key: string, draw: () => ReactNode) => <Catch key={key} reset={path} fallback={() => null}><Drawn draw={draw} /></Catch>
-  const open = !!s && !!late
+  const open = !!late
 
   // The items: the tucked ones in the tray, the rest in the bar, but those that don't fit, which the tray shows too.
   // A file's are there only while one is focused.
@@ -260,7 +259,7 @@ export function StatusBar() {
 
   // What a file's own items draw: the plugins', its view, its counts (all as of the settled file: late).
   const fileDraw = (x: BarItem): ReactNode => {
-    if (!s || !late) return null
+    if (!late) return null
     const { mode, views, setMode } = late
     if (x.status) {
       const box = reads.current.get(x.key) ?? { text: false }
@@ -457,13 +456,24 @@ const FileItem = memo(function FileItem({ item, head, text, reads }: { item: Sta
   return <Catch reset={head.path} fallback={() => null}><Drawn draw={() => item.render(file)} /></Catch>
 }, (a, b) => a.item === b.item && a.head === b.head && a.reads === b.reads && (a.text === b.text || !b.reads.text))
 
-/** The file as it is, a moment after each keystroke; a long one's once typing pauses (another file's at once). */
-function useSettled(s: typeof status_) {
-  const deferred = useDeferredValue(s)
-  const long = (s?.body.length ?? 0) > LONG
-  const [settled, setSettled] = useState(s)
-  useEffect(() => { if (!long) return; const t = setTimeout(() => setSettled(s), 500); return () => clearTimeout(t) }, [s, long])
-  return long && settled?.path === s?.path ? settled : deferred
+/** The file as it is, a moment after each keystroke; a long one's once typing pauses (another file's at once). Drawn
+ *  as a transition, once a keystroke: a deferred value drew the bar twice, the first time for nothing. */
+function useSettled() {
+  const [settled, setSettled] = useState(() => status_)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined, last = status_
+    const on = () => {
+      const s = status_, go = () => startTransition(() => setSettled(s))
+      clearTimeout(t)
+      if ((s?.body.length ?? 0) > LONG && s?.path === last?.path) t = setTimeout(go, 500)
+      else go()
+      last = s
+    }
+    on()
+    const off = statusSubs.subscribe(on)
+    return () => { off(); clearTimeout(t) }
+  }, [])
+  return settled
 }
 
 let worker: Worker | null = null, asked = 0
