@@ -619,6 +619,8 @@ check("markdown: raw HTML is drawn sanitized: safe tags and attributes (class, i
   raw.includes('<iframe src="https://x.test" allowfullscreen="" sandbox="allow-scripts allow-same-origin allow-presentation"') && !raw.includes("http://x.test") &&
   raw.split("</iframe>").length === 2 && raw.includes("&#60;custom&#62;tag&#60;/custom&#62;") && raw.includes('<span id="a1" class="mine">styled</span>') &&
   raw.includes('<a class="mine wikilink" data-wiki="Idea">mine</a>'), raw)
+const styled = md.renderMarkdown('<div style="color: red; posit\\69on:fixed;ins\\65t:0;z-ind\\65x:99999;/**/top:0;left/**/:0;background:u\\72l(https://x.test)">x</div>\n', vopts)
+check("markdown: raw HTML's style keeps no declaration written with CSS escapes or comments", styled.includes('<div style="color: red">x</div>'), styled)
 check("embeds: a note, a section, a block, a heading here", same([formats.embedOf("![[Idea]]"), formats.embedOf("![[Idea#Plans]]"), formats.embedOf("![[Idea#^b1]]"), formats.embedOf("![[#Top]]")].map((e) => e?.note),
   [true, true, true, true]) && formats.embedOf("![[photo.png]]") === null && formats.embedOf("![[v1.2 notes]]")?.note === true)
 const note = "---\ntags: [a]\n---\n# Top\n\nIntro #intro and `#no` [[X#y]] ^p1\n\n## Plans\n\n- one ^li\n  - under\n- two\n\n```\n# not a heading #no\n```\n\n## After\n"

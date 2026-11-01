@@ -30,7 +30,8 @@ const unesc = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);
 function safeStyle(css: string) {
   return css.split(";").map((d) => d.trim()).filter((d) => {
     const prop = d.slice(0, d.indexOf(":")).trim().toLowerCase()
-    return d.includes(":") && !/^(position|z-index|inset|top|left|right|bottom|behavior|-moz-binding)$/.test(prop) && !/url\(|expression\(|@import|javascript:/i.test(d)
+    // (escapes and comments are read by the browser, not by these checks: `posit\69on` is `position`)
+    return d.includes(":") && !/\\|\/\*/.test(d) && !/^(position|z-index|inset|top|left|right|bottom|behavior|-moz-binding)$/.test(prop) && !/url\(|expression\(|@import|javascript:/i.test(d)
   }).join("; ")
 }
 

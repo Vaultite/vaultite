@@ -109,6 +109,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   than one without, so each section's rows line up at the same rhythm.
 - **A tab reached with the keyboard shows a rounded ring**: Tab onto a tab and its focus ring follows the tab's
   rounded corners, as every other button's does, not a square box around it.
+- **Styles in a note's HTML stay inside the note**: a style written with CSS escapes or comments is dropped, so it
+  can't cover the app.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.
