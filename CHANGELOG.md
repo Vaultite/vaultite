@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
+  app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
+  account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
   cache, so a vault's page starts about 180 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its

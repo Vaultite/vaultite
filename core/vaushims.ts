@@ -2,14 +2,21 @@
 // `node`): a shell script, and on Windows vau.cmd too (cmd and PowerShell run it; Git Bash and WSL run the script).
 
 /** What runs vau: `exe` as Node (ELECTRON_RUN_AS_NODE, which plain Node ignores) on `script`, with `env` set. `mark`:
- *  a first comment saying whose file it is. */
-export type Shim = { exe: string; script: string; env?: Record<string, string>; mark: string }
+ *  a first comment saying whose file it is. `vars`: Windows' variables vau.cmd may spell paths with (this process'). */
+export type Shim = { exe: string; script: string; env?: Record<string, string>; mark: string; vars?: Record<string, string | undefined> }
 
 const sh = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
 /** A Windows path as Git Bash takes it in a script (C:/x: its own /c/x isn't what a Windows program reads). */
 const slashed = (p: string) => p.replace(/\\/g, "/")
-/** cmd's quoting: in "..." only % (and " itself, which a path can't have) mean anything. */
-const cmd = (s: string) => `"${s.replace(/%/g, "%%")}"`
+/** Text inside cmd's "...", where only % (and " itself, which a path can't have) mean anything. cmd reads a .cmd in the
+ *  console's code page, so a path with more than ASCII (a user named João) goes through the variable it starts in. */
+function cmdText(p: string, vars: Record<string, string | undefined>) {
+  const pct = (s: string) => s.replace(/%/g, "%%")
+  if (/^[\x00-\x7f]*$/.test(p)) return pct(p)
+  const at = (k: string) => vars[k]?.replace(/\\+$/, "") ?? ""
+  const k = ["LOCALAPPDATA", "APPDATA", "USERPROFILE"].find((k) => at(k) && p.toLowerCase().startsWith(`${at(k).toLowerCase()}\\`))
+  return k ? `%${k}%${pct(p.slice(at(k).length))}` : pct(p)
+}
 
 /** The shims by file name: `vau` always, `vau.cmd` on Windows. */
 export function vauShims(s: Shim, platform: string = process.platform): Record<string, string> {
@@ -19,8 +26,9 @@ export function vauShims(s: Shim, platform: string = process.platform): Record<s
       `ELECTRON_RUN_AS_NODE=1 exec ${sh(p(s.exe))} ${sh(p(s.script))} "$@"`, ""].join("\n"),
   }
   if (win) {
-    out["vau.cmd"] = ["@echo off", `rem ${s.mark}`, "setlocal", ...Object.entries(s.env ?? {}).map(([k, v]) => `set "${k}=${v.replace(/%/g, "%%")}"`),
-      'set "ELECTRON_RUN_AS_NODE=1"', `${cmd(s.exe)} ${cmd(s.script)} %*`, ""].join("\r\n")
+    const q = (p: string) => cmdText(p, s.vars ?? process.env)
+    out["vau.cmd"] = ["@echo off", `rem ${s.mark}`, "setlocal", ...Object.entries(s.env ?? {}).map(([k, v]) => `set "${k}=${q(v)}"`),
+      'set "ELECTRON_RUN_AS_NODE=1"', `"${q(s.exe)}" "${q(s.script)}" %*`, ""].join("\r\n")
   }
   return out
 }

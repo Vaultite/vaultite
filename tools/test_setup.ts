@@ -163,6 +163,15 @@ if (process.platform === "win32") {
   const out = execFileSync("cmd.exe", ["/d", "/c", wv.path, "--help"], { encoding: "utf8", env: { SystemRoot: process.env.SystemRoot, PATH: "C:\\Windows\\System32" } })
   check("vau on Windows: vau.cmd runs with no node on the PATH", /vau: drive Vaultite/.test(out), out.slice(0, 200))
 }
+{
+  const { vauShims } = await import("../core/vaushims.ts")
+  const home = "C:\\Users\\Zoë", vars = { LOCALAPPDATA: `${home}\\AppData\\Local`, APPDATA: `${home}\\AppData\\Roaming`, USERPROFILE: home }
+  const zoe = vauShims({ exe: `${vars.LOCALAPPDATA}\\Programs\\vaultite\\Vaultite.exe`, script: `${vars.LOCALAPPDATA}\\Programs\\vaultite\\resources\\app\\bin\\vau`,
+    env: { VAULTITE_USER_DATA: `${vars.APPDATA}\\Vaultite 100%` }, mark: "test", vars }, "win32")["vau.cmd"]
+  check("vau on Windows: vau.cmd names a home with more than ASCII through its variables (cmd reads it in the console's code page)", /^[\x00-\x7f]*$/.test(zoe) &&
+    zoe.includes('"%LOCALAPPDATA%\\Programs\\vaultite\\Vaultite.exe" "%LOCALAPPDATA%\\Programs\\vaultite\\resources\\app\\bin\\vau" %*') &&
+    zoe.includes('set "VAULTITE_USER_DATA=%APPDATA%\\Vaultite 100%%"'), zoe)
+}
 check("vau on Windows: a made-up home never touches the registry", !/PATH/.test(S.installVau({ ...ww, home: path.join(tmp, "winhome2") }).did))
 
 // ---------- vau in WSL: the script, with a stand-in wslpath and Windows executable ----------
