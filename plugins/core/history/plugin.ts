@@ -15,9 +15,8 @@ const HOUR = 3600_000
 type Stat = { mtime: number; size: number; ns?: string }
 /** What's kept for a file: its head's stat and hash, and when its last snapshot was taken (ms). */
 type Meta = Stat & { path: string; hash: string; last: number; gone?: boolean }
-/** `version`: the vault's version at the last comparison (nothing to compare while it's the same). */
-/** `seen`: each file's stat (the index's object) at the last look: one still the same isn't compared again. */
-/** `saving`: the index's write, due a moment after the heads changed. */
+/** `version`: the vault's version at the last comparison (nothing to compare while it's the same); `seen`: each file's
+ *  stat at the last look (one still the same isn't compared again); `saving`: the index's write, due after heads change. */
 type State = { root: string; heads: Map<string, Meta>; skip: Map<string, string>; pruned: number; version: number; seen: Map<string, object>
   saving: ReturnType<typeof setTimeout> | null }
 /** Every followed file's head (its meta.json's), kept together; each meta.json stays what's true, the index may lag it. */
