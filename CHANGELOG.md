@@ -222,7 +222,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   last screen instead of an empty one.
 - **No stray focus ring at launch on Windows**: a vault window opened with its vault menu ringed, as if tabbed to.
 - **Slides export as HTML**: Export slides as HTML (the palette, a note's menu) saves the deck as one file that
-  presents itself in any browser, with its images, fragments and speaker notes (S), as drawn in the app.
+  presents itself in any browser, with its images, fragments, speaker notes (S), theme and colour scheme, as drawn in
+  the app.
 - **Shortcuts name Enter and Esc on Windows and Linux**: tooltips and the palette read Ctrl+Enter and Esc, not a Mac's
   ↵ and esc, and find's buttons no longer show ⇧↵ there.
 - **Tables jump like a spreadsheet**: in a note's table, ⌘ or Ctrl and an arrow goes to the end of the filled cells

@@ -45,7 +45,7 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
   that's a CSS file (`css/my-theme.css`, also found in `.obsidian/plugins/obsidian-advanced-slides/`) or an https
   address: stylesheets kept to the deck like its `<style>`, before it, shown again when one changes.
 - "Export slides as HTML" (the palette, the note's menu) saves the deck as one HTML file that presents itself in any
-  browser (keys, clicks, swipes, fragments; S its notes), its images inside it.
+  browser (keys, clicks, swipes, fragments; S its notes), its images inside it, in its theme and the app's scheme.
 - Frontmatter `width` and `height` (960 × 700): the shape of a slide with placed grids, and what their px are of;
   `margin`, `minScale`, `maxScale` (reveal's: 1 is the deck's width) bound how it's scaled; `center: false` puts
   slides at the top.

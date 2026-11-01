@@ -470,6 +470,22 @@ await page.close()
   await pp.screenshot({ path: `${OUT}media-slides-export-layouts.png` })
   await pp.close(); await page.close()
 }
+// … and its theme, laid out as in the presentation.
+{
+  page = await open({ viewport: { width: 1280, height: 800 }, acceptDownloads: true })
+  await put(LAYOUTS, "---\ntheme: night\n---\n\n## Themed\n\nSome text\n")
+  await page.goto(`${B}#file/${enc(LAYOUTS)}`); await wait(1500)
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), palette(page, "Export slides as HTML", 600)])
+  const file = `${OUT}media-slides-export-theme.html`
+  await dl.saveAs(file)
+  const pp = await open({ viewport: { width: 1280, height: 800 } })
+  await pp.goto(`file://${file}`); await wait(800)
+  const t = await pp.evaluate(() => { const h = document.querySelector("section.on h2"), p = document.querySelector("section.on p"), f = document.querySelector("section.on .slide-fit")
+    return { theme: document.querySelector("[data-deck]").dataset.deckTheme, font: getComputedStyle(h).fontFamily, size: getComputedStyle(p).fontSize, align: getComputedStyle(p).textAlign, w: f.offsetWidth } })
+  check("export: a theme's look and layout (night: Montserrat, 40px of a 960 slide, centred)", t.theme === "night" && t.font.startsWith("Montserrat") && t.size === "40px" && t.align === "center" && t.w === 960, t)
+  await pp.screenshot({ path: `${OUT}media-slides-export-theme.png` })
+  await pp.close(); await page.close()
+}
 
 // ---------- slides themes: reveal's themes in the app's colours ----------
 const themedDeck = (theme, extra = "") => `---\ntheme: ${theme}\n---\n\n${extra}# Launch plan\nA short deck\n\n---\n\n## Why now\n\n- Customers asked for **it**\n- A [link](https://example.com) and \`code\`\n`
