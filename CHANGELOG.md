@@ -118,6 +118,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `css/…` themes too) or an address style the presentation, and only it; an edited one shows at once.
 - **Pin in the inbox**: Pin (a row's menu, a session's sheet, several selected, `vau inbox pin`) keeps a thread or a
   result on top under Pinned whatever it waits on, until it's done or unpinned.
+- **Audio covers are always shown as images**: a cover whose tag names a type that isn't an image is served as a
+  JPEG.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
   cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its

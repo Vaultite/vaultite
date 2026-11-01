@@ -64,6 +64,11 @@ export default async ($: VaultTest) => {
     const tag = readMeta(path.join(VAULT, "Shelf/Log.mp3"))
     check("mp3: ID3 title, UTF-16 author, the picture, CHAP frames in time order", tag.title === "The keeper's log" && tag.artist === "Alice Park" && tag.cover?.bytes.length === 9 &&
       tag.chapters.map((c) => `${c.t} ${c.title}`).join("|") === "0 Opening|90 The storm", tag)
+    // (a tag can name any type: a page served from the app's origin would run with its access)
+    fs.writeFileSync(path.join(VAULT, "Shelf/Page.mp3"), Buffer.from(fx.mp3().toString("latin1").replace("image/jpeg", "text/html;"), "latin1"))
+    const cover = await $.app.run("GET", ["player", "cover"], { path: "Shelf/Page.mp3" }, {})
+    const coverType = cover.body instanceof $.Text ? cover.body.type : ""
+    check("player/cover: a picture is only ever served as an image", cover.status === 200 && /^image\/(jpeg|png|gif|webp)$/.test(coverType), coverType)
     let m: Any
     ;[code, m] = await api("GET", "player/meta?path=Shelf/Log.m4b")
     check("player/meta: chapters, and whether there's a cover", code === 200 && m.chapters.length === 3 && m.cover === true && m.artist === "Alice Park", m)

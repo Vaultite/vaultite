@@ -180,5 +180,7 @@ function picture(body: Buffer): Meta["cover"] {
   const mime = body.toString("latin1", 1, m) || "image/jpeg"
   let i = m + 2 // (the picture type byte)
   if (enc === 1 || enc === 2) { while (i + 1 < body.length && (body[i] || body[i + 1])) i += 2; i += 2 } else { while (i < body.length && body[i]) i++; i++ }
-  return i < body.length ? { mime: mime.includes("/") ? mime : `image/${mime.toLowerCase()}`, bytes: Buffer.from(body.subarray(i)) } : undefined
+  // (the tag names any type it likes: only an image's is kept, so a cover never runs as a page)
+  const type = (mime.includes("/") ? mime : `image/${mime}`).toLowerCase().replace("image/jpg", "image/jpeg")
+  return i < body.length ? { mime: /^image\/(jpeg|png|gif|webp)$/.test(type) ? type : "image/jpeg", bytes: Buffer.from(body.subarray(i)) } : undefined
 }

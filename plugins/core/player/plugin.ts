@@ -71,7 +71,7 @@ plugin.route("GET", "player/meta", async (req) => {
 plugin.route("GET", "player/cover", async (req) => {
   const cover = (await metaOf(mediaPath(req.query.path)).catch(() => null))?.cover
   if (!cover) throw new HTTPError(404, "no cover in it")
-  return new Text(cover.bytes, cover.mime, { "Cache-Control": "private, max-age=86400" })
+  return new Text(cover.bytes, cover.mime, { "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" })
 })
 
 plugin.onMove((from, to) => {
