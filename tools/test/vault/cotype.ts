@@ -35,8 +35,8 @@ export default async ($: VaultTest) => {
   check("cotype: each window gets the note as the file has it", [owner, ada, rex].every((w) => w.text.toString() === "# N\n\nfirst line\n"))
 
   {
-    // A window that saves alone asks `bare`: alone in the note, no doc (its file is what it types into); with another
-    // there, the doc.
+    // A window that saves alone asks `bare`: no doc (its file is what it types into), only who's there; with another
+    // there, it saves and asks again for the doc.
     write("Co/Bare.md", "Bare\n")
     await $.vault.sync()
     const one = win("Lucas", { who: you }, "Co/Bare.md"), two = win("Lucas", { who: you }, "Co/Bare.md")
@@ -46,8 +46,10 @@ export default async ($: VaultTest) => {
     co.heard(two.ws, { t: "y-open", path: "Co/Bare.md", bare: true }, "Co/Bare.md")
     await co.settled()
     const second = two.got.find((m) => m.t === "y-state")
-    check("cotype: alone, a bare open gets the room without the doc; a second window the doc", first && first.u === undefined && first.others === 0 &&
-      second?.others === 1 && two.text.toString() === "Bare\n" && one.got.some((m) => m.t === "y-peers" && m.others === 1), [first, second?.others])
+    co.heard(two.ws, { t: "y-open", path: "Co/Bare.md" }, "Co/Bare.md")
+    await co.settled()
+    check("cotype: a bare open gets who's there without the doc; asked again, the doc", first && first.u === undefined && first.others === 0 &&
+      second?.u === undefined && second?.others === 1 && two.text.toString() === "Bare\n" && one.got.some((m) => m.t === "y-peers" && m.others === 1), [first, second])
     one.close(); two.close()
   }
 

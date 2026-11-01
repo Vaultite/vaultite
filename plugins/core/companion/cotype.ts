@@ -14,6 +14,8 @@ import { span } from "./text"
  *  (`bound`, while `others` are in it too) and the autosave's stand-down meanwhile (`release`). */
 type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; views: Set<EditorView>; ready: boolean; bound: boolean; others: number
   release: (() => void) | null; joining: boolean
+  /** The doc asked for and not here yet: asked again meanwhile, it would come twice. */
+  asking: boolean
   /** Saving alone even with others (the server says: a guest in a note too long to type in together). */
   alone: boolean
   /** Saved alone, just before asking for the doc: the text then, so what's typed till it comes isn't lost. */
@@ -42,7 +44,7 @@ function fresh(r: Room) {
 }
 
 function open(path: string): Room {
-  const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
+  const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, asking: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
   fresh(r)
   rooms.set(path, r)
   if (getState().connected) say({ t: "y-open", path, bare: true })
@@ -98,16 +100,17 @@ function away(r: Room) {
   if (r.remote && r.bound) r.settled = r.synced ?? r.text.toString()
   r.remote = false
   r.ready = false
+  r.asking = false
   r.others = 0
 }
 
 /** Someone else came: what was typed here alone is saved first, then the doc as the server has it is typed into. */
 async function together(r: Room) {
-  if (r.bound || r.joining) return
+  if (r.bound || r.joining || r.asking) return
   r.joining = true
   try { await settleFile(r.path) } finally { r.joining = false }
   r.settled = [...r.views].find((v) => v.dom.isConnected)?.state.doc.toString() ?? null
-  if (rooms.get(r.path) === r && (r.others > 0 || r.remote) && getState().connected) say({ t: "y-open", path: r.path })
+  if (rooms.get(r.path) === r && (r.others > 0 || r.remote) && getState().connected) { r.asking = true; say({ t: "y-open", path: r.path }) }
 }
 
 function close(r: Room) {
@@ -122,6 +125,7 @@ function close(r: Room) {
 function heard(m: Record<string, unknown>) {
   const r = typeof m.path === "string" ? rooms.get(m.path) : undefined
   if (!r) return
+  if (m.t === "y-state") r.asking = false
   if (m.t === "y-state" && typeof m.u !== "string") {
     // (alone in it: saving as ever, the doc asked for once someone comes)
     r.others = Number(m.others) || 0
