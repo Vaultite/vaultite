@@ -1,5 +1,5 @@
-// Keyboard lists (web/src/core/keylist.ts): the file tree, sidebars, menus, areas, resizing edges, the palette and a
-// canvas, all from the keyboard. Throwaway only.
+// Keyboard lists (web/src/core/keylist.ts): the file tree, sidebars, menus, areas, resizing edges, the palette, a tab
+// bar and a canvas, all from the keyboard. Throwaway only.
 //   node web/qa/keylists.mjs <base url> [out dir]
 import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
@@ -93,6 +93,29 @@ await page.keyboard.press("Tab"); await page.keyboard.press("Tab"); await wait(1
 check("the palette: Tab stays in its field", await page.evaluate(() => document.activeElement?.tagName === "INPUT" && !!document.activeElement.closest("[role=dialog]")))
 await page.keyboard.press("Escape"); await wait(300)
 check("the palette: Escape closes it", !await page.evaluate(() => !!document.querySelector("[role=dialog][aria-modal=true]:not(dialog)")))
+
+// ---- a tab bar: one Tab stop (in at its shown tab, out past every tab), the arrows, Home, End, Delete
+const ws = page.locator("section[data-group][data-focused]")
+for (const h of ["settings", "view/files", "view/search"]) {
+  await ws.locator("button[aria-label='New tab']").click(); await wait(400)
+  await page.evaluate((h) => { location.hash = h }, h); await wait(900)
+}
+const tabsNow = () => ws.locator("[role=tab]").evaluateAll((ts) => ts.map((t) => t.textContent.trim()))
+const onTab = () => page.evaluate(() => document.activeElement?.matches("[role=tab]") ? document.activeElement.textContent.trim() : document.activeElement?.getAttribute("aria-label"))
+const names = await tabsNow(), shown = await ws.locator("[role=tab][aria-selected=true]").textContent()
+await ws.locator("button[aria-label='Move this pane']").focus()
+await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Shift+Tab"); await wait(150)
+check("tab bar: Shift+Tab into it lands on the shown tab, not an X", (await onTab()) === shown.trim(), await onTab())
+await page.keyboard.press("Home"); await wait(100)
+check("tab bar: Home, the first tab", (await onTab()) === names[0], await onTab())
+await page.keyboard.press("ArrowRight"); await wait(100)
+check("tab bar: ArrowRight, the next", (await onTab()) === names[1], await onTab())
+await page.keyboard.press("ArrowLeft"); await page.keyboard.press("ArrowLeft"); await wait(100)
+check("tab bar: ArrowLeft goes round to the last", (await onTab()) === names.at(-1), await onTab())
+await page.keyboard.press("Tab"); await wait(100)
+check("tab bar: Tab leaves it, past every tab and X", (await onTab()) === "New tab", await onTab())
+await page.keyboard.press("Shift+Tab"); await page.keyboard.press("End"); await page.keyboard.press("Delete"); await wait(400)
+check("tab bar: Delete closes the tab with the keyboard", (await tabsNow()).length === names.length - 1, await tabsNow())
 
 // ---- a canvas
 await page.goto(`${B}#file/${encodeURIComponent("Projects/Lighthouse/Launch plan.canvas")}`); await wait(2500)

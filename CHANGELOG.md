@@ -21,6 +21,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   back, ⌘↵ opens it in Settings. The one-value commands (Use dark theme...) stay for the menu bar, hotkeys and `vau`.
 - **New in a base**: a base's bar has New, as in Obsidian: a note in the folder its filters ask for, with the
   properties and tags they test for (`status == "reading"`, `file.hasTag("book")`), opened in a tab beside it.
+- **A tab bar is one Tab stop**: Tab goes into a pane's tabs at the one shown and out past them all, instead of
+  stopping at every tab; the arrows, Home and End move between tabs, and Enter shows one.
 - **Format note**: the Linter plugin tidies a note's Markdown by rules you choose in its settings (trailing spaces,
   extra blank lines, space around headings, one kind of bullet), leaving frontmatter, code and math alone; an AI can
   format a note or a folder (`vau linter.format`).

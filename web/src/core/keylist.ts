@@ -237,6 +237,36 @@ if (typeof window !== "undefined") {
   })
 }
 
+// ---------- tab bars: one Tab stop, the arrows between tabs (a tab list's way) ----------
+const TAB = "[role=tablist] [role=tab]"
+const currentTab = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(TAB) ? a : null }
+const barOf = (t: HTMLElement) => t.closest<HTMLElement>("[role=tablist]")!
+const tabsIn = (bar: HTMLElement) => [...bar.querySelectorAll<HTMLElement>("[role=tab]")].filter((t) => barOf(t) === bar && t.getClientRects().length > 0 && !t.closest("[inert]"))
+const ofTabs = (bar: HTMLElement) => (el: HTMLElement) => el.matches("[role=tab]") && barOf(el) === bar
+
+/** Move the keyboard to another tab of its bar: `by` along (round from the end), or to the first or last. */
+function moveInTabs(by: 1 | -1 | "first" | "last") {
+  const t = currentTab()
+  const all = t ? tabsIn(barOf(t)) : []
+  if (!all.length) return
+  const i = by === "first" ? 0 : by === "last" ? all.length - 1 : (all.indexOf(t!) + by + all.length) % all.length
+  all[i].focus()
+}
+function tabPastTabs(back: boolean) {
+  const t = currentTab()
+  if (t) tabPast(t, tabsIn(barOf(t)), ofTabs(barOf(t)), back)
+}
+if (typeof window !== "undefined") {
+  // Tabbed into (either way), a bar gives the keyboard to its shown tab.
+  addEventListener("focusin", (e) => {
+    const el = e.target instanceof HTMLElement ? e.target : null, bar = el?.closest<HTMLElement>("[role=tablist]")
+    if (!el || !bar || !ofTabs(bar)(el) || !byTab(e)) return
+    if (e.relatedTarget instanceof HTMLElement && ofTabs(bar)(e.relatedTarget)) return
+    const shown = tabsIn(bar).find((t) => t.getAttribute("aria-selected") === "true")
+    if (shown && shown !== el) shown.focus()
+  })
+}
+
 // ---------- what has the keyboard ----------
 /** What has the keyboard, unless that's nothing. */
 const focused = () => { const a = document.activeElement; return a instanceof HTMLElement && a !== document.body ? a : null }
@@ -306,6 +336,12 @@ registerCommands([
   { id: "radio:previous", name: "Move to the previous choice", keys: ["ArrowLeft", "ArrowUp"], when: () => !!currentRadio(), run: () => moveInRadios(-1), icon: ArrowLeft },
   { id: "radio:tab-out", name: "Move past the choices", keys: ["Tab"], when: () => !!currentRadio(), run: () => tabPastRadios(false), icon: StepForward },
   { id: "radio:tab-back", name: "Move before the choices", keys: ["Shift+Tab"], when: () => !!currentRadio(), run: () => tabPastRadios(true), icon: StepBack },
+  { id: "tabs:focus-next", name: "Move to the next tab in its bar", keys: ["ArrowRight"], when: () => !!currentTab(), run: () => moveInTabs(1), icon: ArrowRight },
+  { id: "tabs:focus-previous", name: "Move to the previous tab in its bar", keys: ["ArrowLeft"], when: () => !!currentTab(), run: () => moveInTabs(-1), icon: ArrowLeft },
+  { id: "tabs:focus-first", name: "Move to the first tab in its bar", keys: ["Home"], when: () => !!currentTab(), run: () => moveInTabs("first"), icon: ArrowUpToLine },
+  { id: "tabs:focus-last", name: "Move to the last tab in its bar", keys: ["End"], when: () => !!currentTab(), run: () => moveInTabs("last"), icon: ArrowDownToLine },
+  { id: "tabs:tab-out", name: "Move past the tabs", keys: ["Tab"], when: () => !!currentTab(), run: () => tabPastTabs(false), icon: StepForward },
+  { id: "tabs:tab-back", name: "Move before the tabs", keys: ["Shift+Tab"], when: () => !!currentTab(), run: () => tabPastTabs(true), icon: StepBack },
   // (The menu key opens it by itself; Macs have none. A text field or a terminal keeps the key, and the browser's
   // menu; from the palette it waits for the keyboard to be given back: core/focus.ts.)
   { id: "focus:menu", name: "Open the menu of what has the keyboard", keys: ["Shift+F10"], words: "context menu right-click", when: () => !!focused(),
