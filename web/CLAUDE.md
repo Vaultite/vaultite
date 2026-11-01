@@ -67,7 +67,8 @@
   after UI changes, `sheets.mjs` after sheet changes, `appearance.mjs` after styling, `scrollers.mjs` after a new
   scroller.
 - Counts that only go down: `counts.mjs` (components React renders per keystroke and per outside change, against
-  `counts.json`); after a win, run it with `--ratchet` and commit the lowered limits. `loading.mjs` fails on any shift
+  `counts.json`) and `requests.mjs` (requests per flow, `requests.json`); after a win, run it with `--ratchet` and
+  commit the lowered limits. `loading.mjs` fails on any shift
   in the sidebars or the status bar, however small: one scores a few thousandths, under any CLS limit.
 - QA runs on Playwright's Chromium (`CHROME` in `web/qa/lib/qa.mjs`): a headless Google Chrome left running hides the
   user's Chrome.
