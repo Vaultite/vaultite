@@ -189,8 +189,10 @@ function DrawerBody({ side, store, file, tab, vaultName, vaultMenu }: { side: Si
   const { tab: on } = route()
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col px-2 pt-[max(env(safe-area-inset-top),0.5rem)] [zoom:1.2]">
-        <SidebarPanels side={side} store={store} open phone file={file} tab={tab} />
+      <div className="flex min-h-0 flex-1 flex-col px-2 pt-[max(env(safe-area-inset-top),0.5rem)]">
+        <div data-size-up className="flex min-h-0 flex-1 flex-col">
+          <SidebarPanels side={side} store={store} open phone file={file} tab={tab} />
+        </div>
       </div>
       {side === "left" && (
         <div className="shrink-0 border-t-[0.5px] border-border pt-1.5">

@@ -316,6 +316,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   section in a dashboard's text has its gap above, no longer touching a table.
 - **Dashboards open faster**: a block's options are read once, not four times per redraw; switching to a dashboard's
   tab on a phone spends about 340 ms less reading YAML.
+- **Phone drawers at phone sizes**: the drawers' pinned files, panels and headings are 17px with 44px rows (they were
+  15.6px and 34px), as every other list of the sidebar's on a phone.
 
 ## 0.8.0 (2026-10-24)
 
