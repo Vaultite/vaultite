@@ -134,6 +134,9 @@ export default async ($: VaultTest) => {
       check("block-day: the app finds where a missing day's note goes, without making it", dayAt.path === "Daily/2026-09-30.md" && !dayAt.exists && !exists("Daily/2026-09-30.md"), dayAt)
       ;[, dayAt] = await api("GET", "daily-notes/day?date=2026-09-22")
       check("block-day: an existing day's note", dayAt.path === "Daily/2026-09-22.md" && dayAt.exists, dayAt)
+      const [, month] = await api("GET", "daily-notes/month?month=2026-09")
+      check("daily-notes month: the month's notes by date, with their words; other months' left out", month.month === "2026-09" && month.days["2026-09-22"]?.path === "Daily/2026-09-22.md" &&
+        month.days["2026-09-22"].words > 3 && !month.days["2026-09-30"] && Object.keys(month.days).every((d) => d.startsWith("2026-09-")), month)
       fs.rmSync(path.join(VAULT, "Dashboards/Qa day.md"))
       // iCloud's copies of it (two Macs made it at once): one with nothing of its own merges in, one with text stays.
       write("Daily/2026-09-22.md", "---\ntype: day\ndone: [Gym]\n---\n\nPlan the week.\n")

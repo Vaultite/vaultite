@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
+import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight } from "lucide-react"
 import { addDays, Button, definePlugin, Empty, FileEditor, get, Loading, op, openFile, Panel, today, type BlockCtx } from "@vaultite"
+import { MonthCalendar, MonthPanel } from "./Month"
 import { DailyPanel, DailyView, dayName, inSentence, ISO, nav, openDay, shownDay, useDay, whose } from "./Day"
 
 /** ```block-day: a day's note (or its `section`) edited in place, stepping to other days; a missing one is started
@@ -58,6 +59,13 @@ export default definePlugin({
       tab: () => { const date = shownDay(); return { name: `${whose(date)} note`, open: () => openDay(date, true) } },
       render: (ctx) => <DailyPanel {...ctx} />,
     },
+    // Hidden until shown: the month's daily notes as a calendar, a day opening its note.
+    month: { title: "Month", names: ["calendar", "month", "daily notes calendar"], heading: false, sort: 37, hidden: true, view: "daily-month",
+      flyout: { icon: CalendarRange, width: 280 }, render: (ctx) => <MonthPanel {...ctx} /> },
   },
-  views: { "daily-note": { icon: CalendarDays, title: () => "Daily note", render: ({ store }) => <DailyView store={store} /> } },
+  views: {
+    "daily-note": { icon: CalendarDays, title: () => "Daily note", render: ({ store }) => <DailyView store={store} /> },
+    // (the month panel as a tab)
+    "daily-month": { icon: CalendarRange, title: () => "Month", render: () => <div className="pb-10"><MonthCalendar tab /></div> },
+  },
 })

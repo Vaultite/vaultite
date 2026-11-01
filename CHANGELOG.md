@@ -10,6 +10,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   whole folder in its tooltip, over Show in the file tree.
 - **Activity credits an edit to the call that made it**: an edit just after a refused call (an AI's keep or revert
   of a review) is no longer taken for that call's, so Review names its real writer.
+- **A month of daily notes**: the Month panel (shown from the sidebar's right-click menu, or as a tab) is a calendar
+  with a dot under each day that has a daily note, more for longer ones; a day opens its note, or starts it.
 - **Slides move between slides**: transitions (fade, slide, convex, concave, zoom, at their speeds) and auto-animate,
   as Advanced Slides draws them, instant when the system asks for less motion.
 - **Screen readers find their way around the desktop**: the workspace is one main landmark with each pane named

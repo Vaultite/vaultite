@@ -156,6 +156,18 @@ plugin.route("GET", "daily-notes/day", (req) => {
   return { date, path: dayPath(date), exists: !!plugin.vault.get("days", date) }
 })
 
+/** A month's daily notes (`month`: YYYY-MM, default this one), by date: each one's path and about how many words it
+ *  has (the sidebar's month draws more dots for more). */
+plugin.route("GET", "daily-notes/month", (req) => {
+  const month = /^\d{4}-\d\d$/.test(req.query.month ?? "") ? req.query.month : today().slice(0, 7)
+  const days: Record<string, { path: string; words: number }> = {}
+  for (const d of plugin.vault.items("days")) {
+    const date = str(d.date)
+    if (date.startsWith(`${month}-`)) days[date] = { path: `${d.id}.md`, words: str(d.body).split(/\s+/).filter(Boolean).length }
+  }
+  return { month, days }
+})
+
 /** "Plan" or "## Plan": the heading a `day` block shows. */
 const headingOf = (v: unknown) => (typeof v === "string" ? v.trim().replace(/^#+\s*/, "") : "")
 
