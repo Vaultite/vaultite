@@ -35,8 +35,11 @@ export function cellAt(line: string, ch: number) {
 
 const wide = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|[\u{20000}-\u{3FFFD}]|\p{Extended_Pictographic}|\p{Regional_Indicator}/u
 const segmenter = new Intl.Segmenter()
+const ASCII = /^[\x20-\x7e]*$/
 /** How many columns text takes in a monospace font (CJK and emoji two), as a padded table lines up. */
 export function width(s: string) {
+  // (plain ASCII is one column a character: segmenting every cell was most of drawing a long table)
+  if (ASCII.test(s)) return s.length
   let w = 0
   for (const { segment } of segmenter.segment(s)) w += wide.test(segment) ? 2 : 1
   return w
@@ -60,9 +63,9 @@ export function parseTable(text: string): Table | null {
   }
   // Widths set (Pandoc's relative widths): a separator wider than 72 columns whose dashes aren't just each column padded
   // to its header or its widest cell (with the spaces around it or not), as a formatter or writeTable pads them.
-  const seps = d.map((c) => c.length), widest = seps.map((_, c) => Math.max(3, ...rows.map((r) => width(r.cells[c]))))
+  const seps = d.map((c) => c.length), widest = (c: number) => rows.reduce((m, r) => Math.max(m, width(r.cells[c])), 3)
   const pads = (n: number, w: number) => n === w || n === w + 2
-  const widths = d.length > 1 && lines[1].trim().length > 72 && seps.some((n, c) => !pads(n, widest[c]) && !pads(n, width(head[c]))) ? seps : null
+  const widths = d.length > 1 && lines[1].trim().length > 72 && seps.some((n, c) => !pads(n, widest(c)) && !pads(n, width(head[c]))) ? seps : null
   // Padded so its pipes line up (as a formatter writes it): kept lined up as cells change.
   const w = width(lines[0].trimEnd())
   const padded = !widths && lines.every((l) => width(l.trimEnd()) === w) && /\S {2,}\|/.test(lines.join("\n"))
@@ -95,7 +98,7 @@ export function writeTable(t: Table): string {
   const cols = t.align.length
   const all = (r: Row) => (r.rest ? [...r.cells, ...r.rest] : r.cells)
   if (t.padded) {
-    const w = t.align.map((_, c) => Math.max(3, ...t.rows.map((r) => width(r.cells[c]))))
+    const w = t.align.map((_, c) => t.rows.reduce((m, r) => Math.max(m, width(r.cells[c])), 3))
     const row = (r: Row) => `${t.indent}| ${all(r).map((x, c) => x + " ".repeat(Math.max(0, (w[c] ?? 0) - width(x)))).join(" | ")} |`
     return [row(t.rows[0]), `${t.indent}| ${t.align.map((a, c) => dashes(a, w[c])).join(" | ")} |`, ...t.rows.slice(1).map(row)].join("\n")
   }

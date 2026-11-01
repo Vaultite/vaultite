@@ -65,6 +65,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   let over: Cell | null = null
   /** A row or column being dragged by its grip; `shown`: picked out, once it moved. */
   let dragging: { row: boolean; from: number; shown?: boolean } | null = null
+  /** Cells drawn selected: mark() walks them only then, not a long table's every cell each time it's drawn. */
+  let marked = false
   const id = `table:${++made}`
 
   // The table drawn; its grips and + (aria-hidden: not what Find searches); and the keyboard while cells are selected, a
@@ -104,6 +106,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const paint = () => {
     drawn.classList.remove("is-shared")
     drawn.innerHTML = env.render(shown)
+    marked = false
     markdownDrawn(drawn, blockLines(env.line, () => shown, () => view.state.doc.toString()))
     const t = drawn.querySelector("table")
     grid = null
@@ -164,7 +167,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   const clamp = (x: Cell): Cell => ({ r: Math.max(0, Math.min(x.r, table!.rows.length - 1)), c: Math.max(0, Math.min(x.c, table!.align.length - 1)) })
   const bounds = () => sel && { r0: Math.min(sel.a.r, sel.h.r), r1: Math.max(sel.a.r, sel.h.r), c0: Math.min(sel.a.c, sel.h.c), c1: Math.max(sel.a.c, sel.h.c) }
   const inSel = (r: number, c: number) => { const b = bounds(); return !!b && r >= b.r0 && r <= b.r1 && c >= b.c0 && c <= b.c1 }
-  const mark = () => grid?.forEach((row, r) => row.forEach((cell, c) => cell.classList.toggle("is-selected", inSel(r, c))))
+  const mark = () => { if (!sel && !marked) return; marked = !!sel; grid?.forEach((row, r) => row.forEach((cell, c) => cell.classList.toggle("is-selected", inSel(r, c)))) }
   /** The selected cells' text, as edited. */
   const picked = () => { const b = bounds()!; return table!.rows.slice(b.r0, b.r1 + 1).map((row) => row.cells.slice(b.c0, b.c1 + 1).map(shownText)) }
 
