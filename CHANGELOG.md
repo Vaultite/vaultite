@@ -263,7 +263,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   into notes with their tags, dates, to-dos, tables and attachments, Keep's Takeout into notes with checklists as tasks
   and labels as tags, Bear's backup into notes with its highlights, tags and pictures, and any app's HTML pages (one,
   or a zip) into notes with links and images kept, Roam's JSON into notes of nested lists with tasks and daily pages by
-  date, and a CSV table into a note per row with its columns as properties;
+  date, and a CSV table into a note per row with its columns as properties (a repeated column numbered, codes like
+  02139 kept as written);
   importing again adds only what's new.
 - **The graph keeps up in big vaults**: after an edit only the changed note's links are worked out again (about 3x
   less work on the server at 50,000 notes).

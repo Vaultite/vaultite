@@ -36,5 +36,8 @@ export function parseCsv(text: string): string[][] {
 export function csvRecords(text: string): Record<string, string>[] {
   const [head, ...rows] = parseCsv(text)
   if (!head) return []
-  return rows.filter((r) => r.some((f) => f !== "")).map((r) => Object.fromEntries(head.map((h, j) => [h, r[j] ?? ""])))
+  // a repeated column name is numbered ("Tags 2") so neither column's values are lost
+  const seen = new Map<string, number>()
+  const keys = head.map((h) => { const n = (seen.get(h) ?? 0) + 1; seen.set(h, n); return n > 1 ? `${h} ${n}` : h })
+  return rows.filter((r) => r.some((f) => f !== "")).map((r) => Object.fromEntries(keys.map((h, j) => [h, r[j] ?? ""])))
 }

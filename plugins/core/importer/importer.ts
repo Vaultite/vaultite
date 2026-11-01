@@ -407,7 +407,7 @@ export function rowNote(row: Record<string, string>): { title: string; fm: Recor
     const v = (row[k] ?? "").trim(), key = k.trim()
     if (!v || !key) continue
     if (BODY.test(key) && !body) { body = v; continue }
-    fm[key] = /^-?\d+(\.\d+)?$/.test(v) && v.length < 16 ? Number(v) : v
+    fm[key] = /^-?(0|[1-9]\d*)(\.\d*[1-9])?$/.test(v) && v.length < 16 ? Number(v) : v
   }
   return { title, fm, body }
 }
