@@ -545,7 +545,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           </PanelRow>
         ))}
         {rest.map(row)}
-        {!l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you</p>}
+        {!l.pinned.events.length && !l.pinned.results.length && !l.needs.length && !l.review.length && !rest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing needs you.</p>}
         <FoldButton more={more} all={all} toggle={toggle} className="h-7 rounded-[5px] pl-1.5 text-[13px] hover:bg-foreground/[0.04]" />
       </div>
     </div>
