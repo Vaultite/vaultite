@@ -2,7 +2,6 @@
 // panes, as commands the palette lists and hotkeys.json rebinds. Off until turned on, like any vault plugin.
 import { useEffect } from "react"
 import { addKeys, definePlugin, useVaultChange, type PluginCommand, type Store } from "@vaultite"
-import { vimExtension } from "./editor"
 import * as app from "./app"
 import * as lists from "./lists"
 import { setExStore } from "./ex"
@@ -113,7 +112,8 @@ function Background({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  editor: (ctx) => vimExtension(ctx),
+  // (CodeMirror's Vim and the editor's side loaded with the first editor, not at launch)
+  editor: (ctx) => import("./editor").then((m) => m.vimExtension(ctx)),
   commands,
   keyGroups: {
     "Space": "Leader", "Space F": "Files", "Space W": "Windows", "Space T": "Terminals", "Space G": "Graph",

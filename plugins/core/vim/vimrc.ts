@@ -2,7 +2,6 @@
 // let mapleader, exmap, run in every editor before you type and again when it changes; a bad line is reported once.
 import { notify, openFile, post, readFile, notifyError } from "@vaultite"
 import type { CM, Vim } from "./editor"
-import { installKeys, loadVim } from "./editor"
 import { VIMRC } from "./state"
 
 export const TEMPLATE = `" Vim's commands for every editor, run before you type (like Neovim's init.vim).
@@ -65,6 +64,7 @@ function run(cm: CM, vim: Vim, src: string) {
 export async function applyVimrc(cm: CM) {
   text ??= await fetchText()
   if (applied === text) return
+  const { installKeys, loadVim } = await import("./editor")
   const { Vim } = await loadVim()
   // A vimrc that ran before: its mappings go (and this plugin's own keys come back) before the new one runs.
   if (applied !== null) { Vim.mapclear(); installKeys(Vim) }

@@ -1,7 +1,7 @@
 // Moving through what's on screen outside the editor: the scroller j/k move (a sheet's, else the focused pane's),
 // headings (a note's from its text, so undrawn ones count) and the note's editor itself, for `i`.
-import { EditorView } from "@codemirror/view"
-import { currentFile, glide, runCommandById } from "@vaultite"
+import type { EditorView } from "@codemirror/view"
+import { currentFile, editorAt, glide, runCommandById } from "@vaultite"
 import { setPeek } from "./state"
 
 const LINE = 60
@@ -59,7 +59,7 @@ export function mainEditor(root = document.getElementById("main-scroll")): Edito
   if (!root) return null
   for (const el of root.querySelectorAll<HTMLElement>(".cm-editor")) {
     if (el.parentElement?.closest(".cm-editor")) continue
-    const v = EditorView.findFromDOM(el)
+    const v = editorAt(el)?.view
     if (v) return v
   }
   return null
@@ -114,7 +114,7 @@ function lineInSight(view: EditorView, el: HTMLElement) {
 export function editHere() {
   const path = currentFile()
   const view = mainEditor()
-  if (view?.state.facet(EditorView.editable)) {
+  if (view?.contentDOM.contentEditable === "true") {
     const el = scroller() ?? document.getElementById("main-scroll")
     const head = view.state.selection.main.head, box = el?.getBoundingClientRect()
     const y = view.coordsAtPos(head)?.top

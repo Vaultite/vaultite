@@ -5,11 +5,11 @@ import { Player } from "./Player"
 import { MiniPlayer } from "./Mini"
 import { QueueBlock } from "./Queue"
 import { Resume } from "./steady"
-import { timestamps } from "./timestamps"
 
 export default definePlugin({
   player: Player,
   background: () => <><Resume /><MiniPlayer /></>,
-  editor: timestamps,
+  // (with the first editor, not at launch: CodeMirror comes with it)
+  editor: (ctx) => import("./timestamps").then((m) => m.timestamps(ctx)),
   blocks: { queue: ({ store, options }) => <QueueBlock store={store} options={options} /> },
 })

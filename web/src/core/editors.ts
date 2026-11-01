@@ -37,6 +37,8 @@ export function registerEditor(e: OpenEditor) {
 
 /** The editor drawn by this view, if it's one of the app's. */
 export const editorOf = (view: EditorView) => open.find((e) => e.view === view) ?? null
+/** The app's editor whose element (.cm-editor) this is, if one is (without loading CodeMirror, as its findFromDOM would). */
+export const editorAt = (el: Element) => open.find((e) => e.view.dom === el) ?? null
 
 /** The editor the user means now, or null (the focused tab isn't a text file: a dashboard's grid, a terminal). */
 export function currentEditor(): OpenEditor | null {
