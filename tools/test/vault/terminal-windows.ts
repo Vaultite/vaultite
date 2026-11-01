@@ -173,12 +173,16 @@ setTimeout(() => process.exit(0), 120000)
     check("windows: an agent in PowerShell starts through the starter with its prompt whole, its hooks marking working then idle",
       started?.agent === "claude" && shown.includes('FAKE-CLAUDE prompt=say "hi" & 100% done') && working === "working" && idle === "idle", [started, shown.slice(-1500), working, idle])
 
-    // Codex isn't installed here: the starter says so, the terminal is marked missing.
+    // Codex isn't installed here (the harness's stand-in off PATH): the starter says so, the terminal is marked missing.
     let missing: Any = null
-    ;[, started] = await api("POST", "terminals/codex-winmiss01")
-    missing = await waitFor(async () => { const [, r] = await api("GET", "terminals/sessions"); return (r.sessions as Any[]).find((x) => x.id === "codex-winmiss01" && x.missing) ?? null }, 60_000, 500)
-    shown = await screenOf("codex-winmiss01")
-    await api("DELETE", "terminals/codex-winmiss01")
+    const had = process.env.PATH
+    process.env.PATH = had!.split(path.delimiter).filter((d) => d !== $.AGENTS_BIN).join(path.delimiter)
+    try {
+      ;[, started] = await api("POST", "terminals/codex-winmiss01")
+      missing = await waitFor(async () => { const [, r] = await api("GET", "terminals/sessions"); return (r.sessions as Any[]).find((x) => x.id === "codex-winmiss01" && x.missing) ?? null }, 60_000, 500)
+      shown = await screenOf("codex-winmiss01")
+      await api("DELETE", "terminals/codex-winmiss01")
+    } finally { process.env.PATH = had }
     check("windows: an agent that isn't installed is marked missing, its terminal saying why", !!missing && /codex: not found/.test(shown), [missing, shown])
   } finally {
     term.patchSettings({ shell: null })
