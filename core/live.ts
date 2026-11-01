@@ -9,7 +9,7 @@ import type { WebSocket } from "ws"
 import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 
-const QUIET = 100, MAX = 500, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
+const QUIET = 20, GAP = 100, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask, plugins' "<id>:<name>"),
  *  only through ops, never POST /api/ui: the dev ones are the owner's. Seconds an ask may wait (a person's are longer). */
 const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600], ["tabs", 30]])
@@ -46,7 +46,6 @@ export class Live {
   private keyed = new Map<string, () => void>() // asks given a key, which "ask-cancel" ends (answered on another machine)
   private pending = new Set<string>()
   private all = false
-  private first = 0
   private timer: ReturnType<typeof setTimeout> | null = null
   private watcher: fs.FSWatcher | TreeWatcher | null = null
   private pinger: ReturnType<typeof setInterval> | null = null
@@ -107,11 +106,16 @@ export class Live {
     if (rel === null) this.all = true
     else if (!ignored(rel)) this.pending.add(rel)
     else return
-    const now = Date.now()
-    if (!this.timer) this.first = now
-    if (this.timer) clearTimeout(this.timer)
-    this.timer = setTimeout(() => this.flush(), Math.max(0, Math.min(QUIET, this.first + MAX - now)))
+    this.soon()
   }
+
+  /** Changes go out QUIET ms after the first (one write's events together), else GAP ms after the last went: under a
+   *  stream of writes each waits at most that long, never for the stream to pause. */
+  private soon() {
+    if (this.timer || this.flushing || this.closed) return
+    this.timer = setTimeout(() => this.flush(), Math.max(QUIET, this.went + GAP - Date.now()))
+  }
+  private went = 0 // when the last flush started
 
   private again: ReturnType<typeof setTimeout> | null = null
 
@@ -130,6 +134,7 @@ export class Live {
   private flushing = false
   private async flush() {
     this.timer = null
+    this.went = Date.now()
     const paths = this.all ? null : this.narrow([...this.pending]).sort()
     this.pending.clear()
     this.all = false
@@ -142,6 +147,7 @@ export class Live {
     } finally {
       this.flushing = false
     }
+    if (this.pending.size || this.all) this.soon() // (heard meanwhile)
     // A folder gone from disk is only let go of a few seconds later (Vault.sync): look again then.
     if (this.vault.waiting()) this.recheck()
     // FSEvents can report one write twice: Markdown files already indexed and told of, with the index unchanged since,
