@@ -2,8 +2,8 @@
 // where they overlap, with a line at the time it is now on the note's own day (a daily note's date, else today).
 import { useEffect, useState } from "react"
 import { CalendarClock, Check } from "lucide-react"
-import { cn, definePlugin, get, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
-import { type CalEvent, dayOf, type Entry, eventsOf, hhmm, merged, planOf, ticked } from "./plan"
+import { cn, currentEditor, definePlugin, get, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
+import { type CalEvent, dayOf, type Entry, eventsOf, hhmm, merged, nextStart, planOf, ticked } from "./plan"
 
 const TINT = "var(--day-planner)"
 const HOUR = 48
@@ -124,7 +124,21 @@ function Timeline({ path, body, options, editable }: { path: string; body: strin
 
 const MOCK = "- [x] 08:30 Run\n- 09:00 - 10:00 Standup and planning\n- [ ] 10:00 - 12:00 Write the launch post\n- 12:30 Lunch with Alice Park\n- 14:00 - 15:30 Design review\n- 14:30 Call the bank\n"
 
+/** A time block started at the cursor (`- [ ] 14:30 `, after the note's last one or at the next half hour): on the
+ *  cursor's line when it's empty, else on a new line under it. */
+function insertBlock() {
+  const ed = currentEditor()
+  if (!ed || ed.kind !== "markdown") return notify("Open a note to plan in it")
+  const v = ed.view, line = v.state.doc.lineAt(v.state.selection.main.head)
+  const item = `- [ ] ${hhmm(nextStart(v.state.doc.toString(), nowMinutes()))} `
+  const empty = !line.text.trim()
+  const from = empty ? line.from : line.to, insert = empty ? item : `\n${item}`
+  v.dispatch({ changes: { from, to: empty ? line.to : line.to, insert }, selection: { anchor: from + insert.length }, userEvent: "input" })
+  v.focus()
+}
+
 export default definePlugin({
+  commands: [{ id: "day-planner:insert", name: "Insert time block", when: () => currentEditor()?.kind === "markdown", run: insertBlock, icon: CalendarClock }],
   blocks: {
     // ```block-day-planner: the note's plan.
     "day-planner": ({ path, body, options, setProperty }) => (

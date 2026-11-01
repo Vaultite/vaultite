@@ -41,4 +41,8 @@ export default async ($: VaultTest) => {
   const twins = "## Mon\n- [ ] 09:00 Standup\n## Tue\n- [ ] 09:00 Standup\n"
   const tue = planOf(twins).find((e) => e.line === 3)!
   check("day planner tick: the item ticked, not an earlier one that reads the same", ticked(twins, tue.raw, true, tue.nth) === "## Mon\n- [ ] 09:00 Standup\n## Tue\n- [x] 09:00 Standup\n")
+  const { nextStart } = await import("../../../plugins/core/day-planner/plan.ts")
+  check("day planner insert: after the note's last block, else at the next half hour", nextStart("- 09:00 - 10:15 Standup\n- 13:00 Lunch\n", 9 * 60 + 5) === 13 * 60 + 30 &&
+    nextStart("", 9 * 60 + 5) === 9 * 60 + 30 && nextStart("- 08:00 Run\n", 9 * 60) === 9 * 60 && nextStart("", 23 * 60 + 50) === 23 * 60 + 30)
 }
+

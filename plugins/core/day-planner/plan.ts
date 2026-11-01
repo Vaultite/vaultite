@@ -55,6 +55,12 @@ export function ticked(text: string, raw: string, on: boolean, nth = 0): string 
   return lines.join("\n")
 }
 
+/** When a new time block starts: after the note's last item that ends later than `now`, else at the next half hour. */
+export function nextStart(text: string, now: number): number {
+  const later = planOf(text).map((e) => e.end).filter((e) => e > now)
+  return Math.min(23 * 60 + 30, Math.max(Math.ceil(now / 30) * 30, ...later))
+}
+
 export const hhmm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`
 
 /** A day's calendar events as entries (those that start or end that day, cut to it), and its all-day ones' titles. */

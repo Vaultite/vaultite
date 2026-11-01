@@ -56,7 +56,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the newest output, which keeps arriving below meanwhile.
 - **Day planner**: a block in your daily note draws its timed items (`- 09:00 - 10:30 Standup`, `- 14:00 Lunch`) as a
   timeline of the day beside the day's calendar events (with the Calendar plugin on), overlapping ones side by side and
-  a line at the time it is now; a task ticks done right on the timeline; agents read it as the plan.
+  a line at the time it is now; a task ticks done right on the timeline, and Insert time block starts the next one in
+  the note; agents read it as the plan.
 - **Obsidian vaults are offered the Importer and Mind map**: a vault that used Obsidian's Importer or Mind Map plugin
   gets these in their place when it opens (or keeps running the originals).
 - **Canvas shapes and dashed lines**: a card can be a pill, circle, diamond or parallelogram with a dashed, dotted or no
