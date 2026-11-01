@@ -1678,14 +1678,19 @@ async function appLink(url: string) {
   w.win.focus()
 }
 
+/** The sandbox among the vaults reopening, made again first when stale (refreshSandbox): its window waits for it. */
+let refreshed: Promise<unknown> = Promise.resolve()
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
   // The vaults open last time start their servers now, before Electron is ready: a server takes longer to start than
   // the app, and they start together. (A vault opened with --vault that isn't known yet starts when its window does.)
-  for (const p of reopening()) {
-    try { if (refreshSandbox(p)) { const v = find(p); if (v) delete v.port } } catch (e) { console.error(e) }
+  const start = (p: string) => {
     const v = find(p)
     if (v && !attachable(p) && fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) serverFor(v).catch(() => {})
+  }
+  for (const p of reopening()) {
+    if (p !== sandboxPath()) { start(p); continue }
+    refreshed = refreshSandbox(p).then((made) => { const v = find(p); if (made && v) delete v.port }, (e) => console.error(e)).then(() => start(p))
   }
 }
 // Launched again (Linux and Windows: the app's icon, Open with, a vaultite:// link, `vaultite <file>`): this one opens
@@ -1811,6 +1816,7 @@ app.whenReady().then(async () => {
   const a = asked()
   started = true
   const go = !a || await madeIfAsked(a) // (else the vaults list)
+  await refreshed
   await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => console.error(e))))
   if (!asked()) for (const r of remotes.filter((x) => x.open)) openRemote(r.url)
   if (setupState().at) showSetup() // (a relaunch from its Permissions step)

@@ -2,7 +2,8 @@
 // made fresh with today's dates each time it opens, unless its window is open.
 import { app } from "electron"
 import path from "node:path"
-import { isStale, makeSandbox } from "../core/sandbox.ts"
+// (core/sandbox.ts brings the vault code with it: loaded only when the sandbox is wanted, not with every launch)
+const core = () => import("../core/sandbox.ts")
 
 /** Where the sandbox lives: this Mac's, never in a vault the user chose. */
 export const sandboxPath = () => path.join(app.getPath("userData"), "Sandbox")
@@ -12,7 +13,7 @@ export const sandboxPath = () => path.join(app.getPath("userData"), "Sandbox")
 export async function openSandbox<T>(open: (p: string) => Promise<T>, isOpen: (p: string) => boolean, fresh: (p: string) => void) {
   const p = sandboxPath()
   if (!isOpen(p)) {
-    makeSandbox(p)
+    ;(await core()).makeSandbox(p)
     fresh(p)
   }
   return open(p)
@@ -20,8 +21,10 @@ export async function openSandbox<T>(open: (p: string) => Promise<T>, isOpen: (p
 
 /** At launch, before the vaults open last time reopen: a sandbox among them from another day or an older sample (the
  *  app was updated) is made again, so it never comes back as it was. True when it was. */
-export function refreshSandbox(p: string) {
-  if (p !== sandboxPath() || !isStale(p)) return false
+export async function refreshSandbox(p: string) {
+  if (p !== sandboxPath()) return false
+  const { isStale, makeSandbox } = await core()
+  if (!isStale(p)) return false
   makeSandbox(p)
   return true
 }

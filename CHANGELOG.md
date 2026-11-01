@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
+  cache, so a vault's page starts about 180 ms sooner.
 - **The graph keeps up in big vaults**: after an edit only the changed note's links are worked out again (about 3x
   less work on the server at 50,000 notes).
 - **vau tells a mistyped command from a failed one**: a missing or bad argument now exits 2, like an unknown command,

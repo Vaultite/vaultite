@@ -134,7 +134,7 @@
   "optionalDependencies": {
     "@rolldown/binding-darwin-arm64": "^1.2.14"
   },
-  "main": "electron/main.ts",
+  "main": "electron/boot.ts",
   "description": "Vaultite: a personal life dashboard over a vault of Markdown files",
   "homepage": "https://vaultite.com",
   "desktopName": "vaultite.desktop",
