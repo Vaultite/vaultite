@@ -61,7 +61,7 @@ try {
   await wait(700)
   const options = () => page.$$eval('[role="listbox"] [role="option"]', (es) => es.length)
   const before = await options()
-  const lastOption = () => page.$eval('[role="listbox"] [role="option"]:last-of-type', (e) => e.textContent)
+  const lastOption = () => page.$$eval('[role="listbox"] [role="option"]', (es) => es.at(-1)?.textContent)
   // (a page of rows drawn per scroll, and another page of hits found when all are drawn, the search tab last meanwhile:
   // to the end, every file)
   const atEnd = async () => /in every file/.test(await lastOption()) && (await options()) > FILES

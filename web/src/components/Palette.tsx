@@ -1,6 +1,6 @@
 // The overlay the quick switcher (⌘O) and command palette (⌘P) share: arrows or ⌃N/⌃P move, Enter
 // picks (⌘ or ⇧ when the caller says), Esc closes. Its frame (PaletteFrame) is any palette-like box's (the Ask box).
-import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
+import { Fragment, memo, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { X } from "lucide-react"
 import { keyCaps } from "@/core/commands"
 import { isMac } from "@/core/platform"
@@ -186,6 +186,14 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   const [clear] = useState(() => () => { clears.current(""); input.current?.focus() })
   // Tab stays in its field (its rows are chosen with the arrows).
   const onDialogKey = (e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); input.current?.focus() } }
+  // The heading names the list and each section's name its run of rows (WAI-ARIA's listbox with grouped options).
+  const ids = useId()
+  const runs: { name?: string; start: number; rows: T[] }[] = []
+  items.slice(0, drawn).forEach((it, i) => {
+    const name = section?.(it) || undefined, last = runs[runs.length - 1]
+    if (last && last.name === name) last.rows.push(it)
+    else runs.push({ name, start: i, rows: [it] })
+  })
 
   return (
     <PaletteFrame label={label} onClose={onClose} onKeyDown={onDialogKey}>
@@ -199,17 +207,23 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         {query && <Clear onClear={clear} />}
       </div>
       {/* (phones: the rows a size up, 15px to 17px, 44px tall) */}
-      <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5 max-md:[zoom:1.1333]">
-        {heading && <div className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
+      <div ref={list} id="palette-results" role="listbox" aria-labelledby={heading ? `${ids}h` : undefined} aria-label={heading ? undefined : label}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5 max-md:[zoom:1.1333]">
+        {/* (hidden as text: it's read as the list's name) */}
+        {heading && <div id={`${ids}h`} role="presentation" aria-hidden className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
         {!items.length && empty}
-        {items.slice(0, drawn).map((it, i) => (
-          <Fragment key={it.id}>
-          {section && section(it) && section(it) !== (i ? section(items[i - 1]) : undefined) && (
-            <div role="presentation" className="px-3 pt-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{section(it)}</div>
-          )}
-          <PaletteRow id={it.id} item={it} i={i} selected={i === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
-          </Fragment>
-        ))}
+        {runs.map((r, k) => {
+          const rows = r.rows.map((it, j) => (
+            <PaletteRow key={it.id} id={it.id} item={it} i={r.start + j} selected={r.start + j === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
+          ))
+          if (!r.name) return <Fragment key={k}>{rows}</Fragment>
+          return (
+            <div key={k} role="group" aria-labelledby={`${ids}s${k}`}>
+              <div id={`${ids}s${k}`} role="presentation" className="px-3 pt-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{r.name}</div>
+              {rows}
+            </div>
+          )
+        })}
         {drawn < items.length ? <div ref={more} aria-hidden className="h-px" /> : onEnd && <div ref={end} aria-hidden className="h-px" />}
       </div>
       <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex [@media(pointer:coarse)_and_(max-height:500px)]:hidden">

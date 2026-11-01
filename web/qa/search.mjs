@@ -22,7 +22,7 @@ const SETTINGS = path.join(VAULT, ".vaultite/plugins/search/data.json")
 const before = existsSync(SETTINGS) ? readFileSync(SETTINGS, "utf8") : null
 
 const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
-const rows = () => page.$$eval('[role="listbox"] > *', (els) => els.map((e) => ({ heading: e.getAttribute("role") === "presentation", text: e.textContent.trim(), marks: [...e.querySelectorAll("mark")].map((m) => m.textContent) })))
+const rows = () => page.$$eval('[role="listbox"] > :not([role="group"]), [role="listbox"] > [role="group"] > *',(els) => els.map((e) => ({ heading: e.getAttribute("role") === "presentation", text: e.textContent.trim(), marks: [...e.querySelectorAll("mark")].map((m) => m.textContent) })))
 const palette = async (q) => {
   if (!(await page.$('[role="dialog"][aria-label="Search"]'))) { await page.keyboard.press("ControlOrMeta+o"); await until(() => page.$('[role="dialog"][aria-label="Search"]'), 8000) }
   await page.fill('[role="dialog"][aria-label="Search"] input', q)
