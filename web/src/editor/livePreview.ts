@@ -1453,18 +1453,20 @@ function gridRuns(c: Cands, state: EditorState, cards: Cand[]): Range<Decoration
   return out
 }
 
-// A change within one line that can't start, end or reshape a block, on a line no block holds, leaves every block as it
-// was, only moved: typing a sentence in a long file doesn't read it all again.
-const LOUD = /`{3}|~{3}|\$\$|<\/?details|^\s{0,3}<\/?[a-z]|%%|!\[\[|\||^\s{0,3}>|^\s{0,3}#{1,6}(?:\s|$)|^\s*$/i
+// A change within one line that can't start, end or reshape a block, on a line no block holds or ends just above,
+// leaves every block as it was, only moved: typing a sentence in a long file doesn't read it all again. A heading
+// starts a block only as a drawn section.
+const LOUD = /`{3}|~{3}|\$\$|<\/?details|^\s{0,3}<\/?[a-z]|%%|!\[\[|\||^\s{0,3}>|^\s*$/i, HEADING_LINE = /^\s{0,3}#{1,6}(?:\s|$)/
 function mapped(c: Cands, tr: Transaction): Cands | null {
   if (c.reads.length) return null
   const before = tr.startState.doc, after = tr.state.doc
+  const loud = (t: string) => LOUD.test(t) || (c.cfg.sections.length > 0 && HEADING_LINE.test(t))
   let quiet = true
   tr.changes.iterChanges((fa, ta, fb, _tb, inserted) => {
     if (!quiet) return
     const l = before.lineAt(fa)
-    if (ta > l.to || inserted.lines > 1 || LOUD.test(l.text) || LOUD.test(after.lineAt(fb).text)) { quiet = false; return }
-    if (c.list.some((x) => x.a <= l.number && x.b >= l.number)) quiet = false
+    if (ta > l.to || inserted.lines > 1 || loud(l.text) || loud(after.lineAt(fb).text)) { quiet = false; return }
+    if (c.list.some((x) => x.a <= l.number && x.b >= l.number - 1)) quiet = false
   })
   if (!quiet) return null
   const at = (p: number) => tr.changes.mapPos(p)
