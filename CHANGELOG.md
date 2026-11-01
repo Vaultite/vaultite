@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
+  reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
+  as "na├»ve".
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
