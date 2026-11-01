@@ -398,8 +398,9 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
   const text = tip === null ? undefined : tip ?? (typeof label === "string" ? label : undefined)
   const more = typeof label === "string" && text !== label
   const side = useContext(SidebarSide)
+  // (named by what it shows, its count too, as a screen reader's user hears it read; a tip that says more describes it)
   const row = (
-    <a href={href ?? "#"} data-keyrow {...rest} data-tip={text} data-tip-trunc={open && !more ? "" : undefined} data-tip-side={side === "right" ? "left" : "right"} aria-label={text ?? (typeof label === "string" ? label : undefined)}
+    <a href={href ?? "#"} data-keyrow {...rest} data-tip={text} data-tip-trunc={open && !more ? "" : undefined} data-tip-side={side === "right" ? "left" : "right"} aria-label={typeof label === "string" ? undefined : text} aria-description={more ? text : undefined}
       onClick={(e) => { if (!onClick) return; e.preventDefault(); onClick(e) }} onContextMenu={onContextMenu}
       // A middle-click is a click that asks for a new tab (e.button 1), as in the file tree: never the browser's new tab.
       onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); onClick?.(e) }}

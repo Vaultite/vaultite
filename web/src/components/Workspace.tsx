@@ -20,7 +20,7 @@ import { fillsPane, names, openElsewhere, usePluginsVersion, viewFor } from "@/c
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
-import { DragGhost, TabBar, tabMenuOf, useTabInfo, type TabInfo } from "@/components/Tabs"
+import { DragGhost, shownLabel, TabBar, tabMenuOf, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { menuFor } from "@/components/ContextMenu"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { useDrag, useDropTarget } from "@/core/drag"
@@ -382,10 +382,32 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
         className={scroller} style={shown ? undefined : { display: "none" }}
         onScroll={(e) => { if (!restoring.current && shown) keepScroll(place.current, e.currentTarget.scrollTop, e.currentTarget) }}>
         <TabContent {...p} tab={tab} to={to} view={view} file={file} full={full} focused={focused} shown={shown} />
+        {tab && !file && <PageHeading label={shownLabel(tab, p.store)} />}
       </div>
     </PaneContext.Provider>
   )
 }
+
+/** A screen reader's title for a view or page that draws no heading of its own (a file's name is its own h1). */
+const PageHeading = memo(function PageHeading({ label }: { label: string }) {
+  const ref = useRef<HTMLHeadingElement>(null)
+  useLayoutEffect(() => {
+    // (its tab's box: the parent's ref isn't set yet when this runs)
+    const box = ref.current?.parentElement
+    const own = () => {
+      const has = !!box?.querySelector("h1:not([data-tab-heading])")
+      if (ref.current) ref.current.hidden = has
+      if (has) watch.disconnect()
+    }
+    // (a view drawn once its data comes may bring its own; watched only that long, not a terminal's every line)
+    const watch = new MutationObserver(own)
+    if (box) watch.observe(box, { childList: true, subtree: true })
+    own()
+    const stop = setTimeout(() => watch.disconnect(), 3000)
+    return () => { watch.disconnect(); clearTimeout(stop) }
+  }, [])
+  return <h1 ref={ref} data-tab-heading className="sr-only">{label}</h1>
+})
 
 /** A plugin's view in tab `tab` (`to`: view:<name>/<arg>): its title and what it draws, or the note saying why it can't
  *  (no plugin draws it, or its plugin is off). The desktop's panes and the phone's tabs. */

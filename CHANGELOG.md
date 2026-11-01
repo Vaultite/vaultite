@@ -42,6 +42,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The focused item's menu opens from the palette**: Open the menu of what has the keyboard (Shift+F10, found by
   typing "context menu") did nothing when run from the palette; it now opens beside what has the keyboard, at an
   editor's caret. Text fields and terminals keep Shift+F10 for themselves.
+- **Screen readers hear each page's title and each row's count**: a page without a heading of its own (Settings,
+  Files, Search...) has one for screen readers, and sidebar rows are named by all they show ("Writing 12", not
+  "Writing").
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
