@@ -79,8 +79,9 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   writeFileSync(`${FVAULT}/.vaultite/bundles/onboarding.json`, "{}\n")
   await go(page, FB)
   await until(() => page.evaluate(() => location.hash === "#bundles"), 6000)
-  check("offered: it opens on the bundles, and greets, without Setup's tabs", (await page.locator("main h1").first().innerText()).includes("Welcome") &&
-    !(await page.locator("[data-setup-tab]").count()), await page.locator("main h1").first().innerText())
+  // (a tab kept drawn behind this one has its own h1, hidden: the shown page's is the visible one)
+  check("offered: it opens on the bundles, and greets, without Setup's tabs", (await page.locator("main h1:visible").first().innerText()).includes("Welcome") &&
+    !(await page.locator("[data-setup-tab]").count()), await page.locator("main h1:visible").first().innerText())
   await until(() => page.locator("[data-bundles-skip]").count(), 6000)
   check("offered: Standard is picked, and a quiet line imports one", await page.locator('[data-bundle="standard"] [data-bundle-picked]').count() === 1
     && await page.locator("[data-bundles-welcome-import]").count() === 1 && (await page.locator("[data-bundles-skip]").innerText()).includes("Standard"))
@@ -244,7 +245,7 @@ await fetch(`${B}api/bundles/days`, { method: "DELETE" }) // (none of the user's
   check("Import from a file", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-3/bundle.json`))
   await dismissAll(page)
   // Pasted anywhere on the page (no field focused): straight to its preview; Apply adds it and applies it.
-  await page.locator("main h1").first().click()
+  await page.locator("main h1:visible").first().click()
   await page.evaluate((text) => { const dt = new DataTransfer(); dt.setData("text/plain", text); document.activeElement?.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })) }, copied)
   await until(() => page.locator(`${incoming} [data-bundle-incoming-apply]`).count(), 6000)
   check("a bundle pasted on the page opens its preview", await page.locator(incoming).count() === 1)
