@@ -423,6 +423,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   text, Appearance's picture choices are labelled at 15px, and Show all and a field's clear button take a finger's tap.
 - **The Inbox at phone sizes**: on a phone its rows' titles are 17px and the lines under them and its intro 15px (they
   were 15px and 13px), as the dashboards' lists.
+- **Properties fit a finger on a phone**: their rows, toggle and Add property are 44px, list values 15px with a
+  finger-sized remove button, and the field to add one no longer shrinks to a sliver.
+- **No invisible buttons on touch screens**: a property's remove button and an unlinked mention's Link show on a phone,
+  where there's no hover to bring them out (they were there, unseen, under the finger).
 
 ## 0.8.0 (2026-10-24)
 

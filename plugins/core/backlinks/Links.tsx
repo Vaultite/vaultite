@@ -144,7 +144,7 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
               action={
                 <button type="button" disabled={busy === key} data-link-action
                   onClick={(e) => { e.stopPropagation(); link(m) }} data-tip={`Make it [[${stem(path)}]]`}
-                  className="h-5 shrink-0 cursor-pointer rounded-[4px] px-1.5 text-[12px] font-medium text-primary opacity-0 group-hover/item:opacity-100 hover:bg-primary/10 focus-visible:opacity-100 disabled:opacity-50">
+                  className="relative h-5 shrink-0 cursor-pointer rounded-[4px] px-1.5 text-[12px] font-medium text-primary opacity-0 group-hover/item:opacity-100 hover:bg-primary/10 focus-visible:opacity-100 disabled:opacity-50 pointer-coarse:opacity-100 pointer-coarse:after:absolute pointer-coarse:after:-inset-3">
                   Link
                 </button>
               } />

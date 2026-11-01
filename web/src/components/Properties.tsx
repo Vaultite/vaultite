@@ -246,7 +246,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
                     </div>
                     {!readOnly && (
                       <button type="button" aria-label={`Remove ${k}`} onClick={() => onChange(setProp(block, k, undefined))}
-                        className="mt-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100">
+                        className="relative mt-1 grid size-6 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-60 max-md:mt-2.5 max-md:after:absolute max-md:after:-inset-2.5">
                         <X className="size-3.5" strokeWidth={2.5} />
                       </button>
                     )}
