@@ -47,6 +47,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Grey text is easier to read in light schemes**: the sidebar's headings, the status bar, the path over a file and
   every other secondary label reach 4.5:1 contrast on the sidebar (WCAG AA) in Gruvbox, Classic, Catppuccin, Flexoki,
   One, Paper and Rosé Pine.
+- **A narrow pane's path keeps its folders readable**: squeezed by a split or a sidebar, a folder in the bar over a
+  file shows its first letter and an ellipsis ("N… / Lisbon trip"), not a clipped sliver of a letter.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.
