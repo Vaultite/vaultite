@@ -1,6 +1,5 @@
-// What a launch loads before anything is drawn, against limits (startup.json), cheap enough for every CI run: the
-// desktop app's main process (its static imports from package.json's main) and the web app's eager scripts and styles
-// (web/dist/index.html's). node tools/perf/startup.ts [--ratchet]: lowers the limits to now plus headroom.
+// What a launch loads before drawing, against startup.json: the desktop main process's imports, web/dist's eager files.
+// node tools/perf/startup.ts [--ratchet]   (--ratchet: limits lowered to now plus headroom)
 import fs from "node:fs"
 import path from "node:path"
 
