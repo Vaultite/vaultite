@@ -28,7 +28,8 @@ const go = async (rel) => { await page.goto(`${B}/#file/${enc(rel)}`); await pag
 const count = () => page.locator("[role=status] [data-tokens]")
 const levelOf = async () => (await count().getAttribute("data-level"))
 const colour = () => count().evaluate((el) => getComputedStyle(el).color)
-const token = (name) => page.evaluate((n) => { const d = document.createElement("span"); d.style.color = `var(--${n})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c }, name)
+// (a colour as text, as text-ink-* draws it: the token at a lightness that reads, index.css)
+const token = (name) => page.evaluate((n) => { const d = document.createElement("span"); d.style.color = `oklch(from var(--${n}) var(--ink-l) c h)`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c }, name)
 
 // ---------- the status bar ----------
 await go(LONG)
