@@ -74,12 +74,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Every row of a list has its line**: a database view's list (Recently changed on the Design page), Settings and other
   lists drawn with hairlines no longer lose the line between every other row where rows are a fraction of a pixel tall.
 - **Slides draw Advanced Slides' layouts**: `<split>` columns (even, gap, left and right shares, wrap), `<grid>` boxes
-  placed by drag and drop on a fixed slide, and `::: block` boxes draw as there, nested, their Markdown as in a note.
+  placed by drag and drop on a fixed slide, and `::: block` boxes draw as there, nested, their Markdown as in a note;
+  a box's own font-size (an annotation's) reaches the text in it.
 - **Screen readers hear toasts and agents**: every toast is read (an error at once, with the key that reaches its
   button), and an agent that finishes, waits for you or fails is said wherever its tab is, without reading out each
   second it works or each word count in the status bar.
 - **Slide themes look like themselves**: a deck's `theme:` (black, night, serif, league, dracula and the rest of
-  reveal's and Advanced Slides') draws its fonts, heading case and tone in the app's colours.
+  reveal's and Advanced Slides') draws its fonts, heading case and tone in the app's colours, laid out as reveal.js
+  lays it out: a 960 × 700 slide scaled as a whole, its text and heading sizes, centred text and lists.
 - **Present a canvas**: Present in a canvas's toolbar shows its groups one at a time, in the order arrows between them
   give (else top to bottom, left to right); the arrow keys step through them and Escape ends it.
 - **An idle server stops writing**: it no longer rewrites its schedule's last runs to disk every 30 s when no job ran,

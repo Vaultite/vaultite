@@ -52,13 +52,15 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
 - Frontmatter: `separator`, `verticalSeparator`, `notesSeparator` (regexes for a line), `bg` (every slide's background),
   `theme` (reveal's and Advanced Slides' by name: `black` (`default`), `white`, `league`, `beige`, `sky`, `night`,
   `serif`, `simple`, `solarized`, `blood`, `moon`, `dracula`, `black-contrast`, `white-contrast`, `consult`,
-  `mattropolis`: each its fonts, case and tone in the app's colours), `showNotes: true` (notes open).
+  `mattropolis`: each its fonts, case and tone in the app's colours, laid out as reveal.js lays it out: every slide the
+  deck's `width` × `height`, scaled as a whole, with the theme's text and heading sizes, centred; without one, the
+  app's look, its text laid out 720 wide), `showNotes: true` (notes open).
 - Layouts: `<split even gap="2" left="2" right="1" wrap="3" no-margin>` puts what's in it side by side (each block, or
   image line, a column); `<grid drag="w h" drop="x y">` (percents of a 960 x 700 slide, px, negative from the right
   and bottom, or `topleft`, `center`, `bottom`...; with `flow`, `align`, `justify-content`, `pad`, `bg`, `border`,
   `animate`, `opacity`, `rotate`, `filter`, `frag`) places a box, the slide then fixed at that shape; an element
   annotation's `drag`/`drop`/`bg` do the same. `::: block` (or `::: <class>`, with an annotation for its style) to
-  `:::` is a box. They nest, and what's in them is Markdown.
+  `:::` is a box. They nest, and what's in them is Markdown, at the box's text size (a `font-size` annotation).
 - Transitions as reveal.js draws them: frontmatter `transition` (`none`, `fade`, `slide`, `convex`, `concave`, `zoom`,
   or a pair like `fade-in slide-out`), `transitionSpeed` (`default`, `fast`, `slow`), `backgroundTransition`; per slide
   `<!-- slide data-transition="zoom" data-transition-speed="fast" data-background-transition="fade" -->`. Vertical

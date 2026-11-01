@@ -1565,6 +1565,8 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("slides themes: league: League Gothic, its 3D title and glow", league.vars["--r-heading-font"].startsWith("'League Gothic'") && /0 5px 0/.test(league.vars["--r-heading1-text-shadow"]) && !!league.vars["--deck-glow"])
   check("slides themes: dracula: purple headings, pink links, its coloured bold, italics and code", dracula.vars["--r-heading-color"] === "var(--purple)" && dracula.vars["--r-link-color"] === "var(--pink)"
     && dracula.vars["--r-bold-color"] === "var(--orange)" && dracula.vars["--r-inline-code-color"] === "var(--green)")
+  check("slides themes: reveal's text and heading sizes (px of a 960-wide slide)", black.vars["--r-main-font-size"] === "42px" && black.vars["--r-heading1-size"] === "2.5em"
+    && league.vars["--r-main-font-size"] === "40px" && league.vars["--r-heading1-size"] === "3.77em" && th("consult").vars["--r-main-font-size"] === "16px" && th("mattropolis").vars["--r-main-font-size"] === "24px")
   check("slides themes: sky: rounded headings; consult: smaller text than black", /--font-rounded/.test(sky.vars["--r-heading-font"]) && parseFloat(th("consult").vars["--r-main-font-size"]) < parseFloat(black.vars["--r-main-font-size"]))
 }
 

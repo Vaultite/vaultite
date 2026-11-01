@@ -22,14 +22,27 @@ async function textOf(path: string) {
 const BASE = 720
 const MAX = 2.2
 const MIN = 0.6
-/** How tall a slide with placed boxes is: BASE wide, of the deck's shape (`width` and `height`). */
-export const canvasH = (props: Record<string, unknown>) => { const s = sizeOf(props); return Math.round((BASE * s.h) / s.w) }
+/** A title slide's text (a slide of only headings), bigger and centred. */
+export const TITLE = "text-center text-[22px] leading-[30px]"
+/** How a deck's slides are laid out. A themed deck as reveal.js lays one out: every slide its `width` × `height`
+ *  (960 × 700), so its px (a theme's text, an annotation's) are the deck's. Else BASE wide, a placed slide of its shape. */
+export function frameOf(props: Record<string, unknown>) {
+  const s = sizeOf(props)
+  return revealTheme(props.theme) ? { w: s.w, h: s.h, fixed: true } : { w: BASE, h: Math.round((BASE * s.h) / s.w), fixed: false }
+}
+type Frame = ReturnType<typeof frameOf>
+/** A slide's content in its frame: a placed slide's is that shape, a themed deck's at least that tall. */
+export function SlideFrame({ slide, frame, center = true, children }: { slide?: Slide; frame: Frame; center?: boolean; children: ReactNode }) {
+  if (slide?.canvas) return <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: frame.h }}>{children}</div>
+  if (frame.fixed) return <div data-slide-frame className={cn("relative flex flex-col", center ? "justify-center" : "justify-start")} style={{ minHeight: frame.h }}>{children}</div>
+  return children
+}
 
 type Bounds = { margin?: number; minScale?: number; maxScale?: number }
-/** Scale `inner` (laid out BASE wide, or the stage's width when narrower; `canvas`: always, scaled down to fit) to fit
- *  `stage`, within the deck's margin and scales. */
-function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown, canvas = false, { margin = 0, minScale, maxScale }: Bounds = {}) {
-  const [fit, setFit] = useState({ w: BASE, scale: 1, h: 0 })
+/** Scale `inner` (laid out `base` wide, or the stage's width when narrower; `fixed`: always, scaled down to fit) to
+ *  fit `stage`, within the deck's margin and scales. */
+function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDivElement | null>, key: unknown, fixed = false, base = BASE, { margin = 0, minScale, maxScale }: Bounds = {}) {
+  const [fit, setFit] = useState({ w: base, scale: 1, h: 0 })
   const measure = useCallback(() => {
     const s = stage.current, el = inner.current
     if (!s || !el) return
@@ -37,13 +50,13 @@ function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDi
     const room = 1 - margin
     const aw = s.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
     const ah = s.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-    const w = canvas ? BASE : Math.max(240, Math.min(BASE, aw))
+    const w = fixed ? base : Math.max(240, Math.min(base, aw))
     if (Math.abs(el.offsetWidth - w) > 0.5) el.style.width = `${w}px`
     const h = el.offsetHeight
-    const most = maxScale ?? MAX
-    const scale = Math.max(minScale ?? (canvas ? 0 : MIN), Math.min(most, (aw * room) / w, h ? (ah * room) / h : most))
+    const most = maxScale ?? (MAX * BASE) / base
+    const scale = Math.max(minScale ?? (fixed ? 0 : MIN), Math.min(most, (aw * room) / w, h ? (ah * room) / h : most))
     setFit((f) => (f.w === w && Math.abs(f.scale - scale) < 0.005 && f.h === h ? f : { w, scale, h }))
-  }, [stage, inner, canvas, margin, minScale, maxScale])
+  }, [stage, inner, fixed, base, margin, minScale, maxScale])
   useLayoutEffect(measure, [measure, key])
   useEffect(() => {
     const ro = new ResizeObserver(measure)
@@ -122,10 +135,23 @@ export const DECK_CSS = `
 [data-deck] .fragment:is(.highlight-green.visible, .highlight-current-green.current-fragment) { color: var(--green); }
 [data-deck] .fragment:is(.highlight-blue.visible, .highlight-current-blue.current-fragment) { color: var(--blue); }
 [data-deck] { background-image: radial-gradient(circle at 50% 45%, color-mix(in oklab, var(--r-background-color), white var(--deck-glow)), var(--r-background-color) 75%); }
-[data-deck-theme] .note-prose { font-family: var(--r-main-font); font-size: var(--r-main-font-size); font-weight: var(--r-main-font-weight); line-height: 1.35; }
+/* The text's size is the slide's, as in reveal.js: an annotation's font-size on a box reaches what's in it. */
+:where([data-deck-slide]) { font-size: 17px; line-height: 1.53; }
+@media (min-width: 768px) { :where([data-deck-slide]) { font-size: 16px; line-height: 1.5; } }
+[data-deck-slide] .note-prose { font-size: inherit; line-height: inherit; }
+[data-deck-theme] [data-deck-slide] { font-family: var(--r-main-font); font-size: var(--r-main-font-size); font-weight: var(--r-main-font-weight); line-height: 1.3; text-align: center; }
+[data-deck-theme] .note-prose { font-family: inherit; font-weight: inherit; line-height: inherit; }
+[data-deck-theme] .note-prose :where(p) { margin: var(--r-block-margin) 0; }
+[data-deck-theme] .note-prose :where(ul, ol) { display: inline-block; text-align: left; margin: 0 0 0 1em; }
+[data-deck-theme] .note-prose :where(ul, ol) :where(ul, ol) { display: block; margin-left: 40px; }
+[data-deck-theme] .note-prose :where(li + li) { margin-top: 0; }
+[data-deck-theme] .note-prose :where(img, video, iframe) { max-width: 95%; max-height: 95%; }
+[data-deck-theme] .note-prose :where(pre) { width: 90%; margin: var(--r-block-margin) auto; text-align: left; font-size: .55em; line-height: 1.2em; }
+[data-deck-theme] .note-prose :where(blockquote) { width: 70%; margin: var(--r-block-margin) auto; font-style: italic; }
+[data-deck-theme] .note-prose :where(table) { margin: auto; }
+[data-deck-theme] [data-slide-box]:is(.dark, .scheme-preview) { --r-heading-color: var(--foreground); }
 [data-deck-theme] .note-prose :is(.h1, .h2, .h3, .h4, .h5, .h6) { margin: var(--r-heading-margin); color: var(--r-heading-color); font-family: var(--r-heading-font);
   line-height: var(--r-heading-line-height); letter-spacing: var(--r-heading-letter-spacing); text-transform: var(--r-heading-text-transform); text-shadow: var(--r-heading-text-shadow); overflow-wrap: break-word; }
-[data-deck-theme] .note-prose > :is(.h1, .h2, .h3, .h4, .h5, .h6):not(:first-child) { margin-top: 0.8em; }
 ${[1, 2, 3, 4, 5, 6].map((n) => `[data-deck-theme] .note-prose .h${n} { font-size: var(--r-heading${n}-size); font-weight: var(--r-heading${n}-font-weight); }`).join("\n")}
 [data-deck-theme] .note-prose .h1 { text-shadow: var(--r-heading1-text-shadow); }
 [data-deck-theme] .note-prose :is(a, .wikilink:not(.missing)) { color: var(--r-link-color); }
@@ -231,7 +257,8 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
   const stage = useRef<HTMLDivElement>(null)
   const inner = useRef<HTMLDivElement>(null)
   const md = slide?.md ?? "", canvas = !!slide?.canvas
-  const fit = useFit(stage, inner, md, canvas)
+  const frame = useMemo(() => frameOf(props), [props])
+  const fit = useFit(stage, inner, md, canvas || frame.fixed, frame.w)
   const theme = useMemo(() => revealTheme(props.theme), [props.theme])
   const draw = useCallback(() => {
     const el = inner.current
@@ -261,10 +288,10 @@ function SlideView({ src, slide, i, step, onClick }: { src: Source; slide?: Slid
         {bg.style && <div aria-hidden className="pointer-events-none absolute inset-0" style={bg.style} />}
         <div ref={stage} onClick={onClick} className="relative flex min-h-0 flex-1 cursor-default overflow-hidden px-6 pt-8 pb-16 md:px-16 md:pt-12">
           <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className="relative m-auto shrink-0">
-            <div ref={inner} key={i} data-deck-slide={i + 1} className={cn("absolute top-0 left-0 origin-top-left", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}
+            <div ref={inner} key={i} data-deck-slide={i + 1} className={cn("absolute top-0 left-0 origin-top-left", title && TITLE)}
               style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
               <div ref={box} className={slide?.cls || undefined}>
-                {text !== null && (canvas ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: canvasH(props) }}>{content}</div> : content)}
+                {text !== null && <SlideFrame slide={slide} frame={frame} center={sizeOf(props).center}>{content}</SlideFrame>}
               </div>
             </div>
           </div>
@@ -309,10 +336,11 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   const slide = slides[i] as Slide | undefined
   const md = slide?.md ?? ""
   const canvas = !!slide?.canvas
-  // The deck's size (a placed slide is one of its shape, BASE wide) and scale (reveal's 1 is the deck's width).
+  // The deck's size (frameOf) and scale (reveal's 1 is the deck's width).
   const deckSize = useMemo(() => sizeOf(props), [props])
-  const per = deckSize.w / BASE
-  const fit = useFit(stage, inner, md, canvas, { margin: deckSize.margin, minScale: deckSize.minScale && deckSize.minScale * per, maxScale: deckSize.maxScale && deckSize.maxScale * per })
+  const frame = useMemo(() => frameOf(props), [props])
+  const per = deckSize.w / frame.w
+  const fit = useFit(stage, inner, md, canvas || frame.fixed, frame.w, { margin: deckSize.margin, minScale: deckSize.minScale && deckSize.minScale * per, maxScale: deckSize.maxScale && deckSize.maxScale * per })
   const theme = useMemo(() => revealTheme(props.theme), [props.theme])
   const look = useLook()
 
@@ -496,14 +524,14 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           <div ref={layer} aria-hidden className="pointer-events-none absolute inset-0" />
           <div ref={stage} onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
             className="relative flex min-h-0 flex-1 cursor-default touch-pan-y overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
-            <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className={cn("relative mx-auto shrink-0", deckSize.center && "my-auto")}>
+            <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className={cn("relative mx-auto shrink-0", (deckSize.center || frame.fixed) && "my-auto")}>
               <div ref={inner} key={i} data-deck-slide={i + 1}
-                className={cn("absolute top-0 left-0 origin-top-left select-text", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}
+                className={cn("absolute top-0 left-0 origin-top-left select-text", title && TITLE)}
                 style={{ width: fit.w, transform: `scale(${fit.scale})` }}>
                 <div ref={box} className={slide?.cls || undefined}>
-                  {text !== null && (canvas
-                    ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: canvasH(props) }}>{content}</div>
-                    : content || (empty && <p className="text-center text-muted-foreground">This note is empty.</p>))}
+                  {text !== null && <SlideFrame slide={slide} frame={frame} center={deckSize.center}>
+                    {content || (empty && <p className="text-center text-muted-foreground">This note is empty.</p>)}
+                  </SlideFrame>}
                 </div>
               </div>
             </div>

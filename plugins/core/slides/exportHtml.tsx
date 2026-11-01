@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { cn, getStore, NoteBody, notify, notifyError, stem, type Store } from "@vaultite"
 import { Boxes, layOut, LAYOUT_CSS } from "./Layout"
-import { annotate, backgroundOf, canvasH, DECK_CSS } from "./Presentation"
+import { annotate, backgroundOf, DECK_CSS, frameOf, SlideFrame, TITLE } from "./Presentation"
 import { exportAsked } from "./asked"
 import { isTitleSlide, type Slide } from "./slides"
 
@@ -121,6 +121,8 @@ async function build(root: HTMLElement, name: string, deckCss: string) {
 export function DeckExport({ path, slides, fm, props, css }: { path: string; slides: Slide[]; fm: string; props: Record<string, unknown>; css: string }) {
   const root = useRef<HTMLDivElement>(null)
   const store = getStore() as Store
+  // (in the app's look: a theme isn't drawn here)
+  const frame = frameOf({ ...props, theme: null })
   const content = (s: Slide) => (s.boxes ? <Boxes items={s.boxes} ctx={{ store, path, fm }} /> : s.md && <NoteBody store={store} path={path} body={s.md} fm={fm} className="slide-body" />)
   useEffect(() => {
     let on = true
@@ -150,10 +152,8 @@ export function DeckExport({ path, slides, fm, props, css }: { path: string; sli
         return (
           <section key={n} data-n={n} data-h={s.h} data-v={s.v} className={cn(bg.tone === "dark" ? "dark" : bg.tone === "light" && "scheme-preview")}>
             {bg.style && <div className="slide-bg" style={bg.style} />}
-            <div className={cn("slide-fit", !s.boxes && !s.canvas && isTitleSlide(s.md) && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}>
-              <div className={cn("slide-box", s.cls)}>{s.canvas
-                ? <div data-slide-canvas className="relative flex flex-col justify-center" style={{ height: canvasH(props) }}>{content(s)}</div>
-                : content(s)}</div>
+            <div data-deck-slide={n + 1} className={cn("slide-fit", !s.boxes && !s.canvas && isTitleSlide(s.md) && TITLE)}>
+              <div className={cn("slide-box", s.cls)}><SlideFrame slide={s} frame={frame}>{content(s)}</SlideFrame></div>
             </div>
             {s.notes && <aside><div className="pb-1 text-[13px] text-muted-foreground">Speaker notes</div><NoteBody store={store} path={path} body={s.notes} fm={fm} className="slide-notes" /></aside>}
           </section>

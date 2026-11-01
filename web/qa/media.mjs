@@ -270,6 +270,19 @@ await page.close()
   await page.close(); await del(SIZED)
 }
 
+// A box's own text size reaches what's in it (Advanced Slides' template docs: `:::<!-- element style="font-size: 13px" -->`).
+{
+  const SMALL = "Qa media/Small.md"
+  await put(SMALL, "---\ntheme: black\n---\n\n::: block\n**Header**\n- Lorem ipsum\n:::<!-- element style=\"font-size: 13px\" -->\n\nAfter it\n")
+  page = await open({ viewport: { width: 1280, height: 800 } })
+  await page.goto(`${B}#file/${enc(SMALL)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(1200)
+  const sizes = await page.evaluate(() => ["[data-slide-box=block] li", "[data-slide-box=block] p", "[data-deck-slide] .note-body:not([data-slide-box] *) p"].map((q) => getComputedStyle(document.querySelector(q)).fontSize))
+  check("a block's font-size reaches its text, the rest the theme's", sizes.join() === "13px,13px,42px", sizes)
+  await page.keyboard.press("Escape"); await wait(400)
+  await page.close(); await del(SMALL)
+}
+
 // css: files and a theme that's a file: the deck's, live, never the app's.
 {
   const CSS_DECK = "Qa media/Styled.md", SHEET = "Qa media/css/deck.css"
@@ -431,7 +444,8 @@ const lookOf = (page) => page.evaluate(() => {
   const deck = document.querySelector("[data-deck]"), h = deck.querySelector("h1, h2"), p = deck.querySelector(".note-prose"), a = deck.querySelector(".note-prose a")
   const hs = getComputedStyle(h), bg = getComputedStyle(deck).backgroundColor
   return { theme: deck.dataset.deckTheme ?? null, font: hs.fontFamily, text: getComputedStyle(p).fontFamily, transform: hs.textTransform, weight: hs.fontWeight, spacing: hs.letterSpacing,
-    bg, bgLum: lum(bg), headLum: lum(hs.color), link: a && getComputedStyle(a).color, bar: getComputedStyle(document.querySelector("[data-slide-progress]")).backgroundColor }
+    bg, bgLum: lum(bg), headLum: lum(hs.color), link: a && getComputedStyle(a).color, bar: getComputedStyle(document.querySelector("[data-slide-progress]")).backgroundColor,
+    width: deck.querySelector("[data-deck-slide]").offsetWidth, size: getComputedStyle(p).fontSize, align: getComputedStyle(p).textAlign }
 })
 const looks = {}
 for (const scheme of ["light", "dark"]) {
@@ -452,6 +466,8 @@ for (const scheme of ["light", "dark"]) {
   check(`slides theme serif (${scheme}): Palatino headings and text, light, dark headings`, serif.theme === "serif" && /Palatino/.test(serif.font) && /Palatino/.test(serif.text) && serif.transform === "none" && serif.bgLum > 0.75 && serif.headLum < 0.35, serif)
   check(`slides theme serif (${scheme}): the deck's own --r-* win over the theme's`, serif.link === "rgb(1, 2, 3)", serif.link)
   check(`slides theme as a CSS file (${scheme}): the app's look`, other.theme === null && other.transform === "none" && !/Palatino|Montserrat/.test(other.font), other)
+  check(`slides themes (${scheme}): laid out as reveal.js does, a 960-wide slide, its text size, centred; the app's look 720 wide`,
+    night.width === 960 && night.size === "40px" && night.align === "center" && other.width <= 720, { night, other })
   await page.close()
 }
 check("slides themes: the same in the app's light and dark (the scheme's tokens in the theme's tone)", ["night", "serif"].every((n) => JSON.stringify(looks[`${n}-light`]) === JSON.stringify(looks[`${n}-dark`])), looks)

@@ -15,14 +15,14 @@ const SERIF = "'Palatino Linotype', 'Book Antiqua', Palatino, 'URW Palladio L', 
 const g = (pct: number) => mix(T("gray"), "white", pct)
 const EXTRUDE = `0 1px 0 ${g(60)}, 0 2px 0 ${g(56)}, 0 3px 0 ${g(48)}, 0 4px 0 ${g(46)}, 0 5px 0 ${g(36)}, 0 6px 1px rgb(0 0 0 / .1), 0 0 5px rgb(0 0 0 / .1), 0 1px 3px rgb(0 0 0 / .3), 0 3px 5px rgb(0 0 0 / .2), 0 5px 10px rgb(0 0 0 / .25), 0 20px 20px rgb(0 0 0 / .15)`
 
-/** Heading sizes (em of the text): reveal's template's, and black and white's smaller ones. */
-const SIZES = { template: [2.6, 1.8, 1.4, 1, 0.8, 0.6], sans: [2.3, 1.6, 1.3, 1, 0.8, 0.6], consult: [2.8, 1.7, 1.4, 1, 0.75, 0.625] }
+/** Heading sizes (em of the text), reveal's: its template's, black and white's smaller ones, consult's. */
+const SIZES = { template: [3.77, 2.11, 1.55, 1, 0.8, 0.6], sans: [2.5, 1.6, 1.3, 1, 0.8, 0.6], consult: [3.75, 1.875, 1.5, 1, 0.75, 0.625] }
 
 type Spec = {
   tone: Tone; bg: string; link: string
   /** Body and heading text colours (default the scheme's foreground). */
   main?: string; heading?: string
-  /** Heading font, case, weight, letter spacing, sizes; text font, size (px of the 720-wide slide), weight. */
+  /** Heading font, case, weight, letter spacing, sizes; text font, size (px of the deck's 960-wide slide), weight. */
   head?: string; upper?: boolean; weight?: number | string; spacing?: string; sizes?: keyof typeof SIZES
   font?: string; size?: number; textWeight?: number
   /** A radial glow from the middle (reveal's gradient backgrounds), as a % of white; the title's shadow. */
@@ -33,7 +33,7 @@ type Spec = {
 const blackish = (pct: number) => mix(T("background"), "black", pct)
 const whitish = (pct: number) => mix(T("card"), "white", pct)
 // Black and white (and their high-contrast twins): Source Sans, upper case, semibold, larger text.
-const SANS = { head: SOURCE, font: SOURCE, weight: 600, sizes: "sans", size: 25 } as const
+const SANS = { head: SOURCE, font: SOURCE, weight: 600, sizes: "sans", size: 42 } as const
 
 const SPECS: Record<string, Spec> = {
   black: { tone: "dark", bg: mix(T("background"), T("card"), 55), link: T("blue"), ...SANS },
@@ -53,8 +53,8 @@ const SPECS: Record<string, Spec> = {
   dracula: { tone: "dark", bg: mix(T("card"), T("purple"), 12), heading: T("purple"), link: T("pink"), head: TEXT, weight: 600, upper: false,
     extra: { "--r-bold-color": T("orange"), "--r-italic-color": T("yellow"), "--r-inline-code-color": T("green"), "--r-list-bullet-color": T("teal") } },
   // Advanced Slides' own.
-  mattropolis: { tone: "dark", bg: mix(T("background"), T("gray"), 20), glow: 24, link: mix(T("orange"), T("yellow"), 45), lineHeight: "1", font: `Lato, ${TEXT}` },
-  consult: { tone: "light", bg: mix(T("card"), T("gray"), 20), main: mix(T("foreground"), T("background"), 25), heading: mix(T("foreground"), T("background"), 25), link: T("blue"), head: `Calibri, Carlito, ${TEXT}`, font: `Calibri, Carlito, ${TEXT}`, weight: 600, upper: false, sizes: "consult", size: 22 },
+  mattropolis: { tone: "dark", bg: mix(T("background"), T("gray"), 20), glow: 24, link: mix(T("orange"), T("yellow"), 45), lineHeight: "1", font: `Lato, ${TEXT}`, size: 24 },
+  consult: { tone: "light", bg: mix(T("card"), T("gray"), 20), main: mix(T("foreground"), T("background"), 25), heading: mix(T("foreground"), T("background"), 25), link: T("blue"), head: `Calibri, Carlito, ${TEXT}`, font: `Calibri, Carlito, ${TEXT}`, weight: 600, upper: false, sizes: "consult", size: 16 },
 }
 
 /** A deck's `theme:` as one of these (by name, any case; `default` is black, as in Advanced Slides), else null: a CSS
@@ -67,7 +67,7 @@ export function revealTheme(name: unknown): RevealTheme | null {
   const vars: Record<string, string> = {
     "--r-background-color": s.bg,
     "--r-main-font": s.font ?? TEXT,
-    "--r-main-font-size": `${s.size ?? 24}px`,
+    "--r-main-font-size": `${s.size ?? 40}px`,
     "--r-main-font-weight": String(s.textWeight ?? "normal"),
     "--r-main-color": s.main ?? T("foreground"),
     "--r-heading-font": s.head ?? GOTHIC,
@@ -77,7 +77,8 @@ export function revealTheme(name: unknown): RevealTheme | null {
     "--r-heading-text-transform": s.upper === false ? "none" : "uppercase",
     "--r-heading-text-shadow": "none",
     "--r-heading1-text-shadow": s.shadow ?? "none",
-    "--r-heading-margin": "0 0 0.45em",
+    "--r-heading-margin": "0 0 20px",
+    "--r-block-margin": "20px",
     "--r-link-color": s.link,
     "--r-selection-background-color": mix(s.link, "transparent", 55),
     "--r-selection-color": "inherit",
