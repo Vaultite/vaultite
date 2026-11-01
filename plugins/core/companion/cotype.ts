@@ -12,7 +12,7 @@ import { span } from "./text"
 
 /** A note open here: its doc as the server has it (`ready`), the editors showing it, whether they type into it now
  *  (`bound`, while `others` are in it too) and the autosave's stand-down meanwhile (`release`). */
-type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness; views: Set<EditorView>; ready: boolean; bound: boolean; others: number
+type Room = { path: string; doc: Y.Doc; text: Y.Text; aw: Awareness | null; views: Set<EditorView>; ready: boolean; bound: boolean; others: number
   release: (() => void) | null; joining: boolean
   /** The doc asked for and not here yet: asked again meanwhile, it would come twice. */
   asking: boolean
@@ -28,16 +28,17 @@ const slot = new Compartment()
 /** What the others typed comes in as the server's: not this window's to save, nor to undo. */
 const theirs = EditorState.transactionExtender.of((tr) => (tr.annotation(ySyncAnnotation) !== undefined ? { annotations: [Transaction.remote.of(true), Transaction.addToHistory.of(false)] } : null))
 
-/** A fresh doc for the room (its first, or the server's again). */
-function fresh(r: Room) {
+/** A fresh doc for the room (its first, or the server's again). Carets (`aware`) only with the server's: an Awareness
+ *  ticks every 3 s, so a note open alone has none. */
+function fresh(r: Room, aware = true) {
   r.aw?.destroy()
   r.doc?.destroy()
-  const doc = new Y.Doc(), aw = new Awareness(doc)
+  const doc = new Y.Doc(), aw = aware ? new Awareness(doc) : null
   Object.assign(r, { doc, text: doc.getText("md"), aw })
   doc.on("update", (u: Uint8Array, origin: unknown) => {
     if (origin === "server") { if (r.remote) r.synced = r.text.toString() } else if (r.bound) say({ t: "y", path: r.path, u: toBase64(u) })
   })
-  aw.on("update", ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
+  aw?.on("update", ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
     if (origin === "local" && r.bound) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(aw, [...added, ...updated, ...removed])) })
     tellPeople(r)
   })
@@ -45,7 +46,7 @@ function fresh(r: Room) {
 
 function open(path: string): Room {
   const r = { path, views: new Set(), ready: false, bound: false, others: 0, release: null, joining: false, asking: false, settled: null, alone: false, remote: false, synced: null } as unknown as Room
-  fresh(r)
+  fresh(r, false)
   rooms.set(path, r)
   if (getState().connected) say({ t: "y-open", path, bare: true })
   return r
@@ -53,7 +54,7 @@ function open(path: string): Room {
 
 function tellPeople(r: Room) {
   const list: Person[] = []
-  if (r.bound) for (const [id, s] of r.aw.getStates()) {
+  if (r.bound && r.aw) for (const [id, s] of r.aw.getStates()) {
     const u = (s as { user?: { name?: string; color?: string } }).user
     if (id !== r.doc.clientID && u?.name) list.push({ id, name: u.name, color: u.color ?? "var(--muted-foreground)" })
   }
@@ -62,6 +63,7 @@ function tellPeople(r: Room) {
 
 /** Its editors type into the doc, showing it as it is; what was typed since `settled` (saved) goes into it as theirs. */
 function bind(r: Room) {
+  if (!r.aw) return
   r.bound = true
   r.release ??= keepLive(r.path)
   const text = r.text.toString(), first = [...r.views].find((v) => v.dom.isConnected)
@@ -85,8 +87,12 @@ function unbind(r: Room, how: "alone" | "going" | "again" = "alone") {
   r.bound = false
   for (const v of r.views) if (v.dom.isConnected) v.dispatch({ effects: slot.reconfigure([]) })
   // (its caret goes from the others' screens)
-  removeAwarenessStates(r.aw, [r.doc.clientID], "gone")
-  if (getState().connected) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(r.aw, [r.doc.clientID])) })
+  if (r.aw) {
+    removeAwarenessStates(r.aw, [r.doc.clientID], "gone")
+    if (getState().connected) say({ t: "aw", path: r.path, u: toBase64(encodeAwarenessUpdate(r.aw, [r.doc.clientID])) })
+    r.aw.destroy()
+    r.aw = null
+  }
   tellPeople(r)
   const release = r.release
   r.release = null
@@ -118,7 +124,7 @@ function close(r: Room) {
   rooms.delete(r.path)
   if (getState().connected) say({ t: "y-close", path: r.path })
   setPeople(r.path, [])
-  r.aw.destroy()
+  r.aw?.destroy()
   r.doc.destroy()
 }
 
@@ -136,7 +142,7 @@ function heard(m: Record<string, unknown>) {
     r.remote = m.remote === true
     fresh(r)
     Y.applyUpdate(r.doc, fromBase64(m.u), "server")
-    if (typeof m.aw === "string") applyAwarenessUpdate(r.aw, fromBase64(m.aw), "server")
+    if (typeof m.aw === "string") applyAwarenessUpdate(r.aw!, fromBase64(m.aw), "server")
     r.ready = true
     r.others = Number(m.others) || 0
     r.alone = m.alone === true
@@ -152,7 +158,7 @@ function heard(m: Record<string, unknown>) {
     unbind(r)
     if (getState().connected) say({ t: "y-open", path: r.path, bare: true })
   } else if (m.t === "y" && typeof m.u === "string") Y.applyUpdate(r.doc, fromBase64(m.u), "server")
-  else if (m.t === "aw" && typeof m.u === "string") applyAwarenessUpdate(r.aw, fromBase64(m.u), "server")
+  else if (m.t === "aw" && typeof m.u === "string") { if (r.aw) applyAwarenessUpdate(r.aw, fromBase64(m.u), "server") }
   else if (m.t === "y-clash") notify(m.kept === "file" ? "Someone changed the same lines on disk as you typed: theirs stayed" : "Someone changed the same lines on disk as you typed: yours stayed, theirs is in the note's history", { id: "cotype-clash" })
   else if (m.t === "y-reject") {
     // (what was typed here didn't land: the server sends the note as it is, nothing here to keep)
@@ -187,7 +193,7 @@ subscribe(() => {
 setRooms({
   heard,
   goTo: (path, id) => {
-    const r = rooms.get(path), s = r?.aw.getStates().get(id) as { cursor?: { head?: unknown } } | undefined
+    const r = rooms.get(path), s = r?.aw?.getStates().get(id) as { cursor?: { head?: unknown } } | undefined
     const v = r && [...r.views].find((x) => x.dom.isConnected)
     if (!r || !v || !s?.cursor?.head) return
     const at = Y.createAbsolutePositionFromRelativePosition(Y.createRelativePositionFromJSON(s.cursor.head), r.doc)

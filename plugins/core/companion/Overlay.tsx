@@ -632,7 +632,10 @@ export function Overlay() {
     let frame = 0
     // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing)
     const idle = () => { const st = getState(); return !st.draft && !roomy.size && !adding && (st.mode === "off" ? !st.notes.some((n) => n.by) : !st.notes.length && !st.agents.length) && !selecting() }
-    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
+    // (ticks only with something to place: an idle app with no agents or comments wakes for nothing)
+    let tick = 0
+    const later = () => { arm(); if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
+    const arm = () => { if (!tick && !idle()) tick = window.setInterval(() => { if (idle()) { clearInterval(tick); tick = 0 } else if (document.visibilityState === "visible") later() }, 1500) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
     addEventListener("scroll", later, { capture: true, passive: true })
@@ -640,9 +643,9 @@ export function Overlay() {
     // (a sidebar opening moves a pane's text without resizing its editor; a tab switch or a split moves editors unsaid)
     const ro = new ResizeObserver(later), watch = () => { for (const el of document.querySelectorAll("[data-pane], #main-scroll")) ro.observe(el) }
     watch()
-    // (only with something to place: an idle app with no agents or comments does nothing every 1.5 s)
-    const tick = setInterval(() => { if (document.visibilityState === "visible" && !idle()) later() }, 1500)
-    return () => { off(); ro.disconnect(); removeEventListener("scroll", later, { capture: true }); removeEventListener("resize", resized); clearInterval(tick); cancelAnimationFrame(frame) }
+    const unsub = subscribe(arm)
+    arm()
+    return () => { off(); unsub(); ro.disconnect(); removeEventListener("scroll", later, { capture: true }); removeEventListener("resize", resized); clearInterval(tick); cancelAnimationFrame(frame) }
   }, [])
   // The note's own room under its text, so scrolling reaches its lowest card.
   useLayoutEffect(() => {

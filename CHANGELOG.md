@@ -47,6 +47,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Screen readers hear each page's title and each row's count**: a page without a heading of its own (Settings,
   Files, Search...) has one for screen readers, and sidebar rows are named by all they show ("Writing 12", not
   "Writing").
+- **An idle window sleeps**: a note left open, shown or behind other windows, no longer wakes the app every 1.5 s to
+  place agents' cursors and comments there are none of, nor every 3 s to keep carets for people who aren't there
+  (about 90 wakeups a minute down to under 10).
 - **The palettes' key hints are keycaps**: the line of keys along the bottom of ⌘P, ⌘O and the other pickers draws
   each key as a keycap, as the shortcuts on their rows do, instead of bold text with esc in its own style.
 - **Long notes open and edit faster**: a note of tens of thousands of lines no longer works out all its tables,
