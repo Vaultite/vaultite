@@ -21,6 +21,8 @@ const cell = (r, c, t = table) => t.locator("tr").nth(r).locator("th, td").nth(c
 // (clicked at its edge: its middle may be a link, which is followed)
 const click = (r, c) => cell(r, c).click({ position: { x: 3, y: 3 } })
 const widths = () => table.evaluate((t) => [...t.rows[0].cells].map((c) => Math.round(c.getBoundingClientRect().width)))
+// (End in a cell's field: a Mac's moves no caret, so its ⌘→)
+const lineEnd = process.platform === "darwin" ? "Meta+ArrowRight" : "End"
 const drawn = async () => (await ed.locator(".cm-block-table").count()) === 1 && !(await ed.locator(".cm-line", { hasText: "| Where |" }).count())
 
 const before = await widths()
@@ -29,7 +31,7 @@ check("a click opens the cell", await ed.locator(".cm-cell-input").count() === 1
 await click(1, 2); await wait(300)
 check("a click on another cell moves to it, the table still drawn", await ed.locator(".cm-cell-input").count() === 1 && await drawn())
 check(`its Markdown, wider than its text, moves no column (${before} → ${await widths()})`, JSON.stringify(await widths()) === JSON.stringify(before))
-await page.keyboard.press("End"); await page.keyboard.type(" and more text to wrap")
+await page.keyboard.press(lineEnd); await page.keyboard.type(" and more text to wrap")
 check(`typing wraps in the cell, the columns stay (${await widths()})`, JSON.stringify(await widths()) === JSON.stringify(before))
 await cell(2, 0).evaluate((td) => { td.dataset.kept = "1" })
 await click(1, 0); await wait(300)
@@ -276,7 +278,7 @@ check(`drawn as wide as the text, in those shares (${w0} → ${drawnW})`, await 
   && Math.abs(drawnW[0] / drawnW.reduce((a, b) => a + b, 0) - d0 / (d0 + d1 + d2)) < 0.02)
 await page.screenshot({ path: `${OUT}/widths-desktop.png` })
 await cell(2, 2, tw).click({ position: { x: 4, y: 4 } }); await wait(200)
-await page.keyboard.press("End"); await page.keyboard.type(" more"); await wait(200)
+await page.keyboard.press(lineEnd); await page.keyboard.type(" more"); await wait(200)
 await ed.locator(".cm-line", { hasText: "Below" }).click(); await wait(300)
 check("editing a cell keeps the widths", await saved(async () => (await read(WIDE)).includes("| Write docs | Sam | Short more |")) && await sepLine() === sep, await read(WIDE))
 await page.reload(); await wait(1500)
