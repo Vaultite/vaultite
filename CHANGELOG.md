@@ -228,8 +228,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Phones move table rows and columns by dragging**: a table's grips, held then dragged, move its row or column
   without pulling the page down, and are 44px targets; a database view's column heading, held then dragged, moves it.
 - **Table columns resize**: drag a column's edge in a table's header to set the widths, kept in the separator's
-  dashes as Pandoc reads them (so plain Markdown) and drawn wherever the table is (a dashboard, a callout);
-  double-click the edge to fit the columns to their text again.
+  dashes as Pandoc reads them (so plain Markdown) and drawn wherever the table is (a dashboard, a callout); Escape
+  while dragging puts them back, and a double-click on the edge or Fit columns to text in a column's menu fits the
+  columns to their text again.
 - **A confirm dialog's button is readable from the start**: on a desktop, the button a question opens focused (Run,
   Delete) lost its colour while focused, leaving its white label on a pale button until the pointer went over it.
 - **What you typed is marked in the accent colour**: the letters ⌘O, ⌘P and the pickers matched are drawn in the

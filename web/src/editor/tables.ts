@@ -6,7 +6,7 @@ import { EditorSelection } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
 import type { SyntaxNode } from "@lezer/common"
 import { ArrowDown, ArrowDownAZ, ArrowDownZA, ArrowLeft, ArrowRight, ArrowUp, BetweenHorizontalEnd, BetweenHorizontalStart,
-  BetweenVerticalEnd, BetweenVerticalStart, Code, Columns3, CopyPlus, Eraser, Rows3, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react"
+  BetweenVerticalEnd, BetweenVerticalStart, Code, Columns3, CopyPlus, Eraser, FoldHorizontal, Rows3, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react"
 import { menuShowing, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { addDropTarget, edgeScroller, startDrag } from "@/core/drag"
 import { isMac } from "@/core/platform"
@@ -352,6 +352,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
         { label: "Center", icon: TextAlignCenter, checked: table!.align[c] === "center", run: () => align("center") },
         { label: "Right", icon: TextAlignEnd, checked: table!.align[c] === "right", run: () => align("right") },
       ] },
+      fit: { label: "Fit columns to text", icon: FoldHorizontal, run: () => change((t) => setWidths(t, null), "input.table", then(c)) },
       clear: { label: "Clear column", icon: Eraser, disabled: rows() < 2,
         run: () => change((t) => clearCells(t, { r: 1, c }, { r: rows() - 1, c }), "delete", pick ? { pick: wholeCol(c) } : { open: { r, c } }) },
       remove: many
@@ -360,10 +361,12 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     } satisfies Record<string, MenuItem>
   }
   const sep = (i: MenuItem): MenuItem => ({ ...i, sep: true })
+  /** Fit columns to text, when there are widths to undo (set by dragging a column's edge). */
+  const widthItems = (fit: MenuItem) => (table?.widths ? [fit] : [])
   const rowMenu = (r: number) => { const x = rowItems(r, 0, true); return [x.above, x.below, x.dup, sep(x.up), x.down, sep(x.clear), sep(x.remove)] }
   const colMenu = (c: number) => {
     const x = colItems(c, 0, true)
-    return [x.left, x.right, sep(x.toLeft), x.toRight, sep(x.asc), x.desc, sep(x.align), sep(x.clear), sep(x.remove)]
+    return [x.left, x.right, sep(x.toLeft), x.toRight, sep(x.asc), x.desc, sep(x.align), ...widthItems(x.fit), sep(x.clear), sep(x.remove)]
   }
   function cellMenu(r: number, c: number): MenuItem[] {
     const x = rowItems(r, c, false), y = colItems(c, r, false), b = bounds()
@@ -372,7 +375,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       ...(several ? [{ label: "Clear cells", icon: Eraser, run: () => change((t) => clearCells(t, sel!.a, sel!.h), "delete", { pick: [sel!.a, sel!.h] }) }] : []),
       { ...x.above, sep: !!several }, x.below, sep(y.left), y.right,
       { label: "Row", icon: Rows3, sep: true, run: () => {}, items: [x.dup, sep(x.up), x.down, sep(x.clear)] },
-      { label: "Column", icon: Columns3, run: () => {}, items: [y.toLeft, y.toRight, sep(y.asc), y.desc, sep(y.clear)] },
+      { label: "Column", icon: Columns3, run: () => {}, items: [y.toLeft, y.toRight, sep(y.asc), y.desc, ...widthItems(sep(y.fit)), sep(y.clear)] },
       y.align,
       sep(x.remove), y.remove,
       { label: "Delete table", icon: Trash2, danger: true, run: deleteTable },
@@ -566,7 +569,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     edges.forEach((h, i) => {
       const b = i < heads.length - 1 ? heads[i].getBoundingClientRect() : null
       h.hidden = !b || b.right < tb.left + 4 || b.right > tb.right - 4
-      if (b) Object.assign(h.style, { left: px(b.right - box.left), top: px(b.top - box.top), height: px(b.height) })
+      // (dragged, its line runs down the whole table)
+      if (b) Object.assign(h.style, { left: px(b.right - box.left), top: px(b.top - box.top), height: px(h.classList.contains("is-active") ? tb.bottom - b.top : b.height) })
     })
     const at = over ?? (editing && { r: editing.r, c: editing.c }) ?? sel?.h ?? null
     const cell = at && grid![at.r]?.[at.c]
@@ -645,15 +649,28 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
         shareColumns(drawn, drawn.querySelector("table")!, shares)
         place()
       }
+      const end = () => {
+        h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up)
+        removeEventListener("keydown", key, true)
+        h.classList.remove("is-active")
+      }
       const up = (ev: PointerEvent) => {
         if (ev.pointerId !== id) return
-        h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up)
-        h.classList.remove("is-active")
+        end()
         if (shares) { const s = shares; change((t) => setWidths(t, s), "input.table") }
+      }
+      // (Escape puts the widths back as they were)
+      const key = (ev: KeyboardEvent) => {
+        if (ev.key !== "Escape") return
+        ev.preventDefault(); ev.stopPropagation()
+        end()
+        if (h.hasPointerCapture(id)) h.releasePointerCapture(id)
+        if (shares) paint()
       }
       h.addEventListener("pointermove", move)
       h.addEventListener("pointerup", up)
       h.addEventListener("pointercancel", up)
+      addEventListener("keydown", key, true)
     })
     h.addEventListener("dblclick", (e) => {
       e.preventDefault(); e.stopPropagation()
