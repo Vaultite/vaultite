@@ -3,7 +3,7 @@ import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, check, vault } = $
+  const { VAULT, api, check, read, vault, write } = $
   // Pins follow moves made through the API (an AI moving files), not only the app's: files, whole folders, and deletes.
   // "files" is an old app's phone Files page: a pin that isn't a file, kept in place.
   const pins = () => JSON.stringify(vault.config("pages").pinned ?? [])
@@ -25,9 +25,11 @@ export default async ($: VaultTest) => {
   await api("DELETE", "file?path=Linker.md")
   check("a trashed file loses its pin", !JSON.parse(pins()).includes("Linker.md"), pins())
   await api("POST", "folder", { path: "Boards" })
+  const people = read("Dashboards/People.md")
   await api("POST", "file/move", { from: "Dashboards/People.md", to: "Boards/People.md" })
   await api("DELETE", "file?path=Boards")
   check("a trashed folder loses its pins", pins() === list("Dashboards/Errors.md", "files"), pins())
+  write("Dashboards/People.md", people) // (the People plugin's page: the areas after this one need it)
   vault.setConfig("pages", { pinned: ["People/Block Person.md"] })
   await api("DELETE", "people/Block Person")
   check("an item deleted through its collection loses its pin", pins() === list(), pins())
