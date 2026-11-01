@@ -40,6 +40,7 @@ import { setSheetFile } from "@/components/TargetView"
 import { newNote, revealInTree } from "@/components/FileTree"
 import { headerMenu, panelMenu, RAIL, SidebarPanels, SidebarToggle } from "@/components/Sidebar"
 import { FileView } from "@/components/FileView"
+import { keptShown, PhoneFiles } from "@/components/PhoneFiles"
 import { StatusBar } from "@/components/StatusBar"
 import { Catch, Drawn, Guard } from "@/components/Guard"
 import { DownloadingNotice, VaultLoading } from "@/components/VaultLoading"
@@ -207,9 +208,10 @@ function useRoute() {
     place.current = targetOf(r.tab)
     restoring.current = true
     // (Back or Forward: where that entry was, by pixels; another tab: where it was left, by its line when it has one)
-    const back = takeScroll()
-    return restoreScroll(null, back ?? scrollOf(place.current), () => { restoring.current = false }, back === null ? place.current : undefined,
-      document.querySelector<HTMLElement>("#main-scroll article.file-view"))
+    // (a file tab kept drawn is as it was left: back by pixels at once, no line to wait for)
+    const back = takeScroll(), kept = keptShown()
+    return restoreScroll(null, back ?? scrollOf(place.current), () => { restoring.current = false }, back === null && !kept ? place.current : undefined,
+      document.querySelector<HTMLElement>("#main-scroll article.file-view:not([data-kept] *)"))
   }, [r.tab, loaded])
   useEffect(() => {
     const on = () => { if (!isDesktop() && !restoring.current && place.current) keepScroll(place.current, scrollY) }
@@ -653,7 +655,7 @@ export default function App() {
             {error && !store && <p className="mt-10 text-muted-foreground">{error}</p>}
             {!error && !store && <VaultLoading />}
             {store && <Guard what="This tab" size="tab" reset={tab} close={() => closeTab(activeTab().id)}>
-              {isFileTab && <FileView key={filePath} store={store} path={filePath} pane />}
+              <PhoneFiles store={store} tab={activeTab().id} path={isFileTab ? filePath : null} />
               {(isNewTab || isViewTab) && <PhoneTab key={isViewTab && viewFor(targetOf(tab), disabled)?.def.argState ? targetOf(tab).split("/")[0] : tab} store={store} to={targetOf(tab)} />}
               {active && !isFileTab && <div key={active.id}><Drawn draw={() => DRAW[active.id](store, tab, activeTab())} /></div>}
             </Guard>}

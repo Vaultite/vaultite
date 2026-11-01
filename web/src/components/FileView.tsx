@@ -259,7 +259,9 @@ function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, p
 /** The view button (⌘E): reading <-> editing, showing what a tap does; a right-click (a hold on phones) picks any of the
  *  file's views, source mode too. Small in the desktop path bar, 44pt on phones in the sheet's or the phone's header. */
 const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, views, phone }: { mode: Mode; setMode: (m: Mode) => void; edit: Mode; views: typeof VIEWS; phone?: "sheet" | "header" }) {
-  const host = usePortalHost(phone ? (phone === "sheet" ? "sheet-actions" : "phone-actions") : null)
+  // (a tab kept drawn behind the shown one puts nothing in the header)
+  const { hidden } = usePane()
+  const host = usePortalHost(phone && !hidden ? (phone === "sheet" ? "sheet-actions" : "phone-actions") : null)
   const toggleKeys = useCommandKeys("view:toggle", true)
   const reading = mode === "read"
   // It shows what a click does: a pencil while reading, a book while editing.
@@ -459,7 +461,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const spot = useRef<Spot | null>(null)
   const shownNow = useRef(shown)
   shownNow.current = shown
-  const { focused } = usePane()
+  const { focused, hidden: behind } = usePane()
   const noteSpot = () => { spot.current = spotOf(article.current, editor.current?.api ?? null, fmLines(cur.current)) }
   const keepAt = () => {
     const v = editor.current?.api.view
@@ -591,7 +593,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Where a tab's file was left is its line too (core/viewstate.ts): said with each scroll of its tab, and found again
   // when it's drawn anew (opened again in its tab, the app reloaded), once its editor is ready to say where lines are.
   useEffect(() => {
-    if (!pane || !article.current) return
+    if (!pane || behind || !article.current) return
     const box = article.current.closest<HTMLElement>("[data-pane], [data-kept], [data-stacked]")
     if (!box && isDesktop()) return
     return readPlace(box, () => {
@@ -601,7 +603,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       // (a drawn page whose parts say their lines: a dashboard's cards)
       return article.current ? partLineAt(article.current, top) : null
     })
-  }, [pane, path])
+  }, [pane, path, behind])
   // A dashboard's grid drawn while its place is being found: its card found again, as an editor finds its line.
   const grid = dash && shown === "read"
   useLayoutEffect(() => {

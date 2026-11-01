@@ -523,6 +523,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   where there's no hover to bring them out (they were there, unseen, under the finger).
 - **iPhone on its side, the rest of the way**: toasts and corner cards keep clear of the notch and home indicator, and
   the palettes drop their keyboard hints on a phone held sideways, for more results.
+- **Phone tabs switch back at once**: the last four file tabs stay drawn, hidden, so going back to one shows it as it
+  was left instead of drawing its page again (a dashboard's about a third sooner, with half the main-thread work).
 
 ## 0.8.0 (2026-10-24)
 

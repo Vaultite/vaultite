@@ -3,6 +3,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react"
 import { namedIcon, tintOf } from "@/core/pages"
 import { cell } from "@/core/signal"
+import { usePane } from "@/core/pane"
 import { cn } from "@/lib/utils"
 
 /** The title's text. A phone's is a size down: its header names the file too, once the title scrolls away. */
@@ -20,16 +21,18 @@ export const ICON_BUTTON = "relative isolate grid shrink-0 cursor-pointer before
 export function TitleRow({ icon, tint, phone, onIcon, children }: { icon?: unknown; tint?: unknown; phone?: boolean; onIcon?: () => void; children: ReactNode }) {
   const Icon = typeof icon === "string" ? namedIcon(icon) : null
   const row = useRef<HTMLDivElement>(null)
+  // (a tab kept drawn behind the shown one says nothing about the header)
+  const { hidden } = usePane()
   useLayoutEffect(() => {
     const el = row.current
-    if (!phone || !el) return
+    if (!phone || hidden || !el) return
     // In sight: any of it below the header (fixed, over the window that scrolls).
     const top = document.querySelector<HTMLElement>("[data-phone-header]")?.offsetHeight ?? 0
     const io = new IntersectionObserver(([e]) => titleInSight.set(e.isIntersecting), { rootMargin: `-${top}px 0px 0px 0px` })
     io.observe(el)
     titleInSight.set(true)
     return () => { io.disconnect(); titleInSight.set(false) }
-  }, [phone])
+  }, [phone, hidden])
   const at = "mt-[3px] md:mt-1"
   const drawn = Icon && <Icon data-title-icon aria-hidden className={cn("size-6 shrink-0 md:size-[26px]", !onIcon && at)} strokeWidth={2}
     style={{ color: tintOf(typeof tint === "string" ? tint : null) }} />

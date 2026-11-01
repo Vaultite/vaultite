@@ -1,5 +1,6 @@
 // Phone tabs through Workspaces: a phone-sized and a desktop-sized page sharing workspace 1's tabs, both ways. Writes
 // Qa tabs/ and the Workspaces data.json (removed after): throwaway server only.
+// A file tab kept drawn behind the shown one (PhoneFiles.tsx) is in [data-kept]: what is on screen is outside it.
 //   node web/qa/phonetabs.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -27,7 +28,7 @@ for (const p of [D, P]) watch(p, { console: true, ignore: /favicon|Failed to loa
 const dTabs = () => D.$$eval("[data-tab-bar] [data-tab-id]", (els) => els.map((t) => t.innerText.trim()))
 const pCount = () => P.locator("[data-tabs-button]").innerText().then((t) => Number(t.trim()))
 const pHash = () => P.evaluate(() => decodeURIComponent(location.hash))
-const onScreen = (name) => P.locator(`article.file-view[data-path="Qa tabs/${name}.md"]`).count().then((n) => n > 0)
+const onScreen = (name) => P.locator(`article.file-view[data-path="Qa tabs/${name}.md"]:not([data-kept] *)`).count().then((n) => n > 0)
 let cdp
 /** A finger dragged across a tab's card by dx px (touch events: pointer events of type touch); `lift`: let go at the end. */
 async function touchDrag(sel, dx, lift = true) {
@@ -148,10 +149,10 @@ try {
 
   // ---------- the view toggle ----------
   const toggle = P.locator("[data-phone-header] #phone-actions [data-view-toggle]")
-  check("note in a tab: a pencil to edit (reading), in the header", (await toggle.getAttribute("aria-label")) === "Edit" && (await toggle.getAttribute("data-view-toggle")) === "read" && !(await P.locator("article button", { hasText: /^(Edit|Done)$/ }).count()), await toggle.getAttribute("aria-label"))
+  check("note in a tab: a pencil to edit (reading), in the header", (await toggle.getAttribute("aria-label")) === "Edit" && (await toggle.getAttribute("data-view-toggle")) === "read" && !(await P.locator("article:not([data-kept] *) button", { hasText: /^(Edit|Done)$/ }).count()), await toggle.getAttribute("aria-label"))
   await P.screenshot({ path: `${OUT}note-read.png` })
   await toggle.click(); await wait(400)
-  check("note in a tab: editing, a book to read", (await toggle.getAttribute("aria-label")) === "Read" && (await P.locator("article .cm-content[contenteditable=true]").count()) > 0, await toggle.getAttribute("aria-label"))
+  check("note in a tab: editing, a book to read", (await toggle.getAttribute("aria-label")) === "Read" && (await P.locator("article:not([data-kept] *) .cm-content[contenteditable=true]").count()) > 0, await toggle.getAttribute("aria-label"))
   await P.screenshot({ path: `${OUT}note-edit.png` })
   await toggle.click(); await wait(300)
   check("note in a tab: back to reading", (await toggle.getAttribute("aria-label")) === "Edit")
@@ -184,13 +185,13 @@ try {
   await P.keyboard.press("Escape"); await wait(500)
   // A dashboard: drawn while reading, its Markdown while editing.
   await P.evaluate((h) => { location.hash = h }, hash("Board")); await toggle.waitFor({ timeout: 10000 }).catch(() => {})
-  check("dashboard: a pencil on the drawn page", (await toggle.getAttribute("aria-label")) === "Edit" && (await P.locator("article [data-block]").count()) > 0 && !(await P.locator("article .cm-content").count()), await toggle.count())
+  check("dashboard: a pencil on the drawn page", (await toggle.getAttribute("aria-label")) === "Edit" && (await P.locator("article:not([data-kept] *) [data-block]").count()) > 0 && !(await P.locator("article:not([data-kept] *) .cm-content").count()), await toggle.count())
   await P.screenshot({ path: `${OUT}dashboard-read.png` })
   await toggle.click(); await wait(800)
-  check("dashboard: editing shows its Markdown in the editor, a book to read", (await toggle.getAttribute("aria-label")) === "Read" && (await P.locator("article .cm-content[contenteditable=true]").count()) > 0, await toggle.count())
+  check("dashboard: editing shows its Markdown in the editor, a book to read", (await toggle.getAttribute("aria-label")) === "Read" && (await P.locator("article:not([data-kept] *) .cm-content[contenteditable=true]").count()) > 0, await toggle.count())
   await P.screenshot({ path: `${OUT}dashboard-edit.png` })
   await toggle.click(); await wait(600)
-  check("dashboard: reading again, drawn", (await toggle.getAttribute("aria-label")) === "Edit" && !(await P.locator("article .cm-content").count()))
+  check("dashboard: reading again, drawn", (await toggle.getAttribute("aria-label")) === "Edit" && !(await P.locator("article:not([data-kept] *) .cm-content").count()))
   await P.evaluate((h) => { location.hash = h }, hash("Three"))
   // (saved, and the desktop has it, before the desktop changes the same workspace)
   check("desktop: sees the phone's tab back on Three", !!(await until(async () => (await dTabs()).some((t) => t.includes("Three")) && !(await dTabs()).some((t) => t.includes("Board")), 6000)), await dTabs())
