@@ -16,17 +16,18 @@ const CODE = /(`+)(?:(?!\1).)+?\1/g
 /** The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline). */
 export function wikiTargets(text: string): string[] {
   const out: string[] = []
+  for (const [line, code] of fenced(text)) if (!code) for (const m of line.replace(CODE, "").matchAll(WIKI())) out.push(m[1].trim())
+  return out
+}
+
+/** Each line of Markdown, and whether it's code: a fence's own line or one inside it. */
+export function* fenced(text: string): Generator<[string, boolean]> {
   let fence: string | null = null
   for (const line of text.split("\n")) {
     const f = /^\s*(`{3,}|~{3,})/.exec(line)
-    if (f && (fence === null || (f[1][0] === fence[0] && f[1].length >= fence.length))) {
-      fence = fence ? null : f[1]
-      continue
-    }
-    if (fence) continue
-    for (const m of line.replace(CODE, "").matchAll(WIKI())) out.push(m[1].trim())
+    if (f && (fence === null || (f[1][0] === fence[0] && f[1].length >= fence.length))) { fence = fence ? null : f[1]; yield [line, true] }
+    else yield [line, fence !== null]
   }
-  return out
 }
 
 /** `[[X]]` typed without quotes, which YAML reads as a list in a list ([["X"]]): the link it was meant to be, or null. */
@@ -161,14 +162,8 @@ export function linksIn(text: string, offset = 0): LinkSpan[] {
 /** `text` with each link's target (outside code) passed through `to`: a wikilink's or embed's target, or a Markdown
  *  link's path (decoded, without its #anchor; md: true). `to` gives the new target, or null to leave the link. */
 export function mapLinks(text: string, to: (target: string, md: boolean) => string | null): string {
-  let fence: string | null = null
-  return text.split("\n").map((line) => {
-    const f = /^\s*(`{3,}|~{3,})/.exec(line)
-    if (f && (fence === null || (f[1][0] === fence[0] && f[1].length >= fence.length))) {
-      fence = fence ? null : f[1]
-      return line
-    }
-    if (fence || !(line.includes("[[") || line.includes("]("))) return line
+  return Array.from(fenced(text), ([line, code]) => {
+    if (code || !(line.includes("[[") || line.includes("]("))) return line
     // Inline code stays as it is: only the text between code spans is rewritten.
     let out = "", at = 0
     for (const m of line.matchAll(CODE)) { out += relinkSpan(line.slice(at, m.index), to) + m[0]; at = m.index + m[0].length }

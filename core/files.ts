@@ -13,6 +13,7 @@ import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } f
 import { merge3 } from "./textedit.ts"
 import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
+import { fenced } from "./links.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
@@ -106,15 +107,9 @@ function mdTarget(vault: Vault | null, rel: string, href: string) {
  *  the line as written (`context` makes it the one shown). */
 function linksOf(e: Entry, vault: Vault | null = null) {
   const out: [string, string][] = []
-  let fence: string | null = null
   // (a body with neither kind of link has none to find line by line)
-  for (const line of e.body.includes("[[") || e.body.includes("](") ? e.body.split("\n") : []) {
-    const f = /^\s*(`{3,}|~{3,})/.exec(line)
-    if (f && (fence === null || (f[1][0] === fence[0] && f[1].length >= fence.length))) {
-      fence = fence ? null : f[1]
-      continue
-    }
-    if (fence) continue // a link in code is just text
+  for (const [line, code] of e.body.includes("[[") || e.body.includes("](") ? fenced(e.body) : []) {
+    if (code) continue // a link in code is just text
     const text = line.replace(CODE, "")
     for (const m of text.matchAll(WIKI())) out.push([m[1].trim(), line])
     if (text.includes("](")) for (const m of text.matchAll(MDLINK())) out.push([mdTarget(vault, e.rel, m[1] ?? m[2]), line])
