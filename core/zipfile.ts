@@ -1,4 +1,4 @@
-// A zip read in place with Node only (zip64 too: exports with images pass 4 GB), each entry as a stream, so a huge
+// A zip on disk read in place with Node only (zip64 too: exports with images pass 4 GB), each entry as a stream, so a huge
 // conversations.json is never held whole. `zipFiles` writes one, for the tests.
 import fs from "node:fs"
 import { Readable } from "node:stream"

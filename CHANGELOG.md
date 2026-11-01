@@ -15,6 +15,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   cache, so a vault's page starts about 180 ms sooner.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its
   lines, so Obsidian plugins' reading-view post-processors find their section there too.
+- **Import from Notion and Evernote**: the Importer plugin turns Notion's Markdown & CSV export into notes (ids off
+  the names, links as wikilinks, database rows' properties as frontmatter) and Evernote's .enex into notes with their
+  tags, dates, to-dos, tables and attachments; importing again adds only what's new.
 - **The graph keeps up in big vaults**: after an edit only the changed note's links are worked out again (about 3x
   less work on the server at 50,000 notes).
 - **vau tells a mistyped command from a failed one**: a missing or bad argument now exits 2, like an unknown command,

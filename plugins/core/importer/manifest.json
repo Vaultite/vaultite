@@ -1,0 +1,12 @@
+{
+  "id": "importer",
+  "icon": "import",
+  "category": "writing",
+  "offByDefault": true,
+  "name": "Importer",
+  "description": "Brings your notes from Notion and Evernote: their exports become Markdown notes, with attachments, links between pages, tags, to-dos and database properties kept.",
+  "tint": "blue",
+  "settings": {
+    "folder": { "type": "string", "folder": true, "default": "", "label": "Folder", "description": "where the Notion and Evernote folders go (empty: the vault's top)" }
+  }
+}

@@ -5,7 +5,7 @@
  * chapters, cover). Nothing about anyone.
  */
 import { createRequire } from "node:module"
-import { zipFiles } from "../../../plugins/core/ai-import/zip.ts"
+import { zipFiles } from "../../../core/zipfile.ts"
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 const p = (text: string, style = "", list = false) =>

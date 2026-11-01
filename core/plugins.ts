@@ -80,6 +80,8 @@ export { csvRecords, parseCsv } from "./csv.ts"
 export { formatDate, parseDate, type DateOptions } from "./dates.ts"
 /** Zips held in memory (core/unzip.ts): Office files and EPUB books are zips of XML, read as text by their plugins. */
 export { unzip, xmlDecode, zipText } from "./unzip.ts"
+/** A zip on disk read in place, each entry a stream (core/zipfile.ts): exports that run to gigabytes. */
+export { entryBytes, entryStream, isZip, type ZipEntry, zipEntries, zipFiles } from "./zipfile.ts"
 /** A file from outside the vault the desktop app let this window open (an absolute path), or an HTTPError 404: what a
  *  format's backend serves for one (HTML's /v/). core/outside.ts. */
 export { allowedPath as outsidePath, isOutside } from "./outside.ts"

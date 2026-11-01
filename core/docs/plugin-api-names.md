@@ -729,6 +729,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
 - `distros()`: WSL's distros on this machine, the default first (none off Windows, or without WSL).
 - `enabled(vault, plugins)`: Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require).
+- `entryBytes(file, e)`: One entry's bytes, whole (for small ones: an image, memories.json).
+- `entryStream(file, e)`: One entry's bytes as a stream (inflated as they're read).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
 - `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or a stamp: stampMs): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
 - `fmtMin(m)`: 90 -> "1 h 30 min".
@@ -748,6 +750,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isColor(c)`
 - `isOutside(p)`: An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x.
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
+- `isZip(file)`: Does the file start like a zip ("PK\3\4", or an empty one's "PK\5\6")? Claude's exports may come named .dms.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
 - `liveMarkdown(text)`: Whether words a guest adds (a comment, a reply: all of it theirs) hold anything live.
@@ -840,6 +843,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WriteRefused`: A write the gate refused: a 403 for the API.
 - `writeWslVau(o?)`: Writes vau for WSL (when it changed) running this checkout's bin/vau with `exe` as Node (this process's by default: the app's executable or node.exe); returns its folder.
 - `xmlDecode(s)`: XML or HTML text with its entities decoded (&amp;, &#233;, &#x2014;).
+- `zipEntries(file)`: Every entry of the zip at `file` (folders left out).
+- `zipFiles(files)`: A zip of these files (name -> content), deflated: the tests' made-up exports.
 - `zipText(zip, name)`: An entry's text (UTF-8), or null when there's no such entry.
 
 ### `@vaultite/core/vault.ts` (plugin.ts: the vault's files)

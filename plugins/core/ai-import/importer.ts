@@ -11,7 +11,7 @@ import * as chatgpt from "./chatgpt.ts"
 import * as claude from "./claude.ts"
 import { jsonItems } from "./jsonstream.ts"
 import { chatNote, INLINE, LABELS, localDate, projectNote, reviewText, splitBody } from "./note.ts"
-import { entryBytes, entryStream, isZip, type ZipEntry, zipEntries } from "./zip.ts"
+import { entryBytes, entryStream, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
 
 export type Options = {
   /** The folder chats go in (a subfolder per source). */

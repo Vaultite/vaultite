@@ -9,7 +9,7 @@ export default async ($: VaultTest) => {
   // projects and a review list of memories; streaming, branches, idempotent re-imports, and adding ticked memories.
   {
     const { jsonItems } = await import("../../../plugins/core/ai-import/jsonstream.ts")
-    const { zipEntries, entryBytes, zipFiles } = await import("../../../plugins/core/ai-import/zip.ts")
+    const { zipEntries, entryBytes, zipFiles } = await import("../../../core/zipfile.ts")
     const chatgpt = await import("../../../plugins/core/ai-import/chatgpt.ts")
     const claude = await import("../../../plugins/core/ai-import/claude.ts")
     const { chatNote, reviewItems, afterApply, shiftHeadings, fenced } = await import("../../../plugins/core/ai-import/note.ts")
