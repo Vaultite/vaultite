@@ -12,6 +12,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   not the whole table (an arrow in a 2,000-row table took 200 ms, now 26 ms).
 - **Other programs' pages get nothing of the desktop app's permissions**: only its vaults' own pages on this machine
   may use the microphone, location or pasting without asking; a page another program serves on localhost may not.
+- **Add comment is offered only in a note**: the commands leave it out on a new tab, a page or a terminal, where it
+  could only say to open a note.
 - **Slides take a deck's size and scale**: frontmatter `width` and `height` shape slides with placed grids, and
   `margin`, `minScale`, `maxScale` and `center` bound and place every slide, as in Advanced Slides.
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the

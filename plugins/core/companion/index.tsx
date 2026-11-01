@@ -28,13 +28,14 @@ setGuest(share)
 
 /** Comment on the selection, or on the caret's line: a card in the margin to write it in. A guest who may only read can't. */
 const comments = () => !share || share.role !== "read"
+const noteEditor = () => { const ed = currentEditor(); return ed?.path && ed.kind === "markdown" ? { ...ed, path: ed.path } : null }
 function addComment() {
-  const ed = currentEditor()
-  if (!ed?.path || ed.kind !== "markdown") return void notify("Open a note to comment on it")
+  const ed = noteEditor()
+  if (!ed) return
   const v = ed.view, sel = v.state.selection.main, find = v.state.sliceDoc(sel.from, sel.to).trim().slice(0, 200)
   startComment({ path: ed.path, line: v.state.doc.lineAt(sel.from).number, ...(find ? { find } : {}) })
 }
-const COMMENT = { id: "companion:comment", name: "Add comment", label: "Comment", keys: ["Mod+Alt+M"], run: addComment, icon: MessageSquarePlus }
+const COMMENT = { id: "companion:comment", name: "Add comment", label: "Comment", keys: ["Mod+Alt+M"], when: () => !!noteEditor(), run: addComment, icon: MessageSquarePlus }
 
 /** The status bar's companion: where its agents rest, an arrow each in its colour (the main one, then up to two more at
  *  work), which their cursors glide out of to where their attention is and back into (Overlay's home); and its menu. */
