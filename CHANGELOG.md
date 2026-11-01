@@ -280,7 +280,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Only the owner runs commands in the app's window**: palette commands and terminal tabs sent to the window (`vau
   command`, `vau open view:terminal/...`) answer only this machine's owner, as terminals do.
 - **The desktop app opens its window sooner**: its main process loads a third of the code it did at launch, from a
-  cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner.
+  cache, and each vault's server starts from the cache too, so a vault's page starts about 230 ms sooner. The
+  server's cache is kept with the app's data, so a launch after a restart is no slower.
 - **Plugins know where a drawn callout, table or HTML block is in its note**: `onMarkdownDrawn` hands them its
   lines, so Obsidian plugins' reading-view post-processors find their section there too.
 - **Import from Notion, Evernote, Google Keep, Bear, Roam, HTML pages and CSV**: the Importer plugin turns Notion's Markdown & CSV

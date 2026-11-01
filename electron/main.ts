@@ -6,7 +6,6 @@ import { app, autoUpdater, type BaseWindow, type BaseWindowConstructorOptions, c
 import { AppWindow } from "./appwindow.ts"
 import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
@@ -284,8 +283,9 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port),
-      // (Node's compile cache from its first module, Node's own folder for it: server.ts turns it on only after its imports)
-      NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE || path.join(os.tmpdir(), "node-compile-cache"),
+      // (Node's compile cache from its first module, kept with the app's data: the temp folder, emptied by restarts and
+      // cleanups, made the next launch strip every file's types again)
+      NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE || path.join(app.getPath("userData"), "compile-cache"),
       // (for its startup's span, core/spans.ts)
       VAULTITE_LAUNCHED_AT: String(Math.round(Date.now() - process.uptime() * 1000)), VAULTITE_FORKED_AT: String(Date.now()),
     },
