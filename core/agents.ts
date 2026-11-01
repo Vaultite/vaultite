@@ -76,11 +76,11 @@ export function priceList<T>(table: Record<string, T>, sep = "") {
 
 /** `fn` run at most every `ms` (or sooner when `due`), callers sharing a run in progress; `now`: run it anyway, after
  *  one in progress (which may have started before what's wanted was there). */
-function throttled(ms: number, fn: () => Promise<void>, due?: () => boolean) {
+function throttled(ms: () => number, fn: () => Promise<void>, due?: () => boolean) {
   let at = 0, running: Promise<void> | null = null
   const go = (now = false): Promise<void> => {
     if (running) return now ? running.then(() => go(true)) : running
-    if (!now && Date.now() - at < ms && !due?.()) return Promise.resolve()
+    if (!now && Date.now() - at < ms() && !due?.()) return Promise.resolve()
     running = fn().finally(() => { at = Date.now(); running = null })
     return running
   }
@@ -579,6 +579,10 @@ export function transcripts<T extends Talk>(make: (file: string) => Transcript<T
 /** How long a turn worked, as a JSONL agent's transcripts say. */
 export type Turn = { ts: number; session: string; cwd: string; ms: number; day: string }
 
+let scanMs = 5000
+/** How often the scans read new lines at most (the tests: whenever asked). */
+export const scanEvery = (ms: number) => { scanMs = ms }
+
 /** An agent's JSONL transcripts under `dirs`, read as they grow (at most every 5 s; all again once asked for older
  *  days): `line` hears each new line with its file's state (`fresh`, again when the file was rewritten). */
 export class JsonlScan<R extends { ts: number }, F extends { offset: number } = { offset: number }> {
@@ -586,7 +590,7 @@ export class JsonlScan<R extends { ts: number }, F extends { offset: number } = 
   resp = new Map<string, R>()   // a response by its key: what it cost
   turns = new Map<string, Turn>()
   version = 0                   // bumps when anything above changed
-  refresh = throttled(5000, () => this.run(), () => this.reach < scanDays())
+  refresh = throttled(() => scanMs, () => this.run(), () => this.reach < scanDays())
   private dirs: () => string[]
   private pruned = 0
   private reach = scanDays()

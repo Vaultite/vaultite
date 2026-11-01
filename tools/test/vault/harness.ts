@@ -58,6 +58,8 @@ export async function vaultHarness(from?: string) {
   const { merge3 } = await import("../../../core/textedit.ts")
   const { Text } = await import("../../../core/plugins.ts")
   const { publicOf } = await import("../../../core/vault.ts")
+  // Transcripts read anew whenever asked: a test reads what it just wrote, never a scan from under 5 s ago.
+  ;(await import("../../../core/agents.ts")).scanEvery(0)
   const app = await open(VAULT, { start: false })
   const kept = app.plugins.find((p) => p.id === "terminal")?.exports.kept as { files: string } | undefined
   if (kept) process.on("exit", () => fs.rmSync(`${kept.files}.log`, { force: true }))

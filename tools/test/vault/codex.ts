@@ -101,7 +101,6 @@ export default async ($: VaultTest) => {
     const fork = "2e2e2e2e-5555-4666-8777-888899990000"
     fs.writeFileSync(path.join(day, `rollout-2026-09-29T09-00-01-${fork}.jsonl`), [JSON.stringify({ ...lines[0], payload: { ...lines[0].payload, id: fork } }),
       ...lines.slice(1).map((d: Any) => JSON.stringify(d))].join("\n") + "\n")
-    await new Promise((r) => setTimeout(r, 5100)) // the scan reads new files at most every 5 s
     const [, u] = await api("GET", "codex?days=1")
     const d0 = u.days?.at(-1)
     check("codex usage: tokens counted once across a fork, the repeated total skipped, uncached input and cached priced apart",
