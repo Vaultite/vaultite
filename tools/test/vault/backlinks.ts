@@ -55,4 +55,6 @@ export default async ($: VaultTest) => {
     check("web: an address keeps its own parentheses, not the link's", JSON.stringify(urlsIn("[w](https://en.wikipedia.org/wiki/Foo_(bar)) (https://a.org/x).").map((u) => u.url)) ===
       JSON.stringify(["https://en.wikipedia.org/wiki/Foo_(bar)", "https://a.org/x"]), urlsIn("[w](https://en.wikipedia.org/wiki/Foo_(bar)) (https://a.org/x)."))
   }
+  // (its notes would be where the next ones go: new notes go beside the others)
+  await api("DELETE", "file?path=Links test")
 }
