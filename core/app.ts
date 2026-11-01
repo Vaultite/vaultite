@@ -697,6 +697,8 @@ export class App {
       if (query.as === "text") return new Text(this.opsDoc() + "\n")
       // ?word=: only the ops a command line starting with it can name (`vau <word> ...` asks, not for all of them each time)
       const w = query.word
+      // ?actions=1: only the ops a file's menu offers (the app's, at startup: a few of the whole catalog's ~270 KB)
+      if (query.actions) return this.ops().filter(({ op }) => op.action).map(({ op, plugin }) => entryOf(op, plugin))
       return w ? this.ops().filter(({ op }) => op.id === w || op.id.startsWith(`${w}.`) || op.cli?.split(" ")[0] === w).map(({ op, plugin }) => entryOf(op, plugin)) : this.catalog()
     }
     if (parts.length !== 1) return reply(404, { error: "not found" })

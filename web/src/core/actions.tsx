@@ -19,7 +19,7 @@ export function loadActions() {
   const p = getPrefs(), key = `${p.disabled.join()}|${p.enabled.join()}`
   if (key === loadedFor) return
   loadedFor = key
-  get<Entry[]>("ops").then((c) => { catalog = c.filter((e) => e.action) }, () => { loadedFor = "" })
+  get<Entry[]>("ops?actions=1").then((c) => { catalog = c }, () => { loadedFor = "" })
 }
 
 /** What can be done with the file at `path` (not `skip`'s: a plugin's own menu has its own). */

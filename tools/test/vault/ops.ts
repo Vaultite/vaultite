@@ -9,6 +9,8 @@ export default async ($: VaultTest) => {
     const [, some] = await api("GET", "ops?word=inbox"), [, all] = await api("GET", "ops")
     const want = all.filter((e: Any) => e.id === "inbox" || e.id.startsWith("inbox.") || e.cli?.split(" ")[0] === "inbox").map((e: Any) => e.id)
     check("ops: ?word= lists only the ops a command starting with it names", want.length > 1 && JSON.stringify(some.map((e: Any) => e.id)) === JSON.stringify(want), some.map((e: Any) => e.id))
+    const [, acts] = await api("GET", "ops?actions=1"), wantActs = all.filter((e: Any) => e.action).map((e: Any) => e.id)
+    check("ops: ?actions lists only the file actions", wantActs.length > 0 && JSON.stringify(acts.map((e: Any) => e.id)) === JSON.stringify(wantActs), acts.map((e: Any) => e.id))
   }
   // The data plugins' operations (core/ops.ts), in-process as an agent would call them (MCP's tools have the same names and
   // parameters): defaults made once on the server (ids, the date, the source: who asked), the same answers as the tools'.
