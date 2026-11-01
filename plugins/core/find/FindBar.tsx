@@ -211,7 +211,9 @@ class FindPanel implements Panel {
     this.light()
     const q = getSearchQuery(u.state), was = getSearchQuery(u.startState)
     const ro = u.state.readOnly !== u.startState.readOnly
-    if (!q.eq(was) || u.selectionSet || ro) { this.recount(); this.draw(false) }
+    // (typing moves the selection too: it waits like any typing, not counted on every keystroke)
+    const typed = u.docChanged && u.transactions.some((t) => t.isUserEvent("input.type") || t.isUserEvent("delete"))
+    if (!q.eq(was) || (u.selectionSet && !typed) || ro) { this.recount(); this.draw(false) }
     else if (u.docChanged) {
       // Typing with the bar open: count again a moment after, not on every keystroke.
       if (this.timer) clearTimeout(this.timer)
