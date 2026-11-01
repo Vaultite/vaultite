@@ -9,7 +9,7 @@ const DIR = "Qa reading", NOTE = `${DIR}/Gems.md`, PLAIN = `${DIR}/Plain.md`, en
 const abs = (p) => `${VAULT}/${p}`
 const write = (p, t) => { mkdirSync(dirname(abs(p)), { recursive: true }); writeFileSync(abs(p), t) }
 const plugins = () => { try { return JSON.parse(readFileSync(abs(".vaultite/plugins.json"), "utf8")) } catch { return {} } }
-const GEMS = "---\norigin: ai\n---\n# Gems\n\nA plain line about [[Plain]].\n\nA ruby for [[Plain]], set in gold.\n\n- [ ] polish the ruby\n- [ ] cut the opal\n\nThe last line.\n"
+const GEMS = "---\norigin: ai\n---\n# Gems\n\nA plain line about [[Plain]].\n\nA ruby for [[Plain]], set in gold.\n\n- [ ] polish the ruby\n- [ ] cut the opal\n\n> [!note] Opal\n> Kept in the safe.\n\n| Gem | Carat |\n| --- | --- |\n| Ruby | 2 |\n\nThe last line.\n"
 
 rmSync(abs(DIR), { recursive: true, force: true })
 write(NOTE, GEMS)
@@ -33,9 +33,12 @@ try {
   check("no plugin: reading is the editor's own drawing", before.includes("cm-line") && (await drawn().count()) === 0)
 
   write(".vaultite/plugins/qa-ruby/manifest.json", JSON.stringify({ id: "qa-ruby", category: "other", name: "Qa ruby", icon: "gem", description: "A made-up vault plugin that marks rubies while a note is read.", version: "1.0.0", author: "Alice Park", disclosures: {}, apiVersion: 4 }, null, 2))
-  write(".vaultite/plugins/qa-ruby/index.tsx", `import { definePlugin } from "@vaultite"
+  write(".vaultite/plugins/qa-ruby/index.tsx", `import { useEffect } from "react"
+import { definePlugin, onMarkdownDrawn } from "@vaultite"
 const asked = (window as any).__qaAsked = [] as unknown[]
+const seen = (window as any).__qaDrawn = [] as unknown[]
 export default definePlugin({
+  background: () => { useEffect(() => onMarkdownDrawn((el, lines) => { const l = lines?.(); seen.push({ html: el.innerHTML.slice(0, 300), lines: l ? [l.lineStart, l.lineEnd] : null, doc: !!l?.doc }) }), []); return null },
   reading: {
     active: () => true,
     subscribe: () => () => {},
@@ -71,6 +74,10 @@ export default definePlugin({
   const gems = await page.evaluate((p) => (window.__qaAsked ?? []).filter((a) => a.path === p && /ruby/.test(a.text)).map((a) => a.lines), NOTE)
   const lines = GEMS.split("\n"), at = (t) => lines.findIndex((l) => l.startsWith(t))
   check("…each knows its lines in the file", JSON.stringify(gems) === JSON.stringify([[at("A ruby"), at("A ruby")], [at("- [ ] polish"), at("- [ ] cut")]]), gems)
+  const drawnAt = (re) => page.evaluate((src) => (window.__qaDrawn ?? []).find((d) => new RegExp(src).test(d.html)) ?? null, re.source)
+  const callout = await drawnAt(/data-callout/), table = await drawnAt(/<table/)
+  check("a callout drawn by the editor tells plugins its lines", JSON.stringify(callout?.lines) === JSON.stringify([at("> [!note]"), at("> Kept")]) && callout.doc, callout)
+  check("…and a table", JSON.stringify(table?.lines) === JSON.stringify([at("| Gem"), at("| Ruby")]) && table.doc, table)
   check("…the rest is the editor's lines", await page.locator("[data-pane] .cm-line", { hasText: "A plain line about" }).count() === 1)
   await page.screenshot({ path: `${OUT}readblocks-reading.png` })
 

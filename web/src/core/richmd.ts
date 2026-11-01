@@ -109,15 +109,29 @@ export function hydrate(root: HTMLElement) {
   }
 }
 
-const drawnHooks = new Set<(el: HTMLElement) => void>()
-/** Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor):
- *  plugins that change rendered Markdown (another app's post-processors). Returns the way to stop. */
-export function onMarkdownDrawn(fn: (el: HTMLElement) => void) {
+/** Where drawn Markdown is in its file (a note's block in the editor): its lines (0-based) now and the file's text,
+ *  null once it's gone. */
+export type DrawnLines = () => { lineStart: number; lineEnd: number; doc: string } | null
+type DrawnHook = (el: HTMLElement, lines: DrawnLines | null) => void
+const drawnHooks = new Set<DrawnHook>()
+/** Call fn with each element Markdown was just drawn into as HTML (embeds, previews, a note's callouts and tables, with
+ *  their lines): plugins that change rendered Markdown (another app's post-processors). Returns the way to stop. */
+export function onMarkdownDrawn(fn: DrawnHook) {
   drawnHooks.add(fn)
   return () => { drawnHooks.delete(fn) }
 }
-export function markdownDrawn(el: HTMLElement) {
-  for (const f of drawnHooks) { try { f(el) } catch (e) { console.error(e) } }
+export function markdownDrawn(el: HTMLElement, lines: DrawnLines | null = null) {
+  // (a block's first drawing, before the editor puts it in: its lines are known once it's there)
+  if (lines && !el.isConnected) { queueMicrotask(() => tell(el, lines)); return }
+  tell(el, lines)
+}
+function tell(el: HTMLElement, lines: DrawnLines | null) {
+  for (const f of drawnHooks) { try { f(el, lines) } catch (e) { console.error(e) } }
+}
+/** The lines of a block whose first line is `line()` and whose text is `text()`, in `doc()`. */
+export const blockLines = (line: () => number | null, text: () => string, doc: () => string): DrawnLines => () => {
+  const at = line()
+  return at == null ? null : { lineStart: at, lineEnd: at + text().split("\n").length - 1, doc: doc() }
 }
 
 export const COPY_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>'

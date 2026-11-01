@@ -160,6 +160,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dow(s)`
 - `DragItem`
 - `dragTab(e, tab, opts?)`: Press on a tab: it drags, or (one of several selected) they all do.
+- `DrawnLines`: Where drawn Markdown is in its file (a note's block in the editor): its lines (0-based) now and the file's text, null once it's gone.
 - `drawnLink(el)`: The link drawn at `el` in rendered Markdown (a note's, a sheet's) and its text, or null.
 - `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
 - `dropTab(item, d)`: Drop `item` there: a pane or a tab moves, a file opens in a new tab (or its tab in that bar moves there).
@@ -312,7 +313,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `mapTheme()`: Light or dark, as the app is now (main.tsx toggles .dark on <html>).
 - `MapTheme`
 - `Markdown({ text, store, inline, full, className, from, plain, seen, tasks })`: `inline`: one line in running text; else a document at a sheet's sizes unless `full`.
-- `markdownDrawn(el)`
+- `markdownDrawn(el, lines?)`
 - `markdownHtml(text, { inline, from }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for…
 - `markNew(path)`
 - `mentions(s, is, except?)`: Files that link to something (a note, a person), newest first.
@@ -357,7 +358,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onCommandsChanged`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
 - `onLook(fn)`: Calls `fn` whenever the look changes (light or dark, colour scheme, a theme, a snippet, fonts), once it applies: read the colour tokens again there.
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
-- `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor): plugins that change rendered Markdown (another app's post-processors).
+- `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, a note's callouts and tables, with their lines): plugins that change rendered Markdown (another app's…
 - `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`

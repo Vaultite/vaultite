@@ -15,7 +15,7 @@ import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, FENCE, scan, TAG } from "../../../core/sections.ts"
 import { fenceLayout, infoWithLayout, type LayoutKey } from "../../../core/blocks.ts"
 import { frontmatter } from "./frontmatter"
-import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
+import { blockLines, COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
@@ -1492,8 +1492,9 @@ function drawHtml(el: HTMLElement, text: string, view: EditorView, edit: BlockEd
     el.querySelectorAll("details").forEach((d, i) => { if (i < open.length) d.open = open[i] })
     hydrate(el)
     wireTasks(el, view.state.facet(previewConfig).writable ? tick : null)
-    markdownDrawn(el)
+    markdownDrawn(el, lines)
   }
+  const lines = blockLines(edit.line, () => now, () => view.state.doc.toString())
   paint(text)
   el.addEventListener("click", (e) => richClick(e, el))
   return { update: paint, destroy: () => {} }

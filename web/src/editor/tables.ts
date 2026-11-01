@@ -10,7 +10,7 @@ import { ArrowDown, ArrowDownAZ, ArrowDownZA, ArrowLeft, ArrowRight, ArrowUp, Be
 import { menuShowing, openMenu, type MenuItem } from "@/components/ContextMenu"
 import { addDropTarget, edgeScroller, startDrag } from "@/core/drag"
 import { isMac } from "@/core/platform"
-import { markdownDrawn } from "@/core/richmd"
+import { blockLines, markdownDrawn } from "@/core/richmd"
 
 import { clipCells, htmlText, markdownTable, pastedTable, tsvText } from "./tablePaste"
 import { clearCells, deleteColumn, deleteRow, escape, fillCells, insertColumn, insertRow, moveColumn, moveRow, parseTable,
@@ -86,7 +86,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
 
   const paint = () => {
     drawn.innerHTML = env.render(shown)
-    markdownDrawn(drawn)
+    markdownDrawn(drawn, blockLines(env.line, () => shown, () => view.state.doc.toString()))
     const t = drawn.querySelector("table")
     grid = null
     if (t && table) {

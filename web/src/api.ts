@@ -158,7 +158,7 @@ export { ARCHIVE_DIR, archiveTwin, inArchive, isArchived } from "../../core/file
 // type across the vault (the store's `propertyTypes`), and a value as its type compares it.
 export { PROP_TYPES, typedValue, typeOf as propertyType, type PropType, type PropTypes } from "../../core/proptypes.ts"
 export { Markdown, markdownHtml } from "@/components/Markdown"
-export { hydrate as hydrateMarkdown, markdownDrawn, onMarkdownDrawn } from "@/core/richmd"
+export { hydrate as hydrateMarkdown, markdownDrawn, onMarkdownDrawn, type DrawnLines } from "@/core/richmd"
 // A whole note drawn read-only, as reading it looks (Slides, Export to PDF).
 export { NoteBody } from "@/components/NoteBody"
 export { NotePreview, noteFor } from "@/components/NoteEmbed"
