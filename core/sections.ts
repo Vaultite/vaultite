@@ -62,9 +62,9 @@ export type Placed = { name: string; text: string; open: number; close: number }
 
 /** The blocks a text places, in order: closed ```block-<name> fences (one being typed isn't one yet, one inside another
  *  fence is code). The one reading of blocks, for the server, the editor and the app. */
-export function blocksIn(text: string, s = scan(text)): Placed[] {
-  if (!text.includes("block-")) return []
-  const out: Placed[] = []
+export function blocksIn(text: string, scanned?: ReturnType<typeof scan>): Placed[] {
+  if (!text.includes("block-")) return [] // (before scanning: most notes place none)
+  const s = scanned ?? scan(text), out: Placed[] = []
   for (const f of s.fences) {
     const name = f.close !== null ? blockName(f.info) : null
     if (name) out.push({ name, text: s.lines.slice(f.open + 1, f.close!).join("\n"), open: f.open, close: f.close! })
@@ -83,6 +83,7 @@ export function viewsIn(text: string, s = scan(text)): Placed[] {
 
 /** A text without its views (each with the blank lines after it), and blank lines at its ends when it had any. */
 export function withoutBlocks(text: string): string {
+  if (!text.includes("```") && !text.includes("~~~")) return text // (no fence, no view: nothing to scan)
   const s = scan(text), placed = viewsIn(text, s)
   if (!placed.length) return text
   const keep = s.lines.map(() => true)

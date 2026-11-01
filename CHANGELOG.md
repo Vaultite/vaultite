@@ -254,6 +254,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (0.6 s to 0.15 s at 49,000 notes).
 - **Renaming a much-linked note is faster in big vaults**: a rename indexes only what moved instead of walking the
   whole vault, and finds the links to rewrite without indexing every file's links (49,000 notes: 0.9-1.4 s to 0.4 s).
+- **The first load after a start is quicker in big vaults**: notes without blocks or links aren't scanned for them
+  (a quarter less time listing the files at 49,000 notes).
 - **Big vaults open faster**: reading a vault no longer slows down quadratically past about 16,000 notes (a third
   faster at 27,000).
 - **Slack in Sites**: the Sites tab names who you're signed in to Slack as (your email in your last workspace).

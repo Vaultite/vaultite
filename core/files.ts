@@ -105,7 +105,8 @@ function mdTarget(vault: Vault | null, rel: string, href: string) {
 function linksOf(e: Entry, vault: Vault | null = null) {
   const out: [string, string][] = []
   let fence: string | null = null
-  for (const line of e.body.split("\n")) {
+  // (a body with neither kind of link has none to find line by line)
+  for (const line of e.body.includes("[[") || e.body.includes("](") ? e.body.split("\n") : []) {
     const f = /^\s*(`{3,}|~{3,})/.exec(line)
     if (f && (fence === null || (f[1][0] === fence[0] && f[1].length >= fence.length))) {
       fence = fence ? null : f[1]
