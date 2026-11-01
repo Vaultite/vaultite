@@ -61,9 +61,11 @@ try {
   check("loading: the file is still named once the vault is read", (await get("loading")).body?.downloading?.includes("Notes/Slow.md"))
   const one = await get("file?path=Notes/Alpha.md")
   check("a file that's there opens meanwhile", one.status === 200 && one.body.text.includes("Alpha."), one)
-  const t1 = Date.now()
-  const again = await get("state")
-  check("a sync after doesn't wait for it again", again.status === 200 && Date.now() - t1 < 1500, Date.now() - t1)
+  // (waiting again costs READ_WAIT, 2 s, core/vault.ts: timed against a request that waits on nothing, so a slow
+  // machine's own pace isn't taken for it)
+  const timed = async (p: string) => { const t = Date.now(); const r = await get(p); return { r, ms: Date.now() - t } }
+  const plain = await timed("loading"), again = await timed("state")
+  check("a sync after doesn't wait for it again", again.r.status === 200 && again.ms - plain.ms < 1000, [again.ms, plain.ms])
 
   // iCloud gives it: the read ends, and the vault reads it without being asked.
   // (the file is there for good, then the read waiting on the FIFO ends)
