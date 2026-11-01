@@ -73,14 +73,14 @@ function foldedAt(state: EditorState, n: number): Range | null {
 
 // ---------- the chevrons ----------
 
+// (no position of its own: typing above would make every chevron below it new, drawn again each keystroke)
 class Chevron extends GutterMarker {
-  folded: boolean; from: number; level: number
-  constructor(folded: boolean, from: number, level: number) { super(); this.folded = folded; this.from = from; this.level = level }
-  eq(o: Chevron) { return o.folded === this.folded && o.from === this.from && o.level === this.level }
+  folded: boolean; level: number
+  constructor(folded: boolean, level: number) { super(); this.folded = folded; this.level = level }
+  eq(o: Chevron) { return o.folded === this.folded && o.level === this.level }
   toDOM() {
     const el = document.createElement("span")
     el.className = `cm-vau-fold${this.folded ? " is-folded" : ""}`
-    el.dataset.foldFrom = String(this.from)
     // A heading's line is taller (its size, and the space above it): the chevron sits by its text, at the bottom.
     if (this.level) { el.classList.add("is-heading"); el.style.height = `${LINE[this.level] ?? 1.5}em` }
     el.setAttribute("aria-label", this.folded ? "Unfold" : "Fold")
@@ -106,8 +106,8 @@ const chevrons = gutter({
   lineMarker(view, block) {
     const n = view.state.doc.lineAt(block.from).number
     const level = foldsAt(view.state, n)
-    if (foldedAt(view.state, n)) return new Chevron(true, block.from, level ?? 0)
-    return level === null ? null : new Chevron(false, block.from, level)
+    if (foldedAt(view.state, n)) return new Chevron(true, level ?? 0)
+    return level === null ? null : new Chevron(false, level)
   },
   lineMarkerChange: (u) => syntaxTree(u.startState) !== syntaxTree(u.state) || u.startState.field(foldState, false) !== u.state.field(foldState, false),
   domEventHandlers: {
@@ -131,8 +131,9 @@ const hover = ViewPlugin.fromClass(class {
   move = (e: MouseEvent) => {
     const v = this.view
     const h = e.clientY - v.documentTop
-    const from = h >= 0 && h <= v.contentHeight ? v.lineBlockAtHeight(h).from : -1
-    const el = from < 0 ? null : v.dom.querySelector(`.cm-vau-fold[data-fold-from="${from}"]`)
+    // (its line's chevron: the one beside it)
+    const b = h >= 0 && h <= v.contentHeight ? v.lineBlockAtHeight(h) : null, top = v.documentTop + (b?.top ?? 0), bottom = top + (b?.height ?? 0)
+    const el = b && [...v.dom.querySelectorAll(".cm-vau-fold")].find((m) => { const r = m.getBoundingClientRect(); return r.top < bottom && r.bottom > top }) || null
     if (el === this.lit) return
     this.lit?.classList.remove("is-hover")
     el?.classList.add("is-hover")

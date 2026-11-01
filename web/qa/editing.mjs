@@ -148,7 +148,7 @@ check("pointing at a heading shows its chevron", await chev.count() === 1)
 await shot("fold-hover")
 const chevBox = await chev.boundingBox(), textBox = await apples.boundingBox()
 check("the chevron is in the margin, left of the text", chevBox && textBox && chevBox.x + chevBox.width <= textBox.x + 1)
-check("headings and list items with children fold; nothing else", await page.locator(".cm-vau-fold[data-fold-from]").count() >= 4)
+check("headings and list items with children fold; nothing else", await page.locator(".cm-vau-fold").count() >= 4)
 await chev.click(); await wait(400)
 check("folding a heading hides its section, subheadings included, not the next heading's",
   await line("Apple pie").count() === 0 && await line("Crab apple").count() === 0 && await line("Banana bread").count() === 1)
