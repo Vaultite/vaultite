@@ -50,8 +50,8 @@ check("⌘K: the selection as a link, the cursor where the address goes", await 
 check("⌘K in a note doesn't open the quick switcher", !(await page.$('[role="dialog"][aria-label="Search"]')))
 
 await line(3)
-await page.keyboard.press("ControlOrMeta+D")
-check("⌘D: the line deleted", await until(() => !disk().includes("gamma")) && lines()[2] === "delta", lines())
+await page.keyboard.press("ControlOrMeta+Shift+Backspace")
+check("⌘⇧⌫: the line deleted", await until(() => !disk().includes("gamma")) && lines()[2] === "delta", lines())
 
 await line(3)
 await command(page, "Set as heading 2")
