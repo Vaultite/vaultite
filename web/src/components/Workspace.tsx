@@ -104,7 +104,7 @@ export function Workspace(props: Props) {
   // (its edges follow the sidebars', with their spring: a terminal waits for them to stop, core/sliding.ts)
   useLayoutEffect(() => (box.current ? watchSliding(box.current) : undefined), [])
   return (
-    <main ref={box} data-workspace data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
+    <main ref={box} data-pane-area data-split={alone ? undefined : ""} className="fixed inset-y-0 z-10 transition-[left,right] duration-(--motion-spring) ease-(--spring)" style={{ left: props.left, right: props.right ?? 0 }}>
       {drawn.map(({ id, rect, layer }) => {
         const g = all.find((x) => x.id === id)!, float = !!g.float, zoomed = id === zoom
         // (under a zoomed pane: out of the keyboard's reach, and no part of the window's drag strip)

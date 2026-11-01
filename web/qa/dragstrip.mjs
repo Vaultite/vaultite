@@ -33,7 +33,7 @@ const swallowed = () => page.evaluate((STRIP) => {
 const esc = async () => { for (let i = 0; i < 3; i++) { await page.keyboard.press("Escape"); await wait(100) } }
 const at = async (sel) => { const r = await page.locator(sel).first().boundingBox(); return { x: r.x + 5, y: r.y + 5 } }
 
-check("the strip is there (sidebar header, tab bar)", (await page.evaluate(() => [...document.querySelectorAll("[data-titlebar], [data-top] > [role=tablist] > div:first-child")]
+check("the strip is there (sidebar header, tab bar)", (await page.evaluate(() => [...document.querySelectorAll("[data-titlebar], [data-top] > [data-tab-bar] > div:first-child")]
   .filter((e) => getComputedStyle(e).webkitAppRegion === "drag").length)) >= 2)
 check("nothing open: all clickable", !(await swallowed()).length, await swallowed())
 let p = await at(SWITCHER)
@@ -54,7 +54,7 @@ check("rail: the workspace list and the sidebar's edge: all clickable", !(await 
 await page.mouse.click(p.x, p.y, { button: "right" }); await wait(250)
 check("rail: the switcher's menu: all clickable", !(await swallowed()).length, await swallowed()); await esc()
 await page.keyboard.press("ControlOrMeta+\\"); await wait(400)
-check("the strip still drags the window", (await page.evaluate(() => [...document.querySelectorAll("[data-titlebar], [data-top] > [role=tablist] > div:first-child")]
+check("the strip still drags the window", (await page.evaluate(() => [...document.querySelectorAll("[data-titlebar], [data-top] > [data-tab-bar] > div:first-child")]
   .every((e) => getComputedStyle(e).webkitAppRegion === "drag"))))
 
 await browser.close()

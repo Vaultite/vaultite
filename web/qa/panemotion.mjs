@@ -118,7 +118,7 @@ check("close: then gone, the other pane full width", !(await page.locator("[data
 
 // Panes as cards (appearance `paneCards`, from the palette): inset by a gap, rounded; the divider is the gap, still dragged.
 await command(page, "Panes as cards"); await wait(300)
-const gapOf = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-workspace]")).getPropertyValue("--pane-gap")))
+const gapOf = () => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector("[data-pane-area]")).getPropertyValue("--pane-gap")))
 const G = await gapOf()
 let cps = await panes()
 check("cards: on from the palette, the one pane inset by the gap on every side, rounded", G >= 4 && cps.length === 1 && Math.abs(cps[0].x - W.x - G) < 1.5
@@ -126,7 +126,7 @@ check("cards: on from the palette, the one pane inset by the gap on every side, 
   && await page.evaluate(() => getComputedStyle(document.querySelector("section[data-group]")).borderRadius) === "10px", { G, cps, W })
 await command(page, "Split right"); await still()
 cps = await panes()
-const div = await page.locator("[data-workspace] > [role=separator]").first().boundingBox()
+const div = await page.locator("[data-pane-area] > [role=separator]").first().boundingBox()
 const between = cps.length === 2 ? cps[1].x - (cps[0].x + cps[0].w) : -1
 check("cards: split, a gap between the two as wide as the one around them, the divider in it", Math.abs(between - G) < 1.5
   && Math.abs(div.x + div.width / 2 - (cps[0].x + cps[0].w + G / 2)) < 1.5 && Math.abs(cps[1].x + cps[1].w - (W.x + W.w - G)) < 1.5, { cps, div, G })
