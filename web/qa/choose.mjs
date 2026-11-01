@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { CHROME, qa, ROOT, wait } from "./lib/qa.mjs"
+import { CHROME, qa, ROOT, until, wait } from "./lib/qa.mjs"
 
 if (!fs.existsSync(CHROME)) { console.log("choose: skipped (no Google Chrome here)"); process.exit(0) }
 const { args: [arg], browser, check, done } = await qa(import.meta.url)
@@ -38,7 +38,7 @@ try {
   const text = await dialog().innerText()
   check("the prompt above the lines", text.includes("Which fruit?") && text.includes("Apple") && text.includes("Cherry"), text)
   await page.keyboard.type("bnn")
-  await wait(100)
+  await until(async () => (await dialog().locator('[role="option"]').count()) === 1, 5000)
   check("typing filters it", (await dialog().locator('[role="option"]').count()) === 1, await dialog().innerText())
   await page.keyboard.press("Enter")
   r = await run
@@ -76,7 +76,7 @@ try {
   run = vau(["choose"], "Two\n")
   r = await first
   check("a second list in place of the first: the first gets nothing", json(r)?.picked === null, r)
-  await wait(300)
+  await dialog().locator('[role="option"]', { hasText: "Two" }).first().waitFor({ timeout: 15_000 }).catch(() => {})
   await page.keyboard.press("Enter")
   r = await run
   check("the second answers", r.stdout.trim() === "Two", r)
@@ -84,7 +84,7 @@ try {
   // Time's up: an error, and the list closes.
   r = await vau(["choose", "--timeout", "5"], "Late\n")
   check("timeout: exit 1, says so", r.status === 1 && r.stderr.includes("picked nothing within 5 s"), r)
-  await wait(300)
+  await until(async () => (await dialog().count()) === 0, 5000)
   check("timeout: the list closed", (await dialog().count()) === 0, null)
 
   r = await vau(["choose", "--items", "[]"])
