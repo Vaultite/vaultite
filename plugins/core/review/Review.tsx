@@ -50,7 +50,7 @@ async function revertFile(path: string) {
 }
 
 /** One file's change: before the AI's first unreviewed change against now, a few lines around each change. */
-function FileDiff({ path, onDone }: { path: string; onDone?: () => void }) {
+function FileDiff({ path }: { path: string }) {
   const { data: d } = useLive<Detail>(`review/file?path=${encodeURIComponent(path)}`, undefined, (p) => p === path)
   const [now, setNow] = useState<string | null>(null)
   const [lines, setLines] = useState<DiffLine[] | null>(null)
@@ -69,7 +69,7 @@ function FileDiff({ path, onDone }: { path: string; onDone?: () => void }) {
   }, [base, now])
   if (!d) return <Loading className="px-4 py-3" />
   if (!d.pending) return <p className="px-4 py-3 text-[15px] text-muted-foreground md:text-[13px]">Nothing left to review here.</p>
-  const act = (run: typeof runKeep, fn: () => Promise<void>) => () => { if (!keeping && !reverting) void run(fn)?.then(() => onDone?.()) }
+  const act = (run: typeof runKeep, fn: () => Promise<void>) => () => { if (!keeping && !reverting) void run(fn) }
   const note = "px-4 text-[15px] leading-[20px] text-muted-foreground md:text-[13px] md:leading-[18px]"
   return (
     <div className="border-t-[0.5px] border-border pt-3 pb-3" data-review-diff>

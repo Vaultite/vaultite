@@ -1,6 +1,6 @@
 // A file's properties: a row per key edited in place, each change rewriting only its own line; a key's input is its
 // vault-wide type's (core/proptypes.ts) when it has one. Nested values are shown and edited in source mode.
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
+import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
 import { optimistic, stampMs } from "@/core/data"
@@ -170,13 +170,11 @@ const shownMenu = (): MenuItem[] => {
   ]
 }
 
-export const Properties = memo(function Properties({ path, block, onChange, readOnly, extra, types, stamps = [] }: {
+export const Properties = memo(function Properties({ path, block, onChange, readOnly, types, stamps = [] }: {
   /** The file they're of: whether they're open is remembered for it (core/viewstate.ts). */
   path: string
   /** The frontmatter block ("---\n...\n---\n", or ""). */
   block: string; onChange: (block: string) => void; readOnly: boolean
-  /** Shown next to the title (a plugin's note that its header shows these). */
-  extra?: ReactNode
   /** The vault's property types (the store's `propertyTypes`). */
   types?: { types: PropTypes; own: string[] }
   /** The times its kind keeps (KindSpec stamps): shown, not edited. */
@@ -218,7 +216,6 @@ export const Properties = memo(function Properties({ path, block, onChange, read
         className="-ml-1.5 flex h-8 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] font-semibold text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground max-md:h-11 max-md:text-[15px]">
         <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
         Properties{keys.length ? <span className="font-normal">{keys.length}</span> : null}
-        {extra}
       </button>
       {open && (
         <div className="mt-1">

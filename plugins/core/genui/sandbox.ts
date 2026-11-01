@@ -1,9 +1,6 @@
 // Where a DIL program runs: a hidden iframe with no origin or network, running it in a worker it stops if it hangs. The
 // app gets back a tree of known components, never markup. Both functions go as source: nothing outside is in scope.
-import type { Node } from "./dil.ts"
 
-/** Where it's drawn: light or dark, a phone, the width it has (for DIL.useTheme, useIsMobile, useBreakpoint). */
-export type Env = { dark: boolean; mobile: boolean; width: number }
 export type Tree = { t: "md"; s: string; slots?: Tree[] } | { t: "el"; n: string; p: Record<string, unknown>; k: Tree[] } | { t: "app"; p: Record<string, unknown>; html: string }
 /** What the sandbox sends the app. */
 export type FromSandbox =
@@ -12,10 +9,6 @@ export type FromSandbox =
   | { g: 1; type: "action"; name: string; args: unknown[] }
   | { g: 1; type: "error"; message: string }
   | { g: 1; type: "ready" }
-/** What the app sends it: a program to run (its saved values by name), a handler to call, or fresh saved values. */
-export type ToSandbox =
-  | { g: 1; type: "run"; nodes: Node[]; names: string[]; state: Record<string, unknown>; bindings?: Record<string, unknown>; env?: Env }
-  | { g: 1; type: "call"; fn: number; args: unknown[] }
 
 /** The program's side (in the worker): compile the tree to JS once, render it with hooks, send what it drew. */
 export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Record<string, unknown>) => void) => void }) {

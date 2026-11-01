@@ -1,6 +1,6 @@
 // Unsent replies, kept on this device per thing replied to (a report's path, a session's event id) until the server has
 // them: a reply in flight stays stored, so an app killed or suspended mid-send finds it again as a draft.
-import { useMemo, useSyncExternalStore } from "react"
+import { useSyncExternalStore } from "react"
 
 const KEY = (to: string) => `vaultite.reply:${to}`
 const PREFIX = KEY("")
@@ -44,23 +44,6 @@ export async function sendDraft<T>(to: string, text: string, post: () => Promise
   }
 }
 
-/** What has a draft, as one string (a stable snapshot): every key, one per line. */
-function draftKeys() {
-  const out: string[] = []
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (k?.startsWith(PREFIX) && localStorage.getItem(k)?.trim() && !flying.has(k.slice(PREFIX.length))) out.push(k.slice(PREFIX.length))
-    }
-  } catch { /* private mode */ }
-  return out.sort().join("\n")
-}
-
 /** Whether `to` has a draft not sent yet (in flight isn't one). */
 export const useHasDraft = (to: string) => useSyncExternalStore(subscribe, () => hasDraft(to) && !flying.has(to))
-/** Everything with a draft not sent yet. */
-export function useDrafted(): ReadonlySet<string> {
-  const keys = useSyncExternalStore(subscribe, draftKeys)
-  return useMemo(() => new Set(keys ? keys.split("\n") : []), [keys])
-}
 export const useSending = (to: string) => useSyncExternalStore(subscribe, () => sendingOf(to))

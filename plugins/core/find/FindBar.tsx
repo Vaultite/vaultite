@@ -121,9 +121,9 @@ function scrollTo(range: SelectionRange, view: EditorView): StateEffect<unknown>
 export const tool = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
 export const field = "h-7 w-full min-w-0 rounded-[6px] bg-card px-2 text-[13px] text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-primary/60 max-md:h-9 max-md:text-[16px]"
 
-export function Toggle({ on, label, keys, onClick, children }: { on: boolean; label: string; keys?: string; onClick: () => void; children: ReactNode }) {
+export function Toggle({ on, label, onClick, children }: { on: boolean; label: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" aria-label={label} aria-pressed={on} data-tip={keys ? `${label} (${keys})` : label} onClick={onClick} onMouseDown={(e) => e.preventDefault()}
+    <button type="button" aria-label={label} aria-pressed={on} data-tip={label} onClick={onClick} onMouseDown={(e) => e.preventDefault()}
       className={cn(tool, on && "bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary")}>{children}</button>
   )
 }

@@ -105,6 +105,3 @@ export function Controls({ el, path, video, mark }: { el: HTMLMediaElement; path
   ]
   return <div className="flex items-center gap-0.5 px-1.5 py-1" data-player-controls>{items}</div>
 }
-
-/** For the mini player and the queue: the element playing now, if it's this file's. */
-export const playingNow = (path: string) => (getNow()?.path === path ? getNow()!.el : null)

@@ -11,7 +11,7 @@ import { isDesktop } from "@/core/platform"
 import { useVaultChange } from "@/core/live"
 import { playerFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
-import { canOpenHere, openHere } from "@/components/FileActions"
+import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { cn, plural } from "@/lib/utils"
 import { Button, buttonClass } from "@/components/Button"
 
@@ -79,7 +79,7 @@ export function FileCard({ path, info, note, children }: { path: string; info: F
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {children}
         {here && (
-          <Button look={children ? "secondary" : "primary"} onClick={() => openHere(path)}>
+          <Button look={children ? "secondary" : "primary"} onClick={() => openOnComputer(path)}>
             <SquareArrowOutUpRight className="size-4" strokeWidth={2} />Open in default app
           </Button>
         )}

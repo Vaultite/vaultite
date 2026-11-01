@@ -170,7 +170,7 @@ export function useFeed({ limit = 30, actor = "", action = "", path = "" }: Feed
 }
 
 /** The feed itself: chips, then the days. */
-export function FeedList({ store, opts, chips = true, empty }: { store: Store; opts: FeedOpts; chips?: boolean; empty?: ReactNode }) {
+export function FeedList({ store, opts, empty }: { store: Store; opts: FeedOpts; empty?: ReactNode }) {
   const [actor, setActor] = useState<ActorKind | "">(opts.actor ?? "")
   useEffect(() => setActor(opts.actor ?? ""), [opts.actor])
   const [action, setAction] = useState<ActionKind | "">(opts.action ?? "")
@@ -181,8 +181,8 @@ export function FeedList({ store, opts, chips = true, empty }: { store: Store; o
   useTick()
   return (
     <div data-activity-feed>
-      {chips && <Chips name="Who" opts={WHO} value={actor} onChange={setActor} />}
-      {chips && <Chips name="What" opts={WHAT} value={action} onChange={setAction} />}
+      <Chips name="Who" opts={WHO} value={actor} onChange={setActor} />
+      <Chips name="What" opts={WHAT} value={action} onChange={setAction} />
       {!data ? (
         error || !rows ? <Loading error={error && "Couldn't read the activity."} /> : <Skeleton count={rows} />
       ) : !events.length ? (

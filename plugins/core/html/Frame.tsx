@@ -41,14 +41,12 @@ function themeMessage() {
 const src = (path: string, embed: boolean, n: number) =>
   `v/${path.split("/").map(encodeURIComponent).join("/")}?theme=${isDark() ? "dark" : "light"}&scheme=${document.documentElement.dataset.scheme ?? "default"}${embed ? "&embed=1" : ""}${n ? `&r=${n}` : ""}`
 
-export function ArtifactFrame({ path, page, height, fill, className }: {
+export function ArtifactFrame({ path, page, height, className }: {
   path: string
   /** The file itself, opened: at least as tall as the window below it. Otherwise it's shown inside another file. */
   page?: boolean
   /** A fixed height (an embed's `![[x.html|400]]`); otherwise the frame is as tall as what it draws. */
   height?: number
-  /** As tall as its parent's box (a canvas card), whatever it draws. */
-  fill?: boolean
   className?: string
 }) {
   const frame = useRef<HTMLIFrameElement>(null)
@@ -246,6 +244,6 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
       sandbox={share ? "allow-scripts" : "allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"}
       referrerPolicy="no-referrer" loading={page ? "eager" : "lazy"}
       className={cn("block w-full border-0 bg-transparent transition-opacity duration-150", ready ? "opacity-100" : "opacity-0", className)}
-      style={{ height: fill ? "100%" : shown, colorScheme: isDark() ? "dark" : "light" }} />
+      style={{ height: shown, colorScheme: isDark() ? "dark" : "light" }} />
   )
 }

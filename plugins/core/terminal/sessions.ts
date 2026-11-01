@@ -29,9 +29,6 @@ function letGo(id: string) {
   f?.()
 }
 
-/** A new session id: 8 letters and digits. */
-export { terminalId as newId } from "@vaultite"
-
 /** A session as /api/terminals lists it: `agent`, the coding agent its id names (codex-<id>), or null; `machine` and
  *  `machineLabel`, another machine's (its id ends in @<machine>). */
 export type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string

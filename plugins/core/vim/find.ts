@@ -80,7 +80,6 @@ export function clearFind() {
   watch(null)
   if (supported()) { CSS.highlights.delete("vim-find"); CSS.highlights.delete("vim-find-current") }
 }
-export const findActive = () => matches.length > 0
 
 /** Find `q` in what's in sight; answers how many matches. */
 export function search(q: string) {
@@ -135,8 +134,6 @@ export function go(dir: 1 | -1) {
   })
   return true
 }
-
-export const findQuery = () => query
 
 // Another tab or pane: what was found was found there. (Listened for from the first search: the plugin API isn't
 // called while the module loads.)

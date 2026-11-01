@@ -3,7 +3,7 @@
 import type { ReactNode } from "react"
 import { Blocks, Code, Database, FileText, Files, FolderOpen, Loader, Radio, Settings2, SlidersHorizontal, SquareCheck, TableProperties } from "lucide-react"
 import { openMenu, replaceMenu, type MenuItem } from "@/components/ContextMenu"
-import { canReveal, openHere } from "@/components/FileActions"
+import { canReveal, openOnComputer } from "@/components/FileActions"
 import { editAt } from "@/core/anchors"
 import { get } from "@/core/http"
 import { folderOf, isReadOnly, openFile, stem } from "@/core/files"
@@ -51,7 +51,7 @@ function sourceItems(found: Sources | Error | null, here: string): MenuItem[] {
   for (const s of found.sources) {
     if (s.kind !== "live") continue
     out.push({ label: `Live: ${s.label}`, icon: Radio, caption: true, run: () => {} })
-    if (canReveal()) for (const f of s.folders ?? []) out.push({ label: f.label, icon: FolderOpen, hint: showLabel, run: () => void openHere(f.path) })
+    if (canReveal()) for (const f of s.folders ?? []) out.push({ label: f.label, icon: FolderOpen, hint: showLabel, run: () => void openOnComputer(f.path) })
   }
   return out.length ? out : [{ label: "It reads no files.", caption: true, run: () => {} }]
 }

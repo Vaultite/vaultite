@@ -13,7 +13,7 @@ import { getPrefs } from "@/core/prefs"
 import { openInSplit } from "@/core/splits"
 import { isDesktop } from "@/core/platform"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
-import { canOpenHere, copyToVaultItem, fileMenu, grouped, openHere, openItem, revealItem } from "@/components/FileActions"
+import { canOpenHere, copyToVaultItem, fileMenu, grouped, openItem, openOnComputer, revealItem } from "@/components/FileActions"
 import { rawUrl } from "@/components/FileViewers"
 import { noteFor } from "@/components/NoteEmbed"
 import type { EmbedEdit } from "@/editor/livePreview"
@@ -66,7 +66,7 @@ export function mediaItems(path: string, outside: boolean): MenuItem[] {
   return fileMenu(path, { phone: !isDesktop(), top: [[...copy, ...openHereItem(path), { label: "Download", icon: Download, run: () => download(path) }]] })
 }
 
-const openHereItem = (path: string): MenuItem[] => (canOpenHere() ? [{ label: "Open in default app", icon: AppWindow, run: () => openHere(path) }] : [])
+const openHereItem = (path: string): MenuItem[] => (canOpenHere() ? [{ label: "Open in default app", icon: AppWindow, run: () => openOnComputer(path) }] : [])
 
 export const openEmbedMenu = (store: Store, target: string, at: { x: number; y: number }, edit?: EmbedEdit | null, from = "") =>
   openMenu(at, embedItems(store, target, edit, from))

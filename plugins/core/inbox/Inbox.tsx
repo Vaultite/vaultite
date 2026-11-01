@@ -18,10 +18,7 @@ import { countOf, latestOf, lists, reviewing } from "./threads"
 import { useHasDraft } from "./drafts"
 import { DraftTag, ReplyBox } from "./Reply"
 
-
-/** Not dealt with yet: to review, or snoozed. */
-const open = (r: InboxItem) => reviewing(r)
-const waiting = (r: InboxItem) => open(r) && !snoozed(r.snoozed)
+const waiting = (r: InboxItem) => reviewing(r) && !snoozed(r.snoozed)
 /** The inbox's lists now (threads.ts), from the events and the store's results. */
 const listsOf = (store: Store, events = getEvents().events, fresh?: ReadonlySet<string>) => lists(events, store.inbox ?? [], fresh)
 /** The results waiting for review, newest first (one whose snooze just ended on top): not a thread's report, which its
@@ -33,7 +30,7 @@ export function useBack(store: Store) {
   const { events } = useEvents()
   const [, redraw] = useState(0)
   const now = Date.now()
-  const next = Math.min(...[...(store.inbox ?? []).filter(open).map((r) => snoozeMs(r.snoozed)), ...events.map((e) => e.snoozed ?? 0)].filter((t) => t > now))
+  const next = Math.min(...[...(store.inbox ?? []).filter(reviewing).map((r) => snoozeMs(r.snoozed)), ...events.map((e) => e.snoozed ?? 0)].filter((t) => t > now))
   useEffect(() => {
     if (!Number.isFinite(next)) return
     const t = setTimeout(() => redraw((n) => n + 1), Math.min(next - Date.now() + 100, 2 ** 31 - 1))
@@ -103,7 +100,7 @@ const eventOf = (key: string) => getEvents().events.find((e) => eventKey(e) === 
 export const doneByKey = () => onRow((key) => {
   const r = resultOf(key), e = eventOf(key)
   haptic("medium")
-  if (r) void (open(r) ? markDone(r) : reopen(r))
+  if (r) void (reviewing(r) ? markDone(r) : reopen(r))
   else if (e) markManyEventsDone([e], e.state !== "done")
 })
 /** B: the Snooze choices under the row (what's snoozed: Wake). */
@@ -196,7 +193,7 @@ const unInbox = async (p: string) => { await setProperty(p, "status", undefined)
 /** Snooze results and events (by selection key) till `at`, or bring them back now (null: their snooze ends now, so
  *  they're on top); the result being read gives its tab to the next one, as Settle does. Undo puts each as it was. */
 export function snoozeKeys(keys: string[], at: Date | null) {
-  const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && open(r))
+  const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && reviewing(r))
   const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && (at ? snoozable(e) : !!e.snoozed))
   const reading = at && results.find((r) => currentFile() === pathOf(r))
   const next = reading ? nextToReview(reading, results) : undefined
@@ -246,7 +243,7 @@ export function SnoozeSheet({ keys }: { keys: string[] }) {
 
 /** Pin results and events (by selection key), or unpin them: one toast, its Undo for all. */
 export function pinKeys(keys: string[], on: boolean) {
-  const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && open(r) && !!r.pinned !== on)
+  const results = (getStore()?.inbox ?? []).filter((r) => keys.includes(resultKey(r)) && reviewing(r) && !!r.pinned !== on)
   const evs = getEvents().events.filter((e) => keys.includes(eventKey(e)) && e.state !== "done" && !!e.pinned !== on)
   const n = results.length + evs.length
   if (!n) return
@@ -288,16 +285,16 @@ function markManyEventsDone(evs: InboxEvent[], done = true) {
 function selectionItems(store: Store, keys: string[]): MenuItem[] {
   const all = store.inbox ?? [], { events } = getEvents()
   const results = all.filter((r) => keys.includes(resultKey(r)))
-  const fresh = results.filter(waiting), dealt = results.filter((r) => !open(r))
+  const fresh = results.filter(waiting), dealt = results.filter((r) => !reviewing(r))
   const evs = events.filter((e) => keys.includes(eventKey(e)))
   const live = evs.filter((e) => e.state !== "done"), gone = evs.filter((e) => e.state === "done")
   const out: MenuItem[] = []
   if (fresh.length || live.length) out.push({ label: "Settle", icon: Check, run: () => { if (fresh.length) void markManyDone(fresh); markManyEventsDone(live) } })
   if (fresh.length) out.push({ label: "File to…", icon: FolderInput, run: () => askMoveMany(fresh.map(pathOf), { before: unInbox }) })
   // (what's snoozed is in the Snoozed list: picked there, it comes back)
-  const later = [...results.filter((r) => open(r) && snoozed(r.snoozed)).map(resultKey), ...live.filter((e) => snoozed(e.snoozed)).map(eventKey)]
+  const later = [...results.filter((r) => reviewing(r) && snoozed(r.snoozed)).map(resultKey), ...live.filter((e) => snoozed(e.snoozed)).map(eventKey)]
   const soon = [...fresh.map(resultKey), ...live.filter((e) => snoozable(e) && !snoozed(e.snoozed)).map(eventKey)]
-  const pinnable = [...fresh, ...results.filter((r) => open(r) && snoozed(r.snoozed))], unpinned = [...pinnable.filter((r) => !r.pinned).map(resultKey), ...live.filter((e) => !e.pinned).map(eventKey)]
+  const pinnable = [...fresh, ...results.filter((r) => reviewing(r) && snoozed(r.snoozed))], unpinned = [...pinnable.filter((r) => !r.pinned).map(resultKey), ...live.filter((e) => !e.pinned).map(eventKey)]
   if (unpinned.length) out.push(pinItem(unpinned, false))
   else if (pinnable.length || live.length) out.push(pinItem([...pinnable.map(resultKey), ...live.map(eventKey)], true))
   if (soon.length) out.push(snoozeMenu(soon))
@@ -318,7 +315,7 @@ function useInboxSelect(store: Store) {
 const resultSwipe = (r: InboxItem): SwipeAction[] => waiting(r)
   ? [{ label: "Snooze", icon: Clock, run: snoozeAtRow([resultKey(r)]) }, { label: "File to", icon: FolderInput, run: () => fileTo(r) },
     { label: "Settle", icon: Check, run: () => markDone(r), removes: true }]
-  : open(r) ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
+  : reviewing(r) ? [{ label: "Wake", icon: AlarmClockOff, run: () => snoozeKeys([resultKey(r)], null), removes: true }]
   : [{ label: "To review", icon: RotateCcw, run: () => reopen(r), removes: true }]
 const eventSwipe = (e: InboxEvent): SwipeAction[] => e.state === "done"
   ? [{ label: "Back", icon: RotateCcw, run: () => markManyEventsDone([e], false), removes: true }]

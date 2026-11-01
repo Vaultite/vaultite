@@ -20,8 +20,6 @@ import { runOps } from "./run.ts"
 import type { Job } from "./starter.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
-
-export type { AgentRun } from "./backend.ts"
 export const plugin = new Plugin(import.meta.url)
 
 /** How much output a terminal client may be behind before it's dropped (it reconnects and gets the replay). */

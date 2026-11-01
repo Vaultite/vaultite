@@ -2,7 +2,7 @@
 // park, so it plays on as you go elsewhere. Also the lock screen, where you stopped, bookmarks, chapters, sleep timer.
 import { useSyncExternalStore } from "react"
 import { currentFile, devicePref, get, getStore, phoneFiles, put, rawUrl } from "@vaultite"
-import { AUDIO, VIDEO, type Chapter, type Mark, type Place } from "./shelves"
+import { VIDEO, type Chapter, type Mark, type Place } from "./shelves"
 import { describeNative, isNative, nativeAudio, sleepNative } from "./native"
 import { steady } from "./steady"
 
@@ -50,7 +50,6 @@ export function loadPlaces(force = false) {
   get<{ places: Record<string, Place> }>("player/places").then((r) => { places = r.places ?? {}; for (const f of placeSubs) f() }, () => {})
 }
 export const usePlaces = () => useSyncExternalStore((f) => { placeSubs.add(f); loadPlaces(); return () => { placeSubs.delete(f) } }, () => places)
-export const placeOf = (path: string) => places[path]
 
 const lastSaved = new WeakMap<HTMLMediaElement, number>()
 export function savePlace(path: string, el: HTMLMediaElement, extra: { done?: boolean } = {}) {
@@ -134,7 +133,6 @@ export function labelOf(n: Pick<Now, "path" | "from">) {
   return { title: id ? id.split("/").pop()! : titleOf(n.path), by: m?.artist ?? n.path.split("/").slice(-2, -1)[0] ?? "" }
 }
 export const isVideo = (path: string) => VIDEO.test(path)
-export const isMedia = (path: string) => VIDEO.test(path) || AUDIO.test(path)
 
 // ---------- the element
 

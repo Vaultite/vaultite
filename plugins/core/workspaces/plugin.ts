@@ -255,13 +255,10 @@ function freshIds(l: Workspace | null, tabs: Tab[]): Tab[] {
   const taken = new Set(l ? leaves(l.root).flatMap((g) => g.tabs.map((t) => t.id)) : [])
   return tabs.map((t) => { const out = taken.has(t.id) ? { ...t, id: newId() } : t; taken.add(out.id); return out })
 }
-/** Tabs that are nothing yet (none, or a lone blank tab): what comes in takes their place. */
-const unused = (l: Workspace | null) => blankLayout(l)
-
 /** The layout with `tabs` added at the end of the group focused last (not shown: each device keeps the tab it shows).
  *  A workspace with no tabs yet, or only one blank one, gets them in its place. */
 function withTabs(l: Workspace | null, tabs: Tab[]): { layout: Workspace; tabs: Tab[] } {
-  if (unused(l)) {
+  if (blankLayout(l)) {
     const g = l ? leaves(l.root)[0]?.id ?? "g0" : "g0"
     return { layout: { root: { id: g, tabs, active: tabs[0].id }, focus: g }, tabs }
   }
@@ -275,7 +272,7 @@ function withTabs(l: Workspace | null, tabs: Tab[]): { layout: Workspace; tabs: 
 /** The layout with a whole pane (a group and its tabs) added as a new pane on the right, taking its share of the width;
  *  the focus stays where it was. A workspace with nothing yet is that pane. */
 function withPane(l: Workspace | null, g: Group): { layout: Workspace; tabs: Tab[]; group: string } {
-  if (unused(l)) return { layout: { root: g, focus: g.id }, tabs: g.tabs, group: g.id }
+  if (blankLayout(l)) return { layout: { root: g, focus: g.id }, tabs: g.tabs, group: g.id }
   const tabs = freshIds(l, g.tabs)
   const active = tabs[Math.max(0, g.tabs.findIndex((t) => t.id === g.active))].id
   const id = leaves(l!.root).some((x) => x.id === g.id) ? `g${newId()}` : g.id

@@ -284,9 +284,3 @@ export async function pastePlain(view: EditorView) {
   if (text) view.dispatch(view.state.replaceSelection(text), { userEvent: "input.paste", scrollIntoView: true })
   return true
 }
-
-/** Put text at the cursor (in place of the selection). */
-export function insertText(view: EditorView, text: string) {
-  view.dispatch(view.state.replaceSelection(text), { userEvent: "input", scrollIntoView: true })
-  return true
-}

@@ -113,8 +113,6 @@ export const copyToVaultItem = (abs: string, before?: () => void): MenuItem =>
 export const canOpenHere = () =>
   document.documentElement.dataset.electron !== undefined && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)
 
-export const openHere = (path: string) => openOnComputer(path)
-
 /** Duplicate a file next to it ("Name 1.md"), then open the copy, ready to be renamed like a new note. */
 export async function duplicate(path: string) {
   try {

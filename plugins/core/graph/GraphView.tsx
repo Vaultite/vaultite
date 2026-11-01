@@ -1,6 +1,6 @@
 // The graph's block and sidebar panel; data from /api/graph, asked again when files change, drawn by GraphCanvas (its
 // own chunk). Its tabs are GraphPage.tsx.
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { SquareArrowOutUpRight, Waypoints } from "lucide-react"
 import { cn, HeadingButton, isViewOpen, openFile, openTag, openView, pluginSettings, SidebarHeading, useFocusedFile, useLive, usePatched, useVaultChange, type SidebarCtx } from "@vaultite"
 import { filterGraph, grouping, isAttachment, linkColour, localGraph, withoutLinks, withTags, type ColorBy, type ColorGroup, type Direction, type Graph, type GraphEdge } from "./graph"
@@ -88,9 +88,9 @@ export function useLinkStyle(s: Settings) {
 export const Loading = () => <div className="absolute inset-0 grid place-items-center text-[13px] text-muted-foreground" aria-busy>Drawing the graph…</div>
 
 /** A file's neighbours as a small graph (a block, the sidebar panel), with a button that opens it as a tab. */
-export function LocalGraph({ path, depth: asked, height = 260, compact = true, empty }: { path: string
+export function LocalGraph({ path, depth: asked, height = 260 }: { path: string
   /** Else the settings' Local graph depth. */
-  depth?: number; height?: number | string; compact?: boolean; empty?: ReactNode }) {
+  depth?: number; height?: number | string }) {
   const settings = graphSettings.use()
   const depth = asked ?? settings.depth ?? 1
   const by = settings.colorBy ?? "folder"
@@ -112,10 +112,10 @@ export function LocalGraph({ path, depth: asked, height = 260, compact = true, e
     <div className="relative" style={{ height }} data-local-graph={path}>
       {error ? <p className="p-3 text-[13px] text-muted-foreground">{error}</p>
         : !data ? <Loading />
-        : lone ? <div className="grid h-full place-items-center px-4 text-center text-[13px] text-muted-foreground">{empty ?? "No links to or from this file yet."}</div>
+        : lone ? <div className="grid h-full place-items-center px-4 text-center text-[13px] text-muted-foreground">No links to or from this file yet.</div>
         : (
           <Suspense fallback={<Loading />}>
-            <GraphCanvas graph={data} colorOf={colorOf} edgeColor={links.edgeColor} arrows={!!settings.arrows} look={lookOf(settings)} focus={path} onOpen={openNode} scope={`local:${path}`} compact={compact} />
+            <GraphCanvas graph={data} colorOf={colorOf} edgeColor={links.edgeColor} arrows={!!settings.arrows} look={lookOf(settings)} focus={path} onOpen={openNode} scope={`local:${path}`} compact />
           </Suspense>
         )}
     </div>
