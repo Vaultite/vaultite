@@ -178,6 +178,17 @@ export default async ($: VaultTest) => {
       const listed = await callTool.run({ id: listId, params: { folder: "People" } }, ctx).then((r: Any) => String(r.text ?? r), (e: Error) => e.message)
       check("public mcp read-only: call refuses an op that writes, saying how the user changes it, and runs one that reads",
         refused === "Lighthouse bot has read-only access to this vault: the user can change it in Connections." && !exists("Notes/Sneaky.md") && listed.includes("People/Sam Park.md"), [refused, listed])
+      // An app writes as it signed in (its client_name), not as the transport (`source: mcp`): claude.ai is "Claude",
+      // whose source is the notes' default (claude, left out of the file); ChatGPT's is chatgpt.
+      const { whoOf } = await import("../../../core/ops.ts")
+      const writeAs = async (name: string, title: string) => {
+        const w = whoOf("mcp", name)
+        await callTool.run({ id: "note.create", params: { title, body: "Hi." } }, { client: w, op: ro.opFor([`g-${name}`, { ...g, name, access: "write" }], w, "call") }).catch((e: Error) => e.message)
+        return exists(`Notes/${title}.md`) ? read(`Notes/${title}.md`) : ""
+      }
+      const fromClaude = await writeAs("Claude", "From claude.ai"), fromGpt = await writeAs("ChatGPT", "From ChatGPT")
+      check("public mcp: what claude.ai and ChatGPT write says who they are, not mcp", /^origin: ai$/m.test(fromClaude) && !/^source:/m.test(fromClaude)
+        && /^source: chatgpt$/m.test(fromGpt), [fromClaude, fromGpt])
       check("public mcp read-only: an unknown op is unknown, a write grant isn't refused", accessRefusal("A", "read", null, "nope.x").startsWith("No operation")
         && accessRefusal("A", undefined, app.catalog().find((e) => e.id === "note.create")!, "note.create") === "")
       const marks = ["companion.comment", "companion.suggest", "companion.clear"].map((id) => app.catalog().find((e) => e.id === id))
