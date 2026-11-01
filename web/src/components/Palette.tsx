@@ -72,12 +72,15 @@ const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHov
   )
 }, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item) as <T>(p: RowProps<T>) => ReactNode
 
-/** The field's clear button, the same through typing. */
+/** The field's clear button, the same through typing: a finger's size on a phone; on a desktop a small circle, as a
+ *  Mac's search field draws it, in as large a target. */
 const Clear = memo(function Clear({ onClear }: { onClear: () => void }) {
   return (
     <button type="button" aria-label="Clear" onClick={onClear}
-      className="relative grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card after:absolute after:-inset-2 hover:bg-foreground/80">
-      <X className="size-4" strokeWidth={3} />
+      className="group relative grid size-7 shrink-0 cursor-pointer place-items-center rounded-full after:absolute after:-inset-2">
+      <span className="grid size-7 place-items-center rounded-full bg-muted-foreground text-card group-hover:bg-foreground/80 md:size-[16px] md:bg-muted-foreground/70">
+        <X className="size-4 md:size-[10px]" strokeWidth={3} />
+      </span>
     </button>
   )
 })

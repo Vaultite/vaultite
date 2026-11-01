@@ -29,6 +29,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Delete) lost its colour while focused, leaving its white label on a pale button until the pointer went over it.
 - **What you typed is marked in the accent colour**: the letters ⌘O, ⌘P and the pickers matched are drawn in the
   scheme's accent, not in red, which the app keeps for errors.
+- **A quieter clear button in ⌘O and ⌘P**: on a desktop the x that empties the field is a small grey circle, as in a
+  Mac's search fields, instead of a large dark disc; it's as easy to hit, and phones keep theirs.
 - **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer
   and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **Review lists every AI edit on Linux**: an edit or new file the coarse file clock dated a tick before its call
