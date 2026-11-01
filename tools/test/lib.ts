@@ -90,10 +90,17 @@ function alive() {
   watchdog = setInterval(() => {
     if (Date.now() - progress < STALL) return
     const last = results.at(-1)
-    console.log(`FAIL ${current?.name ?? "test"}: stalled, nothing checked for ${STALL / 1000} s${last ? ` after "${last.name}"` : ""}`)
+    const said = `${current?.name ?? "test"}: stalled, nothing checked for ${STALL / 1000} s${last ? ` after "${last.name}"` : ""}`
+    console.log(`FAIL ${said}`)
+    annotate(said)
     process.exit(1)
   }, Math.min(STALL, 5000))
   watchdog.unref()
+}
+
+/** On GitHub Actions, a failure is also an annotation: the run's page and its API list it, where the log needs a sign-in. */
+function annotate(text: string) {
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=${path.basename(process.argv[1] ?? "test")}::${text.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`)
 }
 
 export function check(name: string, ok: unknown, got?: unknown) {
@@ -209,6 +216,8 @@ export function summary(suite: string, t0: number) {
   console.log(`\n${results.length - fails.length - skips.length} passed, ${fails.length} failed${skips.length ? `, ${skips.length} skipped` : ""}` +
     ` in ${((Date.now() - t0) / 1000).toFixed(1)} s`)
   for (const f of fails) console.log(`  FAIL ${f.name}`)
+  // (GitHub shows 10 errors a step)
+  for (const f of fails.slice(0, 10)) annotate(`${f.section && !f.name.startsWith(f.section) ? `${f.section}: ` : ""}${f.name}${f.note ? `  -> ${f.note}` : ""}`)
   record(suite, sections.map(({ name, ms, ok, fails }) => ({ name, ms, ok, fails })), Date.now() - t0)
   return fails.length ? 1 : 0
 }
