@@ -11,6 +11,17 @@ mark()
 addEventListener("DOMContentLoaded", mark)
 ipcRenderer.on("vaultite:fullscreen", (_e, on) => document.documentElement.toggleAttribute("data-fullscreen", !!on))
 ipcRenderer.on("vaultite:key", (_e, on) => document.documentElement.toggleAttribute("data-window-inactive", !on))
+// Windows hands a vault window's page the keyboard as if Tab were pressed when it's shown: its first button (the vault
+// menu) took it, ringed. Until the user types or clicks, only where text goes keeps it.
+if (WIN && location.protocol === "http:") {
+  let untouched = true
+  const touched = () => { untouched = false }
+  addEventListener("keydown", touched, true)
+  addEventListener("pointerdown", touched, true)
+  addEventListener("focusin", (e) => {
+    if (untouched && e.target instanceof HTMLElement && !e.target.matches("input, textarea, select, [contenteditable=true]")) e.target.blur()
+  }, true)
+}
 
 // Windows' controls (titleBarOverlay) take the colour of the page under them and the height of its title row, as the
 // theme, the sidebars and the zoom change; main.ts answers how wide they are, which index.css keeps clear (--window-controls).
