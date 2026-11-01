@@ -25,6 +25,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Increase contrast is honored**: with the system's Increase contrast on, text, muted text and hairlines read at
   4.5:1 or more in every colour scheme, and Windows' contrast themes keep a visible focus ring; muted text in Everforest,
   Kanagawa, Nord, One and Solarized's weaker variants reads a little stronger everywhere.
+- **A note opened again while it's typed in together joins in**: its new tab's editor failed with an error and didn't
+  type with the others.
 - **PowerShell terminals read programs' output as UTF-8**: on Windows, what a program prints that a PowerShell terminal
   reads back (`$x = vau read ...`, an agent's commands) keeps its accents and other scripts, where "naïve" came back
   as "na├»ve".

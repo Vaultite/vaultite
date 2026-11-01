@@ -170,7 +170,9 @@ function heard(m: Record<string, unknown>) {
 function join(path: string, v: EditorView) {
   const r = rooms.get(path) ?? open(path)
   r.views.add(v)
-  if (r.bound) bind(r)
+  // (once the update that made this editor's plugin is over: binding dispatches to it, and CodeMirror refuses a
+  // dispatch mid-update)
+  if (r.bound) queueMicrotask(() => { if (r.bound && r.views.has(v)) bind(r) })
 }
 
 function leave(path: string, v: EditorView) {
