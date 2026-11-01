@@ -204,6 +204,9 @@ const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
 const FONT = 13
 const fontSize = (percent: number) => Math.max(6, Math.round(FONT * percent / 100))
 
+/** How long a terminal's size holds still before its shell is told (ms). */
+const RESIZE_SETTLE = 120
+
 const EXITED = 4000 // the server's close code: the shell ended
 const REFUSED = 4003 // the server's close code: no shell for this page (it said why first)
 const GONE = 4004 // the server's close code: asked only to attach, and the agent's session is gone
@@ -441,7 +444,13 @@ function create(id: string): Live {
   const send = (data: string | Uint8Array<ArrayBuffer>) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data) }
   const onData = t.onData((d) => { if (!replaying) send(enc.encode(d)) })
   const onBinary = t.onBinary((d) => { if (!replaying) send(Uint8Array.from(d, (c) => c.charCodeAt(0) & 255)) })
-  const onResize = t.onResize(() => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows })))
+  // Drawn at each new size at once, but the shell hears it once the size settles: a program redraws its whole screen
+  // for every size it's given (an agent's, mid-drag, dozens of times into the history).
+  let resizing = 0
+  const onResize = t.onResize(() => {
+    clearTimeout(resizing)
+    resizing = window.setTimeout(() => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows })), RESIZE_SETTLE)
+  })
 
   // Files pasted or dropped (a screenshot) go to the server, since the shell there can't read this device's clipboard: a
   // piece at a time, any size, each sent once the socket has room (a big file never sits in memory whole).
@@ -542,7 +551,7 @@ function create(id: string): Live {
     dispose: () => {
       if (gone) return
       gone = true
-      clearTimeout(timer); cancelAnimationFrame(wheelFrame)
+      clearTimeout(timer); clearTimeout(resizing); cancelAnimationFrame(wheelFrame)
       offLook(); offSettings(); osc.dispose(); files.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)

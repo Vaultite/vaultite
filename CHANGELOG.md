@@ -37,6 +37,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A plugin turned off shows at once on pages open**: a dashboard whose blocks' plugin goes off (People, or People
   map with it) says why instead of going blank, and blocks follow without a reload; "needs People, which is off"
   where it said a plugin was off that's switched on.
+- **Resizing a terminal no longer floods it**: dragging a window or split redraws the terminal at each size, but its
+  program hears the new size once the drag settles, so an agent redraws once rather than dozens of times into its
+  history.
 - **Day planner**: a block in your daily note draws its timed items (`- 09:00 - 10:30 Standup`, `- 14:00 Lunch`) as a
   timeline of the day beside the day's calendar events (with the Calendar plugin on), overlapping ones side by side and
   a line at the time it is now; a task ticks done right on the timeline; agents read it as the plan.
