@@ -8,6 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **The path bar keeps its buttons in a narrow pane**: squeezed, the folders and name above a note cut off before the
   view button instead of running under it, and back and forward give way before it leaves the pane.
+- **Slides use templates**: a slide naming `template="[[note]]"` (or a deck's `defaultTemplate`) is drawn in
+  that note, its `::: name` blocks in the template's `<% name %>` places, as in Advanced Slides.
 - **Slides have a presenter view**: S (or its button) opens a window of its own with the slide, what comes next (the
   next fragment or slide), the speaker notes, a timer you can pause and reset, and the clock; either window moves both.
 - **A note's title is its heading while you edit it**: a screen reader lists an editable title as the page's heading,

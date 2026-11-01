@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, ScreenSh
 import { activeFile, cn, folderOf, getStore, isDesktop, NoteBody, notify, onLook, onlyMode, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
 import { exportAsked } from "./asked"
 import { DeckExport } from "./exportHtml"
-import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, upcoming, CANVAS, type Slide } from "./slides"
+import { cssFiles, cssPlaces, cssUrls, isTitleSlide, moveOf, parseDeck, scopeCss, templateNames, upcoming, CANVAS, type Slide } from "./slides"
 import { openPresenter, Presenter, type Keys, type PresenterWindow } from "./Presenter"
 import { revealTheme } from "./themes"
 import { Boxes, layOut, LAYOUT_CSS, toneClass, toneOf } from "./Layout"
@@ -182,6 +182,37 @@ function useSheets(path: string, props: Record<string, unknown>) {
   return css
 }
 
+/** The slide templates a deck names (and those they name), by name: their notes' text without frontmatter, read
+ *  again when one changes. */
+function useTemplates(path: string, body: string, props: Record<string, unknown>, store: Store) {
+  const [loaded, setLoaded] = useState(() => new Map<string, string>())
+  const [n, setN] = useState(0)
+  const wanted = templateNames(body, props).join("\n")
+  const files = useRef(new Set<string>())
+  useVaultChange(() => setN((x) => x + 1), (p) => files.current.has(p))
+  useEffect(() => {
+    let on = true
+    void (async () => {
+      const out = new Map<string, string>(), seen = new Set<string>()
+      let todo = wanted.split("\n").filter(Boolean)
+      while (todo.length && seen.size < 50) {
+        for (const name of todo) seen.add(name)
+        const got = await Promise.all(todo.map(async (name) => {
+          const file = resolver(store)(name, path)?.file
+          if (!file || !/\.md$/i.test(file)) return [name, ""] as const
+          files.current.add(file)
+          return [name, await readFile(file).then((f) => splitFm(f.text).body, () => "")] as const
+        }))
+        for (const [name, text] of got) if (text) out.set(name, text)
+        todo = [...new Set(got.flatMap(([, t]) => templateNames(t)))].filter((x) => !seen.has(x))
+      }
+      if (on) setLoaded((m) => (m.size === out.size && [...out].every(([k, v]) => m.get(k) === v) ? m : out))
+    })()
+    return () => { on = false }
+  }, [wanted, path, store, n])
+  return loaded
+}
+
 /** Speaker notes, shown or not, for every presentation till the app reloads. */
 let notesShown = false
 
@@ -261,7 +292,8 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
 
   const { fm, body } = useMemo(() => splitFm(text ?? ""), [text])
   const props = useMemo(() => readProps(fm).props, [fm])
-  const deck = useMemo(() => parseDeck(body, props), [body, props])
+  const templates = useTemplates(path, body, props, store)
+  const deck = useMemo(() => parseDeck(body, props, (name) => templates.get(name)), [body, props, templates])
   const sheets = useSheets(path, props)
   const css = useMemo(() => scopeCss(`${sheets}\n${deck.css}`, "[data-deck]"), [sheets, deck.css])
   const { slides } = deck

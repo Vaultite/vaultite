@@ -1386,7 +1386,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Slides: a note as a deck, read as Advanced Slides reads one (plugins/core/slides/slides.ts) ----------
 {
-  const { cssFiles, cssPlaces, cssUrls, parseDeck, isTitleSlide, scopeCss, scopeSelector, upcoming, elapsedText } = await import("../plugins/core/slides/slides.ts")
+  const { cssFiles, cssPlaces, cssUrls, parseDeck, isTitleSlide, scopeCss, scopeSelector, upcoming, elapsedText, templateNames } = await import("../plugins/core/slides/slides.ts")
   const mds = (body: string, opts = {}) => parseDeck(body, opts).slides.map((s) => s.md)
   const got = mds("# Launch\n\n---\n\n## Why\n- one\n\n----\n```md\n---\nnot a split\n```\n---\n\n---\n![[chart.png]]\n")
   check("slides: split at --- lines, never inside code, empty ones dropped", got.length === 4 && got[0] === "# Launch" && got[2].includes("not a split") && got[3] === "![[chart.png]]", got)
@@ -1465,6 +1465,21 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   const ids = parseDeck('<!-- slide data-auto-animate data-auto-animate-id="a" -->\n# X\n---\n<!-- slide data-auto-animate data-auto-animate-id="b" -->\n# X\n').slides
   check("slides: different data-auto-animate-ids don't auto-animate", !moveOf(ids[0], ids[1]).auto)
 
+  const tpls: Record<string, string> = {
+    "tpl-footer": "<% content %>\n\n<grid drag=\"100 6\" drop=\"bottom\">\n<% footer %>\n</grid>",
+    "tpl-opt": "<% content %>\n\n<%? source %>\n<style>.src { color: red }</style>",
+    "tpl-outer": "# Outer\n<% content %>", "tpl-inner": "<!-- slide template=\"[[tpl-outer]]\" -->\n## Inner\n<% content %>",
+  }
+  const tdeck = parseDeck('<!-- slide template="[[tpl-footer]]" bg="red" -->\n# Main\n\n::: footer\n#### Foot\n:::\n\nnote: say it\n---\n<!-- slide template="[[tpl-opt]]" -->\nNo source\n---\n<!-- slide template="[[tpl-inner]]" -->\nText\n---\n<!-- slide template="[[missing]]" -->\nAs is\n', {}, (n) => tpls[n])
+  const [t1, t2, t3, t4] = tdeck.slides
+  const flat = (md: string) => md.replace(/\n+/g, "\n")
+  check("slides: a template draws the slide as its <% content %>, a ::: name block as <% name %>, notes kept the slide's",
+    flat(t1.md) === "# Main\n#### Foot" && /"kind":"grid".*Foot/.test(JSON.stringify(t1.boxes)) && t1.notes === "say it" && t1.bg === "red", t1)
+  check("slides: a template's unset <%? name %> is left out, its <style> the deck's", t2.md === "No source" && tdeck.css.includes(".src"), [t2.md, tdeck.css])
+  check("slides: a template may use a template; a missing one leaves the slide as written", flat(t3.md) === "# Outer\n## Inner\nText" && t4.md === "As is", [t3.md, t4.md])
+  const dflt = parseDeck("# A\n---\n<!-- slide template=\"[[tpl-outer]]\" -->\nB\n", { defaultTemplate: "[[tpl-inner]]" }, (n) => tpls[n]).slides
+  check("slides: defaultTemplate is every slide's, unless it names its own", flat(dflt[0].md) === "# Outer\n## Inner\n# A" && flat(dflt[1].md) === "# Outer\nB", dflt.map((x) => x.md))
+  check("slides: the templates a deck names, defaultTemplate first", JSON.stringify(templateNames('x <!-- slide template="[[a]]" --> <!-- .slide: template="[[b|B]]" -->', { defaultTemplate: "[[c]]" })) === '["c","a","b"]')
   check("slides: the deck's CSS: the page and .reveal are the deck", scopeSelector(":root", "[d]") === "[d]" && scopeSelector(".reveal .slides section h1, .x", "[d]") === "[d] h1, [d] .x"
     && scopeSelector(".reveal.dark p", "[d]") === "[d].dark p" && scopeSelector("html .a", "[d]") === "[d] .a" && scopeSelector(":is(a, b) > c", "[d]") === "[d] :is(a, b) > c")
   const sc = scopeCss("@import url(x.css);\n/* c } */ body { margin: 0 }\n@media (min-width: 1px) { .reveal h2 { color: blue } }\n@font-face { font-family: X; }\n@page { size: A4 }\n.a::after { content: \"}\" }", "[d]")

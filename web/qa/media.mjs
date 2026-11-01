@@ -232,6 +232,27 @@ await page.getByRole("button", { name: "End presentation" }).click(); await wait
 check("phone: the close button ends it", await page.locator("[data-presentation]").count() === 0)
 await page.close()
 
+// Templates: the slide is the template's <% content %>, its ::: blocks the template's places; live.
+{
+  const T_DECK = "Qa media/Templated.md", TPL = "Qa media/tpl-footer.md"
+  await put(TPL, "<% content %>\n\n<grid drag=\"100 10\" drop=\"bottom\">\n<% footer %>\n</grid>\n")
+  await put(T_DECK, "---\ndefaultTemplate: \"[[tpl-footer]]\"\n---\n\n## Templated\n\n::: footer\nThe footer\n:::\n")
+  page = await open({ viewport: { width: 1280, height: 800 } })
+  await page.goto(`${B}#file/${enc(T_DECK)}`); await wait(1500)
+  await palette(page, "Start presentation", 600); await wait(1200)
+  const shown = () => page.locator("[data-deck-slide]").innerText().catch(() => "")
+  check("templates: the slide drawn in its template, its block in the template's place", /Templated[\s\S]*The footer/.test(await shown()) && !(await shown()).includes(":::"), await shown())
+  const foot = await page.locator("[data-deck-slide] [data-slide-box=grid]").evaluate((g) => { const c = g.closest("[data-slide-canvas]").getBoundingClientRect(), r = g.getBoundingClientRect(); return { text: g.innerText, bottom: Math.round(c.bottom - r.bottom) } }).catch(() => null)
+  check("templates: the footer in the template's grid, at the bottom", foot?.text.includes("The footer") && Math.abs(foot.bottom) <= 2, foot)
+  await page.screenshot({ path: `${OUT}media-slides-template.png` })
+  await put(TPL, "# From the template\n<% content %>\n\n<grid drag=\"100 10\" drop=\"bottom\">\n<% footer %>\n</grid>\n")
+  await until(async () => (await shown()).includes("From the template"), 8000)
+  check("templates: a changed template shows at once", (await shown()).includes("From the template"), await shown())
+  await page.keyboard.press("Escape"); await wait(400)
+  await page.close()
+  for (const p of [T_DECK, TPL]) await del(p)
+}
+
 // css: files and a theme that's a file: the deck's, live, never the app's.
 {
   const CSS_DECK = "Qa media/Styled.md", SHEET = "Qa media/css/deck.css"

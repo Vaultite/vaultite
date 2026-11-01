@@ -29,6 +29,8 @@ export type Slide = {
   data: Record<string, string>
 }
 export type DeckOptions = { separator?: unknown; verticalSeparator?: unknown; notesSeparator?: unknown; [fm: string]: unknown }
+/** A slide template's text (without its frontmatter) by the name in its `[[link]]`, or undefined when it isn't there. */
+export type Templates = (name: string) => string | undefined
 
 const SEP = /^\s{0,3}-{3,}\s*$/
 const VSEP = /^\s{0,3}--\s*$/
@@ -254,14 +256,57 @@ function slideOf(raw: string, h: number, v: number, notesRe: RegExp): Slide {
   return s
 }
 
-/** The deck: its slides in order (columns, then down each) and the CSS of its <style> blocks, as written. Obsidian
+// ---------- slide templates ----------
+
+const TEMPLATE = /(<!--\s*(?:\.slide:|slide\b)[^>]*?)\s*\btemplate\s*=\s*"\[\[([^\]|#]+)[^\]]*\]\]"([\s\S]*?-->)/
+const linkName = (v: unknown) => (typeof v === "string" ? /^\s*\[\[([^\]|#]+)[^\]]*\]\]\s*$/.exec(v)?.[1]?.trim() ?? (v.trim() || undefined) : undefined)
+
+/** The templates `text` names (`<!-- slide template="[[name]]" -->`, and frontmatter's `defaultTemplate`), to load. */
+export function templateNames(text: string, opts: DeckOptions = {}): string[] {
+  const names = [...text.matchAll(new RegExp(TEMPLATE.source, "g"))].map((m) => m[2].trim())
+  const def = linkName(opts.defaultTemplate)
+  return [...new Set(def ? [def, ...names] : names)]
+}
+
+/** A slide in its template, as Advanced Slides does it: the slide is `<% content %>`, each of its `::: name` blocks the
+ *  template's `<% name %>` (a block there), `<%? name %>` left out when unset; templates may use templates. */
+function templated(raw: string, notesRe: RegExp, templates: Templates, def?: string): string {
+  let at = -1
+  for (const [i, [line, code]] of [...fenced(raw)].entries()) if (!code && notesRe.test(line)) { at = i; break }
+  const lines = raw.split("\n")
+  let md = at < 0 ? raw : lines.slice(0, at).join("\n")
+  const notes = at < 0 ? "" : lines.slice(at).join("\n")
+  if (def && !TEMPLATE.test(md)) md = `<!-- slide template="[[${def}]]" -->\n${md}`
+  let used = false
+  for (let k = 0; k < 10; k++) {
+    const m = TEMPLATE.exec(md)
+    if (!m) break
+    const tpl = templates(m[2].trim())
+    md = md.replace(TEMPLATE, "$1$3")
+    if (tpl === undefined) break
+    md = tpl.split("<% content %>").join(md)
+    used = true
+  }
+  if (!used) return raw
+  for (const [all, name, content] of [...md.matchAll(/^:::[ \t]+([^\n<]*?)[ \t]*(?:<!--[^\n]*)?\n([\s\S]*?^:::[^\n]*)/gm)]) {
+    if (!name || name === "block") continue
+    const block = `::: block\n${content}`
+    md = md.split(all).join("").split(`<%? ${name} %>`).join(block).split(`<% ${name} %>`).join(block)
+  }
+  md = md.replace(/<%\?[^%]*%>/g, "").replace(/<!--\s*(?:\.slide:|slide)\s*-->/g, "").trim()
+  return notes ? `${md}\n\n${notes}` : md
+}
+
+/** The deck: its slides in order (columns, then down each, each in its template) and its <style> blocks' CSS. Obsidian
  *  comments (%% … %%) are left out first, so what they hide (a <style>, a `note:`) does nothing. */
-export function parseDeck(body: string, opts: DeckOptions = {}): { slides: Slide[]; css: string } {
+export function parseDeck(body: string, opts: DeckOptions = {}, templates: Templates = () => undefined): { slides: Slide[]; css: string } {
   const sep = lineRegex(opts.separator, SEP), vsep = lineRegex(opts.verticalSeparator, VSEP), notesRe = lineRegex(opts.notesSeparator, NOTES, "i")
   const css: string[] = []
-  const text = outsideCode(body.replace(/\r\n?/g, "\n"), (t) => t
+  const strip = (t: string) => outsideCode(t, (x) => x
     .replace(/%%[\s\S]*?%%/g, "")
     .replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_, c: string) => { css.push(c.trim()); return "" }))
+  const def = linkName(opts.defaultTemplate)
+  const text = strip(body.replace(/\r\n?/g, "\n"))
   const cols: string[][][] = [[[]]]
   for (const [line, code] of fenced(text)) {
     const col = cols[cols.length - 1]
@@ -274,7 +319,8 @@ export function parseDeck(body: string, opts: DeckOptions = {}): { slides: Slide
   for (const col of cols) {
     let v = 0
     for (const lines of col) {
-      const s = slideOf(lines.join("\n"), h, v, notesRe)
+      const raw = lines.join("\n"), md = raw.trim() && (def || TEMPLATE.test(raw)) ? strip(templated(raw, notesRe, templates, def)) : raw
+      const s = slideOf(md, h, v, notesRe)
       if (!s.md && !s.notes && !s.bg && !s.boxes) continue
       slides.push(s)
       v++

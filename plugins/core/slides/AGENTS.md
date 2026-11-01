@@ -38,6 +38,9 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
 - `<style>` blocks apply to the whole deck while it's presented, never to the app (`.reveal`, `:root` mean the deck;
   `--r-code-font`, `--r-main-color`, `--r-background-color` count; with a named theme every `--r-*`, over the
   theme's). A `%% comment %%` hides what's in it.
+- `<!-- slide template="[[tpl-footer]]" -->` (or frontmatter `defaultTemplate: "[[tpl-footer]]"` for every slide): a
+  note whose `<% content %>` is the slide and each `<% name %>` the slide's `::: name` … `:::` block (`<%? name %>`:
+  left out when the slide has none). A template can name a template.
 - `css: [deck.css]` (a list, or names split by commas; beside the note, else from the vault's root) and a `theme:`
   that's a CSS file (`css/my-theme.css`, also found in `.obsidian/plugins/obsidian-advanced-slides/`) or an https
   address: stylesheets kept to the deck like its `<style>`, before it, shown again when one changes.
