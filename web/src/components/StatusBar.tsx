@@ -338,7 +338,8 @@ export function StatusBar() {
   // right corner is a faint one to right-click, the left one gone but as a place to drop: index.css)
   return (
     <>
-      <div ref={leftRef} role="status" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
+      {/* (not live: a status is polite by default, and a screen reader would read the counts at every keystroke) */}
+      <div ref={leftRef} role="status" aria-live="off" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
         style={{ maxWidth: LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
         className="fixed left-(--left-sidebar,0px) bottom-0 z-20 transition-[left] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
         <div ref={leftRowRef} data-status-row className="flex min-w-0 items-center gap-2">
@@ -348,7 +349,7 @@ export function StatusBar() {
           </div>
         </div>
       </div>
-      <div ref={barRef} role="status" aria-label="Status bar" data-status-bar style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
+      <div ref={barRef} role="status" aria-live="off" aria-label="Status bar" data-status-bar style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
         className="fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
         <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
           {more}
