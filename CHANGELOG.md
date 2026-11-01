@@ -15,6 +15,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   apps that use them draw the same.
 - **AI apps on the internet stay off your network in the browser**: the desktop app's browser never opens this
   machine, the local network or the tailnet for them, even through a redirect; your own agents still can.
+- **Links to other apps open with more care in the desktop app**: a note's link to a network share or to a Windows
+  scheme that runs something no longer offers to open, the question for any other app's link starts on Cancel, a
+  web page's frames can't hand those links on either, and a page's script can't press the Browser's back, find or
+  Glance for you.
 - **Long tables draw faster**: a table of thousands of rows opens about a tenth sooner, no longer measuring every
   cell's text letter by letter or unmarking cells that were never selected.
 - **Settings of a few values are pickers in the palette**: Theme…, Density…, Animations…, Indent…, Default editing

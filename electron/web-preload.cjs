@@ -6,7 +6,9 @@ const { contextBridge, ipcRenderer } = require("electron")
 
 // ⌘F, ⌘G, ⇧⌘G and zoom: the page's first (a doc's own find), the app's once every listener let it be (web.ts BROWSER_KEYS).
 const MAC = process.platform === "darwin"
+// (only the user's own keys and clicks, here and below: a page's script can't press the app's buttons)
 addEventListener("keydown", (e) => {
+  if (!e.isTrusted) return
   if ((MAC ? !e.metaKey || e.ctrlKey : !e.ctrlKey || e.metaKey) || e.altKey) return
   const c = e.code
   if (!(c === "KeyF" || c === "KeyG" || c === "Equal" || c === "Minus" || c === "Digit0")) return
@@ -15,7 +17,7 @@ addEventListener("keydown", (e) => {
   })
 }, true)
 // (a page never keeps them, as in Chrome)
-addEventListener("mouseup", (e) => { if (e.button === 3 || e.button === 4) ipcRenderer.send("vaultite:web:nav", e.button === 3 ? -1 : 1) }, true)
+addEventListener("mouseup", (e) => { if (e.isTrusted && (e.button === 3 || e.button === 4)) ipcRenderer.send("vaultite:web:nav", e.button === 3 ? -1 : 1) }, true)
 
 // Typed input still in its fields, unsent: told as it starts and ends (web.ts), so the tab isn't archived meanwhile. Only
 // what the user typed (trusted input), and only while it's still there (a chat box cleared after Enter isn't).
@@ -55,7 +57,7 @@ if (process.isMainFrame && /^https?:/.test(location.href)) {
   let glance = false
   ipcRenderer.on("vaultite:web:glance", (_e, on) => { glance = on === true })
   addEventListener("click", (e) => {
-    if (!glance || e.button !== 0 || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
+    if (!e.isTrusted || !glance || e.button !== 0 || !e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return
     const a = e.target instanceof Element ? e.target.closest("a[href]") : null
     if (!a || !/^https?:/i.test(a.href)) return
     e.preventDefault()

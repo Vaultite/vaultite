@@ -10,6 +10,7 @@ import { lastVisits } from "./browser/history.ts"
 import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
 import { ACCOUNTS, covers, nonempty, type Rule, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
+import { otherAppScheme } from "../core/opening.ts"
 import { claim, discardable, hear, letGo, media, MOVE_MS, playback, playing, quietEnds, RECLAIM_MS, tabGone, tabMoved, unclaimed, unmoved, windowReloaded, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
@@ -176,8 +177,9 @@ const asking = new Map<string, Promise<boolean>>()
  *  remembered unless unticked). The camera and microphone then need macOS's yes too. */
 async function askPermission(profile: string, wc: WebContents, perm: string, details: { mediaTypes?: string[]; requestingUrl?: string; externalURL?: string }) {
   if (FREE.has(perm)) return true
-  // (another app by its scheme, said in the question: a yes to zoommtg: is none to ms-msdt:)
-  const scheme = perm === "openExternal" ? (/^([a-z][a-z0-9+.-]*):/i.exec(details.externalURL ?? "")?.[1] ?? "").toLowerCase() : ""
+  // (another app by its scheme, said in the question: a yes to zoommtg: is none to ms-msdt:; a frame's link to another
+  // app comes only here, never past otherApp)
+  const scheme = perm === "openExternal" ? otherAppScheme(details.externalURL ?? "") : ""
   if (perm === "openExternal" && !scheme) return false
   const kinds = perm === "media" ? [...new Set((details.mediaTypes ?? []).map((t) => (t === "video" ? "camera" : "microphone")))] : [scheme ? `openExternal:${scheme}` : perm]
   if (!kinds.length || kinds.some((k) => !ASKED[k.split(":")[0]])) return false
@@ -281,10 +283,11 @@ function stepOf(i: Pick<Input, "key" | "code" | "meta" | "control" | "alt" | "sh
 }
 
 /** A page's link to another app (zoommtg://, slack://), opened once the site may (asked by scheme, as browsers do);
- *  mailto: opens Mail. Never file:, network shares or Windows' schemes that run code. */
+ *  mailto: opens Mail. Never file:, network shares or Windows' schemes that run code (otherAppScheme). */
 async function otherApp(p: Page, to: string) {
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(to) || /^(javascript|data|vbscript|blob|file|about|chrome|devtools|view-source|ms-msdt|search-ms|search|ms-officecmd|shell|hcp|ms-help|res|smb|cifs|nfs|afp|disks?):/i.test(to)) return
-  if (/^mailto:/i.test(to)) return void shell.openExternal(to)
+  const scheme = otherAppScheme(to)
+  if (!scheme) return
+  if (scheme === "mailto") return void shell.openExternal(to)
   const wc = p.view.webContents
   if (wc.isDestroyed()) return
   if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)

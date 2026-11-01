@@ -12,7 +12,15 @@ export default async ($: VaultTest) => {
   {
     // Opening a file in its app (the desktop app, Open in default app): what would run is shown in its folder, by its name
     // and by what it links to.
-    const { runsCode } = await import("../../../core/opening.ts")
+    const { otherAppScheme, runsCode } = await import("../../../core/opening.ts")
+    // A link handed to another app (the desktop app's notes, the Browser's pages and frames): by its scheme, never a
+    // file, a network share, the app's own pages or Windows' schemes that run something.
+    check("opening: links to other apps by their scheme", otherAppScheme("zoommtg://x") === "zoommtg" && otherAppScheme("Slack://open") === "slack" &&
+      otherAppScheme("obsidian://open?vault=a") === "obsidian" && otherAppScheme("tel:123") === "tel" && otherAppScheme("mailto:a@b.c") === "mailto")
+    const refused = ["smb://host/share", "AFP://host/x", "nfs://host/x", "cifs://h/x", "search-ms:query=a&crumb=location:\\\\h\\s", "ms-msdt:/id x",
+      "ms-officecmd:{}", "file:///etc/passwd", "javascript:alert(1)", "data:text/html,x", "vbscript:x", "blob:https://a/b", "about:blank",
+      "chrome://settings", "devtools://x", "view-source:https://a", "shell:startup", "hcp://x", "disk:x", "", "no scheme", " ms-msdt:x", "ms-\tmsdt:x"]
+    check("opening: links that run something here go to no app", refused.every((u) => otherAppScheme(u) === ""), refused.filter((u) => otherAppScheme(u)))
     fs.mkdirSync(path.join(VAULT, "Open"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, "Open/x.terminal"), "<plist/>")
     fs.writeFileSync(path.join(VAULT, "Open/Real.pdf"), "%PDF-1.4\n")

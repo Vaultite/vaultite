@@ -20,7 +20,7 @@ import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, plainText, sentence } from "../core/plainerror.ts"
-import { inVault, runsCode } from "../core/opening.ts"
+import { inVault, otherAppScheme, runsCode } from "../core/opening.ts"
 import { permissionFor, whose } from "./apppermissions.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
@@ -93,18 +93,19 @@ function openVaultFile(abs: string) {
   try { runs ||= fs.statSync(abs).isDirectory() } catch { return }
   if (runs) shell.showItemInFolder(abs); else void shell.openPath(abs)
 }
-/** A link the app's page hands to the system, as Obsidian does: any app's scheme (obsidian://, zotero://, tel:), never
- *  one that runs code; a file:// one as a vault file opens (with the Mac's app for it, an app or a folder shown in Finder). */
+/** A link the app's page hands to the system, as Obsidian does: any app's scheme the Browser's pages may open too
+ *  (obsidian://, tel:); a file:// one as a vault file opens (with the Mac's app for it, an app or a folder in Finder). */
 async function openLink(url: string) {
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(url) || /^(javascript|data|vbscript|blob|about|chrome|devtools):/i.test(url)) return
   if (/^file:/i.test(url)) {
     // (one on another computer, file://host/x, is a Windows network path: reaching it sends the user's login hash)
     try { if (["", "localhost"].includes(new URL(url).hostname)) openVaultFile(fileURLToPath(url)) } catch { /* not a file address */ }
     return
   }
+  const scheme = otherAppScheme(url)
+  if (!scheme) return
   // (another app does what the link says: asked first, as browsers do, whoever wrote the note and however it was clicked)
-  if (!/^(https?|mailto):/i.test(url)) {
-    const { response } = await dialog.showMessageBox({ type: "question", buttons: ["Open", "Cancel"], defaultId: 0, cancelId: 1, message: "Open this link in another app?", detail: url })
+  if (!["http", "https", "mailto"].includes(scheme)) {
+    const { response } = await dialog.showMessageBox({ type: "question", buttons: ["Open", "Cancel"], defaultId: 1, cancelId: 1, message: "Open this link in another app?", detail: url })
     if (response !== 0) return
   }
   shell.openExternal(url).catch((e) => console.error(`couldn't open ${url.split(":")[0]}: link`, e))
