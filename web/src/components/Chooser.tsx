@@ -5,7 +5,7 @@ import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
 import { answerUi } from "@/core/live"
 import { fuzzy } from "@/core/fuzzy"
-import { Marked, NoMatches, Palette } from "@/components/Palette"
+import { marked, NoMatches, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
 export type Choice = { id: string; label: string; detail?: string
@@ -108,7 +108,7 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
       row={(h) => (
         <>
           {h.icon && <span className="flex size-5 shrink-0 items-center justify-center">{iconOf(h.icon)}</span>}
-          <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90">{c.label ? c.label(h, h.marks) : <Marked text={h.label} marks={h.marks} />}</span>
+          <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90">{c.label ? c.label(h, h.marks) : marked(h.label, h.marks)}</span>
           {h.detail && <span className="shrink-0 text-[13px] text-muted-foreground">{h.detail}</span>}
           {c.current !== undefined && <Check className={h.id === c.current ? "size-4 shrink-0 text-primary" : "invisible size-4 shrink-0"} strokeWidth={2.5} />}
         </>

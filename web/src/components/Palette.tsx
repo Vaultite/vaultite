@@ -30,9 +30,10 @@ export function useFinderQuery() {
   return { query, setQuery, select: first.select, picked: () => { picked.current = true } }
 }
 
-/** Matched characters (indexes into `text`, as JavaScript counts them) drawn in the accent colour. */
-export function Marked({ text, marks }: { text: string; marks: number[] }) {
-  if (!marks.length) return <>{text}</>
+/** Matched characters (indexes into `text`, as JavaScript counts them) drawn in the accent colour. A function, not a
+ *  component: each row of a palette draws two each keystroke. */
+export function marked(text: string, marks: number[]): ReactNode {
+  if (!marks.length) return text
   const on = new Set(marks)
   // Runs of marked and plain text, so a word is one <mark>.
   const runs: [string, boolean][] = []
@@ -82,6 +83,17 @@ const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHov
     </button>
   )
 }, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item) as <T>(p: RowProps<T>) => ReactNode
+
+/** The keys along the bottom, the same through typing (callers make the list anew each render). */
+const Hints = memo(function Hints({ hints }: { hints: [string, string][] }) {
+  return (
+    <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex [@media(pointer:coarse)_and_(max-height:500px)]:hidden">
+      {hints.map(([k, what]) => (
+        <span key={k} className="flex items-center gap-1.5 whitespace-nowrap"><Keys keys={k} small />{what}</span>
+      ))}
+    </div>
+  )
+}, (a, b) => a.hints.join("\n") === b.hints.join("\n"))
 
 /** The field's clear button, the same through typing: a finger's size on a phone; on a desktop a small circle, as a
  *  Mac's search field draws it, in as large a target. */
@@ -226,11 +238,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         })}
         {drawn < items.length ? <div ref={more} aria-hidden className="h-px" /> : onEnd && <div ref={end} aria-hidden className="h-px" />}
       </div>
-      <div className="hidden flex-wrap items-center gap-x-4 gap-y-1.5 border-t-[0.5px] border-border px-5 py-2.5 text-[12px] text-muted-foreground md:flex [@media(pointer:coarse)_and_(max-height:500px)]:hidden">
-        {hints.map(([k, what]) => (
-          <span key={k} className="flex items-center gap-1.5 whitespace-nowrap"><Keys keys={k} small />{what}</span>
-        ))}
-      </div>
+      <Hints hints={hints} />
     </PaletteFrame>
   )
 }

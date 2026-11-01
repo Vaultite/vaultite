@@ -7,7 +7,7 @@ import { cleanName, folderList, isHidden } from "@/core/files"
 import { post } from "@/core/http"
 import { notifyError } from "@/core/notify"
 import { fuzzy } from "@/core/fuzzy"
-import { Marked, NoMatches, Palette } from "@/components/Palette"
+import { marked, NoMatches, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 import { ARCHIVE_DIR } from "../../../core/fileprops.ts"
 
@@ -73,7 +73,7 @@ function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
           {h.create
             ? <FolderPlus className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />
             : <Folder className="size-[18px] shrink-0 text-muted-foreground" strokeWidth={2} />}
-          <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={h.label} marks={h.marks} /></span>
+          <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90">{marked(h.label, h.marks)}</span>
           {(h.create || !h.path) && <span className="shrink-0 text-[13px] text-muted-foreground">{h.create ? "New folder" : "Vault root"}</span>}
         </>
       )} />

@@ -8,7 +8,7 @@ import { isEnabled, names, pluginById, setSwitch, switchedOn, usePlugins, type P
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { fuzzy, hasWords } from "@/core/fuzzy"
-import { Keys, Marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
+import { Keys, marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
 /** `plugin`: a row that switches a plugin, which is now on or off. */
@@ -132,7 +132,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         const Icon = commandIcon(c)
         return <>
           {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /> : <span aria-hidden className="size-4 shrink-0" />}
-          <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={c.name} marks={c.marks} /></span>
+          <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90">{marked(c.name, c.marks)}</span>
           {(isSetting(c) || c.value) && c.place && <span className="hidden max-w-[35%] shrink-0 truncate text-[13px] text-muted-foreground md:block">{c.place.name}</span>}
           {keysOf(c)[0] && <Keys keys={keysOf(c)[0]} />}
           {isSetting(c) && <SwitchMark c={c} />}

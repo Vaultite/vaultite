@@ -7,7 +7,7 @@ import { ICONS, namedIcon } from "@/core/pages"
 import { isMac } from "@/core/platform"
 import { fuzzy } from "@/core/fuzzy"
 import { Bar } from "@/components/kit"
-import { Marked, NoMatches, Palette } from "@/components/Palette"
+import { marked, NoMatches, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
 export type IconAsk = { title: string; current?: string; onPick: (name: string) => void; onClose?: () => void }
@@ -80,7 +80,7 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
         return (
           <>
             <span className="grid size-6 shrink-0 place-items-center">{Icon && <Icon className="size-[18px]" />}</span>
-            <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90">{r.about === "Emoji" ? "Use this emoji" : <Marked text={r.id} marks={r.marks} />}</span>
+            <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90">{r.about === "Emoji" ? "Use this emoji" : marked(r.id, r.marks)}</span>
             {r.about && <span className="shrink-0 text-[13px] text-muted-foreground">{r.about}</span>}
             {a.current !== undefined && <Check className={r.id === a.current ? "size-4 shrink-0 text-primary" : "invisible size-4 shrink-0"} strokeWidth={2.5} />}
           </>

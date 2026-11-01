@@ -15,7 +15,7 @@ import { kindOf } from "@/core/filekinds"
 import { useNearEnd } from "@/core/near"
 import { usePrefs } from "@/core/prefs"
 import { search, useSearchIndex, type Hit } from "@/core/search"
-import { Marked } from "@/components/Palette"
+import { marked } from "@/components/Palette"
 import { menuBelow } from "@/components/ContextMenu"
 import { fileIcon } from "@/components/FileTree"
 import { usePane } from "@/core/pane"
@@ -255,8 +255,8 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                 onPointerDown={h.file ? (e) => startDrag(e, { from: "row", path: h.file, to: `file:${h.file}`, label: h.title }) : undefined}
                 className="flex h-7 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] hover:bg-foreground/[0.05] max-md:h-11 max-md:text-[17px]">
                 {fileIcons && <h.icon className="size-4 shrink-0" strokeWidth={2} style={{ color: h.tint }} />}
-                <span className="min-w-0 shrink truncate"><Marked text={h.title} marks={h.marks} /></span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground"><Marked text={h.meta} marks={h.metaMarks ?? []} /></span>
+                <span className="min-w-0 shrink truncate">{marked(h.title, h.marks)}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{marked(h.meta, h.metaMarks ?? [])}</span>
                 <span className="shrink-0 text-[12px] text-tertiary">{h.kind}</span>
               </button>
             ))}
@@ -300,8 +300,8 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                     <button type="button" data-keyrow onClick={(e) => open(r.path, e.metaKey || e.ctrlKey)} data-preview={/\.md$/i.test(r.path) ? r.path : undefined} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"
                       onPointerDown={(e) => startDrag(e, { from: "row", path: r.path, to: `file:${r.path}`, label: title })}>
                       {fileIcons && <Icon className={cn("size-4 shrink-0", !tint && "text-muted-foreground")} strokeWidth={2} style={tint ? { color: tint } : undefined} />}
-                      <span className="min-w-0 shrink truncate font-medium"><Marked text={title} marks={marksOf(nameMarks(title))} /></span>
-                      {where && <span className="min-w-0 flex-1 truncate text-muted-foreground"><Marked text={where} marks={marksOf(nameMarks(where))} /></span>}
+                      <span className="min-w-0 shrink truncate font-medium">{marked(title, marksOf(nameMarks(title)))}</span>
+                      {where && <span className="min-w-0 flex-1 truncate text-muted-foreground">{marked(where, marksOf(nameMarks(where)))}</span>}
                     </button>
                     {!!r.count && <span className="shrink-0 rounded-full bg-foreground/[0.06] px-1.5 text-[11px] leading-[18px] text-muted-foreground tabular-nums">{r.count}</span>}
                   </div>
@@ -323,7 +323,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                                 className={cn("flex w-full cursor-pointer items-baseline rounded-[5px] px-1.5 text-left text-[13px] leading-[18px] hover:bg-foreground/[0.04]",
                                   m.ctx ? "py-0" : "py-1", phone && "text-[15px] leading-[21px]", phone && (m.ctx ? "py-0.5" : "py-2"))}>
                                 <span className={cn("min-w-0 flex-1 break-words", m.ctx ? "text-muted-foreground" : "text-foreground/85")}>
-                                  {ex.text ? <Marked text={ex.text} marks={marksOf(ex.ranges)} /> : <span className="text-tertiary">&nbsp;</span>}
+                                  {ex.text ? marked(ex.text, marksOf(ex.ranges)) : <span className="text-tertiary">&nbsp;</span>}
                                 </span>
                               </button>
                             </li>

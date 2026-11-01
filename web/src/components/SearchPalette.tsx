@@ -13,7 +13,7 @@ import { openDetail } from "@/core/nav"
 import { completeTyped, launcherText, search, suggestions, typedHits, typedOwned, typedTurns, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"
 import { usePrefs } from "@/core/prefs"
-import { Marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
+import { marked, NoMatches, Palette, useFinderQuery } from "@/components/Palette"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 
 type Found = { path: string; title: string; context: string; mtime: number; archived?: boolean }
@@ -147,8 +147,8 @@ export function SearchPalette({ store, onClose, launcher = false }: { store: Sto
       row={(h) => (<>
         {fileIcons && <h.icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />}
         <span className="flex min-w-0 flex-1 items-baseline gap-2.5">
-          <span className="min-w-0 shrink truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={h.title} marks={h.marks} /></span>
-          {h.meta && <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground"><Marked text={h.meta} marks={h.metaMarks ?? []} /></span>}
+          <span className="min-w-0 shrink truncate text-[15px] leading-[21px] text-foreground/90">{marked(h.title, h.marks)}</span>
+          {h.meta && <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{marked(h.meta, h.metaMarks ?? [])}</span>}
         </span>
         {h.tag && (
           <span className="flex shrink-0 items-center gap-1.5 text-[13px] text-muted-foreground" data-tag={h.tag.label}>

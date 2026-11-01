@@ -10,7 +10,7 @@ import { closedTabs, findOpen, reopenClosed, selectTab, tabsByRecent, useWorkspa
 import { reopenArchived, useArchivedTabs } from "@/core/tabarchive"
 import { closeTabMoving } from "@/core/tabfold"
 import { leaves, vaultPath, type Tab, type TabSet } from "../../../core/layout.ts"
-import { Marked, NoMatches, Palette } from "@/components/Palette"
+import { marked, NoMatches, Palette } from "@/components/Palette"
 import { SetLabel, setName, useTabLabels, type TabInfo } from "@/components/Tabs"
 import { Badged } from "@/components/kit"
 import { cn } from "@/lib/utils"
@@ -122,7 +122,7 @@ function TabRow({ r }: { r: Row }) {
         </Badged>
       </span>
       <span className="flex min-w-0 flex-1 items-baseline gap-2.5">
-        <span className="min-w-0 shrink truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={r.label} marks={r.marks} /></span>
+        <span className="min-w-0 shrink truncate text-[15px] leading-[21px] text-foreground/90">{marked(r.label, r.marks)}</span>
         {r.host && r.host !== r.label && <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{r.host}</span>}
       </span>
       {r.set && <SetLabel s={{ ...r.set, collapsed: false }} n={0} className="max-w-[40%]" />}

@@ -2,7 +2,7 @@
 // still be used.
 import { ChevronsUpDown, HardDrive } from "lucide-react"
 import { choose, type Choice } from "@/components/Chooser"
-import { Marked } from "@/components/Palette"
+import { marked } from "@/components/Palette"
 import { fontStack } from "@/core/appearance"
 import { canListAll, fonts, listAllowed, listedAll, loadAll } from "@/core/fonts"
 import { cn } from "@/lib/utils"
@@ -45,7 +45,7 @@ export async function pickFont(props: FontPickerProps) {
     label: (it, marks) => (
       <span className={cn("flex min-w-0 items-center gap-2", it.all && "text-primary")} style={{ fontFamily: css(it) }}>
         {it.all && <HardDrive className="size-4 shrink-0" strokeWidth={2} />}
-        <span className="truncate"><Marked text={it.label} marks={marks} /></span>
+        <span className="truncate">{marked(it.label, marks)}</span>
       </span>
     ),
     onPick: async (it) => {
