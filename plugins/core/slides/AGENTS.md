@@ -38,7 +38,9 @@ It reads Obsidian Advanced Slides' syntax, so its decks present as they do there
 - `css: [deck.css]` (a list, or names split by commas; beside the note, else from the vault's root) and a `theme:`
   that's a CSS file (`css/my-theme.css`, also found in `.obsidian/plugins/obsidian-advanced-slides/`) or an https
   address: stylesheets kept to the deck like its `<style>`, before it, shown again when one changes.
+- "Export slides as HTML" (the palette, the note's menu) saves the deck as one HTML file that presents itself in any
+  browser (keys, clicks, swipes, fragments; S its notes), its images inside it.
 - Frontmatter: `separator`, `verticalSeparator`, `notesSeparator` (regexes for a line), `bg` (every slide's background),
   `theme` (only light or dark: `black`, `night`... or `white`, `beige`...), `showNotes: true` (notes open).
 - Not drawn: `<split>` and `<grid>` layouts and `::: block`s (their content shows in order, without the layout),
-  transitions, auto-animate, chalkboard, other reveal options, and HTML export.
+  transitions, auto-animate, chalkboard, other reveal options.

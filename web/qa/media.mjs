@@ -194,6 +194,31 @@ await page.close()
   for (const p of [CSS_DECK, SHEET]) await del(p)
 }
 
+// Export as HTML: one file that presents itself, its image inside it.
+{
+  page = await open({ viewport: { width: 1280, height: 800 }, acceptDownloads: true })
+  await page.goto(`${B}#file/${enc(DECK)}`); await wait(1500)
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 30000 }), palette(page, "Export slides as HTML", 600)])
+  const file = `${OUT}media-slides-export.html`
+  await dl.saveAs(file)
+  check("export: saved as the note's name", dl.suggestedFilename() === "Deck.html", dl.suggestedFilename())
+  const html = fs.readFileSync(file, "utf8")
+  check("export: images inside the file, no app code", html.includes("data:image/png") && !html.includes("api/raw") && !/<script[^>]*src=/.test(html), html.length)
+  const pp = await open({ viewport: { width: 1280, height: 800 } })
+  await pp.goto(`file://${file}`); await wait(800)
+  const cnt = () => pp.locator(".slide-count").innerText()
+  check("export: it presents itself, from the first slide", await cnt() === "1 / 3" && await pp.locator("section.on h1").count() === 1, await cnt())
+  await pp.screenshot({ path: `${OUT}media-slides-export-1.png` })
+  await pp.keyboard.press("ArrowRight"); await wait(300)
+  check("export: → goes on; math drawn, notes off the slide", await cnt() === "2 / 3" && await pp.locator("section.on .katex").count() >= 1 && !(await pp.locator("section.on .slide-fit").innerText()).includes("Say why now"))
+  await pp.keyboard.press("s"); await wait(300)
+  check("export: S shows the notes", (await pp.locator("section.on aside").innerText()).includes("Say why now"))
+  await pp.screenshot({ path: `${OUT}media-slides-export-2.png` })
+  await pp.keyboard.press("End"); await wait(300)
+  check("export: the image shows", await pp.locator("section.on img").evaluate((i) => i.complete && i.naturalWidth > 0))
+  await pp.close(); await page.close()
+}
+
 // ---------- print ----------
 for (const scheme of ["dark", "light"]) {
   page = await open({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })

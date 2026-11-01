@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom"
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, NotebookText, X } from "lucide-react"
 import { activeFile, cn, folderOf, getStore, NoteBody, rawUrl, readFile, readProps, resolver, snippet, splitFm, stem, useVaultChange, type Store } from "@vaultite"
+import { DeckExport, exportAsked } from "./exportHtml"
 import { cssFiles, cssPlaces, cssUrls, isTitleSlide, parseDeck, scopeCss, type Slide } from "./slides"
 
 /** The note as it is now: the editor's text when it's the one being edited (unsaved typing too), else the file's. */
@@ -44,7 +45,7 @@ function useFit(stage: RefObject<HTMLDivElement | null>, inner: RefObject<HTMLDi
 
 /** Element annotations onto what they annotate, as reveal.js does: the element just before the comment, else the one
  *  it's in; a comment on its own line, the block above. Fragmented list items: their item. */
-function annotate(root: HTMLElement, slide: Slide) {
+export function annotate(root: HTMLElement, slide: Slide) {
   for (const mark of root.querySelectorAll<HTMLElement>('span[class^="slide-el-"]')) {
     const a = slide.els[Number(mark.className.slice(9))]
     const parent = mark.parentElement
@@ -97,7 +98,7 @@ const LIGHT_THEMES = /^(white|beige|sky|serif|simple|solarized|white-contrast)$/
 const IMAGE = /^(https?:|data:image\/)|\.(png|jpe?g|gif|webp|avif|svg|bmp)([?#]|$)/i
 
 /** Fragments as reveal.js draws them; the deck's own CSS vars (--r-*) where the app's would be. */
-const DECK_CSS = `
+export const DECK_CSS = `
 [data-deck] { --r-code-font: var(--font-code); background-color: var(--r-background-color, transparent); color: var(--r-main-color, inherit); }
 [data-deck] :is(code, pre, kbd) { font-family: var(--r-code-font), var(--font-code); }
 [data-deck] .fragment { transition: opacity .3s ease, transform .3s ease, color .3s ease; }
@@ -119,6 +120,26 @@ const DECK_CSS = `
 [data-deck] .fragment:is(.highlight-green.visible, .highlight-current-green.current-fragment) { color: var(--green); }
 [data-deck] .fragment:is(.highlight-blue.visible, .highlight-current-blue.current-fragment) { color: var(--blue); }
 `
+
+/** A slide's background (its own, else the deck's `bg`), and the tone its text takes to read on it. */
+export function backgroundOf(slide: Slide | undefined, props: Record<string, unknown>, store: Store, path: string) {
+  const raw = (slide?.bg ?? (typeof props.bg === "string" ? props.bg : "")).trim()
+  const at = slide?.bgAttrs ?? {}
+  const theme = typeof props.theme === "string" ? props.theme : ""
+  let tone: "light" | "dark" | null = DARK_THEMES.test(theme) ? "dark" : LIGHT_THEMES.test(theme) ? "light" : null
+  let style: CSSProperties | null = null
+  const link = /^\[\[([^\]|#]+)[^\]]*\]\]$/.exec(raw)?.[1]
+  if (link || IMAGE.test(raw)) {
+    const file = link || !/^[a-z]+:/i.test(raw) ? resolver(store)((link ?? raw).trim(), path)?.file : null
+    const url = file ? rawUrl(file) : link ? "" : raw
+    if (url) style = { backgroundImage: `url(${JSON.stringify(url)})`, backgroundSize: at.size || "cover", backgroundPosition: at.position || "center", backgroundRepeat: at.repeat || "no-repeat" }
+  } else if (raw) {
+    style = { background: raw }
+    tone = toneOf(raw) ?? tone
+  }
+  if (style && at.opacity) style.opacity = Number(at.opacity)
+  return { style, tone }
+}
 
 /** A slide by its first heading, else its text. */
 const nextName = (md: string) => {
@@ -154,6 +175,7 @@ function useSheets(path: string, props: Record<string, unknown>) {
 let notesShown = false
 
 export function Presentation({ path, onClose }: { path: string; onClose: () => void }) {
+  const exporting = exportAsked.use() === path
   const [text, setText] = useState<string | null>(null)
   // The slide, and how many of its fragments are in (Infinity: all, coming back to it).
   const [pos, setPos] = useState({ at: 0, step: 0 })
@@ -277,24 +299,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
   }
 
   // The slide's background (its own, else the deck's `bg`), and the tone its text takes to read on it.
-  const bg = useMemo(() => {
-    const raw = (slide?.bg ?? (typeof props.bg === "string" ? props.bg : "")).trim()
-    const at = slide?.bgAttrs ?? {}
-    const theme = typeof props.theme === "string" ? props.theme : ""
-    let tone: "light" | "dark" | null = DARK_THEMES.test(theme) ? "dark" : LIGHT_THEMES.test(theme) ? "light" : null
-    let style: CSSProperties | null = null
-    const link = /^\[\[([^\]|#]+)[^\]]*\]\]$/.exec(raw)?.[1]
-    if (link || IMAGE.test(raw)) {
-      const file = link || !/^[a-z]+:/i.test(raw) ? resolver(store)((link ?? raw).trim(), path)?.file : null
-      const url = file ? rawUrl(file) : link ? "" : raw
-      if (url) style = { backgroundImage: `url(${JSON.stringify(url)})`, backgroundSize: at.size || "cover", backgroundPosition: at.position || "center", backgroundRepeat: at.repeat || "no-repeat" }
-    } else if (raw) {
-      style = { background: raw }
-      tone = toneOf(raw) ?? tone
-    }
-    if (style && at.opacity) style.opacity = Number(at.opacity)
-    return { style, tone }
-  }, [slide, props.bg, props.theme, store, path])
+  const bg = useMemo(() => backgroundOf(slide, props, store, path), [slide, props, store, path])
 
   // The slide's own class and style (`<!-- .slide: … -->`).
   const box = useRef<HTMLDivElement>(null)
@@ -370,6 +375,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
           )}
         </aside>
       )}
+      {exporting && text !== null && <DeckExport path={path} slides={slides} fm={fm} props={props} css={css} />}
     </div>,
     document.body,
   )

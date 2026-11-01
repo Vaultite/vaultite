@@ -1,7 +1,8 @@
 // Slides: "Start presentation" shows the note being read or edited as slides (slides.ts reads
 // the deck), one at a time over the whole app (Presentation.tsx). Also in a note's menu.
-import { Presentation as PresentationIcon } from "lucide-react"
+import { FileDown, Presentation as PresentationIcon } from "lucide-react"
 import { activeFile, cell, currentFile, definePlugin, notify, Panel } from "@vaultite"
+import { exportAsked } from "./exportHtml"
 import { Presentation } from "./Presentation"
 
 const shown = cell<string | null>(null)
@@ -15,14 +16,27 @@ export function present(path = here()) {
   show(path)
 }
 
+/** Present the note and save it as one HTML file that presents itself anywhere. */
+export function exportHtml(path = shown.get() ?? here()) {
+  if (!path) { notify("Open a note to export it as slides."); return }
+  show(path)
+  exportAsked.set(path)
+}
+
 function Shown() {
   const path = shown.use()
   return path ? <Presentation key={path} path={path} onClose={() => show(null)} /> : null
 }
 
 export default definePlugin({
-  commands: [{ id: "slides:start", name: "Start presentation", when: () => !!here() && !shown.get(), run: () => present() }],
-  fileMenu: (path) => (isNote(path) ? [{ label: "Start presentation", icon: PresentationIcon, section: "more", run: () => present(path) }] : []),
+  commands: [
+    { id: "slides:start", name: "Start presentation", when: () => !!here() && !shown.get(), run: () => present() },
+    { id: "slides:export-html", name: "Export slides as HTML", when: () => !!(shown.get() || here()), run: () => exportHtml() },
+  ],
+  fileMenu: (path) => (isNote(path) ? [
+    { label: "Start presentation", icon: PresentationIcon, section: "more", run: () => present(path) },
+    { label: "Export slides as HTML", icon: FileDown, section: "more", run: () => exportHtml(path) },
+  ] : []),
   background: () => <Shown />,
   preview: () => (
     <Panel title="Slides" icon={PresentationIcon} tint="var(--orange)">
