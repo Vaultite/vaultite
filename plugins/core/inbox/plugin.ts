@@ -264,6 +264,7 @@ const needing = (local = false) => shown(local).filter((e) => waitsOnYou(e) && !
 function changed(next: InboxEvent[]) {
   events = prune(next)
   save()
+  watchAsks()
   broadcast()
   // The phone's agents widget shows what waits on the user: only a change there reloads it.
   const now = list().filter(waitsOnYou).map((e) => e.id).join()
@@ -417,21 +418,30 @@ function moveOn(hit: InboxEvent[], state: State, patch: Partial<InboxEvent> = {}
 /** A permission asked in a terminal here that no longer waits ("terminal:waits") was answered: its agent goes on, or
  *  its terminal is gone (done). Checked every few seconds, a new one left to show first. */
 const ASKED = 5000
+const asked = (e: InboxEvent) => e.state === "open" && e.kind === "session" && e.ask === "permission" && !!e.terminal && !e.terminal.includes("@")
 export async function stillWaiting(after = ASKED) {
   const waits = plugin.service("terminal:waits")
   if (!waits) return
   const on: string[] = [], gone: string[] = []
   for (const e of list()) {
-    if (e.state !== "open" || e.kind !== "session" || e.ask !== "permission" || !e.terminal || e.terminal.includes("@") || Date.now() - e.t < after) continue
-    if (await waits(e.terminal, e.source)) continue
-    ;(await plugin.ask("terminal:info", null, e.terminal).catch(() => null) ? on : gone).push(e.id)
+    if (!asked(e) || Date.now() - e.t < after) continue
+    if (await waits(e.terminal!, e.source)) continue
+    ;(await plugin.ask("terminal:info", null, e.terminal!).catch(() => null) ? on : gone).push(e.id)
   }
   moveOn(list().filter((e) => on.includes(e.id)), "working")
   moveOn(list().filter((e) => gone.includes(e.id)), "done")
 }
-const waitTimer = setInterval(() => { if (plugin.loaded) void stillWaiting().catch(() => {}) }, ASKED)
-waitTimer.unref?.()
-plugin.onUnload(() => clearInterval(waitTimer))
+// (only while one is asked: every 5 s with none, it woke an idle server for nothing)
+let waitTimer: ReturnType<typeof setInterval> | null = null
+function watchAsks() {
+  if (waitTimer || !list().some(asked)) return
+  waitTimer = setInterval(() => {
+    if (!list().some(asked)) { clearInterval(waitTimer!); waitTimer = null } else if (plugin.loaded) void stillWaiting().catch(() => {})
+  }, ASKED)
+  waitTimer.unref?.()
+}
+setTimeout(watchAsks, 0).unref?.()
+plugin.onUnload(() => { if (waitTimer) clearInterval(waitTimer) })
 
 /** A terminal ended: what its agent worked on is done; one the user ended (End session) was dealt with, one that ended
  *  by itself (crashed, exited) keeps what's to read. A report stays open: the reply resumes its session. */
