@@ -783,7 +783,7 @@ const TreeRow = memo(function TreeRow({ n, depth, pos, size, index, rows, isOpen
     n.path === ".trash" ? { icon: Trash2 } : n.folder ? drawn(rows.icons[n.path]) ?? { icon: n.name === ARCHIVE_DIR ? Archive : isOpen ? FolderOpen : Folder } : fileIcon(n.path, n.file?.type ?? null, disabled, n.file)
   // Rows, paddings and indents are in spacing units (compact px / 4), so they follow density (index.css): the chevron
   // stays in line with the sidebar's other icons (RAIL in Sidebar.tsx) in both.
-  const rowH = compact ? "h-6.5 text-[13px]" : "min-h-11 text-[17px]"  // phones: long names wrap
+  const rowH = compact ? "h-6.5 max-md:h-7 text-[13px]" : "min-h-11 text-[17px]"  // phones: long names wrap; a drawer's h-7 is 44px
   const indent = compact ? 3.5 : 4.5
   const faint = isHidden(n.path)
   // Archived (core/fileprops.ts): still here, dimmed, icon and name alike; an archive folder and all in it too.

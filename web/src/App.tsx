@@ -207,10 +207,10 @@ function useRoute() {
     if (isDesktop() || !loaded) return
     place.current = targetOf(r.tab)
     restoring.current = true
-    // (Back or Forward: where that entry was, by pixels; another tab: where it was left, by its line when it has one)
-    // (a file tab kept drawn is as it was left: back by pixels at once, no line to wait for)
-    const back = takeScroll(), kept = keptShown()
-    return restoreScroll(null, back ?? scrollOf(place.current), () => { restoring.current = false }, back === null && !kept ? place.current : undefined,
+    // (where it was left, by its line when it has one: the editor's guessed heights drift a scrollTop; Back or Forward
+    // to an earlier visit of the file, by that entry's pixels; a file tab kept drawn is as it was left: pixels at once)
+    const back = takeScroll(), kept = keptShown(), left = back === null || Math.abs(back - scrollOf(place.current)) < 1
+    return restoreScroll(null, back ?? scrollOf(place.current), () => { restoring.current = false }, left && !kept ? place.current : undefined,
       document.querySelector<HTMLElement>("#main-scroll article.file-view:not([data-kept] *)"))
   }, [r.tab, loaded])
   useEffect(() => {
