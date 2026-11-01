@@ -491,6 +491,9 @@ html[data-dragging] [data-slide] { transition: transform var(--motion) var(--eas
 /* A tab bar's tabs spring as they make way (its row's scrollbar is hidden: elsewhere, going a little past their place
    would show a list's scrollbar for a moment). */
 html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--motion-spring), var(--motion-fast); transition-timing-function: var(--spring), var(--ease-out); }
+/* The left sidebar switching to a panel alone (its mode) or back: the new body fades in, as Rex's activity mode does. */
+[data-mode-fade] { animation: mode-fade var(--motion) var(--ease-out) both; }
+@keyframes mode-fade { from { opacity: 0; } }
 /* A pane dragged by its handle recedes where it was while its card is in hand (Tabs' DragGhost); let go, it's back at
    once (its card lands on it, or it grows from the card into its new place: core/panemotion.ts). */
 section[data-lifted] { opacity: 0.45; scale: 0.985; transition: opacity var(--motion) var(--ease-out), scale var(--motion-spring) var(--spring); }

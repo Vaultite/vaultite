@@ -184,8 +184,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   rounded corners, as every other button's does, not a square box around it.
 - **Panes as cards**: an Appearance setting (and palette command) draws desktop panes as inset, rounded cards with a
   little room around and between them; drag the gap to resize. Off by default.
-- **Activity can fill the left sidebar**: Show activity in the sidebar turns it into the live feed, newest first by
-  day, each row opening what it's about; its X or the command again brings your panels back, and each workspace
+- **Activity can fill the left sidebar**: Show activity in the sidebar fades it into the live feed, newest first by
+  day, each row opening what it's about; its X or the command again fades your panels back, and each workspace
   remembers which it shows.
 - **Search in a base**: a base's bar has Search, as in Obsidian: what's typed narrows the view to the files whose name
   or shown values have every word (the count says how many), leaving the base as it is; Escape clears it.

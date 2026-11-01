@@ -47,6 +47,8 @@ try {
   check("the palette offers Show activity in the sidebar", await command(page, "Show activity in the sidebar", 600))
   check("the left sidebar is Activity alone", (await until(() => mode(page))) === "activity:feed")
   check("...in place of the panels", !(await page.$("aside[data-side=left] [data-panel]")))
+  const fading = (page) => page.$eval("aside[data-side=left] [data-sidebar-body]", (b) => b.hasAttribute("data-mode-fade") && getComputedStyle(b).animationName === "mode-fade")
+  check("...fading in as it comes", await fading(page))
   const row = await until(() => page.$(`aside [data-sidebar-mode] [data-event]`), 8000)
   check("its rows are there", !!row)
   check("...under their day", !!(await page.$("aside [data-sidebar-mode] [data-day] h3")))
@@ -64,10 +66,12 @@ try {
   // Kept in the workspace: the next one has its panels, this one its mode again.
   await page.keyboard.press(workspaceKey(2)); await wait(900)
   check("workspace 2 has its panels", !(await mode(page)) && (await page.$$("aside[data-side=left] [data-panel]")).length > 0)
+  check("...at once: a workspace's own mode doesn't fade", !(await fading(page)))
   await page.keyboard.press(workspaceKey(1)); await wait(900)
   check("back in workspace 1: Activity again", (await until(() => mode(page))) === "activity:feed")
   await page.reload(); await page.waitForSelector("aside[data-side=left]")
   check("...and after a reload", (await until(() => mode(page), 8000)) === "activity:feed")
+  check("...drawn at once as the app opens", !(await fading(page)))
 
   await shoot(false)
   await shoot(true)
@@ -81,6 +85,7 @@ try {
   // The heading's X brings the panels back.
   await page.click("aside [data-sidebar-mode] [data-leave-mode]")
   check("its X shows the panels", !!(await until(async () => !(await mode(page)) && (await page.$$("aside[data-side=left] [data-panel]")).length > 0)))
+  check("...fading in too", await fading(page))
   // The command, run again, too (it says what it does now).
   await command(page, "Show activity in the sidebar", 600)
   check("the command again: Activity", (await until(() => mode(page))) === "activity:feed")

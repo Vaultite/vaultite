@@ -1,6 +1,6 @@
 // The desktop sidebar's panels, drawn from plugins' `sidebar` definitions (Search, Files and Pinned are plugins too, so
 // turning them off empties it). The components here are exported to plugins.
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react"
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, PanelTop, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel, TabMark } from "@/core/define"
@@ -25,7 +25,7 @@ import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
 import { foldPanel, liftedHeight, settle } from "@/components/panelMotion"
 
-import { useSidebarMode, setSidebarMode } from "@/core/sidebarmode"
+import { modeJustSwitched, useSidebarMode, setSidebarMode } from "@/core/sidebarmode"
 import { PanelAlone, PanelFold, SidebarHeading } from "@/components/SidebarHeading"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { PanelFold, SidebarHeading }
@@ -97,6 +97,9 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   useEffect(() => { if (ctx.open) setFlying(null) }, [ctx.open])
   // The left sidebar showing one panel alone (its mode): that panel fills it. The rail and phones keep the panels.
   const mode = useSidebarMode()
+  // (the panels again: its body is new, this component isn't)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fades = useMemo(modeJustSwitched, [mode])
   const alone = side === "left" && ctx.open && !ctx.phone ? sidebarPanels(disabled).find((p) => p.key === mode) : undefined
   if (alone) return <SidebarSide.Provider value={side}><SidebarMode of={alone} ctx={ctx} /></SidebarSide.Provider>
 
@@ -121,7 +124,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
     // One rhythm for every panel, whatever it draws: 1 unit under each (folded or not) and its heading's 2 above, so 3
     // units between any two panels; and the last one ends 2 units above the vault's bar.
     <SidebarSide.Provider value={side}>
-    <div ref={box} data-sidebar-body={side} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
+    <div ref={box} data-sidebar-body={side} data-mode-fade={fades || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
       className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
@@ -196,8 +199,9 @@ function SidebarMode({ of: { key, panel }, ctx }: { of: PanelOf; ctx: SidebarCtx
       { label: "Show panels", icon: Layers, sep: true, run: leaveMode }]
   }
   const draw = { ...ctx, panel: key, open: true, bounded: true, mode: true }
+  const [fades] = useState(modeJustSwitched)
   return (
-    <div data-sidebar-body="left" data-sidebar-mode={key} onContextMenu={menuFor(menu)}
+    <div data-sidebar-body="left" data-sidebar-mode={key} data-mode-fade={fades || undefined} onContextMenu={menuFor(menu)}
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden pb-1">
       <PanelFold.Provider value={null}>
         <PanelAlone.Provider value={leaveMode}>
