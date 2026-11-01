@@ -1,5 +1,5 @@
 // The Inbox by keyboard, Gmail's keys: J and K move along its rows, E marks one done (the keyboard goes on to the next),
-// B snoozes, P pins, Shift+U and Shift+I unread and read, G I opens it. WRITES Inbox/ and the inbox's events: throwaway server only.
+// B snoozes, P pins, the same in a session's sheet (J and K to the next and previous one), Shift+U and Shift+I unread and read, G I opens it. WRITES Inbox/ and the inbox's events: throwaway server only.
 //   node web/qa/inboxkeys.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
@@ -69,6 +69,35 @@ await page.keyboard.press("Shift+I")
 check("Shift+I reads it", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.read === true)))
 await page.keyboard.press("Shift+U")
 check("Shift+U unreads it", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === ask.id)?.read === false)))
+
+// In a session's sheet: J and K go to the next or previous session's, P pins it, E marks it done and closes it.
+const hook = (name, text) => api("POST", `inbox/hook?agent=claude&terminal=qk${name}${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: `/tmp/${name}`, last_assistant_message: text })
+await hook("harbor", "Which port should the server use, 8080 or 9090?")
+await hook("lighthouse", "Should I bump the version to 0.6.1 or retag 0.6.0?")
+const sessions = await until(async () => { const es = (await api("GET", "inbox/events")).events.filter((e) => e.kind === "session" && e.state === "open"); return es.length === 2 ? es : null }, 8000)
+check("two sessions need you", !!sessions)
+const sheet = () => page.evaluate(() => [...document.querySelectorAll("[data-session-sheet]")].find((x) => x.getClientRects().length)?.getAttribute("data-session-sheet") ?? null)
+await page.locator(`[data-inbox-view] [data-event="${sessions[0].id}"] [data-keyrow]`).focus()
+await page.keyboard.press("Enter")
+check("Enter opens its sheet", (await until(sheet)) === sessions[0].id, await sheet())
+await wait(400)
+await page.keyboard.press("j")
+check("J goes to the next session's sheet", (await until(async () => ((await sheet()) === sessions[1].id ? true : null))) === true, await sheet())
+await page.keyboard.press("k")
+check("K back to the one before", (await until(async () => ((await sheet()) === sessions[0].id ? true : null))) === true, await sheet())
+await page.keyboard.press("p")
+check("P pins it from its sheet", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === sessions[0].id)?.pinned === true)))
+await wait(300)
+await page.screenshot({ path: `${OUT}3-sheet-keys.png` })
+await page.keyboard.press("r")
+check("R puts the keyboard in its reply box", await page.evaluate(() => document.activeElement?.matches("textarea[data-reply]")))
+await page.keyboard.type("e")
+check("and then a letter is typed, not a key", (await page.locator("[data-session-sheet] textarea[data-reply]").inputValue()) === "e")
+await page.locator("[data-session-sheet] textarea[data-reply]").fill("")
+await page.evaluate(() => document.activeElement?.blur())
+await page.keyboard.press("e")
+check("E marks it done and closes the sheet", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === sessions[0].id)?.state === "done")) &&
+  !!(await until(async () => ((await sheet()) === null ? true : null))))
 
 // Typing elsewhere, the keys are letters: a note's editor gets its J.
 await page.goto(`${B}#file/Start%20here.md`)

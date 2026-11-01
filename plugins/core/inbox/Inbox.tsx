@@ -7,11 +7,11 @@ import {
 } from "lucide-react"
 import {
   askMove, askMoveMany, backDetail, currentRow, moveInList, Badged, Button, cn, currentFile, del, detailPath, Empty, fmtAgo, getStore, haptic, HeadingButton, isViewOpen, Loading, LoadingRows, Markdown, menuBelow, menuFor,
-  notify, notifyError, openDetail, openFile, openMenu, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
+  notify, notifyError, openDetail, replaceDetail, openFile, openMenu, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
   SidebarHeading, startSelecting, typingIn, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, focusedTarget, forget, getEvents, markEventsDone, markRead, markSeen, markUnread, openEvent, openSession, pinEvents, SESSION_DETAIL, snoozable, snoozeEvents, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { choices, snoozed, snoozeMs, stampOf, whenText } from "./snooze"
 import { countOf, latestOf, lists, reviewing } from "./threads"
@@ -114,6 +114,32 @@ export const snoozeByKey = () => onRow((key, row) => {
 }, false)
 /** R: a session's row unfolds its reply box (Reply), the keyboard in it. */
 export const replyByKey = () => onRow((_, row) => row.querySelector<HTMLButtonElement>("[data-row-reply-button]")?.click(), false)
+// In a session's sheet the same keys act on it, as Gmail's do on the conversation open: J and K go to the next or
+// previous session's sheet in the inbox's order.
+
+/** The session sheet in sight, while nothing's typed in: its thread's id. */
+function sheetOn() {
+  const s = [...document.querySelectorAll<HTMLElement>("[data-session-sheet]")].find((x) => x.getClientRects().length > 0)
+  return s && !typingIn(document.activeElement) ? s : null
+}
+/** The keys work on a row of the Inbox, or in a session's sheet. */
+export const keysOnThreads = () => !!sheetOn() || keysOnInbox()
+/** A key's command: on the sheet if one's open, else on the row. */
+export const byKey = (row: () => unknown, sheet: (s: HTMLElement, id: string) => unknown) => () => {
+  const s = sheetOn()
+  return s ? sheet(s, s.dataset.sessionSheet!) : row()
+}
+/** J and K in a sheet: the next or previous session's, in the inbox's order (the first, from one that's left it). */
+export function stepSheet(id: string, by: 1 | -1) {
+  const l = listsOf(getStore() ?? ({} as Store))
+  const all = [...l.pinned.events, ...l.needs, ...l.working, ...l.messages].filter((e) => e.kind === "session")
+  const i = all.findIndex((e) => e.id === id)
+  const to = i < 0 ? all[0] : all[i + by]
+  if (to && to.id !== id) replaceDetail(detailPath(SESSION_DETAIL, to.id))
+}
+/** What a key presses in a sheet: its own button for it, so the sheet does what a click does. */
+export const press = (s: HTMLElement, sel: string) => s.querySelector<HTMLElement>(sel)?.click()
+
 /** P: pin it on top, or unpin it. */
 export const pinByKey = () => onRow((key) => {
   const r = resultOf(key), e = eventOf(key)

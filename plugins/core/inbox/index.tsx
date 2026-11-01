@@ -2,11 +2,11 @@
 // tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef, useState } from "react"
 import { AlarmClockOff, ArrowDown, ArrowUp, BellOff, Check, CheckCheck, Clock, FolderInput, Inbox as InboxIcon, Mail, MailOpen, MessageSquareReply, Pin, RotateCcw } from "lucide-react"
-import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
-import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
+import { AmbientButton, backDetail, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, viewOnScreen, type Store } from "@vaultite"
+import { focusedTarget, follow, GATE_DETAIL, getEvents, heldNow, markRead, markUnread, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, useEvents, viewOf } from "./events"
 import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
-import { doneByKey, fileTo, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
+import { byKey, doneByKey, fileTo, keysOnThreads, press, stepSheet, GateSheet, keysOnInbox, pinByKey, readByKey, replyByKey, snoozeByKey, stepRow, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, SNOOZE_DETAIL, snoozeItems, snoozeKeys, SnoozeSheet, toReview, useBack, useCount } from "./Inbox"
 import { snoozed, snoozeMs } from "./snooze"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
@@ -166,14 +166,15 @@ export default definePlugin({
   commands: [
     { id: "inbox:open", name: "Open inbox", keys: ["G I"], run: openInbox },
     // (Gmail's keys, on the Inbox's rows: the page's and the panel's)
-    { id: "inbox:next", name: "Move to the next inbox row", keys: ["J"], when: keysOnInbox, run: () => stepRow(1), icon: ArrowDown },
-    { id: "inbox:previous", name: "Move to the previous inbox row", keys: ["K"], when: keysOnInbox, run: () => stepRow(-1), icon: ArrowUp },
-    { id: "inbox:done", name: "Mark the inbox row done", keys: ["E"], when: keysOnInbox, run: doneByKey, icon: Check },
+    { id: "inbox:next", name: "Move to the next inbox row", keys: ["J"], when: keysOnThreads, run: byKey(() => stepRow(1), (_, id) => stepSheet(id, 1)), icon: ArrowDown },
+    { id: "inbox:previous", name: "Move to the previous inbox row", keys: ["K"], when: keysOnThreads, run: byKey(() => stepRow(-1), (_, id) => stepSheet(id, -1)), icon: ArrowUp },
+    { id: "inbox:done", name: "Mark the inbox row done", keys: ["E"], when: keysOnThreads, run: byKey(doneByKey, (s) => press(s, "[data-session-done]")), icon: Check },
     { id: "inbox:snooze", name: "Snooze the inbox row", keys: ["B"], when: keysOnInbox, run: snoozeByKey, icon: Clock },
-    { id: "inbox:reply", name: "Reply to the inbox row's session", keys: ["R"], when: keysOnInbox, run: replyByKey, icon: MessageSquareReply },
-    { id: "inbox:pin", name: "Pin or unpin the inbox row", keys: ["P"], when: keysOnInbox, run: pinByKey, icon: Pin },
+    { id: "inbox:reply", name: "Reply to the inbox row's session", keys: ["R"], when: keysOnThreads,
+      run: byKey(replyByKey, (s) => s.querySelector<HTMLTextAreaElement>("textarea[data-reply]")?.focus()), icon: MessageSquareReply },
+    { id: "inbox:pin", name: "Pin or unpin the inbox row", keys: ["P"], when: keysOnThreads, run: byKey(pinByKey, (s) => press(s, "[data-session-pin]")), icon: Pin },
     { id: "inbox:mark-read", name: "Mark the inbox row read", keys: ["Shift+I"], when: keysOnInbox, run: () => readByKey(true), icon: MailOpen },
-    { id: "inbox:mark-unread", name: "Mark the inbox row unread", keys: ["Shift+U"], when: keysOnInbox, run: () => readByKey(false), icon: Mail },
+    { id: "inbox:mark-unread", name: "Mark the inbox row unread", keys: ["Shift+U"], when: keysOnThreads, run: byKey(() => readByKey(false), (_, id) => { markUnread([id]); backDetail() }), icon: Mail },
     { id: "inbox:read", name: "Mark inbox events read", when: () => getEvents().unread > 0, run: () => markRead(), icon: CheckCheck },
   ],
   mock,
