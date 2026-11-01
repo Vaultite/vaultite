@@ -23,6 +23,8 @@ jobs:
         runner: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1 # (nothing here starts the desktop app: windows.yml and the nightly QA do)
     defaults:
       run:
         shell: bash
