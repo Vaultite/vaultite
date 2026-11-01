@@ -80,6 +80,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Mac's search fields, instead of a large dark disc; it's as easy to hit, and phones keep theirs.
 - **Desktop links stay in the vault**: on Windows, a file link or vaultite://open address whose path climbs out of
   the vault opens nothing, and an extension's offscreen page loads only its own files.
+- **Only the app's own pages reach its API from a browser**: an image, script or frame on another site's page, or in an
+  interactive page, gets nothing; links opened in a tab and command-line clients work as before.
 - **Reply to a session from its inbox row**: Reply on a session's row (R, or a phone's swipe) unfolds its last answer
   and the reply box under it, without opening its sheet; Escape folds it, the draft kept.
 - **Review lists every AI edit on Linux**: an edit or new file the coarse file clock dated a tick before its call

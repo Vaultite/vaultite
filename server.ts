@@ -312,13 +312,16 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
 // Other names this server is reached by (a reverse proxy's own domain), besides its addresses, localhost and its own names.
 const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
 
-/** Why a request isn't from this app's pages, or "": another site's (its Origin, unless `origin` is false), the internet
- *  (Funnel), or a page under another site's name (DNS rebinding): the Host is an address, localhost or this machine's. */
+/** Why a request isn't from this app's pages, or "": another site's (Origin, Sec-Fetch-Site: unless `origin` is false),
+ *  the internet (Funnel), or a page under another name (DNS rebinding): the Host is an address, localhost or this machine's. */
 async function foreign(req: http.IncomingMessage, origin = true) {
   const h = req.headers
   if ("tailscale-funnel-request" in h) return "this app doesn't answer the internet (Tailscale Funnel)"
   const hosts = [h.host, h["x-forwarded-host"]].map((x) => String(x ?? "").toLowerCase())
   if (origin && h.origin !== undefined && !hosts.includes(originHost(req) || "-")) return "the page asking isn't this app"
+  // (an image, script or frame sends no Origin: another site's, or an artifact's opaque frame's; a link opened in a tab may)
+  const site = h["sec-fetch-site"]
+  if (origin && site !== undefined && site !== "same-origin" && site !== "none" && !(h["sec-fetch-mode"] === "navigate" && h["sec-fetch-dest"] === "document")) return "the page asking isn't this app"
   for (const host of hosts.filter(Boolean)) {
     const name = hostName(host)
     if (net.isIP(name) || name === "localhost" || name.endsWith(".localhost")) continue

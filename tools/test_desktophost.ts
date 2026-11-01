@@ -60,6 +60,24 @@ const one = serve(port)
   check("dns rebinding: a page under another name reads nothing (the API, loading, plugins' pages)", loading === 403 && served === 403 && api === 403 && own !== 403, [loading, served, api, own])
   const funnel = await get("/api/files", { "tailscale-funnel-request": "?1" })
   check("funnel: the internet through Tailscale Funnel is refused", funnel === 403, funnel)
+  const fetchMeta = (site: string, mode: string, dest: string) => ({ "sec-fetch-site": site, "sec-fetch-mode": mode, "sec-fetch-dest": dest })
+  const sub = {
+    image: await get("/api/loading", fetchMeta("cross-site", "no-cors", "image")),
+    frame: await get("/api/loading", fetchMeta("cross-site", "navigate", "iframe")),
+    sameSite: await get("/api/loading", fetchMeta("same-site", "no-cors", "script")),
+    top: await get("/api/loading", fetchMeta("cross-site", "navigate", "document")),
+    mine: await get("/api/loading", fetchMeta("same-origin", "cors", "empty")),
+    typed: await get("/api/loading", fetchMeta("none", "navigate", "document")),
+    cli: await get("/api/loading", {}),
+  }
+  check("another site's subrequests (an image, a frame) and an opaque frame's are refused; links opened, the app and clients aren't",
+    sub.image === 403 && sub.frame === 403 && sub.sameSite === 403 && sub.top === 200 && sub.mine === 200 && sub.typed === 200 && sub.cli === 200, sub)
+  const ws = (headers: Record<string, string>) => new Promise<number>((r) => {
+    const s = new WebSocket(`ws://127.0.0.1:${port}/api/events`, { headers })
+    s.once("open", () => { s.close(); r(101) }); s.once("unexpected-response", (_q, res) => r(res.statusCode ?? 0)); s.once("error", () => r(0))
+  })
+  const [wsOpaque, wsMine] = [await ws(fetchMeta("cross-site", "websocket", "websocket")), await ws(fetchMeta("same-origin", "websocket", "websocket"))]
+  check("… a socket too", wsOpaque === 403 && wsMine === 101, [wsOpaque, wsMine])
 
   const none = await op(port, "web-viewer.tabs")
   check("no app attached: the browser op says to open one", none.status >= 400 && /none is attached to this server/.test(JSON.stringify(none.body)), none)
