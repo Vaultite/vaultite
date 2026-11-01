@@ -241,6 +241,10 @@ export function runScript(file: string, id: string, run: AgentRun, kind: ShellKi
   return ` source ${shellQuote(at)}`
 }
 
+// PowerShell's console in UTF-8, as Node, git and vau write: else it reads a program's output (`$x = vau read ...`, an
+// agent's commands) in the old OEM code page, "naïve" as "na├»ve". What runs there shares the console, so it too.
+const UTF8 = "[Console]::InputEncoding = [Console]::OutputEncoding = $OutputEncoding = [Text.UTF8Encoding]::new($false)"
+
 /** What starts a shell: its program, arguments (a string: Windows' whole command line, for cmd's own quoting), folder
  *  and environment. PowerShell takes an agent's line encoded (no quoting to get wrong); WSL starts through wsl.sh. */
 export type Launch = { file: string; args: string[] | string; cwd: string; env: Record<string, string> }
@@ -248,7 +252,7 @@ export function launch(spec: Spec): Launch {
   const run = spec.run, cwd = run?.cwd || spec.cwd, env = { ...spec.env, ...spec.ctx }
   switch (kindOf(spec.shell)) {
     case "pwsh":
-      return { file: spec.shell, args: ["-NoLogo", ...(run ? ["-NoExit", "-EncodedCommand", Buffer.from(run.command, "utf16le").toString("base64")] : [])], cwd, env }
+      return { file: spec.shell, args: ["-NoLogo", "-NoExit", "-EncodedCommand", Buffer.from(run ? `${UTF8}\n${run.command}` : UTF8, "utf16le").toString("base64")], cwd, env }
     case "cmd":
       // (/s: cmd takes what's between the outer quotes as it is)
       return { file: spec.shell, args: run ? `/s /k "${run.command}"` : [], cwd, env }

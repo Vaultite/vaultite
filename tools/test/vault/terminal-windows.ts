@@ -91,6 +91,9 @@ process.exit(0)`
   try {
     const pwsh = await run("winpwsh1", "", "vau --help | Select-Object -First 1; Write-Output \"term=$env:VAULTITE_TERMINAL\"", /term=winpwsh1/)
     check("windows: PowerShell is the default shell, vau --help works there, it knows its terminal", pwsh.shown.includes("vau: drive Vaultite") && pwsh.shown.includes("term=winpwsh1"), pwsh)
+    // A program's output read back as text (an agent's `$x = vau read ...`): UTF-8, not the console's old code page.
+    const utf8 = await run("winpwsh2", "", "$x = node -e \"process.stdout.write('na\\u00efve caf\\u00e9')\"; Write-Output \"got=[$x]\"", /got=\[[^$]/)
+    check("windows: PowerShell reads a program's UTF-8 output as it is", utf8.shown.includes("got=[naïve café]"), utf8)
     const cmd = await run("wincmd1", process.env.ComSpec || "C:\\Windows\\System32\\cmd.exe", "vau --help | findstr /c:\"drive Vaultite\" & echo term=%VAULTITE_TERMINAL%", /term=wincmd1/)
     check("windows: Command Prompt runs commands and vau there", cmd.shown.includes("vau: drive Vaultite") && cmd.shown.includes("term=wincmd1"), cmd)
     const wsl = (await distros())[0]
