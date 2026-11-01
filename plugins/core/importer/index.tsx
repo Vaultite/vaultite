@@ -7,7 +7,7 @@ const TINT = "var(--importer)"
 const TOAST = "importer"
 const HEADERS = { "X-Vaultite-Client": "app" }
 
-const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear" }
+const LABEL = { notion: "Notion", evernote: "Evernote", keep: "Google Keep", html: "HTML pages", bear: "Bear", csv: "CSV" }
 
 function summary(j: Job) {
   if (j.state === "failed") return `Couldn't import ${j.name}: ${j.error ?? "it failed"}`
@@ -38,7 +38,7 @@ async function importFile(file: File) {
 function pickExport() {
   const input = document.createElement("input")
   input.type = "file"
-  input.accept = ".zip,.enex,.bear2bk,.html,.htm,application/zip,text/html"
+  input.accept = ".zip,.enex,.bear2bk,.html,.htm,.csv,application/zip,text/html,text/csv"
   input.style.display = "none"
   input.addEventListener("change", () => {
     const f = input.files?.[0]
@@ -49,13 +49,13 @@ function pickExport() {
   input.click()
 }
 
-const HOW = "Notion: Settings, Export all workspace content (or a page's menu, Export), as Markdown & CSV. Evernote: a notebook's menu, Export notebook, as ENEX. Google Keep: takeout.google.com with Keep ticked. Bear: File, Backup notes. Any other app: its HTML pages, one or a zip. Importing again adds only what's new."
+const HOW = "Notion: Settings, Export all workspace content (or a page's menu, Export), as Markdown & CSV. Evernote: a notebook's menu, Export notebook, as ENEX. Google Keep: takeout.google.com with Keep ticked. Bear: File, Backup notes. Any other app: its HTML pages or a CSV table (a note per row), one or a zip. Importing again adds only what's new."
 
 function SettingsPanel() {
   return (
     <div>
       <Group>
-        <SettingRow label="Import notes from another app…" sub="Notion, Evernote, Google Keep, Bear or HTML pages: every page or note becomes a note" onClick={pickExport} chevron={FileInput} />
+        <SettingRow label="Import notes from another app…" sub="Notion, Evernote, Google Keep, Bear, HTML pages or a CSV table: every page, note or row becomes a note" onClick={pickExport} chevron={FileInput} />
       </Group>
       <p className="mt-1.5 px-1 text-[13px] leading-[18px] text-muted-foreground">{HOW}</p>
     </div>

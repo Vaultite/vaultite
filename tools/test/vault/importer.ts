@@ -164,4 +164,17 @@ export default async ($: VaultTest) => {
     !exists("Bear/Gone.md") && /archived: true/.test(read("Bear/Old.md")) && trip.includes("Pack light.\n![[Bear/Attachments/map 1.png]]") && /^---\ncreated: '2026-09-0\d/.test(trip), [j, trip])
   j = await runJob({ path: "Imports/Notes.bear2bk" })
   check("importer bear: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 2 && j.files === 0, j)
+
+  // CSV: a note per row.
+  const { rowNote } = await import("../../../plugins/core/importer/importer.ts")
+  const rn = rowNote({ Name: " Fig ", Notes: "Sweet.", Price: "3.5", Stock: "12", Origin: "Turkey", Empty: "", Code: "0012345678901234567" })
+  check("importer csv: a row as a note (first column its name, Notes its text, numbers as numbers, empties left out)", rn.title === "Fig" && rn.body === "Sweet." &&
+    JSON.stringify(rn.fm) === '{"Price":3.5,"Stock":12,"Origin":"Turkey","Code":"0012345678901234567"}', rn)
+  fs.writeFileSync(path.join(VAULT, "Imports/Books read.csv"), "\ufeffTitle,Author,Year,Notes\nDune,Frank Herbert,1965,Loved it.\n\"Hello, world\",A. Writer,2001,\nDune,Someone Else,2020,\n")
+  j = await runJob({ path: "Imports/Books read.csv" })
+  check("importer csv: a note per row in a folder named as the file, rows with one name kept apart", j.state === "done" && j.source === "csv" && j.notes === 3 && j.created === 3 &&
+    read("Books read/Dune.md").startsWith("---\nAuthor: Frank Herbert\nYear: 1965\next_id: csv-") && read("Books read/Dune.md").trimEnd().endsWith("Loved it.") &&
+    exists("Books read/Hello, world.md") && read("Books read/Dune 1.md").includes("Author: Someone Else"), [j, exists("Books read/Dune.md") && read("Books read/Dune.md")])
+  j = await runJob({ path: "Imports/Books read.csv" })
+  check("importer csv: importing again adds nothing", j.state === "done" && j.created === 0 && j.unchanged === 3, j)
 }

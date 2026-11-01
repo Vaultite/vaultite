@@ -1,10 +1,10 @@
-// One import as a job: Notion's zip (maybe of zips), Evernote's .enex (or a zip of them), Keep's Takeout, Bear's backup, HTML pages. Every file gets its path
+// One import as a job: Notion's zip (maybe of zips), Evernote's .enex (or a zip of them), Keep's Takeout, Bear's backup, HTML pages, CSV rows. Every file gets its path
 // first, so links point where files land; written a few per hold of the vault; idempotent by `ext_id`.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
-import { entryBytes, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
+import { csvRecords, entryBytes, isZip, type ZipEntry, zipEntries } from "../../../core/plugins.ts"
 import { frontmatter, safeName, stamp, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { bearInfo, bearNote } from "./bear.ts"
 import { noteBody, readEnex, type Resource } from "./evernote.ts"
@@ -22,7 +22,7 @@ export const newJob = (id: string, name: string): Job =>
 /** The most an .enex is read whole (its attachments are inside, as base64). */
 const ENEX_MAX = 512 << 20
 const BATCH = 20
-const LABEL: Record<Source, string> = { notion: "Notion", evernote: "Evernote", keep: "Keep", html: "HTML", bear: "Bear" }
+const LABEL: Record<Source, string> = { notion: "Notion", evernote: "Evernote", keep: "Keep", html: "HTML", bear: "Bear", csv: "CSV" }
 /** A TextBundle's text in Bear's backup (its folder: the bundle). */
 const BUNDLE = /^(.*\.textbundle)\/text\.(markdown|md|txt)$/i
 /** A Keep note's JSON in a Takeout zip. */
@@ -100,8 +100,9 @@ async function zips(file: string, tmp: string, depth = 0): Promise<Zip[]> {
   return out
 }
 
-/** What the file is: Notion's export or Evernote's. */
-function kindOfExport(parts: Zip[] | null, file: string): Source {
+/** What the file is: Notion's export, Evernote's, Keep's, Bear's, HTML pages or CSV tables. */
+function kindOfExport(parts: Zip[] | null, file: string, name: string): Source {
+  if (!parts && /\.csv$/i.test(name)) return "csv"
   if (!parts) {
     const fd = fs.openSync(file, "r")
     const head = Buffer.alloc(512)
@@ -116,7 +117,8 @@ function kindOfExport(parts: Zip[] | null, file: string): Source {
   if (names.some((n) => BUNDLE.test(n))) return "bear"
   if (names.some((n) => /\.md$/i.test(n))) return "notion"
   if (names.some((n) => /\.html?$/i.test(n))) return "html"
-  throw new Error("no notes in this zip: is it Notion's export (Markdown & CSV), Evernote's .enex files, Keep's Takeout, Bear's backup or HTML pages?")
+  if (names.some((n) => /\.csv$/i.test(n))) return "csv"
+  throw new Error("no notes in this zip: is it Notion's export (Markdown & CSV), Evernote's .enex files, Keep's Takeout, Bear's backup, HTML pages or CSV tables?")
 }
 
 /** Runs the import of `file` (on this machine) into `vault`, updating `job` as it goes. */
@@ -124,11 +126,12 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   job.state = "running"
   fs.mkdirSync(opts.tmp, { recursive: true })
   const parts = isZip(file) ? await zips(file, opts.tmp) : null
-  const source = kindOfExport(parts, file)
+  const source = kindOfExport(parts, file, job.name)
   job.source = source
-  // (HTML pages go in a folder named as the export: they could be any app's)
-  job.folder = join(opts.folder, source === "html" ? [...safeName(job.name.replace(/\.(zip|html?)$/i, ""))].slice(0, 120).join("") : LABEL[source])
-  if (source === "html") await htmlPages(vault, parts ?? [{ file, entries: [{ name: job.name, method: 0, size: fs.statSync(file).size, packed: 0, offset: -1 }] }], job.folder, job)
+  // (HTML pages and tables go in a folder named as the export: they could be any app's)
+  job.folder = join(opts.folder, source === "html" || source === "csv" ? [...safeName(job.name.replace(/\.(zip|html?|csv)$/i, ""))].slice(0, 120).join("") : LABEL[source])
+  if (source === "csv") await csvRows(vault, parts ?? [{ file, entries: [{ name: job.name, method: 0, size: fs.statSync(file).size, packed: 0, offset: -1 }] }], job.folder, job)
+  else if (source === "html") await htmlPages(vault, parts ?? [{ file, entries: [{ name: job.name, method: 0, size: fs.statSync(file).size, packed: 0, offset: -1 }] }], job.folder, job)
   else if (source === "notion") await notion(vault, parts!, job.folder, job)
   else if (source === "bear") await bear(vault, parts!, job.folder, job)
   else if (source === "keep") await keep(vault, parts!, job.folder, job)
@@ -368,5 +371,52 @@ async function bear(vault: Vault, parts: Zip[], dir: string, job: Job) {
     }
   }
   await flush(vault, pending, job)
+}
+
+/** A column whose text is the note's body, by its name. */
+const BODY = /^(content|body|text|notes?|description)$/i
+
+/** A CSV row as a note: its first column names it, a Content (Body, Notes...) column is its text, the rest are its
+ *  properties (whole numbers and decimals as numbers, empty ones left out). */
+export function rowNote(row: Record<string, string>): { title: string; fm: Record<string, unknown>; body: string } {
+  const keys = Object.keys(row)
+  const title = (row[keys[0]] ?? "").trim()
+  const fm: Record<string, unknown> = {}
+  let body = ""
+  for (const k of keys.slice(1)) {
+    const v = (row[k] ?? "").trim(), key = k.trim()
+    if (!v || !key) continue
+    if (BODY.test(key) && !body) { body = v; continue }
+    fm[key] = /^-?\d+(\.\d+)?$/.test(v) && v.length < 16 ? Number(v) : v
+  }
+  return { title, fm, body }
+}
+
+async function csvRows(vault: Vault, parts: Zip[], base: string, job: Job) {
+  const known = knownIds(vault, "csv-")
+  const plan = planner(vault)
+  const pending: Write[] = []
+  const tables = parts.flatMap((z) => z.entries.filter((e) => /\.csv$/i.test(e.name)).map((e) => ({ z, e })))
+  for (const { z, e } of tables) {
+    const table = e.name.split("/").pop()!.replace(/\.csv$/i, "")
+    // (one table: its rows in the export's folder; several: a folder each)
+    const dir = tables.length > 1 ? join(base, [...safeName(table)].slice(0, 120).join("")) : base
+    const text = (e.offset < 0 ? fs.readFileSync(z.file) : await entryBytes(z.file, e)).toString("utf8")
+    const seen = new Map<string, number>()
+    csvRecords(text).forEach((row, i) => {
+      const { title, fm, body } = rowNote(row)
+      const name = title || `Row ${i + 1}`
+      const nth = (seen.get(name) ?? 0) + 1
+      seen.set(name, nth)
+      job.notes++
+      const ext = `csv-${crypto.createHash("sha1").update(`${e.name}\n${name}\n${nth}`).digest("hex").slice(0, 16)}`
+      if (known.has(ext)) { job.unchanged++; return }
+      fm.ext_id = ext
+      const rel = plan.free(join(dir, `${safeName(name)}.md`)).rel
+      known.set(ext, rel)
+      pending.push({ rel, note: true, data: async () => frontmatter(fm, body) })
+    })
+    await flush(vault, pending, job)
+  }
 }
 
