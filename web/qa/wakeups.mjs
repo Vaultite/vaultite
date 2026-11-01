@@ -1,13 +1,25 @@
 // Idle wakeups: an open window with one note and the sidebars, left alone, runs almost nothing (timer, frame and idle
-// callbacks a minute, shown and hidden). Reads only. Covers plugins/core/companion/Overlay.tsx, core/live.ts.
+// callbacks a minute, shown and hidden), and its server's main thread sleeps (Linux). Reads only. Covers
+// plugins/core/companion/Overlay.tsx, core/live.ts, core/schedule.ts, plugins/core/activity/plugin.ts.
 //   node web/qa/wakeups.mjs <base url> [--print]
+import { execFileSync } from "node:child_process"
+import fs from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B0], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 const PRINT = process.argv.includes("--print")
 const SECS = 20
 // Callbacks a minute (one note, read; measured ~4 shown, ~4 hidden): a new poll or loop shows here.
-const LIMITS = { shown: 30, hidden: 30 }
+// The server's main-thread wakeups a minute, the window open (measured ~200; an always-on timer showed ~3000).
+const LIMITS = { shown: 30, hidden: 30, server: 600 }
+
+/** The server's main thread's context switches so far, where /proc tells (Linux), else null. */
+function serverWakes() {
+  try {
+    const pid = execFileSync("lsof", [`-tiTCP:${new URL(B).port}`, "-sTCP:LISTEN"], { encoding: "utf8" }).trim().split("\n")[0]
+    return [...fs.readFileSync(`/proc/${pid}/status`, "utf8").matchAll(/^(?:non)?voluntary_ctxt_switches:\s+(\d+)/gm)].reduce((a, m) => a + Number(m[1]), 0)
+  } catch { return null }
+}
 
 const HOOK = () => {
   const tally = (window.__wakes = {})
@@ -33,7 +45,10 @@ await wait(5000) // (what opening it started settles)
 
 async function measure(name) {
   await page.evaluate(() => { for (const k in window.__wakes) delete window.__wakes[k] })
+  const s0 = serverWakes()
   await wait(SECS * 1000)
+  const s1 = serverWakes()
+  if (s0 !== null && s1 !== null) check(`${name}: the server woke ${Math.round((s1 - s0) * 60 / SECS)} times a minute (at most ${LIMITS.server})`, (s1 - s0) * 60 / SECS <= LIMITS.server)
   const tally = await page.evaluate(() => window.__wakes)
   const n = Object.values(tally).reduce((a, b) => a + b, 0) * 60 / SECS
   if (PRINT) for (const [k, v] of Object.entries(tally).sort((a, b) => b[1] - a[1])) console.log(`  ${String(v).padStart(4)} ${k}`)
