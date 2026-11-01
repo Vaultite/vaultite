@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url"
 import { git, parseSource } from "./installs.ts"
 import { bundleBlocked, type Disclosures, disclosuresOf, iconOf, PLACE, REPO } from "./pluginmeta.ts"
 import { compareVersions, parseVersion } from "./version.ts"
-import { type Vault, writeAtomic } from "./vault.ts"
+import { removeTree, type Vault, writeAtomic } from "./vault.ts"
 import { fetchPublic } from "./web.ts"
 import { isObj } from "./values.ts"
 
@@ -140,7 +140,7 @@ async function fromRepo(spec: string) {
     await git(["clone", "--quiet", "--depth", "1", "--filter=blob:none", "--no-checkout", "--single-branch", parseSource(`${owner}/${name}`).url!, tmp])
     return await git(["show", `HEAD:${rest.join("/")}`], tmp)
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    removeTree(tmp)
   }
 }
 

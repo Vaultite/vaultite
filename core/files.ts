@@ -16,7 +16,7 @@ import { blocksIn } from "./sections.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
 import { byGuest, guestRefusal } from "./guests.ts"
-import { cmp, DEVICE_NAME, type Entry, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
+import { cmp, DEVICE_NAME, type Entry, fetchFromICloud, iCloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, removeTree, renameFile, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -397,7 +397,7 @@ export async function emptyTrash(vault: Vault, now = Date.now()) {
       }
       const at = m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : st.ctimeMs
       if (at > cutoff) continue
-      try { fs.rmSync(abs, { recursive: true, force: true }); gone.push(`.trash/${rel}`); removed = true } catch (e) { console.error("trash:", e) }
+      try { removeTree(abs); gone.push(`.trash/${rel}`); removed = true } catch (e) { console.error("trash:", e) }
       if (gone.length % 20 === 0) await turn()
     }
     return removed
@@ -719,7 +719,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       }
       let trashed: string | undefined
       guard(vault.abs(rel))
-      if (rel === ".trash" || rel.startsWith(".trash/")) fs.rmSync(vault.abs(rel), { recursive: true }) // gone for good
+      if (rel === ".trash" || rel.startsWith(".trash/")) removeTree(vault.abs(rel)) // gone for good
       else {
         trashed = vault.toTrash(rel)
         forget(vault, rel)

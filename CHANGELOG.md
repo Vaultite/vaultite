@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Plugins and bundles install on Windows**: installing from the plugin directory (Obsidian plugins, Glass...) failed
+  in the Windows app with EPERM; it fetches only the plugin's own folder now, cleans up after itself, and says when
+  git is missing.
 - **Default view and editing mode, for every device**: Settings > Editor has Default view for new tabs (editing or
   reading) and Default editing mode (live preview or source mode), as in Obsidian, whose own settings are followed
   when these are unset. A new note opens in its tab's editing mode, not always live preview; a tab no longer takes

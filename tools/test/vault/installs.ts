@@ -62,7 +62,7 @@ export default async ($: VaultTest) => {
     check("install: one importing what an installed plugin it requires exports", ic === 200 && exists(".vaultite/plugins/dock/plugin.ts"), [ic, io])
     for (const id of ["dock", "pier"]) await vau("plugin", "uninstall", id)
     const cr = await vau("plugin", "install", `${HARBOR}@v9.9.9`)
-    check("install: a tag that isn't there fails, saying so", cr.code === 1 && /git clone/.test(cr.err), cr)
+    check("install: a tag that isn't there fails, saying so", cr.code === 1 && /git fetch: .*v9\.9\.9/.test(cr.err), cr)
     check("install: plugin.install is gated on the public MCP", (await import("../../../plugins/core/mcp/public.ts")).gateOf("plugin.install", "write", { source: "a/b" }).includes("install"))
 
     // From a zip at an address pinned by its hash: a made-up server on this machine (http is allowed only to loopback).
@@ -215,12 +215,29 @@ export default async ($: VaultTest) => {
       const skiff = JSON.stringify({ id: "skiff", name: "Skiff", description: "Made up.", version: "1.0.0", author: "Alice Park", repo: "fleet/plugins", disclosures: {} })
       const dts = (tide: string) => PLUGIN_TS.replaceAll("harbor", "dinghy").replace('"high"', `"${tide}"`)
       repo("fleet/plugins", { "dinghy/manifest.json": dinghy("1.0.0"), "dinghy/plugin.ts": dts("high"), "skiff/manifest.json": skiff,
-        "directory/index.json": JSON.stringify({ plugins: [entry({ id: "dinghy", name: "Dinghy", repo: "fleet/plugins", dir: "dinghy", tag: "dinghy/v1.0.0" })] }) }, "dinghy/v1.0.0")
+        "directory/index.json": JSON.stringify({ plugins: [entry({ id: "dinghy", name: "Dinghy", repo: "fleet/plugins", dir: "dinghy", tag: "dinghy/v1.0.0" })] }) }, null)
+      // (another folder's file named as Windows can't, like Vaultite/plugins' muse fixtures: in git only, never on a disk)
+      const FLEET = path.join(tmp, "repos", "fleet/plugins")
+      const blob = execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: FLEET, input: "x\n", env: gitEnv() }).toString().trim()
+      g(FLEET, "-c", "core.protectNTFS=false", "update-index", "--add", "--cacheinfo", `100644,${blob},skiff/fixtures/tide@12:00:00.md`)
+      g(FLEET, "commit", "-q", "-m", "x"); g(FLEET, "tag", "dinghy/v1.0.0")
       process.env.VAULTITE_GITHUB = pathToFileURL(path.join(tmp, "repos")).href
       write(".vaultite/plugins/dinghy/data.json", JSON.stringify({ kept: 1 }) + "\n")
       let [fc, fo] = await api("POST", "ops/plugin.install", { source: "fleet/plugins/dinghy" })
       check("several in one: installed from its folder at its own newest tag", fc === 200 && fo.id === "dinghy" && fo.tag === "dinghy/v1.0.0" &&
         exists(".vaultite/plugins/dinghy/plugin.ts") && !exists(".vaultite/plugins/dinghy/skiff") && lock().dinghy?.repo === "fleet/plugins" && lock().dinghy.version === "1.0.0", [fc, fo])
+      check("several in one: only its folder is checked out (another's file Windows can't name doesn't stop it)", fc === 200, [fc, fo])
+      const { tagsOf } = await import("../../../core/installs.ts")
+      const path0 = process.env.PATH
+      let nogit = ""
+      process.env.PATH = path.join(tmp, "repos")
+      try { await tagsOf(FLEET) } catch (e) { nogit = (e as Error).message } finally { process.env.PATH = path0 }
+      check("install: without git on this machine, the error says to install it", nogit.includes("git, which isn't on this machine"), nogit)
+      const { removeTree } = await import("../../../core/vault.ts")
+      const ro = path.join(tmp, "read-only", "objects")
+      fs.mkdirSync(ro, { recursive: true }); fs.writeFileSync(path.join(ro, "pack"), "x"); fs.chmodSync(path.join(ro, "pack"), 0o444)
+      removeTree(path.dirname(ro))
+      check("a folder with a read-only file in it (git's objects) is removed", !fs.existsSync(path.dirname(ro)))
       check("install: a folder with only its settings is kept for it", JSON.parse(read(".vaultite/plugins/dinghy/data.json")).kept === 1)
       // An author's folder: .vaultiteignore leaves its tests out; edited, update --apply takes it and it keeps running.
       const KETCH = path.join(tmp, "ketch")

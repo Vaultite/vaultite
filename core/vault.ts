@@ -135,6 +135,21 @@ export function writeText(p: string, text: string) {
  *  search indexer, antivirus): EPERM, EACCES or EBUSY until it lets go. */
 const held = (e: unknown) => process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes((e as NodeJS.ErrnoException)?.code ?? "")
 
+/** A folder removed with all in it. On Windows, Electron's Node (the app's) neither removes a read-only file (git's
+ *  objects: a clone, a folder with a repository in it) nor waits for a watcher or antivirus to let go of one. */
+export function removeTree(dir: string) {
+  for (let wait = 10; ; wait *= 2) {
+    try { return fs.rmSync(dir, { recursive: true, force: true }) } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? ""
+      if (process.platform !== "win32" || wait > 320 || !["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"].includes(code)) throw e
+      if (code === "EPERM" || code === "EACCES") {
+        try { for (const f of fs.readdirSync(dir, { recursive: true, withFileTypes: true })) if (!f.isDirectory()) fs.chmodSync(path.join(f.parentPath, f.name), 0o666) } catch { /* going */ }
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait)
+    }
+  }
+}
+
 /** fs.renameSync, retried a moment on Windows while another process holds the file; one this process reads can't end
  *  while it waits, so then, to a name that's free, it's copied and the original removed (its readers share deleting). */
 export function renameFile(from: string, to: string) {

@@ -14,7 +14,7 @@ import { notesOf, type Update } from "./updates.ts"
 import { compareVersions, tagVersion } from "./version.ts"
 import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
 import { unzip } from "./unzip.ts"
-import type { Item, Vault } from "./vault.ts"
+import { removeTree, type Item, type Vault } from "./vault.ts"
 import { gitEnv } from "./gitenv.ts"
 
 /** Where a plugin came from, as .vaultite/plugins-lock.json keeps it (so another machine knows): `source` as asked,
@@ -96,8 +96,23 @@ export function parseSource(given: string, tag?: string | null): Source {
 export function git(args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile("git", ["-c", "core.autocrlf=false", ...args], { cwd, timeout: GIT_TIMEOUT, maxBuffer: 16 << 20, env: gitEnv({ GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "", SSH_ASKPASS: "" }) },
-      (err, stdout, stderr) => (err ? reject(new OpError(`git ${args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c")}: ${(String(stderr).trim().split("\n").at(-1) || err.message).slice(0, 300)}`, 502)) : resolve(String(stdout))))
+      (err, stdout, stderr) => (err ? reject((err as { code?: unknown }).code === "ENOENT" && (!cwd || fs.existsSync(cwd)) ? new OpError(NO_GIT, 503)
+        : new OpError(`git ${args.find((a, i) => !a.startsWith("-") && args[i - 1] !== "-c")}: ${(String(stderr).trim().split("\n").at(-1) || err.message).slice(0, 300)}`, 502)) : resolve(String(stdout))))
   })
+}
+const NO_GIT = `plugins are installed with git, which isn't on this machine: install it (${process.platform === "win32" ? "https://git-scm.com/download/win"
+  : process.platform === "darwin" ? "xcode-select --install" : "your system's git package"}), then restart Vaultite`
+
+/** A repository at `ref` (a tag, branch or commit; its default branch when null) checked out into `dir`, and its commit.
+ *  With `sub`, only that folder (a sparse index: a file elsewhere that Windows can't name, like `a:b.md`, never stops it). */
+export async function checkout(url: string, ref: string | null, dir: string, sub: string | null = null) {
+  fs.mkdirSync(dir, { recursive: true })
+  await git(["init", "--quiet"], dir)
+  if (sub) await git(["sparse-checkout", "set", "--cone", "--sparse-index", sub], dir)
+  await git(["fetch", "--quiet", "--depth", "1", "--no-tags", url, ref ?? "HEAD"], dir)
+  // (symlinks checked out as plain files: a link can't point a plugin's file anywhere on this machine)
+  await git(["-c", "core.symlinks=false", "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"], dir)
+  return (await git(["rev-parse", "HEAD"], dir)).trim()
 }
 
 /** A repository's version tags (v1.2.0 and 1.2.0; pre-releases only when asked by name), newest first; with `dir`, its
@@ -121,7 +136,7 @@ export type Fetched = { dir: string; id: string; manifest: Item; tag: string | n
  *  the app reads to <tmp>/<id>/ and check it as installed beside `vault`'s plugins (id -> folder): 422 with its problems. */
 export async function fetchSource(src: Source, tiers: Map<string, string>, vault: Map<string, string>): Promise<Fetched> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-install-"))
-  const done = () => fs.rmSync(tmp, { recursive: true, force: true })
+  const done = () => removeTree(tmp)
   try {
     let from: string, tag: string | null = null, commit: string | null = null, untagged = false
     if (src.folder) from = src.folder
@@ -131,11 +146,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
       tag = src.tag ?? null
       untagged = !tag
       from = path.join(tmp, "clone")
-      fs.mkdirSync(from)
-      await git(["init", "--quiet"], from)
-      await git(["fetch", "--quiet", "--depth", "1", "--no-tags", src.url!, src.commit], from)
-      await git(["-c", "core.symlinks=false", "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"], from)
-      commit = (await git(["rev-parse", "HEAD"], from)).trim()
+      commit = await checkout(src.url!, src.commit, from, src.dir)
       if (commit !== src.commit) throw new OpError(`${src.repo ?? src.url} gave commit ${commit} for ${src.commit}`, 502)
       if (src.dir) {
         from = path.join(from, src.dir)
@@ -145,9 +156,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
       tag = src.tag ?? (await tagsOf(src.url!, src.dir))[0] ?? null
       untagged = !tag
       from = path.join(tmp, "clone")
-      // (symlinks checked out as plain files: a link can't point a plugin's file anywhere on this machine)
-      await git(["-c", "core.symlinks=false", "clone", "--quiet", "--depth", "1", "--no-tags", "--single-branch", ...(tag ? ["--branch", tag] : []), src.url!, from])
-      commit = (await git(["rev-parse", "HEAD"], from)).trim()
+      commit = await checkout(src.url!, tag, from, src.dir)
       if (src.dir) {
         from = path.join(from, src.dir)
         if (!fs.existsSync(path.join(from, "manifest.json"))) throw new OpError(`${src.repo ?? src.url} has no plugin in ${src.dir}/${tag ? ` at ${tag}` : ""}`, 404)
@@ -168,7 +177,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
     if (problems.length) throw new OpError(`${src.given}${tag ? ` at ${tag}` : ""} can't be installed`, 422, problems)
     return { dir, id, manifest, tag, commit, untagged, done }
   } catch (e) {
-    done()
+    try { done() } catch { /* (what failed is e, not its cleanup) */ }
     throw e
   }
 }
@@ -311,7 +320,7 @@ export async function releaseNotes(src: Source, from: string | null, to: string 
   } catch {
     return []
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    removeTree(tmp)
   }
 }
 

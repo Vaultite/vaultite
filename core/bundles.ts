@@ -7,7 +7,7 @@ import path from "node:path"
 import { fenceLayout, settingsOf, type SettingDecls } from "./blocks.ts"
 import { EDITOR, EDITOR_KEYS } from "./editor.ts"
 import { pageAt, templates } from "./pages.ts"
-import { asLocked, COMMIT, git, parseSource, readLock, tagsOf } from "./installs.ts"
+import { asLocked, checkout, COMMIT, parseSource, readLock, tagsOf } from "./installs.ts"
 import { LOOK } from "./look.ts"
 import { MOVED } from "./migrations.ts"
 import { switched } from "./pluginmeta.ts"
@@ -17,7 +17,7 @@ import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
 import { blockName, scan } from "./sections.ts"
 import { readSidebars, type Sidebars } from "./sidebars.ts"
-import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
+import { type Item, readText, removeTree, type Vault, writeAtomic } from "./vault.ts"
 import { isObj } from "./values.ts"
 
 export const APP_BUNDLES = path.join(ROOT, "bundles")
@@ -1271,14 +1271,8 @@ async function fetchFrom(given: string): Promise<{ files: Files; id: string | nu
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-bundle-"))
   try {
     let dir = src.folder ?? path.join(tmp, "clone")
-    if (pin) {
-      await git(["init", "--quiet", dir])
-      await git(["fetch", "--quiet", "--depth", "1", "--no-tags", src.url!, pin[1]], dir)
-      await git(["-c", "core.symlinks=false", "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"], dir)
-      if (src.dir) dir = path.join(dir, src.dir)
-    } else if (!src.folder) {
-      const tag = src.tag ?? (await tagsOf(src.url!, src.dir))[0] ?? null
-      await git(["-c", "core.symlinks=false", "clone", "--quiet", "--depth", "1", "--no-tags", "--single-branch", ...(tag ? ["--branch", tag] : []), src.url!, dir])
+    if (!src.folder) {
+      await checkout(src.url!, pin ? pin[1] : src.tag ?? (await tagsOf(src.url!, src.dir))[0] ?? null, dir, src.dir)
       if (src.dir) dir = path.join(dir, src.dir)
     }
     if (!fs.existsSync(dir)) throw new HTTPError(404, `${given} has no folder ${src.dir}`)
@@ -1301,7 +1295,7 @@ async function fetchFrom(given: string): Promise<{ files: Files; id: string | nu
     files["bundle.json"] = JSON.stringify({ ...m, from }, null, 2) + "\n"
     return { files, id: id ?? slug(place.split("/").at(-1)!.replace(/\.git$|@.*$/g, "")) }
   } finally {
-    fs.rmSync(tmp, { recursive: true, force: true })
+    removeTree(tmp)
   }
 }
 
