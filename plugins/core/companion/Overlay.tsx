@@ -627,11 +627,11 @@ export function Overlay() {
   }, [])
   useEffect(() => {
     let frame = 0
-    // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing)
+    // (nothing placed nor any room left to take back: a keystroke or a scroll draws nothing, nor looks for panes)
     const idle = () => { const st = getState(); return !st.draft && !roomy.size && !adding && (st.mode === "off" ? !st.notes.some((n) => n.by) : !st.notes.length && !st.agents.length) && !selecting() }
     // (ticks only with something to place: an idle app with no agents or comments wakes for nothing)
     let tick = 0
-    const later = () => { arm(); if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
+    const later = () => { if (idle()) return; arm(); if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); if (!idle()) redraw() }) }
     const arm = () => { if (!tick && !idle()) tick = window.setInterval(() => { if (idle()) { clearInterval(tick); tick = 0 } else if (document.visibilityState === "visible") later() }, 1500) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
