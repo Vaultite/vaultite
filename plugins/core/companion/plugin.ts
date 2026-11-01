@@ -1077,19 +1077,20 @@ const NUDGE = 5 * 60_000
 export async function tend() {
   if (plugin.isOff() || mode() === "off") return
   // (the companion stays while its session runs, but not starting forever)
+  // (an agent told something while a session was asked about, a next or its end, is as that said: newer than this look)
   for (const a of [...agents.values()]) {
     if (a.state === "away" || live(a.name) || waking.has(key(a.name))) continue
-    const runs = isMain(a.name) && await running(sessionId())
-    if (!runs || a.state === "starting") setAgent(a.name, { state: runs ? "watching" : "away" })
+    const t = a.t, runs = isMain(a.name) && await running(sessionId())
+    if (a.t === t && (!runs || a.state === "starting")) setAgent(a.name, { state: runs ? "watching" : "away" })
   }
   // (a session that ended without telling us, as terminal.ended does: its cursor goes too)
   for (const s of sessions()) {
-    const a = agents.get(key(s.name))
-    if (a && a.state !== "away" && a.state !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id))) ended(s.name, s.id)
+    const a = agents.get(key(s.name)), t = a?.t
+    if (a && a.state !== "away" && a.state !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id)) && a.t === t) ended(s.name, s.id)
   }
   // (nor thinking with no session to think: it ended mid-ask)
-  const main = agents.get(key(ownName()))
-  if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId()))) setAgent(main.name, { state: live(main.name) ? "watching" : "away" })
+  const main = agents.get(key(ownName())), was = main?.t
+  if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId())) && main.t === was) setAgent(main.name, { state: live(main.name) ? "watching" : "away" })
   // (asked to hand over and it didn't: a fresh one without its summary)
   for (const [k, t] of handing) {
     if (Date.now() - t < HANDOVER_WAIT) continue
@@ -1109,7 +1110,7 @@ async function nudge(name: string, id: string) {
   seen.set(key(name), Date.now())
   await plugin.runOp("terminal.send", { id, text: `Keep watching: run \`${nextCmd(name)}\` again, and never end your turn.` }).catch(() => {})
 }
-const watchdog = setInterval(tend, 60_000)
+export const watchdog = setInterval(tend, 60_000)
 watchdog.unref?.()
 
 // ---------- ops

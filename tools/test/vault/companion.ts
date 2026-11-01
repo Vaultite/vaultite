@@ -6,6 +6,9 @@ export default async ($: VaultTest) => {
   const { api, check, exists, read, write } = $
   // Companion (plugins/core/companion): moments in, ops out; the windows' socket is QA's (web/qa/companion.mjs).
   const c = await import("../../../plugins/core/companion/plugin.ts")
+  // (its rounds only when a check runs one: the minute's would end the made-up sessions, whose terminals never run, as a
+  // slower machine's test reaches them)
+  clearInterval(c.watchdog)
   check("companion: text found nearest the line it was said to be on", c.nearest("a\nx\nb\nx\n", "x", 4) === 6 && c.nearest("a\nx\nb\nx\n", "x") === 2 && c.nearest("abc", "z") === -1)
   check("companion: an edit replaces found text, or adds lines after a line, at the top or at the end",
     c.editText("a\nb\n", { find: "b", text: "B" }) === "a\nB\n" && c.editText("a\nb\n", { line: 1, text: "x" }) === "a\nx\nb\n" &&
