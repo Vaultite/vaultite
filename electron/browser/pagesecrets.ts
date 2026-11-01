@@ -15,7 +15,7 @@ function live() {
 }
 
 const MASK = "•••"
-const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+export const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const patterns = new Map<string, RegExp>()
 /** A secret however an address or a form encodes it: each character as is or %-encoded (any case), a space as +. */
 function pattern(s: string) {

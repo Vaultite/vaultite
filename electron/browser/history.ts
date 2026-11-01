@@ -4,7 +4,7 @@ import { app } from "electron"
 import { DatabaseSync, type StatementSync } from "node:sqlite"
 import path from "node:path"
 import { eachPage, handle, tellAll } from "./engine.ts"
-import { hasSecret, scrub } from "./pagesecrets.ts"
+import { hasSecret, literal, scrub } from "./pagesecrets.ts"
 
 /** How a visit came: typed in the address (or picked from its suggestions), a link, a bookmark, a form, or the app
  *  (a link in a note, back and forward). */
@@ -166,9 +166,8 @@ export function lastVisits(profile: string): Map<string, number> {
 /** "https://www.youtube.com/watch" -> "youtube.com/watch": what the address bar completes and matches against. */
 export const bare = (u: string) => u.replace(/^https?:\/\//i, "").replace(/^www\./i, "")
 const words = (text: string) => text.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8)
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 /** Whether `w` starts a word of `hay` ("tube" doesn't in "youtube", "you" does). */
-const startsWord = (hay: string, w: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRe(w)}`, "u").test(hay)
+const startsWord = (hay: string, w: string) => new RegExp(`(^|[^\\p{L}\\p{N}])${literal(w)}`, "u").test(hay)
 
 /** Matches for what's typed in the address bar, best first, and the address to complete it to inline: a site visited
  *  while what's typed is part of its name (as Firefox), a deeper address only once typed or visited often (as Chrome). */
