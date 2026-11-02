@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A site's empty error page says so**: a page that answers an HTTP error with nothing in it (a firewall's 403) shows
+  why in words, naming the site, with Try again, rather than a white tab; an error page with content still shows. Each
+  page's load (status, server address, cache, Cloudflare ray) goes into a bug report's timeline.
 - **The file bar can stay out of sight**: Fade the file bar is now Never, While typing or Always; Always hides the
   bar above files until the pointer goes up to it, leaving only the page to read (`fileBarFade` in appearance.json).
 - **Glass has transparency sliders**: Window transparency and Page transparency, under Style ▸ Glass, set how much of

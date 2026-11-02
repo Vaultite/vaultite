@@ -29,6 +29,8 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   cert?: { url: string; host: string; fp: string }
   /** Its renderer kept dying: it shows "This page crashed" till a reload. */
   crashed?: boolean
+  /** The HTTP status its last load committed with (did-navigate). */
+  status?: number
   /** Its frames holding typed, unsent input (web-preload.cjs), by frame: its tab isn't archived meanwhile. */
   typed: Map<string, boolean>
   /** Where its tab last asked it to be (null: hidden): where it goes back to from full screen. */
@@ -268,6 +270,18 @@ const RATE = 6
 const QUEUED = 200
 
 const sendState = (p: Page) => tell(p.win, { type: "state", id: p.id, state: stateOf(p) })
+
+/** Whether a page has nothing to show: no script that may still draw it, and a body with no element or text. */
+const EMPTY = `(() => { const b = document.body; return !document.querySelector("script") && (!b || (!b.children.length && !b.textContent.trim())) })()`
+/** A load an HTTP error answered with an empty page (a firewall's 403): the error view, with Try again, rather than a
+ *  white tab, as Chrome's "HTTP ERROR 403". An error page with something in it (a site's 404) shows as it is. */
+async function emptyError(p: Page, status: number) {
+  const wc = p.view.webContents, url = wc.getURL()
+  const empty = await wc.executeJavaScriptInIsolatedWorld(1005, [{ code: EMPTY }]).catch(() => false)
+  if (empty !== true || wc.isDestroyed() || wc.isLoading() || wc.getURL() !== url || p.status !== status || p.error) return
+  p.error = `HTTP ERROR ${status}`
+  sendState(p)
+}
 /** The window's pages came or went, or one was hidden or shown again (the Web pages panel). */
 const pagesChanged = (win: AppWindow) => tell(win, { type: "pages" })
 
@@ -457,10 +471,13 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) p.target = d.url } })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to) => { p.sound = playback(); p.typed.clear(); noteVisit(profile, to); if (!p.agent) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
+  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.typed.clear(); noteVisit(profile, to); if (!p.agent) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
   wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
   // (loaded and still not told it painted, a page with no paint timing (an extension's): white a moment later)
-  wc.on("did-finish-load", () => { if (p.fresh && shows(wc.getURL())) setTimeout(() => painted(p), 1000).unref() })
+  wc.on("did-finish-load", () => {
+    if (p.fresh && shows(wc.getURL())) setTimeout(() => painted(p), 1000).unref()
+    if (p.status !== undefined && p.status >= 400) void emptyError(p, p.status)
+  })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) { changed(); keepPast(p) } })
   wc.on("page-title-updated", () => { changed(); keepPast(p) })
   wc.on("dom-ready", () => tellGlance(wc))

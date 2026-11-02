@@ -521,6 +521,16 @@ function Locked({ name, unlock }: { name: string; unlock: () => void }) {
 /** Why a page didn't load, in words (Chrome's), by Chromium's error: its heading and what to do. */
 function problemOf(error: string, host: string): { icon: LucideIcon; title: string; detail: string } {
   const e = error.replace(/^net::/, "")
+  // (an HTTP error with an empty page, electron/web.ts `emptyError`: the site's own answer, so it's named)
+  const http = /^HTTP ERROR (\d{3})$/.exec(e)
+  if (http) {
+    const code = Number(http[1]), said = `It answered HTTP ${code} with an empty page.`
+    if (code === 401 || code === 403) return { icon: ShieldAlert, title: `${host} denied access`, detail: `${said} Its firewall may be blocking this browser, or the page needs a sign-in.` }
+    if (code === 404 || code === 410) return { icon: FileWarning, title: `${host} has no page here`, detail: `${said} Check the address, or the page may have moved.` }
+    if (code === 429) return { icon: Globe, title: `${host} got too many requests`, detail: `${said} Wait a moment, then try again.` }
+    if (code >= 500) return { icon: Globe, title: `${host} isn't working`, detail: `${said} The site had a problem; it may work if you try again.` }
+    return { icon: FileWarning, title: `${host} couldn't answer this request`, detail: said }
+  }
   if (/^ERR_INTERNET_DISCONNECTED$/.test(e)) return { icon: WifiOff, title: "You're offline", detail: "It loads again once this Mac is back online." }
   if (/^ERR_NETWORK_CHANGED$/.test(e)) return { icon: WifiOff, title: "Your connection was interrupted", detail: "The network changed while it loaded." }
   if (/^ERR_NAME_(NOT_RESOLVED|RESOLUTION_FAILED)$/.test(e)) return { icon: Globe, title: `Can't find ${host}`, detail: "Check the address for a typo, or that the site still exists." }

@@ -3,7 +3,7 @@
 import { lazy, memo, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Code, CopyPlus, Download, Eraser, FileCode2, ExternalLink, Globe, Hand, History, KeyRound, Lock, MonitorPlay, MousePointer2, MousePointerSquareDashed, Paintbrush, PanelTopClose, PencilLine, Printer, Puzzle, RotateCw, Scan, Scissors, Search, Volume2, VolumeX, ZoomIn,
   ZoomOut } from "lucide-react"
-import { choose, closeTab, closeView, definePlugin, detailPath, focusGroup, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, panesOf, post, runCommandById, runShortcut, typingIn, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closeTab, closeView, definePlugin, detailPath, focusGroup, getStore, getTabLayout, isMac, isViewOpen, isWindows, modKey, modifiedSteps, newTabId, notify, notifyError, openDetail, openInSplit, openTab, openView, openWebLink, Panel, panesOf, post, runCommandById, runShortcut, typingIn, saveAttachments, selectTab, showLabel, systemNotify, selectedText, trace, useCommandList, useEnabled, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl, siteName } from "./address"
 import { addContainer, argOf, colorOf, destination, keepOutside, openBehind, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg, viewSource } from "./containers"
 import { iconCame, siteIcon, spinnerIcon } from "./icons"
@@ -182,6 +182,8 @@ function Background() {
     else if (m.type === "blocked") notify(`Blocked a pop-up from ${hostOf(m.url) || "a page"}`, { action: { label: "Open", run: () => opened({ ...m, type: "open", how: "foreground" }) } })
     else if (m.type === "engine:agent:pages" && Array.isArray(m.pages)) setAgentPages(m.pages as AgentPage[])
     else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
+    // (each page's load, for a bug report's timeline: electron/browser/navlog.ts)
+    else if (m.type === "engine:navlog:load") { const { type: _, ...load } = m; trace("browser", { ev: "load", ...load }) }
     // An agent asks: its page shown as a tab (opened as one from the background, in its agent's tab group), so the user
     // does it where it's asked.
     else if (m.type === "engine:agent:help" && typeof m.id === "number" && m.on) {

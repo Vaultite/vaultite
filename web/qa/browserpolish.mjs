@@ -1,7 +1,7 @@
 // The Browser's polish, as Chrome's (plugins/core/web-viewer, electron/web.ts), in the desktop app (Electron) against
 // pages this script serves on 127.0.0.1: error pages in words with Try again (and again once back online), a certificate
 // warning (a self-signed https server: Back to safety, or on to it this session), a page that keeps crashing says so with
-// Reload, a loading tab's spinner and the bar's progress line, View page source, Duplicate tab with its history, a tab
+// Reload, an HTTP error with an empty page in words (its load in the bug timeline), a loading tab's spinner and the bar's progress line, View page source, Duplicate tab with its history, a tab
 // moved to a new window keeping its live page, and typed input a page holds (its tab isn't archived).
 // WRITES: the throwaway vault only.
 //   node web/qa/browserpolish.mjs <vault copy>
@@ -25,8 +25,13 @@ const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8">
 <style>body{font:18px/1.5 Georgia,serif;margin:0;padding:40px 60px}</style></head><body>${body}</body></html>`
 const ARTICLE = page("Lighthouse field notes", `<h1>Lighthouse field notes</h1><p>The keeper climbs one hundred and twelve steps.</p>
 <p>Read <a id="next" href="/two">the second part</a>.</p><form><input id="note" aria-label="Note"></form>`)
+const hits = {}
 const handler = (req, res) => {
   const u = req.url ?? "/"
+  hits[u.split("?")[0]] = (hits[u.split("?")[0]] ?? 0) + 1
+  // (a firewall's refusal: 403 with nothing in it; a site's own 404 page)
+  if (u.startsWith("/forbidden")) return void (res.writeHead(403, { "cf-ray": "8d1f2e3a4b5c-GRU", Server: "cloudflare" }), res.end())
+  if (u.startsWith("/missing")) return void (res.writeHead(404, { "Content-Type": "text/html" }), res.end(page("Not found", "<h1>No such lighthouse</h1>")))
   if (u.startsWith("/slow")) return void setTimeout(() => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(page("Slow", "<h1>Slow</h1>")) }, 4000)
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(u.startsWith("/two") ? page("Second part", "<h1>Second part</h1>") : ARTICLE)
@@ -79,6 +84,24 @@ const tries = () => app.evaluate(() => globalThis.__starts ?? 0)
 await app.evaluate(({ webContents }) => { globalThis.__starts = 0; webContents.getAllWebContents().find((w) => w.getURL().includes("nowhere.invalid"))?.on("did-start-loading", () => { globalThis.__starts++ }) })
 await win.evaluate(() => dispatchEvent(new Event("online")))
 check("… tried again on its own once the Mac is back online", await until(async () => (await tries()) > 0, 5000), await tries())
+
+// ---------- an HTTP error with an empty page, and one with a page of its own ----------
+await open(`${SITE}/forbidden?token=secret`)
+const title = () => win.locator("[data-web-error-title]:visible").innerText().catch(() => "")
+check("an empty 403: the error view, naming the site, never a white tab", await until(async () => /127\.0\.0\.1:\d+ denied access/.test(await title()), 15000)
+  && (await win.locator("[data-web-error]:visible").getAttribute("data-web-error")) === "HTTP ERROR 403"
+  && !!(await until(async () => !(await pages()).some((p) => p.visible && p.url.includes("/forbidden")), 3000)), [await title(), await pages()])
+const loads = () => win.evaluate(() => (globalThis.__vauTrace?.browser ?? []).filter((e) => e.ev === "load"))
+const forbidden = (await loads()).filter((e) => /\/forbidden$/.test(e.url))
+check("… its load in the timeline: status, address, server's ip and headers, never the query", forbidden.length === 1 && forbidden[0].status === 403 && forbidden[0].ip === "127.0.0.1"
+  && forbidden[0].cached === false && forbidden[0].ray === "8d1f2e3a4b5c-GRU" && forbidden[0].server === "cloudflare" && !JSON.stringify(forbidden).includes("secret"), await loads())
+await new Promise((r) => setTimeout(r, 1500))
+check("… never tried again on its own", hits["/forbidden"] === 1, hits)
+await win.locator("[data-web-retry]:visible").click()
+check("… Try again loads it again, and says so again", await until(async () => hits["/forbidden"] === 2, 10000) && !!(await until(async () => /denied access/.test(await title()), 10000)), [hits, await title()])
+await open(`${SITE}/missing`)
+check("a 404 with a page of its own: that page, shown", await until(async () => (await shownPage())?.url === `${SITE}/missing`, 15000) && !(await win.locator("[data-web-error]:visible").count()), [await pages(), await title()])
+check("… its 404 in the timeline", await until(async () => (await loads()).some((e) => /\/missing$/.test(e.url) && e.status === 404), 5000), await loads())
 
 // ---------- a certificate this Mac doesn't trust ----------
 await open(`${SECURE}/`)
