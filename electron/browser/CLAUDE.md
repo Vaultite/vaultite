@@ -49,6 +49,8 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   own reads, written through the storage shim so the sync area lands where the extension reads it.
 - Pages claim a plain Chrome (web.ts strips Electron from the user agent: Google's sign-in refuses Electron), but
   Cloudflare's check finds Electron in the page, so its requests say Electron (challenges.ts) and pass.
+- Google's sign-in still finds Electron by its client hints (Chromium's brands, no Google Chrome's): accounts.google.com
+  alone sees Firefox, its requests and its frames' navigator (googlesignin.ts), which sends none.
 - Chromium drops session cookies at every launch (Electron never sets persist_session_cookies): sessioncookies.ts
   keeps each persistent session's, encrypted (safeStorage), in its partition's folder and sets them as it's made.
 - Cookies are encrypted (the EnableCookieEncryption fuse, electron/sign.cjs) with the "<app name> Safe Storage" key;
