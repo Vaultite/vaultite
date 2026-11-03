@@ -600,13 +600,15 @@ plugin.provide("agent-asking:claude", async (terminal: string, session = ""): Pr
   return q ? { kind: "question", questions: [q] } : null
 })
 
-/** The keys answering its questions with `choices` ("agent-pick:claude"): a digit picks (in a multi-select toggles, Tab
- *  goes on), the one after the options types an answer; 1 submits the review several questions or a multi-select end in. */
-plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[]): string[] => {
+/** The keys answering its questions with `choices`, or "chat" ("agent-pick:claude"): a digit picks (a multi-select's
+ *  toggles, then Tab; its Type something is ↓ past the options, then Tab, Enter); 1 submits the review at the end. */
+plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[] | "chat"): string[] => {
+  if (choices === "chat") return [String(questions[0].options.length + 2)]
   const keys = questions.flatMap((q, i) => {
     const c = choices[i]
-    if (typeof c === "string") return [String(q.options.length + 1), c, "\r"]
-    return q.multi ? [...c.map(String), "\t"] : [String(c[0])]
+    if (!q.multi) return typeof c === "string" ? [String(q.options.length + 1), c, "\r"] : [String((Array.isArray(c) ? c : c.options)[0])]
+    const [picks, text] = typeof c === "string" ? [[], c] : Array.isArray(c) ? [c, ""] : [c.options, c.text]
+    return text ? [...picks.map(String), ...Array(q.options.length).fill("\x1b[B"), text, "\t", "\r"] : [...picks.map(String), "\t"]
   })
   return questions.length > 1 || questions.some((q) => q.multi) ? [...keys, "1"] : keys
 })

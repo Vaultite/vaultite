@@ -468,9 +468,10 @@ export function chats(plugin: Plugin, d: ChatDeps) {
     await send(id, text)
     return true
   })
-  plugin.provide("agent-answer:claude", async (id: string, a: { answer?: "approve" | "deny"; picks?: Choice[] }) => {
+  plugin.provide("agent-answer:claude", async (id: string, a: { answer?: "approve" | "deny"; picks?: Choice[]; chat?: boolean }) => {
     if (!hosted.has(id) || !asking.get(id)?.size) return false
     if (a.picks) await answer(id, { answers: a.picks })
+    else if (a.chat) await answer(id, { chat: true })
     else if (a.answer) await answer(id, { allow: a.answer === "approve" })
     else return false
     return true

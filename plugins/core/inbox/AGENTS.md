@@ -70,7 +70,7 @@ terminal, or an app on the public MCP asking to run code here.
   thread's id is its own: `thread` (its event id) names it when the session's id changed (a fork, a resume), and the
   thread follows the new one. Without a terminal its thread is `host: true`: its host answers it, a service
   `agent-reply:<agent>` `(session, text) => Promise<boolean>` taking replies, `agent-answer:<agent>` `(session, {answer:
-  "approve" | "deny"} | {picks: Choice[]}) => Promise<boolean>` Approve, Deny and picks (true: it took it), and
+  "approve" | "deny"} | {picks: Choice[]} | {chat: true}) => Promise<boolean>` Approve, Deny, picks and Chat about this (true: it took it), and
   `agent-chat-new:<agent>` `({prompt, account?, by?}) => Promise<{id} | null>` starting a new session where a reply
   would start a terminal (its cache gone) or a voice note is dispatched. A permission it asks can't be snoozed.
 - Push needs Apple's push key (a .p8) in data/ and `"inbox": {"apns": {"key_id", "team_id", "key": "<file in data/>"}}`

@@ -38,5 +38,5 @@ export function dialogOn(screen: string): Question | null {
   const above = lines.slice(Math.max(0, i - 8), i).map((l) => l.trim()).filter((l) => l && !RULE.test(l)).reverse()
   const question = above.find((l) => l.endsWith("?")) ?? above[0]
   if (!question) return null
-  return { question: question.slice(0, 300), options: options.map((o) => ({ label: o.label.slice(0, 200) })) }
+  return { question: question.slice(0, 300), closed: true, options: options.map((o) => ({ label: o.label.slice(0, 200) })) }
 }

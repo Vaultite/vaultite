@@ -1194,7 +1194,7 @@ export function sessionOf(b: Item): Heard {
   if (!state) throw new HTTPError(400, "state: waiting, working, done or error")
   if (b.ask !== undefined && !BLOCKED.has(str(b.ask))) throw new HTTPError(400, "ask: what it waits on (permission, question, auth, plan)")
   const qs = Array.isArray(b.questions) ? (b.questions as Item[]).filter((q) => str(q?.question) && Array.isArray(q.options)).map((q) => ({
-    question: clip(q.question, 500), ...(str(q.header) ? { header: clip(q.header, 60) } : {}), ...(q.multi === true ? { multi: true } : {}),
+    question: clip(q.question, 500), ...(str(q.header) ? { header: clip(q.header, 60) } : {}), ...(q.multi === true ? { multi: true } : {}), ...(q.closed === true ? { closed: true } : {}),
     options: (q.options as Item[]).map((o) => ({ label: clip(o?.label, 200), ...(str(o?.description) ? { description: clip(o.description, 500) } : {}) })).filter((o) => o.label),
   })) : []
   const thread = /^[a-z0-9]{6,12}-[0-9a-f]{6}$/.test(str(b.thread)) ? str(b.thread) : ""
@@ -1576,8 +1576,9 @@ async function replyToRow(ctx: OpCtx, e: InboxEvent, text: string, how = "") {
   if (!e.terminal && !e.session) throw new OpError("it isn't an agent's session: nothing to reply to", 409)
   const { sessions } = await ctx.api("GET", "terminals/sessions") as { sessions: Live[] }
   const asks = !!e.terminal && sessions.find((s) => s.id === e.terminal)?.state === "blocked"
-  // (a reply to its one question is its answer: an option by number or name, else typed as its own)
-  if (asks && e.questions?.length === 1 && !e.questions[0].multi) {
+  // (a reply to its one question is its answer: an option by number or name, else typed as its own where it takes one)
+  const one = e.questions?.length === 1 && !e.questions[0].multi ? e.questions[0] : null
+  if (asks && one && (!one.closed || typeof choiceOf(one, line, "", false) !== "string")) {
     if (!userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     return { how: "type", terminal: (await pickIn(ctx, e, [line])).terminal }
   }
@@ -1614,28 +1615,32 @@ async function startNew(ctx: OpCtx, agent: string, plan: Plan, prompt: string): 
   return { terminal: plan.to, session: undefined }
 }
 
-/** One question's answer as given: an option's number or name (several, comma-separated, in a multi-select), else
- *  text typed as its own answer. */
-export function choiceOf(q: Question, given: string): Choice {
-  const said = given.trim().replace(/\s+/g, " "), name = (s: string) => s.toLowerCase().replace(/\s*\(recommended\)$/, "").trim()
+/** One question's answer: `given`, an option's number or name (a multi-select's comma-separated) else text of its own;
+ *  `typed`, its Type something row's (with a multi-select's picks). Not `strict`: a closed one's text comes back as is. */
+export function choiceOf(q: Question, given: string, typed = "", strict = true): Choice {
+  const said = given.trim().replace(/\s+/g, " "), text = typed.trim().replace(/\s+/g, " ")
+  const name = (s: string) => s.toLowerCase().replace(/\s*\(recommended\)$/, "").trim()
   const one = (s: string) => {
     const n = /^\d+$/.test(s.trim()) ? Number(s) : q.options.findIndex((o) => name(o.label) === name(s)) + 1
     return n >= 1 && n <= q.options.length ? n : 0
   }
-  if (!said) throw new OpError(`"${q.question}": an answer`)
-  if (!q.multi) return one(said) ? [one(said)] : said
-  const ns = said.split(",").map(one)
+  if (!said && !text) throw new OpError(`"${q.question}": an answer`)
+  if (q.closed && strict && (text || (!q.multi && !one(said)))) throw new OpError(`"${q.question}" takes one of its ${q.options.length} options, by number or name`)
+  if (!q.multi) return text || (one(said) ? [one(said)] : said)
+  const ns = said ? said.split(",").map(one) : []
   if (ns.includes(0)) throw new OpError(`"${q.question}" takes some of its ${q.options.length} options, by number or name`)
-  return [...new Set(ns)]
+  const options = [...new Set(ns)]
+  return !text ? options : options.length ? { options, text } : text
 }
 
-/** Answer the questions session row `e` asks in its terminal (`picks`: one per question, choiceOf's), with the keys its
- *  agent gives; first checked on its screen, so an answer can't go into something else it shows by then. */
-async function pickIn(ctx: OpCtx, e: InboxEvent, picks: string[]) {
+/** Answer session row `e`'s questions in its terminal (`picks`, `typed`: choiceOf's per question, or "chat"), with its
+ *  agent's keys; first checked on its screen, so an answer can't go into something else it shows by then. */
+export async function pickIn(ctx: Pick<OpCtx, "api">, e: InboxEvent, picks: string[] | "chat", typed: string[] = []) {
   const qs = e.questions, pick = plugin.service(`agent-pick:${e.source}`)
-  if (!qs?.length || !e.terminal || e.kind !== "waiting" || !pick) throw new OpError("it doesn't ask anything to pick from now", 409)
-  if (picks.length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`)
-  const choices = qs.map((q, i) => choiceOf(q, picks[i]))
+  if (!qs?.length || !e.terminal || e.kind !== "session" || !pick) throw new OpError("it doesn't ask anything to pick from now", 409)
+  if (picks === "chat" && qs.some((q) => q.closed)) throw new OpError("its question takes one of its options: it has no Chat about this", 409)
+  if (picks !== "chat" && picks.length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`)
+  const choices = picks === "chat" ? picks : qs.map((q, i) => choiceOf(q, picks[i], typed[i]))
   const t = `terminals/${encodeURIComponent(e.terminal)}`
   const squash = (s: string) => s.replace(/\s+/g, "")
   const { lines } = await ctx.api("GET", `${t}/screen?lines=40`).catch(() => ({ lines: [] })) as { lines: string[] }
@@ -1985,7 +1990,9 @@ permission: Enter, its first choice Yes, or Escape): for an agent asking permiss
 is permission) while its terminal still shows the question, or a question the server waits on (an app's tool). reply
 (with text) is inbox.reply to its session (to a session asking one question, its answer). pick answers the questions it
 asks (the event's questions): picks, one per question, an option's number or name (several, comma-separated, in a
-multi-select), or text typed as its own answer. approve, deny and pick are the user's alone: only from the app or their
+multi-select), or text typed as its own answer; typed, one per question, what's typed in its Type something row (with a
+multi-select's picks; "" for none). chat is its Chat about this: the questions put aside, it asks what to clarify (not
+for a closed question, a dialog's). approve, deny, pick and chat are the user's alone: only from the app or their
 phone, never an agent nor vau. Approved, denied, picked or replied to, a session's thread is working (its agent goes on);
 settle settles it (inbox.settle; done, its old name), read only marks it read. A session run outside a terminal is answered by its host
 (agent-reply:<agent>, agent-answer:<agent>). Another machine's event is answered there, where its session runs; a bare
@@ -1994,21 +2001,24 @@ id from a notification another machine sent is found too.
   vau inbox answer lzk3p2-a1b2c3 approve
   vau inbox answer lzk3p2-a1b2c3 pick --picks 2
   vau inbox answer lzk3p2-a1b2c3 pick --picks "Local cert" --picks "1,3"
+  vau inbox answer lzk3p2-a1b2c3 pick --picks "1,3" --typed "Feta"
+  vau inbox answer lzk3p2-a1b2c3 chat
   vau inbox answer lzk3p2-a1b2c3 reply --text "Yes, the second one"`,
   kind: "write",
   params: {
     id: { type: "string", required: true, description: "the event's id (vau inbox lists them)" },
-    answer: { type: "string", enum: ["approve", "deny", "pick", "reply", "settle", "done", "read"], required: true, description: "approve, deny, pick, reply, settle (done, its old name) or read" },
+    answer: { type: "string", enum: ["approve", "deny", "pick", "chat", "reply", "settle", "done", "read"], required: true, description: "approve, deny, pick, chat (Chat about this), reply, settle (done, its old name) or read" },
     picks: { type: "array", items: { type: "string" }, description: "with pick: an answer for each question, in order" },
+    typed: { type: "array", items: { type: "string" }, commas: false, description: "with pick: what's typed in each question's Type something row, in order (\"\" for none)" },
     text: { type: "string", description: "with reply: what to tell it" },
   },
   args: ["id", "answer"],
-  run: async ({ id, answer, text, picks }, ctx) => {
+  run: async ({ id, answer, text, picks, typed }, ctx) => {
     const e = await eventFor(ctx, id)
     // (a gate, an agent's permission or its questions: the user's alone, never an agent saying yes to itself or another)
-    if (((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") || answer === "pick") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
+    if (((answer === "approve" || answer === "deny") && (e.gate || e.ask === "permission") || answer === "pick" || answer === "chat") && !userSurface(ctx.who)) throw new OpError(NOT_THE_USER, 403)
     const bare = splitMachine(e.id)[0]
-    if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}) })
+    if (e.machine) return onOwner(ctx, e, "inbox.answer", { id: bare, answer, ...(text ? { text } : {}), ...(picks?.length ? { picks } : {}), ...(typed?.length ? { typed } : {}) })
     if (answer === "reply") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.reply", { to: e.id, text: str(text) })) }
     if (answer === "settle" || answer === "done") return { id: e.id, answer, title: e.title, ...(await ctx.op("inbox.settle", { item: e.id })) }
     if (answer === "read") {
@@ -2017,11 +2027,14 @@ id from a notification another machine sent is found too.
     }
     // (a session run outside a terminal: its host answers it)
     const host = e.host && e.session ? plugin.service(`agent-answer:${e.source}`) as ((session: string, a: Item) => Promise<boolean>) | null : null
-    if (answer === "pick") {
-      if (!host) return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, (picks ?? []).map(str))) }
+    if (answer === "pick" || answer === "chat") {
+      const given = answer === "chat" ? "chat" as const : (picks ?? []).map(str), texts = (typed ?? []).map(str)
+      if (!host) return { id: e.id, answer, title: e.title, ...(await pickIn(ctx, e, given, texts)) }
       const qs = e.questions ?? []
-      if (!qs.length || e.state !== "open" || (picks ?? []).length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`, qs.length ? 400 : 409)
-      if (!(await host(e.session!, { picks: qs.map((q, i) => choiceOf(q, str(picks![i]))) }))) throw new OpError("its session no longer asks that", 409)
+      if (!qs.length || e.state !== "open") throw new OpError("it doesn't ask anything to pick from now", 409)
+      if (given !== "chat" && given.length !== qs.length) throw new OpError(`\`picks\`: an answer for each of its ${qs.length} questions`)
+      const a = given === "chat" ? { chat: true } : { picks: qs.map((q, i) => choiceOf(q, given[i], texts[i])) }
+      if (!(await host(e.session!, a))) throw new OpError("its session no longer asks that", 409)
       moveOn(list().filter((x) => x.id === e.id), "working")
       return { id: e.id, answer, title: e.title, terminal: null }
     }
@@ -2038,7 +2051,7 @@ id from a notification another machine sent is found too.
     moveOn(list().filter((x) => x.id === e.id), "working")
     return { id: e.id, answer, title: e.title, terminal: e.terminal ?? null }
   },
-  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "settle" || r.answer === "done" ? `Settled: ${r.title}.` : r.answer === "reply" || r.answer === "pick" ? `Sent${r.terminal ? ` to ${r.terminal}` : ""}.`
+  text: (r) => (r.answer === "read" ? `Read: ${r.title}.` : r.answer === "settle" || r.answer === "done" ? `Settled: ${r.title}.` : r.answer === "reply" || r.answer === "pick" || r.answer === "chat" ? `Sent${r.terminal ? ` to ${r.terminal}` : ""}.`
     : `${r.answer === "approve" ? "Approved" : "Denied"}${r.terminal ? ` in ${r.terminal}` : `: ${r.title}`}.`),
 })
 

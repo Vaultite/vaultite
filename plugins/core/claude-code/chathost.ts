@@ -39,9 +39,13 @@ export type Summary = {
   error?: string; quiet?: boolean
 }
 
-/** A permission allowed (`always`: its rules too) or not (`message`: why); questions' answers (options from 1, or text;
- *  `message`: a reply instead); a plan approved (`mode`: the mode after it) or sent back with `message`. */
-export type Answer = { allow?: boolean; always?: boolean; message?: string; answers?: (number[] | string)[]; mode?: Mode }
+/** A permission allowed (`always`: its rules too) or not (`message`: why); questions' answers (options, text or both;
+ *  `message`: a reply instead; `chat`: Chat about this); a plan approved (`mode`: the mode after it) or sent back. */
+export type Answer = { allow?: boolean; always?: boolean; message?: string; answers?: (number[] | string | { options: number[]; text: string })[]; chat?: boolean; mode?: Mode }
+
+/** What Chat about this tells it, as Claude Code's terminal picker does. */
+const CHAT = "The user wants to clarify these questions. They may have more context or questions for you: take their " +
+  "response into account, then ask again if it still applies. Start by asking them what they would like to clarify."
 
 /** What the host tells its connections. */
 export type Event =
@@ -239,11 +243,14 @@ export class Host {
       if (a.answers) {
         if (a.answers.length !== qs.length) throw new Error(`an answer for each of its ${qs.length} questions`)
         const answers = Object.fromEntries(raw.map((q, i) => {
-          const c = a.answers![i]
-          return [String(q.question ?? ""), typeof c === "string" ? c : c.map((n) => String(q.options?.[n - 1]?.label ?? "")).filter(Boolean).join(", ")]
+          const c = a.answers![i], [ns, text] = typeof c === "string" ? [[], c] : Array.isArray(c) ? [c, ""] : [c.options, c.text]
+          return [String(q.question ?? ""), [...ns.map((n) => String(q.options?.[n - 1]?.label ?? "")), text].filter(Boolean).join(", ")]
         }))
         r = { behavior: "allow", updatedInput: { ...p.input, answers } }
         said = `Answered: ${Object.values(answers).join("; ")}`
+      } else if (a.chat) {
+        r = { behavior: "deny", message: CHAT }
+        said = "Chat about this"
       } else if (a.message) {
         r = { behavior: "allow", updatedInput: { ...p.input, answers: {}, response: a.message } }
         said = `Replied: ${a.message}`

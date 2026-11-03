@@ -60,6 +60,12 @@ export default async ($: VaultTest) => {
       check("pick keys: a digit; typed: the one after the options, the text, Enter; several or a multi-select end with 1 on the review",
         keys(one, [[2]]).join("|") === "2" && keys(one, ["my own"]).join("|") === "4|my own|\r" &&
         keys([...one, { question: "M", multi: true, options: [{ label: "x" }, { label: "y" }] }], [[3], [1, 2]]).join("|") === "3|1|2|\t|1")
+      // (as its picker took them, v2.1.317: a multi-select's digits toggle without moving the cursor, Tab leaves its text for Submit)
+      const multi = { question: "M", multi: true, options: [{ label: "x" }, { label: "y" }, { label: "z" }] }
+      check("pick keys: a multi-select's own answer is ↓ to its row past the options, the text, Tab, Enter; with picks or alone",
+        keys([multi], [{ options: [1, 3], text: "Feta" }]).join("|") === "1|3|\x1b[B|\x1b[B|\x1b[B|Feta|\t|\r|1" &&
+        keys([...one, multi], ["Kiwi", "Feta"]).join("|") === "4|Kiwi|\r|\x1b[B|\x1b[B|\x1b[B|Feta|\t|\r|1")
+      check("pick keys: Chat about this is the one after Type something", keys(one, "chat").join("|") === "5" && keys([multi, ...one], "chat").join("|") === "5")
     }
     // Its other dialogs, read off its screen: a question and its options, wrapped lines joined; not a prompt or output.
     {
@@ -68,7 +74,7 @@ export default async ($: VaultTest) => {
         " Allow this read outside the working directories?", " ❯ 1. Yes, and keep allowing any reads outside the", "      working directories",
         "   2. No, and block reads outside the working directories from now on", "   3. No, and ask again next time", "", " Esc to cancel"].join("\n")
       const q = dialogOn(reads)
-      check("dialog: a choice on screen is its question and options, a wrapped label whole", q?.question === "Allow this read outside the working directories?" &&
+      check("dialog: a choice on screen is its question and options (closed: only those), a wrapped label whole", q?.question === "Allow this read outside the working directories?" && q.closed === true &&
         q.options.map((o) => o.label).join("|") === "Yes, and keep allowing any reads outside the working directories|No, and block reads outside the working directories from now on|No, and ask again next time", q)
       const limit = dialogOn(["You've hit your limit · resets 5pm", "", "│ ❯ 1. Stop and wait for limit to reset │", "│   2. Switch account                  │"].join("\n"))
       check("dialog: without a line asking, the nearest line of text is its question; box sides left out", limit?.question === "You've hit your limit · resets 5pm" &&

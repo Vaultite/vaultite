@@ -970,7 +970,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Asking`: What a session waits on the user for, as it said it (the service "agent-asking:<name>"): questions, or a plan.
 - `buildCache(keep?)`: The last few things built (conversations), by key: `make` runs again only when the key's `version` changed.
 - `changedFiles(entries)`: The files `entries`' edits changed, in order: Claude Code's Edit, Write and NotebookEdit (their input's path), Codex's file changes (a line per file: "update ~/src/app.ts").
-- `Choice`: A question's answer: its options' numbers (from 1), or text typed as its own answer.
+- `Choice`: A question's answer: its options' numbers (from 1), text typed as its own answer (its picker's Type something), or in a multi-select both.
 - `codingAgent(plugin, a)`: A coding agent's routes and blocks; it answers which accounts an `account` option names.
 - `CodingAgent`: A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of.
 - `Counted`: A request as a tally counts it: when (epoch ms), its cost (null: no price for its model), tokens, cache reads, prompt tokens (cached or not), the model's name and the minutes it worked, when…
@@ -1006,7 +1006,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `projectName(root)`: A project root's name: its folder's, "Home" for the home folder.
 - `projectOf(cwd, rootsOf?)`: A folder's project name, through `rootsOf` (an agent's own worktrees).
 - `projectRoots(cwds, own?)`: Folder -> its project's root.
-- `Question`: A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them.
+- `Question`: A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them, an answer typed instead and Chat about this; `closed`, a dialog read off its screen:…
 - `readLines(file, offset, line, chunk?)`: Calls `line` with each whole line of `file` from byte `offset`; returns where the last one ended.
 - `resumeTerminalId(name, session)`: The id of a terminal resuming agent `name`'s session `session`.
 - `Said`

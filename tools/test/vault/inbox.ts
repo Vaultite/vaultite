@@ -290,7 +290,23 @@ export default async ($: VaultTest) => {
         headers: { host: "127.0.0.1:8793", "x-vaultite-client": client, ...(agent ? { "x-vaultite-agent": agent } : {}) } }) as unknown as IncomingMessage
       const [byAgent] = await api("POST", "ops/inbox.answer", { id: r[0].id, answer: "pick", picks: ["1"] }, as("cli", "claude-code"))
       ;[st, b] = await api("POST", "ops/inbox.answer", { id: r[0].id, answer: "pick", picks: ["1"] }, as("app/desktop"))
-      check("pick: the user's alone (an agent's refused), and only while its terminal shows the question", byAgent === 403 && st === 409, [byAgent, st, b])
+      check("pick: the user's alone (an agent's refused), and only while its terminal shows the question", byAgent === 403 && st === 409 && /doesn't show/.test(b.error), [byAgent, st, b])
+      // Shown there: its agent's keys, each written apart, for an option, an answer typed in its own row, or Chat about this.
+      {
+        const { pickIn } = await import("../../../plugins/core/inbox/plugin.ts")
+        const sent: string[][] = [[]]
+        const ctx = { api: async (method: string, _route: string, body?: Any) => (method === "POST" ? (sent.at(-1)!.push(body.text), {}) : { lines: ["How should it", "sign builds?", "❯ 1. Local cert"] }) }
+        const keys = async (picks: string[] | "chat", typed?: string[], ev: Any = r[0]) => { sent.push([]); await pickIn(ctx, { ...ev }, picks, typed); return sent.at(-1)!.join("|") }
+        const k = [await keys(["2"]), await keys(["Use the M4's"]), await keys([""], ["Use the M4's"]), await keys("chat")]
+        check("pick in its terminal: a session's thread (kind session), by an option, typed as its own (a reply's or its row's), or Chat about this",
+          JSON.stringify(k) === JSON.stringify(["2", "3|Use the M4's|\r", "3|Use the M4's|\r", "4"]), k)
+        const closed = { ...r[0], questions: [{ ...qs[0], closed: true }] }
+        const errs = await Promise.all([keys("chat", [], closed), keys(["Use the M4's"], [], closed)].map((p) => p.then(() => null, (x: Any) => x.message)))
+        check("pick in its terminal: a dialog read off its screen takes only its options", /no Chat about this/.test(errs[0]) && /takes one of its 2 options/.test(errs[1]) &&
+          JSON.stringify(choiceOf(closed.questions[0], "not now")) === "[2]", errs)
+        check("choice: a multi-select's picks go with what's typed in its own row; that alone is typed", JSON.stringify([choiceOf({ ...qs[0], multi: true }, "1", "Feta, aged"),
+          choiceOf({ ...qs[0], multi: true }, "", "Feta"), choiceOf(qs[0], "", "Mine")]) === '[{"options":[1],"text":"Feta, aged"},"Feta","Mine"]')
+      }
       tell({ terminal: "claude-osc75014", agent: "claude", state: "working", from: "hooks", at })
       r = (await rows()).filter((e) => e.terminal === "claude-osc75014")
       check("answered in its terminal: working, read, nothing left to pick", r[0]?.state === "working" && r[0].read === true && !r[0].questions, r)
@@ -617,6 +633,15 @@ export default async ($: VaultTest) => {
       ;[st, b] = await api("POST", "ops/inbox.answer", { id: e.id, answer: "pick", picks: ["US"] }, asApp)
       const now = async () => (await rows()).find((x) => x.id === e.id)
       check("a host's session: its pick goes to its host, then it's working", st === 200 && JSON.stringify(got[0]) === '["sdk-1",{"picks":[[2]]}]' && (await now())?.state === "working", [st, b, got])
+      const regions = [{ question: "Which regions next?", multi: true, options: [{ label: "EU" }, { label: "US" }] }]
+      e = await host({ agent: "sdk", session: "sdk-1", state: "waiting", ask: "question", questions: regions })
+      ;[st, b] = await api("POST", "ops/inbox.answer", { id: e.id, answer: "pick", picks: ["2"], typed: ["APAC, later"] }, asApp)
+      check("a host's session: a multi-select's picks go with what's typed in its own row", st === 200 && JSON.stringify(got.at(-1)) === '["sdk-1",{"picks":[{"options":[2],"text":"APAC, later"}]}]', [st, b, got])
+      e = await host({ agent: "sdk", session: "sdk-1", state: "waiting", ask: "question", questions: regions })
+      const [byAgent] = await api("POST", "ops/inbox.answer", { id: e.id, answer: "chat" })
+      ;[st, b] = await api("POST", "ops/inbox.answer", { id: e.id, answer: "chat" }, asApp)
+      check("a host's session: Chat about this goes to its host (the user's alone), then it's working", byAgent === 403 && st === 200 &&
+        JSON.stringify(got.at(-1)) === '["sdk-1",{"chat":true}]' && (await now())?.state === "working", [byAgent, st, b, got])
       e = await host({ agent: "sdk", session: "sdk-1", state: "done", prompt: "Roll it out", text: "Rolled out to US. Should I do EU next?" })
       check("inbox:session: a turn ending with a question: open again, its host's", e?.state === "open" && e.ask === "answer" && !e.read && e.host === true, e)
       const asked = await host({ agent: "sdk", session: "sdk-2", state: "waiting", ask: "permission", text: "Run the migration?" })

@@ -171,7 +171,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-model:claude-code` (claude-code)
 - `agent-models:claude` (claude-code)
 - `agent-models:codex` (codex): The models its picker lists (its cache of them, $CODEX_HOME/models_cache.json), and the efforts all of them take.
-- `agent-pick:claude` (claude-code): The keys answering its questions with `choices` ("agent-pick:claude"): a digit picks (in a multi-select toggles, Tab goes on), the one after the options types an answer; 1 submits the review several questions or a multi-select end in.
+- `agent-pick:claude` (claude-code): The keys answering its questions with `choices`, or "chat" ("agent-pick:claude"): a digit picks (a multi-select's toggles, then Tab; its Type something is ↓ past the options, then Tab, Enter); 1 submits the review at the end.
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `agent-turn:claude` (claude-code): A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's.
 - `agent-turn:codex` (codex): A session's latest turn: the user's last message and Codex's last answer, and the session's title (the service "agent-turn:codex": the Inbox reads it as a turn ends). The session running in `terminal` when `session` isn't given.

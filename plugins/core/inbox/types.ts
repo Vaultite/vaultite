@@ -20,8 +20,8 @@ export type InboxItem = {
   agent?: string; session?: string; terminal?: string; machine?: string
 }
 
-/** A question an agent asks (core/agents.ts' Question). */
-export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
+/** A question an agent asks (core/agents.ts' Question): `closed`, only its options (no answer typed, no Chat about this). */
+export type Question = { question: string; header?: string; multi?: boolean; closed?: boolean; options: { label: string; description?: string }[] }
 
 /** Where an event stands for the user (plugin.ts' State): open (a session or an ask needs them, a message is to read),
  *  working (they answered, its agent is on it), done (dealt with). */

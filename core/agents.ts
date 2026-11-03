@@ -395,12 +395,14 @@ export type AgentCommand = { command: string; cwd?: string | null; argv?: string
 /** A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last `lines` (default 12),
  *  and the keys that answer it, each written apart. Terminal tells the inbox of one shown before the agent's hooks run. */
 export type AgentAsk = { id: string; match: RegExp; says: string; approve: string[]; deny: string[]; lines?: number }
-/** A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them. */
-export type Question = { question: string; header?: string; multi?: boolean; options: { label: string; description?: string }[] }
+/** A question an agent asks in its own words (Claude Code's AskUserQuestion): its options, one or several of them, an
+ *  answer typed instead and Chat about this; `closed`, a dialog read off its screen: only its options. */
+export type Question = { question: string; header?: string; multi?: boolean; closed?: boolean; options: { label: string; description?: string }[] }
 /** What a session waits on the user for, as it said it (the service "agent-asking:<name>"): questions, or a plan. */
 export type Asking = { kind: "question"; questions: Question[] } | { kind: "plan"; plan: string }
-/** A question's answer: its options' numbers (from 1), or text typed as its own answer. */
-export type Choice = number[] | string
+/** A question's answer: its options' numbers (from 1), text typed as its own answer (its picker's Type something), or in a
+ *  multi-select both. */
+export type Choice = number[] | string | { options: number[]; text: string }
 /** A new chat session told `prompt` (the service "agent-chat-new:<name>"), in an account and folder: its id, or null
  *  when none can run here (an app serving no port: a test's). */
 export type AgentChatNew = (o: { prompt: string; account?: string; cwd?: string; by?: string }) => Promise<{ id: string } | null>
