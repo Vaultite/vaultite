@@ -57,7 +57,7 @@ function turn(els: HTMLElement[], out: boolean, pace: Pace = "base") {
 // ---------- folding ----------
 
 /** Tab groups folding (their tabs shrinking into the chip), till they're folded; `token`: this fold, not a later one. */
-const folding = new Map<string, { els: HTMLElement[]; token: number }>()
+const folding = new Map<string, { els: HTMLElement[]; token: number; handBack?: () => void }>()
 let tokens = 0
 /** Tab groups opened by a click, and when: their tabs grow in as they're drawn. */
 const opened = new Map<string, number>()
@@ -84,7 +84,7 @@ export function foldSetMoving(id: string) {
   if (open) {
     showFold(id, true)
     // (turned round before it had folded: back from where they are)
-    if (going) { folding.delete(id); turn(going.els.filter((e) => e.isConnected), false); return }
+    if (going) { folding.delete(id); turn(going.els.filter((e) => e.isConnected), false); going.handBack?.(); return }
     opened.set(id, performance.now())
     foldSet(id, false)
     return
@@ -92,9 +92,9 @@ export function foldSetMoving(id: string) {
   const els = [...document.querySelectorAll<HTMLElement>(`[data-in-set="${id}"]`)].filter((e) => e.offsetParent !== null)
   if (!els.length) { foldSet(id, true); return }
   showFold(id, false)
-  handOverFrom(id)
+  const handBack = handOverFrom(id)
   const token = ++tokens
-  folding.set(id, { els, token })
+  folding.set(id, { els, token, handBack })
   Promise.all(turn(els, true).map((a) => a.finished)).then(() => {
     if (folding.get(id)?.token !== token) return
     folding.delete(id)

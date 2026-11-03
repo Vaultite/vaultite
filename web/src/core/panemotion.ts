@@ -74,6 +74,8 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
   const key = keyOf(panes), edges = area.join("|")
   const snap = useRef<Snap | "quiet" | null>(null)
   const run = useRef(0)
+  /** The last move's animations: a pane closed mid-move takes its own out of the box, held paused at its start. */
+  const going = useRef<Animation[]>([])
   const drawn = useRef(key)
   const drawnArea = useRef(area)
   // A change that moves panes, before React draws it: where each is on screen now (mid-move too), copies of those going.
@@ -105,7 +107,9 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
     // (a pane still on its way: how far its plate is from its place, to start the next move from there)
     const midway = new Map<string, DOMMatrixReadOnly>()
     if (moved && !s) for (const p of el.querySelectorAll<HTMLElement>(":scope > [data-plate][data-moving]")) midway.set(p.dataset.plate!, new DOMMatrixReadOnly(getComputedStyle(p).transform))
-    for (const a of el.getAnimations({ subtree: true })) if (a.id === ID) a.cancel()
+    // (each cancelled, or its move's `finished` never settles and a web page waits for it off the window)
+    for (const a of going.current) a.cancel()
+    going.current = []
     for (const m of el.querySelectorAll<HTMLElement>(":scope > [data-moving]")) delete m.dataset.moving
     const t = timing("spring")
     // (the shell taking its places as the vault's state comes in: main.tsx' data-arriving)
@@ -164,6 +168,7 @@ export function usePaneMotion(box: RefObject<HTMLElement | null>, panes: PaneBox
       void a.finished.catch(() => {}).finally(() => g.el.remove())
       anims.push(a)
     }
+    going.current = anims
     const finished = Promise.allSettled(anims.map((a) => a.finished))
     void finished.then(() => {
       if (run.current !== mine) return

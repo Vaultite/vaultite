@@ -1,9 +1,11 @@
 // Claude Code's chat on a phone: the composer's choices (model, effort, permission mode) fit its one line, the mode in a
-// short word, auto unless the account says otherwise. A new chat's tab only: no session is started.
+// short word, auto unless the account says otherwise, and the chat drawn once (not again when its code arrives). A new
+// chat's tab only: no session is started. Writes a note (taken away): throwaway server only.
 //   node web/qa/chatphone.mjs <base url> <vault path> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
+import { apiAt, qa, wait } from "./lib/qa.mjs"
 const { args: [B, , OUT = "/tmp/chatphone-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const api = apiAt(B)
 mkdirSync(OUT, { recursive: true })
 
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
@@ -12,6 +14,13 @@ await page.goto(`${B}#view/${encodeURIComponent("claude-session/new")}`)
 const chip = page.locator('[data-composer] button[aria-label="Permission mode"]')
 await chip.waitFor({ timeout: 15000 })
 await wait(800)
+// A phone loads the chat's code as its tab first draws: the next redraw (the store changed) keeps the chat as it is.
+await page.evaluate(() => { document.querySelector("[data-composer]").__qaKept = true })
+const NOTE = "Notes/Chat redraw check.md"
+await api("PUT", "file", { path: NOTE, text: "# Chat redraw check\n" })
+await wait(2500)
+await api("DELETE", `file?path=${encodeURIComponent(NOTE)}`).catch(() => {})
+check("chat on a phone: a redraw once its code has come keeps the chat drawn, not drawn anew", await page.evaluate(() => document.querySelector("[data-composer]")?.__qaKept === true))
 const shown = (await chip.innerText()).trim()
 check("chat on a phone: the permission mode is a short word, auto by default", shown === "Auto", shown)
 const fits = await page.evaluate(() => {

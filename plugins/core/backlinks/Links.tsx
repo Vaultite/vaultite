@@ -108,17 +108,11 @@ function Looking({ count }: { count: number }) {
   )
 }
 
-/** The files linking to `path`, each with the line its link is on. The list keeps the height it had last time in that
- *  place (`at`), as a line can take two. */
-function Linked({ path, at, linked, open }: { path: string; at: string; linked: { path: string; title: string; line: string }[]; open: (p: string) => void }) {
-  const held = useHeldHeight<HTMLDivElement>(`links:linked:${at}:${path}`, true, true)
-  return (
-    <div ref={held} className="flex flex-col gap-px">
-      {linked.map((l) => (
-        <Item key={l.path} icon={FileText} title={l.title} onOpen={() => open(l.path)} path={l.path} context={l.line && snippet(l.line)} />
-      ))}
-    </div>
-  )
+/** A group's rows, held at the height they had last time in that place (`id`) while they come: the bars can't know a
+ *  line that takes two, nor rows with none (outgoing links). */
+function Held({ id, children }: { id: string; children: ReactNode }) {
+  const held = useHeldHeight<HTMLDivElement>(id, true, true)
+  return <div ref={held} className="flex flex-col gap-px">{children}</div>
 }
 
 /** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
@@ -127,6 +121,7 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   const [busy, setBusy] = useState("")
   const looking = useKeptCount(`links:unlinked:${path}`, unlinked ? unlinked.mentions.length : undefined, 0, 6)
   const lookingLinked = useKeptCount(`links:linked:${path}`, linked ? linked.length : undefined, 0, 6)
+  const at = pane ? "tab" : "panel"
   const open = (p: string, e?: { metaKey: boolean; ctrlKey: boolean }) => openFile(p, { newTab: !!(e?.metaKey || e?.ctrlKey), pane })
   const link = async (m: Mention) => {
     const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
@@ -138,7 +133,11 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   return (
     <div className="flex flex-col" data-links-for={path}>
       <Foldable data-links-group="linked" keep="links.linked" title="Linked mentions" count={linked ? linked.length : null}>
-        {!linked ? <Looking count={lookingLinked} /> : linked.length ? <Linked path={path} at={pane ? "tab" : "panel"} linked={linked} open={open} /> : empty("Nothing links here yet.")}
+        <Held id={`links:linked:${at}:${path}`}>
+          {!linked ? <Looking count={lookingLinked} /> : linked.length ? linked.map((l) => (
+            <Item key={l.path} icon={FileText} title={l.title} onOpen={() => open(l.path)} path={l.path} context={l.line && snippet(l.line)} />
+          )) : empty("Nothing links here yet.")}
+        </Held>
       </Foldable>
       <Foldable data-links-group="unlinked" keep="links.unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
         {!unlinked ? <Looking count={looking} /> : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
@@ -159,14 +158,16 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
         )}</> : empty(isMd(path) ? "Its name isn't written anywhere else." : "Only notes have mentions.")}
       </Foldable>
       <Foldable data-links-group="outgoing" keep="links.outgoing" title="Outgoing links" count={outgoing ? outgoing.length : null}>
-        {!outgoing ? <Looking count={0} /> : outgoing.length ? outgoing.map((o) => {
-          const to = o.file, detail = o.detail
-          return (
-            <Item key={o.key} icon={to || detail ? FileText : FileQuestion} title={o.title} faint={!to && !detail}
-              tip={!to && !detail ? "No file has this name yet" : undefined}
-              onOpen={to ? () => open(to) : detail ? () => openDetail(detail) : undefined} path={to || undefined} />
-          )
-        }) : empty("It doesn't link anywhere.")}
+        <Held id={`links:outgoing:${at}:${path}`}>
+          {!outgoing ? <Looking count={0} /> : outgoing.length ? outgoing.map((o) => {
+            const to = o.file, detail = o.detail
+            return (
+              <Item key={o.key} icon={to || detail ? FileText : FileQuestion} title={o.title} faint={!to && !detail}
+                tip={!to && !detail ? "No file has this name yet" : undefined}
+                onOpen={to ? () => open(to) : detail ? () => openDetail(detail) : undefined} path={to || undefined} />
+            )
+          }) : empty("It doesn't link anywhere.")}
+        </Held>
       </Foldable>
     </div>
   )

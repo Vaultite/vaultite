@@ -151,10 +151,19 @@ export function foldSet(id: string, collapsed?: boolean) {
   put(fold ? handOver(sets, id) : sets, g.active)
 }
 /** Folding tab group `id`, as its tabs start to move: the tab on screen, if it's one of its, hands over now
- *  (handOver), so the page changes at the click rather than once they've gone. */
-export function handOverFrom(id: string) {
+ *  (handOver), so the page changes at the click rather than once they've gone. Returns how to hand back. */
+export function handOverFrom(id: string): (() => void) | undefined {
   const g = setById(id)?.g, next = g && handOver(g, id)
-  if (g && next !== g) put(next!, g.active)
+  if (!g || !next || next === g) return
+  put(next, g.active)
+  const was = g.active, to = next.active, made = !g.tabs.some((t) => t.id === to)
+  // The fold turned round: its tab again, a blank tab made for it gone, if the pane still shows the one it got.
+  return () => {
+    const now = groups().find((x) => x.id === g.id)
+    if (!now || now.active !== to || !now.tabs.some((t) => t.id === was)) return
+    const blank = made && now.tabs.find((t) => t.id === to && isBlank(t))
+    put({ ...now, active: was, tabs: blank ? now.tabs.filter((t) => t !== blank) : now.tabs }, to)
+  }
 }
 /** `g` with the tab it shows moved off tab group `id`, which is folding: to the nearest not folded away, after the
  *  group, else before (Chrome's, never into another folded one); with none, a new tab. */

@@ -79,6 +79,8 @@ try {
   // Folded to the rail it's the panels' icons; open again, the mode.
   await command(page, "Hide left sidebar", 600)
   check("folded: the rail, not the mode", !(await mode(page)))
+  // (the panels aren't kept drawn behind it: unfolded, it's the mode that shows)
+  check("...with no panels drawn hidden behind it", !(await page.$("aside[data-side=left] [data-sidebar-kept]")))
   await command(page, "Show left sidebar", 600)
   check("open again: the mode", (await until(() => mode(page))) === "activity:feed")
 

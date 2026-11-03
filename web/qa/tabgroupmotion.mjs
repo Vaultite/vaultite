@@ -23,9 +23,9 @@ const seed = {
       { id: "b1", to: f("ME.md"), set: "sB" }, { id: "b2", to: f("Notes/Lisbon trip.md"), set: "sB" }, { id: "c1", to: "view:search", set: "sC" }, { id: "c2", to: "view:graph", set: "sC" }, { id: "x", to: "new" }] },
   focus: "g1",
 }
-async function open(dpr = 2) {
+async function open(dpr = 2, start = seed) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 600 }, deviceScaleFactor: dpr })
-  await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(seed))
+  await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(start))
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#file/${encodeURIComponent("Projects/Garden planner.md")}`)
   await page.waitForSelector("[data-set-chip], [data-set-row]")
@@ -128,12 +128,27 @@ try {
     const again = await frames(page, barProbe, "sC", async () => { await clickIn(page, "[data-set-chip='sC']"); await clickIn(page, "[data-set-chip='sC']", 90) })
     check("a click mid-opening folds it from where it was", again.some((x) => x.tabs.length && x.tabs.every((w) => w > 4)) && goneForGood(again) && again.at(-1).count === 1, again.map((x) => x.tabs.map(Math.round)))
     await clickIn(page, "[data-set-chip='sC']"); await wait(500)
+    // The group on screen turned round mid-fold: its tab shows again.
+    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-set-chip='sA']"); await clickIn(page, "[data-set-chip='sA']", 90) })
+    check("a click mid-fold of the group on screen turns it round to its own tab again", sway.some((x) => x.shown === "c1") && sway.at(-1).shown === "a2", sway.map((x) => x.shown))
+    await wait(300)
     // Folding the group on screen: the page changes at the click, to the nearest tab not folded away (past folded B).
     const handing = await frames(page, barProbe, "sA", () => clickIn(page, "[data-set-chip='sA']"))
     const first = handing.findIndex((x) => x.shown !== "a2")
     check("folding the group on screen: another tab shows at the click, not once they've gone, past a folded group", first >= 0 && handing[first].shown === "c1" && handing[first].tabs.length === 2
       && handing[first].tabs.every((w) => w > 20), handing.map((x) => [x.shown, x.tabs.map(Math.round)]))
     await page.screenshot({ path: `${OUT}bar-folded.png`, clip: { x: 200, y: 0, width: 1000, height: 48 } })
+    await ctx.close()
+  }
+
+  // ---------- turned round mid-fold with no other tab to hand over to: the blank tab made meanwhile goes ----------
+  {
+    const alone = { root: { id: "g1", active: "a2", sets: [{ id: "sA", name: "Lighthouse", color: "blue" }], tabs: seed.root.tabs.filter((t) => t.set === "sA") }, focus: "g1" }
+    const { ctx, page } = await open(2, alone)
+    const sway = await frames(page, barProbe, "sA", async () => { await clickIn(page, "[data-set-chip='sA']"); await clickIn(page, "[data-set-chip='sA']", 90) })
+    const ids = await page.evaluate(() => [...document.querySelectorAll("[data-tab-bar] [data-tab-id]")].map((e) => e.dataset.tabId))
+    check("the only group turned round mid-fold: a blank tab meanwhile, then its own tab again and no blank tab left", sway.some((x) => x.shown && !x.shown.startsWith("a"))
+      && sway.at(-1).shown === "a2" && ids.join() === "a1,a2", { shown: sway.map((x) => x.shown), ids })
     await ctx.close()
   }
 

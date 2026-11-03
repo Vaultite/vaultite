@@ -493,8 +493,9 @@ html[data-dragging] [data-slide] { transition: transform var(--motion) var(--eas
 html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--motion-spring), var(--motion-fast); transition-timing-function: var(--spring), var(--ease-out); }
 /* Tab groups (Tabs.tsx, the Tabs panel). The tab bar's row of tabs puts their top on a whole pixel (centred in the bar
    they'd sit on a fraction, and their group's line, under them, would blur over three). */
-[data-tab-row] { padding-top: calc(var(--spacing) * 1.5); padding-top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
-[data-tab-row] > [data-slide=incoming] { top: calc(var(--spacing) * 1.5); top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
+/* (the bar's row: the phone's tab list names its cards' cells data-tab-row too) */
+[data-tab-bar] > [data-tab-row] { padding-top: calc(var(--spacing) * 1.5); padding-top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
+[data-tab-bar] > [data-tab-row] > [data-slide=incoming] { top: calc(var(--spacing) * 1.5); top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
 /* A group's line (core/tabline.ts): one element, from its chip past its last tab as they're drawn. In the bar, 2px on a
    whole pixel under the tabs; in the Tabs panel, down their left from under the chip, ending rounded. */
 [data-set-line] { position: absolute; pointer-events: none; transition: background-color var(--motion) var(--ease-out); }

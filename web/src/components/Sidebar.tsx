@@ -100,12 +100,12 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   // (the panels again: its body is new, this component isn't)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fades = useMemo(modeJustSwitched, [mode])
+  const alone = side === "left" && !ctx.phone ? sidebarPanels(disabled).find((p) => p.key === mode) : undefined
   // Once shown, its panels stay drawn while it's a rail, hidden (display: none, so nothing finds them on screen):
-  // showing it again mounted ~1,500 elements anew.
-  const [kept, setKept] = useState(ctx.open)
-  if (ctx.open && !kept && !ctx.phone) setKept(true)
-  const alone = side === "left" && ctx.open && !ctx.phone ? sidebarPanels(disabled).find((p) => p.key === mode) : undefined
-  if (alone) return <SidebarSide.Provider value={side}><SidebarMode of={alone} ctx={ctx} /></SidebarSide.Provider>
+  // showing it again mounted ~1,500 elements anew. Not when it shows one alone: that's what shows again.
+  const [kept, setKept] = useState(ctx.open && !alone)
+  if (ctx.open && !ctx.phone && kept !== !alone) setKept(!alone)
+  if (alone && ctx.open) return <SidebarSide.Provider value={side}><SidebarMode of={alone} ctx={ctx} /></SidebarSide.Provider>
 
   const rail = !ctx.open && (
         <div data-rail className="edge-fade-y relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
