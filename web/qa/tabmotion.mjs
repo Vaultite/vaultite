@@ -221,8 +221,11 @@ check("pull down: Open a file picked in the middle opens the quick switcher, the
 await P.keyboard.press("Escape"); await wait(300)
 check("pull down: the page back in place", !(await P.evaluate(() => document.querySelector("#main-scroll > main")?.style.transform)) && !(await P.locator("[data-pull-actions]").count()))
 // A short pull fills only part of the ring and runs nothing; a flick right through it runs nothing either.
+const early = await drag(195, 300, 195, 330, () => P.evaluate(() => [...document.querySelectorAll("[data-pull] > span:first-child")].map((e) => Number(e.style.opacity))))
+await wait(400)
+check("pull down a bit: only the page moves, no icons yet", early.length === 3 && early.every((o) => o === 0), early)
 const searchOpen = () => P.locator("[role=dialog][aria-label=\"Search\"]").count()
-const short = await drag(195, 300, 195, 400, () => P.evaluate(() => ({ ring: !!document.querySelector("[data-pull-ring]"), on: document.querySelectorAll("[data-pull][data-on]").length })))
+const short = await drag(195, 300, 195, 430, () => P.evaluate(() => ({ ring: !!document.querySelector("[data-pull-ring]"), on: document.querySelectorAll("[data-pull][data-on]").length })))
 await wait(400)
 check("pull down a little: the ring shows, nothing runs", short.ring && !short.on && !(await searchOpen()) && (await title()) === t0, short)
 await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 195, y: 300 }] })

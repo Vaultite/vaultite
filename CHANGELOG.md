@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Phones: pulling a page down feels like Chrome's**: the first stretch moves only the page, the icons come in and spread,
+  then a ring fills; full, a disc lands on the picked one with its name (only then), slides to another as the finger goes
+  sideways, and bursts as it runs. A pull right after scrolling up to the top is still the reading, not a pull.
+- **Phones: a tab group is renamed from inside it**: tap its name, top right, to type a new one there; hold it for its menu.
+- **Phones: a pinned folder's tile shows it**: on a new tab or in the drawer, tapping it opens Files (the drawer's, or a
+  Files tab) at the folder, open and flashed, rather than nothing.
 - **Terminals held by the older terminal server say so**: `vau terminal` marks them with its pid (they end it once
   they all have), `vau terminal get` gives a terminal's pid, and one it couldn't take over yet is tried again until it is.
 - **Delegation hears a terminal subagent without polling**: a Codex child's end is read once its terminal goes quiet,

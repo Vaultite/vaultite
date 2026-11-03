@@ -7,7 +7,7 @@ import { onAway } from "@/core/away"
 import type { Store } from "@/core/data"
 import { activeTab, closeTab, closeTabIds, getWorkspace, groupOfTab, tabCount, useWorkspace } from "@/core/workspace"
 import { keepShown, placeTab } from "@/core/splits"
-import { addToSet, closeSet, groupWith, leaveSet } from "@/core/tabsets"
+import { addToSet, closeSet, groupWith, leaveSet, renameSet } from "@/core/tabsets"
 import { leaves, tabPath, type Tab, type TabSet } from "../../../core/layout.ts"
 import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
@@ -21,7 +21,7 @@ import { setItems, setMenu, setName, TABS, tabCardMenu, tabsMenu, type TabInfo }
 import { colorVar } from "../../../core/colors.ts"
 import { namedIcon } from "@/core/pages"
 import { rowMenu, selectClick, selectedAttr, selecting, startSelecting, useSelectable, useSelected } from "@/core/select"
-import { menuBelow, menuOnCard, type MenuItem } from "@/components/ContextMenu"
+import { menuBelow, menuFor, menuOnCard, type MenuItem } from "@/components/ContextMenu"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
@@ -653,10 +653,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
                 className="-ml-2 flex h-11 cursor-pointer items-center pr-2 text-[17px] text-primary active:opacity-50">
                 <ChevronLeft className="size-[24px]" strokeWidth={2} />All tabs
               </button>
-              <span className="ml-auto flex min-w-0 items-center gap-2 text-[15px] font-semibold text-muted-foreground">
-                <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(open.s.color) }} />
-                <span className="truncate">{setName(open.s)}</span>
-              </span>
+              <GroupTitle key={open.s.id} set={open.s} />
             </div>
           )}
         </>}>
@@ -670,6 +667,40 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
       <SheetBar left={draw(header.filter((h) => h.item.phoneBar))} group={open?.s.id} lit={hit?.kind === "out"} />
       <Lifted store={store} info={info} current={cur.id} />
     </>
+  )
+}
+
+/** An open tab group's name, top right: tap it to rename it there (the keyboard up at once), hold it for its menu. */
+function GroupTitle({ set: g }: { set: TabSet }) {
+  const [editing, setEditing] = useState(false)
+  const field = useRef<HTMLInputElement>(null)
+  const done = (keep: boolean) => {
+    const v = field.current?.value ?? ""
+    setEditing(false)
+    if (keep && v.trim() !== g.name) renameSet(g.id, v)
+  }
+  const dot = <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(g.color) }} />
+  if (editing) return (
+    <label className="ml-auto flex h-11 min-w-0 flex-1 items-center justify-end gap-2 pl-4">
+      {dot}
+      <input ref={field} defaultValue={g.name} placeholder={setName({ ...g, name: "" })} aria-label="Group name" spellCheck={false} autoComplete="off" enterKeyHint="done"
+        onBlur={() => done(true)}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return
+          if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() }
+          else if (e.key === "Escape") { e.preventDefault(); done(false) }
+        }}
+        className="h-9 w-full max-w-[240px] min-w-0 rounded-[8px] bg-foreground/[0.06] px-3 text-right text-[17px] font-semibold outline-none ring-primary/60 placeholder:font-normal placeholder:text-muted-foreground focus:ring-2" />
+    </label>
+  )
+  return (
+    <button type="button" data-group-title aria-label={`Rename ${setName(g)}`} onContextMenu={menuFor(() => setMenu(g.id, "phone"))}
+      // (focused within the tap, or iOS keeps the keyboard down)
+      onClick={() => { flushSync(() => setEditing(true)); field.current?.focus(); field.current?.select() }}
+      className="ml-auto flex h-11 min-w-0 cursor-pointer items-center gap-2 pl-4 text-[15px] font-semibold text-muted-foreground active:opacity-50">
+      {dot}
+      <span className="truncate">{setName(g)}</span>
+    </button>
   )
 }
 
