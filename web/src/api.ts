@@ -278,6 +278,8 @@ export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 export { systemNotify } from "@/core/desktop"
 // Settings > Permissions (the desktop app on a Mac; null elsewhere): the terminal's way there when macOS blocks the vault.
 export { openPermissions } from "@/core/desktop"
+/** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */
+export { dictation, dictationSource, joinText, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.

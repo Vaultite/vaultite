@@ -6,7 +6,7 @@ import { type Agent, getState, goToPerson, liveAgents, subscribe } from "./live"
 import { follow } from "./Overlay"
 import { agentMenu } from "./session"
 
-const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting" }
+const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", listening: "listening" }
 const FACES = 4
 const fileOf = (p: string) => p.split("/").pop()!.replace(/\.md$/, "")
 

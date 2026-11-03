@@ -14,6 +14,7 @@ import "./browser/index.ts"
 import { engineBusy, engineFlush, serverCall, setServerSink } from "./browser/engine.ts"
 import { attach, attachable, servedHere, type Call, type Link } from "./host.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
+import { dictationHandlers, stopDictation } from "./dictation.ts"
 import { setTranslucent, translucentAt, translucentWindow } from "./translucency.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { macPermissions, permissionAct } from "./permissions.ts"
@@ -1180,7 +1181,7 @@ handle("apps:reopen", (w) => {
   w.win.close()
 })
 // (the window asking, a pop-out's own: its pages and apps' windows go over its tabs, not its vault window's)
-for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers })) {
+for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers, ...(MAC ? dictationHandlers : {}) })) {
   ipcMain.handle(name, (e, ...args) => {
     const w = who(e), win = AppWindow.fromWebContents(e.sender)
     if (!w || !win) throw new Error("no vault here")
@@ -1735,6 +1736,7 @@ app.on("will-quit", () => {
   for (const w of wins.values()) { w.server?.kill(); w.link?.stop() }
   stopChecking()
   stopApps()
+  stopDictation()
   // Quit with a build ready: it goes in now, while nothing is open, and the next launch runs it.
   if (!RELEASE && updates !== "off" && updatable()) install(false)
 })

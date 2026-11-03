@@ -6,7 +6,8 @@ import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
-export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
+/** listening: this window's own, the user dictating where it is (`hear`); the server never says it. */
+export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
   why?: string
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
@@ -79,6 +80,17 @@ export function listen(name: string, path: string, line: number) {
   const a = mentionAgent(name), was = a && told.find((x) => x.name === a.name)
   if (!was || was.state !== "watching") return
   expect(was.name, { state: "reading", path, line, find: undefined }, 8000)
+}
+
+/** The user dictating on `line` of `path`: the companion's cursor comes over to listen, when it's free (not in a
+ *  private note); null: they stopped. */
+export function hear(path: string | null, line = 0, hidden = false) {
+  const a = told.find((x) => x.name === state.name)
+  if (!a) return
+  const x = ahead.get(a.name)
+  if (!path || hidden) { if (x?.a.state === "listening") { clearTimeout(x.timer); ahead.delete(a.name); showAgents() } return }
+  if (state.mode === "off" || a.state !== "watching") return
+  expect(a.name, { state: "listening", path, line, find: undefined }, 10 * 60_000)
 }
 
 /** An agent's colour, as a CSS value. */

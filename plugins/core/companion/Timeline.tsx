@@ -78,7 +78,7 @@ function Skeleton() {
 
 // ---------- its state, live
 
-const DOING: Partial<Record<Agent["state"], string>> = { reading: "Reading", thinking: "Thinking", writing: "Writing", starting: "Starting" }
+const DOING: Partial<Record<Agent["state"], string>> = { reading: "Reading", thinking: "Thinking", writing: "Writing", starting: "Starting", listening: "Listening" }
 
 function Head({ name, agent, c, mode, chat }: { name: string; agent?: Agent; c: ChatLive; mode: string; chat: () => void }) {
   const working = c.s?.state === "working" || c.s?.state === "starting"

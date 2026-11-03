@@ -3,10 +3,10 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, seenArea, share, snippet, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sawSays, sendMoment, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sawSays, sendMoment, shownFor, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
 import { agentMenu } from "./session"
 import { changeAt, nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -155,7 +155,7 @@ export function follow(a: Target & { name: string }) {
 const answerAsk = (event: string, v: "approve" | "deny") => (event.startsWith("chat:")
   ? op("claude-code.chat-answer", { id: event.slice(5), allow: v === "approve" }) : op("inbox.answer", { id: event, answer: v }))
 
-const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", away: "away" }
+const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", away: "away", listening: "listening" }
 
 /** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
 function dropAt(agent: string, x: number, y: number) {
@@ -735,6 +735,9 @@ export const showSaid = (name: string) => popOpen?.(name)
 
 export function Overlay() {
   const s = useSyncExternalStore(subscribe, getState)
+  // (the user dictating: what an agent says meanwhile waits for their pause)
+  const spokeAt = useDictation((d) => d?.spokeAt ?? 0)
+  const heldBack = (n: Note) => spokeAt > 0 && Date.now() - shownFor(n.id) >= spokeAt
   const margin = useInMargin()
   const [, redraw] = useReducer((x: number) => x + 1, 0)
   const [popped, setPopped] = useState<string | null>(null)
@@ -802,7 +805,7 @@ export function Overlay() {
   if (off && !notes.length && !sv) return null
 
   const cursors = (off ? [] : s.agents).map((a, i) => {
-    const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name) ?? null
+    const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name && !heldBack(n)) ?? null
     const h = holds.current.get(a.name), at = h ? spotOf({ ...a, ...h.at }, h.i, true) : spotOf(a, i)
     return { a, i, spot: at && h ? { ...at, x: at.x + h.dx, y: at.y + h.dy } : at, said, with: [] as Agent[], under: false, shift: 0, held: h }
   })

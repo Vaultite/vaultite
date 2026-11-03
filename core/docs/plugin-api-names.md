@@ -158,6 +158,14 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `detailPath(kind, ...args)`: A detail path with its parts encoded (ids have slashes: "People/Alice Park").
 - `DEVICE`
 - `devicePref(key, fallback)`: A value a plugin keeps for this device only (the current workspace), in this device's prefs (localStorage), never in the vault.
+- `dictation()`: The session under way, or null.
+- `Dictation`: `spokeAt`: when the utterance under way began (0: none, the user paused).
+- `DictationEngine`
+- `DictationEngines`: What dictates here: Apple's on-device recognizer (macOS 26, `locale`), Parakeet (its model found on this Mac).
+- `DictationEvent`
+- `dictationSource`: The source of dictation here, or null: a browser, a phone, an app build from before it.
+- `DictationSource`
+- `DictationTarget`: Where the words go: a note's editor (it shows the pending words itself) or a field.
 - `DiffLine`: Kept, only in the second text (add), only in the first (del), or `n` unchanged lines folded away (gap).
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
 - `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.
@@ -287,6 +295,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
 - `isWindows`: A Windows computer.
+- `joinText(before, text)`: `text` said after `before` (what precedes where it goes): a space between words, none before punctuation or at a line's start.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
 - `keepLive(path)`: A live session keeps `path` from now: returns how to say it stopped.
 - `keptLive(path)`: Whether a live session keeps `path` now.
@@ -370,6 +379,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
 - `onCanvases(fn)`: Called when a canvas comes or goes.
 - `onCommandsChanged`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
+- `onDictation(fn)`: Hear each session's events (pending at most a few times a second; level never), with the editor and note they go into, if any.
 - `onLook(fn)`: Calls `fn` whenever the look changes (light or dark, colour scheme, a theme, a snippet, fonts), once it applies: read the colour tokens again there.
 - `onlyMode(scheme)`: The one mode a scheme has, if it has only one (Dracula: dark).
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
@@ -460,6 +470,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginState`
 - `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).
 - `post(path, body)`
+- `pressDictation(begin)`: The dictation command ran: stop the session under way, else start one with `begin` (null: nowhere to dictate), and when its key was pressed (not the palette, nor the menu) and held past a tap,…
 - `Preview`: A setting's preview, for SettingRow's `preview`: what each of its states looks like.
 - `PreviewOption`: One state of a setting and its picture (drawn in a `Frame`, to fill its box).
 - `PROP_TYPES`
@@ -579,11 +590,13 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SortableList({ ids, onMove, className, lift, children })`
 - `span(name, tags?, t0?)`: A span from `t0` (a performance.now(), default now): `mark` ends a part, `end` sends it all.
 - `Span`
+- `speakingIn(view)`: Whether the user is in the middle of saying something into this editor (an agent writing there waits).
 - `spelling`: The spell checker sees a right-click only once the page leaves it to the system (not prevented): `at` answers what it said of the word under it (null: nothing came), `learn` adds a word to its…
 - `splitFm(text)`: Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body.
 - `splitMachine(id)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
 - `stampMs`
 - `standingIn(app, id)`: The opt-in plugins on that stand in for another app's plugin (`standingIn("obsidian", "dataview")`): its original stays off while one is.
+- `startDictation(target, o, failed)`: Listen, typing into `target` (`hold`: push to talk, the key still down).
 - `startDrag(e, item, { touch }?)`: Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else a finger scrolls or taps).
 - `startedFresh`: Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back in one pane with a new tab shown, so the one that stopped the app isn't drawn.
 - `startMap(ml, box, zoom, fail, onLoad)`: A map in `box` as the app draws one: no rotation or tilt, the attribution folded to its "i", the scheme's colours followed.
@@ -592,6 +605,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `StatusItem`: Drawn in the desktop status bar for the focused file: before its view and counts (its properties), or `after` them (Token count).
 - `stem(path)`: A file's name as the app shows it: without .md, or the extension of a page a plugin draws (an artifact's .html, a table's .csv: named like notes, FileFormat.page); other files keep theirs.
 - `stepTextSize(kind, step)`: One step bigger (1), smaller (-1), or back to 100% (0).
+- `stopDictation(cancel?)`: Stop listening: what was heard becomes final (`cancel`: the words not settled yet are dropped).
 - `Store`: The store every block, detail and panel gets: the state without the settings, which the app applies itself.
 - `subscribeScoped(f)`: Subscribe to the current workspace and what's kept in it (for useSyncExternalStore with a getter of your own).
 - `SwipeAction`: `removes`: it takes the row away (Done, Delete) at once, like Mail's, back if `run` fails or the row stays.
@@ -656,6 +670,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCornerDrag(corner, setCorner)`: Dragging a corner card anywhere (a click still clicks), and where it lands: the corner it was thrown towards, as iOS's and browsers' picture in picture do.
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
+- `useDictation(pick?)`: The session in React (`pick`: the part drawn from, so the voice's level doesn't redraw what doesn't show it).
 - `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not under a menu or palette, nor if `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
 - `useDrag`: The drag, drawn again on every move; with `pick`, only when what it picks changes (`(d) => d?.item`: once a drag).
 - `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it: the same object while the answer is (targets answer anew on every move), so it's drawn again only when that changes.

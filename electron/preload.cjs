@@ -149,6 +149,18 @@ contextBridge.exposeInMainWorld("vaultite", {
       return () => { ipcRenderer.removeListener("vaultite:web", h) }
     },
   },
+  // Dictation into the page (electron/dictation.ts): a Mac's, the helper being Swift.
+  dictation: MAC ? {
+    engines: call("dictation:engines"),
+    start: call("dictation:start"),
+    stop: call("dictation:stop"),
+    cancel: call("dictation:cancel"),
+    on: (fn) => {
+      const h = (_e, msg) => fn(msg)
+      ipcRenderer.on("vaultite:dictation", h)
+      return () => { ipcRenderer.removeListener("vaultite:dictation", h) }
+    },
+  } : undefined,
   // Other apps' windows in tabs (electron/apps.ts).
   apps: MAC ? {
     list: call("apps:list"),

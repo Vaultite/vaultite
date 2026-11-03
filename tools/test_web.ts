@@ -1640,6 +1640,16 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("blocked elements: what isn't a rule isn't made one", makeRule("a\nb") === null && makeRule(".x", "not a site!") === null && makeRule("## heading") === null)
 }
 
+// ---------- Dictation: said words joined to what's before them (web/src/core/dictation.ts) ----------
+{
+  const { joinText } = await import(pathToFileURL(path.join(WEB, "core", "dictation.ts")).href)
+  check("dictation: a space after a word", joinText("Shopping:", "Remember milk") === " Remember milk")
+  check("dictation: none at a line's start or after a space", joinText("", "Hello") === "Hello" && joinText("one ", " two") === "two" && joinText("a\n", "b") === "b")
+  check("dictation: none before punctuation, nor after an opening bracket", joinText("word", ", then") === ", then" && joinText("(", "aside") === "aside")
+  check("dictation: an engine's leading space (Parakeet's words) taken as a word break", joinText("quick", " brown fox") === " brown fox")
+  check("dictation: nothing said, nothing typed", joinText("x", "  ") === "")
+}
+
 // ---------- Audio recorder: the transcript under the recording (plugins/core/audio-recorder/transcript.ts) ----------
 {
   const t = await import("../plugins/core/audio-recorder/transcript.ts")

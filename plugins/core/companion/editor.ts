@@ -4,11 +4,11 @@ import { closeCompletion, type Completion, type CompletionContext, completionSta
 import { isolateHistory } from "@codemirror/commands"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { capitalize, keyHint, type MenuItem, notify, notifyError, op, pluginSettings, share, type EditorCtx } from "@vaultite"
+import { capitalize, dictation, keyHint, type MenuItem, notify, notifyError, onDictation, op, pluginSettings, share, speakingIn, type EditorCtx } from "@vaultite"
 import { MessageCircle } from "lucide-react"
 import { authorAt } from "@plugins/provenance/gutter"
 import { cotype } from "./cotype"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksIn, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, say, sayWhere, sendMoment, setStreamer, setTyper, setTyping, setUndoer, type StreamMsg, sayWhereSoon, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
+import { accept, answer, asksSomething, bump, hear, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksIn, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, say, sayWhere, sendMoment, setStreamer, setTyper, setTyping, setUndoer, type StreamMsg, sayWhereSoon, subscribe, threadTint, tintOf, typing, viewOf, views } from "./live"
 import { privateNote } from "./private"
 import { decide, proposals } from "./proposed"
 import { nearest } from "./text"
@@ -85,7 +85,8 @@ const ownEdit = [own.of(true), Transaction.userEvent.of("input.companion"), isol
 /** When the user last typed in each editor: an agent typing in waits for them to stop. */
 const userTyped = new WeakMap<EditorView, number>()
 const YIELD_MS = 700
-const typingNow = (view: EditorView) => Date.now() - (userTyped.get(view) ?? 0) < YIELD_MS
+// (dictating counts as typing until the user pauses: never an agent's words in a sentence being said)
+const typingNow = (view: EditorView) => Date.now() - (userTyped.get(view) ?? 0) < YIELD_MS || speakingIn(view)
 /** Editors whose agent's typing the user stopped (Esc): the rest shows at once. */
 const halted = new WeakSet<EditorView>()
 
@@ -396,8 +397,8 @@ function foldIn(view: EditorView, path: string, agent: string, from: number, to:
 
 // ---------- what the user does, said to the agents
 
-/** How long without typing before what they wrote is said: a question at once, a thought's end (a sentence's, a dictated
- *  burst's) after a breath, mid-sentence the setting's pause, longer without an ask (a burst is often half a thought). */
+/** How long without typing before what they wrote is said: a question at once, a thought's end (a sentence's, another
+ *  app's dictated burst) after a breath, mid-sentence the setting's pause, longer without an ask. Ours: `heard`. */
 function pauseIn(state: EditorState, burst = false) {
   const ms = (Number(pluginSettings("companion").get().pause) || 2) * 1000
   const head = state.selection.main.head, line = state.doc.lineAt(head)
@@ -407,7 +408,7 @@ function pauseIn(state: EditorState, burst = false) {
   return mentionIn(line.text) ? ms : ms * 2.5
 }
 const NOW_MS = 60, SOON_MS = 600
-/** Words inserted at once that make a dictated burst (Wispr Flow pastes a whole thought). */
+/** Words inserted at once that make a dictated burst (another app's dictation, Wispr Flow, pastes a whole thought). */
 const BURST = 24
 
 function watcher(path: string) {
@@ -424,6 +425,7 @@ function watcher(path: string) {
     whereTimer: ReturnType<typeof setTimeout> | null = null
     sight: ResizeObserver
     stop: () => void
+    unhear: () => void
     readonly view: EditorView
     constructor(view: EditorView) {
       this.view = view
@@ -440,6 +442,19 @@ function watcher(path: string) {
       this.sight = new ResizeObserver(() => { const now = view.dom.getClientRects().length > 0; if (now !== shown) { shown = now; sayWhereSoon() } })
       this.sight.observe(view.dom)
       this.stop = subscribe(() => requestAnimationFrame(() => { if (view.dom.isConnected) view.dispatch({ effects: refresh.of(null) }) }))
+      this.unhear = onDictation((e, where) => { if (where.view === view) this.heard(e.type, e.type === "pause" ? e.ms : 0) })
+    }
+    /** Vaultite's dictation in this note: held while the user speaks, said at a pause that ends a sentence (a question at
+     *  once), a longer one, or the end; the cursor comes over to listen meanwhile. */
+    heard(type: string, ms: number) {
+      const st = this.view.state, head = st.selection.main.head
+      if (type === "start" || type === "pause") hear(path, st.doc.lineAt(head).number, privateNote(path, st.doc.sliceString(0, 4096)))
+      if (type === "end") { hear(null); if (this.dirty) this.later(true); return }
+      if (type === "speech" || type === "pending") { if (this.timer) { clearTimeout(this.timer); this.timer = null }; return }
+      if (type !== "pause" || !this.dirty) return
+      const before = st.sliceDoc(st.doc.lineAt(head).from, head).trimEnd()
+      if (ms >= 2000 || /\?["'”’)\]*_`]*$/u.test(before)) this.later(true)
+      else if (/[.!…]["'”’)\]*_`]*$/u.test(before)) this.later(false, true)
     }
     update(u: ViewUpdate) {
       if (u.docChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refresh)))) this.decorations = decorate(u.view, path)
@@ -463,7 +478,7 @@ function watcher(path: string) {
           tr.changes.iterChanges((_fa, _ta, fromB, toB, inserted) => {
             this.touched = [...this.touched.slice(-100), fromB, toB]
             const n = tr.state.doc.lineAt(fromB).number, text = inserted.toString()
-            if (text.replace(/\s/g, "").length >= BURST) this.burst = true
+            if (text.replace(/\s/g, "").length >= BURST && !tr.isUserEvent("input.dictation")) this.burst = true
             // (Enter: what they wrote goes now; a pasted block isn't one)
             else if (text.includes("\n") && !tr.isUserEvent("input.paste") && !tr.isUserEvent("input.drop")) entered = true
             if (text.includes("\n") && this.ask(n, tr.state.doc)) asks.push(n)
@@ -499,8 +514,10 @@ function watcher(path: string) {
       sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text, waited: Date.now() - this.typedAt })
       return true
     }
-    later(now = false) {
+    later(now = false, paused = false) {
       if (this.timer) clearTimeout(this.timer)
+      // (dictating here: its pauses say when, `heard`)
+      if (!now && !paused && dictation()?.target.view === this.view) { this.timer = null; return }
       this.timer = setTimeout(() => (this.view.composing ? this.later() : this.report(this.view.state.doc)), now ? NOW_MS : pauseIn(this.view.state, this.burst))
     }
     report(doc: Text) {
@@ -528,6 +545,7 @@ function watcher(path: string) {
       if (this.whereTimer) clearTimeout(this.whereTimer)
       this.sight.disconnect()
       this.stop()
+      this.unhear()
       views.delete(this.view)
       sayWhereSoon()
       bump()

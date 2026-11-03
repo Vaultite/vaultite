@@ -1,5 +1,6 @@
 // The desktop app's side of the page (`window.vaultite`; null in a browser). Chromium moves focus between native views
 // without telling this page, so every focus here asks the main process for the keyboard back (`web.take`).
+import type { DictationSource } from "@/core/dictation"
 import { available, commandList, commandName, isCustom, isOn, isSetting, keysOf, onCommandsChanged, runCommandId, runCommandLink } from "@/core/commands"
 import { onSwitches } from "@/core/switches"
 import { getStore, onStore } from "@/core/data"
@@ -70,6 +71,8 @@ export type DesktopApi = {
   web?: WebPages
   /** Other Mac apps' windows behind a pane (App windows' tabs; electron/apps.ts). Builds from before it don't have it. */
   apps?: AppWindows
+  /** Dictation from this Mac's microphone (electron/dictation.ts). Builds from before it don't have it. */
+  dictation?: DictationSource
   /** macOS's Look up (the dictionary's popover) for the page's selection. Builds from before it don't have it. */
   lookUp?: () => Promise<unknown>
   /** Add a word to the spell checker's dictionary. With it come `spelling` messages (below). */
