@@ -132,7 +132,7 @@ export default async ($: VaultTest) => {
   check("vau commands: a word, --available", cr.code === 0 && cr.out === "1" && cr2.out === "1", [cr, cr2])
   answers["dev:dom"] = (m) => ({ selector: m.selector, count: 3, matches: m.all ? ["<p>a</p>", "<p>b</p>", "<p>c</p>"] : ["<p>a</p>"] })
   cr = await vau("dev", "dom", "p")
-  check("vau dev dom: the first match, and how many", cr.code === 0 && cr.out === "3 matches (the first shown):\n\n<p>a</p>" && w2.got.at(-1).all === false, cr)
+  check("vau dev dom: the first match, and how many", cr.code === 0 && cr.out === "3 matches (the first shown):\n\n<p>a</p>" && w2.got.findLast((m: Any) => m.action === "dev" && m.what === "dom").all === false, cr)
   cr = await vau("dev", "dom", "p", "--all", "--count")
   check("vau dev dom --all --count", cr.code === 0 && cr.out === "3", cr)
   answers["dev:eval"] = (m) => { if (m.code === "bad") throw new Error("bad is not defined"); return { value: { code: m.code } } }
