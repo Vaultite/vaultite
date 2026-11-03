@@ -13,9 +13,10 @@ export default async ($: VaultTest) => {
   const asApp = { socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:8793", "x-vaultite-client": "app/desktop" } } as unknown as IncomingMessage
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
-    const { asThreads, byThread, categoryOf, choiceOf, findEvent, fromHook, previewOf, prune, settled, stillOpen } = await import("../../../plugins/core/inbox/plugin.ts")
+    const { asThreads, byThread, categoryOf, findEvent, fromHook, previewOf, prune, settled, stillOpen } = await import("../../../plugins/core/inbox/plugin.ts")
     const { lists, countOf, waitsOnYou } = await import("../../../plugins/core/inbox/threads.ts")
     const { judge, sure, SYSTEM } = await import("../../../plugins/core/inbox/needs.ts")
+    const { choiceOf } = await import("../../../core/agents.ts")
     const { service } = await import("../../../core/plugins.ts")
     check("inbox push: by default only what waits on you (a session open for you, an ask), not what an agent works on, a done one, or a message",
       waitsOnYou({ kind: "session", state: "open" }) && waitsOnYou({ kind: "waiting", state: "open" }) && !waitsOnYou({ kind: "session", state: "working" }) &&

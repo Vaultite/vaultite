@@ -971,6 +971,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `buildCache(keep?)`: The last few things built (conversations), by key: `make` runs again only when the key's `version` changed.
 - `changedFiles(entries)`: The files `entries`' edits changed, in order: Claude Code's Edit, Write and NotebookEdit (their input's path), Codex's file changes (a line per file: "update ~/src/app.ts").
 - `Choice`: A question's answer: its options' numbers (from 1), text typed as its own answer (its picker's Type something), or in a multi-select both.
+- `choiceOf(q, given, typed?, strict?)`: One question's answer: `given`, an option's number or name (a multi-select's comma-separated) else text of its own; `typed`, its Type something row's (with a multi-select's picks).
 - `codingAgent(plugin, a)`: A coding agent's routes and blocks; it answers which accounts an `account` option names.
 - `CodingAgent`: A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of.
 - `Counted`: A request as a tally counts it: when (epoch ms), its cost (null: no price for its model), tokens, cache reads, prompt tokens (cached or not), the model's name and the minutes it worked, when…

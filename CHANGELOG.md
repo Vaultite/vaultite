@@ -8,8 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Snooze is a button on a session's row and sheet**: beside Settle on hover, in the Inbox panel, and by Pin in its
   sheet, as results have it.
-- **An agent's question in the inbox has every choice its picker has**: its options numbered, Type something (your own
-  answer, with a multi-select's picks too) and Chat about this, as in its terminal. Answering a session's question from
+- **An agent's question has every choice its picker has**, in the inbox and the chat tab: its options numbered, Type
+  something (your own answer, with a multi-select's picks too) and Chat about this, as in its terminal. Answering a session's question from
   the inbox (a pick, or a reply to its one question) no longer fails with "it doesn't ask anything to pick from now".
 - **Enter sends an inbox reply**: Shift+Enter starts a new line, as in a chat; on a phone Enter stays a new line.
 - **Clicks reach a web page's corners**: a site whose header drags its own desktop app's window (ChatGPT's logo and

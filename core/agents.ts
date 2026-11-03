@@ -403,6 +403,23 @@ export type Asking = { kind: "question"; questions: Question[] } | { kind: "plan
 /** A question's answer: its options' numbers (from 1), text typed as its own answer (its picker's Type something), or in a
  *  multi-select both. */
 export type Choice = number[] | string | { options: number[]; text: string }
+/** One question's answer: `given`, an option's number or name (a multi-select's comma-separated) else text of its own;
+ *  `typed`, its Type something row's (with a multi-select's picks). Not `strict`: a closed one's text comes back as is. */
+export function choiceOf(q: Question, given: string, typed = "", strict = true): Choice {
+  const said = given.trim().replace(/\s+/g, " "), text = typed.trim().replace(/\s+/g, " ")
+  const name = (s: string) => s.toLowerCase().replace(/\s*\(recommended\)$/, "").trim()
+  const one = (s: string) => {
+    const n = /^\d+$/.test(s.trim()) ? Number(s) : q.options.findIndex((o) => name(o.label) === name(s)) + 1
+    return n >= 1 && n <= q.options.length ? n : 0
+  }
+  if (!said && !text) throw new OpError(`"${q.question}": an answer`)
+  if (q.closed && strict && (text || (!q.multi && !one(said)))) throw new OpError(`"${q.question}" takes one of its ${q.options.length} options, by number or name`)
+  if (!q.multi) return text || (one(said) ? [one(said)] : said)
+  const ns = said ? said.split(",").map(one) : []
+  if (ns.includes(0)) throw new OpError(`"${q.question}" takes some of its ${q.options.length} options, by number or name`)
+  const options = [...new Set(ns)]
+  return !text ? options : options.length ? { options, text } : text
+}
 /** A new chat session told `prompt` (the service "agent-chat-new:<name>"), in an account and folder: its id, or null
  *  when none can run here (an app serving no port: a test's). */
 export type AgentChatNew = (o: { prompt: string; account?: string; cwd?: string; by?: string }) => Promise<{ id: string } | null>

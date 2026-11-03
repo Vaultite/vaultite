@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type Asking, type Choice, type Question, startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId, type SampleAsk } from "../../../core/agents.ts"
+import { type Asking, choiceOf, type Question, startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId, type SampleAsk } from "../../../core/agents.ts"
 import {
   bullets, fmtAgo, stampMs, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, NOT_THE_USER, type OpCtx, type Request, userSurface, whoOf,
@@ -1613,24 +1613,6 @@ async function startNew(ctx: OpCtx, agent: string, plan: Plan, prompt: string): 
   if (made?.id) return { terminal: undefined, session: made.id, host: true }
   await startAgent(ctx, plan.to, prompt)
   return { terminal: plan.to, session: undefined }
-}
-
-/** One question's answer: `given`, an option's number or name (a multi-select's comma-separated) else text of its own;
- *  `typed`, its Type something row's (with a multi-select's picks). Not `strict`: a closed one's text comes back as is. */
-export function choiceOf(q: Question, given: string, typed = "", strict = true): Choice {
-  const said = given.trim().replace(/\s+/g, " "), text = typed.trim().replace(/\s+/g, " ")
-  const name = (s: string) => s.toLowerCase().replace(/\s*\(recommended\)$/, "").trim()
-  const one = (s: string) => {
-    const n = /^\d+$/.test(s.trim()) ? Number(s) : q.options.findIndex((o) => name(o.label) === name(s)) + 1
-    return n >= 1 && n <= q.options.length ? n : 0
-  }
-  if (!said && !text) throw new OpError(`"${q.question}": an answer`)
-  if (q.closed && strict && (text || (!q.multi && !one(said)))) throw new OpError(`"${q.question}" takes one of its ${q.options.length} options, by number or name`)
-  if (!q.multi) return text || (one(said) ? [one(said)] : said)
-  const ns = said ? said.split(",").map(one) : []
-  if (ns.includes(0)) throw new OpError(`"${q.question}" takes some of its ${q.options.length} options, by number or name`)
-  const options = [...new Set(ns)]
-  return !text ? options : options.length ? { options, text } : text
 }
 
 /** Answer session row `e`'s questions in its terminal (`picks`, `typed`: choiceOf's per question, or "chat"), with its

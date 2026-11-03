@@ -167,6 +167,20 @@ export default async ($: VaultTest) => {
       fs.existsSync(keptAt) && JSON.parse(fs.readFileSync(keptAt, "utf8"))[id]?.thread === row.id, keptAt)
     check("chat: picked in the inbox, answered in the session by its label", st === 200 && sdk.runs[0].question?.updatedInput?.answers?.["Tea or coffee?"] === "Tea", [st, b, sdk.runs[0].question])
 
+    // From the chat tab's picker: its Type something row's answer, then Chat about this (as Claude Code says it).
+    const asks: [Any, (q: Any) => boolean, string][] = [
+      [{ picks: [""], typed: ["Matcha"] }, (q) => q?.updatedInput?.answers?.["Tea or coffee?"] === "Matcha", "chat answer: what's typed in Type something is its answer"],
+      [{ chat: true }, (q) => q?.behavior === "deny" && /clarify these questions/.test(q.message ?? ""), "chat answer: Chat about this puts the questions aside for it to ask what to clarify"]]
+    for (const [a, ok, name] of asks) {
+      await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 3000, 50)
+      sdk.runs[0].question = null
+      await api("POST", "ops/claude-code.chat-send", { id, text: "A question for you" })
+      await waitFor(() => host.list().find((s) => s.id === id)?.state === "waiting", 3000, 50)
+      ;[st, b] = await api("POST", "ops/claude-code.chat-answer", { id, ...a }, asApp)
+      await waitFor(() => sdk.runs[0].question, 3000, 50)
+      check(name, st === 200 && ok(sdk.runs[0].question), [st, b, sdk.runs[0].question])
+    }
+
     // A reply from the inbox goes straight in, not typed into a terminal.
     await waitFor(() => host.list().find((s) => s.id === id)?.state === "idle", 3000, 50)
     row = (await rows()).find((e) => e.session === id)

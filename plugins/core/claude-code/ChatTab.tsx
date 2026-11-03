@@ -5,8 +5,9 @@ import { ArrowUp, Brain, Check, ChevronDown, ChevronRight, CircleAlert, FileText
   Bot, Wrench, X, Ellipsis } from "lucide-react"
 import { announceAgent, Button, cn, confirmDialog, copyText, DiffRows, get, haptic, isViewOpen, Markdown, menuBelow, notify, notifyError, onMachine, op,
   openAgent, openMenu, openView, plural, splitMachine, textDiff, ink, useScopedState, type AgentPhase, type DiffLine, type MenuItem } from "@vaultite"
-import type { Entry, Question } from "./chatlog"
+import type { Entry } from "./chatlog"
 import { ClaudeIcon } from "./ClaudeIcon"
+import { QuestionPicker } from "@plugins/inbox/Questions"
 import { nameTab, NEW } from "./titles"
 
 type Mode = "default" | "acceptEdits" | "plan" | "auto" | "dontAsk" | "bypassPermissions"
@@ -452,7 +453,7 @@ function AskCard({ e, id, pending }: { e: Ask; id: string; pending: boolean }) {
         <ClaudeIcon className="size-4" />{e.kind === "permission" ? "Permission" : e.kind === "question" ? "Question" : "Plan"}
       </div>
       {e.kind === "permission" ? <Permission e={e} busy={busy} answer={answer} />
-        : e.kind === "question" ? <Questions qs={e.questions ?? []} busy={busy} answer={answer} />
+        : e.kind === "question" ? <QuestionPicker qs={e.questions ?? []} busy={busy} answer={(a, said) => void answer(a, said)} />
         : <Plan e={e} busy={busy} answer={answer} />}
     </div>
   )
@@ -477,56 +478,6 @@ function Permission({ e, busy, answer }: { e: Ask } & Answering) {
       </div>
       <p className="mt-2.5 text-[12px] text-tertiary max-md:text-[13px]">Or tell Claude what to do instead, below.</p>
     </>
-  )
-}
-
-function Questions({ qs, busy, answer }: { qs: Question[] } & Answering) {
-  const [picks, setPicks] = useState<(number[] | string)[]>(() => qs.map(() => []))
-  const [other, setOther] = useState<string[]>(() => qs.map(() => ""))
-  const one = qs.length === 1 && !qs[0].multi
-  const done = picks.every((p, n) => (typeof p === "string" ? !!p.trim() : p.length > 0) || !!other[n].trim())
-  const send = (ps = picks) => {
-    const given = ps.map((p, n) => (other[n].trim() ? other[n].trim() : p))
-    void answer({ picks: given.map((p) => (typeof p === "string" ? p : p.join(","))) }, "Answered")
-  }
-  const pick = (q: number, o: number) => {
-    const next = picks.map((p, n) => (n !== q ? p : qs[q].multi ? (Array.isArray(p) && p.includes(o) ? p.filter((x) => x !== o) : [...(Array.isArray(p) ? p : []), o]) : [o]))
-    setPicks(next)
-    setOther((x) => x.map((v, n) => (n === q && !qs[q].multi ? "" : v)))
-    if (one) send(next)
-  }
-  return (
-    <div className="space-y-4">
-      {qs.map((q, n) => (
-        <div key={n} data-question={n}>
-          {q.header && <div className="mb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase max-md:text-[12px]">{q.header}</div>}
-          <p className="text-[15px] leading-[22px] font-medium max-md:text-[17px]">{q.question}</p>
-          <div className="mt-2 space-y-1">
-            {q.options.map((op, k) => {
-              const on = Array.isArray(picks[n]) && (picks[n] as number[]).includes(k + 1)
-              return (
-                <button key={k} type="button" disabled={busy} onClick={() => pick(n, k + 1)} data-option={k + 1} aria-pressed={on}
-                  className={cn("flex w-full cursor-pointer items-start gap-2.5 rounded-[10px] border-[0.5px] px-3 py-2 text-left transition-colors disabled:cursor-default max-md:py-3",
-                    on ? "border-primary bg-primary/[0.07]" : "border-border hover:bg-foreground/[0.04]")}>
-                  <span className={cn("mt-[3px] grid size-4 shrink-0 place-items-center border-[1.5px]", q.multi ? "rounded-[4px]" : "rounded-full", on ? "border-primary bg-primary text-primary-foreground" : "border-border")}>
-                    {on && <Check className="size-3" strokeWidth={3} />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[14px] font-medium max-md:text-[16px]">{op.label}</span>
-                    {op.description && <span className="block text-[13px] text-muted-foreground max-md:text-[15px]">{op.description}</span>}
-                  </span>
-                </button>
-              )
-            })}
-            <input value={other[n]} disabled={busy} onChange={(ev) => { const v = ev.target.value; setOther((x) => x.map((y, i) => (i === n ? v : y))) }}
-              onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.nativeEvent.isComposing && done) { ev.preventDefault(); send() } }}
-              placeholder="Something else…" aria-label={`Your own answer to: ${q.question}`}
-              className="h-9 w-full rounded-[10px] border-[0.5px] border-border bg-transparent px-3 text-[14px] outline-none placeholder:text-muted-foreground focus:border-primary max-md:h-11 max-md:text-[16px]" />
-          </div>
-        </div>
-      ))}
-      {(!one || other[0].trim()) && <Button look="primary" className={BIG} busy={busy} disabled={!done} data-answer="submit" onClick={() => send()}>Submit</Button>}
-    </div>
   )
 }
 
@@ -609,7 +560,7 @@ function Composer({ id, fresh, c, o, pending, working, setArg, onSent }: { id: s
   const account = o && o.accounts.length > 1 ? o.accounts.find((a) => a.id === (picks.account ?? c.account))?.label ?? o.accounts[0]?.label : ""
   const folder = fresh ? (saved.cwd || o?.vault || "") : ""
   const placeholder = blocked ? (c.tui !== null ? "It runs in a terminal: answer it there" : "Nothing to reply to") : pending?.kind === "permission" ? "Tell Claude what to do instead…"
-    : pending?.kind === "question" ? "Or reply in your own words…" : pending?.kind === "plan" ? "Tell Claude what to change…" : working ? "Queue a message…" : fresh ? "Ask Claude to…" : "Reply to Claude…"
+    : pending?.kind === "question" ? "Or tell Claude something else…" : pending?.kind === "plan" ? "Tell Claude what to change…" : working ? "Queue a message…" : fresh ? "Ask Claude to…" : "Reply to Claude…"
   return (
     <div className="shrink-0 px-4 pb-[max(12px,env(safe-area-inset-bottom))] max-md:px-3" data-composer>
       <div className="mx-auto w-full max-w-[46rem] rounded-[16px] border-[0.5px] border-border bg-card shadow-[0_2px_10px_rgb(0_0_0/0.06)] focus-within:border-foreground/25">

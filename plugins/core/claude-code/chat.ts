@@ -7,7 +7,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import type { WebSocket } from "ws"
-import { type AgentChatNew, type Asking, type Choice, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
+import { type AgentChatNew, type Asking, type Choice, choiceOf, findBin, HOME, Transcript, transcripts } from "../../../core/agents.ts"
 import { agentLines, byUser, type Machine, MACHINE_CLIENT, machineSocket, NOT_THE_USER, type Op, type OpCtx, OpError, outliving, pipeSockets, type Plugin, runtimeDir,
   splitMachine, userSurface } from "../../../core/plugins.ts"
 import { type Entry, Reader } from "./chatlog.ts"
@@ -695,16 +695,20 @@ a reply in their place. A session running in a terminal is answered there, not h
 
   onMachines({
     id: "claude-code.chat-answer", cli: "chat answer", owner: OWNER, kind: "write", lock: false,
-    summary: "Answer what a Claude Code chat session asks: allow or deny a permission (always: and its rule), pick answers to its questions, approve its plan or keep planning.",
+    summary: "Answer what a Claude Code chat session asks: allow or deny a permission (always: and its rule), pick answers to its questions (or Chat about this), approve its plan or keep planning.",
     help: `The user's alone: from the app or their phone, never an agent nor vau. picks: one per question, an option's number
-(several, comma-separated, in a multi-select) or text of its own. message: with a denial, what to do instead; with a
-plan sent back, what to change. mode: the permission mode after an approved plan (acceptEdits, default...).`,
+or name (several, comma-separated, in a multi-select) or text of its own; typed: what's typed in each one's Type
+something row (with a multi-select's picks). chat: Chat about this, its questions put aside for it to ask what to
+clarify. message: with a denial, what to do instead; with a plan sent back, what to change. mode: the permission mode
+after an approved plan (acceptEdits, default...).`,
     params: {
       id: ID,
       ask: { type: "string", description: "which ask (its entry id); default: the newest" },
       allow: { type: "boolean", description: "allow the permission, approve the plan" },
       always: { type: "boolean", description: "with allow: its suggested rule too, so it isn't asked again" },
       picks: { type: "array", items: { type: "string" }, description: "the questions' answers, in order" },
+      typed: { type: "array", items: { type: "string" }, commas: false, description: "with picks: what's typed in each question's Type something row (\"\" for none)" },
+      chat: { type: "boolean", description: "Chat about this: its questions put aside" },
       message: { type: "string", description: "why not, or what to do instead" },
       mode: { type: "string", enum: MODES, description: "after an approved plan, the permission mode" },
     },
@@ -712,11 +716,10 @@ plan sent back, what to change. mode: the permission mode after an approved plan
     run: async (p, ctx) => {
       theUser(ctx)
       const qs = [...(asking.get(p.id)?.values() ?? [])].find((e) => !p.ask || e.id === p.ask)?.questions ?? []
-      const answers = p.picks?.length ? (p.picks as string[]).map((x, i): Choice => {
-        const ns = x.split(",").map((n) => Number(n.trim()))
-        return ns.every((n) => Number.isInteger(n) && n >= 1 && n <= (qs[i]?.options.length ?? 0)) ? ns : x
-      }) : undefined
-      const s = await answer(p.id, { ...(p.allow !== undefined ? { allow: p.allow } : {}), ...(p.always ? { always: true } : {}),
+      const typed = (p.typed ?? []) as string[]
+      if (p.picks?.length && p.picks.length !== qs.length) throw new OpError(`picks: an answer for each of its ${qs.length} questions`)
+      const answers = p.picks?.length ? (p.picks as string[]).map((x, i) => choiceOf(qs[i], x, typed[i] ?? "")) : undefined
+      const s = await answer(p.id, { ...(p.allow !== undefined ? { allow: p.allow } : {}), ...(p.always ? { always: true } : {}), ...(p.chat ? { chat: true } : {}),
         ...(answers ? { answers } : {}), ...(p.message ? { message: p.message } : {}), ...(p.mode ? { mode: p.mode } : {}) }, p.ask)
       return { id: p.id, state: s.state }
     },

@@ -1,11 +1,10 @@
-// A session's questions in its sheet, laid out as Claude Code's picker: the options numbered, Type something (an answer
-// of one's own), Chat about this; what each sends (inbox.answer, caught here), on a desktop and a phone. WRITES the
-// inbox's events: throwaway server only.
-//   node web/qa/inboxquestions.mjs <base url> [out dir]
+// An agent's questions laid out as Claude Code's picker (the inbox's sheet, the chat tab): options numbered, Type
+// something, Chat about this; what each sends (caught here), on a desktop and a phone. WRITES inbox events: throwaway only.
+//   node web/qa/agentquestions.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { devices } from "playwright-core"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
-const { args: [B, OUT = "/tmp/inboxquestions-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, OUT = "/tmp/agentquestions-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
 await api("DELETE", "inbox/events")
@@ -109,6 +108,38 @@ await p.page.screenshot({ path: `${OUT}5-phone.png` })
 await sheet.locator("[data-send-typed]").tap()
 await until(() => p.sent.length === 1)
 check("phone: its send button answers with what's typed", JSON.stringify(p.sent[0]?.typed) === '["Mango"]', p.sent)
+
+// 5. The chat tab (a session the keeper runs, its socket played here): the same picker, answered with chat-answer.
+{
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } })
+  const page = watch(await ctx.newPage(), { console: true, label: "chat", ignore: /favicon|Failed to load resource|WebSocket/ })
+  const sent = []
+  await page.route("**/api/ops/claude-code.chat-answer", (r) => { sent.push(r.request().postDataJSON()); r.fulfill({ status: 200, contentType: "application/json", body: '{"id":"qa-chat","state":"working"}' }) })
+  const asked = { k: "ask", id: "ask1", kind: "question", tool: "AskUserQuestion", title: "Which toppings?", at: Date.now(),
+    questions: [{ question: "Which toppings?", multi: true, options: [{ label: "Cheese" }, { label: "Basil" }, { label: "Olive" }] }] }
+  const s = { id: "qa-chat", state: "waiting", cwd: "/tmp", account: "default", by: "app", model: "sonnet", effort: "medium", mode: "default", started: Date.now(), at: Date.now(), asks: ["ask1"], seq: 1, told: 0, turn: null }
+  await page.routeWebSocket(/\/api\/claude-code\/chat\/qa-chat$/, (ws) => ws.send(JSON.stringify({ t: "hello", found: true, s, title: "Pizza", cwd: "/tmp", account: "default",
+    model: "sonnet", effort: "medium", tui: null, driven: "", history: { entries: [], start: 0 }, live: [asked] })))
+  await page.goto(`${B}#view/claude-session%2Fqa-chat`)
+  const card = page.locator("[data-entry=ask][data-ask=question]")
+  await until(() => card.locator("[data-questions]").count(), 8000)
+  await wait(400)
+  check("chat tab: the same picker, its options numbered, Type something and Chat about this", (await card.locator("[data-option]").count()) === 4 &&
+    (await card.locator("[data-option='4'] input").getAttribute("placeholder")) === "Type something" && (await card.locator("[data-chat-about]").innerText()).includes("5."))
+  await card.locator("[data-option='1']").click()
+  await card.locator("[data-option='4'] input").fill("Feta")
+  await page.screenshot({ path: `${OUT}6-chat-tab.png` })
+  await card.locator("[data-send-answers]").click()
+  await until(() => sent.length === 1)
+  check("chat tab: a multi-select's picks go with what's typed", JSON.stringify(sent[0]) === JSON.stringify({ id: "qa-chat", ask: "ask1", picks: ["1"], typed: ["Feta"] }), sent[0])
+  // (answered, the card waits for the session's news: a fresh one for the next)
+  await page.reload()
+  await until(() => card.locator("[data-chat-about]").count(), 8000)
+  await card.locator("[data-chat-about]").click()
+  await until(() => sent.length === 2)
+  check("chat tab: Chat about this", JSON.stringify(sent[1]) === JSON.stringify({ id: "qa-chat", ask: "ask1", chat: true }), sent[1])
+  await ctx.close()
+}
 
 await api("DELETE", "inbox/events")
 await done()
