@@ -2,7 +2,7 @@
 // keeps of them, so its timeline and its chat draw them from there. No Node, no DOM.
 import type { Hunk } from "./text.ts"
 
-export type Kind = "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
+export type Kind = "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss" | "move"
 /** A moment as it reads: `item` the comment or suggestion it answers, `thread` a person's thread it's in. */
 export type Read = { kind: Kind; path?: string; line?: number; text?: string; item?: string; thread?: string; selection?: string
   /** An accept's text, as it is now. */
@@ -10,7 +10,9 @@ export type Read = { kind: Kind; path?: string; line?: number; text?: string; it
   /** A drawing's changes, then a note's lines changed. */
   changes?: string[]; hunks?: Hunk[]
   /** They went on writing an ask already sent. */
-  more?: boolean }
+  more?: boolean
+  /** A reply to or a dismissal of one of its bubbles; a move of its words, into the note or back into a bubble. */
+  bubble?: boolean; into?: "note" | "bubble" }
 /** A note's lines sent with the moments (`lines`), or a drawing's scene (`scene`). */
 export type Lines = { path: string; from: number; to: number; of: number; lines: string[] } | { path: string; scene: string[] }
 /** A message of moments: what came before them (the first's "Read ME.md…"), the mode, where the user was, and them. */
@@ -29,6 +31,9 @@ const REPLY = /^- reply to (\S+)(?: (.+?))?( \(in their comment thread (\S+), by
 const POINT = /^- point(?: (.+?))?: they pointed you here/
 const ANSWER = /^- (accept|reject|dismiss) (\S+)(?: (.+?))?(?: \(now (".*")\))?$/
 const BARE = /^- (edit|open)(?: (.+))?$/
+const BUBBLE_REPLY = /^- reply to your bubble (\S+)(?: (.+?))?: (".*")$/
+const BUBBLE_GONE = /^- dismiss your bubble (\S+)(?: (.+?))?: they closed it, (".*")$/
+const MOVE = /^- move(?: (.+?))?: they (put your bubble in the note|folded what you wrote) .*?, (".*")$/
 const NOTE = /^(.+), lines (\d+)-(\d+) of (\d+):$/
 const SCENE = /^(.+), the drawing \(ids for companion draw, say --find\):$/
 
@@ -57,6 +62,9 @@ export function readMoments(text: string): Message | null {
     }
     hunk = undefined
     if ((x = ASK.exec(l))) m = { kind: "ask", ...place(x[1] ?? ""), ...(x[3] ? { thread: x[3], item: x[3] } : {}), ...(x[4] ? { more: true } : {}), text: json(x[5]) }
+    else if ((x = BUBBLE_REPLY.exec(l))) m = { kind: "reply", bubble: true, item: x[1], ...place(x[2] ?? ""), text: json(x[3]) }
+    else if ((x = BUBBLE_GONE.exec(l))) m = { kind: "dismiss", bubble: true, item: x[1], ...place(x[2] ?? ""), text: json(x[3]) }
+    else if ((x = MOVE.exec(l))) m = { kind: "move", into: x[2].startsWith("put") ? "note" : "bubble", ...place(x[1] ?? ""), text: json(x[3]) }
     else if ((x = REPLY.exec(l))) m = { kind: "reply", item: x[1], ...place(x[2] ?? ""), ...(x[4] ? { thread: x[4] } : {}), text: json(x[5]) }
     else if ((x = POINT.exec(l))) m = { kind: "point", ...place(x[1] ?? "") }
     else if ((x = BARE.exec(l))) m = { kind: x[1] as Kind, ...place(x[2] ?? "") }

@@ -4,9 +4,11 @@ import type { EditorView } from "@codemirror/view"
 import { profileOf } from "./profiles.ts"
 import type { Change, Hunk } from "./text.ts"
 
-export type Mode = "off" | "quiet" | "notice" | "pair"
+export type Mode = "off" | "quiet" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
+  /** Why it let what it saw pass, in its few words (by the seen tick). */
+  why?: string
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What a session runs: its coding agent (claude, codex, claude_work), model and effort ("": its own). */
 export type How = { agent: string; model: string; effort: string }
@@ -23,7 +25,9 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   /** A comment the user dismissed, when (companion.history's). */
   dismissed?: number
   /** The text it was on is gone: shown by its last line. */
-  orphaned?: boolean }
+  orphaned?: boolean
+  /** A say that asks the user something; one they saw (else the unread dot); one they put in the note. */
+  question?: boolean; seen?: boolean; placed?: boolean }
 export type Reply = { by: "user" | "agent" | "guest"; text: string; name?: string; t?: number }
 /** A comment being written: where, the words it starts with (Ask: "@claude "), the selection it asks about. */
 export type Draft = { path: string; line: number; find?: string; text?: string; selection?: string }
@@ -102,11 +106,9 @@ export const startComment = (d: Draft | null) => set({ draft: d, picked: d ? "dr
 export function comment(text: string) {
   const d = state.draft
   if (!d || !text.trim()) return
-  commentAt({ ...d, text })
+  say({ t: "comment", ...d, text: text.trim() })
   set({ draft: null, picked: null })
 }
-/** A thread of the user's by a line, sent as is (an ask line of a note becomes one). */
-export const commentAt = (d: Draft & { text: string }) => say({ t: "comment", ...d, text: d.text.trim() })
 
 // ---------- editors showing files
 
@@ -126,6 +128,11 @@ export function viewOf(path: string): EditorView | null {
  *  agent's drawing there. */
 let drawings: { where: () => { open: string[]; focus: Target | null }; draw: (m: Record<string, unknown>) => void } | null = null
 export const setDrawings = (d: typeof drawings) => { drawings = d }
+/** What folds an agent's lines by its cursor back into a bubble (editor.ts, once loaded): its run, or null. */
+let folder: ((path: string, agent: string, line?: number) => (() => void) | null) | null = null
+export const setFolder = (fn: typeof folder) => { folder = fn }
+/** Agent `a`'s answer by its cursor, folded into a bubble: what its menu runs, or null when there's none. */
+export const foldable = (a: Agent) => (a.path && folder ? folder(a.path, a.name, a.line) : null)
 /** Who types an edit into an editor (editor.ts registers it once loaded). */
 let typer: ((v: EditorView, e: EditAsk) => Promise<void>) | null = null
 export const setTyper = (fn: typeof typer) => { typer = fn }
@@ -174,6 +181,7 @@ function open() {
     } else if (m.t === "note") {
       const n = m.note as Note
       const has = state.notes.some((x) => x.id === n.id)
+      if (!has && n.kind === "say") arrived.set(n.id, Date.now())
       set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
     } else if (m.t === "drop") set({ notes: state.notes.filter((x) => x.id !== m.id) })
     else if (m.t === "edit") void edit(m as unknown as EditAsk)
@@ -212,13 +220,29 @@ export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; 
 export const pointAt = (agent: string, t: { path: string; line: number; find?: string; selection?: string }) => sendMoment({ kind: "point", agent, ...t })
 /** A say turned into a margin comment, same words, same place. */
 export const pin = (id: string) => say({ t: "pin", id })
+/** Bubbles the user saw: no unread dot for them (on every device). */
+export const sawSays = (ids: string[]) => {
+  const fresh = ids.filter((id) => state.said.some((n) => n.id === id && !n.seen))
+  if (!fresh.length) return
+  set({ said: state.said.map((n) => (fresh.includes(n.id) ? { ...n, seen: true } : n)) })
+  say({ t: "seen", ids: fresh })
+}
+/** When this window got each bubble (its clock, not the server's). */
+const arrived = new Map<string, number>()
+/** How long a bubble has shown here, in ms (one from before this window opened: long). */
+export const shownFor = (id: string) => Date.now() - (arrived.get(id) ?? 0)
+/** A bubble gone as the user went on writing: off the screen at once, no word to its agent. */
+export const hideSay = (id: string) => { set({ notes: state.notes.filter((x) => x.id !== id) }); say({ t: "hide", id }) }
+/** The agent's says not seen yet (its cursor's unread dot). */
+export const unread = (agent: string) => state.said.filter((n) => n.agent === agent && !n.seen && !n.placed && !n.pinned)
 /** A dismissed comment back in the margin. */
 export const reopen = (id: string) => say({ t: "reopen", id })
 export const pick = (id: string | null) => { if (state.picked !== id) set({ picked: id }) }
 
-/** The user's answer to a note: accept or reject a suggestion, dismiss a comment, reply to one. */
+/** The user's answer to a note: accept or reject a suggestion, dismiss a comment or a bubble, reply to one (a bubble
+ *  replied to goes). */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
-  if (verdict !== "reply") set({ notes: state.notes.filter((x) => x.id !== id) })
+  if (verdict !== "reply" || state.notes.find((x) => x.id === id)?.kind === "say") set({ notes: state.notes.filter((x) => x.id !== id) })
   say({ t: "answer", id, verdict, text })
 }
 
@@ -326,11 +350,6 @@ export function mentionIn(line: string, names = mentionNames(), mid = midNames()
   if (!m) return null
   const text = MENTION_AT.test(line.slice(0, m.from)) ? line.slice(m.to).replace(/^[:,]/, "").trim() : line.trim()
   return { name: m.name, text: text || "(no words: look at this)" }
-}
-/** Whether a line opens with its @name ("@claude what's…", "- @ada: fix this"): an ask line, which becomes a thread. */
-export function asksAtStart(line: string, names = mentionNames(), mid = midNames()) {
-  const [m] = mentionsOf(line, names, mid)
-  return !!m && MENTION_AT.test(line.slice(0, m.from))
 }
 /** Whether a line's ask has words of its own, besides its @names (sent after a pause only then). */
 export const asksSomething = (line: string, ms: Mention[]) => !!ms.reduceRight((s, m) => s.slice(0, m.from) + s.slice(m.to), line).replace(LEAD, "").replace(/[\s\p{P}]/gu, "")

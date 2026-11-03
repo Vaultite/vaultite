@@ -221,7 +221,8 @@ function UserRow({ m, note, at, pane }: { m: Read; note: string; at?: string; pa
   switch (m.kind) {
     case "ask": return <Row data="ask" icon={User} muted at={at} title={m.thread ? "You asked in a comment" : "You asked"} place={place} onClick={go}>{said}</Row>
     case "point": return <Row data="point" icon={MousePointerClick} muted at={at} title="You pointed at" place={place || "this"} onClick={go}>{m.selection ? <Quote text={m.selection} /> : null}</Row>
-    case "reply": return <Row data="reply" icon={User} muted at={at} title="You replied" place={place} onClick={go}>{said}</Row>
+    case "reply": return <Row data="reply" icon={User} muted at={at} title={m.bubble ? "You replied to its bubble" : "You replied"} place={place} onClick={go}>{said}</Row>
+    case "move": return <Row data="move" icon={MessageCircle} muted at={at} title={m.into === "note" ? "You put its bubble in the note" : "You folded its words into a bubble"} place={place} onClick={go}>{said}</Row>
     case "edit": {
       const n = (m.hunks ?? []).reduce((k, h) => k + Math.max(h.added.length, h.removed.length), 0)
       const first = m.hunks?.[0]?.line
@@ -232,7 +233,7 @@ function UserRow({ m, note, at, pane }: { m: Read; note: string; at?: string; pa
       )
     }
     case "accept": case "reject": case "dismiss":
-      return <Row data={m.kind} icon={m.kind === "accept" ? Check : X} muted at={at} title={`You ${m.kind === "accept" ? "accepted" : m.kind === "reject" ? "rejected" : "dismissed"} one of its items`} place={place} onClick={go} />
+      return <Row data={m.kind} icon={m.kind === "accept" ? Check : X} muted at={at} title={m.bubble ? "You closed its bubble" : `You ${m.kind === "accept" ? "accepted" : m.kind === "reject" ? "rejected" : "dismissed"} one of its items`} place={place} onClick={go} />
     default: return null
   }
 }
@@ -289,6 +290,7 @@ function ActRow({ a, note, open, tasks, pane, chat }: { a: Act; note: string; op
       )
     }
     case "look": return <Row {...common} icon={Crosshair} muted title="Pointed at" place={place || "the note"} />
+    case "pass": return <Row {...common} icon={Eye} muted title={a.text ? `Let it pass: ${a.text}` : "Let it pass"} place={undefined} />
     case "highlight": return <Row {...common} icon={Highlighter} title="Highlighted" />
     case "draw": return <Row {...common} icon={Shapes} title="Drew in the drawing" />
     case "clear": return <Row {...common} icon={Eraser} muted title="Cleared its words" />
@@ -425,7 +427,7 @@ export function MomentMessage({ text }: { text: string }) {
   return <MomentsOf m={m} />
 }
 
-const SAID: Record<Read["kind"], string> = { ask: "Asked", point: "Pointed at", edit: "Changed", open: "Opened", reply: "Replied to", accept: "Accepted", reject: "Rejected", dismiss: "Dismissed" }
+const SAID: Record<Read["kind"], string> = { ask: "Asked", point: "Pointed at", edit: "Changed", open: "Opened", reply: "Replied to", accept: "Accepted", reject: "Rejected", dismiss: "Dismissed", move: "Moved" }
 
 function MomentsOf({ m }: { m: Message }) {
   return (

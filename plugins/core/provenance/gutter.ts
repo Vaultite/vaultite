@@ -2,7 +2,7 @@
 // the text washed in it with `authorship: tint`; with `hidden`, only the menu says who. Sidecar spans (plugin.ts) found in the text a moment after each change.
 import { type Extension, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { type EditorCtx, fmtStamp, fmtTime, get, onVaultChange } from "@vaultite"
+import { editorMenuItems, type EditorCtx, fmtStamp, fmtTime, get, onVaultChange, openMenu } from "@vaultite"
 import { type Author, authorText, type Mark, resolve, type Span } from "./authorship"
 
 type Mode = "off" | "hidden" | "gutter" | "tint"
@@ -27,6 +27,16 @@ class Bar extends WidgetType {
     el.setAttribute("data-tip", this.tip)
     el.setAttribute("data-tip-side", "right")
     el.setAttribute("aria-hidden", "true")
+    // (clicked or tapped: its line's menu, as a right-click on it shows: who wrote it, what an agent offers for it)
+    el.addEventListener("mousedown", (e) => e.preventDefault())
+    el.addEventListener("click", (e) => {
+      const root = el.closest<HTMLElement>(".cm-editor"), view = root && EditorView.findFromDOM(root)
+      if (!view) return
+      const line = view.state.doc.lineAt(view.posAtDOM(el))
+      view.dispatch({ selection: { anchor: line.from } })
+      const items = editorMenuItems(view)
+      if (items.length) openMenu({ x: e.clientX, y: e.clientY }, items)
+    })
     return el
   }
   ignoreEvent() { return true }
@@ -56,16 +66,17 @@ function decorate(view: EditorView, got: Got): DecorationSet {
 /** Each editor's spans as last read, for its menu (a held finger has no hover). */
 const shown = new WeakMap<EditorView, () => Got>()
 
-/** Who wrote the line at the cursor, as its bar's tip says it, and that run of lines; null for the user's. */
-export function authorAt(view: EditorView) {
+/** Who wrote the line at the cursor (or at `pos`; `by`: as the user knows it, Claude), as its bar's tip says it, and
+ *  that run of lines; null for the user's. */
+export function authorAt(view: EditorView, pos = view.state.selection.main.head) {
   const got = shown.get(view)?.()
   if (!got || got.mode === "off" || !got.spans.length) return null
-  const doc = view.state.doc, found = resolve(doc.toString(), got.spans), n = doc.lineAt(view.state.selection.main.head).number, m = found.get(n)
+  const doc = view.state.doc, found = resolve(doc.toString(), got.spans), n = doc.lineAt(Math.min(pos, doc.length)).number, m = found.get(n)
   if (!m) return null
   let a = n, b = n
   while (found.get(a - 1)?.span === m.span) a--
   while (found.get(b + 1)?.span === m.span) b++
-  return { tip: tipOf(got.spans[m.span], m.mixed), from: doc.line(a).from, to: doc.line(b).to }
+  return { tip: tipOf(got.spans[m.span], m.mixed), by: got.spans[m.span].by, from: doc.line(a).from, to: doc.line(b).to }
 }
 
 export function authorshipExtension(ctx: EditorCtx): Extension {
@@ -119,7 +130,9 @@ const theme = EditorView.baseTheme({
   ".cm-line.cm-authored": { position: "relative" },
   // (in the margin, between the fold arrows and the text; the span is its hit area, the bar its ::after)
   // (above the fold arrows' gutter, which spans the margin, without reaching their arrows)
-  ".cm-authored-bar": { position: "absolute", left: "-7px", top: "0", bottom: "0", width: "7px", zIndex: "2", cursor: "default" },
+  ".cm-authored-bar": { position: "absolute", left: "-7px", top: "0", bottom: "0", width: "7px", zIndex: "2", cursor: "pointer" },
+  // (a finger's target: wider into the margin, the bar where it was)
+  "@media (pointer: coarse)": { ".cm-authored-bar": { left: "-16px", width: "16px" }, ".cm-authored-bar::after": { left: "11px" } },
   ".cm-authored-bar::after": { content: "''", position: "absolute", left: "2px", top: "0", bottom: "0", width: "2px", background: "color-mix(in srgb, var(--c) 75%, transparent)" },
   ".cm-authored-bar.is-first::after": { top: "3px", borderTopLeftRadius: "1px", borderTopRightRadius: "1px" },
   ".cm-authored-bar.is-last::after": { bottom: "3px", borderBottomLeftRadius: "1px", borderBottomRightRadius: "1px" },

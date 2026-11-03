@@ -1,8 +1,8 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
 // words pop in a bubble by it, comments are cards in the margin (a dot on a phone, opened by a tap; or, a setting,
 // threads in the Conversations panel, a dot by the line) and take a reply, a suggestion is struck through with its replacement after it
-// and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask, a thread
-// the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes
+// and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask that
+// stays in the note, the agent hears at once (else at the pause, its cursor reading along as it's written); what the user writes
 // reaches it after a pause. Its cursor: hovered, its status; clicked, its last words and a box to ask it; dragged onto
 // text, a point; its flag follows it; agents on one spot fan out from one flag. A file's top bar items dock in a
 // sidebar and come back. Driven through the ops an agent calls.
@@ -110,14 +110,14 @@ await wait(800)
 check("say: a bubble by its cursor", await cursor.getByText("Basil keeps aphids off tomatoes.").isVisible())
 await page.screenshot({ path: `${OUT}say.png` })
 
-// "@claude …" then Enter: an ask, at once, as a thread by the line above (out of the note); it shows thinking.
+// "@claude …" then Enter: an ask, at once, its line staying in the note as written; it shows thinking.
 await editor.click()
 await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n@claude how far apart should they be?\n")
 let r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
-await until(() => !text(NOTE).includes("@claude how far apart"), 5000)
-check("ask: @claude and Enter reach it at once, a thread by the line above, the line out of the note", r?.moments.some((m) => m.kind === "ask" && m.text === "@claude how far apart should they be?" && m.item && m.path === NOTE &&
-  m.line === text(NOTE).split("\n").indexOf("Basil between them.") + 1) && !text(NOTE).includes("@claude how far apart"), r)
+await until(() => text(NOTE).includes("@claude how far apart"), 5000)
+check("ask: @claude and Enter reach it at once, what follows its name, the line staying in the note", r?.moments.some((m) => m.kind === "ask" && m.text === "how far apart should they be?" && !m.item && m.path === NOTE &&
+  m.line === text(NOTE).split("\n").indexOf("@claude how far apart should they be?") + 1), r)
 await until(async () => (await cursor.getAttribute("data-state")) === "thinking", 3000)
 check("ask: its cursor shows it thinking", (await cursor.getAttribute("data-state")) === "thinking")
 await wait(800)
@@ -161,13 +161,13 @@ check("@claude mid-line: the ask reaches it at the pause, the whole line", r?.mo
 await page.keyboard.press("Enter")
 r = await op("companion.next", { timeout: 3 })
 check("@claude mid-line: Enter after it doesn't ask again", !r.moments?.some((m) => m.kind === "ask"), r)
-// An ask line waits for Enter while they're on it (dictation lands in bursts), then goes.
+// A line starting with @claude goes at the pause as a mid-line one does, and stays where it is as they write on.
 await page.keyboard.type("@claude and what about the")
-r = await op("companion.next", { timeout: 3 })
-check("ask line: not sent at the pause while they're on it", !r.moments?.some((m) => m.kind === "ask"), r)
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
+check("ask line: sent at the pause, still in the note", r?.moments.some((m) => m.kind === "ask" && m.text === "and what about the" && !m.item) && text(NOTE).includes("@claude and what about the"), r)
 await page.keyboard.press("Enter")
-r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 4000)
-check("ask line: Enter sends it", r?.moments.some((m) => m.kind === "ask" && m.text === "@claude and what about the" && m.item), r)
+r = await op("companion.next", { timeout: 2 })
+check("ask line: Enter after it doesn't ask again", !r.moments?.some((m) => m.kind === "ask"), r)
 await page.keyboard.type("Mail bob@claude.com or ask @nobody.")
 r = await op("companion.next", { timeout: 4 })
 check("@ in an email or an unknown name mid-line: no chip, no ask", !r.moments?.some((m) => m.kind === "ask") &&
@@ -331,7 +331,7 @@ const chip = editor.locator('.cm-companion-mention[data-agent="Ada"]')
 check("@ada: a chip in Ada's colour as it's typed", (await chip.count()) === 1 && (await chip.innerText()) === "@ada" && /--c: var\(--(?!orange)/.test(await chip.getAttribute("style") ?? ""))
 await page.keyboard.press("Enter")
 r = await until(async () => { const x = await op("companion.next", { timeout: 2, as: "Ada" }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
-check("@ada: the ask reaches Ada, in a thread, the line out of the note", r?.moments.some((m) => m.kind === "ask" && m.text === "@ada is basil a perennial?" && m.for === "Ada" && m.item) && !text(NOTE).includes("perennial"), r)
+check("@ada: the ask reaches Ada, the line staying in the note", r?.moments.some((m) => m.kind === "ask" && m.text === "is basil a perennial?" && m.for === "Ada" && !m.item) && text(NOTE).includes("@ada is basil a perennial?"), r)
 const ada = page.locator('.companion-cursor[data-agent="Ada"]')
 await until(async () => (await ada.getAttribute("data-state")) === "thinking", 3000)
 check("@ada: Ada thinks, Claude doesn't", (await ada.getAttribute("data-state")) === "thinking" && (await cursor.getAttribute("data-state")) !== "thinking")
@@ -467,7 +467,7 @@ await page.keyboard.press("Escape")
 
 // Right-click its cursor: its menu (its session, the mode, Start fresh, Stop); … in its box opens the same.
 const menu = page.locator('[role="menu"]').filter({ hasText: "Start fresh" })
-const menuRows = ["Show its session", "Quiet", "Notice", "Pair", "Start fresh", "Stop"]
+const menuRows = ["Show its session", "Quiet", "Pair", "Start fresh", "Stop"]
 await grip.click({ button: "right" })
 await menu.waitFor({ timeout: 2000 })
 let menuText = await menu.innerText()
@@ -478,9 +478,9 @@ await page.screenshot({ path: `${OUT}cursor-menu.png` })
 // (a mode picked starts the companion's session: a real one would answer this script's moments, at its cost)
 const modeStarts = []
 await page.route("**/api/ops/companion.start", (route) => { modeStarts.push(route.request().postDataJSON()); return route.fulfill({ json: { id: "t", running: true, name: "Claude" } }) })
-await modes.getByRole("radio", { name: "Notice" }).click()
+await modes.getByRole("radio", { name: "Quiet" }).click()
 await wait(400)
-check("right-click: picking a mode sets it, the menu stays with what that one sees", (await api("GET", "config/plugin/companion")).mode === "notice" && await menu.isVisible() && /when you pause/.test(await modes.innerText()), await modes.innerText())
+check("right-click: picking a mode sets it, the menu stays with what that one sees", (await api("GET", "config/plugin/companion")).mode === "quiet" && await menu.isVisible() && /only what you ask/.test(await modes.innerText()), await modes.innerText())
 await modes.getByRole("radio", { name: "Pair" }).click()
 await wait(300)
 await page.unroute("**/api/ops/companion.start")
@@ -501,6 +501,79 @@ await cursor.getByRole("button", { name: "Pin as a comment" }).click()
 await page.locator("[data-companion-note]").filter({ hasText: "Pin me, please." }).waitFor({ timeout: 3000 })
 r = await op("companion.status")
 check("pin: the bubble becomes a comment, same words, same line", r.notes.some((n) => n.kind === "comment" && n.text === "Pin me, please." && n.line === line("Tomatoes")) && !r.notes.some((n) => n.kind === "say" && n.text === "Pin me, please."), r.notes)
+await op("companion.clear")
+
+// A bubble takes a reply: a click opens its box, Enter sends it and it goes.
+await op("companion.next", { timeout: 0 })
+await op("companion.say", { text: "Shall I water them?", path: NOTE, find: "Tomatoes" })
+const bubble = cursor.locator("[data-companion-bubble]")
+await bubble.getByText("Shall I water them?").click()
+await bubble.getByRole("textbox", { name: "Reply to Claude" }).fill("not yet")
+await page.keyboard.press("Enter")
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "reply") ? x : null }, 4000)
+check("bubble: a reply in it reaches it as a reply to that bubble", r?.moments.some((m) => m.kind === "reply" && m.bubble && m.text === "not yet"), r)
+check("bubble: and it goes", (await bubble.count()) === 0)
+// A question looks like one, its box open; writing on in the note sends it away, unread, the dot on the cursor.
+await op("companion.say", { text: "For me, or a note to yourself?", ask: true, path: NOTE, find: "Basil" })
+await bubble.waitFor({ timeout: 3000 })
+check("question: a bubble that looks asked, its reply box already there", (await bubble.getAttribute("data-question")) === "true" && await bubble.getByRole("textbox").isVisible())
+await wait(500)
+await page.screenshot({ path: `${OUT}question.png` })
+await wait(1700)
+await editor.click()
+await page.keyboard.press("ControlOrMeta+End")
+await page.keyboard.type(" Ok")
+await until(async () => (await bubble.count()) === 0, 3000)
+check("question: writing on in the note sends it away", (await bubble.count()) === 0)
+r = await op("companion.next", { timeout: 2 })
+check("question: no word of that to it, but the edit", !r.moments?.some((m) => m.kind === "dismiss" || m.kind === "reply"), r)
+await until(async () => (await cursor.locator("[data-companion-unread]").count()) > 0, 3000)
+check("unread: a dot on its cursor for what wasn't read", (await cursor.locator("[data-companion-unread]").count()) === 1)
+await page.screenshot({ path: `${OUT}unread.png` })
+await grip.click()
+await pop.waitFor({ timeout: 2000 })
+check("unread: its history shows it, and the dot goes", await pop.getByText("For me, or a note to yourself?").isVisible() && (await cursor.locator("[data-companion-unread]").count()) === 0)
+// Put in note from its history: its words after the paragraph it was said by, as its own.
+await pop.locator('[data-said]').filter({ hasText: "For me, or a note" }).getByRole("button", { name: "Put in note" }).click()
+await until(() => text(NOTE).includes("For me, or a note to yourself?"), 5000)
+const placed = text(NOTE).split("\n")
+check("put in note: after the paragraph it was said by, a blank line between", placed[placed.indexOf("For me, or a note to yourself?") - 1] === "" && placed.indexOf("For me, or a note to yourself?") > placed.findIndex((l) => l.startsWith("Basil")), text(NOTE))
+await page.keyboard.press("Escape")
+r = await until(async () => { await op("companion.say", { text: "x", path: NOTE }); const x = await op("companion.next", { timeout: 1 }); return x.moments?.find((m) => m.kind === "move") ? x : null }, 4000)
+check("put in note: a hint for it, with the next moment", r?.moments.some((m) => m.kind === "move" && m.into === "note"), r)
+// Fold it back: the menu on its lines, the lines out of the note, a bubble by its cursor.
+await api("PATCH", "config/plugin/provenance", { authorship: "gutter" })
+await page.reload()
+await editor.waitFor({ timeout: 10000 })
+await wait(1500)
+const own = editor.locator(".cm-line", { hasText: "For me, or a note to yourself?" })
+await own.click({ button: "right" })
+const fold = page.getByRole("menuitem", { name: "Fold into a bubble" })
+check("fold: its lines' menu offers to fold them into a bubble", await fold.isVisible().catch(() => false))
+await fold.click()
+await until(() => !text(NOTE).includes("For me, or a note to yourself?"), 5000)
+await cursor.locator("[data-companion-bubble]").getByText("For me, or a note to yourself?").waitFor({ timeout: 3000 })
+check("fold: out of the note, its bubble instead", !text(NOTE).includes("For me, or a note to yourself?"))
+await page.screenshot({ path: `${OUT}folded.png` })
+r = await until(async () => { await op("companion.say", { text: "y", path: NOTE }); const x = await op("companion.next", { timeout: 1 }); return x.moments?.find((m) => m.kind === "move") ? x : null }, 4000)
+check("fold: a hint for it too", r?.moments.some((m) => m.kind === "move" && m.into === "bubble"), r)
+await api("PATCH", "config/plugin/provenance", { authorship: null })
+// Silence with its reason, by the seen tick.
+await op("companion.pass", { reason: "waiting for you to finish" })
+await cursor.locator("[data-companion-why]").waitFor({ timeout: 3000 })
+check("pass: its few words by the seen tick", (await cursor.locator("[data-companion-why]").innerText()) === "waiting for you to finish" && await cursor.getByLabel("seen").isVisible())
+await page.screenshot({ path: `${OUT}pass.png` })
+// Its menu folds what it just wrote by its cursor (a finger's way there: a held finger on its name).
+await op("companion.edit", { path: NOTE, after: "Basil between them.", text: "Marigolds keep pests away too." })
+await until(() => text(NOTE).includes("Marigolds keep pests"), 5000)
+await op("companion.look", { path: NOTE, find: "Marigolds keep" })
+await wait(1500)
+await grip.click({ button: "right" })
+const foldIts = page.getByRole("menuitem", { name: "Fold its answer into a bubble" })
+check("fold: its cursor's menu offers to fold its answer there", await foldIts.isVisible().catch(() => false))
+await foldIts.click()
+await until(() => !text(NOTE).includes("Marigolds keep pests"), 5000)
+check("fold: from its menu, out of the note, a bubble instead", !text(NOTE).includes("Marigolds keep pests") && await cursor.getByText("Marigolds keep pests away too.").isVisible().catch(() => false))
 await op("companion.clear")
 
 // Drag its cursor onto text: "look at this", there; it stays.
@@ -616,6 +689,23 @@ for (let i = 1; i <= 8; i++) { await touch("touchMove", sx + (ex - sx) * i / 8, 
 await touch("touchEnd")
 r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "point") ? x : null }, 5000)
 check("phone: held and dragged onto a line, a point there", r?.moments.some((m) => m.kind === "point" && m.path === NOTE && m.line === text(NOTE).split("\n").findIndex((l) => l.startsWith("Tomatoes")) + 1), r)
+// A bubble by touch: its buttons showing, a tap opens its box, a reply sent from the keyboard's Send.
+await op("companion.say", { text: "Want the spacing as a list?", path: NOTE, find: "Tomatoes" })
+const pbub = pc.locator("[data-companion-bubble]")
+await pbub.waitFor({ timeout: 3000 })
+await wait(400)
+const pbb = await pbub.boundingBox(), pput = await pbub.getByRole("button", { name: "Put in note" }).boundingBox()
+check("phone: a bubble inside the screen, its buttons shown and big enough for a finger", !!pbb && pbb.x >= 0 && pbb.x + pbb.width <= 390 && !!pput && pput.width >= 36 &&
+  (await pbub.getByRole("button", { name: "Put in note" }).evaluate((b) => getComputedStyle(b.parentElement).opacity)) === "1", { pbb, pput })
+await pbub.getByText("Want the spacing").tap()
+const pfield = pbub.getByRole("textbox", { name: "Reply to Claude" })
+await pfield.waitFor({ timeout: 2000 })
+check("phone: a tap opens its box, a finger's size", ((await pfield.boundingBox())?.height ?? 0) >= 40)
+await pp.screenshot({ path: `${OUT}phone-bubble.png` })
+await pfield.fill("yes please")
+await pfield.press("Enter")
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "reply") ? x : null }, 4000)
+check("phone: the reply reaches it", r?.moments.some((m) => m.kind === "reply" && m.bubble && m.text === "yes please"), r)
 await phone.close()
 
 await op("companion.clear")

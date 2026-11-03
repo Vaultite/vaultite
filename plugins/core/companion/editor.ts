@@ -3,9 +3,12 @@
 import { closeCompletion, type Completion, type CompletionContext, completionStatus, selectedCompletion, startCompletion } from "@codemirror/autocomplete"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { capitalize, keyHint, notifyError, op, pluginSettings, share, type EditorCtx } from "@vaultite"
+import { capitalize, keyHint, type MenuItem, notifyError, op, pluginSettings, share, type EditorCtx } from "@vaultite"
+import { MessageCircle } from "lucide-react"
+import { authorAt } from "@plugins/provenance/gutter"
 import { cotype } from "./cotype"
-import { accept, answer, asksAtStart, asksSomething, commentAt, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, threadTint, tintOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, effortName, getState, type How, howOf, howText, hideSay, hunksOf, setFolder, shownFor, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nameAs, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, threadTint, tintOf, viewOf, views } from "./live"
+import { privateNote } from "./private"
 import { decide, proposals } from "./proposed"
 import { nearest } from "./text"
 
@@ -173,6 +176,52 @@ function suggestionAt(view: EditorView, path: string): Note | null {
   return null
 }
 
+// ---------- its words moved: a bubble the user writes on from, what it wrote folded back into one
+
+/** The user went on writing in `path`: the bubbles there that have shown a moment go (the unread dot keeps those they
+ *  didn't get to read), and it isn't told: that's what writing on means. */
+function dismissSays(path: string) {
+  for (const n of getState().notes) if (n.kind === "say" && (!n.path || n.path === path) && shownFor(n.id) > 1500) hideSay(n.id)
+}
+
+/** Fold what agent `agent` wrote by its cursor (at line `line`, or the few lines below) into a bubble: its menu's, for a
+ *  finger too. Null when no lines there are its. */
+function foldNear(path: string, agent: string, line?: number) {
+  const view = viewOf(path)
+  if (!view || !line || !view.state.facet(EditorView.editable)) return null
+  const doc = view.state.doc
+  for (let n = Math.max(1, line - 1); n <= Math.min(doc.lines, line + 3); n++) {
+    const at = authorAt(view, doc.line(n).from)
+    if (at && at.by.toLowerCase() === agent.toLowerCase()) return () => foldIn(view, path, agent, at.from, at.to)
+  }
+  return null
+}
+setFolder(foldNear)
+
+/** The menu's Fold into a bubble, on lines an agent around wrote (Provenance knows whose). */
+export function foldItems(view: EditorView, path: string): MenuItem[] {
+  const at = authorAt(view), a = at && liveAgents().find((x) => x.name.toLowerCase() === at.by.toLowerCase())
+  return a && view.state.facet(EditorView.editable) ? [{ label: "Fold into a bubble", icon: MessageCircle, run: () => foldIn(view, path, a.name, at.from, at.to) }] : []
+}
+
+/** Take an agent's lines from..to out of the note (an edit of the user's, undone as one) and have it say them instead. */
+function foldIn(view: EditorView, path: string, agent: string, from: number, to: number) {
+  const doc = view.state.doc, a = doc.lineAt(from), b = doc.lineAt(to), text = doc.sliceString(a.from, b.to)
+  const prev = a.number > 1 ? doc.line(a.number - 1) : null, next = b.number < doc.lines ? doc.line(b.number + 1) : null
+  // (with their line break; between two blank lines, one of those too)
+  let f = a.from
+  const t = next ? next.from : b.to
+  if (!next && prev) f = prev.to
+  else if (prev && !prev.text.trim() && next && !next.text.trim()) f = prev.from
+  const line = Math.max(1, f === prev?.from ? prev.number - 1 : a.number - 1)
+  const gone = doc.sliceString(f, t)
+  view.dispatch({ changes: { from: f, to: t }, userEvent: "delete.fold", scrollIntoView: false })
+  op("companion.fold", { as: agent, path, line, text }).catch((e) => {
+    view.dispatch({ changes: { from: Math.min(f, view.state.doc.length), insert: gone }, userEvent: "input.fold" })
+    notifyError(e, "Couldn't fold it into a bubble")
+  })
+}
+
 // ---------- what the user does, said to the agents
 
 /** How long without typing before what they wrote is said: longer mid-sentence (dictation lands in bursts, a burst
@@ -212,9 +261,7 @@ function watcher(path: string) {
     update(u: ViewUpdate) {
       if (u.docChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refresh)))) this.decorations = decorate(u.view, path)
       if (u.docChanged || u.geometryChanged || u.viewportChanged || u.selectionSet || u.focusChanged) bump()
-      // (an ask line left, by the caret or the focus, goes)
       const was = u.startState.doc.lineAt(u.startState.selection.main.head).number
-      if (!u.docChanged && ((u.selectionSet && u.state.doc.lineAt(u.state.selection.main.head).number !== was) || (u.focusChanged && !u.view.hasFocus)) && asksAtStart(u.state.doc.line(was).text) && this.ask(was, u.state.doc)) markSent(u.view, [was])
       if (u.focusChanged || (u.selectionSet && u.state.doc.lineAt(u.state.selection.main.head).number !== was)) {
         if (this.whereTimer) clearTimeout(this.whereTimer)
         this.whereTimer = setTimeout(() => sayWhere(u.view.hasFocus), u.focusChanged ? 0 : 800)
@@ -244,6 +291,7 @@ function watcher(path: string) {
       }
       if (asks.length) markSent(u.view, asks)
       if (!typed) return
+      dismissSays(path)
       this.dirty = true
       this.later()
       this.beckon(u.state)
@@ -252,36 +300,17 @@ function watcher(path: string) {
      *  countdown: Enter sends it, the pause quietly). */
     beckon(state: EditorState) {
       const line = state.doc.lineAt(state.selection.main.head), ask = mentionIn(line.text)
-      if (ask && getState().mode !== "off" && !this.asked.includes(line.text) && asksSomething(line.text, mentionsOf(line.text))) listen(ask.name, path, line.number)
+      if (ask && getState().mode !== "off" && !privateNote(path, state.doc.sliceString(0, 4096)) && !this.asked.includes(line.text) && asksSomething(line.text, mentionsOf(line.text))) listen(ask.name, path, line.number)
     }
-    /** Send line `n`'s ask, if it has one not sent as it reads now; `pause`: only one with words besides the @name. An
-     *  ask line goes at Enter or once they leave it, as a thread by the text it's under, and leaves the note. */
+    /** Send line `n`'s ask, if it has one not sent as it reads now; `pause`: only one with words besides the @name. It
+     *  stays in the note, as they wrote it, wherever its @name is (a private note's never goes). */
     ask(n: number, doc: Text, pause = false) {
       const line = doc.line(n), ask = mentionIn(line.text)
       if (!ask || getState().mode === "off" || this.asked.includes(line.text) || (pause && !asksSomething(line.text, mentionsOf(line.text)))) return false
-      const lead = asksAtStart(line.text)
-      if (lead && pause && this.view.hasFocus && this.view.state.doc.lineAt(this.view.state.selection.main.head).text === line.text) return false
+      if (privateNote(path, doc.sliceString(0, 4096))) return false
       this.asked = [...this.asked.slice(-200), line.text]
-      if (lead) this.thread(n, doc)
-      else sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text, waited: Date.now() - this.typedAt })
+      sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text, waited: Date.now() - this.typedAt })
       return true
-    }
-    /** Ask line `n` as a thread of the user's, on the nearest line with words above it (else below), and out of the note. */
-    thread(n: number, doc: Text) {
-      const text = doc.line(n).text, words = (i: number) => !!doc.line(i).text.trim() && !asksAtStart(doc.line(i).text)
-      let at = 0
-      for (let i = n - 1; i >= 1 && !at; i--) if (words(i)) at = i
-      for (let i = n + 1; i <= doc.lines && !at; i++) if (words(i)) at = i
-      const find = at ? doc.line(at).text.trim().slice(0, 200) : ""
-      commentAt({ path, line: at ? (at < n ? at : at - 1) : 1, ...(find ? { find } : {}), text: text.replace(/^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/, "") })
-      queueMicrotask(() => {
-        const d = this.view.state.doc, near = Math.min(n, d.lines)
-        let i = 0
-        for (let k = 0; k <= d.lines && !i; k++) for (const j of [near - k, near + k]) if (!i && j >= 1 && j <= d.lines && d.line(j).text === text) i = j
-        if (!i) return
-        const l = d.line(i), from = i < d.lines ? l.from : Math.max(0, l.from - 1), to = i < d.lines ? d.line(i + 1).from : l.to
-        this.view.dispatch({ changes: { from, to }, annotations: own.of(true) })
-      })
     }
     later() {
       if (this.timer) clearTimeout(this.timer)
@@ -295,7 +324,7 @@ function watcher(path: string) {
       if (asks.length && this.view.dom.isConnected) markSent(this.view, asks)
       this.dirty = false
       const md = getState().mode
-      if (md === "notice" || md === "pair") {
+      if (md === "pair" && !privateNote(path, doc.sliceString(0, 4096))) {
         // (lines that only write asks reach the agents as those asks, not twice)
         const hunks = hunksOf(this.baseline.toString().split("\n"), doc.toString().split("\n")).filter((h) => [...h.removed, ...h.added].some((l) => l.trim() && !mentionIn(l)))
         if (hunks.length) sendMoment({ kind: "edit", path, line: hunks[0].line, hunks, waited: Date.now() - this.typedAt })
@@ -336,7 +365,7 @@ function markSent(view: EditorView, lines: number[]) {
 
 function chipsOf(view: EditorView, path: string): DecorationSet {
   const st = getState()
-  if (st.mode === "off") return Decoration.none
+  if (st.mode === "off" || privateNote(path, view.state.doc.sliceString(0, 4096))) return Decoration.none
   const names = mentionNames(), mid = midNames(), lit = view.state.field(sentAt, false) ?? [], b = new RangeSetBuilder<Decoration>()
   let last = -1
   for (const r of view.visibleRanges) {
@@ -430,7 +459,7 @@ function begin(view: EditorView, path: string, name: string, from: number, to: n
  *  names that fit and a name none has, as Start rows last. */
 const mentions = (path: string) => (ctx: CompletionContext) => {
   const m = ctx.matchBefore(/@[\w-]*$/)
-  if (!m || getState().mode === "off" || !canMention(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
+  if (!m || getState().mode === "off" || privateNote(path, ctx.state.doc.sliceString(0, 4096)) || !canMention(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
   const st = getState(), names = liveAgents().map((a) => a.name), typed = m.text.slice(1)
   const known = [...new Set(["companion", st.fresh.agent.split("_")[0] || "claude", st.name, ...names].map((n) => n.toLowerCase()))]
   const named = Object.keys(st.profiles).filter((p) => !known.includes(p))

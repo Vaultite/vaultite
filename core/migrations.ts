@@ -260,6 +260,16 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       set("appearance", "fileBarFade" in look ? renamed : { ...renamed, fileBarFade: look.typingFade === true ? "typing" : "off" })
     }),
   },
+  {
+    // The companion's notice mode, merged into pair: its setting and its palette command's keys.
+    id: "companion-notice-pair-2026-11",
+    run: (v) => eachSettings(v, (get, set) => {
+      const conf = get("plugins/companion/data")
+      if (conf?.mode === "notice") set("plugins/companion/data", { ...conf, mode: "pair" })
+      const keys = get("hotkeys"), hk = keys && renamedKey(keys, "companion:notice", "companion:pair")
+      if (hk) set("hotkeys", hk)
+    }),
+  },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

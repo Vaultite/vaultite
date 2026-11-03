@@ -1,7 +1,7 @@
 // Its sessions from the app: the mode, showing one, stopping one, a fresh one. The status bar's menu and each cursor's.
-import { MessageSquare, Power, RotateCcw, SquareTerminal } from "lucide-react"
+import { MessageCircle, MessageSquare, Power, RotateCcw, SquareTerminal } from "lucide-react"
 import { notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
-import { type Agent, getState, howText, type Mode } from "./live"
+import { type Agent, foldable, getState, howText, type Mode } from "./live"
 
 const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
 
@@ -9,8 +9,7 @@ const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
 export const MODES: { mode: Mode; label: string; short: string; note: string }[] = [
   { mode: "off", label: "Off", short: "Off", note: "Sees nothing, and asks don't reach it" },
   { mode: "quiet", label: "Quiet: only when asked", short: "Quiet", note: "Sees only what you ask it" },
-  { mode: "notice", label: "Notice: speaks up when useful", short: "Notice", note: "Also sees what you write when you pause, and speaks up when it helps" },
-  { mode: "pair", label: "Pair: writes with you", short: "Pair", note: "Also sees what you write, and may write in your notes" },
+  { mode: "pair", label: "Pair: with you as you write", short: "Pair", note: "Sees what you write, answers what's meant for it, and may write in your notes" },
 ]
 
 /** The mode as a menu's segmented row; `off`: Off among them (the status bar's, where the companion is switched off;
@@ -64,9 +63,10 @@ async function fresh(name: string) {
 
 /** An agent's menu: its cursor's (right-click, a held finger on its name, … in its box) and its face's. */
 export function agentMenu(a: Agent): MenuItem[] {
-  const how = howText(a)
+  const how = howText(a), fold = foldable(a)
   return [
-    ...(main(a.name) ? [modeItem()] : []),
+    ...(fold ? [{ label: "Fold its answer into a bubble", icon: MessageCircle, run: fold }] : []),
+    ...(main(a.name) ? [{ ...modeItem(), sep: !!fold }] : []),
     ...(how ? [{ label: how, caption: true, run: () => {}, sep: main(a.name) }] : []),
     { label: "Show its session", icon: (a.runs ?? "").split("_")[0] === "claude" ? MessageSquare : SquareTerminal, run: () => void showSession(a.name), sep: main(a.name) && !how },
     { label: "Start fresh", icon: RotateCcw, run: () => void fresh(a.name), disabled: a.state === "starting", sep: true },

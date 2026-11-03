@@ -1,25 +1,28 @@
 import { lazy, useEffect, useLayoutEffect, useSyncExternalStore } from "react"
-import { Crosshair, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal } from "lucide-react"
+import { Crosshair, MessageCircle, MessageCirclePlus, MessageSquarePlus, MessagesSquare, Power, SquareTerminal } from "lucide-react"
 import { cn, currentEditor, definePlugin, menuAbove, notify, op, share, useFocusedFile, type MenuItem } from "@vaultite"
 import { drawDriven } from "@plugins/claude-code/driven"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { bump, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, viewOf } from "./live"
-import { Arrow, follow, Overlay } from "./Overlay"
+import { bump, connect, getState, liveAgents, type Note, setGuest, startComment, subscribe, unread, viewOf } from "./live"
+import { Arrow, follow, Overlay, showSaid } from "./Overlay"
 import { Presence } from "./Presence"
 import { modeItem, MODES, setMode, showSession } from "./session"
+import { privateNote } from "./private"
 import { offerThreads } from "./threads"
 
 // Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
 // loads with the first note.
 let loading: Promise<typeof import("./editor")> | null = null
-const load = () => (loading ??= import("./editor"))
+let loaded: typeof import("./editor") | null = null
+const load = () => (loading ??= import("./editor").then((m) => (loaded = m)))
 
 /** Ask the companion (or `agent`): a comment by the selection (else the caret's line) that starts with its @name, so
  *  the answer comes in that thread and nothing is written in the note. In a drawing, about what's selected there. */
 function ask(agent?: string) {
   const ed = currentEditor()
   if (!ed?.path || ed.kind !== "markdown") return void (askDrawing(agent) || notify(`Open a note to ask ${getState().name}`))
+  if (privateNote(ed.path)) return notify(`This note is private: ${agent ?? getState().name} doesn't see it`)
   const v = ed.view, sel = v.state.selection.main, picked = v.state.sliceDoc(sel.from, sel.to)
   const line = v.state.doc.lineAt(sel.from), find = (picked.trim() || line.text.trim()).slice(0, 200)
   startComment({ path: ed.path, line: line.number, ...(find ? { find } : {}), text: `@${(agent ?? getState().name).toLowerCase()} `, ...(picked.trim() ? { selection: picked } : {}) })
@@ -57,6 +60,7 @@ function Status() {
   useLayoutEffect(() => bump(), [homes])
   const items = (): MenuItem[] => [
     modeItem(true),
+    ...(s.mode !== "off" && a && s.said.some((n) => n.agent === a.name) ? [{ label: "What it said", icon: MessageCircle, hint: unread(a.name).length ? `${unread(a.name).length} new` : undefined, run: () => showSaid(a.name), sep: true }] : []),
     ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
     { label: `Ask ${s.name}`, icon: MessageCirclePlus, run: () => ask(), sep: true },
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },
@@ -70,6 +74,8 @@ function Status() {
         <Arrow key={x.name} data-companion-home={x.name} tint={x.tint} size={16} className={cn("absolute top-[4px]", x.busy && "animate-pulse")}
           style={{ left: 4 + (i - (arrows.length - 1) / 2) * 5, zIndex: arrows.length - i }} />
       ))}
+      {/* (what it said that you haven't seen: a click on its cursor shows it) */}
+      {s.mode !== "off" && unread(a?.name ?? s.name).length > 0 && <span data-companion-unread aria-hidden className="absolute top-[3px] right-[3px] size-[6px] rounded-full ring-[1.5px] ring-background" style={{ background: tint }} />}
     </button>
   )
 }
@@ -117,7 +123,8 @@ export default definePlugin({
     { id: "companion:session", name: "Show the companion's session", run: () => void showSession(), icon: SquareTerminal },
   ],
   editorMenu: ({ view, path }) => [
-    ...(path && !share && !view.state.selection.main.empty && getState().mode !== "off"
+    ...(path && !share && getState().mode !== "off" && loaded ? loaded.foldItems(view, path) : []),
+    ...(path && !share && !view.state.selection.main.empty && getState().mode !== "off" && !privateNote(path)
       ? (liveAgents().length > 1 ? liveAgents().map((a) => a.name) : [getState().name]).map((n) => ({ label: `Ask ${n} about this`, icon: MessageCirclePlus, run: () => ask(n) })) : []),
     ...(path && comments() ? [{ label: "Add comment", icon: MessageSquarePlus, run: addComment }] : []),
   ],

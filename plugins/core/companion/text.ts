@@ -34,3 +34,11 @@ export type Change = { id: string; find: string; text: string; line: number; int
 
 /** Where a change is in `text`: its start, -1 when its lines aren't there any more. */
 export const changeAt = (text: string, c: Pick<Change, "find" | "line">) => (c.find ? nearest(text, c.find, c.line) : text ? -1 : 0)
+
+/** Whether a note is kept from the agents: under one of `folders` (vault paths), or its frontmatter (at the start of
+ *  `text`) says `companion: private`. */
+export function isPrivate(path: string, text: string, folders: string[]) {
+  if (folders.some((f) => { const d = f.trim().replace(/^\/+|\/+$/g, ""); return !!d && (path === d || path.startsWith(`${d}/`)) })) return true
+  const fm = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)\s*(?:\r?\n|$)/.exec(text)?.[1]
+  return !!fm && /^companion:\s*["']?private["']?\s*$/m.test(fm)
+}

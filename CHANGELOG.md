@@ -24,6 +24,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   op's switch. A tab of a herdr pane waits for herdr rather than starting a shell of its own. The tmux backend
   is gone (attach does what it was for), `vau terminal screen` is `capture`, and a plugin's terminal backend
   (`terminal:backend`) implements the new `Backend` (capture, keys, events, meta): one made for the old one isn't used.
+- **The companion is a person in the room**: two modes, quiet and pair (notice is pair now). In pair it answers what's
+  meant for it, @claude or not, and when it stays silent its seen tick says why. A line with @claude stays in the note.
+  Its bubbles take a reply, go once you write on, look different when they ask, leave an unread dot on its cursor and
+  go into the note with Put in note; what it wrote folds back into a bubble from its lines' menu or its cursor's.
+  Private notes (folders in its settings, or `companion: private`) never reach it.
 - **Snooze is a button on a session's row and sheet**: beside Settle on hover, in the Inbox panel, and by Pin in its
   sheet, as results have it.
 - **An agent's question has every choice its picker has**, in the inbox and the chat tab: its options numbered, Type

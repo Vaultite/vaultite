@@ -11,15 +11,15 @@ import { parseProfiles, type Profile, profileOf } from "./profiles.ts"
 import { bridges } from "./bridge.ts"
 import { rooms } from "./rooms.ts"
 import { BIG_EDIT, changesOf, linesIn, tally } from "./proposals.ts"
-import { type Change, changeAt, type Hunk, nearest } from "./text.ts"
+import { type Change, changeAt, type Hunk, isPrivate, nearest } from "./text.ts"
 export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
 
-export type Mode = "off" | "quiet" | "notice" | "pair"
+export type Mode = "off" | "quiet" | "pair"
 /** What the user did, as an agent sees it. ask: they addressed it; point: they dropped its cursor on a line ("look at
- *  this"); edit and open only in notice and pair; reply, accept, reject, dismiss: their answer to one of its items. */
-export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
+ *  this"); edit and open only in pair; reply, accept, reject, dismiss: their answer to one of its items. */
+export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss" | "move"
   path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
   /** A point's word or selection, where its cursor stays. */
   find?: string
@@ -30,13 +30,17 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** An ask whose line they went on writing after it went: the seq of the one it continues. */
   more?: number
   /** On a drawing (`find`: the element asked in): the user's pointer, what changed after a pause, the scene as text. */
-  x?: number; y?: number; changes?: string[]; scene?: string }
+  x?: number; y?: number; changes?: string[]; scene?: string
+  /** A reply to or a dismissal of one of its bubbles (`item`: the say), not a comment. */
+  bubble?: boolean
+  /** A move: its words moved by the user, a bubble put in the note or what it wrote folded back into a bubble. */
+  into?: "note" | "bubble" }
 /** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`); on a
  *  drawing, an element (`find`: its id or text) or a point of it (x, y). */
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
-/** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change;
+/** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass (why: its words on it);
  *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
-export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
+export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
   runs?: string; model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What an agent leaves in the app: words by its cursor and highlights (gone after a while), a margin comment, a
  *  suggestion, a proposal (a large change, taken in part). `anchor`: a comment's line as it read, to find it again. */
@@ -44,8 +48,8 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   text?: string; replace?: string; anchor?: string; replies?: Reply[]
   /** A proposal's changes not decided yet (its placeholders while it's written); how many were taken and left. */
   changes?: Change[]; took?: number; left?: number
-  /** Who proposed it, as its request named them: what it takes is written as theirs (Provenance). */
-  writer?: { client: string | null; agent: string | null }
+  /** Who proposed it (or said it), as its request named them: what it takes is written as theirs (Provenance). */
+  writer?: Writer
   /** A thread a person started, not an agent: the user, or a shared folder's guest (`agent` is then their name). */
   by?: "user" | "guest"
   /** The agent a person's thread asks (an @name in it): it hears the thread's words and answers in it. */
@@ -54,6 +58,9 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   tint?: string; share?: string
   /** A say the user pinned: the comment it became. */
   pinned?: string
+  /** A say that asks the user something (shown as a question, with a box to answer); one they saw (the unread dot);
+   *  one they put in the note. */
+  question?: boolean; seen?: boolean; placed?: boolean
   /** A comment the user dismissed, when: kept in its note's history. */
   dismissed?: number
   /** The text it was on is gone: shown by its last line, found again if the text comes back. */
@@ -69,15 +76,28 @@ export type Excerpt = { path: string; from: number; to: number; of: number; line
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
 const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
 const KEEP = 300, SAY_MS = 12_000, HIGHLIGHT_MS = 10_000, EDIT_WAIT = 10_000, SAVED_MS = 3000
+/** How long a bubble shows: longer the more it says, as reading takes. */
+export const sayMs = (text: string) => Math.min(45_000, SAY_MS + Math.max(0, text.split(/\s+/).length - 20) * 300)
+/** Whether a moment wakes its agent: an open, a bubble dismissed or its words moved by the user ride along with the next. */
+export const wakes = (m: Pick<Moment, "kind" | "bubble">) => m.kind !== "open" && m.kind !== "move" && !(m.kind === "dismiss" && m.bubble)
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** A setting, else its manifest's default. */
 const setting = (key: string) => str(plugin.settings()[key]).trim() || str(plugin.manifest.settings?.[key]?.default)
 export const mode = (): Mode => {
   const m = plugin.settings().mode
-  return m === "off" || m === "notice" || m === "pair" ? m : "quiet"
+  return m === "off" || m === "pair" ? m : "quiet"
 }
 const agentSetting = () => setting("agent") || "claude"
+/** A note no agent sees: in a private folder (the setting), or marked so in its properties (`companion: private`). */
+export function hidden(p: string) {
+  const folders = plugin.settings().private
+  if (Array.isArray(folders) && isPrivate(p, "", folders.map(String))) return true
+  if (!/\.md$/i.test(p)) return false
+  let head = ""
+  try { const fd = fs.openSync(plugin.vault.abs(p), "r"), b = Buffer.alloc(4096); head = b.subarray(0, fs.readSync(fd, b, 0, 4096, 0)).toString("utf8"); fs.closeSync(fd) } catch { return false }
+  return isPrivate(p, head, [])
+}
 /** What a session of `agent` runs: the model and effort given, else the settings; their defaults (Sonnet, medium) only
  *  for Claude Code, whose models they name. */
 export function howOf(agent: string, model = "", effort = "") {
@@ -214,6 +234,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   // (a line a shared folder's guest wrote is never the user's ask, whoever's window sends it)
   if (m.kind === "ask" && m.path && m.line && plugin.service("provenance:by-guest")?.(m.path, m.line) === true) return null
   if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
+  // (a private note: nothing of it reaches any agent)
+  if (m.path && hidden(m.path)) return null
   // (spaces alone changed, as a trailing one: nothing to see, and an agent woken for it isn't free for what is)
   const words = (ls: string[]) => ls.map((l) => l.trim()).filter(Boolean).join("\n")
   if (m.kind === "edit" && m.hunks?.length && m.hunks.every((h) => words(h.added) === words(h.removed))) return null
@@ -235,11 +257,12 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   }
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
-  // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now)
+  // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now; so do the
+  // user's corrections, a bubble closed or words moved)
   if (m.kind === "open") {
     for (const a of agents.values()) if (meantFor(full, a.name) && a.state === "watching" && live(a.name) && !handed.has(key(a.name)))
       setAgent(a.name, { path: full.path, line: full.line, x: full.x, y: full.y, find: undefined, state: "watching" })
-  } else {
+  } else if (wakes(full)) {
     for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
     for (const s of sessions()) if (isChat(s.id) && meantFor(full, s.name)) void pump(s.name)
   }
@@ -315,7 +338,7 @@ plugin.provide("companion:who", (terminal: string) => {
 
 function setAgent(name: string, change: Partial<Agent>) {
   if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(key(name))
-  const a = Object.assign(agentOf(name), { seen: undefined }, change, { t: Date.now() })
+  const a = Object.assign(agentOf(name), { seen: undefined, why: undefined }, change, { t: Date.now() })
   broadcast({ t: "agent", agent: a })
   return a
 }
@@ -510,8 +533,9 @@ plugin.onMove((from, to, trashed) => {
 
 /** The user's answer to an item from the app: a moment for its agent; a suggestion or a dismissed comment goes away. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string, from?: IncomingMessage) {
-  const n = notes.get(id)
+  const n = notes.get(id) ?? said.find((x) => x.id === id)
   if (!n) return
+  if (n.kind === "say") return answerSay(n, verdict, text, from)
   if (n.kind === "proposal") return verdict === "reply" ? undefined : void review(id, verdict === "accept" ? "accept" : "reject", undefined, from).catch((e) => console.error(`companion: ${(e as Error).message}`))
   if (verdict === "reply" && text) {
     n.replies = [...(n.replies ?? []), { by: "user", text: text.slice(0, MAX_TEXT), t: Date.now() }]
@@ -529,6 +553,70 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
     return void addMoment({ kind: "reply", for: to, item: id, path: n.path, line: lineOf(n), text }, from)
   }
   addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) }, from)
+}
+
+/** The user's answer to a bubble: a reply to it (in the bubble), or closing it; either way it goes. */
+function answerSay(n: Note, verdict: string, text: string | undefined, from?: IncomingMessage) {
+  if (verdict !== "reply" && verdict !== "dismiss") return
+  if (notes.has(n.id)) dropNote(n.id)
+  saw([n.id])
+  if (verdict === "reply" && !text?.trim()) return
+  addMoment({ kind: verdict, for: n.agent, item: n.id, bubble: true, path: n.path, line: n.line, ...(n.find ? { find: n.find } : {}),
+    text: verdict === "reply" ? text!.slice(0, MAX_TEXT) : n.text }, from)
+}
+
+/** The user saw these bubbles (they showed long enough to read, or the cursor's history opened): no unread dot for them. */
+export function saw(ids: string[]) {
+  let changed = false
+  for (const x of said) if (ids.includes(x.id) && !x.seen) { x.seen = true; changed = true }
+  if (changed) broadcast({ t: "said", said })
+}
+
+/** A bubble gone before its time, as the user went on writing: no word to its agent. */
+function hide(id: string) {
+  if (notes.get(id)?.kind === "say") dropNote(id)
+}
+
+/** Where a say is in its note's text now: its line (its find nearest it), else null. */
+function sayLine(text: string, n: Note) {
+  return n.find ? anchorLine(text, n) : n.line ? Math.max(1, Math.min(n.line, lineCount(text))) : null
+}
+
+/** Put a bubble in the note, as its agent's words (Provenance): after the paragraph it was said by, else at the end. */
+export async function place(id: string) {
+  const n = said.find((x) => x.id === id) ?? notes.get(id)
+  if (!n || n.kind !== "say" || !n.text?.trim()) throw new OpError(`there's no bubble ${id}`, 404)
+  const a = agents.get(key(n.agent)), t: Target = n.path ? n : a?.path ? a : focus() ?? {}
+  if (!t.path || drawing(t.path)) throw new OpError("it wasn't said by a note", 409)
+  const cur = await textOf(apiCtx, t.path), lines = cur.split("\n")
+  let at = sayLine(cur, t as Note)
+  if (at !== null) while (at < lines.length && lines[at]?.trim()) at++
+  const text = at === null ? n.text.trim() : `\n${n.text.trim()}`
+  const writer: Writer = n.writer ?? { client: "cli", agent: n.agent }
+  await requestWriter.run(writer, () => applyEdit(apiCtx, agentOf(n.agent), { path: t.path!, text, ...(at === null ? { append: true } : { line: at }) }, false))
+  if (notes.has(id)) dropNote(id)
+  for (const x of said) if (x.id === id) Object.assign(x, { placed: true, seen: true })
+  broadcast({ t: "said", said })
+  addMoment({ kind: "move", into: "note", for: n.agent, item: id, path: t.path, line: at === null ? lineCount(cur) + 1 : at + 2, text: n.text })
+  return { path: t.path, line: at === null ? lineCount(cur) + 1 : at + 2 }
+}
+
+/** What an agent wrote in a note (its lines, taken out by the user's editor) back in a bubble by its cursor there. */
+export function fold(name: string, path: string, line: number, text: string) {
+  const a = agents.get(key(name))
+  if (!a || !text.trim()) throw new OpError(`${name} isn't here to say it`, 404)
+  setAgent(a.name, { path, line, find: undefined, x: undefined, y: undefined, state: acting(a.name) })
+  const n = putNote({ kind: "say", agent: a.name, text: text.trim(), path, line }, sayMs(text))
+  keepSaid(n)
+  addMoment({ kind: "move", into: "bubble", for: a.name, item: n.id, path, line, text: text.trim() })
+  return n
+}
+
+/** A say kept in its agent's last ones (the cursor's history). */
+function keepSaid(n: Note) {
+  const mine = said.filter((x) => key(x.agent) === key(n.agent))
+  said = [...said.filter((x) => !mine.slice(0, -(SAID - 1)).includes(x)), { ...n }]
+  broadcast({ t: "said", said })
 }
 
 /** A dismissed comment back in the margin, as it was. */
@@ -618,6 +706,8 @@ plugin.socket("companion/live", (ws, req, { query }) => {
       const f = m.focus as Target | null
       // (an editor left for the terminal or a menu: still their note while it's open)
       w.focus = f && typeof f.path === "string" ? { path: f.path, ...(drawing(f.path) ? point(f as Record<string, unknown>) : { line: Number(f.line) || 1 }) } : w.focus && w.open.includes(w.focus.path!) ? w.focus : null
+      // (a private note: the agents don't know they're there)
+      if (w.focus?.path && hidden(w.focus.path)) w.focus = null
       if (m.active) w.at = Date.now()
       // (another note, not the same one focused again)
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
@@ -630,6 +720,10 @@ plugin.socket("companion/live", (ws, req, { query }) => {
         ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}) }, req)
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
+    } else if (m.t === "seen" && Array.isArray(m.ids)) {
+      saw(m.ids.filter((x): x is string => typeof x === "string"))
+    } else if (m.t === "hide" && typeof m.id === "string") {
+      hide(m.id)
     } else if (m.t === "reopen" && typeof m.id === "string") {
       reopen(m.id)
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
@@ -731,8 +825,8 @@ const lineText = (p: string, n: number) => { try { return readText(plugin.vault.
 
 // ---------- the always-on session
 
-/** What its session runs unasked: its own commands and reading the vault. */
-const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview"]
+/** What its session runs unasked: its own commands, reading the vault, and keeping what it learns of the user. */
+const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview", "vau remember"]
 // The companion's session is session.json; another agent started by name (start --as Ada) is session-ada.json.
 const sessionFile = (name?: string | null) => `${plugin.localDir()}/${name && !isMain(name) ? `session-${key(name)}` : "session"}.json`
 /** A session as kept: its terminal, its model, and how many moments it was handed (a fresh one takes over past
@@ -798,8 +892,8 @@ export function starting(name: string, a: Partial<Agent> = {}, after = seq) {
  *  loop of next), and its name when it isn't the companion. */
 const promptFor = (name: string, chat = false) => [setting("prompt"), chat ? CHAT_WORDS : LOOP_WORDS(name),
   isMain(name) ? "" : chat ? `Your name here is ${name}: asks to @${key(name)} are yours.` : `Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`].filter(Boolean).join(" ")
-const LOOP_WORDS = (name: string) => `Then loop and never stop: run \`${nextCmd(name)}\` (give that command a timeout of 250 seconds or more), which waits for what they do and shows the note's lines around it (no need to read the note again), then act on it with \`vau companion look|say|comment|suggest|propose|edit|highlight\`, then run next again. Never end your turn.`
-const CHAT_WORDS = "What the user does comes to you as messages (moments, with the note's lines around them: no need to read the note again). Act on them with your vaultite-app tools (say, comment, suggest, propose, edit, look, highlight, draw...), not vau companion commands, then end your turn: what they do next comes as your next message. Never wait or poll for moments."
+const LOOP_WORDS = (name: string) => `Then loop and never stop: run \`${nextCmd(name)}\` (give that command a timeout of 250 seconds or more), which waits for what they do and shows the note's lines around it (no need to read the note again), then act on it with \`vau companion look|say|pass|comment|suggest|propose|edit|highlight\`, then run next again. Never end your turn.`
+const CHAT_WORDS = "What the user does comes to you as messages (moments, with the note's lines around them: no need to read the note again). Act on them with your vaultite-app tools (say, pass, comment, suggest, propose, edit, look, highlight, draw...), not vau companion commands, then end your turn: what they do next comes as your next message. Never wait or poll for moments."
 
 // ---------- a fresh session: one that has handled many moments (or read much context) hands over to a new one
 
@@ -911,7 +1005,7 @@ const chat = () => (plugin.peer("claude-code")?.exports.chat ?? null) as Chat | 
 /** Claude Code's companions run through the SDK; Codex's and OpenCode's in terminals, looping on `next`. */
 const onChat = (agent: string) => agent.split("_")[0] === "claude"
 /** The actions a chat session has as tools: the ops of those names, run as it. */
-const TOOLS = ["say", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "history", "status", "handover"]
+const TOOLS = ["say", "pass", "comment", "suggest", "propose", "edit", "look", "highlight", "draw", "clear", "history", "status", "handover"]
 /** What it runs unasked: its tools, and reading the vault (its actions are tools, not vau companion). */
 const ALLOWED = ["mcp__vaultite-app", ...ALLOW.filter((c) => c !== "vau companion").map((c) => `Bash(${c}:*)`)]
 const AS_TOOL = whoOf("cli", "claude-code")
@@ -963,7 +1057,7 @@ async function startChat(name: string, how: { agent: string; model: string; effo
   hearChats()
   const k = key(name)
   starting(name, { ...at, runs: how.agent, model: how.model || undefined, effort: how.effort || undefined }, after)
-  const waiting = pendingFor(name), given = waiting.some((m) => m.kind !== "open") ? hand(name, waiting) : []
+  const waiting = pendingFor(name), given = waiting.some(wakes) ? hand(name, waiting) : []
   const first = given.length ? `${READY}\n\n${momentsText(given, mode(), focus(), await excerpts(apiCtx, given))}`
     : `${READY} Then end your turn: what the user does comes as your next messages.`
   turning.add(k)
@@ -989,7 +1083,7 @@ async function pump(name: string) {
   if (now && (now.state === "working" || now.state === "waiting" || now.state === "starting")) return void turning.add(k)
   const got = pendingFor(name)
   let text: string
-  if (got.some((m) => m.kind !== "open")) {
+  if (got.some(wakes)) {
     turning.add(k)
     const given = hand(name, got)
     text = momentsText(given, mode(), focus(), await excerpts(apiCtx, given))
@@ -1149,16 +1243,16 @@ plugin.op({
   cli: "companion next",
   summary: "Wait for what the user does next in the app (asks you, writes, opens a note, answers you), as the companion.",
   help: `Answers the moments since you last asked, or waits for one (up to timeout seconds; none by then: an empty list).
-ask: they addressed you. A line starting with @claude becomes their comment thread by the text above it (answer in it,
-companion comment --id), as does @claude in a comment of theirs or Ask companion; @claude mid-line is the whole line,
-sent at a pause, and stays in the note. Always answer. edit: lines
-they changed after a pause (notice and pair modes). point: they dropped your cursor on a line (and a selection):
-look there and answer, as for an ask. open: the note they went to, with the next moment. reply, accept, reject, dismiss: their
-answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
-text around them, numbered: no need to read it again. While you wait your cursor rests; given moments, it shows you
-reading (thinking, for an ask) there until you act, or run this again: the user sees a seen tick. Run it again after
-acting, forever. With several agents (--as), each gets the asks to its @name and answers to its items; edit and open go
-to the companion, or to an agent with --watch.
+ask: they addressed you, a line with your @name (it stays in their note), @claude in a comment of theirs or Ask
+companion (answer in that thread, companion comment --id). Always answer. edit: lines they changed after a pause (pair
+mode): answer what's meant for you, @name or not; writing to themselves, pass. point: they dropped your cursor on a line
+(and a selection): look there and answer, as for an ask. open: the note they went to, with the next moment. reply,
+accept, reject, dismiss: their answer to your comment, suggestion or bubble. move: they moved your words, a bubble into
+the note or what you wrote back into a bubble: a hint for next time. Lines count from 1 with the frontmatter. Asks,
+replies and edits come with the note's text around them, numbered: no need to read it again. While you wait your cursor
+rests; given moments, it shows you reading (thinking, for an ask) there until you act, or run this again: the user sees
+a seen tick (companion pass says why). Run it again after acting, forever. With several agents (--as), each gets the
+asks to its @name and answers to its items; edit and open go to the companion, or to an agent with --watch.
 
   vau companion next --timeout 240`,
   kind: "read",
@@ -1167,7 +1261,7 @@ to the companion, or to an agent with --watch.
     timeout: { type: "integer", minimum: 0, maximum: 240, default: 100, description: "seconds to wait for a moment" },
     after: { type: "integer", minimum: 0, description: "only moments after this one (default: after the last you were given)" },
     as: AS,
-    watch: { type: "boolean", description: "also get edit and open moments (notice, pair), which only the companion gets otherwise" },
+    watch: { type: "boolean", description: "also get edit and open moments (pair mode), which only the companion gets otherwise" },
     terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
   },
   run: async (p, ctx) => {
@@ -1187,8 +1281,8 @@ to the companion, or to an agent with --watch.
     const after = p.after ?? delivered.get(k) ?? Math.max(0, seq - 20)
     const pending = () => pendingFor(name, after)
     let got = pending()
-    // (nothing but opens waiting: the moment to hand over, if it's due)
-    const sess = got.every((m) => m.kind === "open") ? session(name) : null
+    // (nothing but opens (and what rides along) waiting: the moment to hand over, if it's due)
+    const sess = !got.some(wakes) ? session(name) : null
     const handover = () => {
       fresh.delete(k); handing.set(k, Date.now())
       did(name, "asked to hand over")
@@ -1196,7 +1290,7 @@ to the companion, or to an agent with --watch.
     }
     if (sess && (fresh.has(k) || (Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(sess)))) return handover()
     // (opens alone wait for the next moment, which they come with)
-    if (got.every((m) => m.kind === "open") && p.timeout > 0) {
+    if (!got.some(wakes) && p.timeout > 0) {
       waiters.get(k)?.([])
       const woken = await new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => { if (waiters.get(k) === wake) waiters.delete(k); resolve(false) }, p.timeout * 1000)
@@ -1311,6 +1405,9 @@ function uncut(lines: string[], ms: Moment[]) {
   return out
 }
 
+/** A bubble's words, as a moment about it quotes them. */
+const saidText = (id?: string) => { const n = said.find((x) => x.id === id); return n?.text ? `\n  you said: ${JSON.stringify(cut(n.text, 160))}` : "" }
+
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = []) {
   const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}.` : ""}`
@@ -1330,7 +1427,11 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
         for (const l of h.added) out.push(`  + ${l}`)
       }
     } else if (m.kind === "open") out.push(`- open${at}`)
+    else if (m.kind === "reply" && m.bubble) out.push(`- reply to your bubble ${m.item}${at}: ${JSON.stringify(m.text ?? "")}${saidText(m.item)}`)
     else if (m.kind === "reply") out.push(`- reply to ${m.item}${at}${thread}: ${JSON.stringify(m.text ?? "")}`)
+    else if (m.kind === "dismiss" && m.bubble) out.push(`- dismiss your bubble ${m.item}${at}: they closed it, ${JSON.stringify(cut(m.text ?? "", 200))}`)
+    else if (m.kind === "move") out.push(m.into === "note" ? `- move${at}: they put your bubble in the note there (more for the note than a bubble), ${JSON.stringify(cut(m.text ?? "", 200))}`
+      : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
   }
   for (const e of notes) {
@@ -1362,27 +1463,81 @@ plugin.op({
 plugin.op({
   id: "companion.say",
   cli: "companion say",
-  summary: "Say something in a bubble by your cursor (gone after a while): a short answer, a heads-up.",
-  help: `Short, one or two sentences. With a place, your cursor goes there first. What should stay goes in a comment.
+  summary: "Say something in a bubble by your cursor: your voice, for answers in the moment, how something works, quick replies.",
+  help: `As long as it needs, no longer: it stays a while, longer the more it says, and its history is a click on your cursor.
+With a place, your cursor goes there first. With ask, it's a question (shown as one, with a box to answer); ignored, it
+fades, which means "stay quiet". What they'd want in the note tomorrow goes in it (edit); a thought by a line, a comment.
 
   vau companion say "Done: three tasks added below."
   vau companion say "That date is a Sunday." --find "May 3"
+  vau companion say "For you, or a note to yourself?" --ask
   vau companion say "This step needs a way back." --path Drawings/Plan.excalidraw --find login`,
   kind: "read",
-  params: { text: { type: "string", required: true, description: "what to say (Markdown)" }, path: PATH, line: LINE, find: FIND, x: X, y: Y, as: AS },
+  params: { text: { type: "string", required: true, description: "what to say (Markdown)" }, ask: { type: "boolean", description: "it asks them something: a question bubble they can answer in" },
+    path: PATH, line: LINE, find: FIND, x: X, y: Y, as: AS },
   args: ["text"],
-  run: async (p) => {
+  run: async (p, ctx) => {
     const name = who(p)
     did(name, "say")
     const t = p.path || p.line !== undefined || p.find || p.x !== undefined ? target(p) : {}
     setAgent(name, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(name) })
-    const n = putNote({ kind: "say", agent: name, text: str(p.text), ...t }, SAY_MS)
-    const mine = said.filter((x) => key(x.agent) === key(name))
-    said = [...said.filter((x) => !mine.slice(0, -(SAID - 1)).includes(x)), { ...n }]
-    broadcast({ t: "said", said })
+    const n = putNote({ kind: "say", agent: name, text: str(p.text), ...t, ...(p.ask ? { question: true } : {}), writer: requestWriter.getStore() ?? { client: ctx.who.client, agent: ctx.who.agent } }, sayMs(str(p.text)))
+    keepSaid(n)
     return n
   },
   text: () => "Said.",
+})
+
+plugin.op({
+  id: "companion.pass",
+  cli: "companion pass",
+  summary: "Let what you were handed pass, saying why in a few words: the user sees it by your cursor's seen tick.",
+  help: `When you choose not to act on a moment (not for you, they're still writing), rather than ending your turn in silence.
+
+  vau companion pass "not for me"
+  vau companion pass "waiting for you to finish"`,
+  kind: "read",
+  params: { reason: { type: "string", required: true, description: "why, in a few words (lower case, no period)" }, as: AS },
+  args: ["reason"],
+  run: async (p) => {
+    const name = who(p), why = cut(str(p.reason).trim().replace(/[.\s]+$/, ""), 40)
+    did(name, "pass")
+    asking.delete(key(name))
+    setAgent(name, { state: "watching", seen: true, ...(why ? { why } : {}) })
+    return { why }
+  },
+  text: () => "Passed: end your turn.",
+})
+
+plugin.op({
+  id: "companion.place",
+  cli: "companion place",
+  summary: "Put an agent's bubble in the note, as its words: after the paragraph it was said by (the user's call, Put in note).",
+  kind: "write",
+  lock: false,
+  params: { id: { type: "string", required: true, description: "the bubble (a say's id)" } },
+  args: ["id"],
+  run: async (p, ctx) => {
+    if (!byUser(ctx.who)) throw new OpError("only the user moves an agent's words (Put in note on its bubble)", 403)
+    return await place(str(p.id))
+  },
+  text: (r) => `Put in ${r.path} at line ${r.line}.`,
+})
+
+plugin.op({
+  id: "companion.fold",
+  cli: "companion fold",
+  summary: "Show what an agent wrote in a note as its bubble instead (the app takes its lines out of the note): the user's call.",
+  kind: "write",
+  lock: false,
+  params: { as: { type: "string", required: true, description: "the agent that wrote it" }, path: { type: "string", required: true, format: "path", description: "the note" },
+    line: LINE, text: { type: "string", required: true, description: "what it wrote" } },
+  run: async (p, ctx) => {
+    if (!byUser(ctx.who)) throw new OpError("only the user moves an agent's words (Fold into a bubble)", 403)
+    const n = fold(str(p.as), str(p.path), Number(p.line) || 1, str(p.text).slice(0, MAX_TEXT))
+    return { id: n.id }
+  },
+  text: (r) => `Folded into bubble ${r.id}.`,
 })
 
 plugin.op({

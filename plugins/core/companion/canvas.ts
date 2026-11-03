@@ -98,7 +98,7 @@ function watch(c: OpenCanvas) {
     const items = c.items(), changes = changesOf(base, items)
     base = index(items)
     const md = getState().mode
-    if (changes.length && (md === "notice" || md === "pair")) sendMoment({ kind: "edit", changes, ...sceneOf(c) })
+    if (changes.length && md === "pair") sendMoment({ kind: "edit", changes, ...sceneOf(c) })
   }
   const run = () => {
     tick = null

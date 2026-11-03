@@ -12,7 +12,7 @@ export type Act = Place & { id: string; at: string; live?: boolean; error?: stri
   | { k: "suggest"; from: string; to: string; why?: string }
   | { k: "propose"; why?: string; pending?: string; text?: string; from?: string; to?: string }
   | { k: "edit"; text: string; from?: string; proposed?: boolean }
-  | { k: "look" | "highlight" | "draw" | "clear" | "handover"; text?: string }
+  | { k: "look" | "highlight" | "draw" | "clear" | "handover" | "pass"; text?: string }
   /** What it read or looked up: a few at once are one row. */
   | { k: "read"; what: string[] }
   /** A session it started: a terminal (`terminal`: its id), or a task delegated (`task`: its id). */
@@ -66,6 +66,7 @@ function actOf(t: Extract<Entry, { k: "tool" }>): Act | null {
         const proposed = /^Proposed it/.test(t.result ?? "")
         return { ...base, ...p, ...(p.path ? {} : { path: pathIn(t.result) }), k: "edit", text: str(i.text), ...(str(i.find) ? { from: str(i.find) } : {}), ...(proposed ? { proposed, item } : {}) }
       }
+      case "pass": return { ...base, k: "pass", text: str(i.reason) }
       case "look": case "highlight": case "draw": case "clear": case "handover":
         return { ...base, ...p, ...(p.path ? {} : { path: pathIn(t.result) }), k: op, ...(op === "handover" ? { text: str(i.summary) } : op === "clear" && str(i.id) ? { text: str(i.id) } : {}) }
       default: return null
