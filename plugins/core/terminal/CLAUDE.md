@@ -14,7 +14,7 @@
   `oldServers`. termd's code changing without the protocol: the running one keeps its old code until it has no
   terminals, so keep changes to it compatible.
 - One terminal has one size, the last device's; a view used again that doesn't match sends its own.
-- A terminal's state (the list's `state`, the service "inbox:state", the event `terminal.state`, `terminal.wait`) comes
+- A terminal's state (the list's `state`, the service "inbox:state", the event `terminal.state`, `terminal.wait`, for plugins the service "terminal:wait") comes
   from OSC 7501 (`osc7501.ts`) when its program speaks it, else its agent's hooks, else a question its agent declares
   seen on its screen. Its agent's own word that it waits ("terminal:agent-waits": Claude Code's session file) blocks it
   whatever those say: Claude Code has dialogs no hook tells. A blocked report without a kind (Codex's, which never

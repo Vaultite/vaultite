@@ -30,7 +30,7 @@ export function all(): Task[] {
   return tasks
 }
 function save() {
-  pollSoon()
+  watchAll()
   saving ??= setTimeout(() => {
     saving = null
     const since = Date.now() - KEEP_DAYS * 86_400_000
@@ -72,29 +72,41 @@ plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
 })
 
 // An agent in a terminal that tells nothing when its turn ends (Codex before 0.163: no OSC 7501, no hooks) says it in its
-// transcript (agent-turn's `done`): a child at work is read every 3 s (only while one is), its end told as a host would.
+// transcript (agent-turn's `done`): read when its terminal goes quiet (terminal:wait), not on a timer.
 const reading = (t: Task) => t.state === "working" && !!t.child.terminal
-let polling: ReturnType<typeof setInterval> | null = null
-function pollSoon() {
-  if (polling || !all().some(reading)) return
-  polling = setInterval(() => {
-    if (all().some(reading)) void poll().catch((e) => console.error("delegate:", e))
-    else { clearInterval(polling!); polling = null }
-  }, 3000)
-  polling.unref?.()
+type Waited = { met: string | null; waited: number }
+const watching = new Map<string, AbortController>()
+const watchAll = () => { for (const t of all()) if (reading(t)) watch(t) }
+setTimeout(watchAll, 0).unref?.()
+plugin.onUnload(() => { for (const w of watching.values()) w.abort() })
+function watch(t: Task) {
+  if (watching.has(t.id)) return
+  const stop = new AbortController()
+  watching.set(t.id, stop)
+  void (async () => {
+    // (quiet that isn't its turn's end, a long think: looked at less often till it prints again)
+    let quiet = 3, failed = 0
+    while (reading(t) && !stop.signal.aborted) {
+      const wait = plugin.service("terminal:wait") as ((id: string, o: object) => Promise<Waited>) | null
+      const r = wait ? await wait(t.child.terminal!, { for: ["quiet", "exit"], quiet, timeout: 600, signal: stop.signal }).catch(() => null) : null
+      if (stop.signal.aborted || r?.met === "exit") return
+      // (its terminal not there yet, or the terminal plugin starting: its end is terminal.ended's to tell)
+      if (!r) { if (++failed > 60) return; await new Promise((ok) => setTimeout(ok, 5000).unref?.()); continue }
+      failed = 0
+      if (r.met !== "quiet") continue
+      await turnOver(t)
+      quiet = r.waited > quiet + 1 ? 3 : Math.min(quiet * 2, 60)
+    }
+  })().catch((e) => console.error("delegate:", e)).finally(() => { if (watching.get(t.id) === stop) watching.delete(t.id) })
 }
-setTimeout(pollSoon, 0).unref?.()
-plugin.onUnload(() => { if (polling) clearInterval(polling) })
-async function poll() {
-  for (const t of all()) {
-    if (t.state !== "working" || !t.child.terminal) continue
-    const turn = await plugin.ask<{ done?: boolean; at?: number; text?: string; prompt?: string; session?: string } | null>(`agent-turn:${t.child.agent}`, null,
-      t.child.terminal, t.child.session ?? "")
-    if (turn?.session && !t.child.session) { t.child.session = turn.session; save() }
-    if (!turn?.done || (turn.at ?? 0) < t.turn - 1000 || t.state !== "working") continue
-    await plugin.ask("inbox:session", null, { agent: t.child.agent, terminal: t.child.terminal, ...(t.child.session ? { session: t.child.session } : {}), state: "done",
-      text: turn.text ?? "", prompt: turn.prompt ?? "" })
-  }
+/** Whether its transcript says its turn ended: told as a host would. */
+async function turnOver(t: Task) {
+  const turn = await plugin.ask<{ done?: boolean; at?: number; text?: string; prompt?: string; session?: string } | null>(`agent-turn:${t.child.agent}`, null,
+    t.child.terminal, t.child.session ?? "")
+  if (turn?.session && !t.child.session) { t.child.session = turn.session; save() }
+  if (!turn?.done || (turn.at ?? 0) < t.turn - 1000 || t.state !== "working") return
+  await plugin.ask("inbox:session", null, { agent: t.child.agent, terminal: t.child.terminal, ...(t.child.session ? { session: t.child.session } : {}), state: "done",
+    text: turn.text ?? "", prompt: turn.prompt ?? "" })
 }
 
 /** A child's terminal ended before its turn did. */
@@ -140,9 +152,25 @@ async function wake(t: Task) {
   if (!known(p)) return
   const text = `[Vaultite] ${resultText(view(t))}`
   try {
-    if (p.terminal && await plugin.ask<boolean>("terminal:runs", false, p.terminal)) await plugin.runOp("terminal.send", { id: p.terminal, text })
+    if (p.terminal && await plugin.ask<boolean>("terminal:runs", false, p.terminal)) await typeInto(p.terminal, text)
     else if (p.session) await (plugin.service(`agent-reply:${p.agent}`) as ((s: string, text: string) => Promise<boolean>) | null)?.(p.session, text)
   } catch (e) { console.error(`delegate: couldn't tell ${p.terminal || p.session} that ${t.id} ended:`, e) }
+}
+
+type Sent = { submitted?: boolean | null; why?: string }
+/** Types `text` into a parent's terminal as a message it takes: never while it asks the user something (that would answer
+ *  it), and its Enter pressed again when the text stayed in its input (a survey or a dialog took it). */
+async function typeInto(id: string, text: string) {
+  const wait = plugin.service("terminal:wait") as ((id: string, o: object) => Promise<Waited>) | null
+  const blocked = async () => (await plugin.ask<{ state?: string } | null>("terminal:state", null, id))?.state === "blocked"
+  for (let i = 0; i < 3 && wait && await blocked(); i++) await wait(id, { for: ["idle", "working", "done", "error", "exit"], hold: 0, timeout: 3600 }).catch(() => null)
+  if (await blocked()) throw new Error("it still waits on the user")
+  const r = await plugin.runOp("terminal.send", { id, text }) as Sent
+  if (r.submitted !== false) return
+  if (await blocked()) return void console.error(`delegate: ${id} took the result as its answer to what it asked: ${r.why}`)
+  await plugin.runOp("terminal.key", { id, keys: ["Enter"] })
+  const again = wait ? await wait(id, { for: ["working", "blocked"], timeout: 6 }).catch(() => null) : null
+  if (!again?.met) console.error(`delegate: ${id} may not have taken the result (${r.why}): it's in vau delegate status`)
 }
 
 /** Whether a parent hears its children by itself (wake reaches it): its app terminal, or a session its host talks to. */

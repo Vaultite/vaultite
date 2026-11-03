@@ -1373,7 +1373,8 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
     return e ? { code: e.code, signal: e.signal, ...(e.lost ? { lost: true } : {}) } : { code: -1, signal: 0 }
   }
   const stateMet = () => {
-    const now = stateNow(id), at = told.get(id)?.at ?? 0
+    // (nothing saying any more after something did was told as idle: stateChanged)
+    const now = stateNow(id) ?? told.get(id)?.now, at = told.get(id)?.at ?? 0
     if (!now || !want.has(now.state) || at < (lastInput.get(id) ?? 0)) return null
     return (now.state === "idle" || now.state === "done") && Date.now() - at < hold ? null : now.state
   }
@@ -1415,6 +1416,10 @@ async function waitFor(id: string, wants: string[], o: { ms: number; quiet: numb
 }
 /** What hears each terminal's end as it's told (terminal.wait). */
 const exitHeard = new Set<(id: string) => void>()
+/** terminal.wait for this server's plugins (the service "terminal:wait"), `signal` ending it early (met null). */
+plugin.provide("terminal:wait", (id: string, o: { for?: string[]; timeout?: number; quiet?: number; hold?: number; signal?: AbortSignal } = {}) =>
+  waitFor(id, (o.for ?? []).filter((w) => WAITS.has(w)), { ms: Math.min(MAX_WAIT, o.timeout ?? 300) * 1000, quiet: (o.quiet ?? 2) * 1000,
+    abort: o.signal ?? new AbortController().signal, ...(o.hold !== undefined ? { hold: o.hold * 1000 } : {}) }))
 
 async function owner(req: Request) {
   await plugin.ownerOnly(req, "the terminal")

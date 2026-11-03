@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
@@ -7,7 +9,7 @@ import { fakeSdk } from "./claude-chat.ts"
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check } = $
   const { cascade, childrenOf, clampMode, taskOf } = await import("../../../plugins/core/delegate/graph.ts")
-  const { changedFiles, HOME } = await import("../../../core/agents.ts")
+  const { changedFiles, HOME, newTerminalId, PERMISSION_MODES } = await import("../../../core/agents.ts")
   const { modeOf } = await import("../../../plugins/core/codex/plugin.ts")
   const { Conversation } = await import("../../../plugins/core/codex/rollout.ts")
 
@@ -156,5 +158,44 @@ export default async ($: VaultTest) => {
     cc.services.sample = was
     host.close()
     await served.stop()
+  }
+
+  // A child in a terminal that tells nothing (Codex before 0.163): its turn's end is read once its output goes quiet, not
+  // on a timer, and its answer typed into its parent's terminal.
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "delegate-term-")), done = path.join(tmp, "done"), got = path.join(tmp, "got")
+    // (the child prints a while, as Codex's spinner does, then rests; the parent, Claude Code's stand-in, keeps what it's sent)
+    const child = `i=0; while [ $i -lt 8 ]; do printf 'working %s\\n' $i; i=$((i+1)); sleep 0.5; done; touch '${done}'; sleep 600`
+    const parentCmd = `stty -echo; while IFS= read -r l; do printf '%s\\n' "$l" >> '${got}'; done`
+    const svc = (id: string) => app.plugins.find((p) => p.id === id)!.services
+    const cx = svc("codex"), cc = svc("claude-code"), was = { ...cx }, wasCc = { ...cc }
+    let reads = 0, early = 0
+    cx["agent:codex"] = async () => ({ command: child })
+    cx["agent-models:codex"] = async () => ({ models: [], efforts: [], modes: [...PERMISSION_MODES] })
+    cx["agent-turn:codex"] = async () => { reads++; if (!fs.existsSync(done)) early++; return fs.existsSync(done) ? { done: true, at: Date.now(), text: "Two bugs: a and b.", session: "fake-codex-1" } : { done: false } }
+    cc["agent:claude"] = async () => ({ command: parentCmd })
+    const parent = newTerminalId("claude")
+    let kid = ""
+    try {
+      await api("POST", `terminals/${parent}`)
+      const [st, b] = await api("POST", "ops/delegate.start", { agent: "codex", task: "Review the diff", mode: "async", terminal: parent, from: "claude" }, agent)
+      kid = b.terminal
+      // (the parent asks the user something meanwhile: typed then, the answer would answer that)
+      const asks = app.plugins.find((p) => p.id === "terminal")!.services["terminal:agent-waits"] as (id: string, k: string | null) => void
+      asks(parent, "permission")
+      await waitFor(() => fs.existsSync(done), 20000, 100)
+      const [, mid] = await waitFor(async () => { const r = await api("POST", "ops/delegate.status", { id: b.id }, asApp); return r[1].state === "done" && r }, 15000, 200) || [0, {}]
+      await new Promise((r) => setTimeout(r, 1500))
+      const held = mid.state === "done" && !fs.existsSync(got)
+      asks(parent, null)
+      const heard = await waitFor(() => fs.existsSync(got) && /\[Vaultite\] Codex finished "Review the diff"[^]*Two bugs: a and b\./.test(fs.readFileSync(got, "utf8")), 40000, 200)
+      const [, s2] = await api("POST", "ops/delegate.status", { id: b.id }, asApp)
+      check("delegate: a silent terminal child's end is read when it goes quiet (not while it prints), and typed into its parent's terminal once it asks the user nothing",
+        st === 200 && held && !!heard && s2.state === "done" && s2.result === "Two bugs: a and b." && early === 0 && reads >= 1, [st, b, s2, { reads, early }, fs.existsSync(got) && fs.readFileSync(got, "utf8")])
+    } finally {
+      Object.assign(cx, was); Object.assign(cc, wasCc)
+      for (const id of [parent, kid].filter(Boolean)) await api("DELETE", `terminals/${id}`).catch(() => {})
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
   }
 }
