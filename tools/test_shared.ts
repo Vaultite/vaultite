@@ -36,8 +36,10 @@ function vaultAt(dir: string, legacy: boolean) {
 const VA = vaultAt("a", true), VB = vaultAt("b", false)
 
 const up = new Map<number, ChildProcess>()
+const logs: Record<number, string> = {} // (each server's output, shown when a check fails)
 async function start(port: number, vault: string, local: string) {
-  const s = testServer({ env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: path.join(tmp, local) }, stdio: "ignore" })
+  const s = testServer({ env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: path.join(tmp, local) }, stdio: ["ignore", "pipe", "pipe"] })
+  s.stdout!.on("data", (d) => (logs[port] = (logs[port] ?? "") + d)); s.stderr!.on("data", (d) => (logs[port] = (logs[port] ?? "") + d))
   up.set(port, s)
   const ok = await waitFor(async () => (await fetch(`http://127.0.0.1:${port}/api/state`).catch(() => null))?.ok ?? false, 60_000, 200)
   if (!ok) throw new Error(`the server on ${port} didn't start`)
@@ -113,4 +115,6 @@ try {
 } finally {
   await Promise.all([...up.keys()].map(stop))
 }
+const failed = (await import("./test/lib.ts")).results.some((r) => r.status === "FAIL")
+if (failed) for (const [port, log] of Object.entries(logs)) console.log(`\n---- server ${port === String(pa) ? "alpha" : "beta"}'s output, its last lines:\n${log.split("\n").filter((l) => !/" 200 \d+ms$/.test(l)).slice(-40).join("\n")}`)
 process.exit(summary("shared", t0))

@@ -36,11 +36,16 @@ export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vault
     const out = kept().shared([...names])
     if (!out.length) return
     const body = JSON.stringify({ store: kept().id, entries: out })
-    await Promise.all((await peers()).map(async (m) => {
+    const send = async (m: Peer) => {
       try {
-        await fetch(`${m.url}/api/machines/kept`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(5000) })
-      } catch { /* offline: it asks for what it missed */ }
-    }))
+        const r = await fetch(`${m.url}/api/machines/kept`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body, signal: AbortSignal.timeout(5000) })
+        if (r.ok) return true
+        console.warn(`machines: ${m.label} didn't take what's kept here (${r.status} ${(await r.text()).slice(0, 200)})`)
+      } catch { /* offline, or busy */ }
+      return false
+    }
+    // (once more a moment later; after that, it asks for what it missed)
+    await Promise.all((await peers()).map(async (m) => { if (!(await send(m))) setTimeout(() => void send(m), 2000).unref?.() }))
   }
 
   // ---------- asking them ----------
@@ -86,6 +91,7 @@ export function shareKept(plugin: Plugin, machines: () => Promise<Peer[]>, vault
     return { changed: kept().merge(body.entries as Shared[]).length }
   }, { lock: false, sync: false })
 
+  plugin.onSync(() => watch()) // (from the first request on, so what changes is passed on at once)
   const first = setTimeout(() => void pull(), 3000)
   const every = setInterval(() => void pull(), PULL_MS)
   first.unref?.()
