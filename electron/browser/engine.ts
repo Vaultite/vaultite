@@ -42,7 +42,9 @@ export type EnginePage = { id: number; wc: WebContents; profile: string; win: En
   close: () => void
   /** An agent's page in the background: resting (hidden, throttled: it draws nothing) after a while unused, woken (its
    *  next frame drawn, when the promise settles) for whatever needs it. Others are always awake. */
-  rest: () => void; wake: () => Promise<void>; resting: () => boolean }
+  rest: () => void; wake: () => Promise<void>; resting: () => boolean
+  /** Placed again as its tab wants it: whether an agent holds it (`pageHeld`) changed. */
+  refit: () => void }
 type PageSetup = (p: EnginePage) => void
 
 const sessionSetups: SessionSetup[] = []
@@ -239,6 +241,11 @@ const keeps: ((id: number) => boolean)[] = []
 /** `fn` says page `id` mustn't be discarded under memory pressure (an agent's: its tab number and ask would go). */
 export const keepPage = (fn: (id: number) => boolean) => { keeps.push(fn) }
 export const pageKept = (id: number) => keeps.some((fn) => fn(id))
+const holders: ((id: number) => boolean)[] = []
+/** `fn` says an agent holds page `id` now: its tab shows a picture of it, never the page (nothing the user does lands
+ *  mid-act), its size is the agent's, not the tab's, and no site zoom applies. */
+export const holdPage = (fn: (id: number) => boolean) => { holders.push(fn) }
+export const pageHeld = (id: number) => holders.some((fn) => fn(id))
 
 const holds: { fn: () => string | null; appOnly: boolean }[] = []
 /** `fn` says why the browser is busy now (null: it isn't): an automatic update waits till none says so. `appOnly`:

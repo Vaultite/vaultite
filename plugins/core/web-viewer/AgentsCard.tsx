@@ -1,11 +1,12 @@
 // Agents' pages, out of the user's tabs: while agents browse, a card in a corner (as the mini player), the picked page live
 // with the agent's pointer moving in it, Open as tab and Pause. A float (layers.ts): pages under it stay live.
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
+import { useEffect, useLayoutEffect, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Check, ChevronDown, ChevronUp, Ellipsis, Globe, MousePointer2, Pause, Play, X } from "lucide-react"
 import { Button, cell, cn, CORNERS, menuBelow, openView, useCornerDrag, useDesktop, useScopedState, webPages, type Corner } from "@vaultite"
 import { hostOf } from "./address"
-import { onScreen } from "./state"
+import { onScreen, pictured } from "./state"
+import { useFrame, useShown } from "./liveframe"
 import { agentPages, closeAgentPage, doneAsk, openAsTab, pauseAgents, toBackground, whoOf, working, type AgentPage } from "./agentpages"
 
 /** Pages the user closed the card on: it shows again for another page, or an ask. null: none closed. */
@@ -14,7 +15,8 @@ const dismissed = cell<Set<number> | null>(null)
  *  the tab's foot has the user's attention, and Done). */
 const outOfSight = (pages: AgentPage[], seen: Set<number>) => (pages.some((p) => p.asking && seen.has(p.id)) ? [] : pages.filter((p) => !seen.has(p.id)))
 const shows = (pages: AgentPage[], gone: Set<number> | null) => pages.length > 0 && (!gone || pages.some((p) => !gone.has(p.id) || p.asking))
-export const agentsCardShown = () => shows(outOfSight(agentPages.get(), onScreen.get()), dismissed.get())
+const seenNow = (a: Set<number>, b: Set<number>) => (b.size ? new Set([...a, ...b]) : a)
+export const agentsCardShown = () => shows(outOfSight(agentPages.get(), seenNow(onScreen.get(), pictured.get())), dismissed.get())
 export const showAgentsCard = (on: boolean) => dismissed.set(on ? null : new Set(agentPages.get().map((p) => p.id)))
 
 const PURPLE = "var(--purple)"
@@ -24,7 +26,7 @@ const icon = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-ful
 /** The card, on a computer, while some page is at work and it isn't closed. */
 export function AgentsCard() {
   const all = agentPages.use()
-  const seen = onScreen.use()
+  const seen = seenNow(onScreen.use(), pictured.use())
   const pages = outOfSight(all, seen)
   const gone = dismissed.use()
   const desktop = useDesktop()
@@ -151,42 +153,6 @@ function Bar({ page: p, shot, more, open, setOpen }: { page: AgentPage; shot: st
 function Thumb({ src, className }: { src: string | null | undefined; className?: string }) {
   return src ? <img src={src} alt="" className={cn("object-cover object-top", className)} draggable={false} />
     : <span className={cn("grid place-items-center bg-muted", className)}><Globe className="size-4 text-tertiary" strokeWidth={1.5} /></span>
-}
-
-/** Whether this window is on screen: what's live stops while it isn't. */
-function useShown() {
-  const [on, setOn] = useState(!document.hidden)
-  useEffect(() => {
-    const f = () => setOn(!document.hidden)
-    document.addEventListener("visibilitychange", f)
-    return () => document.removeEventListener("visibilitychange", f)
-  }, [])
-  return on
-}
-
-/** Page `id` live: its frames as the desktop app sends them while this window watches it (renewed: a window gone stops
- *  it). */
-function useFrame(id: number) {
-  const [frame, setFrame] = useState<string | null>(null)
-  const shown = useShown()
-  const last = useRef(0)
-  useEffect(() => {
-    if (!shown) return
-    let stop = false
-    const watch = () => void engine("agents:watch", id).then((r) => {
-      const f = (r as { frame?: string } | undefined)?.frame
-      if (!stop && f && !last.current) setFrame(`data:image/jpeg;base64,${f}`)
-    }, () => {})
-    watch()
-    const renew = setInterval(watch, 10_000)
-    const off = webPages?.on((m) => {
-      if (m.type !== "engine:live:frame" || m.tab !== id || typeof m.jpeg !== "string") return
-      last.current = Date.now()
-      setFrame(`data:image/jpeg;base64,${m.jpeg}`)
-    })
-    return () => { stop = true; last.current = 0; clearInterval(renew); off?.(); void engine("agents:unwatch", id).catch(() => {}) }
-  }, [id, shown])
-  return frame
 }
 
 /** Each page's small picture, every 2 s while shown. */

@@ -10,7 +10,9 @@ import { agentPage, openAsTab } from "./agentpages"
 
 type Run = { run: string; by: string; task: string; summary: string; steps: number; start: number; end: number; title: string; url: string }
 type Step = { t: number; tab: number; by: string; url: string; title: string; action: string; ref?: string; name?: string; value?: string
-  fields?: { name?: string; ref: string; value?: string }[]; shot: string | null }
+  fields?: { name?: string; ref: string; value?: string }[]; shot: string | null
+  /** A call that failed: why (electron/browser/agent.ts `failed`). */
+  failed?: string }
 type Live = { tab: number; appTab: string; by: string; task: string; summary: string; url: string; title: string; run: string | null; at: number | null
   step: Partial<Step> | null; paused: boolean; asking: string | null; shot: string | null }
 
@@ -18,6 +20,7 @@ const TIME = { hour: "numeric", minute: "2-digit", second: "2-digit" } as const
 const DAY = { month: "short", day: "numeric" } as const
 const time = (t: number) => dateText(t, TIME)
 const said = (s: Partial<Step>) => {
+  if (s.failed) return `Failed (${s.action}): ${s.failed}`
   if (s.action === "form") return `Filled ${(s.fields ?? []).map((f) => `${f.name || f.ref}: ${f.value ?? ""}`).join(", ")}`
   const what = { open: "Opened", navigate: "Went to", click: "Clicked", dblclick: "Double-clicked", hover: "Pointed at", fill: "Filled", type: "Typed in",
     press: "Pressed", check: "Checked", uncheck: "Unchecked", select: "Picked", scroll: "Scrolled", upload: "Uploaded", evaluate: "Ran", run: "Ran a script",
@@ -160,7 +163,7 @@ function Replay({ run, live, back }: { run: string; live: boolean; back: () => v
           {(steps ?? []).map((x, i) => (
             <li key={`${x.t}-${i}`}>
               <button type="button" onClick={() => setAt(i)} className={cn("flex w-full cursor-pointer flex-col rounded-[6px] px-2 py-1 text-left", i === at ? "bg-foreground/[0.07]" : "hover:bg-foreground/[0.04]")}>
-                <span className="truncate text-[13px]">{said(x)}</span>
+                <span className={cn("truncate text-[13px]", x.failed && "text-ink-(--red)")}>{said(x)}</span>
                 <span className="truncate text-[11px] text-tertiary">{time(x.t)} · {hostOf(x.url)}</span>
               </button>
             </li>

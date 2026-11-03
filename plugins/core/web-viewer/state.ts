@@ -92,6 +92,12 @@ export const passkeyAsks = cell(new Map<number, PasskeyAsk>())
 
 /** The pages shown in a tab now, by id: an agent's there needs no card of its own (AgentsCard.tsx). */
 export const onScreen = cell(new Set<number>())
+/** Agents' pages drawn as a live picture in a tab on screen (AgentWatch.tsx): seen, as a page on screen is. */
+export const pictured = cell(new Set<number>())
+export function setPictured(id: number, on: boolean) {
+  if (pictured.get().has(id) === on) return
+  pictured.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })
+}
 export function setOnScreen(id: number, on: boolean) {
   if (onScreen.get().has(id) === on) return
   onScreen.update((s) => { const next = new Set(s); if (on) next.add(id); else next.delete(id); return next })

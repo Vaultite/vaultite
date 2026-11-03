@@ -10,7 +10,9 @@ export type AgentPage = { id: number; tab: string; url: string; title: string; p
   what: string; at: number | null
   /** The agent opened it (else it's the user's tab). */
   own: boolean
-  paused: boolean; asking: string | null }
+  paused: boolean; asking: string | null
+  /** The agent holds it (its own, not taken over, nothing asked): a tab shows a picture of it. `taken`: the user took it over. */
+  held: boolean; taken: boolean }
 
 export const agentPages = cell<AgentPage[]>([])
 export function setAgentPages(list: AgentPage[]) {
@@ -44,5 +46,7 @@ export async function toBackground(p: AgentPage) {
   if (tab) closeTab(tab, true)
 }
 export const pauseAgents = (id: number, on: boolean) => engine("agents:pause", id, on).catch((e) => notifyError(e, on ? "Couldn't pause it" : "Couldn't resume it"))
+/** The user takes an agent's page over (the agent paused, the page itself theirs, AgentWatch.tsx), or gives it back. */
+export const takeOver = (id: number, on: boolean) => engine("agents:take", id, on).catch((e) => notifyError(e, on ? "Couldn't take it over" : "Couldn't give it back"))
 export const doneAsk = (id: number) => engine("agents:helped", id).catch((e) => notifyError(e, "Couldn't tell the agent"))
 export const closeAgentPage = (id: number) => engine("agents:end", id).catch((e) => notifyError(e, "Couldn't close the page"))

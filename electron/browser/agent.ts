@@ -4,7 +4,7 @@ import { app, session, WebContentsView, type Session, type WebContents } from "e
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
+import { allPages, appWindows, busyWhen, cdp, eachPage, eachSession, engineBusy, handle, holdPage, keepPage, localUrl, mayOpen, onRequest, openInBackground, setAgentActing, tell, type EngineWindow, type EnginePage } from "./engine.ts"
 import { docOf, exposed, filling, heldNear, markRan, scrub, scrubDeep, wasFilled } from "./pagesecrets.ts"
 
 type Access = "none" | "read" | "act"
@@ -17,6 +17,47 @@ const paused = new Set<number>()
 const owners = new Map<number, By>()
 /** Pages an agent asked the user to do something in (sign in, a check), till they say it's done; and who waits on it. */
 const asks = new Map<number, { by: string; reason: string }>()
+/** Agents' pages the user took over (Take over in its tab, or input from the live view): theirs, agents paused there,
+ *  till they give it back (Give back, Resume, its tab closed). */
+const taken = new Set<number>()
+
+// ---------- held: an agent's page is the agent's alone till the user takes it over ----------
+
+/** An agent holds its own page while the user hasn't taken it over nor been asked to do something there: its tab shows
+ *  a picture of it (web.ts never places it), so nothing the user does lands mid-act, and it keeps the agent's size. */
+const held = (id: number) => owners.has(id) && !taken.has(id) && !asks.has(id)
+holdPage(held)
+/** The size an agent's page is laid out at while held, wherever it's shown: the layout it snapshots is the one it acts
+ *  in (a tab's size, a window resizing or a site's zoom would move its elements between a snapshot and a click). */
+const VIEWPORT = { width: 1280, height: 800 }
+const pinned = new WeakMap<WebContents, boolean>()
+/** Page `p` as whether it's held says: its size pinned or let go, placed again, its window told. */
+function hold(p: EnginePage, again = false) {
+  if (p.wc.isDestroyed()) return
+  // (pinned too when taken over in the background, from the live view: no tab of the user's to fit)
+  const on = held(p.id) || (owners.has(p.id) && !p.tab())
+  // (a page never pinned, the user's, is left as it is)
+  if (again || (pinned.get(p.wc) ?? false) !== on) {
+    pinned.set(p.wc, on)
+    // (and its zoom its own, at 100%: Chromium shares a site's zoom among its pages, so the user zooming their own tab of
+    // a doc would lay the agent's copy out anew; let go, it takes the site's zoom again at its next load)
+    p.wc.setZoomMode(on ? "isolated" : "default")
+    if (on) p.wc.setZoomFactor(1)
+    void (on ? cdp(p.wc, "Emulation.setDeviceMetricsOverride", { ...VIEWPORT, deviceScaleFactor: 0, mobile: false })
+      : cdp(p.wc, "Emulation.clearDeviceMetricsOverride")).catch(() => pinned.delete(p.wc))
+  }
+  p.refit()
+  changed(p.win)
+}
+const holdId = (id: number) => { for (const p of allPages()) if (p.id === id) hold(p) }
+// (a renderer that came back, or a load in a new one, gets the size again)
+eachPage((p) => p.wc.on("did-navigate", () => { if (pinned.get(p.wc)) hold(p, true) }))
+/** The user takes page `id` over (agents paused there, the page itself in its tab, at its tab's size), or gives it back. */
+export function setTaken(id: number, on: boolean) {
+  if (!owners.has(id)) return
+  if (on) { taken.add(id); paused.add(id) } else { taken.delete(id); paused.delete(id) }
+  holdId(id)
+}
 const helpWaits = new Map<number, Set<() => void>>()
 
 const accessOf = (p: EnginePage): Access => (!mayOpen(p.profile) ? "none" : access.get(p.profile) ?? "none")
@@ -32,6 +73,7 @@ export function pageFor(tab: unknown, need: "read" | "act", who?: By): EnginePag
       ? "agents may not use this tab: its container doesn't let them (Agents, in the container menu of the page's bar)"
       : "agents may only read this tab: its container lets them read, not act")
   }
+  if (need === "act" && taken.has(p.id)) throw new Error("the user took this page over and is using it: wait till they give it back (it shows as paused in `vau browser tabs` till then)")
   if (need === "act" && paused.has(p.id)) throw new Error("the user paused agents in this tab")
   if (need === "act" && filling.has(p.id)) throw new Error("the app is filling a login in this tab: try again in a moment")
   // (an extension's own page, Focus's blocked page and its ask for time among them, is the user's alone)
@@ -498,20 +540,20 @@ eachPage((p) => {
   used.set(p.id, Date.now())
   actor.set(p.wc, by.name || "Agent")
   doing.set(p.id, { what: `Opening ${hostOf(p.url)}`, at: Date.now(), by })
-  changed(p.win)
+  hold(p)
 })
 
 // ---------- the pages agents are at work in, told to their window as they change (its corner card, tabs) ----------
 
 type Shown = { id: number; tab: string; url: string; title: string; profile: string; by: string; task: string; summary: string; group: string
-  what: string; at: number | null; own: boolean; paused: boolean; asking: string | null }
+  what: string; at: number | null; own: boolean; paused: boolean; asking: string | null; held: boolean; taken: boolean }
 const atWork = (p: EnginePage, now = Date.now()) => owners.has(p.id) || (latest.get(p.id)?.t ?? 0) > now - LIVE_MS
 function pagesOf(win: EngineWindow): Shown[] {
   return allPages().filter((p) => p.win === win && !p.wc.isDestroyed() && atWork(p)).map((p) => {
     const by = owners.get(p.id) ?? latest.get(p.id)?.by ?? {}, d = doing.get(p.id)
     return { id: p.id, tab: p.tab(), url: scrub(p.wc.getURL() || p.url), title: scrub(p.wc.getTitle()), profile: p.profile, by: by.name || "An agent",
       task: by.task ?? "", summary: by.summary ?? "", group: groupOf(by), what: d?.what ?? "", at: d?.at ?? null, own: owners.has(p.id), paused: paused.has(p.id),
-      asking: asks.get(p.id)?.reason ?? null }
+      asking: asks.get(p.id)?.reason ?? null, held: held(p.id), taken: taken.has(p.id) }
   })
 }
 const soon = new Map<EngineWindow, ReturnType<typeof setTimeout>>()
@@ -643,7 +685,7 @@ const listOf = (asking: By) => allPages().filter((p) => !p.wc.isDestroyed() && /
     tab: p.id, url: p.wc.getURL() || p.url, title: p.wc.getTitle(), container: p.profile.startsWith("c-") ? p.profile.slice(2) : null,
     access: accessOf(p), shown: p.visible(), by: owner ? groupOf(owner) : null, mine: !!owner && sameAgent(owner, asking),
     ...(owner?.summary ? { summary: owner.summary } : {}),
-    ...(paused.has(p.id) ? { paused: true } : {}), ...(asks.has(p.id) ? { asking: asks.get(p.id)!.reason } : {}),
+    ...(paused.has(p.id) ? { paused: true } : {}), ...(taken.has(p.id) ? { taken: true } : {}), ...(asks.has(p.id) ? { asking: asks.get(p.id)!.reason } : {}),
   }
 })
 
@@ -756,6 +798,7 @@ handle("agents:access", (_win, map, where) => {
 // The user did what an agent asked (the bar's Done, or the live view's), or the tab closed.
 export function helped(id: number) {
   if (!asks.delete(id)) return
+  holdId(id) // (done: the agent's again)
   for (const p of allPages()) if (p.id === id) { tell(p.win, { type: "engine:agent:help", id, on: false }); changed(p.win) }
   for (const done of helpWaits.get(id) ?? []) done()
   helpWaits.delete(id)
@@ -763,10 +806,12 @@ export function helped(id: number) {
 handle("agents:helped", (_win, id) => helped(Number(id)))
 /** Agents paused in page `id` (the bar's Stop, or the live view's), or let go on. */
 export function setPaused(id: number, on: boolean) {
+  if (!on && taken.has(id)) return setTaken(id, false) // (agents resumed: the page is theirs again)
   if (on) paused.add(id); else paused.delete(id)
   for (const p of allPages()) if (p.id === id) changed(p.win)
 }
 handle("agents:pause", (_win, id, on) => setPaused(Number(id), !!on))
+handle("agents:take", (win, id, on) => { const p = agentPage(win, id); if (!owners.has(p.id)) throw new Error("that page is the user's already"); setTaken(p.id, !!on) })
 /** An agent's page the user picked: into the app's tab `tab` (Open as tab), back to the background (""), or ended. */
 function agentPage(win: EngineWindow, id: unknown) {
   const p = allPages().find((x) => x.id === Number(id) && x.win === win)
@@ -777,7 +822,8 @@ handle("agents:own", (win, id, tab) => {
   const p = agentPage(win, id), to = typeof tab === "string" && /^[\w-]{1,64}$/.test(tab) ? tab : ""
   if (to ? !!p.tab() : !owners.has(p.id)) throw new Error(to ? "that page is a tab already" : "only an agent's own page goes to the background")
   p.own(to)
-  changed(win)
+  // (back in the background, out of the user's hands: the agent's again)
+  if (!to && taken.has(p.id)) setTaken(p.id, false); else hold(p)
 })
 handle("agents:end", (win, id) => {
   const p = agentPage(win, id)
@@ -842,8 +888,25 @@ busyWhen(() => inFlight ? "an agent's call is under way"
 /** An agent call, counted while it runs. What it answers, or fails with, never has a secret the app filled. */
 export const serve = (name: `agent:${string}`, fn: Parameters<typeof handle>[1]) => handle(name, async (...a) => {
   inFlight++
-  try { return scrubDeep(await fn(...a)) } catch (e) { throw new Error(scrub((e as Error).message ?? String(e))) } finally { inFlight-- }
+  try { return scrubDeep(await fn(...a)) } catch (e) { const why = scrub((e as Error).message ?? String(e)); failed(name, a, why); throw new Error(why) } finally { inFlight-- }
 })
+/** A call on a page that failed, kept with the agent's steps (a replay shows where it went wrong, and why). */
+function failed(name: string, a: unknown[], why: string) {
+  const p = allPages().find((x) => x.id === Number(a[1]))
+  if (!p || p.wc.isDestroyed()) return
+  const last = a[a.length - 1]
+  const asked = last && typeof last === "object" && !Array.isArray(last) && ("name" in last || "session" in last) ? byOf(last) : {}
+  const by = { ...(owners.get(p.id) ?? {}), ...asked }
+  // (in the run the page's steps are in, else the asking agent's; nobody named, none)
+  const run = latest.get(p.id)?.run ?? (by.name || by.session ? runOf(by) : "")
+  if (!run) return
+  try {
+    const dir = path.join(RUNS(), run)
+    fs.mkdirSync(dir, { recursive: true })
+    fs.appendFileSync(path.join(dir, "steps.jsonl"), scrub(JSON.stringify({ t: Date.now(), tab: p.id, by: by.name ?? "", ...(by.task ? { task: by.task } : {}),
+      url: p.wc.getURL(), title: p.wc.getTitle(), action: name.slice("agent:".length), failed: why.slice(0, 500) })) + "\n")
+  } catch { /* not kept */ }
+}
 
 // ---------- the server's (its agents', checked here whatever the server says) ----------
 
@@ -864,7 +927,7 @@ serve("agent:open", async (win, url, container, by) => {
   used.set(p.id, Date.now())
   actor.set(p.wc, who.name || "Agent")
   doing.set(p.id, { what: `Opening ${hostOf(u)}`, at: Date.now() })
-  changed(win)
+  hold(p)
   const until = Date.now() + 20_000
   while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
   void record(p, who, { action: "open", value: u })
@@ -876,7 +939,9 @@ serve("agent:close", async (_win, tab) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
   if (!owners.has(p.id)) throw new Error("this tab is the user's: agents close only the tabs agents opened")
-  if (p.tab()) tell(p.win, { type: "engine:agent:close", id: p.id, tab: p.tab() }); else p.close()
+  // (its tab closes too; closing only the tab would send the page back to the background)
+  if (p.tab()) tell(p.win, { type: "engine:agent:close", id: p.id, tab: p.tab() })
+  p.close()
   const until = Date.now() + 5000
   while (Date.now() < until && !p.wc.isDestroyed()) await new Promise((r) => setTimeout(r, 100))
   if (!p.wc.isDestroyed()) throw new Error("the tab didn't close: is the vault's window open?")
@@ -938,6 +1003,7 @@ serve("agent:help", (_win, tab, reason, by) => {
   if (!why) throw new Error("say what the user should do (sign in, solve the check)")
   const who = byOf(by)
   asks.set(p.id, { by: who.name || "An agent", reason: why })
+  hold(p) // (the page itself, the user's to use, till they're done)
   // (a page in the background opens as a tab, in the agent's tab group, where the user can do it)
   const mine = owners.get(p.id) ?? who
   tell(p.win, { type: "engine:agent:help", id: p.id, tab: p.tab(), by: who.name || "An agent", reason: why, on: true, url: p.wc.getURL() || p.url,
@@ -962,7 +1028,7 @@ serve("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act", byOf(by)), (a
 eachPage((p) => p.wc.once("destroyed", () => {
   const was = atWork(p)
   helped(p.id)
-  paused.delete(p.id); owners.delete(p.id); latest.delete(p.id); doing.delete(p.id); watched.delete(p.id); used.delete(p.id)
+  paused.delete(p.id); taken.delete(p.id); owners.delete(p.id); latest.delete(p.id); doing.delete(p.id); watched.delete(p.id); used.delete(p.id)
   if (was && appWindows().includes(p.win)) changed(p.win)
 }))
 // Files given to file inputs, a day on.

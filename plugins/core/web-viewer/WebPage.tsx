@@ -23,7 +23,8 @@ import { bookmark, forgetUnheard, hasKeyboard, passkeyAsks, setFocusedPage, setO
 import { FindBar, findOpen, setFindOpen, type Found } from "./FindBar"
 import { siteIcon } from "./icons"
 import { pageBarItem, usePageBar } from "./pagebar"
-import { agentPages, doneAsk, pauseAgents, toBackground, working, WORKING_MS } from "./agentpages"
+import { agentPages, doneAsk, pauseAgents, takeOver, toBackground, working, WORKING_MS } from "./agentpages"
+import { AgentWatch } from "./AgentWatch"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -77,8 +78,11 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // What the effects below read without starting again.
   /** A passkey it asked for: drawn in its place till the phone answers. */
   const passkey = passkeyAsks.use((m) => (id ? m.get(id) : undefined))
-  const live = useRef({ arg, state, setArg, setTabArg, error: false, passkey: false })
-  useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error || !!state.crashed, passkey: !!passkey } })
+  // An agent's own page it holds: a live picture of it here, never the page (AgentWatch.tsx).
+  const agent = agentPages.use((l) => (id ? l.find((p) => p.id === id) : undefined))
+  const held = !!agent?.held
+  const live = useRef({ arg, state, setArg, setTabArg, error: false, passkey: false, held: false })
+  useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error || !!state.crashed, passkey: !!passkey, held } })
   // In its player (a window of its own): the tab says so, and nothing here places the page.
   const away = !!state.player
   // Its find bar (FindBar.tsx), open per tab as in Chrome: `ask` bumped by ⌘F, ⌘G and ⇧⌘G (0: shown again, not asked).
@@ -205,6 +209,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // Keep the page over the box; the window goes over it while anything of the app covers it. What covers it is looked at
   // again only when something that may change it did (`matters`, `moved`): the hit tests are costly, the floats aren't.
   const kick = useRef<() => void>(undefined)
+  // (held or let go: placed again, the page itself in or out)
+  useEffect(() => { kick.current?.() }, [held])
   useEffect(() => {
     const el = box.current
     if (!id || !el || away) return
@@ -228,7 +234,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const step = async () => {
       if (still) return
       const r = pageArea(el.getBoundingClientRect())
-      const show = !live.current.error && !live.current.passkey && r.width >= 2 && r.height >= 2
+      const show = !live.current.error && !live.current.passkey && !live.current.held && r.width >= 2 && r.height >= 2
       // (where it was, and nothing changed since: nor did what covers it)
       if (!dirty && show && at && sameRect(at, r)) return
       if (dirty === "hits" || !sameRect(at, r)) hits = show ? hitCover(el, r) : null
@@ -482,6 +488,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab ? "back" : "here")} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
         {passkey && <Passkey ask={passkey} />}
+        {held && agent && <AgentWatch page={agent} shown={!tabHidden} />}
         {blank ? null : state.crashed ? <Crashed url={state.url || arg} onReload={() => void web.go(id, "reload")} />
           : state.error && state.unsafe ? <Unsafe error={state.error} url={state.url || arg} onBack={() => (state.back ? void web.go(id, "back") : setTabArg(argOf("", container)))}
             onGo={() => void web.go(id, "allow-cert")} />
@@ -507,11 +514,20 @@ function AgentChip({ id }: { id: number }) {
   }, [busy, page?.at])
   if (!page) return null
   const menu = (e: React.MouseEvent) => menuBelow(e, [
-    { label: page.paused ? "Resume agents in this tab" : "Pause agents in this tab", icon: page.paused ? Play : Pause, run: () => void pauseAgents(id, !page.paused) },
+    ...(page.taken ? [{ label: `Give back to ${page.by}`, icon: Play, run: () => void takeOver(id, false) }]
+      : page.held ? [{ label: "Take over", icon: MousePointer2, run: () => void takeOver(id, true) }] : []),
+    ...(page.taken ? [] : [{ label: page.paused ? "Resume agents in this tab" : "Pause agents in this tab", icon: page.paused ? Play : Pause, run: () => void pauseAgents(id, !page.paused) }]),
     ...(page.own && page.tab ? [{ label: "Move to background", icon: MousePointer2, run: () => void toBackground(page) }] : []),
     { label: "Show agents in the browser", icon: AppWindow, sep: true, run: () => openView("agent-runs", { newTab: true }) },
   ])
   const label = page.paused ? "Paused" : busy ? page.what : page.by
+  // (taken over: handing it back is one click, in sight)
+  if (page.taken) return (
+    <Button size="small" look="secondary" onClick={() => void takeOver(id, false)} data-web-agent="taken" data-web-agent-give
+      data-tip={`You took this page over: ${page.by} is paused till you give it back`} className="ml-0.5 shrink-0">
+      <Play className="size-3.5" strokeWidth={2.25} /><span>Give back<span className="@max-xl/bar:hidden"> to {page.by}</span></span>
+    </Button>
+  )
   return (
     <button type="button" onClick={menu} data-web-agent={page.paused ? "paused" : busy ? "working" : "idle"} aria-haspopup="menu"
       data-tip={page.paused ? `Agents are paused in this tab` : `${page.by}${page.task ? `: ${page.task}` : ""}`}

@@ -127,7 +127,7 @@ check("resumed: it acts again", !(await op("act", { tab: opened.tab, action: "pr
 const runs = () => win.evaluate(() => window.vaultite.web.engine("agents:runs"))
 check("its steps are kept to replay", await until(async () => { const r = await runs(); return r.length === 1 && r[0].steps >= 6 }, 5000), await runs())
 await ui({ action: "command", id: "web:agent-runs" })
-await win.locator("[data-web-replay]").first().click()
+await win.locator("[data-web-replay]").first().dispatchEvent("click")
 check("the replay shows its steps, with pictures", await until(async () => Number(await win.locator("[data-web-replay-steps]").getAttribute("data-web-replay-steps").catch(() => 0)) >= 6
   && (await win.locator("[data-web-replay-steps] img").count()) === 1, 10000), null)
 
@@ -184,11 +184,11 @@ check("the cockpit's live list: the tab, its summary, last step and picture", l3
 check("… past runs say their task and summary", (await runs()).some((r) => r.task === "cockpit" && r.summary === "Checking the made-up menu"), await runs())
 await ui({ action: "command", id: "web:agent-runs" })
 // (still at the run replayed above: back to the list)
-await win.locator("[data-web-replay-steps] button", { hasText: "Runs" }).click()
+await win.locator("[data-web-replay-steps] button", { hasText: "Runs" }).dispatchEvent("click")
 check("… the view shows it live", await until(async () => (await win.locator(`[data-web-live="${t3}"] img`).count()) === 1, 5000), null)
-await win.locator(`[data-web-live="${t3}"] [data-web-live-pause]`).click()
+await win.locator(`[data-web-live="${t3}"] [data-web-live-pause]`).dispatchEvent("click")
 check("… Pause there pauses agents in it", await until(async () => /paused/.test(String((await op("act", { tab: t3, action: "press", key: "Tab" })).error)), 5000), null)
-await win.locator(`[data-web-live="${t3}"] [data-web-live-pause="resume"]`).click()
+await win.locator(`[data-web-live="${t3}"] [data-web-live-pause="resume"]`).dispatchEvent("click")
 await win.locator("[data-web-replays] input[type=search]").fill("made-up menu")
 check("… runs searched by summary", await until(async () => (await win.locator("[data-web-replay]").count()) === 1, 5000), await win.locator("[data-web-replay]").count())
 await op("close", { tab: t3 })

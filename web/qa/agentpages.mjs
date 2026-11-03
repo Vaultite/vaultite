@@ -94,21 +94,22 @@ await op("act", { tab: T, action: "click", ref: /button "Track order" \[ref=(e\d
 check("… and its live picture moves on", await until(async () => (await live.getAttribute("src")) !== before, 5000))
 
 // ---------- open as tab, and back ----------
-await card.locator("[data-agent-open]").click()
-check("Open as tab: a tab shows the page", await until(async () => (await win.locator(`[data-web-page="${T}"]`).count()) === 1, 8000), await pageTabs())
-check("… the same page, not loaded again", (await tabOf(T))?.title === "clicks=1" && (await tabOf(T))?.shown === true, await tabOf(T))
+await card.locator("[data-agent-open]").dispatchEvent("click") // (the playground's own toast stays over the corner)
+check("Open as tab: a tab for it", await until(async () => (await win.locator(`[data-web-page="${T}"]`).count()) === 1, 8000), await pageTabs())
+check("… showing it live, as a picture, while the agent holds it (agentwatch.mjs)", await until(() => win.locator(`[data-web-page="${T}"] [data-web-agent-watch] img`).count(), 8000))
+check("… the same page, not loaded again, nor placed in the tab", (await tabOf(T))?.title === "clicks=1" && (await tabOf(T))?.shown === false, await tabOf(T))
 await op("act", { tab: T, action: "hover", ref: /button "Track order" \[ref=(e\d+)\]/.exec((await op("snapshot", { tab: T }))?.snapshot ?? "")?.[1] })
 check("… its bar says an agent's at work", await until(() => win.locator(`[data-web-page="${T}"] [data-web-agent]`).isVisible(), 5000))
 check("… and the corner card goes, the page being on screen", await until(async () => (await card.count()) === 0, 5000))
 await shot("2-as-tab")
-await win.locator(`[data-web-page="${T}"] [data-web-agent]`).click()
+await win.locator(`[data-web-page="${T}"] [data-web-agent]`).dispatchEvent("click")
 await win.getByRole("menuitem", { name: "Move to background" }).click()
 check("Move to background: its tab closes", await until(async () => (await pageTabs()) === 0, 5000), await pageTabs())
 check("… the page goes on", (await tabOf(T))?.title === "clicks=1" && (await tabOf(T))?.shown === false, await tabOf(T))
 check("… back in the corner card", await until(() => card.isVisible(), 5000))
 
 // ---------- closed, then an ask ----------
-await card.locator("[aria-label=Close]").click()
+await card.locator("[aria-label=Close]").dispatchEvent("click")
 check("the card closes", await until(async () => (await card.count()) === 0, 5000))
 
 // ---------- unused and unwatched a minute, it rests (hidden, throttled), till an agent needs it ----------
@@ -130,7 +131,7 @@ check("… Done ends the agent's wait", !(await waiting).error, await waiting)
 check("… and the card goes", await until(async () => (await ask.count()) === 0, 5000))
 
 // ---------- the window reloading ----------
-await win.locator(`[data-web-page="${T}"] [data-web-agent]`).click()
+await win.locator(`[data-web-page="${T}"] [data-web-agent]`).dispatchEvent("click")
 await win.getByRole("menuitem", { name: "Move to background" }).click()
 await until(async () => (await pageTabs()) === 0, 5000)
 await win.reload()

@@ -78,8 +78,8 @@ async function run(label, viewport, mobile, base = B) {
   const at = (x, y) => [box.x + box.width * x, box.y + box.height * y]
   const clicks = (t) => Number(/clicks=(\d+)/.exec(t)?.[1])
   const before = (await tab()).title
-  // (the page's button: left 20, top 80, 200x60 of its viewport)
-  const [bx, by] = at(0.23, 0.155)
+  // (the page's button: left 20, top 80, 200x60 of its viewport, an agent's 1280x800)
+  const [bx, by] = at(0.09, 0.14)
   if (mobile) await page.touchscreen.tap(bx, by); else await page.mouse.click(bx, by)
   check(`${label}: a ${mobile ? "tap" : "click"} on the picture clicks the page`, await until(async () => clicks((await tab()).title) === clicks(before) + 1, 5000), [before, (await tab()).title])
   if (!mobile) {

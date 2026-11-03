@@ -111,8 +111,14 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   --helped` waits for Done. While agents browse, a card in the window's corner (dragged to any
   corner, as the mini player) has their pages out of sight, the picked one live with the agent's pointer moving in it
   (its name beside it, a faint frame round the page): Open as tab, Pause, Close page; it closes till another page or an
-  ask. In a tab, an agent at work shows in the bar (what it's doing; its menu pauses it, or moves its own page back to
-  the background) and as its pointer on the tab. A page an agent left a minute rests (draws nothing) till it's back.
+  ask. An agent's own page is laid out at 1280x800 and at 100% zoom wherever it's shown, so watching never moves it under
+  the agent: opened as a tab, the tab shows it live as a picture, as a screen share, with Take over; nothing the user
+  does there reaches the page. Take over gives them the page itself (the agent paused: its acts fail saying so, and
+  `vau browser tabs` says `taken`), and Give back, in the bar, returns it; input from the live view takes it over too.
+  Closing its tab sends it back to the background, where the agent goes on; an ask shows the page itself till Done.
+  In a tab, an agent at work shows in the bar (what it's doing; its menu takes over, pauses it, or moves its own page
+  back to the background) and as its pointer on the tab. A page an agent left a minute rests (draws nothing) till it's
+  back. Tab numbers are never reused, a restart included. A failed agent call is kept with the run's steps.
   "Show agents in the browser": the tabs agents are at work in now, each a live picture with
   Show tab and Pause, then past runs searched by agent, task or summary; each agent's steps are kept on the Mac for 14
   days, with pictures, to replay (never what's typed into a password field).

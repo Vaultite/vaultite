@@ -4,7 +4,7 @@ import { app, BaseWindow, type BrowserWindow, clipboard, dialog, type Input, ipc
 import { strings } from "../core/values.ts"
 import { localUrl } from "../core/web.ts"
 import { AppWindow } from "./appwindow.ts"
-import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, openedByAgent, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
+import { allPages, cdp, engineCall, engineLoaded, engineOpens, handle, mayOpen, openedByAgent, pageHeld, pageKept, pageMade, partitionOf, sessionMade, sessionReady, setEngineHost, setOpener } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { lastVisits } from "./browser/history.ts"
 import { newKeys, open as openSealed, seal } from "./browser/sealed.ts"
@@ -83,7 +83,17 @@ const OWN_KEYS: Record<string, string> = { "mod+r": "reload", "mod+shift+r": "ha
 const pages = new Map<number, Page>()
 /** Each window's app shortcuts with ⌘, ⌃ or ⌥ (web:keys). */
 const keysOf = new WeakMap<AppWindow, Set<string>>()
-let next = 1
+/** Pages' numbers, never one an earlier run of the app gave (userData web-next-id): an agent holding a number from
+ *  before a restart hears "no tab", never someone else's page. */
+let next = 0
+function nextId() {
+  const file = path.join(app.getPath("userData"), "web-next-id")
+  if (!next) { try { next = Number(fs.readFileSync(file, "utf8")) || 1 } catch { next = 1 } }
+  const id = next
+  next = next >= 999_999 ? 1 : next + 1
+  try { fs.writeFileSync(file, String(next)) } catch { /* this run's only */ }
+  return id
+}
 const sessions = new Map<string, Session>()
 
 const web = (u: string) => /^https?:\/\//i.test(u)
@@ -392,7 +402,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
-  const p: Page = { id: next++, win, view, profile, tab, agent, drawn: agent, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(),
+  const p: Page = { id: nextId(), win, view, profile, tab, agent, drawn: agent, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(),
     blankBehind: !!taken, fresh: true, typed: new Map() }
   pages.set(p.id, p)
   if (agent) park(p)
@@ -407,7 +417,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   // (its window as it is now: a tab moved to another window takes its page along, `moveTo`)
   pageMade({ id: p.id, wc, profile, get win() { return p.win }, url, opener, hide: () => place(p, null), visible: () => shownNow(p), tab: () => p.tab,
     player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) }, own: (to) => own(p, tabOf(to)), close: () => end(p),
-    rest: () => rest(p), wake: () => wake(p), resting: () => !!p.resting })
+    rest: () => rest(p), wake: () => wake(p), resting: () => !!p.resting, refit: () => fit(p) })
 
   // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.
   const refuse = (e: { preventDefault: () => void }, to: string) => {
@@ -471,7 +481,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string, { agent
   })
   wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument) { p.cert = undefined; if (shows(d.url)) p.target = d.url } })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.typed.clear(); noteVisit(profile, to); if (!p.agent) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
+  wc.on("did-navigate", (_e, to, code) => { p.status = code; p.sound = playback(); p.typed.clear(); noteVisit(profile, to); if (!p.agent && !pageHeld(p.id)) zoomTo(p, zoomOf(hostOfUrl(to))); changed(); keepPast(p) })
   wc.on("found-in-page", (_e, r) => tell(p.win, { type: "found", id: p.id, request: r.requestId, active: r.activeMatchOrdinal, matches: r.matches, final: r.finalUpdate }))
   // (loaded and still not told it painted, a page with no paint timing (an extension's): white a moment later)
   wc.on("did-finish-load", () => {
@@ -792,7 +802,10 @@ function fit(p: Page) {
     p.view.setVisible(true)
     return
   }
-  const rect = p.agent ? null : p.want
+  // (one an agent holds stays where it draws for the agent, its tab showing a picture of it: browser/agent.ts)
+  const held = pageHeld(p.id)
+  if (held) p.drawn = true
+  const rect = p.agent || held ? null : p.want
   if (!rect) {
     if (p.drawn) return park(p)
     if (!p.view.getVisible()) return
@@ -872,7 +885,7 @@ function zoomSite(p: Page, step: -1 | 0 | 1) {
   const k = zoomsKept()
   if (Math.abs(to - 1) < 0.001) delete k[host]; else k[host] = to
   try { writeAtomic(zoomFile(), JSON.stringify(k)) } catch { /* this session's only */ }
-  for (const x of pages.values()) if (!x.agent && hostOfUrl(x.view.webContents.getURL()) === host) { zoomTo(x, to); sendState(x) }
+  for (const x of pages.values()) if (!x.agent && !pageHeld(x.id) && hostOfUrl(x.view.webContents.getURL()) === host) { zoomTo(x, to); sendState(x) }
 }
 
 // ---------- players: a page in a window of its own, to watch or share (a call's window picker finds it by its title) ----------
@@ -1173,7 +1186,13 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
   "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen !== false); fromPlayer(p, true) },
   // (`moved`: its tab went on in another of this vault's windows, which takes its page as it shows it, `adopt`)
   "web:close": (win, tab, moved) => {
-    if (moved !== true) { for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p); return }
+    if (moved !== true) {
+      // (an agent's own page outlives its tab: back to the background, the agent's still, before the tab's pages end;
+      // the call runs at once, its feature loaded, and leaves a page that isn't an agent's in its tab)
+      for (const p of pages.values()) if (p.win === win && p.tab && p.tab === tabOf(tab) && pageKept(p.id)) void engineCall(win, "agents:own", [p.id, ""]).catch(() => {})
+      for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p)
+      return
+    }
     tabMoved(pages.values(), win, tabOf(tab), Date.now())
     setTimeout(() => { for (const p of unmoved(pages.values(), Date.now())) end(p) }, MOVE_MS + 100).unref()
   },

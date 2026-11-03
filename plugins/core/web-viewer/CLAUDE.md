@@ -28,6 +28,9 @@
 - An agent's page opens with no tab (web.ts `make(..., agent)`), parked: shown off the window, unthrottled, so it draws
   on (live pictures, screenshots); a hidden view stops drawing at its next cross-site load. Unused a minute it rests
   hidden (agent.ts), and every agent call or watch wakes it (EnginePage `wake`). Open as tab hands it to a tab (`own`).
+- While an agent holds its page (agent.ts `held`: its own, not taken over, nothing asked) its size is pinned over CDP
+  (1280x800) with its zoom isolated, web.ts `fit` never places it (`pageHeld`), and its tab draws AgentWatch.tsx's
+  picture; `hold` re-applies all that whenever held changes. Closing its tab sends it to the background (`web:close`).
 - Agents from outside this machine (`remote` in what an op hands the engine: ctx.refusal says so) never reach it or its
   network: agent.ts refuses opening, sending or using a page at a local address, and cancels a page's loads there
   (redirects, frames, DNS answers) while such an agent drives it. Its own agents may: QA's made-up sites, a dev server.
