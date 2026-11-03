@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
-  edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isDesktop, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
+  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
   openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings, showInTree,
   INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
   useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
@@ -71,10 +71,8 @@ export function pinChecklist(file: string | undefined): MenuItem[] {
   })
 }
 
-/** The panel's menu's Show as ▸ List, Tiles: the setting where it shows. Only on a computer (a phone's drawer keeps
- *  the list). */
+/** The panel's menu's Show as ▸ List, Tiles: the setting where it shows (the sidebar and a phone's drawer alike). */
 export function showAsMenu(): MenuItem[] {
-  if (!isDesktop()) return []
   const show = settings.get().show ?? "list"
   // (the default again: the key goes)
   const set = (v: "list" | "tiles") => void settings.set({ show: v === "list" ? null : v }).catch((e) => notifyError(e, "Couldn't change it"))
@@ -82,6 +80,12 @@ export function showAsMenu(): MenuItem[] {
     { label: "List", icon: List, checked: show === "list", run: () => set("list") },
     { label: "Tiles", icon: LayoutGrid, checked: show === "tiles", run: () => set("tiles") },
   ] }]
+}
+
+/** A menu under its row's name, when nothing else shows it (a finger has no tooltip: a held tile says what it is). */
+const named = (name: string | null, menu: () => MenuItem[]) => (): MenuItem[] => {
+  const items = menu()
+  return name ? [{ label: name, caption: true, run: () => {} }, ...items.map((it, i) => (i ? it : { ...it, sep: true }))] : items
 }
 
 /** The heading's +: pin the file on screen, when it can be and isn't yet. */
@@ -93,16 +97,19 @@ export function PinCurrent({ file }: { file: string }) {
   )
 }
 
-export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout }: SidebarCtx & {
+export function PinnedPages({ store, open, file, tab, panel, pane, flyout, tiles: asTiles }: SidebarCtx & {
   /** Open pages in that pane (the Pinned tab opens them beside itself). */
-  pane?: string }) {
+  pane?: string
+  /** Tiles whatever the setting (a phone's new tab). */
+  tiles?: boolean }) {
   useEnabled() // drawn again when a plugin is turned on or off (its pages show or hide)
   useWorkspaceVersion() // and when the workspace, or its pins, change
   useViewsVersion() // and when a pinned view's state does (a conversation running, waiting for an answer)
   const desk = currentWorkspace()
   const pages = shownEntries(store)
-  // Tiles only in the open sidebar: the rail, a phone's drawer and the Pinned tab keep the list.
-  const tiles = settings.use().show === "tiles" && open && !!panel && !phone && !flyout
+  // Tiles in the open sidebar and a phone's drawer: the rail, a flyout and the Pinned tab keep the list.
+  const shownAs = settings.use().show
+  const tiles = !!asTiles || (shownAs === "tiles" && open && !!panel && !flyout)
   const list = useRef<HTMLElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const item = useDrag((d) => d?.item ?? null)
@@ -208,13 +215,13 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
         onPointerEnter={() => file && openingSoon(file)} onPointerLeave={() => openingSoon(null)}
         // Right-clicked (or its …) on a page: opening it, a file's menu as anywhere else (its own Unpin left out), then
         // Unpin last. The panel's own menu is its heading's: Pinned pages ▸, Show as ▸, Panels ▸, Hide.
-        onContextMenu={menuFor(rowMenu(SELECT, id, () => [
+        onContextMenu={menuFor(named(tiles && coarse ? (folder ? id : entry.label) : null, rowMenu(SELECT, id, () => [
           ...(folder ? folderMenu(id, { skip: "pages" }) : [openItem(() => openEntry(entry, { newTab: true, pane }), () => openInSplit(to!, "right"))]),
           ...(entry.kind === "file" ? fileMenu(id).filter((it) => it.label !== "Unpin").map((it, i) => (i ? it : { ...it, sep: true })) : []),
           // (what a drag does, from the keyboard too)
           ...(pages.length > 1 ? moveItems(id) : []),
           { label: "Unpin", icon: PinOff, sep: !(pages.length > 1), run: () => pinNoted(id, false) },
-        ]))}
+        ])))}
         className={cn(item?.from === "pin" && (item.path === id || (picked && item.paths)) && "opacity-50")}>
         {tiles ? <SidebarTile data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} {...selectedAttr(picked)} href={href} icon={icon}
           tint={view?.tint ?? shown?.tint} iconClassName={view?.iconClassName} badge={view?.badge} label={folder ? id : entry.label} active={active} onClick={click} />

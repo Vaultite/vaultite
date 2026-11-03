@@ -82,27 +82,10 @@ function PinLabels({ store }: { store: Store }) {
   return null
 }
 
-/** A phone's new tab: pinned pages first, as tiles, in page units (drawn a size up). Spread evenly, first icon under
- *  the heading's text: each icon gets (W - 2·inset - n·icon) / (2n - 2) a side, inset 1.5 (SidebarRow's). */
+/** A phone's new tab: pinned pages first, as the sidebar's tiles (icons, each named when held), drawn a size up. */
 function Tiles({ store }: { store: Store }) {
-  const pages = shownPinned(store)
-  if (!pages.length) return null
-  return (
-    <div data-new-tab-pages className="grid grid-cols-4 gap-y-2 py-1 mx-[calc(var(--spacing)*1.5_-_(100%_-_var(--spacing)*39)/6)]
-      min-[600px]:grid-cols-6 min-[600px]:mx-[calc(var(--spacing)*1.5_-_(100%_-_var(--spacing)*57)/10)]">
-      {pages.map(({ key }) => {
-        const { icon: Icon, tint } = iconAt(key)
-        return (
-          <a key={key} href={`#file/${encodeURIComponent(key)}`} className="flex min-w-0 flex-col items-center gap-1 active:opacity-60">
-            <span className="grid size-9 place-items-center rounded-[11px] bg-card shadow-sm ring-[0.5px] ring-border">
-              <Icon className="size-[20px]" strokeWidth={1.9} style={{ color: tint ?? "var(--primary)" }} />
-            </span>
-            <span className="line-clamp-2 w-[calc(var(--spacing)*12)] max-w-full text-center text-[10px] leading-[13px] break-words">{pinName(key)}</span>
-          </a>
-        )
-      })}
-    </div>
-  )
+  if (!shownPinned(store).length) return null
+  return <div data-new-tab-pages><PinnedPages store={store} open tiles file="" tab="" /></div>
 }
 
 export default definePlugin({

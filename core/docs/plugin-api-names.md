@@ -124,6 +124,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with, `account` its organization's id (older builds don't say).
 - `CloudState`: `signedIn`: a profile named is signed in to claude.ai (from its cookies: nothing asked); the rest once read.
 - `cn`
+- `coarse`: A finger is the pointer (phones, tablets): no hover, so what shows on hover is swiped or held for instead.
 - `Color`
 - `COLOR_NAMES`
 - `colorHighlight(color)`: Colour the highlight each selection is in (null: the default, no emoji); elsewhere, highlight the selection (or the word at the cursor) in it.

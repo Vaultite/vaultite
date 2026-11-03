@@ -1,17 +1,25 @@
-// Phones: the top bar: the drawer button, the title (once the page's own has scrolled away), the page's own buttons
-// (#phone-actions), the right sidebar's, and the tab's … menu.
+// Phones: the top bar: the sidebars' buttons (with `sidebarButtons`, or where the edges are the browser's), the title
+// (once the page's own has scrolled away), the page's own buttons (#phone-actions) and the tab's … menu.
 import { Ellipsis, PanelLeft, PanelRight } from "lucide-react"
 import type { Tab } from "../../../core/layout.ts"
 import { menuBelow } from "@/components/ContextMenu"
 import { openDrawer, useHasDrawer } from "@/components/PhoneDrawer"
 import { phoneTabMenu } from "@/components/Tabs"
 import { titleInSight } from "@/components/FileTitle"
+import { usePrefs } from "@/core/prefs"
+import { phoneApp } from "@/core/phoneapp"
 import { cn } from "@/lib/utils"
+
+/** Whether the screen's edges are the drawers' (the iPhone app, a Home Screen web app on an iPhone or iPad), not the
+ *  browser's or the system's. */
+const edgesOurs = typeof navigator !== "undefined" && (!!phoneApp
+  || (/iPhone|iPad|iPod/.test(navigator.userAgent) && (matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true)))
 
 const button = "grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50"
 
 export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
-  const left = useHasDrawer("left"), right = useHasDrawer("right")
+  const buttons = usePrefs().sidebarButtons || !edgesOurs
+  const left = useHasDrawer("left") && buttons, right = useHasDrawer("right") && buttons
   // iOS large titles: the name shows here once the page's own title (FileTitle.tsx) has scrolled away, or if it has none.
   const inSight = titleInSight.use()
   return (

@@ -134,13 +134,13 @@
 :root[data-animation="off"] { --motion-fast: 0ms; --motion: 0ms; --motion-spring: 0ms; }
 /* A page of the sidebar's lists (SidebarRow, SidebarHeading, the panels: 13px text, h-7 rows), drawn a size up as one,
    so every section has the same text, rows and inset: a blank tab (NewTab), the Recent files and Terminals tabs.
-   15px on computers; on phones 17px, rows 44px (its own spacing unit). `.size-up-bleed`, on what holds it (zoom would
+   15px on computers; on phones 16px, rows 40px (its own spacing unit): a notch under a note's 17px, as a sidebar is. `.size-up-bleed`, on what holds it (zoom would
    scale its own margin), pulls it out by its rows' inset, so their text lines up with the page's. */
 [data-size-up] { zoom: 1.1538; }
 .size-up-bleed { margin-inline: calc(var(--spacing) * -1.5 * 1.1538); }
 @media (max-width: 767px) {
-  [data-size-up] { zoom: 1.3077; --spacing: 0.3rem; }
-  .size-up-bleed { margin-inline: calc(0.3rem * -1.5 * 1.3077); }
+  [data-size-up] { zoom: 1.2308; --spacing: 0.29rem; }
+  .size-up-bleed { margin-inline: calc(0.29rem * -1.5 * 1.2308); }
 }
 
 

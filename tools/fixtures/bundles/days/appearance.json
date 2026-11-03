@@ -12,7 +12,7 @@
   "fileIcons": true,
   "tabBar": true,
   "paneTitles": false, "dimPanes": false, "paneCards": false,
-  "rails": true, "peekShade": false, "fileBarFade": "off", "translucent": false, "translucentPages": false, "translucency": 50, "pageTranslucency": 50,
+  "rails": true, "peekShade": false, "sidebarButtons": false, "fileBarFade": "off", "translucent": false, "translucentPages": false, "translucency": 50, "pageTranslucency": 50,
   "lineNumbers": false,
   "statusBar": null,
   "statusBarMore": [],

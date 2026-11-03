@@ -24,7 +24,7 @@ files when they're moved or deleted through the app or the API.
   new one. A view's name is `labels` in pages.json (`{"<entry>": "<name>"}`), its title when pinned (a page's is
   updated while it's open), kept since an ended session's tab no longer knows it: `POST /api/pins/label {"path",
   "label"}`, or `vau pin <entry> --label <name>`. One whose plugin is off doesn't show until it's on again.
-- The phone has the same list in its drawer, and a new tab shows the pinned pages as tiles.
-- The open sidebar shows the list as rows of names, or as tiles (a grid of icons): `show` in
+- The phone has the same list in its drawer, and a new tab shows the pinned pages as tiles (the sidebar's: icons, a held one named).
+- The open sidebar and a phone's drawer show the list as rows of names, or as tiles (a grid of icons): `show` in
   `.vaultite/plugins/pages/data.json`, `"list"` (the default) or `"tiles"`. The panel's menu has it (Show as ▸), and so
   do Settings and the palette (Show pinned pages as…).

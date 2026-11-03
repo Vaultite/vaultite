@@ -13,7 +13,7 @@
   "fileIcons": true,
   "tabBar": false,
   "paneTitles": false, "dimPanes": true, "paneCards": false,
-  "rails": false, "peekShade": false, "fileBarFade": "off", "translucent": false, "translucentPages": false, "translucency": 50, "pageTranslucency": 50,
+  "rails": false, "peekShade": false, "sidebarButtons": false, "fileBarFade": "off", "translucent": false, "translucentPages": false, "translucency": 50, "pageTranslucency": 50,
   "lineNumbers": false,
   "statusBar": ["vim:mode", "properties:chips", "provenance:origin", "core:view", "core:words", "core:characters", "token-count:tokens"],
   "statusBarMore": [],

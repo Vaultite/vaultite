@@ -1,6 +1,6 @@
 // On/off settings, declared once (a plugin's: a boolean in its manifest): Settings, its search, the palette, menus and
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
-import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, LayoutPanelLeft, ListOrdered, ListTree, MousePointer2, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, LayoutPanelLeft, ListOrdered, ListTree, MousePointer2, PanelLeft, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
 import { canTranslucent, getTranslucency, onTranslucency } from "@/core/appearance"
 import type { Command } from "@/core/commands"
 import { reload } from "@/core/data"
@@ -70,6 +70,7 @@ const CORE: SwitchDef[] = [
     // (on, the window too: pages show the desktop only through a translucent window)
     get: () => getPrefs().translucentPages, set: (on: boolean) => setPrefs(on ? { translucentPages: true, translucent: true } : { translucentPages: false }) },
   { id: "setting:line-numbers", name: "Line numbers", section: "appearance", icon: ListOrdered, words: "gutter", ...pref("lineNumbers") },
+  { id: "setting:sidebar-buttons", name: "Sidebar buttons on phones", section: "sidebars", icon: PanelLeft, sub: () => "In the top bar; off, swipe in from the screen's edge. A phone's browser always shows them", words: "drawer swipe edge top bar header mobile iphone", ...pref("sidebarButtons") },
   { id: "setting:sidebar-scroll", name: "Scroll sidebar panels separately", section: "sidebars", icon: ArrowDownUp, words: "sidebars",
     get: () => getPrefs().sidebarScroll !== "sidebar", set: (on) => setPrefs({ sidebarScroll: on ? "panels" : "sidebar" }) },
   { id: "setting:panel-dividers", name: "Lines between sidebar panels", section: "sidebars", icon: SeparatorHorizontal, words: "dividers sidebars", ...pref("panelDividers") },

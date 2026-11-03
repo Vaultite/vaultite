@@ -9,6 +9,7 @@ import { fuzzy } from "@/core/fuzzy"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { defaultPanels, dockPanel, hidePanel, panelsIn, restoreSidebars, sideOf, sidebarPanels, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
+import { useDesktop } from "@/core/platform"
 import { menuFor, rightClickBelow, type MenuItem } from "@/components/ContextMenu"
 import { FilterField, SheetHead } from "@/components/kit"
 import { SwitchRow } from "@/components/SwitchRow"
@@ -30,6 +31,7 @@ const carried = (item: DragItem) => (item.from === "row" && item.drawn && item.p
 
 export function SidebarsSheet() {
   const { disabled, rails } = usePrefs()
+  const desktop = useDesktop()
   const setup = useSidebars()
   const [query, setQuery] = useState("")
   const all = sidebarPanels(disabled)
@@ -62,7 +64,7 @@ export function SidebarsSheet() {
         sub="How they show, and their panels: drag a panel between them or down to hide it. Right-click one for more." />
       {/* How they behave first, the switches Settings finds under Sidebars; then what's in them. */}
       <div className="hairline mb-4">
-        {["rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        {[...(desktop ? [] : ["sidebar-buttons"]), "rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
       </div>
       <FilterField value={query} onChange={setQuery} placeholder="Filter panels" className="mb-3" autoFocus />
       <div className="grid grid-cols-2 gap-3">

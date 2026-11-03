@@ -221,7 +221,7 @@ export { useVirtual } from "@/core/virtual"
 export { keepAnchored } from "@/core/anchor"
 export { SortableList } from "@/components/Sortable"
 export { Resizer } from "@/components/Resizer"
-export { haptic, type Haptic } from "@/core/haptics"
+export { coarse, haptic, type Haptic } from "@/core/haptics"
 // Phones: keys above the on-screen keyboard, and the part of the window it leaves.
 export { KeyBar, keyboardUp, useVisibleArea, type BarKey } from "@/components/KeyBar"
 export { FilesPanel, PanelFold, panelMenu, RowKeys, SidebarHeading, SidebarRow, SidebarSearch, SidebarTile } from "@/components/Sidebar"

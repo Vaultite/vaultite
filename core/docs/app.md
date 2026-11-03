@@ -102,7 +102,7 @@ set is `.obsidian/appearance.json`'s when the vault has one (its base theme, the
 - `density`: `compact` (default) | `comfortable`. `animation`: `natural` (default, springy) | `snappy` | `off`.
   `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).
-  `panelDividers`: true | false (default), a line between the sidebars' panels. `quickTextSize`: true | false
+  `panelDividers`: true | false (default), a line between the sidebars' panels. `sidebarButtons`: true | false (default), on phones, buttons in the top bar that open the sidebars; off, they're swiped in from the screen's edges (in a phone's browser, where the edges are the browser's, they always show). `quickTextSize`: true | false
   (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size.
 - `interfaceFont`, `textFont` (notes), `monoFont` (code): a font's name or a CSS font-family list; empty is the app's.
   `fileIcons`: true | false. `tabBar`: true (default) | false: off, each pane's bar shows only the tab on screen, not

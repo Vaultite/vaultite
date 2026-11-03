@@ -58,6 +58,9 @@ export type Prefs = {
   rails: boolean
   /** Behind a hidden sidebar slid in, the page dims a little. */
   peekShade: boolean
+  /** A phone's top bar has buttons that open the sidebars; off, they're swiped in from the screen's edges (a browser's
+   *  tab keeps them: its edges are the browser's). */
+  sidebarButtons: boolean
   /** The bars above files fade (desktop): while typing in one, back once the pointer moves, or always, back while the
    *  pointer is over one. */
   fileBarFade: FileBarFade

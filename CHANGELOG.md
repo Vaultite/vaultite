@@ -8,6 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **`vau version` tells the desktop app's updates**: in the desktop app it says their mode (automatic, notify, off)
   and a build waiting for a restart, rather than "off".
+- **Phones: a calmer sidebar**: its lists at 16px in 40px rows (a notch under a note's text, from 17px in 44px), no sidebar
+  buttons in the top bar of the iPhone app (swipe in from the edge; Sidebar buttons on phones brings them back), pinned
+  pages as tiles in the drawer too (Show as ▸ Tiles), and a new tab's pinned pages as the sidebar's tiles, each named when
+  held.
 - **One palette at a time, and it has the keyboard**: ⌘P, ⌘O, a setting's picker (Animations…) or the Ask box opened
   over another takes its place instead of opening under it, Esc then gives the keyboard back to where it was, a sheet
   opening closes the palette, and the Hotkeys and Sidebars sheets take typing in their filter at once.

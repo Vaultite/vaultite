@@ -144,7 +144,8 @@ await page.locator("[data-pin-tiles] [data-pin]").nth(1).click(); await page.wai
 check("Tiles: a click opens its page", await page.locator("[data-pin-tiles] [data-pin]").nth(1).getAttribute("aria-current") === "page")
 await m.goto("about:blank"); await m.goto(`${B}#files`); await m.waitForTimeout(1200)
 await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await m.waitForTimeout(500)
-check("Tiles: a phone's drawer keeps the list", (await m.locator("[data-phone-drawer=left] nav[aria-label=Pages] a").count()) >= 5 && !(await m.locator("[data-phone-drawer=left] [data-pin-tiles]").count()))
+check("Tiles: a phone's drawer shows them as tiles too", (await m.locator("[data-phone-drawer=left] [data-pin-tiles] [data-pin]").count()) >= 5)
+await m.screenshot({ path: `${OUT}phone-drawer-tiles.png` })
 // Back to the list from the panel's menu: Show as ▸ List, Tiles, the one in use checked.
 await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
 await page.locator("[role=menu] button", { hasText: /^Show as$/ }).first().hover(); await page.waitForTimeout(300)

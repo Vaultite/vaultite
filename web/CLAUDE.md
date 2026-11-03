@@ -39,7 +39,7 @@
 - Markdown is never shown raw: `snippet(md)` or `<Markdown>`.
 - Desktop: the window never scrolls, each pane does (`scrollPage`, not `window.scrollTo`); dashboards lay out by pane
   width (`@2xl:`).
-- Phones: 44px targets, 17px text, no splits. Move between places through `core/motion.ts`, not `history.back()`. What
+- Phones: 44px targets, 17px text (the sidebar's lists 16px in 40px rows: `data-size-up`), no splits. Move between places through `core/motion.ts`, not `history.back()`. What
   a mouse finds on hover a finger swipes to (`SwipeRow`).
 - A page of the sidebar's lists draws them at the sidebar's sizes (`SidebarRow`, `SidebarHeading`, `data-size-up`), with
   no phone variant of its own.

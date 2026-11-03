@@ -439,7 +439,8 @@ export function SidebarTile({ icon: Icon, iconClassName, tint, badge, label, act
     <a href={href ?? "#"} data-keyrow {...rest} data-tip={label} aria-label={label} aria-current={active ? "page" : undefined}
       onClick={(e) => { if (!onClick) return; e.preventDefault(); onClick(e) }} onContextMenu={onContextMenu}
       onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); onClick?.(e) }}
-      className={cn("grid h-10 min-w-0 place-items-center rounded-[8px] transition-colors",
+      // (on a phone, a size up: a unit flatter, nearer a row's height)
+      className={cn("grid h-10 min-w-0 place-items-center rounded-[8px] transition-colors max-md:h-9",
         active ? "bg-[var(--segment-on)] shadow-[0_1px_3px_rgb(0_0_0/0.1)] ring-[0.5px] ring-border" : "bg-foreground/[0.05] hover:bg-foreground/[0.09]", className)}>
       <Badged on={badge}>
         <Icon className={cn("size-[18px] shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
