@@ -6,6 +6,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.9.0 (2026-11-03)
+
+Terminals in a terminal server that keeps them through restarts and lets agents drive them, a companion that writes its
+answers into your note as it thinks, what's open kept by the server instead of the vault, slides and presenting, imports
+from Notion, Evernote, Bear and more, an app screen readers and the keyboard can use throughout, and big vaults that
+open, search and load much faster.
+
 - **An idle window wakes less**: live cards asking one address share one timer, and none runs while the window is
   hidden (a window left alone woke ~27 times a minute, now ~15 shown and ~3 hidden).
 - **The companion answers as it writes**: its words stream into the note, its bubble and its comment cards as the model writes them (first words in about 2 s, from 4 to 5), Enter and a `?` send at once and a sentence's end after a breath, going on with your thought restarts its answer with all of it, its turn ends with its last action (no summary after), its cursor stays where it wrote, it waits while you type, its edit is one undo step of its own (also Undo the companion's last edit), and Esc stops it mid-answer (Codex and OpenCode in their terminals too). What you write reaches it as your own changes alone, a hunk each place, never with its words between them. `vau companion timings` has its think time for Claude Code sessions, and its first word.
