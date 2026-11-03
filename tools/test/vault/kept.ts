@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
+import { modesEnforced } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, vault } = $
@@ -34,7 +35,7 @@ export default async ($: VaultTest) => {
   k.flush()
   const again = new Kept(k.dir)
   check("kept: written to the server's own disk, never the vault", fs.existsSync(path.join(k.dir, "qa.json")) && !k.dir.startsWith(fs.realpathSync(VAULT)) &&
-    (fs.statSync(path.join(k.dir, "qa.json")).mode & 0o777) === 0o600)
+    (!modesEnforced || (fs.statSync(path.join(k.dir, "qa.json")).mode & 0o777) === 0o600))
   check("kept: read back as it was (shared, when, removals too)", again.get<Any>("qa/disk").big.length === 1000 && again.isShared("qa/disk") &&
     again.at("qa/disk") === k.at("qa/disk") && again.get("qa/two", "gone") === "gone" && again.id === k.id && again.seq === k.seq)
 

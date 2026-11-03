@@ -73,7 +73,9 @@ try {
   const legacy = await waitFor(async () => (await devicesOn(pb)).some((d) => d.id === "oldphone0001") || null, 45_000, 250)
   check("shared: and the other machine gets them (asked at its start, or when told)", !!legacy)
 
-  // ---------- live: a device's tabs on one, on the other in a moment ----------
+  // ---------- live: a device's tabs on one, on the other in a moment (once each knows the other is up) ----------
+  const sees = (port: number, id: string) => waitFor(async () => ((await api(port, "GET", "machines"))[1] as Any[] | null)?.some((m) => m.id === id && m.online) || null, 45_000, 500)
+  check("shared: each machine sees the other", !!(await sees(pa, "beta")) && !!(await sees(pb, "alpha")))
   const before = stamps(VA)
   const t1 = Date.now()
   await api(pa, "PUT", "tabs/devices/alphamac0001", { tabs: [{ to: "file:Notes/Idea.md" }, { to: term("k1"), label: "Claude" }] }, { "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "x-vaultite-client": "app/desktop" })
