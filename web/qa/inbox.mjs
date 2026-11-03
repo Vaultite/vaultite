@@ -267,11 +267,13 @@ const later = page.locator("[data-inbox-view] [data-inbox-snoozed]")
 await later.getByRole("button", { name: /^Snoozed \d/ }).click()
 const laterRow = later.locator("[data-snoozed]", { hasText: "A field guide to tiling" })
 check("Snoozed: listed, with when it comes back", !!(await until(() => laterRow.count())) && /Until tomorrow 8:00/.test(await laterRow.innerText()), await later.innerText().catch(() => ""))
-const evName = (await api("GET", "inbox/events")).events.find((e) => !e.gate && !e.snoozed && e.state !== "done")?.title
-if (evName) {
+const evOne = (await api("GET", "inbox/events")).events.find((e) => !e.gate && !e.snoozed && e.state === "open" && e.ask !== "permission")
+const evName = evOne?.title
+if (evOne) {
   await noToasts()
-  await evRow(evName).click({ button: "right" })
-  await page.getByRole("menuitem", { name: "Snooze" }).dispatchEvent("click")
+  const one = page.locator(`[data-inbox-view] [data-event="${evOne.id}"]`)
+  await one.hover()
+  await one.getByRole("button", { name: "Snooze" }).click()
   await page.getByRole("menuitem", { name: /^In 1 hour/ }).dispatchEvent("click")
   check("an event snoozed: under Snoozed", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.title === evName)?.snoozed > Date.now())) &&
     !!(await until(() => later.locator("[data-snoozed]", { hasText: evName }).count())))

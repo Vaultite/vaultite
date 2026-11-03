@@ -212,14 +212,14 @@ export function snoozeKeys(keys: string[], at: Date | null) {
 }
 
 /** The Snooze ▸ choices for these keys, then Pick a time… (a sheet). */
-export const snoozeItems = (keys: string[]): MenuItem[] => [
+export const snoozeItems = (keys: string[], then?: () => void): MenuItem[] => [
   // (its time, without the day its name says)
-  ...choices().map((c) => ({ label: c.label, hint: whenText(c.at).replace(/^Tomorrow /, ""), run: () => snoozeKeys(keys, c.at) })),
+  ...choices().map((c) => ({ label: c.label, hint: whenText(c.at).replace(/^Tomorrow /, ""), run: () => { snoozeKeys(keys, c.at); then?.() } })),
   { label: "Pick a time…", icon: CalendarClock, sep: true, run: () => openDetail(detailPath(SNOOZE_DETAIL, ...keys)) },
 ]
 const snoozeMenu = (keys: string[], icon = true): MenuItem => ({ label: "Snooze", ...(icon ? { icon: Clock } : {}), run: () => {}, items: snoozeItems(keys) })
 /** The choices as a menu under a button, or under a swiped row. */
-const snoozeBelow = (keys: string[]) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); menuBelow(e, snoozeItems(keys)) }
+export const snoozeBelow = (keys: string[], then?: () => void) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); menuBelow(e, snoozeItems(keys, then)) }
 const snoozeAtRow = (keys: string[]) => (row?: DOMRect) => openMenu({ x: row ? row.left + 16 : 16, y: row ? row.bottom + 4 : innerHeight / 3, flip: row ? row.top - 4 : undefined }, snoozeItems(keys))
 
 /** The sheet's own time (Pick a time…): any time to come, tomorrow morning to start. */
@@ -523,6 +523,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
       time={e.state === "working" ? "working" : fmtAgo(e.t, { short: true })} dim={e.state === "working"}
       icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
       <GateButtons e={e} className={small} size="size-3.5" />
+      {snoozable(e) && e.state !== "working" && <HeadingButton icon={Clock} label="Snooze" onClick={snoozeBelow([eventKey(e)])} />}
       {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
       {!answerable(e) && <HeadingButton icon={Check} label="Settle" onClick={stop(() => { haptic("medium"); markManyEventsDone([e]) })} />}
     </PanelRow>
@@ -648,6 +649,11 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
       {inPlace && (
         <button type="button" className={cn(iconButton, !replying && "md:invisible md:group-hover/ev:visible", replying && "text-foreground")} aria-label="Reply" data-tip="Reply"
           aria-expanded={replying} data-row-reply-button onClick={reply}><MessageSquareReply className="size-4" strokeWidth={2.25} /></button>
+      )}
+      {/* (a phone swipes for it) */}
+      {snoozable(e) && e.state !== "working" && (
+        <button type="button" className={cn(iconButton, "max-md:hidden md:invisible md:group-hover/ev:visible")} aria-label="Snooze" data-tip="Snooze" data-snooze
+          onClick={snoozeBelow([eventKey(e)])}><Clock className="size-4" strokeWidth={2.25} /></button>
       )}
       {!asks && (e.state === "done"
         ? <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Back to inbox" data-tip="Back to inbox" onClick={() => { haptic("medium"); markManyEventsDone([e], false) }}>

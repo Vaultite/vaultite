@@ -1,9 +1,10 @@
 // An agent's session in the inbox, opened like a mail: what it asks or its last answer, Approve and Deny, the reply back
 // into it (on its machine). Opening it reads it; only Done (or the session moving on) settles it.
 import { useEffect } from "react"
-import { Bot, Check, CheckCheck, Pin, PinOff, RotateCcw, SquareTerminal, X } from "lucide-react"
+import { Bot, Check, CheckCheck, Clock, Pin, PinOff, RotateCcw, SquareTerminal, X } from "lucide-react"
 import { backDetail, Button, detailPath, Empty, fmtAgo, haptic, Markdown, notify, notifyError, openDetail, SheetHead, useAgents } from "@vaultite"
-import { agentOf, answerable, answerAsk, getEvents, markEventsDone, markRead, openSession, pinEvents, unsettle, SESSION_DETAIL, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, getEvents, markEventsDone, markRead, openSession, pinEvents, snoozable, unsettle, SESSION_DETAIL, useEvents } from "./events"
+import { snoozeBelow } from "./Inbox"
 import { Questions } from "./Questions"
 import { ReplyBox } from "./Reply"
 import type { InboxEvent } from "./types"
@@ -101,6 +102,10 @@ export function SessionSheet({ id }: { id: string }) {
               <Button look="quiet" className="ml-2 h-11 px-3 md:h-8" data-session-pin={e.pinned ? "on" : "off"} onClick={() => { haptic("medium"); pinEvents([e.id], !e.pinned) }}>
                 {e.pinned ? <><PinOff className="size-4" /> Unpin</> : <><Pin className="size-4" /> Pin</>}
               </Button>
+            )}
+            {/* (snoozed, it's out of the way: the sheet goes, as Settle's does) */}
+            {snoozable(e) && e.state !== "working" && (
+              <Button look="quiet" className="ml-2 h-11 px-3 md:h-8" data-session-snooze onClick={snoozeBelow([`e:${e.id}`], backDetail)}><Clock className="size-4" /> Snooze</Button>
             )}
           </div>
         )}
