@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The companion's cursor always shows what it's doing**: reading and thinking show their dots for as long as they last,
   listening while you dictate a wave, with no hover (on a phone too). What it says while you speak shows as dots and pops
   in at your pause, staying a moment before your next words take it away; a bubble never shows empty.
+- **Phones: tab groups in the Tabs panel open without a bounce**: their tabs grow straight to their size (they grew
+  a fifth past it, by the drawer's zoom, and snapped back); folding, new and closed tabs move true too.
 - **Phones: a tab group opens steadily**: it starts at its top, and All tabs comes back where it was left, with no bounce
   as the list swaps (opened again, its tabs no longer sit out of sight).
 - **Layouts leave your look alone and remember your tweaks**: Standard, Zen and Browser no longer change your theme,

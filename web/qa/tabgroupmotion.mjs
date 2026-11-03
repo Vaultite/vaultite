@@ -272,6 +272,20 @@ try {
     await page.screenshot({ path: `${OUT}panel-dark.png`, clip: { x: 0, y: 0, width: 300, height: 380 } })
     await ctx.close()
   }
+  // A phone's drawer, its lists zoomed (data-size-up): a group opened, its tabs grow straight to their size, never past it
+  // to snap back at the end (they used to grow to their on-screen size times the zoom: a bounce).
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
+    await ctx.addInitScript((s) => { if (!sessionStorage.getItem("qa.seeded")) { localStorage.setItem("vaultite.tabs", s); sessionStorage.setItem("qa.seeded", "1") } }, JSON.stringify(seed))
+    const page = watch(await ctx.newPage())
+    await page.goto(B); await page.waitForSelector("[data-phone-bar]"); await wait(1200)
+    await page.click("[aria-label='Open sidebar']"); await page.waitForSelector("[data-phone-drawer] [data-set-row='sB']"); await wait(800)
+    const probe = (id) => [...document.querySelectorAll(`[data-phone-drawer] [data-in-set="${id}"]`)].map((e) => e.getBoundingClientRect().height)
+    const fs = await frames(page, probe, "sB", () => clickIn(page, "[data-phone-drawer] [data-set-row='sB']"), 600)
+    const end = fs.at(-1), hs = fs.filter((x) => x.length === 2).map((x) => x[0])
+    check("a phone's drawer: a group opened, its tabs grow straight to their size, never past it", end.length === 2 && end[0] > 30 && hs.length > 3 && rising(hs, 0.3) && hs.every((h) => h <= end[0] + 0.5), hs.map(Math.round))
+    await ctx.close()
+  }
 } finally {
   for (const x of [sidebars, look]) if (x.was === null) rmSync(x.p, { force: true }); else writeFileSync(x.p, x.was)
 }

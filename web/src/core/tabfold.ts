@@ -22,10 +22,13 @@ const gapOf = (el: HTMLElement) => {
 
 /** How an element is drawn along its list's axis: its size, the margin after it, its opacity. */
 type Box = { size: number; margin: number; opacity: number }
-/** As it's drawn now, mid-motion too. */
+/** As it's drawn now, mid-motion too, in its own CSS px: a phone's sidebar is zoomed (data-size-up), and its rows grew
+ *  to their size on screen times that zoom, then snapped back. */
 function drawnBox(el: HTMLElement): Box {
   const r = el.getBoundingClientRect(), css = getComputedStyle(el), x = axisOf(el) === "x"
-  return { size: x ? r.width : r.height, margin: parseFloat(x ? css.marginRight : css.marginBottom) || 0, opacity: parseFloat(css.opacity) }
+  const seen = x ? r.width : r.height, own = x ? el.offsetWidth : el.offsetHeight
+  const zoom = (el as HTMLElement & { currentCSSZoom?: number }).currentCSSZoom || (seen && own ? seen / own : 1)
+  return { size: seen / zoom, margin: parseFloat(x ? css.marginRight : css.marginBottom) || 0, opacity: parseFloat(css.opacity) }
 }
 /** What runs on each tab now (squeeze), to turn it round from where it's got to. */
 const running = new WeakMap<HTMLElement, Animation>()
