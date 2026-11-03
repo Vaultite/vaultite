@@ -11,7 +11,7 @@ const api = apiAt(B)
 const saved = await api("GET", "config/appearance")
 const set = (patch) => api("PUT", "config/appearance", { ...saved, theme: "system", scheme: "default", density: "compact", interfaceFont: "", textFont: "", monoFont: "", snippets: [], ...patch })
 // Workspaces keep tabs that would take the page's address over: none during the run (put back at the end).
-const putBackWs = setAsideWorkspaces(VAULT)
+const putBackWs = setAsideWorkspaces(B)
 const files = (await api("GET", "files")).files
 const note = files.find((f) => f.path.startsWith("Notes/") && f.path.endsWith(".md"))?.path ?? files.find((f) => f.path.endsWith(".md")).path
 const today = files.find((f) => f.path === "Dashboards/Today.md")?.path ?? note

@@ -172,7 +172,8 @@ export default async ($: VaultTest) => {
     check("index: last updated first", so.plugins.map((e: Any) => e.id).join() === "skiff,harbor,beacon", so.plugins.map((e: Any) => e.id))
     ;[, so] = await api("POST", "ops/plugin.search", { q: "moorings" })
     check("index: searched by its words", so.plugins.length === 1 && so.plugins[0].id === "skiff", so.plugins)
-    check("index: cached in the vault (live data: .vaultite/cache/)", JSON.parse(read(".vaultite/cache/plugin-index.json")).index.plugins.length === 3)
+    const { keptOf } = await import("../../../core/kept.ts")
+    check("index: kept by the server, out of the vault (core/kept.ts)", keptOf(VAULT).get<Any>("core/plugin-index")?.index.plugins.length === 3 && !exists(".vaultite/cache/plugin-index.json"))
     let text = (await vau("plugin", "search")).out
     check("index: vau plugin search says what each discloses", text.includes("Harbor (alicepark/harbor) 1.2.0, 40 stars") && text.includes("says it talks to tides.example.com; runs programs on this machine"), text)
     write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), index: "/etc/hosts" }))
@@ -321,7 +322,7 @@ export default async ($: VaultTest) => {
     check("uninstall: the last one removes the lock file", xc === 200 && !exists(".vaultite/plugins-lock.json"))
     delete process.env.VAULTITE_PLUGIN_INDEX
     for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(harbor|notags|dinghy|ketch|skipper) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
-    fs.rmSync(path.join(VAULT, ".vaultite/cache/plugin-index.json"), { force: true })
+    keptOf(VAULT).set("core/plugin-index", null)
 
     // Bundles name installed plugins by their source: applying installs them, restoring uninstalls them. A repository
     // is a bundle too: its folder at the top (the repository's own files left out), or one .bundle.json.

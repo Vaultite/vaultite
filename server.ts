@@ -38,6 +38,7 @@ starting.mark("spawn")
 const { WebSocketServer } = await import("ws")
 const { decodePart: decode, jsonOf, open, queryOf } = await import("./core/app.ts")
 const { Live } = await import("./core/live.ts")
+const { flushKept } = await import("./core/kept.ts")
 const events = await import("./core/events.ts")
 Live.web = webBuild
 const { clean } = await import("./core/files.ts")
@@ -147,6 +148,7 @@ let going = false
 const bye = (code: number) => {
   if (going) process.exit(code)
   going = true
+  flushKept()
   void Promise.race([app?.vaultPlugins.close(), new Promise((r) => setTimeout(r, 1000))]).finally(() => process.exit(code))
 }
 if (DESKTOP) process.on("disconnect", () => bye(0))

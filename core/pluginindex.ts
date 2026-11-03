@@ -1,5 +1,5 @@
 // The plugin directory: one index.json of plugins and bundles (tools/plugin-index.ts), read from plugins.json's `index`
-// (else DEFAULT_INDEX), cached in .vaultite/cache/, and its blocklist.
+// (else DEFAULT_INDEX), kept by the server (core/kept.ts, shared with the other machines), and its blocklist.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url"
 import { git, parseSource } from "./installs.ts"
 import { bundleBlocked, type Disclosures, disclosuresOf, iconOf, PLACE, REPO } from "./pluginmeta.ts"
 import { compareVersions, parseVersion } from "./version.ts"
-import { removeTree, type Vault, writeAtomic } from "./vault.ts"
+import { removeTree, type Vault } from "./vault.ts"
+import { keptOf } from "./kept.ts"
 import { fetchPublic } from "./web.ts"
 import { isObj } from "./values.ts"
 
@@ -15,7 +16,7 @@ export const DEFAULT_INDEX = "https://raw.githubusercontent.com/Vaultite/plugins
 /** An index in a GitHub repository, read with git (so a private one works where git is signed in): owner/name/path.json */
 const IN_REPO = /^[\w.-]+\/[\w.-]+\/(?:[\w.-]+\/)*[\w.-]+\.json$/
 const TTL = 3600_000, STALE = 86400_000
-const CACHE = ".vaultite/cache/plugin-index.json"
+const CACHE = "core/plugin-index"
 
 export type Entry = {
   id: string; name: string; description: string; author: string; repo: string; dir: string | null; version: string; tag: string | null
@@ -183,14 +184,12 @@ export class PluginIndex {
   known(): Got | null {
     if (this.got || this.tried === this.url()) return this.got
     this.tried = this.url()
-    try {
-      const c = JSON.parse(fs.readFileSync(this.vault.abs(CACHE), "utf8"))
-      if (isObj(c) && c.url === this.url()) this.got = { url: c.url, available: true, fetched: str(c.fetched) || null, index: readIndex(c.index) }
-    } catch { /* none */ }
+    const c = keptOf(this.vault.path).get<unknown>(CACHE, null)
+    if (isObj(c) && c.url === this.url()) this.got = { url: c.url, available: true, fetched: str(c.fetched) || null, index: readIndex(c.index) }
     return this.got
   }
 
-  /** The index: fetched at most once an hour (`refresh`: now), cached in the vault; when it can't be fetched, the last
+  /** The index: fetched at most once an hour (`refresh`: now), kept; when it can't be fetched, the last
    *  one cached, else an empty one that says so. Never throws. */
   async get(refresh = false): Promise<Got> {
     const url = this.url()
@@ -198,7 +197,7 @@ export class PluginIndex {
     this.pending ??= this.fetch(url).then((o) => {
       const index = readIndex(o)
       const got: Got = { url, available: true, fetched: new Date().toISOString(), index }
-      try { writeAtomic(this.vault.abs(CACHE), JSON.stringify({ url, fetched: got.fetched, index })) } catch { /* a cache */ }
+      keptOf(this.vault.path).set(CACHE, { url, fetched: got.fetched, index }, { shared: true })
       return got
     }, (e) => {
       const last = this.known()

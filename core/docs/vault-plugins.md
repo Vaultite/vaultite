@@ -60,7 +60,8 @@ then `plugin.kind(new Kind({...}))` (a kind of file; `Kind` from `@vaultite/core
 `plugin.settings()` (its `data.json`; `plugin.settings({}, "<name>")` another file of its own, `<name>.json`, for
 what's written often in parts: settings, never its version; another's: `plugin.peer("<id>")?.settings()`; plugins.json:
 `plugin.vault.config("plugins")`; never read them from disk), `plugin.provide("<name>", fn)` (a service others ask for
-by name), `plugin.memo(ttl, fn)` / `plugin.writeCache()` for live data, `plugin.onUnload(fn)` to stop timers. It may
+by name), `plugin.memo(ttl, fn)` / `plugin.writeCache()` for live data, `plugin.keep(name, data)` / `plugin.kept(name)`
+for what it keeps for itself (out of the vault), `plugin.onUnload(fn)` to stop timers. It may
 import only `@vaultite/core/plugins.ts`, `vault.ts`, `client.ts`, `timeline.ts`, `agents.ts` (a coding agent's: its
 usage, sessions and terminals; `vau docs plugin-api-names`), `layout.ts` (a workspace's tabs and panes, as saved), its own folder, the modules plugins it requires export,
 Node's modules and npm packages the app has (so may its other modules, the ones `index.tsx` doesn't import); a required
@@ -114,7 +115,8 @@ What they did: `vau vault-plugin.log <id>` (each run's command, exit, time and s
   `.vaultite/` on its own (a kind's folder, "Logs", is wherever the user keeps those files) (its `schedule`, `events` and `startup` commands, `plugin.every`, `plugin.onEvent`, the timers
   it starts). The user is asked once ("Lighthouse wants to write a recap of each day into Recaps/"); until they allow it,
   such a write is refused (`WriteRefused`, a 403 for `vau`) and logged. What a user or their agent asks for (its ops,
-  routes) is never gated. Data it wants anyway goes in `.vaultite/` (its `data.json`, `plugin.writeCache`).
+  routes) is never gated. Data it wants anyway goes in `.vaultite/` (its `data.json`), or is kept (`plugin.keep`,
+`plugin.writeCache`).
 
 **`index.tsx`** (optional; the app): `export default definePlugin({ blocks: { "<name>": (ctx) => <Panel
 title="...">...</Panel> }, files, details, search, links, commands, sidebar, header, settingsPanel, editor })` from

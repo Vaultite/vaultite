@@ -13,7 +13,7 @@ const until = async (test, file = BOARD) => {
   for (let i = 0; i < 50; i++) { try { if (test(file === BOARD ? read() : readFileSync(`${VAULT}/${file}`, "utf8"))) return true } catch { /* mid-write */ } await wait(100) }
   return false
 }
-const putBackWs = setAsideWorkspaces(VAULT)
+const putBackWs = setAsideWorkspaces(B)
 
 const board = {
   nodes: [

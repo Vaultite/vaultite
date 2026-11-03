@@ -6,13 +6,17 @@ changes them. Which one is current is each device's own (a new device is on the 
 says which the user's window is on. ⌃1 to ⌃5 switch (⌥1 to ⌥5 off a Mac), as does a two-finger swipe over a
 sidebar.
 
-Each is its own file, `.vaultite/plugins/workspaces/<n>.json` (none: unused), so devices on different workspaces never
-write the same file. `1.json`:
+What the user sets of each is its own file, `.vaultite/plugins/workspaces/<n>.json` (none: nothing set); what's open in
+it (`layout`, `state`) is kept by the server, not in the vault (shared with the other machines, live: `vau kept
+workspaces/`). `GET /api/workspaces` (and `vau workspace list --json`) has both together; `PUT /api/workspaces/<n>`
+changes either. `1.json`:
 ```
 {"name": "Writing", "sidebars": {"left": ["search:search", "files:files"], "right": [], "collapsed": []},
- "layout": {"root": {"id": "g0", "tabs": [{"id": "t1", "to": "file:Notes/Idea.md"}], "active": "t1"}, "focus": "g0"},
- "pinned": ["Dashboards/People.md", "Notes/Draft.md"], "state": {"files:open": ["Notes"]}}
+ "pinned": ["Dashboards/People.md", "Notes/Draft.md"]}
 ```
+and what's kept with it, `{"layout": {"root": {"id": "g0", "tabs": [{"id": "t1", "to": "file:Notes/Idea.md"}],
+"active": "t1"}, "focus": "g0"}, "state": {"files:open": ["Notes"]}}`. A `layout` or `state` written into the file (by
+hand, or by an older app) is taken in and leaves the file.
 - `name`: optional (the number's tooltip).
 - `icon`, `tint`, `container`: optional: an icon (a Lucide name or an emoji) shown for its number, in
   its tint (blue, orange, green, red, purple, pink, yellow, teal, indigo, gray), which the sidebars take a little of;

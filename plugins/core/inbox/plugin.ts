@@ -769,25 +769,40 @@ wakeTimer.unref?.()
 plugin.onUnload(() => clearInterval(wakeTimer))
 
 // ---------- hold: nothing is told (toasts, notifications, the phone) until a time, then one line of what came. It's
-// .vaultite/plugins/inbox/hold.json, so every machine's server keeps it; each sums up its own events.
+// kept by the server and shared (core/kept.ts), so every machine's server keeps it; each sums up its own events.
 
 export type Hold = { until: string; from: string; label?: string }
 /** The hold on now, if any. */
 export function holdNow(now = Date.now()): Hold | null {
-  const h = (plugin.loaded ? plugin.settings({}, "hold") : {}) as Partial<Hold>
+  const h = (plugin.loaded ? plugin.kept("hold", {}) : {}) as Partial<Hold>
   return h.until && h.from && snoozeMs(h.until) > now ? h as Hold : null
 }
 
 /** Hold until `until` (null: end it now), saying what for. */
 export function hold(until: Date | null, label = "") {
   const was = holdNow()
-  if (!until) { if (was) { plugin.saveSettings({ ...was, until: stampOf(new Date()) }, "hold"); broadcast() } return null }
+  if (!until) { if (was) { plugin.keep("hold", { ...was, until: stampOf(new Date()) }, { shared: true }); broadcast() } return null }
   const h: Hold = { until: stampOf(until), from: was?.from ?? stampOf(new Date()), ...(label ? { label } : {}) }
-  plugin.saveSettings(h, "hold")
+  plugin.keep("hold", h, { shared: true })
   heldSince = h
   broadcast()
   return h
 }
+
+// hold.json from before (iCloud carried it between machines): taken in, then removed.
+let lookedAt = ""
+plugin.onSync((vault) => {
+  const key = `${vault.path}:${vault.settingsVersion}`
+  if (lookedAt === key) return
+  lookedAt = key
+  let old: Item | null
+  try { old = plugin.readSettings("hold") } catch { return } // (mid-sync: the next change)
+  if (!old) return
+  let at = 0
+  try { at = Math.round(fs.statSync(path.join(vault.path, ".vaultite", "plugins", plugin.id, "hold.json")).mtimeMs) } catch { return }
+  if (plugin.keptAt("hold") <= at) plugin.keep("hold", old, { shared: true, at })
+  plugin.saveSettings(null, "hold")
+})
 
 /** The hold this machine last saw on, summed up once it's over. */
 let heldSince: Hold | null = null

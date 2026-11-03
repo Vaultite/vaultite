@@ -5,8 +5,8 @@ the sidebar, appearance `tabBar` is false and `tabs:tabs` is at the top of the l
 workspace's `sidebars`); on top, `tabBar` is true and the panel is hidden. The tabs end in a New tab row: a new tab at
 the end of the focused pane, in its place (double-clicking under the list too, and a tab bar's +; ⌘T opens one beside
 the active tab). Under them, what the user's other devices have open (`other_devices`: those open now or used this
-week), from `.vaultite/plugins/tabs/device-<id>.json`, one per app or browser (`label`: the user's name for it). A
-browser driven by automation isn't a device.
+week), one per app or browser (`label`: the user's name for it), kept by the server, not in the vault (`vau kept
+tabs/`): every machine serving the vault has every device's, live. A browser driven by automation isn't a device.
 
 **Search tabs** (⌘⇧A, the command `tab:search`, or the panel's menu): the window's tabs in the palette, the one focused
 last first, found by name, address or tab group; then the tabs closed lately and the archived ones, to reopen. ⌘⌫ closes
@@ -27,7 +27,7 @@ an Archived tabs row, how many, while there are any. Kept with the tabs (the wor
 tab bar a group is a solid chip of its colour before its tabs, which are underlined in it; in the panel, the same chip
 on a row, its tabs set in beside a line in its colour hanging from it. A click folds it (its tabs shrink into the chip);
 its … in the panel or a right-click opens its editor, as a browser's: its name and a row of colours, each change shown
-at once, then New tab in group, Ungroup and Close group. A new group opens it. They're kept with the tabs (this device's, or the workspace's file with Workspaces: a pane's `sets`, each tab's
+at once, then New tab in group, Ungroup and Close group. A new group opens it. They're kept with the tabs (this device's, or the workspace's with Workspaces: a pane's `sets`, each tab's
 `set`):
 ```
 {"id": "g0", "active": "t2", "sets": [{"id": "s1", "name": "Lighthouse", "color": "teal", "collapsed": false}],

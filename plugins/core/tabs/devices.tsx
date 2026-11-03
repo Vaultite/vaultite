@@ -2,7 +2,7 @@ import { useRef, useState, type MouseEvent } from "react"
 import { ArrowDownToLine, Globe, Monitor, MonitorSmartphone, Pencil, Smartphone, X } from "lucide-react"
 import {
   cell, del, DEVICE, Empty, fmtAgo, List, Loading, menuBelow, notifyError, openFile, openMenu, openView, Panel, plural, post, removals, Row, useLive,
-  type MenuItem, type Store,
+  type MenuItem,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
 
@@ -26,11 +26,11 @@ const named = (id: string, label: string | null) => renamed.update((m) => {
 })
 
 /** The devices, as GET tabs/devices says (which are open now: asked again every 15 s while shown, and when one's tabs
- *  change), else as the state has them; what's done here shows at once. */
-export function useDevices(store?: Store): Device[] | null {
-  const { data } = useLive<{ devices: Device[] }>("tabs/devices", undefined, (p) => p.startsWith(".vaultite/plugins/tabs/"), 15_000)
+ *  change); what's done here shows at once. */
+export function useDevices(): Device[] | null {
+  const { data } = useLive<{ devices: Device[] }>("tabs/devices", undefined, undefined, 15_000)
   const names = renamed.use()
-  const { list } = forgetting.use(data?.devices ?? store?.tabDevices ?? null, (d) => d.id)
+  const { list } = forgetting.use(data?.devices ?? null, (d) => d.id)
   const all = list?.flatMap((d) => d.tabs.map((t) => tabKey(d, t)))
   const kept = closing.use(all, (k) => k).list
   const keep = kept && all && kept.length < all.length ? new Set(kept) : null
@@ -139,8 +139,8 @@ function DeviceRow({ d, leaving }: { d: Device; leaving?: "" }) {
 }
 
 /** Every device that used this vault in the last 30 days, open ones first. */
-export function DevicesPanel({ store }: { store?: Store }) {
-  const list = useDevices(store)
+export function DevicesPanel() {
+  const list = useDevices()
   const { device: leaving } = useLeaving()
   return (
     <Panel title="Devices" icon={MonitorSmartphone} tint="var(--machines)">

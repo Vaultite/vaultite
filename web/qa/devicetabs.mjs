@@ -1,5 +1,5 @@
 // The Tabs panel's other devices (plugins/core/tabs), a desktop and a phone context: each's tabs, opened, closed and
-// forgotten from the other. Writes sidebars.json (put back) and the devices' files: throwaway server only.
+// forgotten from the other. Writes sidebars.json (put back) and forgets every device: throwaway server only.
 //   node web/qa/devicetabs.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -10,8 +10,8 @@ mkdirSync(OUT, { recursive: true })
 const sidebarsPath = path.join(VAULT, ".vaultite", "sidebars.json")
 const sidebarsWas = existsSync(sidebarsPath) ? readFileSync(sidebarsPath, "utf8") : null
 writeFileSync(sidebarsPath, JSON.stringify({ left: ["tabs:tabs", "files:files"], right: [], collapsed: [] }) + "\n")
-const devices = path.join(VAULT, ".vaultite", "plugins", "tabs")
-rmSync(devices, { recursive: true, force: true })
+const listed = async () => (await (await fetch(`${B}/api/tabs/devices`)).json()).devices ?? []
+for (const d of await listed()) await fetch(`${B}/api/tabs/devices/${d.id}`, { method: "DELETE" })
 const notes = readdirSync(path.join(VAULT, "Notes")).filter((f) => f.endsWith(".md")).slice(0, 2).map((f) => `Notes/${f}`)
 if (notes.length < 2) { console.error("needs a vault with two notes in Notes/"); process.exit(2) }
 const stem = (p) => p.split("/").pop().replace(/\.md$/, "")
@@ -31,8 +31,9 @@ try {
   await A.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, notes[1])
   await P.goto(`${B}/#new`); await wait(1500)
 
-  const files = () => existsSync(devices) ? readdirSync(devices).filter((f) => f.startsWith("device-")) : []
-  check("each device saves its own file", (await until(() => files().length === 2 ? true : null, 8000)) === true, files())
+  const tabsDir = path.join(VAULT, ".vaultite", "plugins", "tabs")
+  check("each device's tabs are kept by the server, nothing in the vault", (await until(async () => (await listed()).length === 2 ? true : null, 8000)) === true &&
+    (!existsSync(tabsDir) || !readdirSync(tabsDir).some((f) => f.startsWith("device-"))), await listed())
 
   // The phone's tabs list (its drawer has the same panel): the desktop's tabs, named by its browser.
   await P.goto(`${B}/#view/tabs`)

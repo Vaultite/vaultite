@@ -9,8 +9,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
   `CLAUDE.md` holds only what it can't show (rules, gotchas, the why), each once, in the nearest folder.
 
 ## How it's built
-- The vault is the only store, no database. The core indexes files and loads plugins; every feature is a plugin
-  (`plugins/CLAUDE.md`).
+- The vault is the only store of the user's data, no database. The core indexes files and loads plugins; every
+  feature is a plugin (`plugins/CLAUDE.md`).
 - Few strong primitives, composed (files, blocks, dashboards, tabs, the sheet, menus, the palette, drag). Add one only
   when nothing composes, make it general, and give it both sides (the app and `/api/render`).
 - `core/docs/design.md` is the design system: the page primitives and Markdown. A new one goes in it; a block is
@@ -18,7 +18,11 @@ the main writers. Served on a private network (a tailnet), no accounts.
 - Operations are the API (`core/ops.ts`): a new agent-facing feature is an op, which gives it its vau command, MCP tool
   and docs. Docs for agents come from ops, manifests, `core/AGENTS.md`, `core/docs/` and plugins' `AGENTS.md`.
 - Secrets live only in `data/config.json` on the server's machine: out of the vault, logs and commits.
-- Every UI preference is a file in the vault's `.vaultite/` (so an AI can change it); only per-device values go in
+- Three kinds of things, three places. The user's data (notes, logs, people, tasks) is vault files. Preferences
+  (appearance, keymaps, panels, plugin settings: what the user sets, rarely written) are files in `.vaultite/` (so an
+  AI can change them). Runtime state (what's open: tabs, layouts, a place in a video; caches) is the server's
+  (`core/kept.ts`: memory, its own disk, shared with the other machines), never the vault: each vault write is an
+  iCloud upload and a watcher event on every machine. All three reach agents through ops. Only per-device values go in
   localStorage. Defaults stay in code, never written into a vault.
 - No compatibility shims: migrate data and every caller, and delete the old API in the same change.
 - Backend code runs with Node's type stripping, so it's erasable TS: no enums, no parameter properties, `import type`,

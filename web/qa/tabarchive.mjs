@@ -15,7 +15,7 @@ const TABS = path.join(VAULT, ".vaultite/plugins/tabs/data.json")
 const PLUGINS = path.join(VAULT, ".vaultite/plugins.json")
 const tabsBefore = existsSync(TABS) ? readFileSync(TABS, "utf8") : null
 const pluginsBefore = readFileSync(PLUGINS, "utf8")
-const putBackWorkspaces = setAsideWorkspaces(VAULT)
+const putBackWorkspaces = setAsideWorkspaces(B)
 mkdirSync(path.dirname(TABS), { recursive: true })
 writeFileSync(TABS, JSON.stringify({ archive_after: "12h" }) + "\n")
 
@@ -95,17 +95,17 @@ try {
   await p2.goto(`${B}#file/${encodeURIComponent(a)}`)
   await p2.waitForSelector("[aria-label='New tab']", { timeout: 30000 })
   for (const f of [b, c]) { await command(p2, "Open new tab"); await p2.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await wait(600) }
-  await until(() => workspaces(VAULT)[0]?.layout, 8000)
+  await until(() => workspaces(B)[0]?.layout, 8000)
   await wait(2500)
-  const stamped = JSON.stringify(workspaces(VAULT)[0]?.layout ?? {})
+  const stamped = JSON.stringify(workspaces(B)[0]?.layout ?? {})
   check("with Workspaces, the tabs' stamps go with the layout", /"seen":\d+/.test(stamped), stamped.slice(0, 300))
   // (files opened lately are kept in the workspace too, as they stay in view: only the tabs are looked at)
-  const before = JSON.stringify(workspaces(VAULT)[0]?.layout)
+  const before = JSON.stringify(workspaces(B)[0]?.layout)
   const tabIds = await p2.$$eval("section[data-group] [data-tab-id]", (els) => els.map((e) => e.getAttribute("data-tab-id")))
   for (const id of [...tabIds, ...tabIds]) { await p2.click(`[data-tab-id='${id}'] [role=tab]`); await wait(400) }
   await wait(2000)
-  check("switching tabs writes nothing of the tabs (their stamps wait for a write that happens anyway)", JSON.stringify(workspaces(VAULT)[0]?.layout) === before,
-    [before, JSON.stringify(workspaces(VAULT)[0]?.layout)])
+  check("switching tabs writes nothing of the tabs (their stamps wait for a write that happens anyway)", JSON.stringify(workspaces(B)[0]?.layout) === before,
+    [before, JSON.stringify(workspaces(B)[0]?.layout)])
   await ctx2.close()
 } finally {
   if (tabsBefore === null) rmSync(TABS, { force: true }); else writeFileSync(TABS, tabsBefore)

@@ -13,7 +13,7 @@ export type Trace = {
   kinds: Set<string>
   /** Plugins whose settings it read (.vaultite/plugins/<id>/data.json). */
   settings: Set<string>
-  /** Plugins whose cache it read (.vaultite/cache/<id>.json). */
+  /** Plugins whose cache it read (plugin.readCache: kept by the server, core/kept.ts). */
   caches: Set<string>
   /** Plugins whose live data it used (plugin.memo). */
   live: Set<string>

@@ -7,6 +7,7 @@ import { FM, loadFm, setPropertyText } from "./frontmatter.ts"
 import { FENCE, scan } from "./sections.ts"
 import { type Item, readSoon, stamp, type Vault, writeAtomic } from "./vault.ts"
 import { trustOf } from "./trust.ts"
+import { keptOf } from "./kept.ts"
 import { isObj, strings as strs } from "./values.ts"
 
 const FILE = "migrations"
@@ -55,6 +56,28 @@ export function accessToMachine(vault: Vault, plugins: { id: string; manifest: I
     if (moving.length) trust.patchLocal(p.id, Object.fromEntries(moving.map((k) => [k, set![k]])))
   }
   trust.ran(STEP, true)
+}
+
+/** Plugins' caches were .vaultite/cache/<id>.json: kept by the server now (core/kept.ts). Taken in at each start (an old
+ *  app elsewhere writes one until it updates), the newer winning, then removed. */
+export function cachesToKept(vault: Vault) {
+  const dir = vault.abs(".vaultite/cache")
+  let names: string[] = []
+  try { names = fs.readdirSync(dir) } catch { return }
+  const kept = keptOf(vault.path)
+  for (const f of names) {
+    const m = /^([a-z0-9][a-z0-9-]*)\.json$/.exec(f)
+    if (!m) continue
+    const file = path.join(dir, f), name = m[1] === "plugin-index" ? "core/plugin-index" : `${m[1]}/cache`
+    let data: unknown, at: number
+    try { at = Math.round(fs.statSync(file).mtimeMs); data = JSON.parse(fs.readFileSync(file, "utf8")) } catch (e) {
+      if (e instanceof SyntaxError) fs.rmSync(file, { force: true }) // (half written: a cache, made again)
+      continue // (in iCloud only for now: the next start)
+    }
+    if (kept.at(name) < at) kept.set(name, data, { shared: true, at })
+    fs.rmSync(file, { force: true })
+  }
+  try { fs.rmdirSync(dir) } catch { /* something else is in it */ }
 }
 
 /** Built-ins that were on from the start (`essential`) and became `offByDefault`: on where they weren't switched off. */

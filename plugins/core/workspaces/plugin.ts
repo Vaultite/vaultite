@@ -1,5 +1,5 @@
-// Workspaces: up to five setups (tabs, splits, panels, pins, `state`), a file per slot in .vaultite/plugins/workspaces/
-// so devices on different ones never write the same file. Terminal tabs are saved with their machine (`shown`/`saved`).
+// Workspaces: up to five. What the user sets (name, look, panels, pins) is a file per slot; what's open (`layout`,
+// `state`) is kept and shared (core/kept.ts). Terminal tabs are saved with their machine (`shown`/`saved`).
 import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, type OpCtx, OpError, type Param, pathAsSaid, pinProblem, placePin, Plugin, readSidebars, relocatedPin, repinList, sameSidebars } from "../../../core/plugins.ts"
@@ -13,11 +13,17 @@ export const MAX = 5
 /** A workspace's sidebars are the default: none of its own, or the same as sidebars.json's. */
 const defaultSidebars = (x: unknown) => x === undefined || sameSidebars(readSidebars(x), readSidebars(plugin.vault.config("sidebars")))
 
-/** The slots as they're saved, checked: a slot is an object or null (unused: blank.ts), at most five, trailing unused
- *  ones left out. A workspace's `sidebars` reads as the app reads sidebars.json (core/sidebars.ts). */
+/** What of a slot is kept by the server, not its file: what's open in it. */
+const RUNTIME = ["layout", "state"]
+const filePart = (d: Item) => Object.fromEntries(Object.entries(d).filter(([k]) => !RUNTIME.includes(k)))
+const keptPart = (d: Item) => Object.fromEntries(Object.entries(d).filter(([k]) => RUNTIME.includes(k)))
+const keptOfSlot = (i: number) => plugin.kept<Item>(String(i + 1), {})
+
+/** The slots as they're saved (its file and what's kept), checked: a slot is an object or null (unused: blank.ts), at
+ *  most five, trailing unused ones left out. A workspace's `sidebars` reads as the app reads sidebars.json (core/sidebars.ts). */
 export function slots(): (Item | null)[] {
   const list = Array.from({ length: MAX }, (_, i) => {
-    const x = plugin.settings({}, String(i + 1))
+    const x = { ...filePart(plugin.settings({}, String(i + 1))), ...keptOfSlot(i) }
     if (!Object.keys(x).length || isBlank(x, defaultSidebars)) return null
     const { sidebars, ...rest } = x
     const own = readSidebars(sidebars)
@@ -27,19 +33,41 @@ export function slots(): (Item | null)[] {
   return list
 }
 
-/** Write each slot this change changed to its own file, removing ones left unused. Refused while a file it would change
- *  doesn't read (iCloud mid-sync), never overwritten; other slots' files are never touched. */
+/** Save each slot this change changed: what's open kept, the rest in its own file, removing what an unused one had.
+ *  A file is refused while it doesn't read (iCloud mid-sync), never overwritten; other slots are never touched. */
 function save(list: (Item | null)[]) {
-  const was = slots()
   for (let i = 0; i < MAX; i++) {
     const d = list[i] ?? null
     const next = d && !isBlank(d, defaultSidebars) ? d : null
+    const run = next ? keptPart(next) : {}
+    plugin.keep(String(i + 1), Object.keys(run).length ? run : null, { shared: true })
+    const own = next ? filePart(next) : {}, had = plugin.settings({}, String(i + 1))
     // Unchanged; but a file that reads as unused (written by hand, or by an older app) goes.
-    if (JSON.stringify(next) === JSON.stringify(was[i] ?? null) && (next || !Object.keys(plugin.settings({}, String(i + 1))).length)) continue
+    if (JSON.stringify(own) === JSON.stringify(had)) continue
     readable(i)
-    plugin.saveSettings(next, String(i + 1))
+    plugin.saveSettings(Object.keys(own).length ? own : null, String(i + 1))
   }
 }
+
+// A slot's file with its tabs in it (from before, written by hand or by a machine still on the old app): its tabs are
+// taken in, the newer winning, and the file keeps the rest. Looked for whenever the settings change.
+let lookedAt = ""
+plugin.onSync((vault) => {
+  const key = `${vault.path}:${vault.settingsVersion}`
+  if (key === lookedAt) return
+  lookedAt = key
+  for (let i = 0; i < MAX; i++) {
+    let d: Item | null
+    try { d = plugin.readSettings(String(i + 1)) } catch { continue } // (mid-sync: the next change)
+    if (!d || !RUNTIME.some((k) => k in d!)) continue
+    let at = 0
+    try { at = Math.round(fs.statSync(path.join(vault.path, ".vaultite", "plugins", plugin.id, `${i + 1}.json`)).mtimeMs) } catch { continue }
+    const run = keptPart(d)
+    if (plugin.keptAt(String(i + 1)) <= at) plugin.keep(String(i + 1), { ...keptOfSlot(i), ...run }, { shared: true, at })
+    const own = filePart(d)
+    plugin.saveSettings(Object.keys(own).length ? own : null, String(i + 1))
+  }
+})
 
 /** Refuse (409, 503) when slot i's file (or with no i, any slot's) is there but doesn't read now: what's shown of it may
  *  not be what it holds, and a write would lose that. */

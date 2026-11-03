@@ -16,6 +16,7 @@ import { panelOps } from "./coreops/panels.ts"
 import { pluginList, pluginOps } from "./coreops/plugins.ts"
 import type { Any } from "./coreops/common.ts"
 import { settingsOps } from "./coreops/settings.ts"
+import { keptOps } from "./coreops/kept.ts"
 import { typeOps } from "./coreops/types.ts"
 import { versionOps } from "./coreops/version.ts"
 import { commandList } from "./appsource.ts"
@@ -25,7 +26,7 @@ import { type Op, OpError, quoted } from "./ops.ts"
 
 /** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
 export function coreOps(app: App): Op[] {
-  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...itemOps(app),
+  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...keptOps(app), ...itemOps(app),
     ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...opsOps(app)]
 }
 

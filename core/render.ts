@@ -115,11 +115,11 @@ export async function blockOn(vault: Vault, plugins: Plugin[], query: Record<str
 // ---------- where a block's data comes from (GET /api/blocks/sources) ----------
 
 /** One place a block's data comes from: a file (it shows it, or read it), every file of a kind (`files`: the paths),
- *  a plugin's settings or cache (a hidden file to open), or live data (in words: nothing in the vault). */
+ *  a plugin's settings (a hidden file to open), or live data and caches (in words: nothing in the vault). */
 type BlockSource =
   | { kind: "file"; path: string }
   | { kind: "files"; collection: string; type: string; paths: string[] }
-  | { kind: "settings" | "cache"; plugin: string; label: string; path: string }
+  | { kind: "settings"; plugin: string; label: string; path: string }
   | { kind: "live"; plugin: string; label: string; folders: { path: string; label: string }[] }
 export type BlockSources = {
   name: string; plugin: string | null; pluginName: string | null; on: boolean; description: string
@@ -202,15 +202,13 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
       const path = `.vaultite/plugins/${id}/data.json`
       if (fs.existsSync(vault.abs(path))) out.sources.push({ kind: "settings", plugin: id, label: `${named(id)} settings`, path })
     }
-    for (const id of trace.caches) {
-      const path = `.vaultite/cache/${id}.json`
-      if (fs.existsSync(vault.abs(path))) out.sources.push({ kind: "cache", plugin: id, label: `${named(id)} cache`, path })
-    }
     const live = typeof decl?.live === "string" && decl.live.trim() ? decl.live.trim() : null
-    if (live || trace.live.has(owner.id)) {
+    if (live || trace.live.has(owner.id) || trace.caches.has(owner.id)) {
       const folders = (p?.liveFolders() ?? []).map((d) => ({ path: d, label: d.startsWith(os.homedir() + "/") ? `~${d.slice(os.homedir().length)}` : d }))
       out.sources.push({ kind: "live", plugin: owner.id, label: live ?? named(owner.id), folders })
     }
+    // (another plugin's cache: kept by the server, in no file either, core/kept.ts)
+    for (const id of trace.caches) if (id !== owner.id) out.sources.push({ kind: "live", plugin: id, label: named(id), folders: [] })
     return out
   }
 }

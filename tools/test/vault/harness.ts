@@ -36,10 +36,6 @@ export async function vaultHarness(from?: string) {
     fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", "note-dates", "data.json"), JSON.stringify({ created: "", updated: "" }) + "\n")
   }
   fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n") // the user's own
-  // The People map's lookups so far (its cache), so no test asks the network for a pin.
-  fs.mkdirSync(path.join(VAULT, ".vaultite", "cache"), { recursive: true })
-  fs.writeFileSync(path.join(VAULT, ".vaultite", "cache", "people.json"), JSON.stringify({ places: {
-    "chicago, il": [41.8781, -87.6298], "denver, co": [39.7392, -104.9903], "seattle, wa": [47.6062, -122.3321], "nowhere at all": null } }))
   process.env.VAULTITE_VAULT = VAULT
   process.env.VAULTITE_LOCAL = path.join(tmp, "local")
   // The agents' files: made up (tools/fixtures), never this machine's. Codex's app server then has no login: the limits
@@ -65,6 +61,9 @@ export async function vaultHarness(from?: string) {
   const { publicOf } = await import("../../../core/vault.ts")
   // Transcripts read anew whenever asked: a test reads what it just wrote, never a scan from under 5 s ago.
   ;(await import("../../../core/agents.ts")).scanEvery(0)
+  // The People map's lookups so far (its cache), so no test asks the network for a pin.
+  ;(await import("../../../core/kept.ts")).keptOf(VAULT).set("people/cache", { places: {
+    "chicago, il": [41.8781, -87.6298], "denver, co": [39.7392, -104.9903], "seattle, wa": [47.6062, -122.3321], "nowhere at all": null } })
   const app = await open(VAULT, { start: false })
   const kept = app.plugins.find((p) => p.id === "terminal")?.exports.kept as { files: string } | undefined
   if (kept) process.on("exit", () => fs.rmSync(`${kept.files}.log`, { force: true }))
@@ -72,12 +71,16 @@ export async function vaultHarness(from?: string) {
   /** The Vaultite plugins on in the test vault (above): a test that writes plugins.json keeps them on. */
   const ON: string[] = vault.config("plugins").enabled ?? []
 
-  // Workspaces' files: one per workspace (.vaultite/plugins/workspaces/<n>.json) and data.json saying so (`files`), read
-  // and written here as {workspaces: [...], ...data.json's other keys}.
+  // Workspaces: each one's file (<n>.json) and what's kept of it (`workspaces/<n>`), as one {workspaces: [...]}. A file
+  // written with a layout has it taken in at the next sync, as one from before.
   const WS_DIR = ".vaultite/plugins/workspaces"
+  const keptWs = (await import("../../../core/kept.ts")).keptOf(VAULT)
   function readWs(): Any {
     const at = (f: string) => path.join(VAULT, WS_DIR, f)
-    const list = [1, 2, 3, 4, 5].map((n) => (fs.existsSync(at(`${n}.json`)) ? JSON.parse(fs.readFileSync(at(`${n}.json`), "utf8")) : null))
+    const list = [1, 2, 3, 4, 5].map((n) => {
+      const own = fs.existsSync(at(`${n}.json`)) ? JSON.parse(fs.readFileSync(at(`${n}.json`), "utf8")) : null, run = keptWs.get<Any>(`workspaces/${n}`, null)
+      return own || run ? { ...own, ...run } : null
+    })
     while (list.length && list[list.length - 1] === null) list.pop()
     return { ...(fs.existsSync(at("data.json")) ? JSON.parse(fs.readFileSync(at("data.json"), "utf8")) : {}), workspaces: list }
   }
@@ -85,12 +88,14 @@ export async function vaultHarness(from?: string) {
     fs.mkdirSync(path.join(VAULT, WS_DIR), { recursive: true })
     ;[1, 2, 3, 4, 5].forEach((n) => {
       const f = path.join(VAULT, WS_DIR, `${n}.json`)
+      keptWs.set(`workspaces/${n}`, null)
       if (workspaces[n - 1]) fs.writeFileSync(f, JSON.stringify(workspaces[n - 1])); else fs.rmSync(f, { force: true })
     })
     fs.writeFileSync(path.join(VAULT, WS_DIR, "data.json"), JSON.stringify({ ...rest, files: true }))
   }
   function clearWs() {
     for (const f of ["1", "2", "3", "4", "5", "data"]) fs.rmSync(path.join(VAULT, WS_DIR, `${f}.json`), { force: true })
+    for (const n of [1, 2, 3, 4, 5]) keptWs.set(`workspaces/${n}`, null)
   }
 
   /** A route run as the server runs it: [status, body]. */

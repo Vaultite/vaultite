@@ -163,7 +163,7 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
 
 // ---------- other devices ----------
 
-/** Sends this device's tabs when the places open change (not which one is in front), and once as the page opens. A
+/** Sends this device's tabs soon after the places open change (not which one is in front), and as the page opens. A
  *  view's label goes with it (another device can't tell a terminal's name); a file's is found where it's shown. */
 function Report({ store }: { store: Store }) {
   const ws = useTabLayout()
@@ -180,7 +180,7 @@ function Report({ store }: { store: Store }) {
       if (key === sent.current) return
       sent.current = key
       put(`tabs/devices/${DEVICE}`, { tabs }).catch(() => { sent.current = "" })
-    }, 2000)
+    }, 500)
     return () => clearTimeout(id)
   }, [ws])
   return null
@@ -206,7 +206,7 @@ function DeviceHeading({ d }: { d: Device }) {
 function OtherDevices({ store }: { store: Store }) {
   const info = useTabLabels(store)
   const shown = settings.use().other_devices !== false
-  const list = (useDevices(store) ?? []).filter(inPanel)
+  const list = (useDevices() ?? []).filter(inPanel)
   const leaving = useLeaving()
   if (!shown || !list.length) return null
   return (
@@ -299,7 +299,7 @@ export default definePlugin({
     "archived-tabs": { icon: Archive, title: () => "Archived tabs", render: ({ store }) => <ArchivedView store={store} /> },
     devices: {
       icon: MonitorSmartphone, title: () => "Devices",
-      render: ({ store }) => <div className="pt-2 pb-10" data-devices-view><DevicesPanel store={store} /></div>,
+      render: () => <div className="pt-2 pb-10" data-devices-view><DevicesPanel /></div>,
     },
   },
   commands: [

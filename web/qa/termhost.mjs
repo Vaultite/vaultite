@@ -16,7 +16,8 @@ const base = (u) => (u.endsWith("/") ? u : `${u}/`)
 const portOf = (u) => new URL(u).port
 /** The tmux sessions a server's terminals run in (its own tmux server, vaultite-<port>). */
 const shells = (u) => { try { return execFileSync(TMUX, ["-L", `vaultite-${portOf(u)}`, "ls", "-F", "#{session_name}"], { encoding: "utf8" }).trim().split("\n").filter(Boolean) } catch { return [] } }
-const raw = () => ({ workspaces: workspaces(VAULT) })
+// (as B shows them: A's terminals with A's id, as saved)
+const raw = () => ({ workspaces: workspaces(B) })
 const places = (w) => JSON.stringify(w?.layout ?? null).match(/"to":"[^"]+"/g)?.map((x) => x.slice(6, -1)) ?? []
 const api = async (u, p) => (await fetch(new URL(`api/${p}`, base(u)))).json()
 const sid = `qa${Date.now().toString(36)}`

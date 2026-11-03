@@ -1,9 +1,9 @@
 // The vault as the web app sees it (GET /api/state), plus date helpers. Every item has a string id (its vault path
 // without .md) and `modified` (a local stamp, "YYYY-MM-DD HH:MM:SS").
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { editCount, edited, onVaultChange, settled, startLive, type Paths } from "@/core/live"
+import { editCount, edited, onKeptChange, onVaultChange, settled, startLive, type Paths } from "@/core/live"
 import { get, send } from "@/core/http"
-import { getPrefs, hydratePrefs } from "@/core/prefs"
+import { hydratePrefs } from "@/core/prefs"
 import { errorText, notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
 import { usePane } from "@/core/pane"
@@ -134,16 +134,18 @@ function fetchLive<T>(path: string, key = path, fresh = 10_000, since = 0): Prom
   return p
 }
 
-/** Does this change touch what a plugin's route answers from: its cache (.vaultite/cache/<id>.json) or its settings
- *  (.vaultite/plugins/<id>/)? A route's plugin is its first part, by convention (`calendar?from=…`: calendar). */
+/** Does this change touch what a plugin's route answers from: its settings (.vaultite/plugins/<id>/)? (Its cache is kept
+ *  by the server: keptData.) A route's plugin is its first part, by convention (`calendar?from=…`: calendar). */
 function liveData(paths: Paths, route: string) {
   if (paths === null) return true
   const id = route.split(/[/?]/)[0]
-  return paths.some((p) => p === ".vaultite" || p === ".vaultite/cache" || p === ".vaultite/plugins" || p === `.vaultite/cache/${id}.json`
-    || p === `.vaultite/plugins/${id}` || p.startsWith(`.vaultite/plugins/${id}/`))
+  return paths.some((p) => p === ".vaultite" || p === ".vaultite/plugins" || p === `.vaultite/plugins/${id}` || p.startsWith(`.vaultite/plugins/${id}/`))
 }
+/** Does a change to what the server keeps (core/kept.ts, "<plugin id>/<name>") touch a plugin's route? */
+const keptData = (names: string[] | null, route: string) => names === null || names.some((n) => n.slice(0, n.indexOf("/")) === route.split(/[/?]/)[0])
 // Before any card refetches, forget what's in flight, so they share one new request.
 onVaultChange((paths) => { changes++; for (const k of [...inflight.keys()]) if (liveData(paths, k)) inflight.delete(k) })
+onKeptChange((names) => { changes++; for (const k of [...inflight.keys()]) if (keptData(names, k)) inflight.delete(k) })
 
 // The last answer per address, so a card drawn again shows it at once while it asks again instead of jumping. Kept for
 // this visit (200) and in localStorage per vault (20, up to 16 KB each).
@@ -203,11 +205,13 @@ export function useLive<T>(path: string | null, version?: string | number, files
       setError(null)
     }).catch((e) => on && setError(errorText(e)))
     load()
-    const off = onVaultChange((paths) => {
+    const offFiles = onVaultChange((paths) => {
       const f = follow.current
       if (liveData(paths, path)) return load()
       if (f && (paths === null || paths.some((p) => !p.split("/").some((s) => s.startsWith(".")) && (f === true || f(p))))) load(undefined, changes)
     })
+    const offKept = onKeptChange((names) => { if (keptData(names, path)) load() })
+    const off = () => { offFiles(); offKept() }
     if (!every) return () => { on = false; off() }
     // (cards polling the same address share a request made in the last half period)
     const poll = () => { if (!document.hidden && !kept.current) void load(every / 2) }
@@ -230,7 +234,12 @@ export function usePatched<T>(path: string | null, version?: string | number) {
   const [error, setError] = useState<string | null>(null)
   const had = useRef(got)
   const [again, setAgain] = useState(0)
-  useEffect(() => (path ? onVaultChange((paths) => { if (liveData(paths, path)) setAgain((n) => n + 1) }) : undefined), [path])
+  useEffect(() => {
+    if (!path) return
+    const offFiles = onVaultChange((paths) => { if (liveData(paths, path)) setAgain((n) => n + 1) })
+    const offKept = onKeptChange((names) => { if (keptData(names, path)) setAgain((n) => n + 1) })
+    return () => { offFiles(); offKept() }
+  }, [path])
   useEffect(() => {
     if (!path || mock) return
     let on = true
@@ -333,9 +342,6 @@ function load(): Promise<void> {
 }
 export const reload = () => load()
 
-/** A change only to plugins' caches: never part of the state (live data is drawn by blocks, which ask their routes),
- *  so the store only reloads for one while hidden files are shown (then they're in the file tree). */
-const onlyCaches = (paths: Paths) => !!paths?.length && paths.every((p) => p === ".vaultite/cache" || p.startsWith(".vaultite/cache/"))
 
 // Changes in quick succession (an agent writing file after file) reload it at most once a second: the first at once,
 // the ones after it together, a moment later.
@@ -350,8 +356,8 @@ function loadSoon() {
   else soon = setTimeout(go, wait)
 }
 
-/** Load the store, and follow the vault: any change (Claude, another device, this app's own writes) refreshes it,
- *  except to caches (and artifacts' storage, which the server doesn't report). Once, from main.tsx. */
+/** Load the store, and follow the vault: any change (Claude, another device, this app's own writes) refreshes it, as
+ *  does a change to what the server keeps that the state shows (artifacts' storage isn't reported). Once, from main.tsx. */
 let started = false
 export function startStore() {
   if (started) return
@@ -359,7 +365,8 @@ export function startStore() {
   loading?.mark("scripts")
   load()
   startLive()
-  onVaultChange((paths) => { if (!onlyCaches(paths) || getPrefs().showHidden) loadSoon() })
+  onVaultChange(() => loadSoon())
+  onKeptChange((_names, state) => { if (state) loadSoon() })
 }
 
 /** The store and the last error loading it, redrawn when either changes. */

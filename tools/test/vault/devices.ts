@@ -1,3 +1,5 @@
+import fs from "node:fs"
+import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -31,6 +33,15 @@ export default async ($: VaultTest) => {
   check("devices: vau tabs devices lists them with their tabs", listed?.devices?.length === 3 && listed.devices[0].tabs.length === 1, listed)
   const [shut, why] = await api("POST", "ops/tabs.device-close", { device: "safari on iphone" })
   check("devices: vau tabs device-close finds one by name, and says it isn't open", shut === 409 && /Safari on iPhone isn't open now/.test(why?.error), [shut, why])
+  const dir = path.join($.VAULT, ".vaultite/plugins/tabs")
+  check("devices: kept by the server, nothing written into the vault", !fs.existsSync(dir) || !fs.readdirSync(dir).some((f) => f.startsWith("device-")))
   for (const id of ["brave0000001", "chromium0001", "iphone000001"]) await api("DELETE", `tabs/devices/${id}`)
   check("devices: forgotten, they're gone", !Object.keys(await named()).length)
+  // A device's file from before (iCloud carried them between machines): taken in at the next start, then removed.
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, "device-oldmac000001.json"), JSON.stringify({ name: "Mac app on Studio", kind: "desktop", at: new Date().toISOString(), tabs: [{ to: "file:Notes/Idea.md" }] }))
+  all = await named()
+  check("devices: a device's file from before is taken in, and removed", all.oldmac000001?.name === "Mac app on Studio" && all.oldmac000001.tabs[0].to === "file:Notes/Idea.md" &&
+    !fs.existsSync(path.join(dir, "device-oldmac000001.json")), all)
+  await api("DELETE", "tabs/devices/oldmac000001")
 }

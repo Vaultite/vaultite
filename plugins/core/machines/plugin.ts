@@ -7,6 +7,7 @@ import os from "node:os"
 import path from "node:path"
 import { API_VERSION, APP_VERSION, bullets, gitEnv, HTTPError, inDesktop, LOADED, localDate, noDesktop, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
+import { shareKept } from "./kept.ts"
 import { alerts, duration, EVERY, KEEP_DAYS, report, reportText, sample, watch, type Report, type Sample } from "./health.ts"
 import type { Item } from "../../../core/vault.ts"
 
@@ -174,6 +175,8 @@ async function selfId(): Promise<string | null> {
 async function machine(id: string) {
   return (await machines()).find((m) => m.id === id) ?? null
 }
+
+shareKept(plugin, machines, vaultId)
 
 plugin.provide("machines", machines)
 plugin.provide("machines:machine", machine)

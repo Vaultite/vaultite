@@ -1,5 +1,5 @@
-// Player: where you stopped in each audio or video file and its bookmarks (.vaultite/plugins/player/places.json, so
-// every device picks up where another left off), what a file says about itself (chapters, cover), and the queue's text.
+// Player: where you stopped in each audio or video file (kept, shared: any device picks up there) and its bookmarks
+// (the user's: .vaultite/plugins/player/marks.json), what a file says about itself (chapters, cover), the queue's text.
 import fs from "node:fs"
 import { bullets, HTTPError, Plugin, section, Text, vaultPath } from "../../../core/plugins.ts"
 import { isArchived, str, type Item } from "../../../core/vault.ts"
@@ -9,11 +9,41 @@ import { leftText, shelfOf, type Mark, type Place, type Shelf } from "./shelves.
 export const plugin = new Plugin(import.meta.url)
 
 const MAX = 500
-const places = () => (plugin.settings({}, "places").places ?? {}) as Record<string, Place>
+type Marks = Record<string, Mark[]>
+const marksNow = () => (plugin.settings({}, "marks").marks ?? {}) as Marks
+/** Each file's place, with its bookmarks. */
+function places(): Record<string, Place> {
+  const all = { ...(plugin.kept<{ places?: Record<string, Place> }>("places", {}).places ?? {}) }, marks = marksNow()
+  for (const [p, m] of Object.entries(marks)) if (Array.isArray(m) && m.length) all[p] = { ...(all[p] ?? { t: 0, at: 0 }), marks: m }
+  return all
+}
+/** Keep the places (the last MAX), and write the bookmarks when they changed. */
 function save(all: Record<string, Place>) {
   const kept = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, MAX)
-  plugin.saveSettings(kept.length ? { places: Object.fromEntries(kept) } : null, "places")
+  plugin.keep("places", kept.length ? { places: Object.fromEntries(kept.map(([p, { marks: _m, ...at }]) => [p, at])) } : null, { shared: true })
+  const marks: Marks = Object.fromEntries(Object.entries(all).filter(([, x]) => x.marks?.length).sort(([a], [b]) => a.localeCompare(b)).map(([p, x]) => [p, x.marks!]))
+  if (JSON.stringify(marks) !== JSON.stringify(marksNow())) plugin.saveSettings(Object.keys(marks).length ? { marks } : null, "marks")
 }
+
+// places.json from before (positions and bookmarks, which iCloud carried between machines): the positions taken in, the
+// newer of each winning, the bookmarks into marks.json, then it's removed. Looked for whenever the settings change.
+let lookedAt = ""
+plugin.onSync((vault) => {
+  const key = `${vault.path}:${vault.settingsVersion}`
+  if (lookedAt === key) return
+  lookedAt = key
+  let old: Item | null
+  try { old = plugin.readSettings("places") } catch { return } // (mid-sync: the next change)
+  if (!old) return
+  const had = places(), next = { ...had }
+  for (const [p, x] of Object.entries((old.places ?? {}) as Record<string, Place>)) {
+    if (!x || typeof x.at !== "number") continue
+    const mine = had[p]
+    next[p] = { ...(mine && mine.at >= x.at ? mine : x), ...(mine?.marks?.length || x.marks?.length ? { marks: mine?.marks?.length ? mine.marks : x.marks } : {}) }
+  }
+  save(next)
+  plugin.saveSettings(null, "places")
+})
 
 plugin.route("GET", "player/places", () => ({ places: places() }))
 

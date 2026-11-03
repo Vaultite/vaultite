@@ -8,6 +8,7 @@ import path from "node:path"
 import type { WebSocket } from "ws"
 import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
+import { keptOf } from "./kept.ts"
 
 const QUIET = 20, GAP = 100, PING = 25_000, RECENT = 500, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask, plugins' "<id>:<name>"),
@@ -58,9 +59,16 @@ export class Live {
   private unmove: () => void
   private unarrive: () => void
   private unwrote: () => void
+  private unkept: () => void
+  private keptNames = new Set<string>() // kept entries changed, told together a moment later
+  private keptTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(vault: Vault) {
     this.vault = vault
+    this.unkept = keptOf(vault.path).onChange((names) => {
+      for (const n of names) this.keptNames.add(n)
+      this.keptTimer ??= setTimeout(() => this.tellKept(), QUIET)
+    })
     this.unmove = vault.onMove((from, to) => this.send({ type: "moved", from, to })) // (to null: trashed)
     this.unarrive = vault.onArrive((rel) => this.add(rel)) // (iCloud gave it: the watcher may not say)
     this.unwrote = vault.onWrote((rel) => this.add(rel)) // (the server's own writes: FSEvents may tell of them seconds later)
@@ -212,7 +220,22 @@ export class Live {
       } catch { /* not ours */ }
     })
     const missed = at === undefined ? undefined : this.since(at)
-    ws.send(JSON.stringify({ type: "hello", v: this.v, at: this.at, web: Live.web() ?? undefined, ...(missed !== undefined ? { paths: missed } : {}) }))
+    ws.send(JSON.stringify({ type: "hello", v: this.v, at: this.at, web: Live.web() ?? undefined, ...this.keptMark(), ...(missed !== undefined ? { paths: missed } : {}) }))
+  }
+
+  /** Where the kept entries are (core/kept.ts): `kept`, the store and its last change, which a window back after a
+   *  while compares; `state`, what of them /api/state shows. */
+  private keptMark() {
+    const k = keptOf(this.vault.path)
+    return { kept: `${k.id}:${k.seq}`, state: k.stateVersion }
+  }
+
+  /** Kept entries changed (another device's tabs, a workspace's layout): windows read what shows them again. */
+  private tellKept() {
+    this.keptTimer = null
+    const names = [...this.keptNames].sort()
+    this.keptNames.clear()
+    if (names.length) this.send({ type: "kept", names, ...this.keptMark() })
   }
 
   /** Where the changes told so far end ("<boot>:<n>"): a window back after a while says it, and hears only what changed
@@ -366,6 +389,8 @@ export class Live {
     this.unmove()
     this.unarrive()
     this.unwrote()
+    this.unkept()
+    if (this.keptTimer) clearTimeout(this.keptTimer)
     if (this.watcher) { this.watcher.close(); this.vault.watching(false) }
     if (this.timer) clearTimeout(this.timer)
     if (this.again) clearTimeout(this.again)

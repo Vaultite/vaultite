@@ -20,7 +20,7 @@ const json = (rel) => { try { return JSON.parse(readFileSync(file(rel), "utf8"))
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
 const restore = [keep(".vaultite/plugins.json"), keep(".vaultite/files.json"), keep(".vaultite/plugins/page-preview/data.json"),
   keep(".vaultite/plugins/search/data.json"), keep(".vaultite/plugins/logs/data.json")]
-const putBackWs = setAsideWorkspaces(VAULT)
+const putBackWs = setAsideWorkspaces(B)
 const VP = ".vaultite/plugins/qa-tracker"
 
 async function open(w, h, mobile = false) {
@@ -288,7 +288,7 @@ try {
       await page.locator("dialog[open] button[aria-label^='Back']").count() === 1)
     await sheet(page, "workspaces").locator("input[aria-label^='Name of workspace']").fill("Writing")
     await sheet(page, "workspaces").locator("input[aria-label^='Name of workspace']").press("Enter")
-    check("Workspaces: naming the current one", !!(await until(() => workspaces(VAULT)[0]?.name === "Writing", 4000)))
+    check("Workspaces: naming the current one", !!(await until(() => workspaces(B)[0]?.name === "Writing", 4000)))
     await shot(page, "7-panel-workspaces-desktop")
     await closeSheet(page)
     await page.locator("[data-workspace-switcher]").first().click({ button: "right" }); await wait(300)

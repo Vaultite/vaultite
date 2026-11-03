@@ -182,7 +182,7 @@ async function fileSays(vault: Vault, rel: string, local = false) {
 function keep(vault: Vault) {
   const s = seen()
   if (!vault.waiting()) for (const k of [...s.keys()]) if (!vault.others.has(k)) s.delete(k)
-  plugin.writeCache({ files: Object.fromEntries([...s].map(([k, [stamp, ai]]) => [k, `${stamp} ${ai ? 1 : 0}`])) })
+  plugin.writeCache({ files: Object.fromEntries([...s].map(([k, [stamp, ai]]) => [k, `${stamp} ${ai ? 1 : 0}`])) }, { here: true }) // (each machine reads its own copies)
 }
 
 // New and changed files are read in the background, off any request, so database views can filter on what they say.

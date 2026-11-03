@@ -1,4 +1,4 @@
-// Tabs: what each device has open, a file per device (device-<id>.json, so devices never write the same file); which
+// Tabs: what each device has open, kept and shared (core/kept.ts `device-<id>`: every machine has every device's); which
 // are open now isn't kept: each server knows its own windows (core/live.ts) and asks the other machines for theirs.
 import dns from "node:dns/promises"
 import fs from "node:fs"
@@ -17,12 +17,14 @@ type Machine = { id: string; label: string; url: string; online: boolean; self: 
 
 const ID = /^[a-z0-9]{8,32}$/
 const TERM = "view:terminal/"
-/** A device not heard from in this long is left out (its file stays until it's forgotten). */
+/** A device not heard from in this long is left out (and forgotten a while later). */
 const STALE = 30 * 86400_000
 const LOOPBACK_URL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?\/?$/
 const loopbackIp = (ip: string) => ip === "::1" || ip.startsWith("127.") || ip === "::ffff:127.0.0.1"
 
 const file = (id: string) => `device-${id}`
+const record = (id: string) => plugin.kept<Item>(file(id), {})
+const keepRecord = (id: string, d: Item | null) => plugin.keep(file(id), d, { shared: true })
 const idOf = (s: string) => { const id = s.toLowerCase(); if (!ID.test(id)) throw new HTTPError(400, "a device id is 8 to 32 letters and digits"); return id }
 
 /** This machine's id in Machines' list ("" for none). */
@@ -134,17 +136,19 @@ async function presence(): Promise<Map<string, Present & { on: string }>> {
 /** Every device's tabs, open ones first, then the latest; this machine's terminals without "@<this machine>". `live`:
  *  say which are open now (asking the other machines); the state leaves that to the app's ask, repeated while shown. */
 async function devices(live = true): Promise<Device[]> {
-  let names: string[]
-  try { names = fs.readdirSync(path.join(plugin.vault.path, ".vaultite", "plugins", plugin.id)) } catch { return [] }
   const machine = await self()
   const open = live ? await presence() : new Map<string, Present>()
   const out: Device[] = []
-  for (const n of names) {
-    const m = /^device-([a-z0-9]{8,32})\.json$/.exec(n)
+  for (const n of plugin.keptNames("device-")) {
+    const m = /^device-([a-z0-9]{8,32})$/.exec(n)
     if (!m) continue
-    const d = plugin.settings({}, file(m[1]))
+    const d = record(m[1])
     const at = typeof d.at === "string" ? d.at : "", now = open.get(m[1])
-    if (!at || (!now && !(Date.now() - Date.parse(at) < STALE))) continue
+    if (!at || (!now && !(Date.now() - Date.parse(at) < STALE))) {
+      // (gone a long while: forgotten, so what's kept doesn't grow with every browser ever used)
+      if (!now && at && Date.now() - Date.parse(at) > 2 * STALE) keepRecord(m[1], null)
+      continue
+    }
     const tabs = (Array.isArray(d.tabs) ? d.tabs as DeviceTab[] : []).filter((t) => typeof t?.to === "string")
       .map((t) => (machine && t.to.endsWith(`@${machine}`) && t.to.startsWith(TERM) ? { ...t, to: t.to.slice(0, -machine.length - 1) } : t))
     out.push({ id: m[1], name: String(d.name || "A device"), ...(typeof d.label === "string" && d.label ? { label: d.label } : {}),
@@ -154,7 +158,6 @@ async function devices(live = true): Promise<Device[]> {
   return out.sort((a, b) => Number(!!b.live) - Number(!!a.live) || b.at.localeCompare(a.at))
 }
 
-plugin.state(async () => ({ tabDevices: await devices(false) }))
 plugin.route("GET", "tabs/devices", async () => ({ devices: await devices() }), { lock: false })
 /** GET tabs/devices/here: the devices with windows open on this server (what other machines ask). */
 plugin.route("GET", "tabs/devices/here", () => ({ devices: plugin.host.devices() }), { sync: false })
@@ -163,21 +166,22 @@ plugin.route("GET", "tabs/devices/here", () => ({ devices: plugin.host.devices()
 plugin.route("PUT", "tabs/devices/*", async (req) => {
   const id = idOf(req.arg(0)), machine = await self()
   const tabs = tabsOf(req.body.tabs, machine)
-  const was = plugin.settings({}, file(id))
+  const was = record(id)
   const next = { ...await whoAsks(req), ...(typeof was.label === "string" && was.label ? { label: was.label } : {}), at: new Date().toISOString(), tabs }
-  // Nothing new (a reload): the file stays as it is, unless it's old enough that "updated" would mislead.
-  if (JSON.stringify({ ...was, at: "" }) === JSON.stringify({ ...next, at: "" }) && Date.now() - Date.parse(String(was.at)) < 3600_000) return { ok: true }
-  plugin.saveSettings(next, file(id))
+  // Nothing new (a reload): kept as it is, unless it's old enough that "last used" would mislead (each change goes to
+  // every machine).
+  if (JSON.stringify({ ...was, at: "" }) === JSON.stringify({ ...next, at: "" }) && Date.now() - Date.parse(String(was.at)) < 600_000) return { ok: true }
+  keepRecord(id, next)
   return { ok: true }
 })
 
 /** POST tabs/devices/<id>/label {label}: the user's name for a device (empty: its own again). */
 plugin.route("POST", "tabs/devices/*/label", (req) => {
-  const id = idOf(req.arg(0)), was = plugin.settings({}, file(id))
+  const id = idOf(req.arg(0)), was = record(id)
   if (!was.at) throw new HTTPError(404, "no such device")
   const label = typeof req.body.label === "string" ? req.body.label.trim().slice(0, 60) : ""
   const { label: _old, ...rest } = was
-  plugin.saveSettings(label ? { ...rest, label } : rest, file(id))
+  keepRecord(id, label ? { ...rest, label } : rest)
   return { ok: true }
 })
 
@@ -210,8 +214,29 @@ plugin.route("POST", "tabs/devices/*/close", async (req) => {
 
 /** DELETE tabs/devices/<id>: forget a device (it comes back the next time it's used). */
 plugin.route("DELETE", "tabs/devices/*", (req) => {
-  plugin.saveSettings(null, file(idOf(req.arg(0))))
+  keepRecord(idOf(req.arg(0)), null)
   return { ok: true }
+})
+
+// Devices' files from before (.vaultite/plugins/tabs/device-<id>.json): taken in, the newer winning, then removed;
+// looked for whenever the settings change (an old app elsewhere writes one until it updates).
+let lookedAt = ""
+plugin.onSync((vault) => {
+  const key = `${vault.path}:${vault.settingsVersion}`
+  if (lookedAt === key) return
+  lookedAt = key
+  const dir = path.join(vault.path, ".vaultite", "plugins", plugin.id)
+  let names: string[] = []
+  try { names = fs.readdirSync(dir) } catch { return }
+  for (const n of names) {
+    const m = /^device-([a-z0-9]{8,32})\.json$/.exec(n)
+    if (!m) continue
+    let d: Item | null
+    try { d = plugin.readSettings(file(m[1])) } catch { continue } // (iCloud has it only in the cloud for now: next start)
+    const at = Date.parse(String(d?.at ?? "")), had = Date.parse(String(record(m[1]).at ?? ""))
+    if (d && Number.isFinite(at) && !(had >= at)) plugin.keep(file(m[1]), d, { shared: true, at })
+    plugin.saveSettings(null, file(m[1]))
+  }
 })
 
 /** A device named by an agent: its id, or its name (the user's, or its own), without regard to case. */

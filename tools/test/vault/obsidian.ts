@@ -135,7 +135,7 @@ export default async ($: VaultTest) => {
     delete process.env.VAULTITE_PLUGIN_INDEX
     fs.rmSync(path.join(VAULT, ".obsidian/community-plugins.json"))
     fs.rmSync(path.join(VAULT, ".obsidian/plugins"), { recursive: true })
-    fs.rmSync(path.join(VAULT, ".vaultite/cache/plugin-index.json"), { force: true })
+    ;(await import("../../../core/kept.ts")).keptOf(VAULT).set("core/plugin-index", null)
     const meta = await import("../../../core/rules.ts")
     check("replaces: a manifest's is other apps' plugins by app", meta.metaProblems({ replaces: ["dataview"] }).length === 1 && !meta.metaProblems({ replaces: { obsidian: ["dataview"] } }).length)
   }

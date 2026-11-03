@@ -29,6 +29,9 @@ import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
 import { type PropTypes, readTypes } from "./proptypes.ts"
 import { trustOf } from "./trust.ts"
+import { keptOf } from "./kept.ts"
+/** The store of what the servers keep (core/kept.ts): Machines passes its shared entries between machines. */
+export { keptOf, type Shared as SharedKept } from "./kept.ts"
 import { keptShell } from "./keptshell.ts"
 import { notHereYet, onItsOwn, runHook } from "./writegate.ts"
 /** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
@@ -712,18 +715,37 @@ export class Plugin {
     return d
   }
 
-  /** .vaultite/cache/<id>.json in the vault (the vault's folder when run on its own, like the GitHub refresh). */
-  cachePath() {
-    return path.join(this._vault ? this._vault.path : VAULT_PATH, ".vaultite", "cache", `${this.id}.json`)
+  /** What it keeps that isn't the user's (runtime state: what's open, a place in a video; core/kept.ts): in this server's
+   *  memory and on its own disk, never in the vault. A new copy each time, or `fallback` while there's none. */
+  kept<T = Item>(name: string, fallback?: T): T {
+    return keptOf(this._vault ? this._vault.path : VAULT_PATH).get(`${this.id}/${name}`, fallback)
   }
 
+  /** Keep `data` as `name` (null forgets it); `shared`: the other machines serving this vault have it too (Machines
+   *  passes it on, the latest write winning); `at`: when it changed (ms), for data from before. Returns whether it changed. */
+  keep(name: string, data: unknown, { shared = false, at }: { shared?: boolean; at?: number } = {}): boolean {
+    return keptOf(this._vault ? this._vault.path : VAULT_PATH).set(`${this.id}/${name}`, data, { shared, at })
+  }
+
+  /** When what it keeps as `name` last changed (ms; 0: never). */
+  keptAt(name: string): number {
+    return keptOf(this._vault ? this._vault.path : VAULT_PATH).at(`${this.id}/${name}`)
+  }
+
+  /** The names it keeps something under, starting with `prefix`. */
+  keptNames(prefix = ""): string[] {
+    return keptOf(this._vault ? this._vault.path : VAULT_PATH).names(`${this.id}/${prefix}`).map((n) => n.slice(this.id.length + 1))
+  }
+
+  /** Its cache of live data (kept as `cache`, shared: what one machine fetched or counted, every machine shows). */
   readCache(fallback: Item | null = null): Item | null {
     noteSource("caches", this.id)
-    try { return JSON.parse(readText(this.cachePath())) } catch { return fallback }
+    return this.kept<Item | null>("cache", fallback)
   }
 
-  writeCache(data: unknown) {
-    writeAtomic(this.cachePath(), JSON.stringify(data))
+  /** Replace its cache; `here`: only this machine's (what each machine works out itself, like what files' bytes say). */
+  writeCache(data: unknown, { here = false }: { here?: boolean } = {}) {
+    this.keep("cache", data, { shared: !here })
   }
 
   /** This machine's data/config.json (private URLs, keys). Never copy these into the vault. */

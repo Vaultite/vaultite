@@ -10,7 +10,7 @@ import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
 import { CONNECT_HEADER, overNetwork, ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
-import { accessToMachine, migrate, migrateMoved } from "./migrations.ts"
+import { accessToMachine, cachesToKept, migrate, migrateMoved } from "./migrations.ts"
 import { installFrom } from "./coreops/installs.ts"
 import * as F from "./files.ts"
 import * as O from "./outside.ts"
@@ -26,6 +26,7 @@ import { topic, topics } from "./docs.ts"
 import * as SP from "./statepatch.ts"
 import { coreOps } from "./coreops.ts"
 import { SETTINGS } from "./coreops/settings.ts"
+import { keptOf } from "./kept.ts"
 import { filing } from "./filing.ts"
 import { checkParams, didOf, entryOf, jsonBlock, nearest, type Op, type OpCtx, OpError, opsDoc, pathAsSaid, type Who, whoOf } from "./ops.ts"
 import { eventOps, eventsOf, matching, summary, typeMatches, type VaultEvent } from "./events.ts"
@@ -312,12 +313,14 @@ export class App {
    *  meanwhile. A vault plugin's plugin.state may read anything, so then it's worked out each time. */
   async state() {
     // (what this machine allowed and the directory blocks change what's listed, not the vault)
-    const version = `${this.vault.version}:${this.vault.settingsVersion}:${this.vaultPlugins.trust.version}:${this.index.version}`, plugins = this.plugins
+    const kept = keptOf(this.vault.path)
+    const version = `${this.vault.version}:${this.vault.settingsVersion}:${this.vaultPlugins.trust.version}:${this.index.version}:${kept.stateVersion}`, plugins = this.plugins
     const same = this.stated && this.stated.version === version && this.stated.plugins === plugins &&
       !this.vaultPlugins.loaded().some((p) => p.stateFn)
     if (same) return this.stated!.state
     const out: Item = {}
-    for (const p of this.plugins) Object.assign(out, await p.getState())
+    // (what plugins read of what's kept is noted: a change to it, and nothing else kept, makes a new state)
+    await kept.readingFor(async () => { for (const p of this.plugins) Object.assign(out, await p.getState()) })
     // sandbox: a vault core/sandbox.ts made (made afresh each time it opens): the app says changes there don't last.
     out.vault = { path: this.vault.path, problems: this.vault.problemList(), downloading: this.vault.downloading, ...(fs.existsSync(this.vault.abs(SANDBOX_MARKER)) ? { sandbox: true } : {}) }
     out.files = F.tree(this.vault)
@@ -949,6 +952,7 @@ export async function open(vaultPath: string, { start = true, timing, watch }: {
   if (start) {
     await migrate(app.vault, fresh)
     accessToMachine(app.vault, app.plugins)
+    cachesToKept(app.vault)
     app.tidyPluginLists()
     B.tidy(app.vault)
     await turn()

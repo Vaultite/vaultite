@@ -40,6 +40,36 @@ export function useVaultChange(fn: Fn, paths?: string[] | ((p: string) => boolea
   }), [])
 }
 
+/** What the server keeps changed (core/kept.ts: another device's tabs, a workspace's layout): fn(names, state), names
+ *  "<plugin id>/<name>" (null: any may have), `state` whether the store's state shows any of them. Held while hidden. */
+type KeptFn = (names: string[] | null, state: boolean) => void
+const keptSubs = new Set<KeptFn>()
+export function onKeptChange(fn: KeptFn) {
+  keptSubs.add(fn)
+  return () => { keptSubs.delete(fn) }
+}
+let keptHeld: { names: string[] | null; state: boolean } | undefined
+function emitKept(names: string[] | null, state: boolean) {
+  if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+    const h = keptHeld
+    keptHeld = { names: !h ? names : h.names === null || names === null ? null : [...new Set([...h.names, ...names])], state: state || !!h?.state }
+    return
+  }
+  for (const fn of [...keptSubs]) {
+    try { fn(names, state) } catch (e) { console.error(e) }
+  }
+}
+let keptSeen: string | null = null // the server's kept store and its last change ("<id>:<seq>")
+let keptState: number | null = null // the version of what of it the state shows
+/** The server's word on what it keeps: what changed (null: back after a while, anything that did). */
+function heardKept(names: string[] | null, kept: unknown, state: unknown) {
+  if (typeof kept !== "string" || typeof state !== "number") return
+  const stateMoved = keptState !== null && state !== keptState, moved = keptSeen !== null && kept !== keptSeen
+  keptSeen = kept
+  keptState = state
+  if (names ? names.length : moved) emitKept(names, stateMoved)
+}
+
 /** Does this change touch `path` (the file itself, or a folder it's in)? */
 export const touches = (paths: Paths, path: string) => paths === null || paths.some((p) => p === path || path.startsWith(p + "/"))
 
@@ -58,6 +88,9 @@ function hold(paths: Paths) {
   if (held && held.length > 500) held = null
 }
 function release() {
+  const k = keptHeld
+  keptHeld = undefined
+  if (k) emitKept(k.names, k.state)
   if (held === undefined) return
   const paths = held
   held = undefined
@@ -122,7 +155,7 @@ function connect() {
   last = Date.now()
   s.onmessage = (e) => {
     last = Date.now()
-    let m: { type?: string; v?: string; at?: string; web?: string; paths?: Paths; from?: string; to?: string | null } & Partial<UiAction>
+    let m: { type?: string; v?: string; at?: string; web?: string; paths?: Paths; from?: string; to?: string | null; names?: string[]; kept?: string; state?: number } & Partial<UiAction>
     try { m = JSON.parse(String(e.data)) } catch { return }
     if (m.type === "hello") {
       tries = 0
@@ -134,12 +167,15 @@ function connect() {
       else if (seen !== null && m.v !== seen) emit(null)
       seen = m.v ?? null
       heard = m.at ?? null
+      heardKept(null, m.kept, m.state)
       if (m.web && BUILD && m.web !== BUILD)
         notify("A new version of Vaultite is ready", { id: "update", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
     } else if (m.type === "change") {
       seen = m.v ?? seen
       heard = m.at ?? heard
       emit(m.paths ?? null)
+    } else if (m.type === "kept" && Array.isArray(m.names)) {
+      heardKept(m.names, m.kept, m.state)
     } else if (m.type === "moved" && m.from) {
       for (const fn of [...moveSubs]) { try { fn(m.from, m.to ?? null) } catch (e) { console.error(e) } }
     } else if (m.type === "ui" && m.action === "ask-end") {

@@ -11,10 +11,10 @@ import { clearWorkspaces, workspaces, wsChanged } from "./lib/wsfiles.mjs"
 const { args: [B, VAULT, OUT = "/tmp/phonetabs-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = (method, p, body) => fetch(`${B}api/${p}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined }).then((r) => r.json())
-const data = () => workspaces(VAULT)
-const mtime = () => wsChanged(VAULT)
+const data = () => workspaces(B)
+const mtime = () => wsChanged(B)
 /** The workspaces as saved, without what the app keeps in them (`state`: files opened lately, open folders). */
-const shared = () => JSON.stringify(workspaces(VAULT).map((w) => w && { ...w, state: undefined }))
+const shared = () => JSON.stringify(workspaces(B).map((w) => w && { ...w, state: undefined }))
 const tosOf = (l) => { const out = []; const walk = (n) => (n?.kids ? n.kids.forEach(walk) : n?.tabs?.forEach((t) => out.push(t.to))); walk(l?.root); return out }
 const F = (name) => `file:Qa tabs/${name}.md`
 const hash = (name) => `#file/${encodeURIComponent(`Qa tabs/${name}.md`)}`
@@ -67,7 +67,7 @@ const PINNED = [await pagePath(B, "People"), await pagePath(B, "Activity"), awai
 await api("PUT", "config/pages", { pinned: PINNED, pinNew: false })
 
 try {
-  clearWorkspaces(VAULT)
+  clearWorkspaces(B)
   for (const n of ["One", "Two", "Three", "Four"]) await api("POST", "file", { path: `Qa tabs/${n}.md`, text: `${n} text.\n` })
   // (a dashboard of the user's: built-in pages, like the pinned ones, are read-only, with no toggle)
   await api("POST", "file", { path: "Qa tabs/Board.md", text: "---\ntype: dashboard\n---\n\n```block-week-goals\n```\n" })
@@ -391,7 +391,7 @@ try {
 } finally {
   await browser.close()
   await api("DELETE", "file?path=Qa%20tabs").catch(() => {})
-  clearWorkspaces(VAULT)
+  clearWorkspaces(B)
   if (pluginsBefore === null) rmSync(pluginsFile, { force: true }); else writeFileSync(pluginsFile, pluginsBefore)
   if (pagesBefore === null) rmSync(pagesFile, { force: true }); else writeFileSync(pagesFile, pagesBefore)
 }

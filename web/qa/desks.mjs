@@ -11,7 +11,7 @@ mkdirSync(OUT, { recursive: true })
 
 const file = (p) => path.join(VAULT, p)
 const json = (p) => { try { return JSON.parse(readFileSync(file(p), "utf8")) } catch { return null } }
-const data = () => workspaces(VAULT)
+const data = () => workspaces(B)
 // The files it works with, its own (written at the start, removed at the end).
 const PAGE = "Qa page.md", TOP = "Qa top.md", JOURNAL = "Notes/Qa journal.md", CHECKLIST = "Notes/Qa checklist.md"
 const OWN = { [PAGE]: "# Qa page\n", [TOP]: "# Qa top\n", [JOURNAL]: "A note to open first.\n", [CHECKLIST]: "- [ ] A note to pin.\n" }
@@ -39,7 +39,7 @@ const treeRow = (p) => page.locator(`aside [data-tree-path="${p}"]`).first()
 const pins = () => page.$$eval("aside [data-pin]", (els) => els.map((e) => e.getAttribute("data-pin")))
 
 try {
-  clearWorkspaces(VAULT)
+  clearWorkspaces(B)
   // (Workspaces is off by default)
   const had = JSON.parse(pluginsBefore)
   writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...had, disabled: ["backlinks"], enabled: [...(had.enabled ?? []).filter((x) => x !== "workspaces"), "workspaces"] }, null, 2) + "\n")
@@ -215,7 +215,7 @@ try {
 } finally {
   writeFileSync(file(".vaultite/pages.json"), pagesBefore)
   writeFileSync(file(".vaultite/plugins.json"), pluginsBefore)
-  clearWorkspaces(VAULT)
+  clearWorkspaces(B)
   for (const p of Object.keys(OWN)) rmSync(file(p), { force: true })
   await browser.close()
 }

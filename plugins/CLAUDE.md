@@ -20,11 +20,12 @@
 
 ## The rules
 `core/rules.ts` checks them (`npm run check`).
-1. A plugin's data is vault files or its settings (`.vaultite/plugins/<id>/data.json`). Files on the server's machine
-   (`plugin.localDir()`, `plugin.dayLog`) only for disposable, high-churn data (history, activity, errors) that would
-   churn iCloud.
+1. A plugin's data is vault files or its settings (`.vaultite/plugins/<id>/data.json`: what the user sets). What it
+   keeps for itself (what's open, where something stopped, a day's reminder sent) is runtime state: `plugin.keep` /
+   `plugin.kept` (core/kept.ts), `shared` when every machine serving the vault should have it. Files on the server's
+   machine (`plugin.localDir()`, `plugin.dayLog`) for disposable logs (history, activity, errors).
 2. Live data (calendar events, stats) stays out of the vault: `plugin.memo` (keyed on `fn.name`: name the function) or
-   `plugin.writeCache`. Files show it through blocks.
+   `plugin.writeCache` (kept, shared; `here` for what each machine works out itself). Files show it through blocks.
 3. Secrets: `plugin.secrets()` (`data/config.json`). A setting the manifest marks `local` is this machine's
    (`core/trust.ts`), so a synced vault can't set it.
 4. A vault setting never chooses a program to run here: the owner's yes is `plugin.allows` / `plugin.allow`, kept on

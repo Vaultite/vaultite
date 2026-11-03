@@ -11,6 +11,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An agent's question has every choice its picker has**, in the inbox and the chat tab: its options numbered, Type
   something (your own answer, with a multi-select's picks too) and Chat about this, as in its terminal. Answering a session's question from
   the inbox (a pick, or a reply to its one question) no longer fails with "it doesn't ask anything to pick from now".
+- **What's open stays out of the vault**: each device's tabs, workspaces' tabs and splits, where a video stopped, an
+  inbox hold and plugins' caches are kept by the server (its memory and its own disk), not as files in the vault, so a
+  tab moved no longer writes into iCloud and wakes every machine. Machines share them directly, live: another device's
+  tabs show in a moment instead of whenever iCloud syncs, and stay listed while its machine is off. The old files are
+  taken in on the first start, then removed; what you set (a workspace's name and panels, bookmarks) stays in the vault.
+  `vau kept` lists what's kept.
 - **Enter sends an inbox reply**: Shift+Enter starts a new line, as in a chat; on a phone Enter stays a new line.
 - **Clicks reach a web page's corners**: a site whose header drags its own desktop app's window (ChatGPT's logo and
   sidebar button) no longer drags Vaultite's instead of clicking, and nothing of the window drags over a page.

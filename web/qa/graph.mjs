@@ -17,7 +17,7 @@ const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.d
   { encoding: "utf8", env: { ...process.env, VAULTITE_URL: B, VAULTITE_VAULT: VAULT } })
 vau("plugin", "on", "workspaces")
 vau("plugin", "on", "graph")
-const putBackWs = setAsideWorkspaces(VAULT)
+const putBackWs = setAsideWorkspaces(B)
 rmSync(SETTINGS, { force: true })
 const DEFAULT = ["search:search", "pages:pages", "terminal:sessions", "files:files"]
 await req("PUT", "config/sidebars", { left: DEFAULT, right: [], collapsed: [] })
@@ -54,7 +54,7 @@ while (await page.$("[role=menu]")) { await page.keyboard.press("Escape"); await
 await page.waitForSelector("[data-local-graph-panel] canvas", { timeout: 8000 }).then(() => check("shown from the menu, it draws the file's neighbours", true), () => check("shown from the menu, it draws the file's neighbours", false))
 // With Workspaces on there always is a current workspace (02c5ae8): a panel shown is that workspace's own (its
 // `sidebars` in Workspaces' data.json, the first one here), and sidebars.json, the default new ones start with, stays.
-const own = workspaces(VAULT)[0]?.sidebars ?? null
+const own = workspaces(B)[0]?.sidebars ?? null
 check(`showing it writes the workspace's panels (${JSON.stringify(own?.left)})`, JSON.stringify(own?.left) === JSON.stringify([...DEFAULT, "graph:local"]))
 check("...and leaves sidebars.json, the default, as it was", JSON.stringify(JSON.parse(readFileSync(SIDEBARS, "utf8")).left) === JSON.stringify(DEFAULT))
 

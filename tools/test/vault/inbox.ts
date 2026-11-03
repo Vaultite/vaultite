@@ -1013,8 +1013,9 @@ export default async ($: VaultTest) => {
     check("snooze: a time alone is its next one", parseUntil("07:30", nine)?.getTime() === new Date(2026, 9, 21, 7, 30).getTime() &&
       parseUntil("9:45", nine)?.getTime() === new Date(2026, 9, 20, 9, 45).getTime() && parseUntil("25:00", nine) === null)
     cr = await vau("inbox", "hold", "30m", "--label", "Practice guitar")
-    check("vau inbox hold: held till then, in the vault", cr.code === 0 && /Held until .*\(Practice guitar\)/.test(cr.out) &&
-      /"label": "Practice guitar"/.test(read(".vaultite/plugins/inbox/hold.json")), [cr, exists(".vaultite/plugins/inbox/hold.json")])
+    const { keptOf } = await import("../../../core/kept.ts")
+    check("vau inbox hold: held till then, kept by the server for every machine", cr.code === 0 && /Held until .*\(Practice guitar\)/.test(cr.out) &&
+      keptOf(VAULT).get<Any>("inbox/hold")?.label === "Practice guitar" && keptOf(VAULT).isShared("inbox/hold") && !exists(".vaultite/plugins/inbox/hold.json"), [cr, keptOf(VAULT).get("inbox/hold")])
     const [, held] = await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Told while held" })
     ;[, l] = await api("GET", "inbox/events")
     check("inbox hold: what comes is kept unread, not told", held.event.read !== true && !held.event.nt && l.hold?.label === "Practice guitar", [held, l.hold])

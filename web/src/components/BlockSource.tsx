@@ -1,7 +1,7 @@
 // A block's menu (right-click, hold or its bar's ⋯): where its data comes from (files, kinds, settings, cache, live
 // sources, as the server records them: /api/blocks/sources), then its options and its Markdown.
 import type { ReactNode } from "react"
-import { Blocks, Code, Database, FileText, Files, FolderOpen, Loader, Radio, Settings2, SlidersHorizontal, SquareCheck, TableProperties } from "lucide-react"
+import { Blocks, Code, FileText, Files, FolderOpen, Loader, Radio, Settings2, SlidersHorizontal, SquareCheck, TableProperties } from "lucide-react"
 import { openMenu, replaceMenu, type MenuItem } from "@/components/ContextMenu"
 import { canReveal, openOnComputer } from "@/components/FileActions"
 import { editAt } from "@/core/anchors"
@@ -20,7 +20,7 @@ import { capitalize } from "@/lib/utils"
 type Source =
   | { kind: "file"; path: string }
   | { kind: "files"; collection: string; type: string; paths: string[] }
-  | { kind: "settings" | "cache"; plugin: string; label: string; path: string }
+  | { kind: "settings"; plugin: string; label: string; path: string }
   | { kind: "live"; plugin: string; label: string; folders: { path: string; label: string }[] }
 type Sources = { name: string; path: string; line: number | null; sources: Source[] }
 
@@ -45,7 +45,6 @@ function sourceItems(found: Sources | Error | null, here: string): MenuItem[] {
   for (const s of found.sources) {
     if (s.kind === "files") out.push({ label: capitalize(s.collection), icon: Files, hint: `${s.paths.length}`, run: () => {}, items: s.paths.map(fileItem) })
     else if (s.kind === "settings") out.push({ label: s.label, icon: Settings2, run: () => openPluginSettings(s.plugin) })
-    else if (s.kind === "cache") out.push({ label: s.label, icon: Database, hint: s.path, run: () => openFile(s.path) })
   }
   // Live data is in no file; the folders it's read from open in Finder, on the machine the server runs on.
   for (const s of found.sources) {

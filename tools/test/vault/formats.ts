@@ -79,6 +79,17 @@ export default async ($: VaultTest) => {
     check("player/marks: sorted, rounded, trimmed, the place kept", code === 200 && JSON.stringify(m.place.marks) === JSON.stringify([{ t: 62 }, { t: 3000, note: "The lamp" }]) && m.place.t === 120, m)
     ;[, m] = await api("PUT", "player/places", { path: "Shelf/Log.m4b", t: 150, d: 4000 })
     check("player/places: a new place keeps the bookmarks", m.place.t === 150 && m.place.marks?.length === 2, m)
+    const marksFile = path.join(VAULT, ".vaultite/plugins/player/marks.json"), marksAt = fs.statSync(marksFile).mtimeMs
+    ;[, m] = await api("PUT", "player/places", { path: "Shelf/Log.m4b", t: 180, d: 4000 })
+    check("player: bookmarks are the user's file, a place playing is kept by the server (nothing written)", m.place.t === 180 &&
+      JSON.parse(fs.readFileSync(marksFile, "utf8")).marks["Shelf/Log.m4b"].length === 2 && fs.statSync(marksFile).mtimeMs === marksAt &&
+      !fs.existsSync(path.join(VAULT, ".vaultite/plugins/player/places.json")))
+    // places.json from before: positions taken in (the newer winning), bookmarks into marks.json, then it goes.
+    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/player/places.json"), JSON.stringify({ places: {
+      "Shelf/Log.m4b": { t: 5, at: 1, marks: [{ t: 1 }] }, "Shelf/Old.mp3": { t: 42, d: 100, at: Date.now(), marks: [{ t: 7, note: "Here" }] } } }))
+    const [, was] = await api("GET", "player/places")
+    check("player: places.json from before is taken in, then removed", was.places["Shelf/Log.m4b"].t === 180 && was.places["Shelf/Log.m4b"].marks.length === 2 &&
+      was.places["Shelf/Old.mp3"].t === 42 && was.places["Shelf/Old.mp3"].marks[0].note === "Here" && !fs.existsSync(path.join(VAULT, ".vaultite/plugins/player/places.json")), was)
 
     // Outside the vault: nothing until allowed; then its info (and, in server.ts, its bytes).
     const out = path.join(tmp, "elsewhere", "Plan.pdf")

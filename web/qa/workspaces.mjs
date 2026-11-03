@@ -13,7 +13,7 @@ const original = existsSync(settings) ? readFileSync(settings, "utf8") : "{}\n"
 const setPlugins = (o) => writeFileSync(settings, JSON.stringify({ ...JSON.parse(original), ...o }, null, 2) + "\n")
 /** plugins.json's `enabled` with Workspaces on or off (off by default). */
 const withWorkspaces = (on) => ({ enabled: [...(JSON.parse(original).enabled ?? []).filter((x) => x !== "workspaces"), ...(on ? ["workspaces"] : [])] })
-const data = () => workspaces(VAULT)
+const data = () => workspaces(B)
 const sidebarsFile = path.join(VAULT, ".vaultite/sidebars.json")
 const sidebarsBefore = existsSync(sidebarsFile) ? readFileSync(sidebarsFile, "utf8") : null
 const DEFAULT = JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] })
@@ -56,7 +56,7 @@ const menuItem = (name) => page.locator("[role=menuitemcheckbox], [role=menuitem
 let sid = null
 
 try {
-  clearWorkspaces(VAULT)
+  clearWorkspaces(B)
   // (Links, the backlinks panel, stays off here, like sidebar.mjs: its panel would join every list.)
   setPlugins({ disabled: ["backlinks"], ...withWorkspaces(true) })
   writeFileSync(sidebarsFile, DEFAULT + "\n")
@@ -424,7 +424,7 @@ try {
       await page.keyboard.press("ControlOrMeta+p"); await wait(200); await page.keyboard.type("End terminal session"); await page.keyboard.press("Enter"); await wait(500)
     } catch { /* already gone */ }
   }
-  clearWorkspaces(VAULT)
+  clearWorkspaces(B)
   for (const f of [moveFile, paneFile, openFile]) rmSync(f, { force: true })
   writeFileSync(settings, original)
   if (sidebarsBefore === null) rmSync(sidebarsFile, { force: true }); else writeFileSync(sidebarsFile, sidebarsBefore)

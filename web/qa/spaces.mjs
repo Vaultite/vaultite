@@ -9,7 +9,7 @@ const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.u
 
 const PLUGINS = path.join(VAULT, ".vaultite/plugins.json")
 const pluginsBefore = readFileSync(PLUGINS, "utf8")
-const putBack = setAsideWorkspaces(VAULT)
+const putBack = setAsideWorkspaces(B)
 writeFileSync(PLUGINS, JSON.stringify({ ...JSON.parse(pluginsBefore), enabled: [...(JSON.parse(pluginsBefore).enabled ?? []), "workspaces"] }, null, 2) + "\n")
 mkdirSync(wsDir(VAULT), { recursive: true })
 writeFileSync(path.join(wsDir(VAULT), "1.json"), JSON.stringify({ name: "Writing" }) + "\n")
@@ -45,8 +45,8 @@ try {
   const offered = await until(async () => { const t = await page.$$eval("[role=dialog] [role=option]", (els) => els.map((e) => e.textContent.trim())); return t.length >= 30 && t }, 5000)
   check("Change icon: the app's common icons first, not the alphabet's start", offered?.[0] === "activity" && offered.slice(0, 30).includes("dumbbell") && !offered.slice(0, 30).includes("a-arrow-down"), offered?.slice(0, 6))
   await page.keyboard.type("book-open"); await wait(500); await page.keyboard.press("Enter")
-  await until(() => workspaces(VAULT)[0]?.icon, 5000)
-  check("Change icon: kept in its file", workspaces(VAULT)[0]?.icon === "book-open", workspaces(VAULT)[0])
+  await until(() => workspaces(B)[0]?.icon, 5000)
+  check("Change icon: kept in its file", workspaces(B)[0]?.icon === "book-open", workspaces(B)[0])
   check("… and shown for its number", await until(() => page.$(`${SWITCHER} [data-workspace-icon=book-open]`), 3000))
 
   // The list: like a menu, the highlight follows the keyboard and a check marks the one that's on.
@@ -59,9 +59,9 @@ try {
 
   // The colour: the sidebars take a little of it, light and dark, and lose it with No colour.
   await pick("Colour", "Teal")
-  await until(() => workspaces(VAULT)[0]?.tint === "teal", 5000)
+  await until(() => workspaces(B)[0]?.tint === "teal", 5000)
   const teal = await bg()
-  check("Colour: kept, and the sidebar takes a little of it (light)", workspaces(VAULT)[0]?.tint === "teal" && far(teal, plain) >= 3 && far(teal, plain) <= 40, { plain, teal })
+  check("Colour: kept, and the sidebar takes a little of it (light)", workspaces(B)[0]?.tint === "teal" && far(teal, plain) >= 3 && far(teal, plain) <= 40, { plain, teal })
   const icon = await page.$eval(`${SWITCHER} [data-workspace-icon] svg`, (e) => getComputedStyle(e).color)
   const tealIs = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--teal").trim())
   check("… the icon in it", far(await drawn(page, icon), await drawn(page, tealIs)) <= 2, [icon, tealIs])
@@ -77,8 +77,8 @@ try {
   const boxes = await page.locator("[role=menu]").last().locator("[role^=menuitem]").allInnerTexts()
   check("Container: the Browser's containers to pick from", ["No container", "Personal", "Work"].every((b) => boxes.some((x) => x.startsWith(b))), boxes)
   await page.locator("[role=menu]").last().locator("[role^=menuitem]", { hasText: /^Work/ }).click()
-  await until(() => workspaces(VAULT)[0]?.container === "work", 5000)
-  check("… kept in its file", workspaces(VAULT)[0]?.container === "work", workspaces(VAULT)[0])
+  await until(() => workspaces(B)[0]?.container === "work", 5000)
+  check("… kept in its file", workspaces(B)[0]?.container === "work", workspaces(B)[0])
   await page.click(SWITCHER, { button: "right" })
   check("… and named in the menu", (await page.locator("[role=menu] [role^=menuitem]", { hasText: /^Container/ }).innerText()).includes("Work"))
   await page.keyboard.press("Escape")

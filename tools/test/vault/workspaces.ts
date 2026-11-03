@@ -262,4 +262,25 @@ export default async ($: VaultTest) => {
     fs.rmSync(path.join(VAULT, "Notes/Qa desk moved.md"))
     clearWs()
   }
+  // ---------- what's open in a workspace is kept by the server, never in its file ----------
+  {
+    const file = `${WS_DIR}/3.json`
+    let [st] = await api("PUT", "workspaces/3", { name: "Desk", layout: { root: { id: "g0", tabs: [{ id: "t1", to: "file:Notes/A.md" }], active: "t1" }, focus: "g0" }, state: { "files:open": ["Notes"] } })
+    const own = JSON.parse(read(file))
+    check("workspaces: its file has what the user set, its tabs and state are kept (core/kept.ts)", st === 200 && own.name === "Desk" && !("layout" in own) && !("state" in own) &&
+      readWs().workspaces[2].layout.root.tabs[0].to === "file:Notes/A.md" && readWs().workspaces[2].state["files:open"][0] === "Notes", [own, readWs().workspaces[2]])
+    const mtime = fs.statSync(path.join(VAULT, file)).mtimeMs
+    ;[st] = await api("PUT", "workspaces/3", { layout: { root: { id: "g0", tabs: [{ id: "t2", to: "file:Notes/B.md" }], active: "t2" }, focus: "g0" } })
+    check("workspaces: a tab changed writes nothing into the vault", st === 200 && fs.statSync(path.join(VAULT, file)).mtimeMs === mtime && readWs().workspaces[2].layout.root.tabs[0].id === "t2")
+    // A file from before (or a machine still on the old app) with its tabs in it: taken in, and the file keeps the rest.
+    write(file, JSON.stringify({ name: "Desk", layout: { root: { id: "g0", tabs: [{ id: "t3", to: "file:Notes/C.md" }], active: "t3" }, focus: "g0" } }))
+    const [, got] = await api("GET", "workspaces")
+    check("workspaces: a file with tabs in it has them taken in, newer than what was kept", got.workspaces[2]?.layout.root.tabs[0].id === "t3" &&
+      JSON.stringify(JSON.parse(read(file))) === JSON.stringify({ name: "Desk" }), [got.workspaces[2], read(file)])
+    ;[st] = await api("PUT", "workspaces/3", { name: null })
+    check("workspaces: one with only tabs has no file", st === 200 && !exists(file) && readWs().workspaces[2]?.layout.root.tabs[0].id === "t3", readWs())
+    await api("DELETE", "workspaces/3")
+    check("workspaces: deleted, nothing's kept of it", !exists(file) && !readWs().workspaces[2])
+    clearWs()
+  }
 }

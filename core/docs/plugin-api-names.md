@@ -781,6 +781,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isOutside(p)`: An absolute path, never a vault one (which can't have ":" or "\\"): /x, or Windows' C:/x, C:\x and \\server\x.
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `isZip(file)`: Does the file start like a zip ("PK\3\4", or an empty one's "PK\5\6")? Claude's exports may come named .dms.
+- `keptOf(vaultPath)`: The store of the vault at `vaultPath` on this machine.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
 - `liveMarkdown(text)`: Whether words a guest adds (a comment, a reply: all of it theirs) hold anything live.

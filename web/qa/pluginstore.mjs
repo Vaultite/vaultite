@@ -41,10 +41,11 @@ const writeIndex = (harborVersion) => {
   ] }))
 }
 const cleanup = () => {
-  for (const p of [".vaultite/plugins/harbor", ".vaultite/plugins/lighthouse", ".vaultite/plugins-lock.json", ".vaultite/cache/plugin-index.json"]) rmSync(file(p), { recursive: true, force: true })
+  for (const p of [".vaultite/plugins/harbor", ".vaultite/plugins/lighthouse", ".vaultite/plugins-lock.json"]) rmSync(file(p), { recursive: true, force: true })
   const c = plugins(); c.enabled = (c.enabled ?? []).filter((x) => x !== "harbor" && x !== "lighthouse"); putPlugins(c)
 }
 cleanup()
+await api("ops/kept.set", { name: "core/plugin-index", data: null }) // (the directory as last fetched: asked afresh)
 rmSync(INDEX, { force: true })
 
 try {
