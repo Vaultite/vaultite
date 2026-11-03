@@ -262,9 +262,10 @@ function serverFor(v: Known) {
   return b
 }
 
-/** Its server's calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), and macOS's
- *  permissions (app.permissions: core/coreops/permissions.ts). */
+/** Its server's calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), macOS's
+ *  permissions (app.permissions: core/coreops/permissions.ts) and the app's updates (app.version). */
 const answerCall = (v: Known, m: Call) => Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions() : null)
+  : m.name === "app:updates" ? appUpdates()
   : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
 
 /** Push an event to a vault's server unasked (core/desktopapp.ts onDesktopEvent): the one way the main process does. */
@@ -1244,6 +1245,11 @@ let ready: string | null = null
 let status: string | null = null
 /** Written as the app quits to update (what it updates to), read and removed by the first window after the restart. */
 const UPDATED = () => path.join(app.getPath("userData"), "updated")
+
+/** What this app's updates are doing, for its server's app.version (vau version). */
+function appUpdates() {
+  return { mode: updates, available: updatable(), from: RELEASE ? "releases" : BRANCH, ready, doing: status }
+}
 
 function updateLog() {
   const dir = app.getPath("logs")
