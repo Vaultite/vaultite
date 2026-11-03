@@ -13,6 +13,9 @@
   never reaches a frame from another site, a captcha's or "Sign in with Google"), its cursor shown back. An overlay no
   hit test finds (it takes no pointer, or sits between their points: a corner card) needs `data-floats`. Small ambient
   bits the page may hide (a companion's cursor) take `data-under-pages`, so they don't raise the window.
+- Electron drags the window wherever any of its views has a drag region (`-webkit-app-region`), whatever is drawn over
+  it, and Chromium neither clips regions nor stacks them: only document order counts. So a site's own are off
+  (web-preload.cjs) and the window's are cut where a page shows (WebPage's `data-web-cut`); `web/qa/pageclicks.mjs`.
 - A tab owns its page by the tab's id (`usePane().tab`; electron/webpages.ts decides): hidden in the background, the same
   one when shown again, ended when the tab closes or leaves the window (`onTabClose`; moved to another of the vault's
   windows, it goes along: `moved`, web.ts `adopt`) or shows something else. None

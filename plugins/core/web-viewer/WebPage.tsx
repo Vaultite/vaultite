@@ -419,6 +419,9 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found}
         close={() => { setFindOpen(tab, false); setAsk(null); setFound(null); void web.go(id, "focus") }} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
+        {/* The window drags wherever its page has a drag region, even under this page (Electron): cut out here, after
+            them in the document, as regions go. Empty, so one region (no-drag is inherited). */}
+        <div aria-hidden data-web-cut className="pointer-events-none absolute inset-0 [-webkit-app-region:no-drag]" />
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab ? "back" : "here")} />}
         {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
         {passkey && <Passkey ask={passkey} />}

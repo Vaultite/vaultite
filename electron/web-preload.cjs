@@ -1,7 +1,11 @@
 // What a web page tells electron/web.ts: first paint (the app's colour till then, not white), window size, ⌥-click on
 // a link; from every frame, keys it left alone, mouse back/forward, typed input it holds. Isolated world, no Node.
 "use strict"
-const { contextBridge, ipcRenderer } = require("electron")
+const { contextBridge, ipcRenderer, webFrame } = require("electron")
+
+// A site's -webkit-app-region (ChatGPT's header, for its own desktop app) would drag the app's window, Electron honouring
+// every view's: a tab never does, as in Chrome. `initial` (none): `none` itself computes to no-drag, a region per element.
+if (process.isMainFrame) webFrame.insertCSS("*, ::before, ::after { -webkit-app-region: initial !important }", { cssOrigin: "user" })
 
 // ⌘F, ⌘G, ⇧⌘G and zoom: the page's first (a doc's own find), the app's once every listener let it be (web.ts BROWSER_KEYS).
 const MAC = process.platform === "darwin"

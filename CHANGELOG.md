@@ -9,6 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Snooze is a button on a session's row and sheet**: beside Settle on hover, in the Inbox panel, and by Pin in its
   sheet, as results have it.
 - **Enter sends an inbox reply**: Shift+Enter starts a new line, as in a chat; on a phone Enter stays a new line.
+- **Clicks reach a web page's corners**: a site whose header drags its own desktop app's window (ChatGPT's logo and
+  sidebar button) no longer drags Vaultite's instead of clicking, and nothing of the window drags over a page.
 - **A site's empty error page says so**: a page that answers an HTTP error with nothing in it (a firewall's 403) shows
   why in words, naming the site, with Try again, rather than a white tab; an error page with content still shows. Each
   page's load (status, server address, cache, Cloudflare ray) goes into a bug report's timeline.
