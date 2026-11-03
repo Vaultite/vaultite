@@ -53,6 +53,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Sidebars open and close at full frame rate**: the panes are laid out once at their new size and slide there, rather
   than laid out again every frame, and a web page in a moving pane slides as a picture of itself, its page back in place
   when it stops, instead of trailing a few steps behind.
+  away, never opening a folded group. The group's line runs crisp from its chip to its last tab, in the bar and the panel.
+  Its chip lights up under the pointer and takes the keyboard (the arrows, Enter, the menu key); tabs grouped or moved
+  slide into place, and an ungrouped group's chip and line fade away.
+- **Sidebars open, close and resize at full frame rate**: the panes are laid out once at their new size and slide there,
+  rather than laid out again every frame, and a web page in a moving pane slides as a picture of itself, its page back
+  in place when it stops, instead of trailing a few steps behind. Dragging a sidebar's edge restyles only the sidebar (a
+  frame every 17 ms, was up to 50), and showing or hiding one no longer restyles the whole window or re-themes every
+  terminal, web page and diagram.
 - **A site's empty error page says so**: a page that answers an HTTP error with nothing in it (a firewall's 403) shows
   why in words, naming the site, with Try again, rather than a white tab; an error page with content still shows. Each
   page's load (status, server address, cache, Cloudflare ray) goes into a bug report's timeline.

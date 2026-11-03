@@ -120,9 +120,9 @@ check("tab menu has the split items", ["Split right", "Split down"].every((x) =>
 check("...Move to new split isn't offered for a pane's only tab (it's Split's submenu elsewhere)", !items.some((x) => x.startsWith("Move to new split")), items)
 await page.locator("[role=menu] button", { hasText: /^Close$/ }).click(); await wait(300)
 ps = await panes()
-// Full width: to the main area's right edge, the window's less an open right sidebar (--right-sidebar, App.tsx; the
+// Full width: to the main area's right edge, the window's less an open right sidebar (--right-sidebar, core/room.ts; the
 // sandbox opens one: the Inbox, Links and Outline).
-const mainRight = await page.evaluate(() => innerWidth - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--right-sidebar")) || 0))
+const mainRight = await page.evaluate(() => innerWidth - (parseFloat(getComputedStyle(document.querySelector(".vau-room") ?? document.documentElement).getPropertyValue("--right-sidebar")) || 0))
 check("closing the right pane leaves one, full width", ps.length === 1 && ps[0].x + ps[0].w >= mainRight - 2, { ps, mainRight })
 
 // ---------- dragging tabs ----------

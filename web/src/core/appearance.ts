@@ -76,6 +76,9 @@ export const DEFAULT_FONTS = {
 
 const system = matchMedia("(prefers-color-scheme: dark)")
 const LOOK = "vaultite.look"
+// What <html>'s style says about where things sit, not how they look (the visual viewport's, written as it moves).
+const ROOM = new Set(["--vvh", "--vvtop", "--tab-aspect", "--mto", "--mfrom", "--scrollbar-room", "--window-controls", "--mini-player",
+  "--agents-card", "--trial-bar"])
 
 // What follows the look outside CSS (a terminal's palette, a canvas, a frame): told once it's in place, including
 // after a theme's or snippet's stylesheet has loaded, which a watch on <html>'s attributes misses.
@@ -153,7 +156,7 @@ function apply() {
     syncLinks("theme", themes)
     syncLinks("snippet", snippets)
   }
-  const now = JSON.stringify([look, root.style.cssText, sig])
+  const now = JSON.stringify([look, [...root.style].filter((k) => !ROOM.has(k)).map((k) => `${k}:${root.style.getPropertyValue(k)}`), sig])
   if (now !== applied) { applied = now; lookChanged() }
 }
 let linked = "", applied = ""
@@ -189,8 +192,24 @@ export const canTranslucent = !!native
 export const getTranslucency = () => translucency
 export const onTranslucency = (fn: () => void) => translucencyChanged.subscribe(fn)
 
-// Light or dark and the scheme on <html>, however they got there (the app's first paint, a test, another script).
-new MutationObserver(lookChanged).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "data-density", "style"] })
+// Light or dark and the scheme on <html>, however they got there; only a real change (apply rewrites the same values on
+// every prefs change), its style past ROOM: each look change re-themes every terminal, frame and diagram.
+const scratch = document.createElement("div").style
+const styleLooksChanged = (was: string) => {
+  scratch.cssText = was
+  const now = document.documentElement.style
+  for (const s of [scratch, now]) for (const k of s) if (!ROOM.has(k) && scratch.getPropertyValue(k) !== now.getPropertyValue(k)) return true
+  return false
+}
+new MutationObserver((records) => {
+  const root = document.documentElement, seen = new Set<string>()
+  for (const r of records) {
+    const name = r.attributeName!
+    if (seen.has(name)) continue // (the first record has the value from before them all)
+    seen.add(name)
+    if (name === "style" ? styleLooksChanged(r.oldValue ?? "") : r.oldValue !== root.getAttribute(name)) { lookChanged(); return }
+  }
+}).observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ["class", "data-scheme", "data-density", "style"] })
 
 // The browser's own bars (Safari's, an installed web app's title bar) in the page's colour, whichever mode the system is in.
 onLook(() => {

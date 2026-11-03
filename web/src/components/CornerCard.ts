@@ -4,12 +4,13 @@ import { useLayoutEffect, useRef, type MouseEvent, type PointerEvent as ReactPoi
 import { moves } from "@/core/animation"
 
 export type Corner = "tl" | "tr" | "bl" | "br"
-// Top corners sit under the pane's tab bar and file bar (back, forward), bottom ones over the status bar.
+// Top corners sit under the pane's tab bar and file bar (back, forward), bottom ones over the status bar; vau-room
+// gives them the sidebars' room (core/room.ts).
 export const CORNERS: Record<Corner, string> = {
-  tl: "top-22 left-[calc(var(--left-sidebar,0px)+1rem)]",
-  tr: "top-22 right-[calc(var(--right-sidebar,0px)+1rem)]",
-  bl: "bottom-[calc(--spacing(10)+env(safe-area-inset-bottom))] left-[calc(var(--left-sidebar,0px)+1rem)]",
-  br: "bottom-[calc(--spacing(10)+env(safe-area-inset-bottom))] right-[calc(var(--right-sidebar,0px)+1rem)]",
+  tl: "vau-room top-22 left-[calc(var(--left-sidebar,0px)+1rem)]",
+  tr: "vau-room top-22 right-[calc(var(--right-sidebar,0px)+1rem)]",
+  bl: "vau-room bottom-[calc(--spacing(10)+env(safe-area-inset-bottom))] left-[calc(var(--left-sidebar,0px)+1rem)]",
+  br: "vau-room bottom-[calc(--spacing(10)+env(safe-area-inset-bottom))] right-[calc(var(--right-sidebar,0px)+1rem)]",
 }
 
 /** Dragging a corner card anywhere (a click still clicks), and where it lands: the corner it was thrown towards, as

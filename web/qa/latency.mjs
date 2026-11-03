@@ -260,12 +260,15 @@ async function typing(s, label) {
 const treeRow = (p) => `aside [role=tree] [data-tree-path="${p}"] > button`
 async function reveal(s, p) {
   const parts = p.split("/")
+  // (a big vault's tree draws only the rows near its scroll: bring each folder to the top before looking inside)
+  const top = (q) => s.page.evaluate((sel) => document.querySelector(sel)?.scrollIntoView({ block: "start" }), q)
   for (let i = 1; i < parts.length; i++) {
-    const dir = parts.slice(0, i).join("/")
-    if (!(await s.page.locator(treeRow(p)).count())) {
-      const row = s.page.locator(`aside [role=tree] [data-tree-path="${dir}"] > button`).first()
-      if (await row.count()) { await row.click(); await wait(300) }
-    }
+    const dir = parts.slice(0, i).join("/"), q = `aside [role=tree] [data-tree-path="${dir}"] > button`
+    if (await s.page.locator(treeRow(p)).count()) break
+    await top(q); await wait(200)
+    const row = s.page.locator(q).first()
+    if ((await row.count()) && (await row.getAttribute("aria-expanded")) !== "true") { await row.click(); await wait(300) }
+    await top(q); await wait(200)
   }
   await s.page.locator(treeRow(p)).first().scrollIntoViewIfNeeded()
 }

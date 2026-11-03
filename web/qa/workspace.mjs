@@ -95,10 +95,10 @@ for (const dark of [false, true]) {
   // The shown tab's (a pane keeps its last tabs drawn, hidden: data-kept, not data-pane)
   const bar = page.locator("#main-scroll nav[aria-label='File path']")
   check("path bar shows folder / name", (await bar.innerText()).replace(/\s+/g, " ").trim() === `Notes / ${note}`, await bar.innerText())
-  // The main area's corner: the window's, less an open right sidebar (--right-sidebar, App.tsx: the status bar moves
+  // The main area's corner: the window's, less an open right sidebar (--right-sidebar, core/room.ts: the status bar moves
   // beside it since 6630181).
   const sbox = await page.locator("[role=status]").last().boundingBox()
-  const right = await page.evaluate(() => innerWidth - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--right-sidebar")) || 0))
+  const right = await page.evaluate(() => innerWidth - (parseFloat(getComputedStyle(document.querySelector(".vau-room") ?? document.documentElement).getPropertyValue("--right-sidebar")) || 0))
   check("status bar sits in the corner, over the scrollbar", Math.round(sbox.x + sbox.width) === Math.round(right) && Math.round(sbox.y + sbox.height) === 900, { ...sbox, right })
   check("path bar stays on top while scrolling", await page.evaluate(async () => {
     const m = document.getElementById("main-scroll"); m.scrollTop = 400; await new Promise((r) => setTimeout(r, 100))

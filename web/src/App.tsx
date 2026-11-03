@@ -3,6 +3,7 @@ import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, A
 import { cell } from "@/core/signal"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { share } from "@/core/share"
+import { setOpenWidth, setRoom } from "@/core/room"
 import { SharedWith } from "@/components/SharedWith"
 import { runCommandLink, useCommands } from "@/core/commands"
 import { isDesktop, isMac, isWindows, useDesktop } from "@/core/platform"
@@ -539,8 +540,8 @@ export default function App() {
   useEffect(() => keepTypingInSight(), [])
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
-  useLayoutEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
-  useLayoutEffect(() => { document.documentElement.style.setProperty("--left-sidebar", desktop ? side : "0px") }, [side, desktop])
+  useLayoutEffect(() => setRoom(desktop ? side : "0px", desktop ? rside : "0px"), [side, rside, desktop])
+  useLayoutEffect(() => { setOpenWidth("left", sidebarPx(sidebarWidth)); setOpenWidth("right", sidebarPx(rightSidebarWidth)) }, [sidebarWidth, rightSidebarWidth])
   // Which sidebars are there, for index.css (not body:has(aside...): that made every DOM change recalc 4x the styles).
   useLayoutEffect(() => {
     const root = document.documentElement.dataset
@@ -579,7 +580,7 @@ export default function App() {
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-[calc(--spacing(2)+env(safe-area-inset-left))] pt-[env(safe-area-inset-top)] pb-[max(--spacing(2),env(safe-area-inset-bottom))]",
           "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
           hideLeft && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-        )} style={{ "--sidebar-open": `${sidebarPx(sidebarWidth)}px`, ...(hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }) } as React.CSSProperties}>
+        )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", leftIn) } : { width: side }}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
         <div data-titlebar onContextMenu={menuFor(headerMenu)} className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-(--motion)", !leftOpen && "pointer-events-none opacity-0")}>
@@ -632,7 +633,7 @@ export default function App() {
             "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)+env(safe-area-inset-right))] pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
             "transition-[width] duration-(--motion-spring) ease-(--spring) md:flex",
             hideRight && "z-(--z-peek) rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-          )} style={{ "--sidebar-open": `${sidebarPx(rightSidebarWidth)}px`, ...(hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }) } as React.CSSProperties}>
+          )} style={hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }}>
           {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
           <div className="relative flex min-h-0 flex-1 flex-col">
