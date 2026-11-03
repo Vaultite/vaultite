@@ -24,7 +24,7 @@ let arrived = false
 for (const ev of ["hashchange", "popstate"]) addEventListener(ev, (e) => { if (e.isTrusted && !arrived) wentTo = location.hash })
 
 // ---------- the slots: the store's, with this app's own changes on top until the store brings them back ----------
-// An unused slot (blank.ts) reads as null everywhere here, and a change leaving one like that empties it in the vault.
+// An unused slot (blank.ts) reads as null everywhere here, and a change leaving one like that empties it.
 
 /** A workspace's sidebars are the default: none of its own, or the same as sidebars.json's. */
 export const defaultSidebars = (x: unknown) => x === undefined || sameSidebars(readSidebars(x), savedSidebars())
@@ -75,7 +75,7 @@ function queue(write: () => Promise<unknown>): Promise<unknown> {
     }
   })
 }
-/** Change slot n's keys here at once and in the vault (a null value removes a key). One the change leaves unused
+/** Change slot n's keys here at once and on the server (a null value removes a key). One the change leaves unused
  *  (blank.ts) is emptied instead. */
 export function patch(n: number, keys: Partial<Record<keyof Def, unknown>>) {
   const list = [...(slots() ?? SLOTS.map(() => null))]
@@ -192,9 +192,9 @@ function clear(n: number) {
 }
 
 // ---------- tabs ----------
-/** What a tab keeps only for this visit, not saved in the vault: its back/forward history, the tab it opened beside. */
+/** What a tab keeps only for this visit, not saved: its back/forward history, the tab it opened beside. */
 const VISIT = new Set(["back", "fwd", "from"])
-/** The tabs as saved in the vault: without what's kept for this visit. */
+/** The tabs as saved: without what's kept for this visit. */
 const strip = (l: TabLayout): TabLayout => JSON.parse(JSON.stringify(l, (k, v) => (VISIT.has(k) ? undefined : v)))
 /** What devices share of a layout: the tabs, their places and the splits; not which tab each group shows, which group
  *  has the focus or is zoomed (each device's own), nor when a tab was seen (that rides along: tabsSeenSince). "" for none. */

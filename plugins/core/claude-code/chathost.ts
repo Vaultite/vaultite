@@ -76,10 +76,10 @@ export function relayed(create: typeof import("@anthropic-ai/claude-agent-sdk")[
   // (always in its prompt: behind tool search, beside the user's own MCP servers, it reached for the shell instead)
   return (name, tools) => create({ name, alwaysLoad: true, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: shapeOf(t.schema),
     // (Claude Code names the tool_use a call is for in its _meta: the streamed input it goes with)
-    handler: async (args: unknown, extra: unknown) => (await t.run(args, useOf(extra))) as never })) })
+    handler: async (args: unknown, extra: unknown) => (await t.run(args, toolUseIdOf(extra))) as never })) })
 }
 
-const useOf = (extra: unknown) => {
+const toolUseIdOf = (extra: unknown) => {
   const u = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta?.["claudecode/toolUseId"]
   return typeof u === "string" ? u : undefined
 }

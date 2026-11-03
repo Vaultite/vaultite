@@ -462,8 +462,9 @@ const FROM: Param = { type: "integer", minimum: 1, maximum: MAX, description: "t
 const HELP = `The Workspaces plugin keeps up to five workspaces, numbered in the sidebar's header: each is a desk, what's
 open (the tabs and splits, \`layout\`), what's within reach (the sidebars' panels, \`sidebars\`, shaped like
 .vaultite/sidebars.json, none: that file's; its pinned pages, \`pinned\`, none: .vaultite/pages.json's, until its
-first pin or unpin) and what the app keeps for it (\`state\`), in .vaultite/plugins/workspaces/<n>.json (a file each,
-none: unused; edit one to change it). A workspace with no name or pinned pages of its own, the default
+first pin or unpin) and what the app keeps for it (\`state\`). Its name, icon, sidebars and pins are in
+.vaultite/plugins/workspaces/<n>.json (a file each, none: unused; edit one to change them); its tabs and state are kept by
+the server, not the vault (these ops read and change them). A workspace with no name or pinned pages of its own, the default
 sidebars and only a blank tab counts as unused: it's listed as such and never kept. There always is a current one, each window's own (vau context says the user's). With a number, the window the
 user was in last switches to it (the command workspace:<n>; an unused one shows sidebars.json's sidebars and a blank
 tab, and is made once something changes there).

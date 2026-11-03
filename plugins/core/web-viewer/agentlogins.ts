@@ -9,7 +9,7 @@ const engine = (name: string, ...args: unknown[]) => Promise.resolve(webPages?.e
 const fileName = (file: string) => file.split("/").pop() ?? file
 const count = (n: number, free: number) => `${plural(n, "entry", "entries")}, ${free} free to use without asking`
 
-async function useFile(chosen?: string) {
+async function adoptFile(chosen?: string) {
   const file = chosen ?? (await engine("logins:choose")) as string | null
   if (!file) return
   const kept = isMac ? "Kept in this Mac's Keychain" : "Kept in this computer's keyring (with none, only till the app quits)"
@@ -27,16 +27,16 @@ async function useFile(chosen?: string) {
 export async function passwordsForAgents() {
   let st: Status
   try { st = (await engine("logins:status")) as Status } catch (e) { return notifyError(e, "Couldn't read the passwords for agents") }
-  if (!st) return void useFile()
+  if (!st) return void adoptFile()
   choose({
     title: "Passwords for agents", placeholder: "Passwords for agents",
     heading: `${fileName(st.file)}: ${st.error ?? count(st.entries ?? 0, st.free ?? 0)}`,
     items: [...(st.locked ? [{ id: "unlock", label: "Type its password…" }] : []), { id: "passkeys", label: "Passkeys that approve logins…" },
       { id: "file", label: "Use another file…" }, { id: "forget", label: "Stop using it" }],
     onPick: (it) => {
-      if (it.id === "unlock") void useFile(st.file)
+      if (it.id === "unlock") void adoptFile(st.file)
       else if (it.id === "passkeys") openView("agent-passkeys")
-      else if (it.id === "file") void useFile()
+      else if (it.id === "file") void adoptFile()
       else void engine("logins:forget").then(() => notify(`Agents no longer log in with your passwords on ${HERE}`), (e) => notifyError(e, "Couldn't stop it"))
     },
   })

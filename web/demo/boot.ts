@@ -176,7 +176,7 @@ async function bundles() {
   let on: string | null = (await api("bundles")).previous?.bundle ?? null
   /** Turn a bundle on (applied without what runs code: the demo left it out); false when it couldn't. `running`: the app
    *  is, and follows it (its first page, Undo). */
-  const use = async (asked: string, running = false) => {
+  const openBundle = async (asked: string, running = false) => {
     let id = asked
     if (asked.startsWith("gh:")) {
       const r = await api("bundles/import", { from: asked.slice(3) })
@@ -207,11 +207,11 @@ async function bundles() {
     return false
   }
   const asked = new URLSearchParams(location.search).get("bundle")
-  if (asked && asked !== on) await use(asked).catch((e) => fail(asked, String(e?.message ?? e)))
+  if (asked && asked !== on) await openBundle(asked).catch((e) => fail(asked, String(e?.message ?? e)))
   post({ type: "vaultite-demo:bundle", bundle: on })
   addEventListener("message", async (e) => {
     if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:apply" || typeof e.data.bundle !== "string") return
-    try { await use(e.data.bundle, true) } catch (err) { fail(e.data.bundle, String((err as Error)?.message ?? err)) } finally { post({ type: "vaultite-demo:bundle", bundle: on }) }
+    try { await openBundle(e.data.bundle, true) } catch (err) { fail(e.data.bundle, String((err as Error)?.message ?? err)) } finally { post({ type: "vaultite-demo:bundle", bundle: on }) }
   })
 }
 

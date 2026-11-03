@@ -44,9 +44,9 @@ is its point.
 - Done means `npm run build`, `npm run check`, `npm test` and `npm run smoke` pass (`npm run verify` runs what a branch
   needs, `npm run verify -- --all` all four), and the change is live (`CLAUDE.local.md`).
 - Throwaway server: `vau sandbox /tmp/v`, then `VAULTITE_VAULT=/tmp/v VAULTITE_LOCAL=/tmp/local PORT=<free> npm start`.
-  On a copy of a real vault, first strip its terminal tabs (`view:terminal/...` in
-  `.vaultite/plugins/workspaces/*.json`: showing one starts its agent, a `resume-` one resumes the user's live session)
-  and empty its machines (`.vaultite/plugins/machines/data.json`: `{"machines": []}`).
+  On a copy of a real vault, first empty its machines (`.vaultite/plugins/machines/data.json`: `{"machines": []}`): with
+  them it shares the real machines' tabs and state, and showing a terminal tab starts its agent (a `resume-` one resumes
+  the user's live session).
 - Many agents share one machine, often a small one: before heavy work (QA, builds, perf runs) check `uptime` and what
   else runs (`pgrep -fl "Chrome for Testing"`), close every browser and server you start, and don't raise `--jobs`.
   QA browsers queue for the machine's slots (`tools/qa_slots.ts`); a run waiting for one is normal.

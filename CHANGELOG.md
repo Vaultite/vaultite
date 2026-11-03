@@ -9,7 +9,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **An idle window wakes less**: live cards asking one address share one timer, and none runs while the window is
   hidden (a window left alone woke ~27 times a minute, now ~15 shown and ~3 hidden).
 - **The companion answers as it writes**: its words stream into the note, its bubble and its comment cards as the model writes them (first words in about 2 s, from 4 to 5), Enter and a `?` send at once and a sentence's end after a breath, going on with your thought restarts its answer with all of it, its turn ends with its last action (no summary after), its cursor stays where it wrote, it waits while you type, its edit is one undo step of its own (also Undo the companion's last edit), and Esc stops it mid-answer (Codex and OpenCode in their terminals too). What you write reaches it as your own changes alone, a hunk each place, never with its words between them. `vau companion timings` has its think time for Claude Code sessions, and its first word.
-- **A big vault loads with half the data**: archived inbox results come without their text (their files keep it),
+- **A long-used inbox loads with half the data**: archived inbox results come without their text (their files keep it),
   which was half of a long-used inbox's first load (1 MB to 0.5 MB compressed here).
 - **A first Claude Code chat tab opens at once**: its code loads while the app is idle and draws without waiting,
   in ~80 ms (was ~390).
@@ -45,7 +45,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the inbox (a pick, or a reply to its one question) no longer fails with "it doesn't ask anything to pick from now".
 - **What's open stays out of the vault**: each device's tabs, workspaces' tabs and splits, where a video stopped, an
   inbox hold and plugins' caches are kept by the server (its memory and its own disk), not as files in the vault, so a
-  tab moved no longer writes into iCloud and wakes every machine. Machines share them directly, live: another device's
+  tab moved no longer writes into iCloud and wakes every machine. Machines share them directly, live (with the Machines plugin on; without it each computer keeps its own): another device's
   tabs show in a moment instead of whenever iCloud syncs, and stay listed while its machine is off. The old files are
   taken in on the first start, then removed; what you set (a workspace's name and panels, bookmarks) stays in the vault.
   `vau kept` lists what's kept.
@@ -59,9 +59,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   up under the pointer and takes the keyboard (the arrows, Enter, the menu key); tabs grouped or moved slide into place,
   and an ungrouped group's chip and line fade away. A tab closed in the Tabs panel or tab search shrinks away once,
   rather than coming back for a moment when its view (a terminal, a site) is asked first.
-- **Sidebars open and close at full frame rate**: the panes are laid out once at their new size and slide there, rather
-  than laid out again every frame, and a web page in a moving pane slides as a picture of itself, its page back in place
-  when it stops, instead of trailing a few steps behind.
   away, never opening a folded group. The group's line runs crisp from its chip to its last tab, in the bar and the panel.
   Its chip lights up under the pointer and takes the keyboard (the arrows, Enter, the menu key); tabs grouped or moved
   slide into place, and an ungrouped group's chip and line fade away.
@@ -214,13 +211,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   leaving frontmatter, code and math alone; an AI can format a note or a folder (`vau linter.format`).
 - **The inbox's verbs: pin, settle, snooze, wake**: Done is Settle (its folded list Settled) and Unsnooze is Wake, in
   the app, the iPhone's and the watch's notifications, and in vau (`vau inbox settle`, `vau inbox wake`); `vau inbox
-  done` and `inbox.done` still work.
+  done` and `inbox.done` still work. With no phone paired, `vau inbox push` says nothing was sent.
 - **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers, the other choosers,
   Hotkeys and the phone's tab switcher write what was typed in curly quotes with no full stop ("No command matches
   “foo”").
-  done` and `inbox.done` still work. With no phone paired, `vau inbox push` says nothing was sent.
-- **The pickers say "no matches" as Settings does**: ⌘P, ⌘O, the tab, folder and icon pickers and the other choosers
-  write what was typed in curly quotes with no full stop ("No command matches “foo”"), from one shared line.
 - **Screen readers hear the palettes' headings**: ⌘O's list is named by its heading ("Recent files and pages"), and
   the sections of ⌘O, ⌘P and the tab search ("In files", "Open tabs") are groups named by their headings.
 - **The keys hint draws keycaps**: while a key sequence is under way, its keys, what each next key does and how to
@@ -289,8 +283,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   was drawn off screen); it shows under the cursor now.
 - **Pictures on a base's cards**: a cards view with `image: note.cover` shows each file's picture (a [[picture]], an
   address or a #colour) atop its card, as in Obsidian, sized by `cardSize`, `imageFit` and `imageAspectRatio`.
-- **Long notes open faster**: a note of tens of thousands of lines no longer works out all its tables, callouts and
-  other drawn blocks again each time the background reading of it gets further.
 - **Saving sends only what changed**: each save of a note sends only the edit, not the whole note twice, and gets
   back only what the server changed (a 2 KB note's save went from 6 KB to under 0.5 KB; a long note's from twice its
   size).
@@ -361,8 +353,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   file shows its first letter and an ellipsis ("N… / Lisbon trip"), not a clipped sliver of a letter.
 - **Settings' rows keep one height**: a switch with a way back to its default (Editor's, among others) is no taller
   than one without, so each section's rows line up at the same rhythm.
-- **A tab reached with the keyboard shows a rounded ring**: Tab onto a tab and its focus ring follows the tab's
-  rounded corners, as every other button's does, not a square box around it.
 - **Styles in a note's HTML stay inside the note**: a style written with CSS escapes or comments is dropped, so it
   can't cover the app.
 - **HTML pages ask before opening outside links**: a page in the vault asks the first time it opens each site
@@ -373,8 +363,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A link to a day makes that day's daily note**: clicking [[2026-11-05]] when it isn't there yet makes it in the
   daily notes' folder from their template, not an empty note beside the open one; a template's {{time}} is the time
   it's made (it was always 12:00), and a date that doesn't exist (2026-02-30) is refused, not read as another day.
-- **The inbox by keyboard**: on its rows, J and K move, E marks one done and goes on to the next, B snoozes, P pins,
-  Shift+I and Shift+U read and unread; G I opens the inbox. Each is a command, rebindable in Hotkeys.
 - **vau on Windows for a user whose name isn't plain ASCII**: the `vau` Set up Vaultite installs, and the one in the
   app's terminals, failed in cmd and PowerShell with "The system cannot find the path specified" when the Windows
   account's folder had a letter like ã or ö in it (C:\Users\João); it runs there now.
@@ -751,8 +739,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   text, Appearance's picture choices are labelled at 15px, and Show all and a field's clear button take a finger's tap.
 - **The Inbox at phone sizes**: on a phone its rows' titles are 17px and the lines under them and its intro 15px (they
   were 15px and 13px), as the dashboards' lists.
-- **Properties fit a finger on a phone**: their rows, toggle and Add property are 44px, list values 15px with a
-  finger-sized remove button, and the field to add one no longer shrinks to a sliver.
 - **No invisible buttons on touch screens**: a property's remove button and an unlinked mention's Link show on a phone,
   where there's no hover to bring them out (they were there, unseen, under the finger).
 - **iPhone on its side, the rest of the way**: toasts and corner cards keep clear of the notch and home indicator, and

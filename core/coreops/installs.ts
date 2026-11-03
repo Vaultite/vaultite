@@ -291,7 +291,7 @@ update by hand takes it. Allowed on this machine if it was before.
     cli: "plugin search",
     summary: "Search the plugin directory (GitHub repos with the topic vaultite-plugin): stars, version, what each discloses.",
     help: `Reads the plugin directory's index (plugins.json's \`index\`, else Vaultite's; fetched at most once an hour,
-cached in .vaultite/cache/) and lists its plugins matching the words given, by stars (or newest, or last updated),
+kept by the server) and lists its plugins matching the words given, by stars (or newest, or last updated),
 with what each says it does beyond the vault, and whether it's installed here (and an update is out). Install one
 with \`vau plugin install <source>\` (its repository, and its folder in it when it has several).
 
