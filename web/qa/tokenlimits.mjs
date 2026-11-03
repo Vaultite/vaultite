@@ -45,7 +45,7 @@ const ctip = await count().getAttribute("data-tip")
 check("status: a CLAUDE.md is over by what it loads with its imports", await levelOf() === "over" && /With its @imports an agent loads ~3\.\dk tokens \(2 files\)/.test(ctip) && /set for CLAUDE\.md/.test(ctip), ctip)
 for (const t of ["light", "dark"]) {
   await api("PATCH", "config/appearance", { theme: t }); await wait(700)
-  const sb = await page.locator("[role=status]:not([data-status-left])").boundingBox()
+  const sb = await page.locator("[data-status-right]").boundingBox()
   await page.screenshot({ path: `${OUT}status-${t}.png`, clip: { x: sb.x + sb.width - 420, y: sb.y - 4, width: 420, height: sb.height + 8 } })
 }
 

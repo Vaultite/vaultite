@@ -104,21 +104,48 @@ type Status_ = { path: string; mode: Mode; setMode: (m: Mode) => void; body: str
   /** What a viewer says instead of counts (size, dimensions, pages). */
   info?: string[]
   /** What a drawn file says instead of counts (a table's rows: FileFormat.status). */
-  says?: (text: string) => string | null } | null
+  says?: (text: string) => string | null
+  /** The pane it's in. */
+  group?: string } | null
 export let status_: Status_ = null
 export const statusSubs = signal()
 function publish(s: Status_) { status_ = s; statusSubs.notify() }
-/** The status bar for the file in the focused pane's tab, published while `live`, and taken down when the file goes or
- *  its tab is hidden (another tab of the pane shown), unless another file's has replaced it meanwhile. */
-export function usePublish(live: boolean, make: () => NonNullable<Status_>, deps: unknown[]) {
+/** Each pane's file (its shown tab's; stacked, its active one's), by the pane: what the status bar says under a pane
+ *  that isn't focused. The focused pane's is status_ too. */
+export const paneStatus = new Map<string, NonNullable<Status_>>()
+export const paneStatusSubs = signal()
+function setPane(group: string, s: Status_) {
+  if (s) paneStatus.set(group, s)
+  else paneStatus.delete(group)
+  paneStatusSubs.notify()
+}
+/** The status bar for the file in a pane's tab (`pane`: not a sheet): status_ while focused, its pane's while shown;
+ *  each taken down when the file goes or its tab is hidden, unless another file's has replaced it meanwhile. */
+export function usePublish(pane: boolean, make: () => NonNullable<Status_>, deps: unknown[]) {
   const mine = useRef<Status_>(null)
   const latest = useRef(make)
   latest.current = make
-  const { hidden } = usePane()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (live) { mine.current = make(); publish(mine.current) } }, [live, ...deps])
+  const { group, focused, hidden, back } = usePane()
+  const live = pane && focused, shown = pane && !hidden && !back && !!group
+  useEffect(() => {
+    if (!live && !shown) return
+    mine.current = { ...make(), group }
+    if (live) publish(mine.current)
+    if (shown) setPane(group, mine.current)
+  }, [live, shown, group, ...deps]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (hidden && mine.current && status_ === mine.current) publish(null) }, [hidden])
-  useEffect(() => () => { if (mine.current && status_ === mine.current) publish(null) }, [])
+  useEffect(() => { if (!shown && mine.current && paneStatus.get(group) === mine.current) setPane(group, null) }, [shown, group])
+  useEffect(() => () => {
+    if (!mine.current) return
+    if (status_ === mine.current) publish(null)
+    if (paneStatus.get(group) === mine.current) setPane(group, null)
+  }, [group])
   // Published again from what `make` reads now (typing: the file's text, without drawing the file again).
-  return useCallback(() => { if (mine.current && status_ === mine.current) { mine.current = latest.current(); publish(mine.current) } }, [])
+  return useCallback(() => {
+    const was = mine.current
+    if (!was || (status_ !== was && paneStatus.get(group) !== was)) return
+    mine.current = { ...latest.current(), group }
+    if (status_ === was) publish(mine.current)
+    if (paneStatus.get(group) === was) setPane(group, mine.current)
+  }, [group])
 }

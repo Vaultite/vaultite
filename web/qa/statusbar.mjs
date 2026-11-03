@@ -12,7 +12,7 @@ const api = apiAt(B)
 const look = await api("GET", "config/appearance")
 const P = "Qa status bar.md"
 // The right corner, the file's (the left one, the user's: LEFT).
-const RIGHT = "[data-status-bar]:not([data-status-left])", LEFT = "[data-status-left]"
+const RIGHT = "[data-status-right]", LEFT = "[data-status-left]"
 await api("POST", "file", { path: P, text: "# Status bar\n\nSome words to count.\n" })
 // Every ambient item on, in a known order (the routines chip shows with a routine due, the inbox's with a new item).
 await api("POST", "ops/inbox.add", { title: "Qa status bar", body: "An item for the bar." })
@@ -37,7 +37,7 @@ try {
     els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))
   const clear = () => page.evaluate(() => {
     const side = document.querySelector("aside[data-side=left]").getBoundingClientRect().right
-    return document.querySelector("[data-status-bar]:not([data-status-left])").getBoundingClientRect().left - side
+    return document.querySelector("[data-status-right]").getBoundingClientRect().left - side
   })
   // (settled: an item fetching its data, Claude's limits, comes a moment later)
   let shown = await keys()
@@ -119,7 +119,7 @@ try {
   for (let w = 1280; w >= 780; w -= 50) {
     await page.setViewportSize({ width: w, height: 800 }); await wait(250)
     lines.push(await page.evaluate((w) => {
-      const bar = document.querySelector("[data-status-bar]:not([data-status-left])"), row = bar.querySelector("[data-status-row]")
+      const bar = document.querySelector("[data-status-right]"), row = bar.querySelector("[data-status-row]")
       // (a text on two lines draws two boxes)
       const texts = document.createTreeWalker(row, NodeFilter.SHOW_TEXT), two = [], range = document.createRange()
       for (let t = texts.nextNode(); t; t = texts.nextNode()) {
@@ -173,13 +173,13 @@ try {
   await until(async () => (await bar.locator("[data-status-key]").count()) === 0)
   await wait(300)
   const corner = await page.evaluate(() => {
-    const el = document.querySelector("[data-status-bar]:not([data-status-left])"), r = el.getBoundingClientRect(), cs = getComputedStyle(el)
+    const el = document.querySelector("[data-status-right]"), r = el.getBoundingClientRect(), cs = getComputedStyle(el)
     return { w: r.width, h: r.height, right: innerWidth - r.right, bottom: innerHeight - r.bottom, bg: cs.backgroundColor, border: cs.borderTopColor }
   })
   const clear_ = (c) => c === "transparent" || /rgba\(.*,\s*0\)$/.test(c)
   check("nothing shown: no bar drawn, a corner of its height left", corner.h >= 27 && corner.w >= 36 && corner.bottom <= 1 && clear_(corner.bg) && clear_(corner.border), corner)
   await page.mouse.move(1280 - 10, 800 - 10); await wait(200)
-  check("…its outline on hover", !clear_(await page.evaluate(() => getComputedStyle(document.querySelector("[data-status-bar]:not([data-status-left])")).borderTopColor)))
+  check("…its outline on hover", !clear_(await page.evaluate(() => getComputedStyle(document.querySelector("[data-status-right]")).borderTopColor)))
   await page.screenshot({ path: `${SHOTS}statusbar-5-empty.png`, clip: { x: 1080, y: 740, width: 200, height: 60 } })
   await page.mouse.click(1280 - 10, 800 - 10, { button: "right" }); await wait(300)
   await page.getByRole("menuitem", { name: "Show all", exact: true }).click(); await wait(300)

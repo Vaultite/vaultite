@@ -695,8 +695,9 @@ export default function App() {
       <Chooser />
       <DownloadingNotice store={store} />
       <IconPicker />
-      {/* Over every tab but one drawn edge to edge (a terminal): the plugins' ambient items show whatever is open. */}
-      {desktop && !(isViewTab && viewFor(targetOf(tab), disabled)?.def.full) && <StatusBar />}
+      {/* (the plugins' ambient items show whatever is open; it leaves out a pane drawn edge to edge, a terminal: its
+          columns, StatusBar.tsx) */}
+      {desktop && <StatusBar />}
       {desktop && <KeyHints />}
       {desktop && <Tooltips />}
       {!desktop && <SelectionBar />}

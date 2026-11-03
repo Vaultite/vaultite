@@ -7,6 +7,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - **The companion's tab is a timeline, not a chat**: what it did (said, commented, suggested with its accepted or rejected state, wrote, pointed at, terminals and tasks it started) under your asks and edits, grouped by note, newest first; a row goes to its place in the note, its state shows live at the top, a line asks it something, and its chat is a click away. Changed lines show as a diff with their `-` and `+`, in the chat too.
+- **The status bar splits along your panes**: split, the focused note's items sit right under its pane, and each other
+  note's word count under its own (fainter; click it to focus that pane). A chat's or terminal's foot is left alone, so
+  the bar no longer covers a chat's input. A narrow pane keeps at least its word count.
 - **Snooze is a button on a session's row and sheet**: beside Settle on hover, in the Inbox panel, and by Pin in its
   sheet, as results have it.
 - **An agent's question has every choice its picker has**, in the inbox and the chat tab: its options numbered, Type

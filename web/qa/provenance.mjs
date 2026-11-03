@@ -64,7 +64,7 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
     await theme(t); await wait(700)
     const box = await head.boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-header.png`, clip: { x: Math.max(0, box.x - 500), y: Math.max(0, box.y - 12), width: 620, height: 52 } })
-    const sb = await page.locator("[role=status]:not([data-status-left])").boundingBox()
+    const sb = await page.locator("[data-status-right]").boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-status.png`, clip: { x: sb.x - 8, y: sb.y - 8, width: sb.width + 8, height: sb.height + 8 } })
   }
   // Choosing in the header writes the key, and the status bar follows.
@@ -160,7 +160,7 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   check("tokens: follow typing", await until(async () => Number(await tokens.getAttribute("data-tokens")) > t0 + 10), [t0, await tokens.getAttribute("data-tokens")])
   for (const t of ["light", "dark"]) {
     await theme(t); await wait(700)
-    const sb = await page.locator("[role=status]:not([data-status-left])").boundingBox()
+    const sb = await page.locator("[data-status-right]").boundingBox()
     await page.screenshot({ path: `${OUT}desktop-${t}-status-tokens.png`, clip: { x: sb.x - 8, y: sb.y - 8, width: sb.width + 8, height: sb.height + 8 } })
   }
   await ctx.close()
@@ -197,7 +197,7 @@ check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE]
     await theme(t); await wait(700)
     const box = await head.boundingBox()
     await page.screenshot({ path: `${OUT}files-desktop-${t}-header.png`, clip: { x: Math.max(0, box.x - 500), y: Math.max(0, box.y - 12), width: 620, height: 52 } })
-    const sb = await page.locator("[role=status]:not([data-status-left])").boundingBox()
+    const sb = await page.locator("[data-status-right]").boundingBox()
     await page.screenshot({ path: `${OUT}files-desktop-${t}-status.png`, clip: { x: sb.x - 8, y: sb.y - 8, width: sb.width + 8, height: sb.height + 8 } })
   }
   const bytes = readFileSync(file(IMG_AI)).toString("base64")

@@ -1,10 +1,11 @@
-// The status bar (desktop): ambient items and the focused file's (usePublish) in two corners, as in Vim: left the user's
-// (Vim's mode, the companion), right the file's. Hidden by right-click or the palette, dragged between them (core/statusbar.ts).
+// The status bar (desktop): Vim-like corners, left the user's (Vim's mode, the companion), right the file's (core/statusbar.ts);
+// split, along the panes (statusColumns.ts): the focused file's items under its pane, the others' word counts under theirs.
 import { memo, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { Ellipsis, PanelBottom } from "lucide-react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
 import { Catch, Drawn } from "@/components/Guard"
-import { MODES, status_, statusSubs, viewItems, VIEWS, type Mode } from "@/components/fileState"
+import { MODES, paneStatus, paneStatusSubs, status_, statusSubs, viewItems, VIEWS, type Mode } from "@/components/fileState"
+import { columnLeft, columnRight, columnWidth, useColumns, type Column } from "@/components/statusColumns"
 import { useCommands } from "@/core/commands"
 import { countText, type Counts } from "@/core/counts"
 import { numberText } from "@/core/data"
@@ -13,7 +14,7 @@ import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
 import { joinFm } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
 import { usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
-import { useFileTab } from "@/core/workspace"
+import { focusGroup, useFileTab } from "@/core/workspace"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { barShown, barShows, type BarItem, type BarPlace, moveBarItem, showAllBarItems, showBarItem } from "@/core/statusbar"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
@@ -52,7 +53,8 @@ function useFit(bar: RefObject<HTMLElement | null>, keys: string[], pinned: bool
   const run = useRef(() => {})
   run.current = () => {
     const b = bar.current
-    if (!b?.offsetWidth) return
+    // (not drawn: a pane's part of the bar while the focused pane is at the right)
+    if (!b?.offsetWidth) return setOver((was) => (was.length ? [] : was))
     // (the gap an item dragged in from the tray opens isn't taken yet: measured without it)
     const coming = b.querySelector<HTMLElement>(`[data-slide="${INCOMING}"]`)
     if (coming) coming.style.display = "none"
@@ -151,6 +153,8 @@ function useLoadHolds(bars: RefObject<HTMLElement | null>[], rows: RefObject<HTM
       saving = setTimeout(() => {
         // (not before the vault's plugins came: their items aren't drawn yet)
         if (!vaultPluginsIn()) return save()
+        // (nor while a corner is off, over a terminal: its items measure nothing)
+        if (els.some((b) => b.hasAttribute("data-off"))) return
         // (as drawn without what's held: an item drawing nothing is kept as 0, holding no room)
         const slots = rs.flatMap((r) => [...r.querySelectorAll<HTMLElement>("[data-status-key]")]), mins = slots.map((x) => x.style.minWidth)
         for (const x of slots) x.style.minWidth = ""
@@ -194,8 +198,9 @@ function withComing<T extends { key: string }>(shown: T[], kept: Kept | null, kn
   return out
 }
 
-/** Which items the bar leaves out first when it's cramped (useFit), low first. */
-const fitRank = (x: BarItem) => (x.key === "core:characters" ? 1 : x.ambient ? 2 : x.key === "core:words" ? 3 : x.status && !x.status.after ? 4 : 5)
+/** Which items the bar leaves out first when it's cramped (useFit), low first: the word count last, so a narrow pane's
+ *  part says at least that. */
+const fitRank = (x: BarItem) => (x.key === "core:characters" ? 1 : x.ambient ? 2 : x.status && !x.status.after ? 3 : x.key === "core:words" ? 5 : 4)
 /** Whose room never narrows while one file is open (useSteady): the counts, and plugins' items after them. */
 const steady = (x: BarItem) => x.key === "core:words" || x.key === "core:characters" || !!x.status?.after
 
@@ -207,9 +212,14 @@ export const StatusBar = memo(function StatusBar() {
   const bar = useMemo(() => barShown(disabled, statusBar, statusBarLeft), [disabled, enabled, statusBar, statusBarLeft, plugins])
   const leftKeys = useMemo(() => new Set(bar.left), [bar])
   useBarCommands(bar.all)
+  const { cols: footCols, focus: focusCol, focused } = useColumns()
+  // (a pane drawn edge to edge, a terminal or a chat, has its foot to itself: the bar spans the others; none, it's off)
+  const cols = footCols.length ? footCols : WHOLE, room = cols.filter((c) => !c.full), off = !room.length
   // Counted after the keystroke is on screen: a long note's count takes a few milliseconds. The file comes late with
   // its text, so a file just opened is never measured (useSteady) with the last one's counts.
-  const late = useSettled()
+  const settled = useSettled()
+  // (only the focused pane's file: focused elsewhere, it says its word under its pane; none above a terminal)
+  const late = settled && (!settled.group || settled.group === focused) && !cols.find((c) => c.group === focusCol)?.full ? settled : null
   const body = late?.body ?? "", fm = late?.fm ?? ""
   const head = late?.head, path = late?.path ?? ""
   // What plugins' items get: the file as typed (theirs are drawn after the keystroke too).
@@ -228,13 +238,19 @@ export const StatusBar = memo(function StatusBar() {
   // A file's are there only while one is focused.
   const barRef = useRef<HTMLDivElement>(null), rowRef = useRef<HTMLDivElement>(null), itemsRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
   const leftRef = useRef<HTMLDivElement>(null), leftRowRef = useRef<HTMLDivElement>(null), leftItemsRef = useRef<HTMLDivElement>(null)
+  // The focused pane's part, when it isn't the one at the right (whose part is the right corner's): its file's items
+  // and the more button, right under it.
+  const paneRef = useRef<HTMLDivElement>(null), paneRowRef = useRef<HTMLDivElement>(null), paneItemsRef = useRef<HTMLDivElement>(null)
+  const first = room[0] ?? cols[0], last = room.at(-1) ?? cols.at(-1)!, fc = room.find((c) => c.group === focusCol) ?? null
+  const apart = !!fc && fc !== last
   // (a file's items are held only on a file's tab: on a view or a new tab no file comes, and their room stayed empty)
-  const loading = useLoadHolds([barRef, leftRef], [rowRef, leftRowRef], path, setup), fileTab = useFileTab()
+  const loading = useLoadHolds([barRef, leftRef, paneRef], [rowRef, leftRowRef, paneRowRef], path, setup), fileTab = useFileTab()
   const held = useMemo(() => (fileTab ? loading : loading?.filter(([, , file]) => !file) ?? null), [loading, fileTab])
   const drawable = useMemo(() => bar.shown.filter((x) => x.ambient || open || held?.some(([k, w]) => k === x.key && w > 0)), [bar, open, held])
   const inBar = useMemo(() => drawable.filter((x) => !statusBarMore.includes(x.key)), [drawable, statusBarMore])
   const inLeft = useMemo(() => inBar.filter((x) => leftKeys.has(x.key)), [inBar, leftKeys])
-  const inRight = useMemo(() => inBar.filter((x) => !leftKeys.has(x.key)), [inBar, leftKeys])
+  const inRight = useMemo(() => inBar.filter((x) => !leftKeys.has(x.key) && !(apart && !x.ambient)), [inBar, leftKeys, apart])
+  const inPane = useMemo(() => (apart ? inBar.filter((x) => !leftKeys.has(x.key) && !x.ambient) : []), [inBar, leftKeys, apart])
   const [tray, setTray] = useState(false)
   const dragged = useDrag((d) => d?.item.status)
   // (what the left corner leaves out goes in the right one's tray; its more button shows while one is tucked, dragged or
@@ -243,10 +259,14 @@ export const StatusBar = memo(function StatusBar() {
   // (shown last load, it holds its place until the file's items come and the fit says)
   const moreHeld = !open && !!held?.some(([k]) => k === MORE)
   const pinned = statusBarMore.some((k) => drawable.some((x) => x.key === k)) || !!dragged || overLeft.length > 0 || moreHeld
-  const overRight = useFit(rowRef, inRight.map((x) => x.key), pinned)
-  const inTray = drawable.filter((x) => statusBarMore.includes(x.key) || overLeft.includes(x.key) || overRight.includes(x.key))
-  const { barHit, leftHit, trayHit } = useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }, bar.keys, inTray.map((x) => x.key), statusBarMore)
-  useLeftWidth(leftRef, barRef)
+  // (the more button goes with the file's items: under the focused pane when that's apart)
+  const moreApart = apart && open
+  const overRight = useFit(rowRef, inRight.map((x) => x.key), !moreApart && pinned)
+  const overPane = useFit(paneRowRef, inPane.map((x) => x.key), moreApart && (pinned || overRight.length > 0))
+  const inTray = drawable.filter((x) => statusBarMore.includes(x.key) || overLeft.includes(x.key) || overRight.includes(x.key) || overPane.includes(x.key))
+  const { barHit, leftHit, paneHit, trayHit } = useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, paneRef, paneItemsRef, trayRef }, bar.keys, inTray.map((x) => x.key), statusBarMore)
+  useLeftWidth(leftRef, barRef, paneRef)
+  useJumps(paneRef, fc?.group ?? "")
   const trayOpen = tray && inTray.length > 0
   useEffect(() => {
     if (!trayOpen) return
@@ -256,6 +276,7 @@ export const StatusBar = memo(function StatusBar() {
     return () => { removeEventListener("pointerdown", down, true); removeEventListener("keydown", key, true) }
   }, [trayOpen])
   useSteady(rowRef, `${path}\n${setup}`)
+  useSteady(paneRowRef, `${path}\n${setup}`)
 
   // What a file's own items draw: the plugins', its view, its counts (all as of the settled file: late).
   const fileDraw = (x: BarItem): ReactNode => {
@@ -309,13 +330,15 @@ export const StatusBar = memo(function StatusBar() {
     }
     return { els, seps }
   }
-  const right = row(inRight, held && held.filter(([k]) => !leftKeys.has(k))), left = row(inLeft, held && held.filter(([k]) => leftKeys.has(k)))
+  const right = row(inRight, held && held.filter(([k, , file]) => !leftKeys.has(k) && !(apart && file))), left = row(inLeft, held && held.filter(([k]) => leftKeys.has(k)))
+  const mid = row(inPane, apart && held ? held.filter(([k, , file]) => !leftKeys.has(k) && file) : null)
   // Dragged over, a corner's items and the tray's make way for the one dragged; its lines go where the kinds meet then
   // (left out, one would give up its room and the items past it would shift).
   const ambient = (key: string) => !!bar.all.find((x) => x.key === (key === INCOMING ? dragged : key))?.ambient
   const withSeps = (hit: Gap | null, seps: string[]) => hit?.order?.flatMap((key, i, all) => (i && ambient(key) !== ambient(all[i - 1]) ? [seps.shift() ?? "", key] : [key])).filter(Boolean) ?? null
   useSlide(itemsRef, withSeps(barHit, [...right.seps]), "x")
   useSlide(leftItemsRef, withSeps(leftHit, [...left.seps]), "x")
+  useSlide(paneItemsRef, withSeps(paneHit, [...mid.seps]), "x")
   useSlide(trayRef, trayHit?.order ?? null, "wrap")
   const gap = (g: Gap | null) => g?.order?.includes(INCOMING) && <span aria-hidden data-slide={INCOMING} className="h-5 shrink-0" />
   // (always there, the fit showing it: drawn again only when it changes, not on each keystroke)
@@ -336,12 +359,18 @@ export const StatusBar = memo(function StatusBar() {
   )
   // (a row holds what's in line, so what it leaves out is measured without the tray over it; with nothing to show, the
   // right corner is a faint one to right-click, the left one gone but as a place to drop: index.css)
+  const split = cols.length > 1
+  // The other panes' files, each in a word under its pane (the one at the right's in the right corner).
+  const others = room.filter((c) => c !== fc)
+  // (less the left corner, under the same pane)
+  const width = (c: Column, ...less: string[]) => (!split ? MAX_WIDTH : columnWidth(c, ...(c === first ? ["var(--status-left, 0px)"] : []), ...less))
+  const lastWord = others.includes(last) && <PaneWord col={last} />
   return (
     <>
       {/* (not live: a status is polite by default, and a screen reader would read the counts at every keystroke) */}
       <div ref={leftRef} role="status" aria-live="off" aria-label="Status bar, left" data-status-bar data-status-left data-dragging={dragged ? "" : undefined} data-drop={leftHit ? "" : undefined}
-        style={{ maxWidth: LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
-        className="sight-foot fixed left-(--left-sidebar,0px) bottom-0 z-20 transition-[left] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
+        data-off={off || undefined} style={off ? { display: "none" } : { left: columnLeft(first), maxWidth: split ? `calc(${columnWidth(first)} / 2 - 6px)` : LEFT_MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
+        className="sight-foot fixed bottom-0 z-20 transition-[left] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tr-[8px] border-t-[0.5px] border-r-[0.5px] border-border bg-sidebar pr-2 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
         <div ref={leftRowRef} data-status-row className="flex min-w-0 items-center gap-2">
           <div ref={leftItemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
             {left.els}
@@ -349,33 +378,94 @@ export const StatusBar = memo(function StatusBar() {
           </div>
         </div>
       </div>
-      <div ref={barRef} role="status" aria-live="off" aria-label="Status bar" data-status-bar style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(barMenu)}
-        className="sight-foot fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex">
+      <div ref={barRef} role="status" aria-live="off" aria-label="Status bar" data-status-bar data-status-right data-off={off || undefined}
+        style={off ? { display: "none" } : { right: columnRight(last), maxWidth: width(last, PAD) }} onContextMenu={menuFor(barMenu)} className={FOOT}>
         <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
-          {more}
+          {!moreApart && more}
           <div ref={itemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
             {right.els}
             {gap(barHit)}
           </div>
+          {lastWord}
         </div>
-        {trayBox}
+        {!moreApart && trayBox}
+      </div>
+      {others.filter((c) => c !== last).map((c) => <PaneWord key={c.group} col={c} maxWidth={width(c, PAD)} />)}
+      <div ref={paneRef} role={apart ? "status" : undefined} aria-live="off" aria-label="Status bar, focused pane" data-status-bar data-status-pane data-dragging={dragged ? "" : undefined} data-drop={paneHit ? "" : undefined}
+        style={fc && apart ? { right: columnRight(fc), maxWidth: width(fc, PAD) } : { display: "none" }} onContextMenu={menuFor(barMenu)}
+        className={FOOT}>
+        <div ref={paneRowRef} data-status-row className="flex min-w-0 items-center gap-2">
+          {moreApart && more}
+          <div ref={paneItemsRef} data-status-items className="relative flex h-6 shrink-0 items-center gap-1">
+            {mid.els}
+            {gap(paneHit)}
+          </div>
+        </div>
+        {moreApart && trayBox}
       </div>
     </>
   )
 })
 
+/** No panes at the foot (each floating): the bar as for one pane. */
+const WHOLE: Column[] = [{ group: "", x: 0, w: 1, full: false }]
+/** A part's padding and edge (its width is its content's: box-content), and a little room, kept inside its pane. */
+const PAD = "18px"
+/** A right-hand part of the bar: the right corner, or a pane's. */
+const FOOT = "sight-foot fixed bottom-0 z-20 transition-[right] duration-(--motion-spring) ease-(--spring) hidden h-7 box-content pb-[env(safe-area-inset-bottom)] items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex"
+
+/** A pane's file that isn't focused, in a word under it (its count, or what its viewer says), fainter than the focused
+ *  one's items: a click focuses the pane. With `maxWidth`, its own part of the bar, else in the right corner's. */
+const PaneWord = memo(function PaneWord({ col, maxWidth }: { col: Column; maxWidth?: string }) {
+  const s = paneStatusSubs.use(() => paneStatus.get(col.group) ?? null)
+  const path = s?.path ?? "", body = s?.body ?? "", text = !!s && !s.info && !s.says
+  const nb = /\.ipynb$/i.test(path), code = !!s && /^(code|other|notebook)$/.test(kindOf(path))
+  const counts = useCounts(path, body, text, code, nb)
+  const n = (v: number, one: string) => `${numberText(v)} ${one}${v === 1 ? "" : "s"}`
+  const word = !s ? null : s.info ? s.info[0] ?? null : s.says ? s.says(body)
+    : !counts ? null : nb && s.mode === "read" ? n(counts.cells, "cell") : code ? n(counts.lines, "line") : n(counts.words, "word")
+  if (!word) return null
+  const chip = (
+    <button type="button" data-status-word={col.group} onClick={() => focusGroup(col.group)} aria-label={`${word}, ${path.split("/").pop()}. Focus its pane`}
+      className="flex h-6 shrink-0 cursor-pointer items-center truncate rounded-[5px] px-1 text-tertiary hover:text-muted-foreground">
+      {word}
+    </button>
+  )
+  if (!maxWidth) return chip
+  return (
+    <div data-status-bar data-status-word-bar onContextMenu={menuFor(barMenu)} style={{ right: columnRight(col), maxWidth }} className={cn(FOOT, "pr-2")}>
+      {chip}
+    </div>
+  )
+})
+
+/** A pane's part of the bar jumps to the pane focused next, rather than gliding across the others: it glides only with
+ *  the sidebars. */
+function useJumps(el: RefObject<HTMLElement | null>, at: string) {
+  const was = useRef(at)
+  useLayoutEffect(() => {
+    const e = el.current
+    if (!e || was.current === at) return
+    was.current = at
+    e.style.transition = "none"
+    void e.offsetWidth
+    const f = requestAnimationFrame(() => { e.style.transition = "" })
+    return () => cancelAnimationFrame(f)
+  }, [el, at])
+}
+
 /** The left corner's width on the right one (`--status-left`), which stops short of it: set as the page lays itself out,
  *  never drawn again for it. */
-function useLeftWidth(left: RefObject<HTMLElement | null>, right: RefObject<HTMLElement | null>) {
+function useLeftWidth(left: RefObject<HTMLElement | null>, ...right: RefObject<HTMLElement | null>[]) {
   useLayoutEffect(() => {
-    const l = left.current, r = right.current
-    if (!l || !r) return
-    const set = (w: number) => r.style.setProperty("--status-left", `${Math.ceil(w)}px`)
+    const l = left.current, rs = right.flatMap((r) => (r.current ? [r.current] : []))
+    if (!l || !rs.length) return
+    const set = (w: number) => { for (const r of rs) r.style.setProperty("--status-left", `${Math.ceil(w)}px`) }
     set(l.getBoundingClientRect().width)
     const ro = new ResizeObserver(([e]) => set(e.borderBoxSize[0]?.inlineSize ?? 0))
     ro.observe(l)
     return () => ro.disconnect()
-  }, [left, right])
+  }, [left, ...right]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Each item's palette commands: show or hide it, and show them all. */
@@ -390,11 +480,11 @@ function useBarCommands(all: BarItem[]) {
   ], [all.map((x) => `${x.key}\t${x.title}`).join("\n")])
 }
 
-type Refs = Record<"barRef" | "itemsRef" | "leftRef" | "leftItemsRef" | "trayRef", RefObject<HTMLElement | null>>
+type Refs = Record<"barRef" | "itemsRef" | "leftRef" | "leftItemsRef" | "paneRef" | "paneItemsRef" | "trayRef", RefObject<HTMLElement | null>>
 
-/** The bar's corners and its tray (with the more button) as drop targets for its items: in a corner, where it lands
- *  among them; in the tray or onto the button, tucked there (onto the button: last). */
-function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }: Refs, keys: string[], trayKeys: string[], tucked: string[]) {
+/** The bar's corners (and the focused pane's part) and its tray (with the more button) as drop targets for its items:
+ *  in a corner, where it lands among them; in the tray or onto the button, tucked there (onto the button: last). */
+function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, paneRef, paneItemsRef, trayRef }: Refs, keys: string[], trayKeys: string[], tucked: string[]) {
   // A drop after the tray's last item goes before what follows that one in the bar's order.
   const afterTray = (key: string) => {
     const rest = keys.filter((k) => k !== key), end = trayKeys.filter((k) => k !== key).at(-1)
@@ -402,11 +492,11 @@ function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }: Refs,
   }
   const slots = (box: HTMLElement) => [...box.querySelectorAll<HTMLElement>(":scope > [data-status-key]")].filter((el) => el.offsetWidth)
   // A corner: over it, or just past its open end (it grows that way for the one dragged in).
-  const corner = (side: "left" | "right") => (item: { status?: string }, x: number, y: number, el: Element | null): Gap | null => {
-    const bar = (side === "left" ? leftRef : barRef).current, box = (side === "left" ? leftItemsRef : itemsRef).current
-    if (!item.status || !bar || !box || el?.closest("[data-status-tray], [data-status-more]")) return null
+  const corner = (side: "left" | "right" | "pane") => (item: { status?: string }, x: number, y: number, el: Element | null): Gap | null => {
+    const bar = (side === "left" ? leftRef : side === "pane" ? paneRef : barRef).current, box = (side === "left" ? leftItemsRef : side === "pane" ? paneItemsRef : itemsRef).current
+    if (!item.status || !bar?.offsetWidth || !box || el?.closest("[data-status-tray], [data-status-more]")) return null
     const b = bar.getBoundingClientRect(), f = box.getBoundingClientRect()
-    if (side === "right" ? x < f.left - 24 || x > b.right : x < b.left || x > Math.max(b.right, f.right + 24)) return null
+    if (side !== "left" ? x < f.left - 24 || x > b.right : x < b.left || x > Math.max(b.right, f.right + 24)) return null
     if (y < b.top - 24 || y > b.bottom) return null
     // (measured without the gap one from elsewhere opens: the corner grows for it, so its items would move under a still
     // pointer and the slot be the next one)
@@ -425,6 +515,7 @@ function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }: Refs,
   const drop = (place: BarPlace) => (item: { status?: string }, g: Gap) => moveBarItem(item.status!, g.before, place)
   useDropTarget<Gap>("status:bar", corner("right"), drop("right"))
   useDropTarget<Gap>("status:left", corner("left"), drop("left"))
+  useDropTarget<Gap>("status:pane", corner("pane"), drop("right"))
   useDropTarget<Gap>("status:more", (item, x, y, el) => {
     if (!item.status) return null
     const tray = trayRef.current
@@ -435,7 +526,7 @@ function useBarDrops({ barRef, itemsRef, leftRef, leftItemsRef, trayRef }: Refs,
     }
     return el?.closest("[data-status-more]") ? { before: afterTray(item.status) } : null
   }, drop("tray"))
-  return { barHit: useDropHit<Gap>("status:bar"), leftHit: useDropHit<Gap>("status:left"), trayHit: useDropHit<Gap>("status:more") }
+  return { barHit: useDropHit<Gap>("status:bar"), leftHit: useDropHit<Gap>("status:left"), paneHit: useDropHit<Gap>("status:pane"), trayHit: useDropHit<Gap>("status:more") }
 }
 
 /** The file's view; clicked, its views (three, or reading and source), the current one checked. */

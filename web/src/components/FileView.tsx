@@ -333,7 +333,7 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
   const noop = useCallback(() => {}, [])
   // What plugins' items in its header and the status bar get: no frontmatter to change (Provenance keeps its own).
   const head = useMemo<FileHead>(() => ({ path, fm: {}, type: null }), [path])
-  usePublish(live, () => ({ path, mode: "read", setMode: noop, body: "", views: [], info: facts, head }), [path, facts, noop, head])
+  usePublish(pane, () => ({ path, mode: "read", setMode: noop, body: "", views: [], info: facts, head }), [path, facts, noop, head])
   useCommands(() => (live ? moveCommand(path) : []), [live, path])
   if (missing) return <Missing path={path} pane={pane} />
   const settle = async () => {}
@@ -841,7 +841,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const says = format?.status
   // What plugins' items in the header and the status bar get: a change to the frontmatter redraws them, typing doesn't.
   const fileHead = useMemo<FileHead>(() => ({ path, fm: props, type, setProperty: changeable ? setProperty : undefined }), [path, props, type, changeable, setProperty])
-  const republish = usePublish(live, () => ({ path, mode: shown, setMode, body: cur.current.body, fm, head: fileHead, views, says }), [path, shown, setMode, tick, fm, fileHead, views, says])
+  const republish = usePublish(pane, () => ({ path, mode: shown, setMode, body: cur.current.body, fm, head: fileHead, views, says }), [path, shown, setMode, tick, fm, fileHead, views, says])
   onTyped.current = () => { republish(); checkJson() }
 
   // Source mode is the file as it is: no Properties (the frontmatter is in the text), blocks as their text.
