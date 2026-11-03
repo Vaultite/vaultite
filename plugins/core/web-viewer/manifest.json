@@ -6,6 +6,7 @@
   "name": "Browser",
   "description": "A web browser in the desktop app's tabs, next to your notes: containers for several accounts side by side, Shields against ads and trackers, Chrome extensions, history and bookmarks, and agents working beside you. Links in notes and terminals open there, or in another browser with ⌘.",
   "enhances": ["clipper"],
+  "requires": ["find"],
   "exports": ["containers", "state"],
   "runsOnServer": true,
   "forAgents": "A web page for you, beside the user's: `web-viewer.open` (`vau docs web-viewer`).",

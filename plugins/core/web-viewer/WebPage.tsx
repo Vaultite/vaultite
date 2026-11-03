@@ -472,7 +472,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
         ]} />
         <Progress loading={id > 0 && state.loading && !state.error} />
       </div>
-      {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found}
+      {/* (over the page's top right, under its bar: the bar hidden, it slides out over it) */}
+      {ask && id > 0 && <FindBar web={web} id={id} tab={tab} ask={ask} found={found} className={barHid ? "top-2" : "top-12"}
         close={() => { setFindOpen(tab, false); setAsk(null); setFound(null); void web.go(id, "focus") }} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
         {/* The window drags wherever its page has a drag region, even under this page (Electron): cut out here, after

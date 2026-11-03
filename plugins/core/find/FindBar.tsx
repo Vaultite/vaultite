@@ -1,8 +1,8 @@
-// The find bar: CodeMirror's search with a panel of the app's own, sticking under the pane's bar while the file
-// scrolls. Loaded when an editor first needs it.
+// The find bar: CodeMirror's search with a panel of the app's own. On a computer, a card at the pane's top right over
+// the text, as Chrome's; on a phone or in a sheet, a strip sticking at the top. Loaded when an editor first needs it.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { createRoot, type Root } from "react-dom/client"
-import { flushSync } from "react-dom"
+import { createPortal, flushSync } from "react-dom"
 import { ChevronRight } from "lucide-react"
 import { EditorView, keymap, type Panel, type ViewUpdate } from "@codemirror/view"
 import { EditorSelection, Prec, StateEffect, StateField, type EditorState, type Extension, type SelectionRange } from "@codemirror/state"
@@ -10,7 +10,7 @@ import {
   closeSearchPanel, findNext, findPrevious, getSearchQuery, openSearchPanel, replaceAll, replaceNext, search, searchPanelOpen, SearchQuery, setSearchQuery,
 } from "@codemirror/search"
 import { cn, commandKeys, editorOf, keyHint, openAround, textRanges } from "@vaultite"
-import { badField, countText, field, FindTools, MAX, tool } from "./tools"
+import { badField, countText, field, FindTools, floatingCard, floatingSpot, MAX, tool } from "./tools"
 
 type Spec = { search: string; replace: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
 /** A query that finds only what's shown: not in the frontmatter a note's editor hides, nor (outside source mode) in
@@ -85,7 +85,7 @@ export function scroller(el: Element | null, axis: "x" | "y", stop?: Element): H
 /** Take a match drawn in a block into view: its <details> opened, a wide table scrolled sideways to it, and the pane
  *  scrolled to put it in the middle, as CodeMirror does with what it finds in text. */
 function show(view: EditorView, r: Range | Element) {
-  reveal(r, view.contentDOM, scroller(view.scrollDOM, "y"), view.dom.querySelector(".cm-panels-top"))
+  reveal(r, view.contentDOM, scroller(view.scrollDOM, "y"), panels.get(view)?.card ?? view.dom.querySelector(".cm-panels-top"))
 }
 
 /** Take what was found into view: its <details> opened, what scrolls sideways inside `within` (a wide table) scrolled
@@ -118,9 +118,11 @@ function scrollTo(range: SelectionRange, view: EditorView): StateEffect<unknown>
 
 type BarProps = { view: EditorView; query: SearchQuery; count: Count; readOnly: boolean; replacing: boolean; setReplacing: (on: boolean) => void
   /** Bumped to put the keyboard in a field (find, or replace when it's asked for with text to find). */
-  focus: { n: number; field: "find" | "replace" } }
+  focus: { n: number; field: "find" | "replace" }
+  /** Drawn as a card over the pane (its element given to `card`), not a strip. */
+  floating: boolean; card: (el: HTMLDivElement | null) => void }
 
-function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: BarProps) {
+function Bar({ view, query, count, readOnly, replacing, setReplacing, focus, floating, card }: BarProps) {
   const [find, setFind] = useState(query.search)
   const [repl, setRepl] = useState(query.replace)
   useEffect(() => { setFind((f) => (f === query.search ? f : query.search)) }, [query.search])
@@ -147,7 +149,8 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
   const status = countText({ search: query.search, valid: query.valid, total: count.total, current: count.current - 1, more: count.more })
   const canReplace = !readOnly
   return (
-    <div className="flex flex-col gap-1 px-1 py-1.5 max-md:gap-1.5" data-find-bar data-replacing={replacing && canReplace ? "" : undefined}>
+    <div ref={card} className={floating ? cn("pointer-events-auto top-[calc(var(--vau-panel-top,0px)+8px)] flex flex-col gap-1", floatingSpot, floatingCard) : "flex flex-col gap-1 px-1 py-1.5 max-md:gap-1.5"}
+      data-find-bar data-overlay={floating ? "" : undefined} data-replacing={replacing && canReplace ? "" : undefined}>
       <div className="flex min-w-0 items-center gap-0.5 max-md:flex-wrap max-md:gap-y-1.5">
         {canReplace && (
           <button type="button" aria-label={replacing ? "Hide replace" : "Show replace"} aria-expanded={replacing} data-tip={replacing ? "Hide replace" : `Replace${commandKeys("find:replace") ? ` (${commandKeys("find:replace")})` : ""}`}
@@ -179,8 +182,11 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
   )
 }
 
+/** Wide enough for the card (index.css's md): narrower, the strip, as on a phone. */
+const wide = typeof matchMedia === "undefined" ? null : matchMedia("(min-width: 768px)")
+
 /** The panel CodeMirror shows while the search is open: a React root drawn again when the query, the text, the
- *  selection or whether it can be written changes. */
+ *  selection or whether it can be written changes. Floating, it draws in its tab's overlay and the panel stays empty. */
 class FindPanel implements Panel {
   dom: HTMLElement
   top = true
@@ -196,6 +202,9 @@ class FindPanel implements Panel {
   frame = 0
   /** Blocks draw late (a section's React, a picture's height): light them again when they do. */
   watcher: MutationObserver
+  /** The card, while it floats. */
+  card: HTMLDivElement | null = null
+  redraw = () => this.draw(false)
 
   constructor(view: EditorView) {
     this.view = view
@@ -205,6 +214,7 @@ class FindPanel implements Panel {
     panels.set(view, this)
     this.watcher = new MutationObserver(() => this.light())
     this.watcher.observe(view.contentDOM, { childList: true, subtree: true, characterData: true })
+    wide?.addEventListener("change", this.redraw)
   }
   mount() { this.recount(); this.draw(true); this.light() }
   update(u: ViewUpdate) {
@@ -224,6 +234,7 @@ class FindPanel implements Panel {
     if (this.timer) clearTimeout(this.timer)
     cancelAnimationFrame(this.frame)
     this.watcher.disconnect()
+    wide?.removeEventListener("change", this.redraw)
     lit.delete(this.view)
     paintLit()
     panels.delete(this.view)
@@ -280,11 +291,21 @@ class FindPanel implements Panel {
     this.counted = { query: q, doc: s.doc, sel: s.selection }
     this.count = countOf(s, q)
   }
+  /** Where the card floats: over the pane, in its tab's overlay (Workspace.tsx); none in a sheet or on a phone. */
+  host(): HTMLElement | null {
+    const body = wide?.matches ? this.view.dom.closest<HTMLElement>("[data-tab-body]") : null
+    return body?.parentElement?.querySelector<HTMLElement>(`:scope > [data-tab-overlay="${CSS.escape(body.dataset.tabBody ?? "")}"]`) ?? null
+  }
   draw(sync: boolean) {
-    const el = <Bar view={this.view} query={getSearchQuery(this.view.state)} count={this.count} readOnly={this.view.state.readOnly} replacing={this.replacing}
-      setReplacing={(on) => { this.replacing = on; if (on) this.focus = { n: this.focus.n + 1, field: "replace" }; this.draw(false) }} focus={this.focus} />
+    const host = this.host()
+    this.dom.toggleAttribute("data-floating", !!host)
+    const bar = <Bar view={this.view} query={getSearchQuery(this.view.state)} count={this.count} readOnly={this.view.state.readOnly} replacing={this.replacing}
+      setReplacing={(on) => { this.replacing = on; if (on) this.focus = { n: this.focus.n + 1, field: "replace" }; this.draw(false) }} focus={this.focus}
+      floating={!!host} card={this.setCard} />
+    const el = host ? createPortal(bar, host) : bar
     if (sync) flushSync(() => this.root.render(el)); else this.root.render(el)
   }
+  setCard = (el: HTMLDivElement | null) => { this.card = el && el.closest("[data-tab-overlay]") ? el : null }
   /** ⌘F / ⌥⌘F with the bar open: show replace or not, and the keyboard in the right field. */
   ask(replace: boolean) {
     if (replace && !this.view.state.readOnly) this.replacing = true
@@ -302,6 +323,11 @@ const installed = StateField.define<boolean>({ create: () => true, update: (v) =
 export const findExtension: Extension = [
   installed,
   search({ top: true, createPanel: (view) => new FindPanel(view), scrollToMatch: scrollTo }),
+  // (what's found is taken into view below the card, as below the strip CodeMirror's panels make room for)
+  EditorView.scrollMargins.of((view) => {
+    const card = panels.get(view)?.card
+    return card ? { top: Math.max(0, card.getBoundingClientRect().bottom - Math.max(0, view.scrollDOM.getBoundingClientRect().top)) } : null
+  }),
   Prec.high(keymap.of([
     { key: "Mod-g", run: (v) => searchPanelOpen(v.state) && findNext(v), shift: (v) => searchPanelOpen(v.state) && findPrevious(v) },
     { key: "Escape", run: (v) => { if (!searchPanelOpen(v.state)) return false; closeSearchPanel(v); return true } },
@@ -309,6 +335,7 @@ export const findExtension: Extension = [
   EditorView.theme({
     "&.cm-editor .cm-panels": { background: "var(--background)", color: "var(--foreground)", zIndex: "5" },
     "&.cm-editor .cm-panels.cm-panels-top": { top: "var(--vau-panel-top, 0px)", borderBottom: "0.5px solid var(--border)", marginBottom: "6px" },
+    "&.cm-editor .cm-panels.cm-panels-top:has(> .vau-find[data-floating]:only-child)": { borderBottom: "none", marginBottom: "0" },
     ".cm-searchMatch": { background: "color-mix(in srgb, var(--yellow) 32%, transparent)", borderRadius: "2px", boxShadow: "0 0 0 1px color-mix(in srgb, var(--yellow) 32%, transparent)" },
     ".cm-searchMatch.cm-searchMatch-selected": { background: "color-mix(in srgb, var(--orange) 50%, transparent)", boxShadow: "0 0 0 1px color-mix(in srgb, var(--orange) 50%, transparent)" },
   }),

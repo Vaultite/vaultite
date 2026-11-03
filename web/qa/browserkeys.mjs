@@ -1,8 +1,8 @@
 // The Browser's keys and navigation act on the page, as Chrome's (plugins/core/web-viewer, electron/web.ts,
 // core/workspace.ts navigate and restTab), in the desktop app (Electron) against pages this script serves on 127.0.0.1:
 // Back and Forward from the app's keys, the page's, the mouse's buttons (over the page and the app) and the bar (its list
-// on a right-click); find in page (⌘F from the page and the app, Enter, ⌘G, Esc, its words kept; a site's own ⌘F left to
-// it); a site's zoom (⌘= in the page and the app, kept per host, the bar's reset), never the app's; ⌘R, ⇧⌘R and ⌥⌘I the
+// on a right-click); find in page (⌘F from the page and the app, Enter, ⌘G, Esc, its words kept; a card over the page's
+// top right that leaves the page its size and its clicks; a site's own ⌘F left to it); a site's zoom (⌘= in the page and the app, kept per host, the bar's reset), never the app's; ⌘R, ⇧⌘R and ⌥⌘I the
 // page's, never the app's menu; Esc stops a load; ⇧⌘[ ]; ⌘W on a pinned web tab rests it. WRITES: the throwaway vault.
 //   node web/qa/browserkeys.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -10,7 +10,7 @@ import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
 import path from "node:path"
-import { BACK_KEY, ROOT, qa, until, wait } from "./lib/qa.mjs"
+import { BACK_KEY, ROOT, SHOTS, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, done } = await qa(import.meta.url, { chrome: false })
 if (process.platform !== "darwin") { console.log("browserkeys: a Mac's keys, skipped"); process.exit(0) }
@@ -89,6 +89,26 @@ const appKeys = async (keys) => {
   await win.evaluate(() => { document.activeElement?.blur?.() })
   await win.keyboard.press(keys)
 }
+/** A picture of the window with its pages in it (each page is a view of its own, under the window's): in SHOTS. */
+const shotWithPages = async (name) => {
+  const pics = await app.evaluate(async ({ BaseWindow }) => {
+    const w = BaseWindow.getAllWindows()[0]
+    const shot = async (v) => (await v.webContents.capturePage()).toDataURL()
+    const views = w.contentView.children.filter((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())
+    return { app: await shot(w), width: w.getContentBounds().width, pages: await Promise.all(views.map(async (v) => ({ src: await shot(v), at: v.getBounds() }))) }
+  })
+  const png = await win.evaluate(async ({ app, width, pages }) => {
+    const load = (src) => new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.src = src })
+    const top = await load(app), k = top.width / width, c = document.createElement("canvas")
+    c.width = top.width; c.height = top.height
+    const g = c.getContext("2d")
+    for (const p of pages) g.drawImage(await load(p.src), p.at.x * k, p.at.y * k, p.at.width * k, p.at.height * k)
+    g.drawImage(top, 0, 0)
+    return c.toDataURL("image/png").split(",")[1]
+  }, pics)
+  fs.mkdirSync(SHOTS, { recursive: true })
+  fs.writeFileSync(path.join(SHOTS, `browserkeys-${name}.png`), Buffer.from(png, "base64"))
+}
 /** Whether a key pressed in the app's page is taken there (so the menu bar never sees it: its Developer reload). */
 const takenInApp = (o) => win.evaluate((o) => { const e = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...o }); document.body.dispatchEvent(e); return e.defaultPrevented }, o)
 const tabs = () => win.evaluate(() => {
@@ -137,26 +157,47 @@ await win.locator("[role=menuitem]", { hasText: "Lighthouse field notes" }).firs
 check("… a place picked goes there", await until(() => at("/article"), 5000), await pages())
 
 // ---------- find in page ----------
+/** Where the shown page is in the window. */
+const pageBounds = () => app.evaluate(({ BaseWindow }) => {
+  const w = BaseWindow.getAllWindows()[0]
+  return w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible())?.getBounds() ?? null
+})
+const unfound = await pageBounds()
 await pressInPage("F", ["meta"])
-check("⌘F in the page opens the find bar, the keyboard in it", await until(() => win.evaluate(() => !!document.activeElement?.matches("[data-web-find-field]")), 4000))
+check("⌘F in the page opens the find bar, the keyboard in it", await until(() => win.evaluate(() => !!document.activeElement?.matches("[data-web-find] input")), 4000))
+const card = await win.locator("[data-web-find]").boundingBox()
+check("it's a card over the page's top right", !!card && !!unfound && Math.abs(unfound.x + unfound.width - (card.x + card.width) - 12) <= 4 && Math.abs(card.y - unfound.y - 8) <= 4,
+  { card, page: unfound })
+check("… which keeps its size", JSON.stringify(await pageBounds()) === JSON.stringify(unfound), await pageBounds())
+check("… the window raised over it", await until(() => win.evaluate(() => "overPages" in document.documentElement.dataset), 3000))
 check("… not the app's own find", (await win.locator("[data-page-find]").count()) === 0)
 await win.keyboard.type("keeper")
-const counted = (t) => until(async () => (await win.locator("[data-web-find-count]").textContent()) === t, 4000)
-check("typing finds: 1 of 2", await counted("1 of 2"), await win.locator("[data-web-find-count]").textContent())
+const counted = (t) => until(async () => (await win.locator("[data-web-find] [data-find-count]").textContent()) === t, 4000)
+check("typing finds: 1 of 2", await counted("1 of 2"), await win.locator("[data-web-find] [data-find-count]").textContent())
 await win.keyboard.press("Enter")
-check("Enter: the next, 2 of 2", await counted("2 of 2"), await win.locator("[data-web-find-count]").textContent())
+check("Enter: the next, 2 of 2", await counted("2 of 2"), await win.locator("[data-web-find] [data-find-count]").textContent())
 await win.keyboard.press("Meta+G")
-check("⌘G: on round, 1 of 2", await counted("1 of 2"), await win.locator("[data-web-find-count]").textContent())
+check("⌘G: on round, 1 of 2", await counted("1 of 2"), await win.locator("[data-web-find] [data-find-count]").textContent())
 await win.keyboard.press("Shift+Enter")
-check("⇧Enter: back, 2 of 2", await counted("2 of 2"), await win.locator("[data-web-find-count]").textContent())
+check("⇧Enter: back, 2 of 2", await counted("2 of 2"), await win.locator("[data-web-find] [data-find-count]").textContent())
 await win.keyboard.type("x")
-check("words in no match: No results", await counted("No results"), await win.locator("[data-web-find-count]").textContent())
+check("words in no match: No results", await counted("No results"), await win.locator("[data-web-find] [data-find-count]").textContent())
 await win.keyboard.press("Backspace")
 await win.keyboard.press("Escape")
 check("Esc closes it", await until(async () => (await win.locator("[data-web-find]").count()) === 0, 3000))
 await appKeys("Meta+F")
-check("⌘F from the app: open again with its words", await until(async () => (await win.locator("[data-web-find-field]").count()) === 1 && (await win.locator("[data-web-find-field]").inputValue()) === "keeper", 4000))
-await win.locator("[data-web-find-close]").click()
+check("⌘F from the app: open again with its words", await until(async () => (await win.locator("[data-web-find] input").count()) === 1 && (await win.locator("[data-web-find] input").inputValue()) === "keeper", 4000))
+await shotWithPages("find")
+// (dark for a picture only: the vault's scheme picks the look, not the system's)
+const dark = await win.evaluate(() => document.documentElement.classList.toggle("dark")); await wait(400)
+await shotWithPages(dark ? "find-dark" : "find-light")
+await win.evaluate(() => document.documentElement.classList.toggle("dark"))
+// (a click beside the card is the page's: the window passes it on)
+const link = await inPage(`(() => { const r = document.querySelector("#next").getClientRects()[0]; return { x: r.left + r.width / 2, y: r.top + r.height / 2 } })()`)
+await win.mouse.click(unfound.x + link.x, unfound.y + link.y)
+check("with it open, a click beside it is the page's", await until(() => at("/two"), 5000), await pages())
+await appKeys("Meta+BracketLeft"); await until(() => at("/article"), 5000)
+if (await win.locator("[data-web-find]").count()) await win.locator("[data-web-find] [data-find-close]").click()
 await inPage(`location.href = "${SITE}/own"; 1`)
 await until(() => at("/own"), 5000); await wait(500)
 await pressInPage("F", ["meta"]); await wait(800)

@@ -6,8 +6,8 @@ clips the page as it's shown (the Web clipper's `POST /api/clip` with its HTML, 
 too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Find in page,
 Print, View page source (⌥⌘U: a view-source: tab, also in the page's right-click), Block an element, Open in another browser, Open as player, Picture in picture, plugins' other actions and
 Extensions. Keys are Chrome's: Back and Forward (the bar's, ⌘[ ⌘], ⌥⌘← →, the mouse's buttons) walk the
-page's history, then the tab's; a right-click or a hold on Back or Forward lists its places. ⌘F finds in the page (a bar
-under its bar: Enter, ⌘G, ⇧⌘G, Esc), ⌘+ ⌘- ⌘0 zoom its site (kept per site on the Mac; the address says 110% till a
+page's history, then the tab's; a right-click or a hold on Back or Forward lists its places. ⌘F finds in the page (a card
+at its top right, as Chrome's: Enter, ⌘G, ⇧⌘G, Esc), ⌘+ ⌘- ⌘0 zoom its site (kept per site on the Mac; the address says 110% till a
 click resets it), ⌘R and ⇧⌘R reload it (past the cache), ⌥⌘I opens its DevTools, Esc stops a load; a site that takes
 ⌘F or the zoom keys itself (a doc's own find) keeps them. ⌘W on a pinned web tab unloads it, back where it was pinned. Right-click an image in a
 page: Save image to vault (into the attachments folder, like a pasted one), Download image, Copy image, Copy image

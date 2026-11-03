@@ -1,4 +1,5 @@
-// Editing: find and replace (plugins/core/find), folding, page preview and All properties, light and dark.
+// Editing: find and replace (plugins/core/find: a card at the pane's top right, a strip on a phone), folding, page
+// preview and All properties, light and dark.
 // WRITES a "Qa editing" folder and renames a property in it: throwaway server only.
 //   node web/qa/editing.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
@@ -65,8 +66,18 @@ await palette("Switch to live preview")
 
 // ---------- find and replace ----------
 await line("Banana bread").click(); await wait(200)
+const textAt = async () => (await line("Banana bread").boundingBox()).y
+const textWas = await textAt()
 await page.keyboard.press("ControlOrMeta+f"); await wait(500)
 check("⌘F opens the find bar", await page.locator("[data-find-bar]").count() === 1)
+// A computer: a card at the pane's top right, over the text (which doesn't move), not a strip across it.
+const spot = () => page.evaluate(() => {
+  const c = document.querySelector("[data-find-bar]").getBoundingClientRect(), p = document.querySelector("#main-scroll").getBoundingClientRect()
+  return { right: Math.round(p.right - c.right), top: Math.round(c.top - p.top), width: Math.round(c.width) }
+})
+const placed = await spot()
+check(`it floats at the pane's top right, under its bar, not at the text's edge (${JSON.stringify(placed)})`, placed.right >= 8 && placed.right <= 16 && placed.top >= 44 && placed.top <= 52 && placed.width <= 440)
+check("the text doesn't move for it", Math.abs(await textAt() - textWas) < 1)
 check("the keyboard is in the find field", await page.evaluate(() => document.activeElement?.getAttribute("aria-label")) === "Find")
 await page.keyboard.type("apple"); await wait(400)
 check(`typing finds as you go, from the cursor round to the top, with a count (${await count()})`, /^1 of 8$/.test(await count()))
@@ -116,12 +127,13 @@ await page.keyboard.type("zebra"); await wait(400)
 check(`live preview finds what's shown, not the frontmatter or a link's address (${await count()})`, await count() === "1 of 4")
 const current = () => page.evaluate(() => {
   const r = [...(CSS.highlights.get("vau-find-current") ?? [])][0], box = r?.getBoundingClientRect()
-  const head = document.querySelector(".cm-panels-top")?.getBoundingClientRect().bottom ?? 0
+  const head = document.querySelector("[data-find-bar]")?.getBoundingClientRect().bottom ?? 0
   return { in: r?.startContainer.parentElement?.closest(".cm-block")?.className.match(/cm-block-(\w+)/)?.[1] ?? null, seen: !!box && box.top >= head && box.bottom <= innerHeight }
 })
 await page.keyboard.press("Enter"); await wait(500)
 let at = await current()
-check(`Enter goes to the one in the table: lit in its cell, in sight (${JSON.stringify(at)})`, at.in === "table" && at.seen)
+check(`Enter goes to the one in the table: lit in its cell, in sight below the bar (${JSON.stringify(at)})`, at.in === "table" && at.seen)
+check("the bar stayed put while the note scrolled to it", await page.locator("#main-scroll").evaluate((el) => el.scrollTop > 300) && JSON.stringify(await spot()) === JSON.stringify(placed))
 await page.keyboard.press("Enter"); await wait(500)
 at = await current()
 check(`then the callout's (${JSON.stringify(at)})`, at.in === "callout" && at.seen)
@@ -259,6 +271,7 @@ await ctx.close()
   await page.keyboard.press("ControlOrMeta+f"); await wait(500)
   const bar = await page.locator("[data-find-bar]").boundingBox()
   check("phone: the find bar fits the width", bar && bar.width <= 390 && await page.evaluate(() => document.documentElement.scrollWidth <= 390))
+  check("phone: a strip across the top, not a card", await page.locator(".cm-panels-top [data-find-bar]").count() === 1 && bar.width >= 340)
   await page.screenshot({ path: `${OUT}editing-phone.png` })
   await ctx.close()
 }

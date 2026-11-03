@@ -9,7 +9,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
 import { agentOfTerminal, appShortcut, askedAt, closeView, cn, getStore, isMac, isWindows, KeyBar, keyboardBusy, keyboardUp, keyHint, linkClick, mintedHere, notifyError, offerPicture, onLook, openFile, openMenu, openPermissions, openWebLink, pastedFiles, pluginSettings, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
-import { countText, FindField, FindTools, floatingBar, MAX, type FindOptions } from "@plugins/find/tools"
+import { countText, FindField, FindTools, floatingBar, floatingSpot, MAX, type FindOptions } from "@plugins/find/tools"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -828,7 +828,7 @@ function FindBar({ l, ask, close }: { l: Live; ask: number; close: () => void })
   const bad = !!spec.text && (!valid || !found.total)
   const status = countText({ search: spec.text, valid, total: found.total, current: found.current, more: found.total >= MAX })
   return (
-    <div data-terminal-find data-overlay className={cn("absolute top-2 right-3 z-10 w-[min(440px,calc(100%-24px))]", floatingBar)}>
+    <div data-terminal-find data-overlay className={cn("top-2", floatingSpot, floatingBar)}>
       <FindField inputRef={ref} value={spec.text} placeholder="Find in terminal" status={status} bad={bad} onChange={(text) => set({ text })} onKeyDown={keys} />
       <FindTools spec={spec} set={set} total={found.total} step={(by) => run(spec, by)} close={close} />
     </div>

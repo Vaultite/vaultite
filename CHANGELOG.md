@@ -12,6 +12,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   buttons in the top bar of the iPhone app (swipe in from the edge; Sidebar buttons on phones brings them back), pinned
   pages as tiles in the drawer too (Show as ▸ Tiles), and a new tab's pinned pages as the sidebar's tiles, each named when
   held.
+- **Find floats, as in Chrome**: on a computer, ⌘F in a note or a Browser page opens a card at the pane's top right,
+  over the text, instead of a strip that pushed the note or the page down; replace grows it downward. Phones keep the
+  strip. Find cards are solid now, so the text under them no longer shows through.
 - **One palette at a time, and it has the keyboard**: ⌘P, ⌘O, a setting's picker (Animations…) or the Ask box opened
   over another takes its place instead of opening under it, Esc then gives the keyboard back to where it was, a sheet
   opening closes the palette, and the Hotkeys and Sidebars sheets take typing in their filter at once.

@@ -668,8 +668,8 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
    block scrolls sideways inside instead. */
 .vau-editor .cm-content.cm-lineWrapping { min-width: 0; }
 /* Where an editor's panels (the find bar: plugins/core/find) stick while the file scrolls: under a pane's bar on a
-   computer, under the header on a phone, at the top of a sheet. */
-[data-pane], [data-kept], [data-stacked] { --vau-panel-top: calc(var(--spacing) * 10); }
+   computer (the find bar floats there, in the tab's overlay), under the header on a phone, at the top of a sheet. */
+[data-pane], [data-kept], [data-stacked], [data-tab-overlay] { --vau-panel-top: calc(var(--spacing) * 10); }
 /* A page of cards anchors its own scrolling (core/anchor.ts): the browser's is off inside it. */
 [data-anchored], [data-anchored] * { overflow-anchor: none; }
 @media (max-width: 767px) { #main-scroll { --vau-panel-top: calc(env(safe-area-inset-top) + var(--spacing) * 11); } }

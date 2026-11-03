@@ -383,6 +383,8 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
         <TabContent {...p} tab={tab} to={to} view={view} file={file} full={full} focused={focused} shown={shown} />
         {tab && !file && <PageHeading label={shownLabel(tab, p.store)} />}
       </div>
+      {/* What floats over the tab's page, staying put while it scrolls and hidden with it (a note's find bar) */}
+      {tab && !full && <div data-tab-overlay={tab.id} className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0" style={shown ? undefined : { display: "none" }} />}
     </PaneContext.Provider>
   )
 }
