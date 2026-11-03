@@ -91,7 +91,8 @@ out.gymBack = await page.evaluate(() => location.hash)
 }
 // A sheet that isn't a file (a routine's day) scrolls inside, locks the page, and Done (its bottom bar: no backdrop, it fills the screen) closes it.
 if (ROUTINES) {
-await page.goto(B + today); await page.waitForTimeout(1500)
+// (loaded fresh: the Today tab, still drawn, would keep the week it was paged to)
+await page.goto("about:blank"); await page.goto(B + today); await page.waitForTimeout(1500)
 await page.locator('button[aria-label="Previous week"]').tap(); await page.waitForTimeout(300)
 await cells.first().tap(); await page.waitForTimeout(700)
 out.daySheet = await sheetOpen()

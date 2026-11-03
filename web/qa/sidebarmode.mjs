@@ -56,9 +56,9 @@ try {
   // It fills the sidebar: its list scrolls in a box down to the vault's bar.
   const fill = await page.$eval("aside [data-sidebar-mode]", (m) => ({ mode: m.getBoundingClientRect().bottom, nav: document.querySelector("aside nav[aria-label=App]").getBoundingClientRect().top }))
   check("it fills the sidebar's height", Math.abs(fill.mode - fill.nav) <= 1, fill)
-  // Live: a new change comes in at the top on its own.
+  // Live: a new change comes in on its own (among the app's own: its workspace saves, a row bumped to the top as they repeat).
   await api("PUT", "file", { path: NOTE2, text: "# Live\n" })
-  check("live: a new event shows up", !!(await until(() => page.$eval("aside [data-sidebar-mode] [data-event]", (e) => e.textContent.includes("Sidebar mode live")), 9000)))
+  check("live: a new event shows up", !!(await until(() => page.$$eval("aside [data-sidebar-mode] [data-event]", (els) => els.some((e) => e.textContent.includes("Sidebar mode live"))), 9000)))
   // A row opens its file.
   await page.click("aside [data-sidebar-mode] [data-event]:has-text('Sidebar mode live')")
   check("a row opens its file", !!(await until(() => page.evaluate(() => location.hash.includes("Sidebar%20mode%20live") || location.hash.includes("Sidebar mode live")))), await page.evaluate(() => location.hash))

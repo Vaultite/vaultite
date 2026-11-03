@@ -57,7 +57,11 @@ try {
     const r = (e) => { const b = e.getBoundingClientRect(); return { top: Math.round(b.top), bottom: Math.round(b.bottom), left: Math.round(b.left), h: Math.round(b.height) } }
     return { last: r(tabs.at(-1)), row: row && { ...r(row), label: row.textContent, after: !!(tabs.at(-1).compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING) } }
   })
+  // (a closed tab's row shrinks away, a new one grows in: 5ce778fd; measured once they're done, not scroll-driven ones)
+  const still = () => page.evaluate(() => Promise.all(document.querySelector("[data-tabs-panel]").getAnimations({ subtree: true })
+    .filter((a) => a.timeline === document.timeline && a.effect?.getComputedTiming().endTime !== Infinity).map((a) => a.finished.catch(() => {}))))
   const fill = (p) => page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p).then(() => wait(500))
+  await still()
   let g = await geo()
   check("a New tab row ends the tabs, a tab row's size and indent", g.row?.label.startsWith("New tab") && g.row.after && g.row.h === g.last.h && g.row.left === g.last.left && g.row.top > g.last.top, g)
   check("… the heading has no + of its own", !(await page.$("[data-tabs-panel] [data-heading=Tabs] button[aria-label='New tab']")))
@@ -73,7 +77,7 @@ try {
   let after = await until(async () => { const x = await ids(); return x.length === before.length + 1 ? x : null }, 3000)
   check("a click opens a blank tab at the list's end", after?.slice(0, -1).join() === before.join() && (await rows()).at(-1)?.on && await page.evaluate(() => location.hash) === "#new", [before, after])
   const was = g.row.top
-  await wait(500) // (the new row grows in)
+  await still()
   g = await geo()
   check("… in the row's place", g.last.top === was && g.row.top > was, [was, g])
   await fill(spare[0])

@@ -141,9 +141,13 @@ try {
   const sheet = await page.evaluate(() => {
     const c = document.querySelector("[data-customize-sidebars]"), x = document.querySelector("dialog[open] button[aria-label=Close] svg")
     let sc = c; while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement
-    return { content: Math.round(c.getBoundingClientRect().right), x: Math.round(x.getBoundingClientRect().right), bar: sc.offsetWidth - sc.clientWidth }
+    // (overlay scrollbars, a Mac's without a mouse, take no room: then only the line-up can be seen)
+    const probe = document.body.appendChild(Object.assign(document.createElement("div"), { style: "position: fixed; width: 50px; height: 50px; overflow: scroll" }))
+    const overlay = probe.offsetWidth === probe.clientWidth
+    probe.remove()
+    return { content: Math.round(c.getBoundingClientRect().right), x: Math.round(x.getBoundingClientRect().right), scrolls: sc.scrollHeight > sc.clientHeight, bar: sc.offsetWidth - sc.clientWidth, overlay }
   })
-  check("a sheet's content lines up with its X, its scrollbar in the padding", sheet.bar > 0 && Math.abs(sheet.content - sheet.x) <= 1, sheet)
+  check("a sheet's content lines up with its X, its scrollbar in the padding", sheet.scrolls && (sheet.bar > 0 || sheet.overlay) && Math.abs(sheet.content - sheet.x) <= 1, sheet)
 } finally {
   await api("PATCH", "config/pages", { pinned: pinnedBefore })
   await api("PATCH", "config/plugin/pages", { show: showBefore })

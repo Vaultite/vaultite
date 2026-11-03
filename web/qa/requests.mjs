@@ -35,7 +35,7 @@ cdp.on("Network.requestServedFromCache", (e) => reqs.delete(e.requestId))
 cdp.on("Network.responseReceived", (e) => { if (e.response.fromDiskCache || e.response.fromServiceWorker) reqs.delete(e.requestId) })
 cdp.on("Network.loadingFinished", (e) => { const k = reqs.get(e.requestId); if (k) { reqs.delete(e.requestId); add(k, e.encodedDataLength) } })
 cdp.on("Network.webSocketFrameReceived", (e) => { if (TRACE) console.log(`  < ${e.response.payloadData.slice(0, 200)}`); socket++ })
-cdp.on("Network.webSocketFrameSent", () => { socket++ })
+cdp.on("Network.webSocketFrameSent", (e) => { if (TRACE) console.log(`  > ${e.response.payloadData.slice(0, 200)}`); socket++ })
 
 const count = () => Object.values(tally).reduce((a, x) => a + x.n, 0)
 /** Nothing asked for `ms` (at most 20 s). */

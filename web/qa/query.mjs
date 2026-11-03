@@ -21,7 +21,8 @@ const base = (filters, view, top = "") => "```base\nfilters:\n  and:\n" + filter
 const inF = (sub = "") => `file.inFolder("${F}${sub}")`
 const pad = (n) => String(n).padStart(2, "0")
 const now = new Date(), MONTH = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`, TODAY = `${MONTH}-${pad(now.getDate())}`
-const DAY1 = `${MONTH}-03`, DAY2 = `${MONTH}-${now.getDate() === 20 ? "21" : "20"}`
+// (days other than today's, which has its own item)
+const DAY1 = `${MONTH}-${now.getDate() === 3 ? "04" : "03"}`, DAY2 = `${MONTH}-${now.getDate() === 20 ? "21" : "20"}`
 await put(`${F}/Tasks/Write docs.md`, `---\ntype: qa-task   # keep this\nstatus: idea\ndue: ${DAY1}\n---\n\nNotes.\n`)
 await put(`${F}/Tasks/Fix map.md`, `---\ntype: qa-task\nstatus: doing\ndue: ${DAY1} 18:00\n---\n`)
 await put(`${F}/Tasks/Ship app.md`, `---\ntype: qa-task\nstatus: done\ndue: ${TODAY}\n---\n`)

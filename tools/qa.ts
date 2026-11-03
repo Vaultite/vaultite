@@ -21,6 +21,9 @@ const TIMEOUT = 8 * 60_000
 /** Scripts on the sample as written, whatever the day: counts that only go down need the same files every run, and a
  *  sandbox dated to today has that day's logs. */
 const UNDATED = new Set(["counts", "requests", "a11y"])
+/** Budgets of the app alone: without Vaultite/plugins' own, whose checkout moves on its own (its bundles, renders and
+ *  polls, dispatch's every 5 s, aren't this repo's to pin). */
+const ALONE = new Set(["counts", "requests"])
 
 const argv = process.argv.slice(2)
 if (argv.includes("--lint")) process.exit(lint())
@@ -146,7 +149,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
     servers.push(main)
     // (Vaultite's own plugins the sample turns on, from their checkout, as the demo has them)
     const on: string[] = JSON.parse(fs.readFileSync(path.join(vault, ".vaultite/plugins.json"), "utf8")).enabled ?? []
-    for (const id of Object.keys(MOVED).filter((x) => on.includes(x) && fs.existsSync(path.join(OFFICIAL, x, "manifest.json")))) {
+    for (const id of Object.keys(MOVED).filter((x) => !ALONE.has(name) && on.includes(x) && fs.existsSync(path.join(OFFICIAL, x, "manifest.json")))) {
       for (const a of [["plugin", "install", path.join(OFFICIAL, id)], ["plugin", "on", id]]) spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "--url", main.base, ...a], { stdio: "ignore" })
     }
     const args: string[] = []

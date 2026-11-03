@@ -44,8 +44,9 @@ try {
   await page.screenshot({ path: `${OUT}files-tab.png` })
   await palette("Open terminals in a tab")
   check("Open terminals in a tab", (await tabs()).includes("Terminals") && !!(await page.$("main [data-terminals-view]")), await tabs())
-  // Its places to pick from: each with its icon, an agent's own (a plain component) too.
-  await palette("Choose where terminals and agents open")
+  // Places to pick from: each with its icon, an agent's own (a plain component) too. (Choosing a machine is offered only
+  // with another one: Claude Code's accounts here.)
+  await palette("Open Claude Code in an account or on a machine")
   const places = await until(() => page.$$eval("[role=dialog] [role=option]", (els) => els.map((e) => ({ t: e.textContent.trim(), icon: !!e.querySelector("svg") }))), 5000)
   check("  where they open: every place with its icon", places?.length > 0 && places.every((p) => p.icon), places)
   await page.keyboard.press("Escape"); await wait(300)

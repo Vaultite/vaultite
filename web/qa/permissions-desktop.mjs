@@ -34,9 +34,11 @@ await section.innerText().catch(() => ""))
 check("no signature row from source (only an ad hoc or unsigned build's)", await section.locator('[data-settings-row="permission-signing"]').count() === 0)
 const ends = await section.locator("[data-permission-state]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)))
 check("every state's dot lines up", ends.length > 1 && new Set(ends).size === 1, ends)
-const rows = await section.locator('[data-settings-row^="permission-"]').evaluateAll((els) => els.map((e) => ({
+const all = await section.locator('[data-settings-row^="permission-"]').evaluateAll((els) => els.map((e) => ({
   row: e.getAttribute("data-settings-row"), state: e.querySelector("[data-permission-state]")?.getAttribute("data-permission-state"),
   button: e.querySelector("button")?.textContent ?? null })))
+check("Set up agents comes first, a row to press, not a permission", all[0]?.row === "permission-setup" && !all[0].state, all[0])
+const rows = all.filter((r) => r.row !== "permission-setup")
 const ids = rows.map((r) => r.row.replace("permission-", ""))
 check("every permission has its row and a state", ["microphone", "camera", "accessibility", "screen", "input", "automation", "desktop", "documents", "downloads", "full-disk"]
   .every((id) => ids.includes(id)) && rows.every((r) => r.state), rows)

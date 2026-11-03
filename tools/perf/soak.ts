@@ -367,7 +367,9 @@ try {
     return await inPage<boolean>(() => !!document.querySelector("[role=tree]"))
   }, 120000)
   if (!up) throw new Error(`the app didn't come up:\n${said}`)
-  mainPid = [...tree(ps(), child.pid!)].map((pid) => ps().find((p) => p.pid === pid)!).find((p) => p && p.cmd.startsWith(electron) && !p.cmd.includes("--type="))!.pid
+  // (a worktree's node_modules is often a link to another checkout's: the process runs from where it leads)
+  const real = fs.realpathSync(electron)
+  mainPid = [...tree(ps(), child.pid!)].map((pid) => ps().find((p) => p.pid === pid)!).find((p) => p && [electron, real].some((e) => p.cmd.startsWith(e)) && !p.cmd.includes("--type="))!.pid
   await inPage(COUNTERS)
   step(`app up: main ${mainPid} on ${port}`)
   await wait(10000)
