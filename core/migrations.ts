@@ -74,7 +74,8 @@ export function cachesToKept(vault: Vault) {
       if (e instanceof SyntaxError) fs.rmSync(file, { force: true }) // (half written: a cache, made again)
       continue // (in iCloud only for now: the next start)
     }
-    if (kept.at(name) < at) kept.set(name, data, { shared: true, at })
+    // (provenance's is each machine's own: what its copies of the files say)
+    if (kept.at(name) < at) kept.set(name, data, { shared: m[1] !== "provenance", at })
     fs.rmSync(file, { force: true })
   }
   try { fs.rmdirSync(dir) } catch { /* something else is in it */ }

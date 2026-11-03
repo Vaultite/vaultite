@@ -132,6 +132,7 @@ export class Kept {
     for (const s of list) {
       if (!s || typeof s.name !== "string" || !NAME.test(s.name) || typeof s.at !== "number" || !Number.isFinite(s.at)) continue
       const text = JSON.stringify(s.data ?? null), was = this.entries.get(s.name)
+      if (was && !was.shared && was.text !== "null") continue // (this machine's own: what it works out itself, not another's)
       if (was && (was.at > s.at || (was.at === s.at && was.text >= text))) continue
       if (!was && text === "null") continue
       this.entries.set(s.name, { text, at: s.at, shared: true, seq: ++this.seq })

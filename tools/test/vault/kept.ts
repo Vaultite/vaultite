@@ -28,6 +28,9 @@ export default async ($: VaultTest) => {
   check("kept: a newer one wins, and is shared", k.merge([{ name: "qa/two", at: at + 10, data: "theirs" }]).join() === "qa/two" && k.get("qa/two") === "theirs" && k.isShared("qa/two"))
   check("kept: a removal travels too", k.merge([{ name: "qa/two", at: at + 20, data: null }]).length === 1 && k.get("qa/two", "gone") === "gone" && !k.names("qa/").includes("qa/two"))
   check("kept: and an older write doesn't bring it back", !k.merge([{ name: "qa/two", at: at + 15, data: "late" }]).length && k.get("qa/two", "gone") === "gone")
+  k.set("qa/own", "here")
+  check("kept: this machine's own entry isn't taken over by another's", !k.merge([{ name: "qa/own", at: Date.now() + 1e6, data: "there" }]).length && k.get("qa/own") === "here" && !k.isShared("qa/own"))
+  k.set("qa/own", null)
   check("kept: names from elsewhere are checked", !k.merge([{ name: "../etc", at: Date.now() + 1e6, data: 1 }, { name: "qa/three", at: Number.NaN, data: 1 }]).length)
 
   // On disk: a moment after a change (now, as the server does when it stops), read back by a store opened again.
