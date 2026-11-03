@@ -224,6 +224,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fmtMin(m)`
 - `fmtStamp(t, seconds?)`: A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM).
 - `fmtTime(isoStr)`
+- `fnDictation(begin)`: The fn key (the menu-bar helper's) as the dictation command's key: a tap starts and the next stops, held it listens till let go; with another key it was fn+key, and what it started is dropped.
 - `FocusedFile`: The file in the focused pane or, while that shows something else (a view, like the links tab), the file focused last, and the pane it's in: what a view that follows the other panes shows (a linked…
 - `focusGroup(gid)`: Clicking in a group's pane gives it the focus (the address shows its tab; commands act on it).
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one.
@@ -533,6 +534,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `savePdf(name)`: In the desktop app: the window, as it prints, saved as a PDF where the user picks (Export to PDF).
 - `Scope`
 - `scopedState(key, fallback, scope?)`: A value kept at a level by key ("<plugin id>:<name>"): `get` answers `fallback` while nothing's kept, `set(undefined)` removes it.
+- `screenDrop`: A cursor dropped at a point of the screen outside the window (screen points): the desktop app's helper looks at the app window there for `agent`, and follows it; null in a browser, or a build…
 - `scrollPage(top, smooth?)`: Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window.
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`
@@ -837,6 +839,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file or folder that isn't in the vault, an empty search), or null.
 - `pipeSockets(ws, up, failed)`: Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its close comes back; `failed` when it can't be reached.
 - `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end; itself: where it is) or unpinned…
+- `privateApp(a, list)`: Whether an app (its bundle id and name) is on the list, by name or bundle id, in any case; `com.1password.*` covers a vendor's.
 - `Proc`: A process on this machine: its parent, its terminal's foreground group, when it started (epoch ms), its command line.
 - `processTable(maxAge?)`: Every process on this machine by pid, from one `ps` shared by every caller of the last `maxAge` ms.
 - `PROP_TYPES`

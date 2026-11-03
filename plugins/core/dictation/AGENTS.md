@@ -1,6 +1,7 @@
 ## Dictation
 In the Mac desktop app, ⌘J (`dictation:start`) dictates where the cursor is: a note's editor, or a field (the Ask box, a
-chat's input); with neither, it opens the Ask box and dictates there. A tap starts and the next stops; held, it listens
+chat's input); with neither, it opens the Ask box and dictates there. fn does the same in the window, and in any other
+app (`fn`, on by default): into its field, or with none an ask to the companion about the window in front. A tap starts and the next stops; held, it listens
 until it's let go. Words not settled yet show dimmed by the cursor, never in the file; at each pause they settle and are
 typed in as the user's own input (`userEvent` `input.dictation`), so the note only ever holds final text. Browsers and
 phones don't have it.

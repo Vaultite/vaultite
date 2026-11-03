@@ -2,6 +2,9 @@
 // tells the events (the desktop app's helper, electron/dictation.ts; an iPhone's would too); plugins hear `onDictation`.
 import type { EditorView } from "@codemirror/view"
 import { cell } from "@/core/signal"
+import { parseReplacement, replacer } from "../../../core/dictationtext.ts"
+import { fnKey } from "../../../core/fnkey.ts"
+import { makePill } from "@/core/pill"
 
 export type DictationEvent =
   /** The microphone is open. */
@@ -31,6 +34,9 @@ export type DictationSource = {
   stop: () => Promise<unknown>
   cancel: () => Promise<unknown>
   on: (fn: (e: DictationEvent) => void) => () => void
+  /** The fn key, as the desktop app's menu-bar helper hears it while this window has the keyboard (`other`: a key
+   *  pressed with it). Builds from before the helper don't have it. */
+  onKey?: (fn: (k: { down?: boolean; other?: boolean }) => void) => () => void
 }
 
 /** Where the words go: a note's editor (it shows the pending words itself) or a field. */
@@ -96,28 +102,6 @@ function tell(e: DictationEvent) {
     return
   }
   for (const fn of [...hearers]) fn(e, where)
-}
-
-/** `text` said after `before` (what precedes where it goes): a space between words, none before punctuation or at a
- *  line's start. */
-export function joinText(before: string, text: string) {
-  const t = text.replace(/^\s+/, "")
-  if (!t) return ""
-  const last = before.slice(-1)
-  return last && !/[\s([{"'“‘/-]/u.test(last) && !/^[.,!?;:…)\]}"'”’]/u.test(t) ? ` ${t}` : t
-}
-
-/** A replacements line, "said: written" (the last ": " splits it), or null. */
-export function parseReplacement(line: string): [string, string] | null {
-  const i = line.lastIndexOf(": ")
-  const from = i > 0 ? line.slice(0, i).trim() : "", to = i > 0 ? line.slice(i + 2).trim() : ""
-  return from && to ? [from, to] : null
-}
-/** The replacements as patterns: the said words whole, in any case, however they're spaced. */
-export function replacer(lines: string[]): [RegExp, string][] {
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  return lines.map(parseReplacement).filter((x) => !!x).map(([from, to]) =>
-    [new RegExp(`(?<![\\p{L}\\p{N}@])${from.split(/\s+/).map(esc).join("\\s+")}(?![\\p{L}\\p{N}])`, "giu"), to.replace(/\$/g, "$$$$")])
 }
 
 let unsub: (() => void) | null = null
@@ -197,47 +181,34 @@ function finish() {
   d?.target.end()
 }
 
-// ---------- the indicator: a microphone by where the words go, its ring following the voice (a click stops)
+// ---------- the pill: by where the words go, its bars following the voice (a click stops)
 
-const MIC = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>'
 const indicator = (() => {
-  let el: HTMLDivElement | null = null, text: HTMLSpanElement | null = null, raf = 0, stop: (() => void) | null = null
-  const place = () => {
+  let pill: ReturnType<typeof makePill> | null = null, raf = 0
+  const place = (t: number) => {
     raf = requestAnimationFrame(place)
-    const d = now.get()
-    if (!d || !el || d.stopping) return
+    const d = now.get(), el = pill?.el
+    if (!d || !pill || !el || d.stopping) return
     const r = d.target.rect()
     if (!r) { void stopDictation(true); return }
-    // (its tab hidden: the words still go there, the indicator waits)
+    // (its tab hidden: the words still go there, the pill waits)
     el.style.visibility = r.x || r.y || r.width || r.height ? "" : "hidden"
     const w = el.offsetWidth, h = el.offsetHeight
     const x = Math.max(8, Math.min(innerWidth - w - 8, r.left - (d.target.showsPending ? 11 : 0)))
     const below = r.bottom + 6 + h <= innerHeight - 8
     el.style.transform = `translate(${Math.round(x)}px, ${Math.round(below ? r.bottom + 6 : r.top - h - 6)}px)`
-    el.style.setProperty("--level", String(d.speaking || d.level > 0.35 ? d.level : d.level * 0.4))
-    el.toggleAttribute("data-ready", d.ready)
-    const t = d.target.showsPending ? "" : d.pending
-    if (text && text.textContent !== t) { text.textContent = t.length > 80 ? `…${t.slice(-80)}` : t; text.hidden = !t }
+    pill.set(d.speaking || d.level > 0.35 ? d.level : d.level * 0.4, d.ready, d.target.showsPending ? "" : d.pending, t)
   }
   return {
     show() {
-      if (el) return
-      el = document.createElement("div")
-      el.className = "dictation-indicator"
-      el.setAttribute("role", "status")
-      el.setAttribute("aria-label", "Listening")
-      el.innerHTML = `<span class="dictation-mic">${MIC}</span>`
-      text = document.createElement("span")
-      text.className = "dictation-pending"
-      text.hidden = true
-      el.append(text)
+      if (pill) return
+      pill = makePill()
       // (pressed, not clicked: the editor keeps the keyboard)
-      el.addEventListener("pointerdown", (e) => { e.preventDefault(); void stopDictation() })
-      document.body.append(el)
+      pill.el.addEventListener("pointerdown", (e) => { e.preventDefault(); void stopDictation() })
+      document.body.append(pill.el)
       raf = requestAnimationFrame(place)
-      stop = () => cancelAnimationFrame(raf)
     },
-    hide() { stop?.(); stop = null; el?.remove(); el = null; text = null },
+    hide() { cancelAnimationFrame(raf); pill?.el.remove(); pill = null },
   }
 })()
 
@@ -267,4 +238,25 @@ export async function pressDictation(begin: (hold: boolean) => Promise<boolean>)
   if (!(await begin(byKey))) return up()
   mine = session
   decide()
+}
+
+/** The fn key (the menu-bar helper's) as the dictation command's key: a tap starts and the next stops, held it listens
+ *  till let go; with another key it was fn+key, and what it started is dropped. Returns how to stop hearing it. */
+export function fnDictation(begin: (hold: boolean) => Promise<boolean>) {
+  const key = fnKey()
+  let starting: Promise<boolean> | null = null, after: "stop" | "cancel" | "tap" | null = null
+  const end = (how: "stop" | "cancel" | "tap") => {
+    if (how === "tap") { const d = now.get(); if (d && !d.stopping) now.set({ ...d, hold: false }); return }
+    void stopDictation(how === "cancel")
+  }
+  return dictationSource?.onKey?.((k) => {
+    const a = k.other ? key.other() : k.down ? key.down(performance.now(), listening()) : key.up(performance.now())
+    const how = a === "stop" || a === "cancel" ? a : a === null && k.down === false ? "tap" : null
+    if (a === "start") {
+      after = null
+      const s = (starting = begin(true))
+      void s.then((ok) => { if (starting !== s) return; starting = null; if (ok && after) end(after) })
+    } else if (how && starting) after = how
+    else if (how) end(how)
+  }) ?? (() => {})
 }

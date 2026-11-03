@@ -107,10 +107,11 @@ export default defineConfig({
     chunkSizeWarningLimit: 1100, outDir: 'dist', emptyOutDir: false, // (keepRecentBuilds, above)
     rollupOptions: {
       // vaults.html: the desktop app's Manage vaults window; onboarding.html: its Set up Vaultite window; phone.html: the
-      // iPhone app's first screen (its servers)
+      // iPhone app's first screen (its servers); screen.html: the companion over the whole screen (electron/overlay.ts)
       input: {
         main: path.resolve(import.meta.dirname, 'web/index.html'), vaults: path.resolve(import.meta.dirname, 'web/vaults.html'),
         onboarding: path.resolve(import.meta.dirname, 'web/onboarding.html'), phone: path.resolve(import.meta.dirname, 'web/phone.html'),
+        screen: path.resolve(import.meta.dirname, 'web/screen.html'),
       },
       // Vault plugins may import the app's plugins' modules (web/src/core/vaultPlugins.ts globs them, lazily); most are
       // in the main chunk anyway, which is fine.

@@ -1373,21 +1373,16 @@ html[data-translucent][data-translucent-pages] {
 @keyframes preview-in { from { opacity: 0; scale: 0.96; } }
 [data-setting-preview][data-cold] .preview-card { animation: preview-in var(--motion) var(--ease-out); }
 
-/* Dictation (core/dictation.ts): a microphone by where the words go, its ring the voice's level; a field's pending
-   words beside it, as a field can't draw them. Over the palette (the Ask box), under menus. */
-.dictation-indicator {
-  position: fixed; left: 0; top: 0; z-index: 55; display: flex; align-items: center; gap: 6px; height: 22px;
-  max-width: min(420px, 60vw); padding: 0 4px; border-radius: 11px; background: var(--popover); color: var(--muted-foreground);
-  border: 0.5px solid var(--border); box-shadow: 0 1px 6px rgb(0 0 0 / 0.14); -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px); font-size: 13px; line-height: 22px; cursor: default;
+/* Dictation (core/dictation.ts, core/pill.ts): a pill of bars that move with the voice, by where the words go; a
+   field's pending words beside them, as a field can't draw them. Over the palette (the Ask box), under menus. */
+.dictation-pill {
+  position: fixed; left: 0; top: 0; z-index: 55; display: flex; align-items: center; gap: 7px; height: 22px;
+  max-width: min(420px, 60vw); padding: 0 9px; border-radius: 11px; background: var(--foreground); color: var(--background);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.18); font-size: 13px; line-height: 22px; cursor: default;
 }
-.dictation-mic { position: relative; display: grid; flex: none; place-items: center; width: 14px; height: 14px; color: var(--primary); }
-.dictation-mic::before {
-  content: ""; position: absolute; inset: -2px; border-radius: 50%; background: var(--primary);
-  opacity: calc(0.14 + var(--level, 0) * 0.3); transform: scale(calc(0.85 + var(--level, 0) * 0.55));
-  transition: transform 100ms linear, opacity 100ms linear;
-}
-.dictation-mic svg { position: relative; }
-.dictation-indicator:not([data-ready]) .dictation-mic { opacity: 0.5; }
-.dictation-pending { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-right: 3px; }
-@media (prefers-reduced-motion: reduce) { .dictation-mic::before { transition: none; } }
+.dictation-bars { display: flex; flex: none; align-items: center; gap: 2px; height: 12px; }
+.dictation-bars i { display: block; width: 2px; height: 12px; border-radius: 1px; background: currentColor; transform: scaleY(0.2);
+  transition: transform 80ms linear; }
+.dictation-pill:not([data-ready]) .dictation-bars { opacity: 0.5; }
+.dictation-pending { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: 0.75; }
+@media (prefers-reduced-motion: reduce) { .dictation-bars i { transition: none; } }

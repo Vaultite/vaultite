@@ -70,3 +70,6 @@ above that), act, run it again, and never end your turn.
   chose Start fresh), write a few lines for the next one and hand over with them (`companion handover "<them>"`), then
   end your turn; it starts with them and your threads.
 - Stay kind; one bubble beats three. Never write where they're typing unless asked.
+- On screen (the Mac's menu-bar helper): an ask or a point can be about another app's window (`app`, `window`, its
+  title, what it says, its picture: read the PNG), and a window the user dropped your cursor on comes back as edits as it
+  changes. Point there with `companion say --app <bundle> --find <text>`; `vau docs screen`.

@@ -1,8 +1,9 @@
-// Dictation (⌘J): what's said goes where the cursor is, from this Mac's microphone (web/src/core/dictation.ts has the
-// session, electron/dictation.ts the helper). A tap starts and the next stops; held, it listens until it's let go.
+// Dictation (⌘J, fn through the menu-bar helper): what's said goes where the cursor is (web/src/core/dictation.ts has the
+// session, electron/dictation.ts the recognizer). A tap starts and the next stops; held, it listens until let go.
 import { EditorView } from "@codemirror/view"
+import { useEffect } from "react"
 import { Mic } from "lucide-react"
-import { definePlugin, dictation, dictationSource, listening, notify, notifyError, offeredCommand, openPermissions, pluginSettings, pressDictation, runCommandById,
+import { definePlugin, dictation, dictationSource, fnDictation, listening, notify, notifyError, offeredCommand, openPermissions, pluginSettings, pressDictation, runCommandById,
   startDictation, typingIn, type DictationEngine, type DictationEngines, type DictationTarget } from "@vaultite"
 import { dictationEditor, editorTarget } from "./editor"
 import { fieldTarget } from "./field"
@@ -61,7 +62,14 @@ async function begin(hold: boolean) {
   return !!dictation()
 }
 
+/** fn while this window has the keyboard: its ⌘J (the helper dictates in other apps itself). */
+function FnKey() {
+  useEffect(() => fnDictation(begin), [])
+  return null
+}
+
 export default definePlugin({
+  background: () => <FnKey />,
   commands: [
     { id: "dictation:start", name: "Dictate", nameWhenOn: "Stop dictating", keys: ["Mod+J"], on: listening, when: () => !!dictationSource,
       run: () => void pressDictation(begin), icon: Mic, label: "Dictate", words: "voice speech microphone talk" },

@@ -1642,13 +1642,13 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
 // ---------- Dictation: said words joined to what's before them (web/src/core/dictation.ts) ----------
 {
-  const { joinText } = await import(pathToFileURL(path.join(WEB, "core", "dictation.ts")).href)
+  const { joinText } = await import(pathToFileURL(path.join(WEB, "..", "..", "core", "dictationtext.ts")).href)
   check("dictation: a space after a word", joinText("Shopping:", "Remember milk") === " Remember milk")
   check("dictation: none at a line's start or after a space", joinText("", "Hello") === "Hello" && joinText("one ", " two") === "two" && joinText("a\n", "b") === "b")
   check("dictation: none before punctuation, nor after an opening bracket", joinText("word", ", then") === ", then" && joinText("(", "aside") === "aside")
   check("dictation: an engine's leading space (Parakeet's words) taken as a word break", joinText("quick", " brown fox") === " brown fox")
   check("dictation: nothing said, nothing typed", joinText("x", "  ") === "")
-  const { replacer } = await import(pathToFileURL(path.join(WEB, "core", "dictation.ts")).href)
+  const { replacer } = await import(pathToFileURL(path.join(WEB, "..", "..", "core", "dictationtext.ts")).href)
   const swap = (t: string, lines = ["at Claude: @claude"]) => replacer(lines).reduce((x: string, [re, to]: [RegExp, string]) => x.replace(re, to), t)
   check("dictation: a replacement, whatever its case and spacing", swap("At Claude, can you look?") === "@claude, can you look?" && swap("ask at  claude now") === "ask @claude now")
   check("dictation: whole words only, and never twice", swap("chat Claude") === "chat Claude" && swap("@claude") === "@claude" && swap("at Claudette") === "at Claudette")

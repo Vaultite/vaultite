@@ -1,13 +1,15 @@
-// The desktop app's native helpers, built so a Mac without Xcode's tools has them (npm run app:build): the transcriber
-// and dictation's, both architectures, named by their sources' hash. Without the tools it says so and goes on.
+// The desktop app's native helpers, built so a Mac without Xcode's tools has them (npm run app:build): the transcriber,
+// dictation's and the screen helper, both architectures, named by their sources' hash. Without the tools it says so and goes on.
 import path from "node:path"
 
 const { buildHelper } = await import("../plugins/core/audio-recorder/plugin.ts")
 const { buildDictation } = await import("../electron/dictation-build.ts")
+const { buildScreen } = await import("../electron/screen-build.ts")
 const root = path.join(import.meta.dirname, "..")
 const builds: [string, () => Promise<string>][] = [
   ["the transcriber", () => buildHelper(path.join(root, "plugins", "core", "audio-recorder", "bin"), ["arm64", "x86_64"])],
   ["dictation", () => buildDictation(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
+  ["the screen helper", () => buildScreen(path.join(root, "electron", "bin"), ["arm64", "x86_64"])],
 ]
 for (const [name, build] of builds) {
   try {

@@ -1,5 +1,5 @@
-/** Dictation (⌘J): the helper (dictation.swift) hears this Mac's microphone and tells the window that asked (events on
- *  `vaultite:dictation`). One session at a time; the helper stays a while after, Parakeet loaded, then goes. */
+/** Dictation: dictation.swift hears the microphone for a window (`vaultite:dictation`) or the menu-bar helper (helper.ts),
+ *  one session at a time; it stays a while after, Parakeet loaded, then goes. */
 import { app, systemPreferences } from "electron"
 import { spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
@@ -11,10 +11,11 @@ import { buildDictation, helperName, parakeetModel } from "./dictation-build.ts"
 const SHIPPED = path.join(import.meta.dirname, "bin")
 let helper: ChildProcess | null = null
 let starting: Promise<ChildProcess> | null = null
-let owner: AppWindow | null = null
+/** Who hears the session under way: a window, or the menu-bar helper. */
+export type DictationSink = { tell: (m: Record<string, unknown>) => void; win?: AppWindow }
+let owner: DictationSink | null = null
 let idle: ReturnType<typeof setTimeout> | null = null
 const IDLE_MS = 15 * 60_000
-const watched = new WeakSet<AppWindow>()
 /** The session under way's number: what the helper says of an earlier one (its end, after another started) is dropped. */
 let sid = 0
 let checked: ((msg: Record<string, unknown>) => void)[] = []
@@ -58,9 +59,20 @@ function start(): Promise<ChildProcess> {
 function send(cmd: Record<string, unknown>) { helper?.stdin?.write(JSON.stringify(cmd) + "\n") }
 
 function tell(...msgs: Record<string, unknown>[]) {
-  const w = owner
-  if (!w || w.isDestroyed()) return
-  for (const m of msgs) w.webContents.send("vaultite:dictation", m)
+  const o = owner
+  if (o) for (const m of msgs) o.tell(m)
+}
+const sinks = new WeakMap<AppWindow, DictationSink>()
+/** A window's sink: what it's told goes to its page. */
+function sinkOf(win: AppWindow) {
+  let s = sinks.get(win)
+  if (!s) {
+    const sink: DictationSink = { win, tell: (m) => { if (!win.isDestroyed()) win.webContents.send("vaultite:dictation", m) } }
+    sinks.set(win, sink)
+    win.on("closed", () => { if (owner === sink) { send({ cmd: "cancel" }); owner = null } })
+    s = sink
+  }
+  return s
 }
 
 function heard(m: Record<string, unknown>) {
@@ -86,30 +98,36 @@ async function engines(language: string) {
   return { apple: !!r.apple, locale: r.locale, parakeet: !!model, ...(r.parakeet && !model ? { why: "no-model" } : {}) }
 }
 
+export type DictateOptions = { engine?: unknown; language?: unknown; silence?: unknown; words?: unknown; keep?: unknown }
+/** Listen for `sink` (another's session ends, "elsewhere"). */
+export async function dictate(sink: DictationSink, opts: DictateOptions) {
+  const engine = opts.engine === "parakeet" ? "parakeet" : "apple"
+  if (!process.env.VAULTITE_DICTATION_FILE && !(await systemPreferences.askForMediaAccess("microphone"))) return { ok: false, code: "permission" }
+  const model = engine === "parakeet" ? parakeetModel() : null
+  if (engine === "parakeet" && !model) return { ok: false, code: "model" }
+  try { await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
+  if (idle) { clearTimeout(idle); idle = null }
+  if (owner && owner !== sink) tell({ type: "end", reason: "elsewhere" })
+  owner = sink
+  const silence = Number(opts.silence)
+  send({ cmd: "start", id: ++sid, engine, language: typeof opts.language === "string" ? opts.language : "", model: model ?? "", silence: Number.isFinite(silence) ? silence : 0,
+    words: Array.isArray(opts.words) ? opts.words.filter((w) => typeof w === "string").slice(0, 100).map((w) => w.slice(0, 100)) : [],
+    // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
+    ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
+    // (a script driving the app hears a file instead: web/qa/dictation.mjs)
+    ...(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE ? { file: process.env.VAULTITE_DICTATION_FILE } : {}) })
+  return { ok: true }
+}
+/** Stop (what was heard turns final) or cancel `sink`'s session; another's is left alone. */
+export const stopFor = (sink: DictationSink, cancel = false) => { if (owner === sink) send({ cmd: cancel ? "cancel" : "stop" }) }
+export const dictating = () => owner
+export { engines as dictationEngines }
+
 export const dictationHandlers: Record<string, (win: AppWindow, ...args: unknown[]) => unknown> = {
   "dictation:engines": (_win, language) => engines(typeof language === "string" ? language : ""),
-  "dictation:start": async (win, o) => {
-    const opts = (o && typeof o === "object" ? o : {}) as Record<string, unknown>
-    const engine = opts.engine === "parakeet" ? "parakeet" : "apple"
-    if (!process.env.VAULTITE_DICTATION_FILE && !(await systemPreferences.askForMediaAccess("microphone"))) return { ok: false, code: "permission" }
-    const model = engine === "parakeet" ? parakeetModel() : null
-    if (engine === "parakeet" && !model) return { ok: false, code: "model" }
-    try { await start() } catch (e) { return { ok: false, code: "helper", message: (e as Error).message } }
-    if (idle) { clearTimeout(idle); idle = null }
-    if (owner && owner !== win) tell({ type: "end", reason: "elsewhere" })
-    owner = win
-    if (!watched.has(win)) { watched.add(win); win.on("closed", () => { watched.delete(win); if (owner === win) { send({ cmd: "cancel" }); owner = null } }) }
-    const silence = Number(opts.silence)
-    send({ cmd: "start", id: ++sid, engine, language: typeof opts.language === "string" ? opts.language : "", model: model ?? "", silence: Number.isFinite(silence) ? silence : 0,
-      words: Array.isArray(opts.words) ? opts.words.filter((w) => typeof w === "string").slice(0, 100).map((w) => w.slice(0, 100)) : [],
-      // (Keep the last dictation's audio: in the app's logs, to replay through tools/dictation_bench.ts)
-      ...(opts.keep === true ? { record: path.join(app.getPath("logs"), "dictation-last.wav") } : {}),
-      // (a script driving the app hears a file instead: web/qa/dictation.mjs)
-      ...(process.env.VAULTITE_QUIET && process.env.VAULTITE_DICTATION_FILE ? { file: process.env.VAULTITE_DICTATION_FILE } : {}) })
-    return { ok: true }
-  },
-  "dictation:stop": (win) => { if (owner === win) send({ cmd: "stop" }) },
-  "dictation:cancel": (win) => { if (owner === win) send({ cmd: "cancel" }) },
+  "dictation:start": (win, o) => dictate(sinkOf(win), (o && typeof o === "object" ? o : {}) as DictateOptions),
+  "dictation:stop": (win) => stopFor(sinkOf(win)),
+  "dictation:cancel": (win) => stopFor(sinkOf(win), true),
 }
 
 export function stopDictation() {

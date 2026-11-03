@@ -27,5 +27,12 @@
   Windows' controls drawn over the top-right corner (preload.cjs tells their colours, index.css keeps clear of them);
   files and vaultite:// links come in argv and `second-instance`, outside paths go to the page with forward slashes.
   Its installer stops every process running its .exe, terminal keepers and `vau` included, before it updates.
+- The menu-bar helper (helper.ts, a Mac's): Electron's own process kept windowless with a Tray, not a second app, so it
+  is one install with one signature and the grants the app already has (microphone, Accessibility, screen recording).
+  One per Mac (a lock socket in the temp folder: Vaultite, Main and Dev may all run); off in Vaultite Dev and under
+  VAULTITE_QUIET unless VAULTITE_HELPER=1. With it, a closed window's server is kept (`kept` in main.ts) and the Dock
+  icon shows only while a window is open. Native parts: screen.swift (fn's tap, fields, other apps' text), dictation.
+- The overlay (overlay.ts) is BrowserWindows, never `AppWindow`s: those count as the app's windows (the Dock, menus).
+  `skipTransformProcessType`, or showing it on every Space takes the app out of the Dock.
 - Every window is an `AppWindow` (appwindow.ts): a BaseWindow whose page is a view, so it can go over the Browser's
   pages (web.ts `raise`); a BrowserWindow's own page is always under its views. Pop-outs are adopted into one.

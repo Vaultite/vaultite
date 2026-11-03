@@ -8,7 +8,7 @@ import { edgeScroller, startDrag, useDropHit, useDropTarget, type DragItem } fro
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { get } from "@/core/http"
 import { kindOf } from "@/core/filekinds"
-import { snippet } from "@/core/links"
+import { snippet } from "@/core/plaintext"
 import { step } from "@/core/motion"
 import { notifyError } from "@/core/notify"
 import { usePane } from "@/core/pane"

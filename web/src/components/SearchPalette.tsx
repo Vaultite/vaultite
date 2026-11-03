@@ -8,7 +8,7 @@ import { cleanName, createNamed, folderOf, openFile, openNew, openView, stem } f
 import { currentFile, newTabsAt } from "@/core/workspace"
 import { launcherAt, launcherClosed } from "@/core/launcher"
 import { newNoteFolder } from "@/core/conventions"
-import { snippet } from "@/core/links"
+import { snippet } from "@/core/plaintext"
 import { openDetail } from "@/core/nav"
 import { completeTyped, launcherText, search, suggestions, typedHits, typedOwned, typedTurns, useQueried, useSearchIndex, type Hit } from "@/core/search"
 import { useRecentFiles } from "@/core/scope"

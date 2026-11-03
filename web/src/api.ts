@@ -148,7 +148,8 @@ export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scroll
 export { glide } from "@/core/animation"
 /** Where on screen what's in an element's scroller can be seen: under the bars drawn over it, above those under it. */
 export { sightOf } from "@/core/sight"
-export { drawnLink, followLink, linkClick, linkPlace, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Link, type LinkClick, type Target } from "@/core/links"
+export { drawnLink, followLink, linkClick, linkPlace, openTag, openWebLink, resolver, takeSchemeLink, WIKI, type Link, type LinkClick, type Target } from "@/core/links"
+export { plainText, snippet } from "@/core/plaintext"
 /** The links in a line of Markdown, with where each one's target and text are written (core/links.ts, shared with the server). */
 export { linksIn, type LinkSpan } from "../../core/links.ts"
 /** A link's right-click menu, the same wherever one is drawn: open it, copy it, and (`edit`) change it where it's written. */
@@ -278,9 +279,10 @@ export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.
 export { systemNotify } from "@/core/desktop"
 // Settings > Permissions (the desktop app on a Mac; null elsewhere): the terminal's way there when macOS blocks the vault.
-export { openPermissions } from "@/core/desktop"
+export { openPermissions, screenDrop } from "@/core/desktop"
 /** Dictation: the session (into a note's editor or a field), its events for plugins (`onDictation`) and its source. */
-export { dictation, dictationSource, joinText, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
+export { joinText } from "../../core/dictationtext.ts"
+export { dictation, dictationSource, fnDictation, listening, onDictation, pressDictation, speakingIn, startDictation, stopDictation, useDictation, type Dictation, type DictationEngine, type DictationEngines, type DictationEvent, type DictationSource, type DictationTarget } from "@/core/dictation"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.

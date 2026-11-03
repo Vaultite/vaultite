@@ -3,7 +3,7 @@
 import { memo, useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronDown, ChevronUp, Copy, Ellipsis, MessageSquarePlus, Pin, TextCursorInput, Trash2, UserRound, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
+import { canvasOf, canvasShown, cn, commandKeys, confirmDialog, copyText, dateText, dismissNotice, fmtStamp, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, type MenuItem, notify, notifyError, op, openFile, plural, runCommandById, screenDrop, seenArea, share, snippet, useDictation, useMenuShowing } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { accept, type Agent, answer, answered, arrivedAt, authorOf, comment, getState, howText, type Target, type Note, onBump, pick, pin, pointAt, type Reply, replyAuthor, review, sawSays, sendMoment, sawShown, startComment, subscribe, threadTint, tintOf, typing, unread, viewOf, views } from "./live"
@@ -431,7 +431,13 @@ const Cursor = memo(function Cursor({ a, spot, said, waiting, dot, others, under
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       end()
-      if (dragging) { const p = tip(ev.clientX, ev.clientY); if (dropAt(a.name, p.x, p.y)) hold(true, p); setDrag(null) } else if (!dead) setOpen(!open)
+      if (dragging) {
+        const p = tip(ev.clientX, ev.clientY)
+        if (dropAt(a.name, p.x, p.y)) hold(true, p)
+        // (out of the window, onto another app's: look at that window, and follow it: the desktop app's helper)
+        else if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) void screenDrop?.(ev.screenX, ev.screenY, a.name)
+        setDrag(null)
+      } else if (!dead) setOpen(!open)
     }
     const cancel = () => { end(); setDrag(null) }
     el.addEventListener("pointermove", move)

@@ -1,0 +1,19 @@
+{
+  "id": "screen",
+  "icon": "monitor",
+  "category": "agents",
+  "essential": true,
+  "desktopApp": true,
+  "name": "Screen",
+  "description": "On a Mac, agents can see what you're working on outside Vaultite: the app and window in front, a window's text (read with macOS's Accessibility) and its picture, and the companion's cursor can point there. It reads only when asked: you pressed fn with no text field, dropped the companion's cursor on a window, or an agent asked. Never a private app.",
+  "runsOnServer": true,
+  "settings": {
+    "private_apps": {
+      "type": "list",
+      "lines": true,
+      "default": ["1Password", "Bitwarden", "Dashlane", "KeePassXC", "LastPass", "NordPass", "Proton Pass", "Passwords", "Keychain Access", "Banktivity", "MoneyMoney", "Quicken", "YNAB"],
+      "label": "Private apps",
+      "description": "apps agents never see: not their text, their picture or their windows' titles. An app's name or bundle id, one a line; com.vendor.* covers a vendor's apps"
+    }
+  }
+}

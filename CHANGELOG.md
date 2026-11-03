@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Mac: Vaultite stays in the menu bar with no window open**: the companion goes on, and fn dictates in any app (a tap
+  starts and the next stops, or hold it), with a pill of bars that follow your voice there and in the window. With no
+  text field, what you say asks the companion about the window in front. Its cursor shows over the whole screen
+  (waiting at the edge, or by the pointer), and dropped on another app's window it looks at it and follows it.
+  Password managers and money apps are private by default (Screen's settings). Quit is in the menu bar.
 - **The companion's cursor always shows what it's doing**: reading and thinking show their dots for as long as they last,
   listening while you dictate a wave, with no hover (on a phone too). What it says while you speak shows as dots and pops
   in at your pause, staying a moment before your next words take it away; a bubble never shows empty.

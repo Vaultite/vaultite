@@ -170,7 +170,7 @@ async function dictated() {
     await win.keyboard.press("End")
     await win.mouse.move(2, 2)
     await win.keyboard.press("Meta+J")
-    await until(() => win.evaluate(() => document.querySelector(".dictation-indicator")?.hasAttribute("data-ready")), 5000)
+    await until(() => win.evaluate(() => document.querySelector(".dictation-pill")?.hasAttribute("data-ready")), 5000)
     await wait(LATER)
     let c = await cursorOf(win)
     check("dictating: it listens where they speak, its flag and wave showing all along", c?.state === "listening" && shows(c, "wave"), c)

@@ -38,10 +38,15 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** A reply to or a dismissal of one of its bubbles (`item`: the say), not a comment. */
   bubble?: boolean
   /** A move: its words moved by the user, a bubble put in the note or what it wrote folded back into a bubble. */
-  into?: "note" | "bubble" }
+  into?: "note" | "bubble"
+  /** On screen, outside the app (the desktop app's helper): the app (bundle id), its window and title, what the window
+   *  says (its Accessibility text) and its picture (a PNG on this machine). */
+  app?: string; window?: number; title?: string; screen?: string; shot?: string }
 /** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`); on a
  *  drawing, an element (`find`: its id or text) or a point of it (x, y). */
-export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
+export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number
+  /** Another app's window (bundle id, CGWindowID), or a point of the screen (points, with its display). */
+  app?: string; window?: number; sx?: number; sy?: number; display?: number }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass (why: its words on it);
  *  starting: its session boots (asks wait for its first `next`); runs (claude, codex), model, effort; asks: a permission. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean; why?: string
@@ -202,6 +207,7 @@ const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.s
 const broadcast = (m: object) => {
   const text = JSON.stringify(m)
   for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text)
+  if (SCREEN_NEWS.has((m as { t: string }).t)) for (const ws of screens) if (ws.readyState === ws.OPEN) ws.send(text)
   for (const [ws, g] of guests) if (ws.readyState === ws.OPEN) toGuest(ws, g, m as { t: string; note?: Note; id?: string })
 }
 // (fresh: what a new agent started from the app runs, profiles what the names that pick one start, harnesses what can run)
@@ -241,7 +247,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   if (md === "off") return null
   // (a line a shared folder's guest wrote is never the user's ask, whoever's window sends it)
   if (m.kind === "ask" && m.path && m.line && plugin.service("provenance:by-guest")?.(m.path, m.line) === true) return null
-  if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
+  // (a window they dropped its cursor on is followed in quiet too: they asked for it)
+  if (((m.kind === "edit" && !m.app) || m.kind === "open") && md === "quiet") return null
   // (a private note: nothing of it reaches any agent)
   if (m.path && hidden(m.path)) return null
   // (spaces alone changed, as a trailing one: nothing to see, and an agent woken for it isn't free for what is)
@@ -278,7 +285,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: 
   }
   // (one starting shows that until its first `next` takes it)
   if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") {
-    setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}) })
+    setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}),
+      ...(m.app ? { app: m.app, window: m.window, path: undefined, line: undefined, find: undefined, sx: undefined, sy: undefined } : {}) })
     if (from) void wake(full, from)
   }
   return full
@@ -721,7 +729,37 @@ const there = bridges(plugin, (ws, m, path) => void co.heard(ws, m, path))
 plugin.onUnload(() => there.stop())
 const roomMessage = (m: Record<string, unknown>) => typeof m.t === "string" && (m.t.startsWith("y") || m.t === "aw")
 
+/** The desktop app's helper (electron/helper.ts): it draws the agents outside the window, and says what the user asks or
+ *  points at on screen; it opens no notes. */
+const screens = new Set<WebSocket>()
+const SCREEN_NEWS = new Set(["state", "agent", "note", "drop", "said"])
+/** A screen moment's place, from what the helper sent: an app's window, never a path. */
+function screenPlace(m: Record<string, unknown>) {
+  const shot = str(m.shot), window = Number(m.window)
+  return { app: str(m.app).slice(0, 200), ...(Number.isInteger(window) && window > 0 ? { window } : {}), ...(str(m.title) ? { title: str(m.title).slice(0, 300) } : {}),
+    ...(str(m.screen) ? { screen: str(m.screen).slice(0, 20_000) } : {}),
+    // (only the helper's own pictures: an agent reads what's named here)
+    ...(/[/\\]screens[/\\]window-\d+-\d+\.png$/.test(shot) ? { shot } : {}) }
+}
+function screenSocket(ws: WebSocket, req: IncomingMessage) {
+  screens.add(ws)
+  send(ws, snapshot())
+  ws.on("message", (data: RawData) => {
+    let m: Record<string, unknown>
+    try { m = JSON.parse(String(data)) } catch { return }
+    // (a bubble over the screen clicked away)
+    if (m.t === "hide" && typeof m.id === "string") return void hide(m.id)
+    if (m.t !== "moment" || !["ask", "point", "edit"].includes(String(m.kind))) return
+    const place = screenPlace(m)
+    if (!place.app) return
+    addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, text: str(m.text) || undefined, ...place,
+      ...(Array.isArray(m.hunks) ? { hunks: (m.hunks as Hunk[]).slice(0, 40) } : {}) }, req)
+  })
+  ws.on("close", () => screens.delete(ws))
+}
+
 plugin.socket("companion/live", (ws, req, { query }) => {
+  if (query.screen === "1") return screenSocket(ws, req)
   co.add(ws, { who: YOU, name: OWNER, tint: "red", edits: true, see: (rel) => rel })
   // (another machine's server, for its windows: only the rooms, and never sent on again)
   if (query.rooms === "1") {
@@ -1674,7 +1712,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   if (!ms.length) return `${head}\nNothing yet: run vau companion next again.`
   const out = [head]
   for (const m of ms) {
-    const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : ""
+    const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : m.app ? ` on screen, ${m.title ? `${JSON.stringify(m.title)} in ` : ""}${m.app}${m.window ? ` (window ${m.window})` : ""}` : ""
     const thread = m.item && (m.kind === "ask" || m.kind === "reply") && personThread(m.item) ? ` (in their comment thread ${m.item}, by the line: answer in it, companion comment --id ${m.item})` : ""
     if (m.kind === "ask") out.push(`- ask${at}${thread}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more || m.again ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
@@ -1693,6 +1731,8 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else if (m.kind === "move") out.push(m.into === "note" ? `- move${at}: they put your bubble in the note there (more for the note than a bubble), ${JSON.stringify(cut(m.text ?? "", 200))}`
       : `- move${at}: they folded what you wrote there back into a bubble (more for a bubble than the note), ${JSON.stringify(cut(m.text ?? "", 200))}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
+    if (m.shot) out.push(`  its picture: ${m.shot}`)
+    if (m.screen) out.push("  what the window says (its Accessibility text):", ...m.screen.split("\n").slice(0, 400).map((l) => `    ${cut(l, 300)}`))
   }
   for (const e of notes) {
     if (e.scene) { out.push(`${e.path}, the drawing (ids for companion draw, say --find):`, e.scene); continue }

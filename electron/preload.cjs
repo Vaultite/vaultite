@@ -160,7 +160,15 @@ contextBridge.exposeInMainWorld("vaultite", {
       ipcRenderer.on("vaultite:dictation", h)
       return () => { ipcRenderer.removeListener("vaultite:dictation", h) }
     },
+    // (the fn key, heard by the menu-bar helper while this window has the keyboard: its ⌘J)
+    onKey: (fn) => {
+      const h = (_e, msg) => fn(msg)
+      ipcRenderer.on("vaultite:fn", h)
+      return () => { ipcRenderer.removeListener("vaultite:fn", h) }
+    },
   } : undefined,
+  // The companion's cursor dropped outside the window, at a point of the screen: "look at this" app window (helper.ts).
+  screen: MAC ? { drop: call("screen:drop-at") } : undefined,
   // Other apps' windows in tabs (electron/apps.ts).
   apps: MAC ? {
     list: call("apps:list"),

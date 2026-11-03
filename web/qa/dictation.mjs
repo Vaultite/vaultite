@@ -32,7 +32,7 @@ const engines = await win.evaluate((l) => window.vaultite?.dictation?.engines(l)
 if (!engines?.[ENGINE]) { await app.close(); await skip(`${ENGINE} doesn't dictate here (${JSON.stringify(engines)})`) }
 const text = () => win.evaluate(() => [...document.querySelectorAll("[data-pane] .cm-line")].map((l) => l.textContent).join("\n"))
 const pending = () => win.evaluate(() => document.querySelector(".cm-dictation-pending")?.textContent ?? "")
-const listening = () => win.evaluate(() => !!document.querySelector(".dictation-indicator"))
+const listening = () => win.evaluate(() => !!document.querySelector(".dictation-pill"))
 const normal = (s) => s.toLowerCase().replace(/[^a-z ]/g, "").replace(/\s+/g, " ").trim()
 
 // ---------- a tap: listens until the file ends (as if the user tapped again), the words dimmed, then in the note
@@ -44,7 +44,7 @@ await win.keyboard.press("End")
 const t0 = Date.now()
 await win.keyboard.press("Meta+J")
 check("⌘J shows the listening indicator by the cursor", await until(listening, 3000))
-await until(() => win.evaluate(() => document.querySelector(".dictation-indicator")?.hasAttribute("data-ready")), 15000, 20)
+await until(() => win.evaluate(() => document.querySelector(".dictation-pill")?.hasAttribute("data-ready")), 15000, 20)
 const micOpen = Date.now() - t0
 const sawPending = await until(async () => (await pending()).length > 0, 15000, 30)
 const firstPending = Date.now() - t0

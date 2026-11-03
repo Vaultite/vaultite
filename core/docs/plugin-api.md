@@ -228,6 +228,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `provenance:by-guest` (provenance): Whether a shared folder's guest wrote line `line` (1-based, frontmatter counted) of a note as it is now.
 - `provenance:authored` (provenance): Lines agents wrote in a note between two times that are still there, by who: the day's recap says them.
 - `sample` (claude-code)
+- `screen:front` (screen): For pair mode's awareness: what's in front now, or null when no desktop app said.
 - `setting-defaults` (other-apps)
 - `share:public` (share)
 - `share:upgrade` (share)

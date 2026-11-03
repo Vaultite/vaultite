@@ -5,7 +5,9 @@ import { profileOf } from "./profiles.ts"
 import type { Change, Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "pair"
-export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
+export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number
+  /** Another app's window (bundle id, CGWindowID), or a point of the screen (points, with its display). */
+  app?: string; window?: number; sx?: number; sy?: number; display?: number }
 /** listening: this window's own, the user dictating where it is (`hear`) while it's free; the server never says it. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away" | "listening"; t: number; seen?: boolean
   /** Why it let what it saw pass, in its few words (by the seen tick). */
