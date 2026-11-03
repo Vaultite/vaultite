@@ -2,7 +2,7 @@
 // where they overlap, with a line at the time it is now on the note's own day (a daily note's date, else today).
 import { useEffect, useState } from "react"
 import { CalendarClock, Check } from "lucide-react"
-import { cn, currentEditor, definePlugin, get, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
+import { cn, currentEditor, definePlugin, get, Loading, notify, notifyError, Panel, put, readFile, today } from "@vaultite"
 import { type CalEvent, dayOf, type Entry, eventsOf, hhmm, merged, nextStart, planOf, ticked } from "./plan"
 
 const TINT = "var(--day-planner)"
@@ -37,9 +37,9 @@ function lanes(plan: Entry[]) {
 }
 
 const NO_EVENTS = { timed: [] as Entry[], allDay: [] as string[] }
-/** The day's calendar events (none when no calendar answers), read when the day changes. */
+/** The day's calendar events (none when no calendar answers; null until it does), read when the day changes. */
 function useEvents(day: string, on: boolean) {
-  const [events, setEvents] = useState(NO_EVENTS)
+  const [events, setEvents] = useState<typeof NO_EVENTS | null>(on ? null : NO_EVENTS)
   useEffect(() => {
     if (!on) return setEvents(NO_EVENTS)
     let live = true
@@ -64,20 +64,22 @@ function Timeline({ path, body, options, editable }: { path: string; body: strin
   const day = dayOf(path) ?? today()
   const isToday = day === today()
   const cal = useEvents(day, !!path && options.calendar !== false)
-  const plan = merged(planOf(body), cal.timed)
+  const plan = merged(planOf(body), cal?.timed ?? [])
   const first = plan.length ? Math.floor(plan[0].start / 60) : 8
   const last = plan.length ? Math.ceil(Math.max(...plan.map((e) => e.end)) / 60) : 18
   const from = Math.max(0, Math.min(23, Number.isFinite(Number(options.start)) && options.start !== undefined ? Number(options.start) : Math.min(8, first)))
   const to = Math.max(from + 1, Math.min(24, Number.isFinite(Number(options.end)) && options.end !== undefined ? Number(options.end) : Math.max(18, last)))
   const y = (min: number) => ((min - from * 60) / 60) * HOUR
   const lane = lanes(plan)
-  const allDay = cal.allDay.length > 0 && (
+  const allDay = !!cal?.allDay.length && (
     <div className="mb-2 flex flex-wrap gap-1" data-plan-all-day>
       {cal.allDay.map((t, i) => <span key={i} className="rounded-[6px] px-2 py-0.5 text-[13px]" style={{ background: `color-mix(in oklab, ${EVENT} 16%, var(--background))` }}>{t}</span>)}
     </div>
   )
   if (!plan.length) {
     if (allDay) return allDay
+    // (an empty day only once its calendar has answered: until then it may have events)
+    if (!cal) return <Loading />
     return <p className="text-[15px] leading-[20px] text-muted-foreground">Nothing planned yet: list items that start with a time, like - 09:00 - 10:00 Standup, show here.</p>
   }
   return (<>

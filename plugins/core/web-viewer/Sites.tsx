@@ -3,8 +3,8 @@
 import { forwardRef, useEffect, useId, useRef, useState } from "react"
 import { ArrowRightLeft, Bot, ChevronDown, ChevronRight, ChevronsUpDown, Copy, Ellipsis, EyeOff, Fingerprint, Globe, LogOut, Pin, Plus, Settings2 } from "lucide-react"
 import {
-  edgeScroller, Button, confirmDialog, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, rehit, reorder, scopedState, Section,
-  SettingRow, SidebarHeading, SidebarRow, slotAt, startDrag, useDrag, useDropHit, useDropTarget, useScopedState, useSlide, useWorkspaceVersion, webPages,
+  edgeScroller, Button, confirmDialog, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, Loading, LoadingSidebarRows, menuBelow, menuFor, openView, PageHeader, plural, rehit, reorder, scopedState, Section,
+  SettingRow, SidebarHeading, SidebarRow, slotAt, startDrag, useDrag, useDropHit, useDropTarget, useKeptCount, useScopedState, useSlide, useWorkspaceVersion, webPages,
   type MenuItem, type SidebarCtx, type WebSite,
 } from "@vaultite"
 import type { LucideIcon, LucideProps } from "lucide-react"
@@ -126,6 +126,7 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
                 <Button size="small" look="quiet" onClick={() => void clearTrackers(l, others, refresh)}>Clear</Button>
               </div>
             )}
+            {sites === null && <div className={row}><Loading className="text-[14px]" /></div>}
             {sites && !sites.length && !others.length && <p className={`${row} text-muted-foreground`}>No sites yet</p>}
             {c && <div className={row}><Button size="small" look="quiet" onClick={(e) => menuBelow(e, containerItems(c, can))}>{c.name} options</Button></div>}
           </div>
@@ -166,6 +167,8 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   const folds = !q && rest.length + (trackers.length ? 1 : 0) > FEW
   const shown = !folds || unfolded
   const signedIn = (s: WebSite) => !!sites?.some((x) => x.site === s.site)
+  const drawn = top.length + (folds ? 1 : 0) + (shown ? rest.length + (trackers.length ? 1 : 0) : 0)
+  const kept = useKeptCount(q ? null : `web-viewer:sites:${l.machine?.id ?? ""}:${l.prof}`, sites ? drawn : undefined, 2)
   const box = useRef<HTMLDivElement>(null)
   useSlide(box, useSiteOrder(box, l.prof, q || there ? [] : top.map((s) => s.site)), "y")
   const lifted = useDrag((d) => (d?.item.site?.logins === l.prof ? d.item.site.site : null))
@@ -208,6 +211,7 @@ function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; 
   const Chevron = unfolded ? ChevronDown : ChevronRight
   return (
     <div className="flex flex-col gap-px" data-web-sites>
+      {!sites && <LoadingSidebarRows count={kept} right data-web-sites-loading="" />}
       <div ref={box} className="relative flex flex-col gap-px" data-web-sites-top="">{top.map(draggable)}</div>
       {folds && (
         <SidebarRow icon={Chevron} open aria-expanded={unfolded} data-web-more={String(rest.length)} onClick={() => unfold(!unfolded)} tip={null}

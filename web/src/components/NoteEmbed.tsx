@@ -17,6 +17,7 @@ import { MediaEmbed } from "@/components/FileViewers"
 import { FormatEmbed } from "@/components/FormatView"
 import { embedParts } from "@/core/formats"
 import { Markdown } from "@/components/Markdown"
+import { Loading } from "@/components/kit"
 import type { EmbedEdit } from "@/editor/livePreview"
 import { cn, scrollingBox } from "@/lib/utils"
 
@@ -82,7 +83,7 @@ export function NoteEmbed({ store, target, from, seen = [], fill }: { store: Sto
   if (loop || seen.length > DEPTH) {
     return <div className={box} data-embed={path}>{!fill && head}<p className="note-embed-missing">{loop ? "It embeds itself, so it isn't shown again here." : "Embedded too deep to show here."}</p></div>
   }
-  if (!file || file.path !== path) return <div className={cn(box, "min-h-16")} data-embed={path}>{!fill && head}</div>
+  if (!file || file.path !== path) return <div className={cn(box, "min-h-16")} data-embed={path}>{!fill && head}<Loading /></div>
   // (a note a plugin draws its own way, as it opens: embedded as that plugin draws it)
   const own = !anchor && !fill ? fileFormatFor(path, disabled) : null
   if (own) {

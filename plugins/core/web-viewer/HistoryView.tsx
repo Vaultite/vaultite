@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Copy, Globe, Search, Trash2 } from "lucide-react"
 import {
-  Button, cell, choose, confirmDialog, dateText, FilterField, fmtDay, fmtLongDay, iso, menuFor, notify, notifyError, plural, removals, rowMenu,
-  selectClick, selectedAttr, SidebarHeading, SidebarRow, useSelectable, useSelected, type MenuItem,
+  Button, cell, choose, confirmDialog, dateText, FilterField, fmtDay, fmtLongDay, iso, LoadingSidebarRows, menuFor, notify, notifyError, plural, removals, rowMenu,
+  selectClick, selectedAttr, SidebarHeading, SidebarRow, useKeptCount, useSelectable, useSelected, type MenuItem,
 } from "@vaultite"
 import { hostOf } from "./address"
 import { clearHistory, hasHistory, listHistory, removeSite, removeVisits, restoreVisits, useHistoryChanged, type Removed, type Visit } from "./history"
@@ -142,6 +142,7 @@ export function HistoryView({ openPage, onImport }: { openPage: (url: string) =>
     ]
   } })
 
+  const loadingRows = useKeptCount(text ? null : "web-viewer:history", visits ? rows.size : undefined, 8)
   if (!hasHistory()) return <p className="mx-auto max-w-[720px] px-4 pt-6 text-[13px] text-tertiary">The history is kept by Vaultite's desktop app.</p>
   return (
     <div className="mx-auto max-w-[720px] px-4 pt-3 pb-10" data-web-history>
@@ -155,6 +156,7 @@ export function HistoryView({ openPage, onImport }: { openPage: (url: string) =>
           {!text && onImport && <Button look="secondary" size="small" className="ml-2" onClick={onImport}>Import from another browser…</Button>}
         </div>
       )}
+      {!visits && <section data-size-up><div className="mt-2 h-7" /><LoadingSidebarRows count={loadingRows} right data-web-history-loading="" /></section>}
       <div data-select-list={HISTORY_LIST} data-size-up className="flex flex-col gap-3">
         {days.map((d) => (
           <section key={d.day} data-web-history-day={d.day}>

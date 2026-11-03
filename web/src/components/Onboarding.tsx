@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Check, ChevronRight, CircleAlert, CircleCheck, Copy, FlaskConical, FolderOpen, FolderPlus, LoaderCircle, Monitor, MousePointer2, MousePointerClick, Plug, RotateCw, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
+import { Bar, Loading } from "@/components/kit"
 import { plainText } from "../../../core/plainerror.ts"
 import { signingText, STATE_TEXT, type Permission, type PermissionState, type Signing } from "../../../core/permissions.ts"
 
@@ -62,7 +63,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
   }, [setup])
 
   if (!info) {
-    return <div className="grid h-dvh place-items-center text-[13px] text-muted-foreground">{error || <LoaderCircle className="size-5 animate-spin" />}</div>
+    return <div className="grid h-dvh place-items-center text-[13px] text-muted-foreground">{error || <Loading />}</div>
   }
   const steps: Step[] = [...(info.at?.revisit ? [] : ["vault" as const]), "agents", ...(info.mac ? ["permissions" as const] : [])]
   const at = steps.indexOf(step)
@@ -264,7 +265,7 @@ function AgentsStep({ setup, home, nav }: { setup: SetupApi; home: string; nav: 
   return (
     <Page step="agents" title="Your agents" sub="Vaultite runs the coding agents you use in its terminals; the default one is your companion."
       footer={<Footer nav={nav} skip busy={busy} onNext={go} error={error} label={Object.keys(failed).length ? "Continue anyway" : undefined} />}>
-      {!list ? <div className="grid h-24 place-items-center"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div> : (
+      {!list ? <CardSkeletons count={2} /> : (
         <div className="flex flex-col gap-4">
           {found.length ? (
             <section className="flex flex-col gap-1.5" aria-label="Found on this computer">
@@ -322,6 +323,24 @@ function AgentsStep({ setup, home, nav }: { setup: SetupApi; home: string; nav: 
   )
 }
 
+/** Agents or permissions on their way: their cards' shape (`big`: a permission's, with its button), lines as bars. */
+function CardSkeletons({ count, big }: { count: number; big?: boolean }) {
+  return (
+    <div className="loading-in flex flex-col gap-1.5" aria-busy data-setup-loading>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className={cn("flex items-center rounded-[8px] border-[0.5px] border-border px-3", big ? "gap-3 py-2.5" : "gap-2.5 py-2")}>
+          <span className={cn("skeleton shrink-0 rounded-full", big ? "size-5" : "size-4")} />
+          <span className="min-w-0 flex-1">
+            <span className="block"><Bar w={i % 2 ? "22%" : "30%"} /></span>
+            <span className="block text-[12px]"><Bar w={i % 2 ? "48%" : "58%"} /></span>
+          </span>
+          {big && <span className="skeleton h-7 w-16 shrink-0 rounded-[6px]" />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** Copies a command; ticks for a moment once it has. */
 function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false)
@@ -363,7 +382,7 @@ function PermissionsStep({ setup, app, nav }: { setup: SetupApi; app: string; na
   return (
     <Page step="permissions" title="Let agents use your Mac" sub={`Agents in ${app}'s terminals get what you allow ${app} here: one switch covers them all.`}
       footer={<Footer nav={nav} error={error} />}>
-      {!mac ? <div className="grid h-24 place-items-center"><LoaderCircle className="size-5 animate-spin text-muted-foreground" /></div> : (
+      {!mac ? <CardSkeletons count={2} big /> : (
         <div className="flex flex-col gap-1.5">
           {first.map((p) => {
             const { icon: Icon, why } = FIRST[p.id], on = p.state === "allowed"

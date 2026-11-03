@@ -18,7 +18,7 @@ import { checklist, menuFor, rightClickBelow, type CheckItem, type MenuItem } fr
 import { HeadingButton } from "@/components/Button"
 import { FileTree } from "@/components/FileTree"
 import { Drawn, Guard } from "@/components/Guard"
-import { Badged, IconAction, type Dot } from "@/components/kit"
+import { Badged, Bar, IconAction, type Dot } from "@/components/kit"
 import { cn, space } from "@/lib/utils"
 import { INCOMING, reorder, slotAt, useSlide } from "@/core/slide"
 import { Resizer } from "@/components/Resizer"
@@ -426,6 +426,24 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, mark, 
     </a>
   )
   return swipe && coarse && open ? <SwipeRow actions={swipe} className="rounded-[5px]">{row}</SwipeRow> : row
+}
+
+// (at most a label's length, however wide the page)
+const widths = ["min(58%, 13em)", "min(44%, 10em)", "min(66%, 15em)", "min(50%, 11em)", "min(62%, 14em)", "min(40%, 9em)"]
+/** Rows on their way: SidebarRow's shape, its icon a muted square and its label a bar (`right`: a bar at its end, as
+ *  a time or a count); in a `data-size-up` list where the real rows are. `useKeptCount` gives as many as last time. */
+export function LoadingSidebarRows({ count, right, className, ...rest }: { count: number; right?: boolean; className?: string } & Record<`data-${string}`, string | undefined>) {
+  return (
+    <div className={cn("loading-in flex flex-col gap-px", className)} aria-busy {...rest}>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className={cn(ROW, "cursor-default")}>
+          <span className="skeleton size-4 shrink-0 rounded-[4px]" />
+          <span className="min-w-0 flex-1"><Bar w={widths[i % widths.length]} /></span>
+          {right && <span className="mr-1 shrink-0 text-[11px]"><Bar w="3em" /></span>}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 /** A sidebar tile, a SidebarRow drawn as its icon alone, bigger (a grid of them: Pinned's tiles): named by its

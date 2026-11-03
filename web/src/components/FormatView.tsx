@@ -11,6 +11,7 @@ import { usePrefs } from "@/core/prefs"
 import { EmbedHead, rawUrl, useFill } from "@/components/FileViewers"
 import { cn } from "@/lib/utils"
 import { errorText } from "@/core/notify"
+import { Loading } from "@/components/kit"
 
 /** Where a drawn file goes: in a tab on desktop, the rest of the pane's height; on phones (a tab or the sheet), most of
  *  the screen, clear of the tab bar. */
@@ -49,7 +50,7 @@ export function FormatEmbed({ store, path, height, fill, sub, from }: { store: S
   return (
     <div className="glass overflow-hidden rounded-[12px]" data-format-embed={path}>
       <EmbedHead path={path} icon={Icon} name={format.page ? fileOf(store, path)?.title ?? stem(path) : path.split("/").pop()!} />
-      {box ? <div className="relative" style={{ height: height ?? 360 }}>{drawn}</div> : drawn || <div className="h-24" aria-busy />}
+      {box ? <div className="relative" style={{ height: height ?? 360 }}>{drawn || <Loading className="p-4" />}</div> : drawn || <div className="h-24 p-4"><Loading /></div>}
     </div>
   )
 }

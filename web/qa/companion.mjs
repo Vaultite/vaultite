@@ -787,6 +787,23 @@ await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ state: "detache
 await panel.locator('[data-filter="resolved"]').click()
 await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ timeout: 3000 })
 check("history: a resolved comment is under Resolved", true)
+// Slow: Resolved says it's loading, its count as last time, until the server answers (not "Nothing resolved yet").
+{
+  const count = await panel.locator('[data-filter="resolved"]').innerText()
+  let release
+  const held = new Promise((r) => { release = r })
+  await sp.route("**/api/ops/companion.history", async (r) => { await held; await r.continue() })
+  await wait(1200) // (counts are kept a second after they change)
+  await sp.reload()
+  await panel.locator('[data-filter="resolved"]').click()
+  await panel.locator("[aria-busy]").waitFor({ timeout: 6000 })
+  const kept = await panel.locator('[data-filter="resolved"]').innerText()
+  check("slow: Resolved loading, its count kept", kept === count && !(await panel.getByText("Nothing resolved yet").count()), { count, kept })
+  release()
+  await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ timeout: 4000 })
+  check("then the resolved ones, the loading gone", !(await panel.locator("[aria-busy]").count()))
+  await sp.unroute("**/api/ops/companion.history")
+}
 await panel.locator(`[data-companion-thread="${c1}"]`).getByRole("button", { name: "Reopen" }).click()
 await until(async () => (await op("companion.status")).notes.some((n) => n.id === c1), 3000)
 await wait(300)

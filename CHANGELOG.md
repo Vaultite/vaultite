@@ -17,6 +17,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Files tab) at the folder, open and flashed, rather than nothing; Reveal in file tree scrolls the drawer to it too.
 - **Bundles show skeleton cards while they load**: Get bundles and Your bundles draw shimmering cards, as many as
   last time, instead of a blank page until the list comes.
+  Files tab) at the folder, open and flashed, rather than nothing.
+- **Lists and pages show skeletons while they load**: bundles, browser tabs, history, sites, agents' runs and their
+  steps, extensions, passkeys, terminals, vaults and folders, setup's agents and permissions draw shimmering rows or
+  cards, as many as last time, and a day plan, resolved comments and embeds say Loading…, instead of a blank or an
+  empty list until the data comes.
 - **Terminals held by the older terminal server say so**: `vau terminal` marks them with its pid (they end it once
   they all have), `vau terminal get` gives a terminal's pid, and one it couldn't take over yet is tried again until it is.
 - **Delegation hears a terminal subagent without polling**: a Codex child's end is read once its terminal goes quiet,

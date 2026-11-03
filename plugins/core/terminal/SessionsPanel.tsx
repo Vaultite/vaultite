@@ -3,8 +3,8 @@
 import { useContext, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
-  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, HeadingButton, isViewOpen, menuBelow, menuFor, notify,
-  notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount,
+  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, HeadingButton, isViewOpen, LoadingSidebarRows, menuBelow, menuFor, notify,
+  notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useKeptCount, useTerminalAccount,
   useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { agentIn, cacheLeft, dotOf, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, type Session } from "./sessions"
@@ -169,7 +169,9 @@ export function Sessions({ open, tab }: SidebarCtx) {
   const list = listed(all)
   const agents = useAgents()
   const fold = useContext(PanelFold)
-  const empty = !!list && !list.length
+  // (while they come, as many rows as last time; none last time, it stays folded as it was)
+  const rows = useKeptCount("terminal:sessions", list?.length, 0)
+  const empty = list ? !list.length : !rows
   // Opened by hand while empty: until a session comes along (then it's open anyway) or it's folded again.
   const [peek, setPeek] = useState(false)
   useEffect(() => { if (!empty) setPeek(false) }, [empty])
@@ -198,8 +200,8 @@ export function Sessions({ open, tab }: SidebarCtx) {
       </PanelFold.Provider>
       {!folded && (
         <div className="flex flex-col gap-px">
-          {list && <Rows list={list} open={open} tab={tab} />}
-          {empty && (
+          {list ? <Rows list={list} open={open} tab={tab} /> : <LoadingSidebarRows count={rows} data-terminals-loading="" />}
+          {empty && list && (
             <button type="button" onClick={() => void openTerminal()}
               className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
               No terminals running. Open one
@@ -214,9 +216,10 @@ export function Sessions({ open, tab }: SidebarCtx) {
 /** The sessions' rows in the Terminals tab (view:terminals): the panel's rows, spelled out. */
 export function SessionList() {
   const list = listed(useSessions().list)
+  const rows = useKeptCount("terminal:sessions", list?.length, 0)
   return (
     <div className="flex flex-col gap-px pb-1">
-      {list && <Rows list={list} open tab="" page />}
+      {list ? <Rows list={list} open tab="" page /> : <LoadingSidebarRows count={rows} right data-terminals-loading="" />}
       {list && !list.length && (
         <button type="button" onClick={() => void openTerminal()}
           className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">

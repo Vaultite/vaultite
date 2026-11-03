@@ -2,7 +2,7 @@
 // by step with the page as it was after each, kept on this Mac a fortnight (electron/browser/agent.ts).
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Bot, ChevronLeft, ChevronRight, Globe, Pause, Play } from "lucide-react"
-import { Button, cn, dateText, FilterField, get, notifyError, plural, selectTab, SidebarHeading, SidebarRow, useChosen, usePane, webPages } from "@vaultite"
+import { Bar, Button, cn, dateText, FilterField, get, LoadingSidebarRows, notifyError, plural, selectTab, SidebarHeading, SidebarRow, useChosen, useKeptCount, usePane, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import type { LiveTab } from "./livetabs"
 import { showAppTab } from "./LiveView"
@@ -58,7 +58,8 @@ export function ReplaysView() {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean)
     return (runs ?? []).filter((r) => { const hay = [r.by, r.task, r.summary, r.title, r.url].join(" ").toLowerCase(); return words.every((w) => hay.includes(w)) })
   }, [runs, q])
-  if (open) return <Replay run={open} live={live.some((l) => l.run === open)} back={back} />
+  const kept = useKeptCount("web-viewer:runs", runs?.length)
+  if (open) return <Replay run={open} live={live.some((l) => l.run === open)} back={back} count={runs?.find((r) => r.run === open)?.steps} />
   if (!engine) return <p className="mx-auto max-w-[720px] px-4 pt-6 text-[13px] text-tertiary">Agents use the browser in Vaultite's desktop app.</p>
   return (
     <div className="@container mx-auto max-w-[960px] px-4 pt-4 pb-10" data-web-replays>
@@ -74,7 +75,8 @@ export function ReplaysView() {
       )}
       <SidebarHeading title="Runs" open />
       <div className="mb-2 px-1.5"><FilterField value={q} onChange={setQ} placeholder="Search by agent, task or summary" /></div>
-      {runs && !shown.length ? <p className="px-1.5 pt-2 text-[13px] text-tertiary">{q ? `No run matches "${q}".` : "No agent has used the browser yet."}</p> : (
+      {!runs ? <LoadingSidebarRows count={kept} right data-size-up data-web-replays-loading="" />
+        : !shown.length ? <p className="px-1.5 pt-2 text-[13px] text-tertiary">{q ? `No run matches "${q}".` : "No agent has used the browser yet."}</p> : (
         <div className="flex flex-col gap-px" data-size-up>
           {shown.map((r) => (
             <SidebarRow key={r.run} icon={Bot} open data-web-replay={r.run} onClick={() => setOpen(r.run)}
@@ -127,7 +129,8 @@ function LiveCard({ live: l, replay }: { live: Live; replay: (run: string) => vo
   )
 }
 
-function Replay({ run, live, back }: { run: string; live: boolean; back: () => void }) {
+/** `count`: how many steps the runs list said it has (the skeleton's rows while they come). */
+function Replay({ run, live, back, count }: { run: string; live: boolean; back: () => void; count?: number }) {
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [at, setAt] = useState(0)
   useEffect(() => {
@@ -160,6 +163,12 @@ function Replay({ run, live, back }: { run: string; live: boolean; back: () => v
       </div>
       <div className="flex min-h-0 flex-1">
         <ol className="w-[260px] shrink-0 overflow-y-auto border-r-[0.5px] border-border p-1.5">
+          {!steps && Array.from({ length: Math.min(count ?? 6, 12) }, (_, i) => (
+            <li key={i} className="loading-in flex flex-col px-2 py-1" aria-busy data-web-replay-loading="">
+              <span className="text-[13px]"><Bar w={i % 2 ? "55%" : "72%"} /></span>
+              <span className="text-[11px]"><Bar w="45%" /></span>
+            </li>
+          ))}
           {(steps ?? []).map((x, i) => (
             <li key={`${x.t}-${i}`}>
               <button type="button" onClick={() => setAt(i)} className={cn("flex w-full cursor-pointer flex-col rounded-[6px] px-2 py-1 text-left", i === at ? "bg-foreground/[0.07]" : "hover:bg-foreground/[0.04]")}>

@@ -7,6 +7,8 @@ import { api } from "@/core/http"
 import { revealLabel } from "@/core/platform"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
+import { Bar } from "@/components/kit"
+import { useKeptCount } from "@/core/heights"
 import { plainText } from "../../../core/plainerror.ts"
 
 type KnownVault = { path: string; name: string; open?: boolean
@@ -79,10 +81,21 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
   }
 
   const vaults = list?.vaults ?? []
+  const rows = useKeptCount("vaults", list?.vaults.length, 2)
   const left = (
     <nav aria-label="Vaults" className={cn("flex min-h-0 flex-col", wide ? "w-64 shrink-0 overflow-y-auto border-r-[0.5px] border-border bg-sidebar p-2 pt-12" : "mb-5")}>
       {!wide && <h3 className="mb-1 px-1 text-[12px] font-semibold text-muted-foreground">Your vaults</h3>}
       {!vaults.length && list && <p className="px-2 py-1 text-[13px] text-muted-foreground">No vaults yet.</p>}
+      {!list && !error && (
+        <div className="loading-in" aria-busy data-vaults-loading>
+          {Array.from({ length: rows }, (_, i) => (
+            <div key={i} className="flex flex-col px-2.5 py-1.5">
+              <span className="text-[13px]"><Bar w={i % 2 ? "40%" : "55%"} /></span>
+              <span className="text-[12px]"><Bar w={i % 2 ? "70%" : "62%"} /></span>
+            </div>
+          ))}
+        </div>
+      )}
       {vaults.map((v) => {
         const here = v.path === list?.current
         return (
@@ -214,7 +227,7 @@ function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: 
     <div className="flex flex-col gap-3">
       <BackButton onClick={onCancel} />
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium" data-tip={at?.path} data-tip-trunc>{at ? short(at.path, at.home) : "…"}</span>
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium" data-tip={at?.path} data-tip-trunc>{at ? short(at.path, at.home) : <Bar w="40%" />}</span>
         <Button size="small" look="primary" disabled={!at} onClick={() => at && onPick(at.path)}>{label}</Button>
       </div>
       <ul aria-label="Folders" className="max-h-[50dvh] overflow-y-auto rounded-[8px] border-[0.5px] border-border">
@@ -233,6 +246,12 @@ function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: 
           </li>
         ))}
         {at && !at.folders.length && <li className="px-2.5 py-2 text-[13px] text-muted-foreground">No folders here.</li>}
+        {!at && !error && Array.from({ length: 6 }, (_, i) => (
+          <li key={i} className="loading-in flex h-8 items-center gap-2 px-2.5 text-[13px]" aria-busy data-folders-loading>
+            <span className="skeleton size-4 shrink-0 rounded-[4px]" />
+            <span className="min-w-0 flex-1"><Bar w={["38%", "52%", "30%", "45%", "60%", "34%"][i]} /></span>
+          </li>
+        ))}
       </ul>
       {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
     </div>

@@ -2,7 +2,7 @@
 // each is, then one watched live to tap, type and scroll in, its agents stopped or an ask done. A tab is `3` or `3@m1`.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Bot, ChevronLeft, Globe, Keyboard, Pause, Play } from "lucide-react"
-import { Button, closeTab, cn, dateText, errorText, get, onMachine, openInSplit, post, selectTab, SidebarHeading, SidebarRow, splitMachine, useChosen, usePane, usePaneTopBar, webPages } from "@vaultite"
+import { Button, closeTab, cn, dateText, errorText, get, LoadingSidebarRows, onMachine, openInSplit, post, selectTab, SidebarHeading, SidebarRow, splitMachine, useChosen, useKeptCount, usePane, usePaneTopBar, webPages } from "@vaultite"
 import { hostOf } from "./address"
 import { argOf, colorOf, containerById } from "./containers"
 import type { LiveStep, LiveTab, LiveTabs } from "./livetabs"
@@ -77,6 +77,7 @@ function Tabs({ open }: { open: (t: LiveTab) => void }) {
   const yours = (tabs ?? []).filter((t) => !t.asking && !t.by)
   // (each tab's machine named once there's more than one)
   const machines = new Set((tabs ?? []).map((t) => t.machine ?? "")).size > 1
+  const kept = useKeptCount("web-viewer:live-tabs", tabs?.length)
   const rows = (list: LiveTab[]) => (
     <div className="flex flex-col gap-px" data-size-up>
       {list.map((t) => (
@@ -98,7 +99,8 @@ function Tabs({ open }: { open: (t: LiveTab) => void }) {
       <h1 className="mb-1 text-[20px] font-semibold">Browser tabs</h1>
       <p className="mb-4 text-[15px] text-muted-foreground md:text-[13px]">The web pages open in your desktop apps. Open one to watch it, tap and type in it, or stop the agent working there.</p>
       {error ? <p className="text-[15px] text-muted-foreground md:text-[13px]">{error}</p>
-        : tabs && !tabs.length ? <p className="text-[15px] text-tertiary md:text-[13px]">No web pages are open in your desktop apps.</p> : null}
+        : !tabs ? <section className="mb-4"><div className="mt-2 h-7" /><LoadingSidebarRows count={kept} data-size-up data-web-live-loading="" /></section>
+        : !tabs.length ? <p className="text-[15px] text-tertiary md:text-[13px]">No web pages are open in your desktop apps.</p> : null}
       {asking.length > 0 && <section className="mb-4"><SidebarHeading title="Needs you" open />{rows(asking)}</section>}
       {agents.length > 0 && <section className="mb-4"><SidebarHeading title="Agents" open />{rows(agents)}</section>}
       {yours.length > 0 && <section className="mb-4"><SidebarHeading title="Yours" open />{rows(yours)}</section>}

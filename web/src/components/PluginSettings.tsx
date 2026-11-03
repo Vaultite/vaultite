@@ -14,7 +14,7 @@ import { pluginSettings, revealRow, settingsFile, takeGoingTo, valueLabel } from
 import { grantsOf, setGrant } from "@/core/grants"
 import { usePrefs } from "@/core/prefs"
 import { capitalize, cn } from "@/lib/utils"
-import { Group, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { Group, Loading, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { JsonView } from "@/components/JsonView"
 import { Catch } from "@/components/Guard"
 import { chooseFolder } from "@/components/FolderPicker"
@@ -370,7 +370,7 @@ function SettingsJson({ path }: { path: string }) {
   const read = () => { readFile(path).then((f) => setFile({ text: f.text }), () => setFile({ text: "{}" })) }
   useEffect(read, [path])
   useVaultChange(read, [path])
-  if (!file) return <div className="min-h-12" aria-busy />
+  if (!file) return <div className="min-h-12 px-3 py-2"><Loading /></div>
   const change = (text: string) => {
     const base = file.text
     setFile({ text })

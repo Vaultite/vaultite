@@ -2,7 +2,7 @@
 // whose Safari opens this server's page by a QR code (plugins/core/web-viewer/approvals.ts) and Touch ID here confirms it.
 import { useCallback, useEffect, useState } from "react"
 import { KeyRound, Plus, Trash2 } from "lucide-react"
-import { Button, dateText, Empty, get, notifyError, PageHeader, Panel, webPages } from "@vaultite"
+import { Bar, Button, cn, dateText, Empty, get, notifyError, PageHeader, Panel, useKeptCount, webPages } from "@vaultite"
 import { Qr } from "./Passkey"
 
 type Key = { id: string; name: string; site: string; added: number }
@@ -23,14 +23,24 @@ export function AgentPasskeys() {
         : { error: "Your phone reaches this Mac's Vaultite over https on your tailnet, which isn't served yet: run tailscale serve --https=8447 8793 here (8793: Vaultite's port), then add one." })
     } catch (e) { notifyError(e, "Couldn't start adding a passkey") }
   }
+  const rows = useKeptCount("web-viewer:agent-passkeys", keys?.length, 1)
   const remove = (k: Key) => void engine("logins:passkey-remove", k.id).catch((e) => notifyError(e, "Couldn't remove it"))
   return (
     <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10" data-agent-passkeys>
       <PageHeader title="Passkeys for agents' logins" subtitle="An agent logging in with an entry not tagged agent-free waits for your yes, given with one of these" />
-      {keys === null ? null : !keys.length ? <Empty>None yet. Add one from your phone: it then approves agents' logins with Face ID.</Empty> : (
-        <Panel className="py-1">
-          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border">
-            {keys.map((k) => (
+      {keys && !keys.length ? <Empty>None yet. Add one from your phone: it then approves agents' logins with Face ID.</Empty> : (keys || rows > 0) && (
+        <Panel className={cn("py-1", !keys && "loading-in")}>
+          <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border" aria-busy={!keys || undefined}>
+            {!keys && Array.from({ length: rows }, (_, i) => (
+              <div key={i} className="flex min-h-12 items-center gap-3 py-1.5" data-agent-passkey-loading>
+                <KeyRound className="size-5 shrink-0 text-muted-foreground/40" strokeWidth={2} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[15px] leading-[20px] md:text-[14px]"><Bar w={i % 2 ? "28%" : "36%"} /></div>
+                  <div className="text-[13px] md:text-[12px]"><Bar w="48%" /></div>
+                </div>
+              </div>
+            ))}
+            {keys?.map((k) => (
               <div key={k.id} className="flex min-h-12 items-center gap-3 py-1.5" data-agent-passkey={k.name}>
                 <KeyRound className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />
                 <div className="min-w-0 flex-1">

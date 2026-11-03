@@ -2,7 +2,7 @@
 // Extensions tab, and "Add to Vaultite" on a Web Store page. What's installed is this Mac's: code run on every site.
 import { forwardRef, useEffect, useState, type FormEvent, type MouseEvent } from "react"
 import { ArrowDownToLine, Download, FolderOpen, Lock, MoreHorizontal, Pin, PinOff, Plus, Puzzle, RefreshCw, Settings2, Trash2, type LucideIcon, type LucideProps } from "lucide-react"
-import { Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, removals, Switch, type MenuItem } from "@vaultite"
+import { Bar, Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, removals, Switch, useKeptCount, type MenuItem } from "@vaultite"
 import { addExtension, changeExtension, engine, extensionsChanged, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
 
 /** Extensions removed from here: gone at once, back if it fails. */
@@ -124,6 +124,9 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
     void engine<Other[]>("ext:others").then(setOthers, () => setOthers([]))
     void engine<{ problems: string[] }>("ext:policy").then((p) => setProblems(p.problems), () => {})
   }, [v])
+  const rows = useKeptCount("web-viewer:extensions", exts?.length)
+  // (the other browsers' list is slower: its room is kept, so nothing pops in under the page)
+  const otherRows = useKeptCount("web-viewer:extensions-others", others?.length, 0)
   if (!hasExtensions()) {
     return <div className="mx-auto max-w-[640px] px-4 pt-6"><PageHeader title="Extensions" /><Empty>Extensions run in web pages in Vaultite's desktop app.</Empty></div>
   }
@@ -165,7 +168,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
           className="h-8 min-w-0 flex-1 rounded-[8px] bg-foreground/[0.05] px-3 text-[13px] outline-none placeholder:text-tertiary focus:bg-background focus:ring-1 focus:ring-primary/50" />
         <Button type="submit" look="primary" disabled={!typed.trim() || !!busy}>{busy === "add" ? "Adding…" : "Add"}</Button>
       </form>
-      {exts === null ? null : !exts.length ? (
+      {exts === null ? <ExtSkeletons count={rows} /> : !exts.length ? (
         <Empty>
           None yet. Paste a link from the{" "}
           <button type="button" className="cursor-pointer text-primary hover:underline" onClick={() => openPage("https://chromewebstore.google.com/")}>Chrome Web Store</button>
@@ -216,6 +219,12 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
           </Button>
         )}
       </div>
+      {!others && otherRows > 0 && (
+        <div className="mt-8" data-ext-others-loading>
+          <div className="mb-1 text-[13px] font-semibold text-muted-foreground">In your other browsers</div>
+          <ExtSkeletons count={otherRows} other />
+        </div>
+      )}
       {!!others?.length && (
         <div className="mt-8" data-ext-others>
           <div className="mb-1 text-[13px] font-semibold text-muted-foreground">In your other browsers</div>
@@ -240,5 +249,25 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
         </div>
       )}
     </div>
+  )
+}
+
+/** Extensions on their way: a row's shape (`other`: another browser's, with Add), its icon a muted square and its lines bars. */
+function ExtSkeletons({ count, other }: { count: number; other?: boolean }) {
+  return (
+    <Panel className="loading-in py-1">
+      <div className="flex flex-col [&>:where(:not(:first-child))]:border-t-[0.5px] [&>:where(:not(:first-child))]:border-border" aria-busy data-ext-loading>
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className={cn("flex items-center gap-3 py-1.5", other ? "min-h-11" : "min-h-12")}>
+            <span className="grid size-8 shrink-0 place-items-center"><span className={cn("skeleton rounded-[6px]", other ? "size-6" : "size-7")} /></span>
+            <div className="min-w-0 flex-1">
+              <div className={other ? "text-[14px] leading-[20px]" : "text-[15px] leading-[20px] md:text-[14px]"}><Bar w={i % 2 ? "34%" : "42%"} /></div>
+              <div className="text-[13px] leading-[18px] md:text-[12px] md:leading-[16px]"><Bar w={other ? "18%" : i % 2 ? "62%" : "74%"} /></div>
+            </div>
+            {other ? <span className="skeleton h-7 w-16 shrink-0 rounded-[6px]" /> : <span className="skeleton h-[22px] w-[36px] shrink-0 rounded-full" />}
+          </div>
+        ))}
+      </div>
+    </Panel>
   )
 }

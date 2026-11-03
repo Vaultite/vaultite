@@ -1,7 +1,7 @@
 // A ```genui fence: its program run in the sandbox, what it draws shown with the app's components, and its values
 // (the key picked, a box ticked) kept in the fence's {@state} line, so the note opens as it was left, on any device.
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
-import { askAbout, copyText, Markdown, notify, onLook, openWebLink, type BlockCtx, errorText } from "@vaultite"
+import { askAbout, copyText, Loading, Markdown, notify, onLook, openWebLink, type BlockCtx, errorText } from "@vaultite"
 import { dilText, parse, savedData, savedState, stateNames, withState } from "./dil"
 import { sandboxDoc, type FromSandbox, type Tree } from "./sandbox"
 import type { Host } from "./parts"
@@ -95,7 +95,7 @@ export function GenUiFence(ctx: BlockCtx) {
   return (
     <div ref={box} className="genui-block" data-genui>
       <iframe ref={frame} srcDoc={sandboxDoc()} sandbox="allow-scripts" aria-hidden tabIndex={-1} title="" className="hidden" />
-      {tree ? <Suspense fallback={<div className="min-h-24" />}><Drawn tree={tree} host={host} /></Suspense> : error ? <Fallback source={source} from={ctx.path} /> : <div className="min-h-24" />}
+      {tree ? <Suspense fallback={<div className="min-h-24"><Loading /></div>}><Drawn tree={tree} host={host} /></Suspense> : error ? <Fallback source={source} from={ctx.path} /> : <div className="min-h-24"><Loading /></div>}
       {error && <p className="mt-2 text-[13px] text-muted-foreground">{error}</p>}
     </div>
   )

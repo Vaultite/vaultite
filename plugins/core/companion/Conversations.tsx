@@ -2,7 +2,7 @@
 // order, open or resolved, who's around atop them. One clicked lights its line; replying and resolving are here.
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"
-import { cn, fmtAgo, ink, keyHint, Markdown, op, plural, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
+import { cn, fmtAgo, ink, keyHint, Loading, Markdown, op, plural, snippet, useFocusedFile, useKeptCount, type SidebarCtx } from "@vaultite"
 import { accept, answer, getState, type Note, pick, reopen, review, subscribe, tintOf } from "./live"
 import { cut, follow, unsent } from "./Overlay"
 import { Faces } from "./Presence"
@@ -11,18 +11,19 @@ import { threadsOf } from "./threads"
 type Filter = "open" | "resolved"
 /** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
 
-/** The note's dismissed comments (kept on the server), asked again as its open ones change. */
+/** The note's dismissed comments (kept on the server), asked again as its open ones change; null until a note's first
+ *  answer (another note's aren't shown meanwhile). */
 function usePast(path: string, open: Note[]) {
-  const [past, setPast] = useState<Note[]>([])
+  const [past, setPast] = useState<{ path: string; list: Note[] } | null>(null)
   const key = open.map((n) => n.id).join()
   const off = useSyncExternalStore(subscribe, () => getState().mode === "off")
   useEffect(() => {
-    if (off || !path.endsWith(".md")) return setPast([])
+    if (off || !path.endsWith(".md")) return setPast({ path, list: [] })
     let live = true
-    op<{ past: Note[] }>("companion.history", { path }).then((r) => live && setPast([...r.past].reverse()), () => {})
+    op<{ past: Note[] }>("companion.history", { path }).then((r) => live && setPast({ path, list: [...r.past].reverse() }), () => live && setPast({ path, list: [] }))
     return () => { live = false }
   }, [path, key, off])
-  return past
+  return past?.path === path ? past.list : null
 }
 
 export function ConversationsPanel({ open, file, phone }: SidebarCtx) {
@@ -48,17 +49,20 @@ function Conversations({ path, big }: { path: string; big?: boolean }) {
   const md = /\.md$/i.test(path)
   const threads = useMemo(() => (md ? threadsOf(s.notes, path) : []), [s.notes, path, md])
   const past = usePast(path, threads)
+  // (the Resolved count as last time while it's asked, so it doesn't come in from nothing)
+  const resolved = useKeptCount(md ? `companion:resolved:${path}` : null, past?.length, 0)
   // (a thread picked from a dot or the margin's history is an open one: shown)
   useEffect(() => { if (s.picked && threads.some((n) => n.id === s.picked)) setFilter("open") }, [s.picked, threads])
   if (s.mode === "off") return <p className="px-1.5 py-1 text-[13px] text-tertiary">The companion is off.</p>
-  const list = filter === "open" ? threads : past
+  const list = filter === "open" ? threads : past ?? []
   return (
     <div data-companion-panel className="flex flex-col gap-1.5 pb-1">
       <div className="flex min-h-7 items-center gap-2 pl-1">
         <div className="min-w-0 flex-1"><Faces path={path} big={big} fit /></div>
-        {md && <Filters filter={filter} setFilter={setFilter} open={threads.length} resolved={past.length} />}
+        {md && <Filters filter={filter} setFilter={setFilter} open={threads.length} resolved={resolved} />}
       </div>
       {!md ? <p className="px-1.5 text-[13px] text-tertiary">Open a note to see its conversations.</p>
+        : filter === "resolved" && !past ? <Loading className="px-1.5 text-[13px] leading-[18px]" />
         : !list.length ? <p className="px-1.5 text-[13px] text-tertiary">{filter === "open" ? "No comments in this note." : "Nothing resolved yet."}</p>
         : list.map((n) => <Thread key={n.id} n={n} picked={s.picked === n.id} resolved={filter === "resolved"} />)}
     </div>
