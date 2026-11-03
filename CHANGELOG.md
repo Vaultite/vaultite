@@ -14,6 +14,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Enter sends an inbox reply**: Shift+Enter starts a new line, as in a chat; on a phone Enter stays a new line.
 - **Clicks reach a web page's corners**: a site whose header drags its own desktop app's window (ChatGPT's logo and
   sidebar button) no longer drags Vaultite's instead of clicking, and nothing of the window drags over a page.
+- **Tab groups fold and close as in Chrome**: a group's count, line and tabs fold and open together, smoothly, and a
+  second click turns it round mid-way; closing a grouped tab shows another of its group, then the nearest tab not folded
+  away, never opening a folded group. The group's line runs crisp from its chip to its last tab, in the bar and the panel.
 - **A site's empty error page says so**: a page that answers an HTTP error with nothing in it (a firewall's 403) shows
   why in words, naming the site, with Try again, rather than a white tab; an error page with content still shows. Each
   page's load (status, server address, cache, Cloudflare ray) goes into a bug report's timeline.

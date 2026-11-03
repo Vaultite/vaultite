@@ -491,6 +491,35 @@ html[data-dragging] [data-slide] { transition: transform var(--motion) var(--eas
 /* A tab bar's tabs spring as they make way (its row's scrollbar is hidden: elsewhere, going a little past their place
    would show a list's scrollbar for a moment). */
 html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--motion-spring), var(--motion-fast); transition-timing-function: var(--spring), var(--ease-out); }
+/* Tab groups (Tabs.tsx, the Tabs panel). The tab bar's row of tabs puts their top on a whole pixel (centred in the bar
+   they'd sit on a fraction, and their group's line, under them, would blur over three). */
+[data-tab-row] { padding-top: calc(var(--spacing) * 1.5); padding-top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
+[data-tab-row] > [data-slide=incoming] { top: calc(var(--spacing) * 1.5); top: round(nearest, calc(var(--spacing) * 1.5), 1px); }
+/* A group's line: a piece under its chip and each of its tabs (a drag's preview moves each with its tab), a whole pixel
+   under them, from the chip's left to the last tab's right, each over the next's first pixel so no seam shows. */
+[data-set-piece] {
+  position: absolute; height: 2px; pointer-events: none; left: -1px; right: calc(var(--spacing) * -1);
+  top: calc(var(--spacing) * 7 + 1px); top: round(up, calc(var(--spacing) * 7 + 1px), 1px);
+  transition: background-color var(--motion) var(--ease-out);
+}
+[data-set-piece~=first] { left: 0; border-radius: 1px 0 0 1px; }
+[data-set-piece~=last] { right: 0; border-radius: 0 1px 1px 0; }
+[data-set-rail] { transition: background-color var(--motion) var(--ease-out); }
+/* Folded, its chip shows its count (a square without a name grows into a pill around it) and its line goes. All at
+   once as a click folds it, moving while its tabs do (`data-set-moving`, core/tabfold.ts); an agent's fold just shows. */
+[data-set-label][data-bare] { height: calc(var(--spacing) * 3.5); min-width: calc(var(--spacing) * 3.5); border-radius: 4px; }
+[data-set-count] { display: grid; grid-template-columns: 0fr; opacity: 0; }
+[data-set-count] > span { min-width: 0; overflow: hidden; }
+:is([data-set-chip], [data-set-row])[aria-expanded=false] :is([data-set-label][data-bare]) { height: calc(var(--spacing) * 5); padding-inline: calc(var(--spacing) * 1.5); border-radius: 6px; }
+:is([data-set-chip], [data-set-row])[aria-expanded=false] [data-set-count] { grid-template-columns: 1fr; opacity: 1; }
+[data-set-chip][aria-expanded=false] > [data-set-piece], [data-set-row][aria-expanded=false] ~ [data-set-rail] { opacity: 0; }
+[data-set-moving] :is([data-set-label][data-bare], [data-set-count]) {
+  transition: height var(--motion) var(--ease-out), padding var(--motion) var(--ease-out), border-radius var(--motion) var(--ease-out),
+    grid-template-columns var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out), background-color var(--motion) var(--ease-out);
+}
+[data-set-chip][data-set-moving] > [data-set-piece], [data-set-row][data-set-moving] ~ [data-set-rail] {
+  transition: background-color var(--motion) var(--ease-out), opacity var(--motion) var(--ease-out);
+}
 /* The left sidebar switching to a panel alone (its mode) or back: the new body fades in, as Rex's activity mode does. */
 [data-mode-fade] { animation: mode-fade var(--motion) var(--ease-out) both; }
 @keyframes mode-fade { from { opacity: 0; } }

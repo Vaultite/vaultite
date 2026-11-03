@@ -225,7 +225,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `foldSet(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
-- `foldSetMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds.
+- `foldSetMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
 - `followLink(s, link, how, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
@@ -535,7 +535,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setArchiveAfter(ms)`
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
-- `SetLabel({ s, n, target, className })`: A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its text white or dark by the colour's lightness; without a name, a small square of it.
+- `SetLabel({ s, n, target, className })`: A tab group's name in a solid chip of its colour (the tab bar's, the Tabs panel's), its text white or dark by it; no name, a small square.
 - `setMenu(id, at)`: A tab group's menu, its editor as a browser's: its name and colour right there (each change shows at once), then what it does.
 - `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
@@ -661,7 +661,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useEnabled()`
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.
 - `useFocusedFile()`
-- `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab, or one of a group just opened.
+- `useGrowIn(ref, tab)`: A tab's element grows in as it's drawn: a new tab (springing), or one of a group just opened (as the others fold).
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key, shrinks?, anyWidth?)`: holdHeight for a React element: put the ref on it.
 - `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
@@ -684,7 +684,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useSelected(list, key)`: Whether this row is selected: drawn again only when that changes.
 - `useSelectedKeys(list)`: The keys selected in a list, live (for a short list drawn in one piece; long ones ask per row: useSelected).
 - `useSelecting(list?)`: A phone selecting (in this list): taps pick rows, and swipes rest.
+- `useSetIn(ref, id)`: A tab group's chip or row, made just now: it comes in where it stays (its editor opens under it at once).
 - `useSheetGuard(lost)`: A form in a sheet that isn't saved as you type: closing the sheet while `lost()` has lines asks first, showing them.
+- `useShrinkOut(ref, what)`: A tab, or a tab group's chip or row, gone from a tab bar or the Tabs panel however it went shrinks away: a copy, as React takes it out.
 - `useSidebarMode()`
 - `useSidebars()`
 - `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.

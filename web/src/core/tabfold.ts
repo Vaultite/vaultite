@@ -2,8 +2,8 @@
 // grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
 import { useLayoutEffect, type RefObject } from "react"
 import { closeTab, groupOfTab, groups, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
-import { foldSet, setById } from "@/core/tabsets"
-import { moves, timing } from "@/core/animation"
+import { foldSet, handOverFrom, setById } from "@/core/tabsets"
+import { moves, timing, type Pace } from "@/core/animation"
 
 const still = () => !moves()
 
@@ -18,45 +18,86 @@ const gapOf = (el: HTMLElement) => {
   return parseFloat(axisOf(el) === "x" ? css.columnGap : css.rowGap) || 0
 }
 
-/** `el` from its size to nothing (`out`), or back: clipped along the way it moves (a tab's line under it still shows),
- *  and kept at its end till it's taken away (`cancel` puts it back as it was). */
-function squeeze(el: HTMLElement, out: boolean): Animation {
-  const r = el.getBoundingClientRect(), gap = gapOf(el), x = axisOf(el) === "x"
-  const full = x ? { minWidth: `${r.width}px`, maxWidth: `${r.width}px`, marginRight: "0px", opacity: 1 } : { height: `${r.height}px`, marginBottom: "0px", opacity: 1 }
-  const none = x ? { minWidth: "0px", maxWidth: "0px", marginRight: `${-gap}px`, opacity: 0 } : { height: "0px", marginBottom: `${-gap}px`, opacity: 0 }
+/** How an element is drawn along its list's axis: its size, the margin after it, its opacity. */
+type Box = { size: number; margin: number; opacity: number }
+/** As it's drawn now, mid-motion too. */
+function drawnBox(el: HTMLElement): Box {
+  const r = el.getBoundingClientRect(), css = getComputedStyle(el), x = axisOf(el) === "x"
+  return { size: x ? r.width : r.height, margin: parseFloat(x ? css.marginRight : css.marginBottom) || 0, opacity: parseFloat(css.opacity) }
+}
+/** What runs on each tab now (squeeze), to turn it round from where it's got to. */
+const running = new WeakMap<HTMLElement, Animation>()
+
+/** `el` from `from` to its size (`out`: to nothing, taking the gap after it), clipped along the way it moves (a tab's line
+ *  under it still shows), kept at its end till it's taken away (`cancel` puts it back as it was). */
+function squeeze(el: HTMLElement, out: boolean, from?: Box, full: Box = drawnBox(el), pace: Pace = out ? "base" : "spring"): Animation {
+  const x = axisOf(el) === "x", none: Box = { size: 0, margin: -gapOf(el), opacity: 0 }
+  const frame = (b: Box) => (x ? { minWidth: `${b.size}px`, maxWidth: `${b.size}px`, marginRight: `${b.margin}px`, opacity: b.opacity }
+    : { height: `${b.size}px`, marginBottom: `${b.margin}px`, opacity: b.opacity })
   el.style.clipPath = x ? "inset(-4px 0)" : "inset(0 -8px)"
-  // (going, straight out; coming, with the spring: nothing that leaves bounces)
-  const a = el.animate(out ? [full, none] : [none, full], { ...timing(out ? "base" : "spring"), fill: out ? "forwards" : "none" })
-  const done = () => { el.style.clipPath = "" }
+  const a = el.animate([frame(from ?? (out ? full : none)), frame(out ? none : { ...full, margin: 0, opacity: 1 })], { ...timing(pace), fill: out ? "forwards" : "none" })
+  running.set(el, a)
+  const done = () => { el.style.clipPath = ""; if (running.get(el) === a) running.delete(el) }
   a.addEventListener("cancel", done)
   if (!out) a.addEventListener("finish", done)
   return a
 }
+/** Elements turned round mid-motion, all at once: each from where it's drawn now, to nothing or to its size as laid out
+ *  (measured with nothing moving, all before any starts: one moving would change the others' room). */
+function turn(els: HTMLElement[], out: boolean, pace: Pace = "base") {
+  const from = els.map(drawnBox)
+  for (const e of els) running.get(e)?.cancel()
+  const full = els.map(drawnBox)
+  return els.map((e, i) => squeeze(e, out, from[i], full[i], pace))
+}
 
 // ---------- folding ----------
 
-const folding = new Set<string>()
+/** Tab groups folding (their tabs shrinking into the chip), till they're folded; `token`: this fold, not a later one. */
+const folding = new Map<string, { els: HTMLElement[]; token: number }>()
+let tokens = 0
 /** Tab groups opened by a click, and when: their tabs grow in as they're drawn. */
 const opened = new Map<string, number>()
 
-/** Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds. */
+/** A tab group's chip and rows show its fold at once, as the click asks (its count, its line, its chevron): their CSS
+ *  moves them (index.css, `data-set-moving`) while its tabs do. */
+function showFold(id: string, open: boolean) {
+  for (const h of document.querySelectorAll<HTMLElement>(`[data-set-chip="${id}"], [data-set-row="${id}"]`)) {
+    h.setAttribute("aria-expanded", String(open))
+    clearTimeout(Number(h.dataset.setMoving))
+    h.dataset.setMoving = String(window.setTimeout(() => { delete h.dataset.setMoving }, timing("base").duration + 80))
+  }
+}
+
+/** Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or
+ *  they grow out of it. A click while it moves turns it round from where it's got to. */
 export function foldSetMoving(id: string) {
   const where = setById(id)
-  if (!where || folding.has(id)) return
-  if (where.s.collapsed) { opened.set(id, performance.now()); foldSet(id, false); return }
+  if (!where) return
+  const going = folding.get(id)
+  const open = going ? true : !!where.s.collapsed
+  if (still()) { folding.delete(id); foldSet(id, !open); return }
+  if (open) {
+    showFold(id, true)
+    // (turned round before it had folded: back from where they are)
+    if (going) { folding.delete(id); turn(going.els.filter((e) => e.isConnected), false); return }
+    opened.set(id, performance.now())
+    foldSet(id, false)
+    return
+  }
   const els = [...document.querySelectorAll<HTMLElement>(`[data-in-set="${id}"]`)].filter((e) => e.offsetParent !== null)
-  if (still() || !els.length) { foldSet(id, true); return }
-  folding.add(id)
-  // (its chevron turns and its line goes as it starts, not when it's done)
-  for (const h of document.querySelectorAll(`[data-set-chip="${id}"], [data-set-row="${id}"]`)) h.setAttribute("aria-expanded", "false")
-  const lines = [...document.querySelectorAll<HTMLElement>(`[data-set-line="${id}"]`)]
-  const moving = [...els.map((e) => squeeze(e, true)), ...lines.map((l) => l.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing("base"), fill: "forwards" }))]
-  Promise.allSettled(moving.map((a) => a.finished)).then(() => {
+  if (!els.length) { foldSet(id, true); return }
+  showFold(id, false)
+  handOverFrom(id)
+  const token = ++tokens
+  folding.set(id, { els, token })
+  Promise.all(turn(els, true).map((a) => a.finished)).then(() => {
+    if (folding.get(id)?.token !== token) return
     folding.delete(id)
     foldSet(id, true)
-    // (once React has taken them away; a tab that stays, the one on screen moved out, is put back)
-    requestAnimationFrame(() => moving.forEach((a) => a.cancel()))
-  })
+    // (folded, React takes them away, whenever it draws: left shrunk till then. Not folded after all: put back)
+    if (!setById(id)?.s.collapsed) for (const e of els) running.get(e)?.cancel()
+  }, () => {})
 }
 
 // ---------- tabs coming and going ----------
@@ -65,7 +106,8 @@ export function foldSetMoving(id: string) {
  *  (another workspace, another device's change). */
 const born = new Map<string, number>()
 let known = new Set<string>()
-const ids = () => new Set(groups().flatMap((g) => g.tabs.map((t) => t.id)))
+/** Every tab, and every tab group as `set:<id>` (a new one's chip comes in too: useSetIn). */
+const ids = () => new Set(groups().flatMap((g) => [...g.tabs.map((t) => t.id), ...(g.sets ?? []).map((s) => `set:${s.id}`)]))
 if (typeof window !== "undefined") {
   known = ids()
   onWorkspaceChange(() => {
@@ -77,38 +119,61 @@ if (typeof window !== "undefined") {
 }
 const recent = (t: number | undefined) => t !== undefined && performance.now() - t < 400
 
-/** A tab's element grows in as it's drawn: a new tab, or one of a group just opened. */
+/** A tab's element grows in as it's drawn: a new tab (springing), or one of a group just opened (as the others fold). */
 export function useGrowIn(ref: RefObject<HTMLElement | null>, tab: { id: string; set?: string }) {
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el || still() || !(recent(born.get(tab.id)) || (tab.set && recent(opened.get(tab.set))))) return
+    const group = !!tab.set && recent(opened.get(tab.set))
+    if (!el || still() || !(recent(born.get(tab.id)) || group)) return
     born.delete(tab.id)
-    const a = squeeze(el, false)
+    grow(el, group ? "base" : "spring")
+  }, [])  // (on its first drawing only)
+}
+/** A tab group's chip or row, made just now: it comes in where it stays (its editor opens under it at once). */
+export function useSetIn(ref: RefObject<HTMLElement | null>, id: string) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || still() || !recent(born.get(`set:${id}`))) return
+    born.delete(`set:${id}`)
+    const a = el.animate([{ opacity: 0, scale: "0.8 1", transformOrigin: "left" }, { opacity: 1, scale: "1", transformOrigin: "left" }], timing("spring"))
     return () => a.cancel()
   }, [])  // (on its first drawing only)
 }
+/** Tabs drawn in this commit, to grow in together once all are laid out (before the frame is drawn): measured one by
+ *  one as each starts, the later ones would take the room the earlier ones haven't yet. */
+const growing: { el: HTMLElement; pace: Pace }[] = []
+function grow(el: HTMLElement, pace: Pace) {
+  if (!growing.length) queueMicrotask(() => {
+    const all = growing.splice(0).filter((g) => g.el.isConnected), full = all.map((g) => drawnBox(g.el))
+    all.forEach((g, i) => squeeze(g.el, false, undefined, full[i], g.pace))
+  })
+  growing.push({ el, pace })
+}
 
-/** A tab bar's tab that goes (closed, or moved to another pane) shrinks away where it was, however it went (its X, a
- *  shortcut, Close others): a copy of it, as React takes it out, so the tabs after it slide over instead of jumping. */
-export function useShrinkOut(ref: RefObject<HTMLElement | null>, id: string, group: string) {
+/** A tab, or a tab group's chip or row, gone from a tab bar or the Tabs panel however it went shrinks away: a copy, as
+ *  React takes it out. Not one still there (a tab still in its pane: regrouped, folded; a group moved to another pane). */
+export function useShrinkOut(ref: RefObject<HTMLElement | null>, what: { tab: string; pane: string } | { set: string }) {
   useLayoutEffect(() => {
     const el = ref.current
+    const stays = () => ("set" in what ? !!setById(what.set) : groupOfTab(what.tab)?.id === what.pane)
     return () => {
-      // (still in its group: drawn again elsewhere in the bar, as into a tab group; or folded away, already shrunk)
-      if (!el?.isConnected || still() || replacingWorkspace() || groupOfTab(id)?.id === group) return
-      const w = el.getBoundingClientRect().width
-      if (w < 1) return
+      if (!el?.isConnected || still() || replacingWorkspace() || stays()) return
+      const r = el.getBoundingClientRect(), size = axisOf(el) === "x" ? r.width : r.height
+      if (size < 1) return
       const copy = el.cloneNode(true) as HTMLElement
-      for (const a of ["data-tab-id", "data-slide", "data-select-key", "data-in-set", "data-selected"]) copy.removeAttribute(a)
+      for (const e of [copy, ...copy.querySelectorAll("*")]) for (const a of OWN) e.removeAttribute(a)
       copy.querySelector("[data-tab-return]")?.remove()
       copy.inert = true
-      // (its own width while it's beside the original, gone once React has taken that out)
-      Object.assign(copy.style, { pointerEvents: "none", flex: `0 0 ${w}px` })
+      // (its own width while it's beside the original in a row, gone once React has taken that out)
+      Object.assign(copy.style, { pointerEvents: "none", flex: axisOf(el) === "x" ? `0 0 ${size}px` : "none" })
       el.after(copy)
       squeeze(copy, true).finished.then(() => copy.remove(), () => copy.remove())
     }
-  }, [ref, id, group])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref])  // (what it draws stays the same: a tab's id and pane are its key)
 }
+/** What makes an element the tab or group it draws, which its copy isn't. */
+const OWN = ["data-tab-id", "data-open-tab", "data-slide", "data-select-key", "data-in-set", "data-selected", "data-set-chip", "data-set-row", "data-set-line"]
 
 /** Close a tab from a list of them (the Tabs panel): its row shrinks away, then it closes. */
 export function closeTabMoving(id: string, el: HTMLElement | null) {
@@ -116,5 +181,6 @@ export function closeTabMoving(id: string, el: HTMLElement | null) {
   const a = squeeze(el, true)
   el.style.pointerEvents = "none"
   a.addEventListener("cancel", () => { el.style.pointerEvents = "" })
-  a.finished.then(() => { closeTab(id); requestAnimationFrame(() => a.cancel()) }, () => {})
+  // (closed, React takes it away whenever it draws: left shrunk till then; still open, its view asking first: put back)
+  a.finished.then(() => { closeTab(id); if (groupOfTab(id)) a.cancel() }, () => {})
 }

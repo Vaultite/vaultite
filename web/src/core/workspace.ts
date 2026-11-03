@@ -2,7 +2,7 @@
 // with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
 import { backDetail, hashChanged, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
-import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, settled, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
+import { HISTORY, beside, blankGroup, clean, dropBlank, fixAllSets, foldedAway, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, okGroup, putBack, settled, shownTab, spotOf, tidy, vaultPath, type Group, type Layout, type Spot, type Tab, type Workspace, focusAfter, withoutTabs } from "../../../core/layout.ts"
 import { signal } from "@/core/signal"
 
 const enc = encodeURIComponent
@@ -631,11 +631,12 @@ export function closeTab(id: string, force = false) {
   for (const [t, o] of openers) if (o === id) { if (up) openers.set(t, up); else openers.delete(t) }
 }
 /** Chrome's tab after closing the active one: the next it opened, else the next its opener opened (each to the right,
- *  else the left), else its opener; null when none is kept (`openers`): its neighbour, as ever. */
+ *  else the left), else its opener, none folded away in a tab group; null when none is kept (`openers`): withoutTabs'. */
 function openerNext(g: Group, id: string) {
   const i = g.tabs.findIndex((t) => t.id === id), by = openers.get(id)
-  const next = (o: string | undefined) => (o ? g.tabs.slice(i + 1).find((t) => openers.get(t.id) === o) ?? g.tabs.slice(0, i).findLast((t) => openers.get(t.id) === o) : undefined)
-  return (next(id) ?? next(by) ?? g.tabs.find((t) => t.id === by && t.id !== id))?.id ?? null
+  const ok = (t: Tab, o: string | undefined) => openers.get(t.id) === o && !foldedAway(g, t)
+  const next = (o: string | undefined) => (o ? g.tabs.slice(i + 1).find((t) => ok(t, o)) ?? g.tabs.slice(0, i).findLast((t) => ok(t, o)) : undefined)
+  return (next(id) ?? next(by) ?? g.tabs.find((t) => t.id === by && t.id !== id && !foldedAway(g, t)))?.id ?? null
 }
 
 /** Whether a pane can be closed: not the only one (closing its tabs leaves a blank one: Close all). */

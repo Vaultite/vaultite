@@ -3,7 +3,7 @@ import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "
 import {
   edgeScroller, canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
   isViewOpen, notifyError, openView, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
-  SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
+  SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSetIn, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
@@ -21,14 +21,12 @@ const othersItem = (shown: boolean) => ({
 })
 
 
-/** A tab group's line down the panel's left, in its colour: from under its chip, past its tabs (set in from it), ending
- *  rounded by its last. Each row draws its piece (a drag's preview redraws them). */
+/** A tab group's line down the panel's left: out from under its chip (joined whatever its shape), past its tabs (set in
+ *  from it), ending rounded by its last. Each row draws its piece (a drag's preview redraws them). */
 type Rail = { color: string; last?: boolean }
-function RailPiece({ rail, from }: { rail: Rail
-  /** The group's row: where its chip ends, down from the row's middle. */
-  from?: number }) {
-  return <span aria-hidden className={cn("pointer-events-none absolute left-[9px] w-[2px] transition-colors duration-200", from !== undefined ? "-bottom-px" : "-top-px",
-    from === undefined && (rail.last ? "bottom-2 rounded-b-full" : "-bottom-px"))} style={{ background: rail.color, ...(from !== undefined ? { top: `calc(50% + ${from}px)` } : {}) }} />
+function RailPiece({ rail, head }: { rail: Rail; head?: boolean }) {
+  return <span aria-hidden data-set-rail={head ? "head" : ""} className={cn("pointer-events-none absolute left-[9px] w-[2px]",
+    head ? "top-1/2 -bottom-px" : rail.last ? "-top-px bottom-2 rounded-b-full" : "-inset-y-px")} style={{ background: rail.color }} />
 }
 
 function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean; rail?: Rail }) {
@@ -36,6 +34,7 @@ function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: b
   const picked = useSelected(TABS, t.id)
   const box = useRef<HTMLDivElement>(null)
   useGrowIn(box, t)
+  useShrinkOut(box, { tab: t.id, pane: g.id })
   const close = () => closeTabMoving(t.id, box.current)
   return (
     // Dragged like a tab in its bar: along the list (in or out of a group), onto a pane (its edge splits), another bar,
@@ -60,16 +59,20 @@ function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: b
 
 /** A tab group's row: its chip, its line hanging from it. A click folds it, its … or a right-click opens its editor,
  *  dragging moves the whole group; `target`: a tab dragged onto it (folded) would join it. */
-function SetRow({ s, n, rail, target }: { s: TabSet; n: number; rail?: Rail; target: boolean }) {
+function SetRow({ s, n, rail, target }: { s: TabSet; n: number; rail: Rail; target: boolean }) {
   const item = useDrag((d) => d?.item)
+  const box = useRef<HTMLDivElement>(null)
+  useSetIn(box, s.id)
+  useShrinkOut(box, { set: s.id })
   return (
-    <div data-slide={`set:${s.id}`} onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })} className={cn("relative", item?.tabset === s.id && "opacity-50")}
+    <div ref={box} data-slide={`set:${s.id}`} onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })} className={cn("relative", item?.tabset === s.id && "opacity-50")}
       onContextMenu={menuFor(() => setMenu(s.id, "panel"))}>
-      <SidebarRow data-set-row={s.id} aria-expanded={!s.collapsed} open tip={null} more onClick={() => foldSetMoving(s.id)} label={<SetLabel s={s} n={n} target={target} />}>
+      <SidebarRow data-set-row={s.id} aria-expanded={!s.collapsed} open tip={null} more onClick={() => foldSetMoving(s.id)}
+        label={<span className="flex"><SetLabel s={s} n={n} target={target} /></span>}>
         {/* (its chevron shows on hover, as a panel heading's does, turning as it folds) */}
         <ChevronDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[rotate,opacity] duration-200 group-hover/row:opacity-100 group-aria-[expanded=false]/row:-rotate-90" strokeWidth={2.25} />
       </SidebarRow>
-      {rail && <RailPiece rail={rail} from={s.name ? 10 : 7} />}
+      <RailPiece rail={rail} head />
     </div>
   )
 }
@@ -137,7 +140,7 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
         const s = t.set ? g.sets?.find((x) => x.id === t.set) : undefined
         const head = s && g.tabs[i - 1]?.set !== s.id
           ? <SetRow key={`set:${s.id}`} s={s} n={shown.filter((x) => x.set === s.id).length} target={preview?.into === s.id}
-            rail={s.collapsed ? undefined : { color: colorVar(s.color) }} />
+            rail={{ color: colorVar(s.color) }} />
           : null
         const row = s?.collapsed ? null : <Row key={t.id} t={t} g={g} i={info(t)} only={only(t)} rail={railOf(t.id)} />
         return [head, row].filter(Boolean)

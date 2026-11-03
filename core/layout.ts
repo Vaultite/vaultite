@@ -138,14 +138,21 @@ export const moveOn = (t: Tab, to: string): Tab =>
   t.to === to ? t : { ...t, to, back: t.to === "new" ? t.back : [...(t.back ?? []), t.to].slice(-HISTORY), fwd: [] }
 
 // Tabs leaving (closed, or moved elsewhere): the one rule for what shows next, in a pane and in the workspace.
-/** Group `g` without the tabs `ids`: the tab shown, if it goes, moves on to the nearest one after it, else before it. */
+/** Group `g` without the tabs `ids`: the tab shown, if it goes, hands over to the next (nextShown). */
 export function withoutTabs(g: Group, ids: Set<string>): Group {
   if (!g.tabs.some((t) => ids.has(t.id))) return g
   const tabs = g.tabs.filter((t) => !ids.has(t.id))
   if (!ids.has(g.active)) return { ...g, tabs }
-  const i = g.tabs.findIndex((t) => t.id === g.active)
-  const next = g.tabs.slice(i).find((t) => !ids.has(t.id)) ?? g.tabs.slice(0, i).findLast((t) => !ids.has(t.id))
-  return { ...g, tabs, active: next?.id ?? "" }
+  return { ...g, tabs, active: nextShown(g, ids) ?? "" }
+}
+/** Whether tab `t` of `g` is folded away, in a collapsed tab group. */
+export const foldedAway = (g: Group, t: Tab) => !!t.set && !!g.sets?.some((s) => s.id === t.set && s.collapsed)
+/** What `g` shows once its shown tab goes with `ids`, as Chrome's tab strip picks: another of its group (after, else
+ *  before), else the nearest not folded away, else (`any`) the nearest, whose group then opens. Null: none. */
+export function nextShown(g: Group, ids: Set<string>, any = true): string | null {
+  const i = g.tabs.findIndex((t) => t.id === g.active), set = g.tabs[i]?.set
+  const near = [...g.tabs.slice(i + 1), ...g.tabs.slice(0, Math.max(i, 0)).reverse()].filter((t) => !ids.has(t.id))
+  return (near.find((t) => set && t.set === set) ?? near.find((t) => !foldedAway(g, t)) ?? (any ? near[0] : undefined))?.id ?? null
 }
 /** The pane focused after `was` became `root`: `focus` while it's there, else (it closed) the one after it, else before. */
 export function focusAfter(was: Layout, root: Layout, focus: string): string {

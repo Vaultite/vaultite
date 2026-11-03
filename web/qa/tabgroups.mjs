@@ -28,7 +28,8 @@ try {
     await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, p); await wait(350)
   }
   /** The bar as text: each tab's label, its group's name in brackets ("~" folded), a chip as <name>. */
-  const bar = () => page.$$eval("[data-tab-bar]:not([data-tabs-hidden]) :is([data-tab-id], [data-set-chip])", (els) => els.map((e) => (e.dataset.setChip ? `<${e.textContent.trim()}>` : e.textContent.trim())).join(" "))
+  // (a chip's count is drawn always, hidden while it's open: not what it says)
+  const bar = () => page.$$eval("[data-tab-bar]:not([data-tabs-hidden]) :is([data-tab-id], [data-set-chip])", (els) => els.map((e) => (e.dataset.setChip ? `<${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-set-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}>` : e.textContent.trim())).join(" "))
   const tab = (label) => page.locator("[data-tab-bar] [data-tab-id]", { hasText: label }).first()
   const menu = async (loc, ...items) => {
     await loc.click({ button: "right" }); await wait(200)
@@ -75,7 +76,7 @@ try {
   check("another tab joins it from its menu, at its end", (await bar()).includes("<Lighthouse work> Lighthouse ME"), await bar())
   await menu(tab("2026-10-20"), "Add tab to new group")
   await until(() => page.$("[role=menu] [data-menu-field] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
-  const chips = await page.$$eval("[data-set-chip]", (els) => els.map((e) => ({ text: e.textContent.trim(), name: e.querySelector("[data-set-label]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
+  const chips = await page.$$eval("[data-set-chip]", (els) => els.map((e) => ({ text: ((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-set-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e), name: e.querySelector("[data-set-label]").getAttribute("aria-label"), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
   check("a group without a name is a square of its colour, in the next colour", chips.length === 2 && chips[1].text === "" && chips[1].name === "Blue group" && chips[0].bg !== chips[1].bg, chips)
   // The chip is solid, its text readable on it.
   const ink = await page.$eval("[data-set-chip] [data-set-label]", (e) => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor])
@@ -95,7 +96,7 @@ try {
   }
   const inGroup = (label) => page.$$eval("[data-tab-bar] [data-tab-id]", (els, l) => {
     const e = els.find((x) => x.textContent.trim() === l)
-    return !!e?.querySelector("span[aria-hidden].absolute")
+    return !!e?.querySelector("[data-set-piece]")
   }, label)
   await drag(tab("Start here"), tab("ME"), 2)
   check("a tab dragged between two of a group's tabs joins it", (await bar()).includes("<Lighthouse work> Lighthouse Start here ME") && await inGroup("Start here"), await bar())
@@ -187,15 +188,15 @@ try {
   const sb = JSON.parse(readFileSync(sidebars.p, "utf8")), lk = lookNow()
   check("Show tabs in the sidebar: the tab bar off, the Tabs panel first in the left sidebar", lk.tabBar === false && sb.left[0] === "tabs:tabs", [lk.tabBar, sb.left])
   await page.waitForSelector("[data-tabs-panel] [data-set-row]")
-  const rows = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-set-row])", (els) => els.map((e) => (e.dataset.setRow ? `[${e.textContent.trim()}]` : e.textContent.trim())))
+  const rows = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-set-row])", (els) => els.map((e) => (e.dataset.setRow ? `[${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-set-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}]` : e.textContent.trim())))
   check("the panel shows each group as a row over its tabs", rows.join(" ").includes("[Reading] Garden planner Start here") && rows.join(" ").includes("[Lighthouse work] Lighthouse ME"), rows)
   // A group's name is a pill in its colour, as its chip on top, and its line hangs from it, unbroken down its tabs.
   const joins = await page.$eval("[data-tabs-panel] [data-slide^='set:']", (head) => {
     const pill = head.querySelector("[data-set-row] span[style]").getBoundingClientRect(), rail = head.querySelector(":scope > span[aria-hidden]").getBoundingClientRect()
     const next = head.nextElementSibling.querySelector(":scope > span[aria-hidden]").getBoundingClientRect()
-    return { pill: Math.round(pill.bottom), rail: Math.round(rail.top), railEnd: Math.round(rail.bottom), next: Math.round(next.top), x: [Math.round(rail.left), Math.round(pill.left), Math.round(pill.right)] }
+    return { pill: [Math.round(pill.top), Math.round(pill.bottom)], rail: Math.round(rail.top), railEnd: Math.round(rail.bottom), next: Math.round(next.top), x: [Math.round(rail.left), Math.round(pill.left), Math.round(pill.right)] }
   })
-  check("the group's line starts where its chip ends and runs on into its tabs", Math.abs(joins.pill - joins.rail) <= 1 && joins.next <= joins.railEnd && joins.x[0] >= joins.x[1] + 2 && joins.x[0] < joins.x[2], joins)
+  check("the group's line comes out of its chip (from under it) and runs on into its tabs", joins.rail > joins.pill[0] && joins.rail < joins.pill[1] && joins.railEnd > joins.pill[1] && joins.next <= joins.railEnd && joins.x[0] >= joins.x[1] + 2 && joins.x[0] < joins.x[2], joins)
   // Its tabs are set in from the line: their rows' highlight starts past it.
   const inset = await page.$eval("[data-tabs-panel] [data-slide^='set:']", (head) => {
     const rail = head.querySelector(":scope > span[aria-hidden]").getBoundingClientRect(), row = head.nextElementSibling.querySelector("[data-open-tab]").getBoundingClientRect()
@@ -226,7 +227,7 @@ try {
   check("a file from the tree held over the list: a row's room opens where it would open", !!room && room.h >= 24 && Math.abs(room.y - Math.round(gp2.y)) <= 2 && gpNow.y > gp2.y + 20, [room, gp2.y, gpNow.y])
   await page.screenshot({ path: `${OUT}vertical-file.png`, clip: { x: 0, y: 0, width: 360, height: 400 } })
   await page.keyboard.press("Escape"); await page.mouse.up(); await wait(300)
-  const after = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-set-row])", (els) => els.map((e) => (e.dataset.setRow ? `[${e.textContent.trim()}]` : e.textContent.trim())).join(" "))
+  const after = await page.$$eval("[data-tabs-panel] :is([data-open-tab], [data-set-row])", (els) => els.map((e) => (e.dataset.setRow ? `[${((e) => { const c = e.cloneNode(true); for (const x of c.querySelectorAll("[data-set-count][aria-hidden]")) x.remove(); return c.textContent.trim() })(e)}]` : e.textContent.trim())).join(" "))
   check("  dropped, it joins that group's end", after.includes("[Reading] Garden planner Start here Lighthouse") && after.includes("[Lighthouse work] ME"), after)
   check("no strip of titles above the panes (pane titles off)", !(await page.$("[data-pane-title]")))
   await page.mouse.move(900, 500); await page.screenshot({ path: `${OUT}vertical-light.png` })

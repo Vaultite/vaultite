@@ -1,7 +1,7 @@
 // Tab groups (TabSet, core/layout.ts), as browsers have them: making one of some tabs, adding tabs and taking them out,
 // naming, colouring, folding, moving and closing one, and what agents ask of them (`vau tabs`). Each change is one `set`.
 import { COLORS, isColor, type Color } from "../../../core/colors.ts"
-import { beside, inSet, isBlank, leaves, mapGroups, newId, outsideSets, runOf, type Group, type Layout, type Side, type Tab, type TabSet, withoutTabs } from "../../../core/layout.ts"
+import { beside, inSet, isBlank, leaves, mapGroups, newId, nextShown, outsideSets, runOf, type Group, type Layout, type Side, type Tab, type TabSet, withoutTabs } from "../../../core/layout.ts"
 import { closeTabIds, getWorkspace, groupOfTab, groups, set, show, showActive } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { answerUi } from "@/core/live"
@@ -138,7 +138,7 @@ export const renameSet = (id: string, name: string) => changeSet(id, (s) => ({ .
 export const colorSet = (id: string, color: Color) => changeSet(id, (s) => ({ ...s, color }))
 
 /** Fold a tab group to its name, or open it (`collapsed` left out: the other way). Folding the one whose tab is on
- *  screen shows the tab after it (else before it; none: a new tab), as browsers do. */
+ *  screen shows another first (handOver). */
 export function foldSet(id: string, collapsed?: boolean) {
   const where = setById(id)
   if (!where) return
@@ -147,18 +147,29 @@ export function foldSet(id: string, collapsed?: boolean) {
   if (!!s.collapsed === fold) return
   const { collapsed: _, ...open } = s
   const def: TabSet = fold ? { ...s, collapsed: true } : open
-  let next: Group = { ...g, sets: g.sets!.map((x) => (x.id === id ? def : x)) }
-  if (fold && g.tabs.find((t) => t.id === g.active)?.set === id) {
-    const r = runOf(g, id)
-    const other = g.tabs[r.at + r.n] ?? g.tabs[r.at - 1]
-    if (other) next = { ...next, active: other.id }
-    else {
-      const blank = { id: newId(), to: "new" }
-      next = { ...next, tabs: [...g.tabs, blank], active: blank.id }
-    }
-  }
-  set({ ...getWorkspace(), root: mapGroups(getWorkspace().root, (x) => (x.id === g.id ? next : x)) })
-  if (next.active !== g.active && getWorkspace().focus === g.id) showActive()
+  const sets = { ...g, sets: g.sets!.map((x) => (x.id === id ? def : x)) }
+  put(fold ? handOver(sets, id) : sets, g.active)
+}
+/** Folding tab group `id`, as its tabs start to move: the tab on screen, if it's one of its, hands over now
+ *  (handOver), so the page changes at the click rather than once they've gone. */
+export function handOverFrom(id: string) {
+  const g = setById(id)?.g, next = g && handOver(g, id)
+  if (g && next !== g) put(next!, g.active)
+}
+/** `g` with the tab it shows moved off tab group `id`, which is folding: to the nearest not folded away, after the
+ *  group, else before (Chrome's, never into another folded one); with none, a new tab. */
+function handOver(g: Group, id: string): Group {
+  if (g.tabs.find((t) => t.id === g.active)?.set !== id) return g
+  const folded = { ...g, sets: g.sets?.map((s) => (s.id === id ? { ...s, collapsed: true } : s)) }
+  const next = nextShown(folded, new Set(g.tabs.filter((t) => t.set === id).map((t) => t.id)), false)
+  if (next) return { ...g, active: next }
+  const blank = { id: newId(), to: "new" }
+  return { ...g, tabs: [...g.tabs, blank], active: blank.id }
+}
+/** Pane `g` changed (it showed `was`): what it shows follows if it's the focused one. */
+function put(g: Group, was: string) {
+  set({ ...getWorkspace(), root: mapGroups(getWorkspace().root, (x) => (x.id === g.id ? g : x)) })
+  if (g.active !== was && getWorkspace().focus === g.id) showActive()
 }
 
 /** Ungroup: the group goes, its tabs stay where they are. */

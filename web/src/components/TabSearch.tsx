@@ -125,7 +125,7 @@ function TabRow({ r }: { r: Row }) {
         <span className="min-w-0 shrink truncate text-[15px] leading-[21px] text-foreground/90">{marked(r.label, r.marks)}</span>
         {r.host && r.host !== r.label && <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">{r.host}</span>}
       </span>
-      {r.set && <SetLabel s={{ ...r.set, collapsed: false }} n={0} className="max-w-[40%]" />}
+      {r.set && <SetLabel s={{ ...r.set, collapsed: false }} className="max-w-[40%]" />}
       {r.meta && <span className="shrink-0 text-[13px] text-muted-foreground">{r.meta}</span>}
     </>
   )

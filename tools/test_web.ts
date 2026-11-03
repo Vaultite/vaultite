@@ -948,6 +948,13 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("closing: the tab shown, gone, hands over to the nearest after it, else before it; others going leave it shown",
     lay.withoutTabs(P("g", ["a", "b", "c"], "b"), new Set(["b"])).active === "c" && lay.withoutTabs(P("g", ["a", "b", "c"], "c"), new Set(["c"])).active === "b"
     && lay.withoutTabs(P("g", ["a", "b", "c", "d"], "b"), new Set(["b", "c"])).active === "d" && lay.withoutTabs(P("g", ["a", "b", "c"], "a"), new Set(["c"])).active === "a")
+  // [x] (A: a1 a2) (B folded: b1 b2) c, as Chrome's tab strip picks the next.
+  const G = (active: string) => ({ id: "g", active, sets: [{ id: "A", name: "", color: "blue" }, { id: "B", name: "", color: "red", collapsed: true }],
+    tabs: [{ id: "x", to: "new" }, { id: "a1", to: "file:a1.md", set: "A" }, { id: "a2", to: "file:a2.md", set: "A" }, { id: "b1", to: "file:b1.md", set: "B" }, { id: "b2", to: "file:b2.md", set: "B" }, { id: "c", to: "file:c.md" }] })
+  const after = (active: string, ...ids: string[]) => lay.withoutTabs(G(active), new Set(ids)).active
+  check("closing in a tab group: another of its tabs (after, else before); its last, the nearest outside it, never into a folded group",
+    after("a1", "a1") === "a2" && after("a2", "a2") === "a1" && after("a2", "a1", "a2") === "c" && after("c", "c") === "a2", [after("a1", "a1"), after("a2", "a2"), after("a2", "a1", "a2"), after("c", "c")])
+  check("closing: with only folded groups left, the nearest, whose group opens", after("c", "x", "a1", "a2", "c") === "b2", after("c", "x", "a1", "a2", "c"))
   const three = { root: { id: "s", dir: "row", sizes: [0.25, 0.5, 0.25], kids: [P("gA", ["a"], "a"), P("gB", ["b"], "b"), P("gC", ["c"], "c")] }, focus: "gB" }
   const left = lay.withoutTabsIn(three, new Set(["b"]))
   check("closing: a pane left with no tabs closes, the focus going to the pane after it, else before it",
@@ -1097,6 +1104,15 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   sp.placeTab("d", "before", "b", null)
   check("phone groups: a lone tab placed before a group stays out of it, the tab on screen kept", runs() === "d,b(blue),c(blue),a(blue)" && ws.activeTab().id === "d", runs())
 
+  // Folding the group on screen, and closing in groups, never shows a tab of another folded group while one isn't.
+  one([A, B, C, D, E], "b")
+  const w1 = ts.makeSet(["b", "c"], { name: "W" }), wx = ts.makeSet(["d"], { name: "X", collapsed: true })
+  ts.foldSet(w1)
+  check("tab groups: folding the group on screen shows the nearest tab not folded away, past another folded group", runs() === "a,b(W-),c(W-),d(X-),e" && ws.activeTab().id === "e", runs())
+  ws.selectTab("c"); ws.closeTab("c", true)
+  check("tab groups: closing a group's tab shows another of its own", ws.activeTab().id === "b", runs())
+  ws.closeTab("b", true)
+  check("tab groups: closing a group's last tab shows the nearest tab not folded away", runs() === "a,d(X-),e" && ws.activeTab().id === "e" && !!wx, runs())
   one([A, B, C, D, E], "a")
   let s1 = ts.makeSet(["b", "d"], { name: "Work" })
   check("tab groups: tabs made a group sit together where the first was, with the first unused colour", runs() === "a,b(Work),d(Work),c,e" && pane().sets[0].color === "blue", runs())
@@ -1125,6 +1141,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tab groups: showing a tab of a folded group opens it", runs() === "b(Work),d(Work),a,e(orange),c" && ws.activeTab().id === "b", runs())
   ts.foldSet(s1)
   check("tab groups: folding the group on screen shows the tab after it", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.activeTab().id === "a", runs())
+
   ts.foldSet(s1, false)
   ts.moveSetTo(s1, "g0", 5)
   check("tab groups: a whole group dragged moves with its tabs in order", runs() === "a,e(orange),c,b(Work),d(Work)", runs())

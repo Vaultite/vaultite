@@ -16,7 +16,7 @@ import { leaves, vaultPath, type Group, type Tab, type TabSet } from "../../../c
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToSet, allSets, closeSet, colorSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet } from "@/core/tabsets"
-import { foldSetMoving, useGrowIn, useShrinkOut } from "@/core/tabfold"
+import { foldSetMoving, useGrowIn, useSetIn, useShrinkOut } from "@/core/tabfold"
 import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
@@ -167,8 +167,11 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
   target: boolean }) {
   const item = useDragItem()
   const c = colorVar(s.color)
+  const el = useRef<HTMLDivElement>(null)
+  useSetIn(el, s.id)
+  useShrinkOut(el, { set: s.id })
   return (
-    <div data-set-chip={s.id} data-slide={`set:${s.id}`} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
+    <div ref={el} data-set-chip={s.id} data-slide={`set:${s.id}`} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
       onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })}
       onClick={() => foldSetMoving(s.id)}
       data-tip={item ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
@@ -176,22 +179,23 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
       {/* (as tall as a tab, the chip inside: the line under it then lines up with the tabs') */}
       {/* (a long name cut off, as a browser's chip: the tabs keep their room; the tip says it whole) */}
       <SetLabel s={s} n={n} target={target} className="max-w-40" />
-      {/* The line under the group's tabs starts here (each tab carries it on). */}
-      {!s.collapsed && <span aria-hidden data-set-line={s.id} className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full transition-colors duration-(--motion)" style={{ background: c }} />}
+      {/* The line under the group's tabs starts here (each tab carries it on); folded, it's gone (index.css). */}
+      <span aria-hidden data-set-line={s.id} data-set-piece="first" style={{ background: c }} />
     </div>
   )
 }
 
-/** A tab group's name in a chip of its colour (the tab bar's and the Tabs panel's): solid, as a browser draws it, its
- *  text white or dark by the colour's lightness; without a name, a small square of it. Folded, its count shows. */
-export function SetLabel({ s, n, target, className }: { s: TabSet; n: number; target?: boolean; className?: string }) {
-  const c = colorVar(s.color)
+/** A tab group's name in a solid chip of its colour (the tab bar's, the Tabs panel's), its text white or dark by it; no
+ *  name, a small square. Folded, its count `n` shows: drawn always, to open out as the click folds it (index.css). */
+export function SetLabel({ s, n, target, className }: { s: TabSet; n?: number; target?: boolean; className?: string }) {
+  const c = colorVar(s.color), name = n !== undefined && s.collapsed ? `${setName(s)}, ${n} ${n === 1 ? "tab" : "tabs"}` : setName(s)
   return (
-    <span data-set-label {...(s.name ? {} : { role: "img", "aria-label": setName(s) })} className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center gap-1 text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-(--motion)",
-      s.name || s.collapsed ? "h-5 rounded-[6px] px-1.5" : "size-3.5 rounded-[4px]", className)}
+    <span data-set-label data-bare={s.name ? undefined : ""} {...(s.name ? {} : { role: "img", "aria-label": name })}
+      className={cn("on-tint inline-flex max-w-full shrink-0 items-center justify-center text-[12px] leading-none font-semibold transition-[background-color,color,box-shadow] duration-(--motion)",
+        s.name && "h-5 rounded-[6px] px-1.5", className)}
       style={{ ["--tint" as string]: c, background: c, ...(target ? { boxShadow: `0 0 0 2px var(--background), 0 0 0 4px ${c}` } : {}) }}>
       {s.name && <span className="min-w-0 truncate">{s.name}</span>}
-      {s.collapsed && <span className="font-medium tabular-nums opacity-80">{n}</span>}
+      {n !== undefined && <span data-set-count aria-hidden={!s.collapsed || undefined}><span><span className={cn("block font-medium tabular-nums opacity-80", s.name && "pl-1")}>{n}</span></span></span>}
     </span>
   )
 }
@@ -476,7 +480,7 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
   const picked = useSelected(TABS, tab.id)
   const el = useRef<HTMLDivElement>(null)
   useGrowIn(el, tab)
-  useShrinkOut(el, tab.id, group)
+  useShrinkOut(el, { tab: tab.id, pane: group })
   const dragging = item?.tab === tab.id || (picked && !!item?.tabs) || (!!tab.set && item?.tabset === tab.set)
   // (away from its bar, the tab held shows where it goes back to)
   const away = dragging && !hole && (item?.tab === tab.id || picked)
@@ -514,7 +518,7 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
       {/* (along the top: a tab group's line runs under) */}
       {info.color && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: info.color }} />}
-      {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px] transition-colors duration-(--motion)", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
+      {line && <span aria-hidden data-set-piece={line.last ? "last" : ""} style={{ background: line.color }} />}
     </div>
   )
 }
@@ -717,19 +721,20 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
-      <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
-        className="edge-fade-x relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div ref={row} data-tab-row data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
+        className="edge-fade-x relative flex min-w-0 flex-1 items-start gap-1 self-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {/* Only the tabs are the tablist (New tab is beside them, not one); laid out as if it weren't there. */}
         <div role="tablist" aria-label="Open tabs" className="contents">
-        {tabs.map((t, i) => {
+        {/* (one flat list, so a chip keeps its element as its group folds and opens: its count and line move) */}
+        {tabs.flatMap((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const chip = s && <SetChip key={`set:${s.id}`} s={s} n={tabs.filter((x) => x.set === s.id).length} target={preview?.into === s.id} />
-          if (own?.collapsed) return chip || null
+          if (own?.collapsed) return chip ? [chip] : []
           const item = <TabItem key={t.id} tab={t} group={group.id} hole={!!preview} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons}
             menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)}
             line={lineOf(t.id)} />
-          return chip ? [chip, item] : item
+          return chip ? [chip, item] : [item]
         })}
         </div>
         {/* Right after the last tab (not pinned to the bar's end); its tab opens there, as in a browser. */}
@@ -739,8 +744,8 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
         </button>
         {/* Where something from elsewhere would open. */}
         {preview?.tabs.some((t) => t.id === INCOMING) && (
-          <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute top-1 left-0 h-7 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border">
-            {lineOf(INCOMING) && <span className={cn("absolute -bottom-[3px] left-0 h-[2px]", lineOf(INCOMING)!.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: lineOf(INCOMING)!.color }} />}
+          <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute left-0 h-7 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border">
+            {lineOf(INCOMING) && <span data-set-piece={lineOf(INCOMING)!.last ? "last" : ""} style={{ background: lineOf(INCOMING)!.color }} />}
           </div>
         )}
       </div>
