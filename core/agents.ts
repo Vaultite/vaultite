@@ -262,8 +262,8 @@ export async function cwds(pids: number[]): Promise<Map<number, string>> {
   return out
 }
 
-/** The app's terminal a process runs in (Terminal's, while it's on): its session id, or null. `hint`: a tmux pane. */
-export const terminalOf = (plugin: Plugin, pid: number, hint = "") => plugin.ask<string | null>("terminal:of", null, pid, hint)
+/** The app's terminal a process runs in (Terminal's, while it's on): its session id, or null. */
+export const terminalOf = (plugin: Plugin, pid: number) => plugin.ask<string | null>("terminal:of", null, pid)
 
 /** Live sessions, working ones first, then by when they started. */
 const busyFirst = (live: Item[]) => sortBy(live, (s) => [s.status !== "busy" ? 1 : 0, s.started || ""])
@@ -840,10 +840,10 @@ type Words = {
 /** One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents. */
 export type Account = { id: string; label: string; private?: boolean }
 
-/** A session open now as its process tells (times in epoch ms; `tmux`, its pane): codingAgent adds what the usage
+/** A session open now as its process tells (times in epoch ms): codingAgent adds what the usage
  *  knows of it (cost, tokens, project, model) and the app's terminal it runs in. */
 export type Live = { pid: number; id: string; status: string; kind: string; cwd: string; started: number | null; since: number | null
-  title?: string; name?: string; project?: string; model?: string | null; terminal?: string | null; tmux?: string; account?: string; private?: boolean }
+  title?: string; name?: string; project?: string; model?: string | null; terminal?: string | null; account?: string; private?: boolean }
 
 type Got<T> = T | Promise<T>
 type Read = (Item & { entries: Entry[] }) | null
@@ -887,7 +887,7 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
       const u = byId.get(r.id) ?? {}
       return { pid: r.pid, id: r.id, title: r.title || u.title || "", name: r.name ?? "", project: u.project || r.project || project(r.cwd),
         status: r.status, kind: r.kind, cwd: r.cwd, started: isoOf(r.started), since: isoOf(r.since), model: u.model || r.model || null,
-        cost: u.cost ?? 0, tokens: u.tokens ?? 0, terminal: r.terminal !== undefined ? r.terminal : r.pid ? await terminalOf(plugin, r.pid, r.tmux) : null,
+        cost: u.cost ?? 0, tokens: u.tokens ?? 0, terminal: r.terminal !== undefined ? r.terminal : r.pid ? await terminalOf(plugin, r.pid) : null,
         ...(r.account ? { account: r.account } : {}), ...(label(r.account) ? { accountLabel: label(r.account) } : {}), ...(r.private ? { private: true } : {}) }
     }))
     return { ...(await a.plan?.(accts) ?? { plan: null, limits: null }), live: busyFirst(live), ...s }

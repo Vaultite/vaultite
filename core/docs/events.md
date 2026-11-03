@@ -11,9 +11,14 @@ Every event is one JSON object: `{"type", "seq", "t" (ms since 1970), "cursor", 
   (`{client, agent, label}`), a short summary of its parameters.
 - `inbox.event` `{id, kind, state, source, title, terminal?, session?, link?, ask?}`: something reached the user's inbox
   or moved on: an agent's session (`kind` session) needs them (`state` open, `ask` why), is working on their answer
-  (working) or is done; something asks them (waiting); or a message (`info`, `error`: `vau notify`). How to wait for
-  another agent: `vau events.wait --types inbox.event --timeout 600`, then check its `terminal` and `state`.
-- `terminal.ended` `{id, code, signal}`: a terminal's shell ended on this machine (closed, ended, or it died).
+  (working) or is done; something asks them (waiting); or a message (`info`, `error`: `vau notify`).
+- `terminal.started` `{id, agent, command?, name?}`: a terminal started on this machine (`agent`: the coding agent its id
+  names, else null; `command`: what it runs).
+- `terminal.state` `{id, agent, state, kind?, msg?, from}`: its program's state changed: idle, working, blocked (waiting
+  on the user: `kind` permission, question or auth, `msg` its words), done or error; `from` says who told (osc7501,
+  hooks, screen, agent). To wait for one terminal, `vau terminal wait <id> --for idle,blocked` is simpler.
+- `terminal.ended` `{id, code, signal, onPurpose?}`: a terminal's program ended on this machine (closed, ended, or it
+  died; `onPurpose`: the user or an agent ended it).
 - `terminal.agent-missing` `{id, agent}`: an agent's terminal found no such program (it isn't installed here).
 - `<plugin>.<name>`: a plugin's own (`plugin.emit`), named after the plugin.
 

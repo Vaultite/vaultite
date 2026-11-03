@@ -12,13 +12,13 @@ mkdirSync(OUT, { recursive: true })
 const api = async (p, init) => (await fetch(new URL(`/api/${p}`, B), init)).json()
 const shot = async (page, name) => { const f = `${OUT}${name}.png`; await page.screenshot({ path: f }); try { execFileSync("sips", ["-Z", "1200", f], { stdio: "ignore" }) } catch { /* no sips */ } }
 /** A terminal's shell process, whichever backend holds it (the terminal's own keeper by default, tmux, herdr): asked of
- *  the shell itself (it echoes its $$), through the API outside apps use (vau terminal send / screen). 0 until it runs. */
+ *  the shell itself (it echoes its $$), through the API outside apps use (vau terminal send / capture). 0 until it runs. */
 const shellOf = async (id) => {
   const t = encodeURIComponent(id)
   const listed = await until(async () => (await api("terminals/sessions")).sessions?.some((x) => x.id === id), 10000)
   if (!listed) return 0
   await fetch(new URL(`/api/terminals/${t}/send`, B), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "echo QA-PID-$$" }) })
-  return Number(await until(async () => /QA-PID-(\d+)/.exec(((await api(`terminals/${t}/screen`)).lines ?? []).join("\n"))?.[1], 10000)) || 0
+  return Number(await until(async () => /QA-PID-(\d+)/.exec(((await api(`terminals/${t}/capture?lines=50`)).text ?? ""))?.[1], 10000)) || 0
 }
 /** End a terminal session (its shell), as the app's End terminal session does. */
 const endTerminal = (id) => fetch(new URL(`/api/terminals/${encodeURIComponent(id)}`, B), { method: "DELETE" }).catch(() => {})

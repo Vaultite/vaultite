@@ -43,7 +43,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       onContextMenu={menuFor(() => menuOf(s, a))}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
-          watching: no tab on any device, no tmux in a real terminal) is in the tooltip and the Terminals tab. */}
+          watching: no tab on any device, no vau terminal attach) is in the tooltip and the Terminals tab. */}
       {page && <span className="mr-1 max-w-[50%] truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true, account)].filter(Boolean).join(" · ")}</span>}
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{where}</span>}
       {/* (last, so every row's ring lines up at its edge) */}

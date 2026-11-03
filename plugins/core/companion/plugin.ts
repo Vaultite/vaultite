@@ -1792,7 +1792,7 @@ names run the settings' agent, model and effort.
     const at = str(p.path) ? { path: str(p.path), ...(p.line ? { line: Number(p.line) } : {}) } : {}
     return await start(ctx, str(p.as), str(p.agent), str(p.model), str(p.effort), at, p.after)
   },
-  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.agent ? ` (${[agentName(r.agent.split("_")[0]) ?? r.agent, r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (${isChat(r.id) ? `vau chat read ${r.id}` : `vau terminal screen ${r.id}`}).`,
+  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.agent ? ` (${[agentName(r.agent.split("_")[0]) ?? r.agent, r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (${isChat(r.id) ? `vau chat read ${r.id}` : `vau terminal capture ${r.id}`}).`,
 })
 
 plugin.op({

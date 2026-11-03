@@ -49,8 +49,8 @@ const before = await scrolled()
 await page.keyboard.press("ControlOrMeta+Enter")
 check("reply: shown at once, the box emptied", (await page.locator("[data-reply-sending]").count()) > 0 && (await box.inputValue()) === "")
 const screen = await until(async () => {
-  const s = await api("GET", `terminals/${term}/screen?lines=20`)
-  return s.lines?.join("\n").includes("Keep the footer, ship it") ? s : null
+  const s = await api("GET", `terminals/${term}/capture?lines=20`)
+  return s.text?.includes("Keep the footer, ship it") ? s : null
 }, 8000)
 check("reply: typed into its terminal", !!screen, screen)
 const archived = `Inbox/.archive/${named}.md`
@@ -73,7 +73,7 @@ await box.fill("echo qa-shell-ran")
 await page.keyboard.press("ControlOrMeta+Enter")
 check("… and says it started one", !!(await until(async () => (await page.locator("[data-sonner-toast]").allInnerTexts()).some((t) => t.includes("Started a new session with your reply")), 10000)),
   await page.locator("[data-sonner-toast]").allInnerTexts())
-const shellLines = (await api("GET", `terminals/${shell}/screen?lines=20`)).lines ?? []
+const shellLines = String((await api("GET", `terminals/${shell}/capture?lines=20`)).text ?? "").split("\n")
 check("… never typing into the shell", !shellLines.join("\n").includes("qa-shell-ran"), shellLines)
 const fresh = await until(() => /^terminal: (claude-\S+)$/m.exec(read(`Inbox/.archive/${inShell}`))?.[1], 5000)
 for (const t of [shell, fresh]) if (t) await api("DELETE", `terminals/${t}`).catch(() => {})

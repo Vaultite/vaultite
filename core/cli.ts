@@ -17,11 +17,15 @@ export type Obj = Record<string, Any>
 export type Args = { _: string[]; flags: Record<string, string | true>
   /** The command line's words as given, after the command's name (a plugin's command handing them to an op as they are). */
   raw?: string[] }
-export type Result = { data: unknown; text: string }
+/** What a command answers; `code`: its exit code, when it isn't 0 for a success (vau terminal wait: the terminal's). */
+export type Result = { data: unknown; text: string; code?: number }
 /** One API call: the status and the body (JSON parsed, else text). */
 export type Api = (method: string, route: string, body?: unknown) => Promise<{ status: number; body: unknown }>
 export type Command = {
   name: string
+  /** The word after its name that it is (`vau terminal attach`: name terminal, sub attach), beside the ops under that
+   *  name; without one, every `vau <name> ...` is it. */
+  sub?: string
   /** One line, for the list. */
   summary: string
   usage: string
@@ -38,6 +42,8 @@ export type Command = {
  *  exports `cli` (core/cli.ts finds it, like the server finds plugin.ts). */
 export type PluginCli = {
   commands?: Command[]
+  /** How vau handles one of its plugin's ops around the server (Local, by op id): its exit code, its own printing. */
+  ops?: Record<string, Local>
 }
 
 /** A command that failed (exit 1), or one written wrong (`usage`: a missing or bad argument, exit 2). */
@@ -399,9 +405,9 @@ vau events | while read -r ev; do echo "$ev" | jq -r .type; done`,
 /** A path on this computer as the shell gave it (~ is home: PowerShell and cmd leave it to vau). */
 const local = (p: string) => path.resolve(String(p).replace(/^~(?=[\\/]|$)/, os.homedir()))
 
-/** What vau does around an op with this computer's files, which the server (maybe another machine's) can't reach:
- *  `params` turns paths into text, `extra` takes more positional words, `out` handles the answer instead of printing. */
-type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: Any, p: Obj, extra: string[]) => string }
+/** What vau does around an op with this computer's files, which the server (maybe another machine's) can't reach: `params`
+ *  turns paths into text, `extra` takes more words, `out` prints the answer, `code` the exit code it means (else 0). */
+export type Local = { params?: (p: Obj, c: Ctx) => Promise<Obj>; extra?: number; out?: (result: Any, p: Obj, extra: string[]) => string; code?: (result: Any) => number }
 const LOCAL: Record<string, Local> = {
   // vau write <path> [--from <file>] [--base <file>]: the text from a file or stdin, the base from a file.
   "file.write": {
@@ -449,6 +455,8 @@ const LOCAL: Record<string, Local> = {
 // ---------- plugins' commands ----------
 
 let loaded: Promise<Command[]> | null = null
+/** The plugins' Local, by op id (their cli.ts' `ops`). */
+const pluginLocal = new Map<string, Local>()
 
 /** The built-in plugins' `cli.ts` (a vault plugin's code runs only in the server), merged into the
  *  core's commands, each after the one it names. */
@@ -460,6 +468,7 @@ function loadPlugins(): Promise<Command[]> {
     const dirs = subdirs(path.join(ROOT, "plugins", "core")).filter((d) => fs.existsSync(path.join(d, "cli.ts")))
     const mods = await Promise.all(dirs.map(async (d) => (await import(pathToFileURL(path.join(d, "cli.ts")).href)).cli as PluginCli | undefined))
     const commands = [...COMMANDS]
+    for (const m of mods) for (const [id, l] of Object.entries(m?.ops ?? {})) pluginLocal.set(id, l)
     for (const c of mods.flatMap((m) => m?.commands ?? [])) {
       const at = c.after ? commands.findIndex((x) => x.name === c.after) : -1
       commands.splice(at < 0 ? commands.length : at + 1, 0, c)
@@ -567,8 +576,9 @@ async function catalog(c: Ctx, word?: string): Promise<OpEntry[] | null> {
 async function opParams(e: OpEntry, argv: string[], c: Ctx, allow = 0): Promise<{ params: Obj; extra: string[] }> {
   const props = e.params.properties ?? {}
   const bools = Object.entries(props).filter(([, s]) => s.type === "boolean").flatMap(([k]) => [k, kebab(k)])
-  // A switch takes no value (`--error`), unless the next word is one (`--inbox false`): written `--inbox=false` then.
-  const said = argv.flatMap((x, i) => (x.startsWith("--") && bools.includes(x.slice(2)) && /^(true|false|yes|no|on|off)$/i.test(argv[i + 1] ?? "") ? [`${x}=${argv[i + 1]}`] : i > 0 && argv[i - 1].startsWith("--") && bools.includes(argv[i - 1].slice(2)) && /^(true|false|yes|no|on|off)$/i.test(x) ? [] : [x]))
+  // A switch takes no value (`--error`), unless the next word is one (`--inbox false`): written `--inbox=false` then;
+  // `--no-<switch>` is it off (`--no-enter`).
+  const said = argv.map((x) => (x.startsWith("--no-") && bools.includes(x.slice(5)) ? `--${x.slice(5)}=false` : x)).flatMap((x, i) => (x.startsWith("--") && bools.includes(x.slice(2)) && /^(true|false|yes|no|on|off)$/i.test(argv[i + 1] ?? "") ? [`${x}=${argv[i + 1]}`] : i > 0 && argv[i - 1].startsWith("--") && bools.includes(argv[i - 1].slice(2)) && /^(true|false|yes|no|on|off)$/i.test(x) ? [] : [x]))
   // A list's flag takes the words after it, and adds up when given again (`--images a.png b.png`, `--questions a
   // --questions b`); one word stays text, a list at its commas as before (`--blocks a,b`).
   const lists: Record<string, string[]> = {}, rest: string[] = []
@@ -648,23 +658,28 @@ export function cliError(e: OpEntry, msg: string, problems: string[]): { msg: st
 }
 
 /** Run an op from a command line, printed as `how` says. */
-async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<string> {
-  const loc = LOCAL[e.id] ?? {}
+async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<{ out: string; code: number }> {
+  const loc = LOCAL[e.id] ?? (await loadPlugins(), pluginLocal.get(e.id)) ?? {}
   const given = await opParams(e, argv, c, loc.extra ?? 0)
   const params = loc.params ? await loc.params(given.params, c) : given.params
   const list = !!how.count || !!how.paths
   const json = !!how.json || list
   const out = !!loc.out && !json
-  const r = await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : "?as=text"}`, params)
+  // (an exit code read from the answer: the answer and its text, both)
+  const both = !!loc.code && !json && !out
+  const r = await c.api("POST", `ops/${encodeURIComponent(e.id)}${json || out ? "" : both ? "?as=both" : "?as=text"}`, params)
   if (r.status >= 400) {
     const b = r.body as Obj
     const said = cliError(e, String(b && typeof b === "object" && "error" in b ? b.error : r.body).replace(`${e.id}: `, ""), Array.isArray(b?.problems) ? b.problems as string[] : [])
     // (a 400 with problems is the parameters' check: the command line was wrong)
     throw new CliError([said.msg, ...said.problems.map((x) => `  - ${x}`)].join("\n"), r.status === 400 && Array.isArray(b?.problems))
   }
-  if (out) return loc.out!(r.body, params, given.extra)
-  if (list) return await listed(r.body, how, c)
-  return json ? JSON.stringify(r.body, null, 2) : e.exact ? String(r.body ?? "") : String(r.body ?? "").replace(/\n+$/, "")
+  const result = both ? (r.body as Obj)?.result : r.body, text = both ? (r.body as Obj)?.text : r.body
+  const code = loc.code?.(result) ?? 0
+  if (out) return { out: loc.out!(result, params, given.extra), code }
+  if (list) return { out: await listed(result, how, c), code }
+  if (json) return { out: JSON.stringify(result, null, 2), code }
+  return { out: e.exact ? String(text ?? "") : String(text ?? "").replace(/\n+$/, ""), code }
 }
 
 /** The names a mistyped word may have meant, nearest first: a typo's distance away (`serch`: search), or starting
@@ -687,18 +702,19 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
   if (!words.length || (help && words.length === 1)) return { code: 0, out: usage(all, await catalog(ctx())), err: "" }
   const named = help ? words.slice(1) : words
   const which = named[0]
-  const cmd = all.find((c) => c.name === which)
+  const cmd = all.find((c) => c.name === which && (!c.sub || named[1] === c.sub))
   if (cmd) {
     if (help || a.flags.help) return { code: 0, out: commandHelp(cmd), err: "" }
     const c = ctx()
     c.command = cmd.name
     const args = parseArgs(argv, cmd.bool ?? [])
     args._.splice(args._.indexOf(which), 1)
+    if (cmd.sub) args._.splice(args._.indexOf(cmd.sub), 1)
     args.raw = argv.slice(argv.indexOf(which) + 1)
     try {
       const r = await cmd.run(args, c)
       if (a.flags.count || a.flags.paths) return { code: 0, out: await listed(r.data, { count: !!a.flags.count, paths: !!a.flags.paths }, c), err: "" }
-      return { code: 0, out: a.flags.json ? JSON.stringify(r.data, null, 2) : r.text, err: "" }
+      return { code: r.code ?? 0, out: a.flags.json ? JSON.stringify(r.data, null, 2) : r.text, err: "" }
     } catch (e) {
       if (e instanceof CliError) return { code: e.usage ? 2 : 1, out: "", err: `vau ${cmd.name}: ${e.message}` }
       throw e
@@ -731,8 +747,8 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
   const rest = [...argv]
   for (const w of [...(help ? ["help"] : []), ...(op.id === which ? [which] : said(op))]) rest.splice(rest.indexOf(w), 1)
   try {
-    const out = await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths })
-    return { code: 0, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
+    const { out, code } = await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths })
+    return { code, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
   } catch (e) {
     if (!(e instanceof CliError)) throw e
     // (`vau errors 3f9a`: the command under it that takes the word, `vau errors show 3f9a`)

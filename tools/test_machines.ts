@@ -160,8 +160,8 @@ try {
     assert.equal((await api("GET", "machines/away/state")).status, 404)
     // That machine sees this one's tailnet login (the owner's): only the owner asks through this one.
     await api("GET", "machines/other/terminals/sessions")
-    assert.equal((await api("GET", "machines/other/terminals/x/screen", {}, outsider)).status, 403, "someone who isn't the owner isn't passed on")
-    assert.ok(seen.includes("GET /api/terminals/sessions") && !seen.includes("GET /api/terminals/x/screen"), "the owner's request goes on")
+    assert.equal((await api("GET", "machines/other/terminals/x/capture", {}, outsider)).status, 403, "someone who isn't the owner isn't passed on")
+    assert.ok(seen.includes("GET /api/terminals/sessions") && !seen.includes("GET /api/terminals/x/capture"), "the owner's request goes on")
     assert.equal((await api("POST", "ops/machines.revoke", { id: "away" })).status, 200)
     assert.equal((await api("POST", "machines/other/approve", { code: "12345678" })).status, 200)
     assert.ok(seen.includes("GET /api/machines/away/fs/list?path=%2Fworkspace"))

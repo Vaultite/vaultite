@@ -216,7 +216,7 @@ type Status = { kind: "live"; /** macOS keeps it from its agent's folder (the se
   | { kind: "ended" }
   | { kind: "refused"; reason: string }
   /** Another machine's shell, and that machine doesn't answer (or has no terminal): tried again, never started here. */
-  | { kind: "away"; label: string; reason: string }
+  | { kind: "away"; label: string; reason: string; in?: boolean }
 
 /** A terminal and its socket kept apart from its tab's view: a hidden tab's is parked still connected, so it comes back
  *  at once as it was. The last PARKED stay; the shell keeps running on the server either way. */
@@ -224,7 +224,7 @@ type Live = {
   id: string; t: XTerm; box: HTMLDivElement; search: SearchAddon
   /** What its find bar looked for last: shown again when it's opened again. */
   find: { text: string } & FindOptions
-  status: Status; mounted: boolean; ended: boolean; tmuxScroll: boolean
+  status: Status; mounted: boolean; ended: boolean
   /** The view showing it: its status, and closing its tab when the shell exits cleanly. */
   view: { status: (s: Status) => void; close: () => void } | null
   open: () => void; refit: () => void; send: (data: string | Uint8Array<ArrayBuffer>) => void
@@ -346,7 +346,7 @@ function create(id: string): Live {
   // Only the tab that made this id starts its session; one put back (a reload, the app reopened) only attaches, so an
   // agent whose session is gone isn't started again by itself (the server says "gone"; Restart starts it).
   let attachOnly = !mintedHere(id), sessionGone = false
-  let away: { label: string; reason: string } | null = null
+  let away: { label: string; reason: string; in?: boolean } | null = null
   const enc = new TextEncoder()
   const setStatus = (st: Status) => { l.status = st; l.view?.status(st) }
   /** Its shell ended or it was refused while no view shows it: nothing to keep it for. */
@@ -384,7 +384,7 @@ function create(id: string): Live {
         replayNext = false; replaying = true
         return t.write(bytes, () => { replaying = false; firstOutput(); done() })
       }
-      let msg: { t?: string; fresh?: boolean; tmux?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean
+      let msg: { t?: string; fresh?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; backend?: string; cols?: number; rows?: number; ended?: boolean
         scrollback?: number }
       try { msg = JSON.parse(e.data) } catch { return }
       if (msg.t === "size") {
@@ -401,12 +401,12 @@ function create(id: string): Live {
         if (msg.scrollback && msg.scrollback !== t.options.scrollback) t.options.scrollback = msg.scrollback
         t.reset() // what the shell printed comes again (the replay), or it's a new shell
         replayNext = !msg.fresh
-        l.tmuxScroll = !!msg.tmux
         setStatus({ kind: "live" })
       } else if (msg.t === "blocked") {
         setStatus({ kind: "live", blocked: true })
       } else if (msg.t === "unreachable") {
-        away = { label: msg.label || msg.machine || "another machine", reason: msg.reason || "isn't answering" }
+        // (`backend`: it runs in another program, herdr, not on another machine)
+        away = { label: msg.label || msg.machine || "another machine", reason: msg.reason || "isn't answering", in: !!msg.backend }
       } else if (msg.t === "refused") {
         refused = true
         setStatus({ kind: "refused", reason: msg.reason ?? "" })
@@ -479,23 +479,6 @@ function create(id: string): Live {
     sendFiles(files)
     t.focus()
   }
-  // A shell in tmux only ever sees tmux redraw its screen, so xterm.js's scrollback is near empty: the wheel is taken
-  // before xterm.js sees it and sent to tmux as whole lines, once a frame.
-  let wheelRest = 0, wheelLines = 0, wheelFrame = 0
-  const onWheel = (e: WheelEvent) => {
-    if (!l.tmuxScroll || e.ctrlKey) return // ⌃ + wheel: the browser's zoom
-    e.preventDefault(); e.stopPropagation()
-    const cell = box.clientHeight / t.rows || 16
-    wheelRest += e.deltaMode === 1 ? e.deltaY : e.deltaMode === 2 ? e.deltaY * t.rows : e.deltaY / cell
-    const n = Math.trunc(wheelRest)
-    if (!n) return
-    wheelRest -= n; wheelLines -= n // down the page is up the history
-    wheelFrame ||= requestAnimationFrame(() => {
-      wheelFrame = 0
-      if (wheelLines) send(JSON.stringify({ t: "scroll", lines: wheelLines }))
-      wheelLines = 0
-    })
-  }
   // One shell, one size, the last device's: drawn for the phone, it's garbled here until this view sends its own back.
   const claim = () => {
     if (!l.mounted || !box.clientWidth || ws?.readyState !== WebSocket.OPEN) return
@@ -506,7 +489,6 @@ function create(id: string): Live {
   // of the page per keystroke (the box's own resizes are the ResizeObserver's).
   const claimIfTaken = () => { if (shell.cols && (shell.cols !== t.cols || shell.rows !== t.rows)) claim() }
   const onFocus = () => { touch(id); claim() }
-  box.addEventListener("wheel", onWheel, { capture: true, passive: false })
   box.addEventListener("paste", onPaste, true)
   // (marked so the desktop app's window doesn't take the drop first and open the file in a tab: core/desktop.ts)
   box.dataset.fileDrop = ""
@@ -530,7 +512,7 @@ function create(id: string): Live {
   document.addEventListener("visibilitychange", onShown)
 
   const l: Live = {
-    id, t, box, search, find: { text: "", caseSensitive: false, wholeWord: false, regexp: false }, status: { kind: "connecting", tries: 0 }, mounted: false, ended: false, tmuxScroll: false, view: null, send, sendFiles, claim,
+    id, t, box, search, find: { text: "", caseSensitive: false, wholeWord: false, regexp: false }, status: { kind: "connecting", tries: 0 }, mounted: false, ended: false, view: null, send, sendFiles, claim,
     // Once its box is in the page (xterm.js measures its cells there).
     open: () => {
       if (opened) return
@@ -551,7 +533,7 @@ function create(id: string): Live {
     dispose: () => {
       if (gone) return
       gone = true
-      clearTimeout(timer); clearTimeout(resizing); cancelAnimationFrame(wheelFrame)
+      clearTimeout(timer); clearTimeout(resizing)
       offLook(); offSettings(); osc.dispose(); files.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)
@@ -788,7 +770,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
         </div>
       )}
       {status.kind === "away" && (
-        <EndBar role="status" away onRestart={restart} action="Try now">This terminal runs on {status.label}, which {status.reason}. Trying again…</EndBar>
+        <EndBar role="status" away onRestart={restart} action="Try now">This terminal runs {status.in ? "in" : "on"} {status.label}, which {status.reason}. Trying again…</EndBar>
       )}
       {status.kind === "refused" && <EndBar role="alert" onRestart={restart} action="Try again">No shell here: {status.reason || "the server refused this page"}.</EndBar>}
       {status.kind === "ended" && <EndBar onRestart={restart} action="Restart">Session ended</EndBar>}

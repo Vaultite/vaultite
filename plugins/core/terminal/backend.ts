@@ -1,5 +1,5 @@
-// Where shells live so they can outlive the server: the keeper (ptyd.ts, default), tmux, the server's own child (only
-// when the keeper can't start), or another plugin's. The types here are the contract a plugin's backend implements.
+// Where terminals live so they outlive the server: the terminal server (termd/), the server itself when that can't start,
+// or another plugin's ("terminal:backend"). Its types are the contract a plugin's backend implements (with backendKit).
 import crypto from "node:crypto"
 import fs from "node:fs"
 import { shellQuote } from "../../../core/agents.ts"
@@ -10,47 +10,36 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
 import { lineReader } from "./lines.ts"
-import { REPLY, watcher, type Said } from "./osc7501.ts"
+import type { Said } from "./osc7501.ts"
 import { distroOf, kindOf, progName, type ShellKind } from "./shells.ts"
+import { PROTOCOL, type Capture, type CaptureFormat, type Event, type Exit as Ended, type Info } from "./termd/protocol.ts"
+
+export type { Capture, CaptureFormat, Ended }
 
 /** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts), as
  *  its shell's kind reads it (plugin.ts: starter.ts's line in PowerShell and cmd). */
 export type AgentRun = { command: string; cwd?: string | null }
 
-/** A new shell: `shell` (a path, or wsl:<distro>: shells.ts) in `cwd`, running `run` first for an agent. `env`: the server's less what's about it;
- *  `ctx`: Vaultite's variables (VAULTITE_URL..., PATH with the app's bin/ first); `scrollback`: lines kept. */
+/** A new terminal: `shell` (a path, or wsl:<distro>: shells.ts) in `cwd`, running `run` first for an agent. `env`: the
+ *  server's less what's about it; `ctx`: Vaultite's variables (VAULTITE_URL..., PATH with the app's bin/ first). */
 export type Spec = { shell: string; run: AgentRun | null; cwd: string; env: Record<string, string>; ctx: Record<string, string>; cols: number; rows: number
-  scrollback: number }
+  /** Lines of history it keeps. */
+  scrollback: number
+  /** `run` alone: a command whose end is the terminal's (its exit code too). */
+  only?: boolean }
 
-/** The terminal's settings as backends need them (plugin.ts sets them): lines of history every shell keeps. */
+/** What a new terminal is, for its list: what it was started to run (`command`: "claude", "npm test", "zsh") and the
+ *  app's meta to keep with it (`name`, `note`). `spare`: a shell kept ready, renamed when it's taken. */
+export type Made = { spare?: boolean; command?: string; meta?: Record<string, string> }
+
+/** The terminal's settings as backends need them (plugin.ts sets them): lines of history every terminal keeps. */
 export const limits = { scrollback: () => 10_000 }
 
-/** The last `lines` lines of a stream of output, in its chunks: the replay of a backend that has no pictures. Output
- *  with few line breaks (a progress bar redrawn) is held to about 200 characters a line. */
-export class Tail {
-  private chunks: string[] = []
-  private breaks: number[] = []
-  private lines = 0
-  private size = 0
-  private max: number
-  private cap: number
-  constructor(max: number) { this.max = max; this.cap = max * 200 }
-  push(d: string) {
-    let n = 0
-    for (let i = d.indexOf("\n"); i >= 0; i = d.indexOf("\n", i + 1)) n++
-    this.chunks.push(d); this.breaks.push(n); this.lines += n; this.size += d.length
-    while ((this.lines > this.max || this.size > this.cap) && this.chunks.length > 1) {
-      this.lines -= this.breaks.shift()!
-      this.size -= this.chunks.shift()!.length
-    }
-  }
-  text() { return this.chunks.join("") }
-}
-
-/** How a shell ended: its exit status, or null when only this server's hold on it ended (it still runs: reattach). */
+/** How a terminal ended, as its link tells it: its exit status, or null when only this server's hold on it ended (it
+ *  still runs: reattach). */
 export type Exit = { code: number; signal: number } | null
 
-/** One server's hold on a running shell: what it prints, and typing and resizing it. */
+/** One server's hold on a running terminal: what it prints, and typing and resizing it. */
 export interface Link {
   readonly cols: number
   readonly rows: number
@@ -58,42 +47,43 @@ export interface Link {
   resize(cols: number, rows: number): void
   onData(fn: (data: string) => void): void
   onExit(fn: (exit: Exit) => void): void
-  /** A picture of the screen and history for a new viewer, given in order with onData. Without one, plugin.ts replays
-   *  what it kept of the output, then redraw(). */
-  snapshot?(fn: (picture: string) => void): void
-  /** Draw the screen again (after a replay that may end mid-screen). */
-  redraw?(): void
-  /** Scroll its history (a backend that `redraws`): lines up, negative down. */
-  scroll?(lines: number): void
+  /** A picture of the screen and history for a new viewer, given in order with onData (`mirrored` makes one for a
+   *  backend that has none). */
+  snapshot(fn: (picture: string) => void): void
   /** Stop reading its output until resume (its program waits once the pty is full): the pages are behind. */
   pause?(): void
   resume?(): void
-  /** Let go of it: the shell keeps running. */
+  /** Let go of it: the terminal keeps running. */
   close(): void
 }
 
-/** A running shell as a backend lists it. `process`: the program in front; `attached`: holds on it, this server's
- *  included; `activity`: last input or output (ms); `external`: not started by Vaultite (a herdr pane of the user's). */
+/** A terminal as a backend lists it. `process`: the program in front now; `attached`: holds on it, this server's
+ *  included; `activity`: last input or output (ms); `command`: what it was started to run (Made). */
 export type Listed = { id: string; pid?: number; process: string; created: number; activity?: number; attached: number; title?: string
-  state?: string; external?: boolean; spare?: boolean
-  /** What its program said in OSC 7501, from a backend that reads it (`status`). */
-  said?: Said }
+  cwd?: string; command?: string; cols?: number; rows?: number
+  /** The app's, from a backend that keeps it (setMeta). */
+  meta?: Record<string, string>
+  /** Its own word on an agent there (herdr's: working, waiting, idle). */
+  state?: string
+  /** Its program's OSC 7501, from a backend that reads it. */
+  said?: Said
+  /** It ended, and how (only with list's `ended`). */
+  exit?: Ended
+  /** Not started by Vaultite (a herdr pane of the user's). */
+  external?: boolean
+  spare?: boolean }
 
-/** A backend that reads OSC 7501 where it holds the pty (osc7501.ts): it answers the probe itself, in its place in the
- *  stream, takes reports out of the output and keeps each shell's records. Without one, programs there aren't answered. */
-export interface StatusReader {
-  /** `fn` hears a shell's records as they change. */
-  follow(fn: (id: string, said: Said) => void): void
-  /** Its program ended: working and blocked records go. */
-  drop(id: string): Promise<void>
-}
+/** What a backend tells as it happens (Backend.events): termd/protocol.ts' events, `info` as it lists it. */
+export type BackendEvent = Exclude<Event, { type: "started" }> | { type: "started"; id: string; info?: Listed }
+
+/** What goes into a terminal: text as typed (`paste`: as a bracketed paste, when its program asked for those), or keys
+ *  by name (keys.ts: Enter, C-c, Up). */
+export type Input = { text: string; paste?: boolean } | { keys: string[] }
 
 export interface Backend {
   readonly name: string
   readonly label: string
-  /** It redraws the screen for the page (tmux): the page scrolls by asking, and its own scrollback stays empty. */
-  readonly redraws: boolean
-  /** Its shells are also the user's own elsewhere (herdr): never ended for being idle or by Vaultite's sweeps. */
+  /** Its terminals are also the user's own elsewhere (herdr): never ended for being idle or by Vaultite's sweeps. */
   readonly external?: boolean
   /** Shells kept ready (plugin.ts: spares) are made in it: create(..., {spare}), then rename(). */
   readonly spares?: boolean
@@ -101,22 +91,26 @@ export interface Backend {
   readonly preferred?: boolean
   /** Whether it can run here now (installed, its server answering). */
   ready(): Promise<boolean>
-  has(id: string): Promise<boolean>
-  list(): Promise<Listed[]>
-  create(id: string, spec: Spec, o?: { spare?: boolean }): Promise<void>
+  /** Its terminals; with `ended`, the ones that ended lately too (with their `exit`), for a backend that keeps them. */
+  list(o?: { ended?: boolean }): Promise<Listed[]>
+  create(id: string, spec: Spec, o?: Made): Promise<void>
   attach(id: string, cols: number, rows: number): Promise<Link>
-  kill(id: string): Promise<void>
-  /** The screen and `lines` above it, as text. */
-  screen(id: string, lines: number): Promise<string>
-  /** Type `text` into it (as typed, not as keys), then Enter apart from it (a program reading a paste takes an Enter
-   *  inside it as a newline). `paste`: as a bracketed paste, when the program there asked for those (asPaste). */
-  send(id: string, text: string, enter: boolean, o?: { paste?: boolean }): Promise<void>
-  rename?(from: string, to: string): Promise<void>
-  /** Forget its history (what scrolling up shows): tmux's, once a ready shell's typed line has given way to an agent.
-   *  (The keeper's goes with the script's `clear`, which clears the scrollback too.) */
-  clearHistory?(id: string): Promise<void>
-  /** Its programs' OSC 7501. tmux has none: it answers the primary DA itself and drops OSCs it doesn't know. */
-  readonly status?: StatusReader
+  /** Ends it: a hangup, as closing a terminal does, or `signal`. */
+  kill(id: string, signal?: string): Promise<void>
+  /** What it shows: its last `lines` (none: its screen; null: all it keeps), as `format` says; one that ended lately too,
+   *  from a backend that keeps it (`ended` in the answer). A format it can't give throws saying so. */
+  capture(id: string, o: { format: CaptureFormat; lines?: number | null }): Promise<Capture & { ended?: boolean }>
+  /** Types text into it or presses keys (Input). plugin.ts waits between a text and the Enter after it. */
+  send(id: string, input: Input): Promise<void>
+  /** A spare taken: its new id, and what it's made into (Made). */
+  rename?(from: string, to: string, o?: Made): Promise<void>
+  /** Keeps the app's meta with the terminal (its `name`, `note`): each key set, or removed by null. Without it the app
+   *  keeps them itself, on this machine. */
+  setMeta?(id: string, patch: Record<string, string | null>): Promise<void>
+  /** `fn` hears what changes as it happens (BackendEvent), from the first call on. Without it the app asks list(). */
+  events?(fn: (ev: BackendEvent) => void): void
+  /** Its program ended (the app saw its shell at the prompt again): the working and blocked OSC 7501 records go. */
+  dropStatus?(id: string): Promise<void>
 }
 
 /** A long or multi-line text goes as a paste: typed, an agent reads it in the pty's ~1 KB pieces, each a paste of its
@@ -125,15 +119,6 @@ export const asPaste = (text: string) => Buffer.byteLength(text) > 256 || text.i
 /** Text sent into a terminal, without paste markers: one would end its paste early, or show as `201~` where none was asked. */
 export const unmarked = (text: string) => text.replace(/\x1b\[20[01]~/g, "")
 export const bracketed = (text: string) => `\x1b[200~${text}\x1b[201~`
-/** Whether output leaves bracketed paste on (`\e[?2004h`) or off, else `was`. */
-export function pasteMode(d: string, was: boolean) {
-  let on = was
-  for (const m of d.matchAll(/\x1b\[\?([\d;]+)([hl])/g)) if (m[1].split(";").includes("2004")) on = m[2] === "h"
-  return on
-}
-
-/** How long typed text needs before its Enter: an agent takes a long text as a paste, and an Enter inside that is a new line. */
-const settle = (text: string) => Math.min(1000, 150 + Math.floor(text.length / 4))
 
 // ---------- Vaultite's vau first on PATH: a login shell's files (macOS' path_helper, Homebrew's shellenv) put theirs
 // before what the shell was given, so the shell puts VAULTITE_BIN (and QA's VAULTITE_AGENT_BIN) first again after them.
@@ -176,6 +161,8 @@ const SHELL_FILES: Record<string, string> = {
     "# Vaultite's terminals start a WSL distro's shell with this: the user's login shell, then Vaultite's vau first on PATH.",
     "u=$(getent passwd \"$(id -un)\" 2>/dev/null | cut -d: -f7); [ -x \"$u\" ] || u=/bin/sh",
     "d=$(cd \"$(dirname \"$0\")\" && pwd); export SHELL=\"$u\"",
+    // (only: the command alone, the terminal ending with it)
+    "if [ \"$2\" = only ]; then exec \"$u\" -l -i -c \"$1\"; fi",
     "case ${u##*/} in",
     "  bash) set -- \"$u\" --rcfile \"$d/bashrc\" -i ${1:+-c \"$1; exec '$u' --rcfile '$d/bashrc' -i\"} ;;",
     "  zsh) [ -n \"$ZDOTDIR\" ] && export VAULTITE_USER_ZDOTDIR=\"$ZDOTDIR\"; export ZDOTDIR=\"$d\" VAULTITE_ZDOTDIR=\"$d\"",
@@ -208,11 +195,13 @@ export function loginArgs(shell: string): string[] {
   return ["-l"]
 }
 
-/** The login shell's arguments: interactive (so it has the user's PATH) running the agent's command first, then a
+/** The login shell's arguments (`only`: see Spec): interactive (so it has the user's PATH) running the agent's command first, then a
  *  plain login shell in its place (zsh's through SHELL_DIR again: its .zlogin gave ZDOTDIR back). */
-export function shellArgs(shell: string, run: AgentRun | null) {
+export function shellArgs(shell: string, run: AgentRun | null, only = false) {
   const login = loginArgs(shell)
   if (!run) return login
+  // (a command alone: the terminal ends with it, its exit status the terminal's)
+  if (only) return [...login.filter((a) => a !== "-i"), "-i", "-c", run.command]
   const zdot = progName(shell) === "zsh" ? `if [ -n "$VAULTITE_ZDOTDIR" ]; then export ZDOTDIR="$VAULTITE_ZDOTDIR"; fi; ` : ""
   return [...login.filter((a) => a !== "-i"), "-i", "-c", `${run.command}; ${zdot}exec ${[shell, ...login].map(shellQuote).join(" ")}`]
 }
@@ -256,17 +245,19 @@ export function launch(spec: Spec): Launch {
   const run = spec.run, cwd = run?.cwd || spec.cwd, env = { ...spec.env, ...spec.ctx }
   switch (kindOf(spec.shell)) {
     case "pwsh":
-      return { file: spec.shell, args: ["-NoLogo", "-NoExit", "-EncodedCommand", Buffer.from(run ? `${UTF8}\n${run.command}` : UTF8, "utf16le").toString("base64")], cwd, env }
+      // (a command alone exits with its program's code, which PowerShell otherwise makes 0 or 1)
+      return { file: spec.shell, args: ["-NoLogo", ...(run && spec.only ? [] : ["-NoExit"]), "-EncodedCommand",
+        Buffer.from(run ? `${UTF8}\n${run.command}${spec.only ? "\nexit $LASTEXITCODE" : ""}` : UTF8, "utf16le").toString("base64")], cwd, env }
     case "cmd":
       // (/s: cmd takes what's between the outer quotes as it is)
-      return { file: spec.shell, args: run ? `/s /k "${run.command}"` : [], cwd, env }
+      return { file: spec.shell, args: run ? `/s /${spec.only ? "c" : "k"} "${run.command}"` : [], cwd, env }
     case "wsl": {
       const wsl = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "wsl.exe")
-      return { file: wsl, args: ["-d", distroOf(spec.shell), "--cd", wslPath(cwd), "-e", "sh", wslPath(path.join(SHELL_DIR, "wsl.sh")), ...(run ? [run.command] : [])],
+      return { file: wsl, args: ["-d", distroOf(spec.shell), "--cd", wslPath(cwd), "-e", "sh", wslPath(path.join(SHELL_DIR, "wsl.sh")), ...(run ? [run.command, ...(spec.only ? ["only"] : [])] : [])],
         cwd: os.homedir(), env }
     }
     default:
-      return { file: spec.shell, args: shellArgs(spec.shell, run), cwd, env }
+      return { file: spec.shell, args: shellArgs(spec.shell, run, spec.only), cwd, env }
   }
 }
 
@@ -299,27 +290,28 @@ export async function loadPty() {
 
 export const plain = (s: string) => s.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[@-_]/g, "").replace(/\r(?!\n)/g, "")
 
-/** A Link around a pseudo-terminal this process holds (the plain backend's, tmux's client). */
-export function ptyLink(p: IPty, extra: Partial<Pick<Link, "redraw" | "scroll" | "write" | "onData">> & { exit?: (code: number, signal: number) => Promise<Exit> } = {}): Link {
-  const link: Link = {
+/** A Link without pictures: a pty this process holds (a plugin backend's attach client), for `mirrored`. */
+export type RawLink = Omit<Link, "snapshot">
+
+/** A RawLink around a pseudo-terminal this process holds (a plugin backend's attach client, like herdr's). `exit`: how
+ *  it ended, as the backend tells (null: only the client ended, reattach). */
+export function ptyLink(p: IPty, extra: Partial<Pick<Link, "write" | "onData">> & { exit?: (code: number, signal: number) => Promise<Exit> } = {}): RawLink {
+  return {
     get cols() { return p.cols },
     get rows() { return p.rows },
     write: extra.write ?? ((b) => { try { p.write(b as unknown as string) } catch { /* ended */ } }),
     resize: (c, r) => { try { p.resize(c, r) } catch { /* ended */ } },
     onData: extra.onData ?? ((fn) => { p.onData(fn) }),
     onExit: (fn) => { p.onExit(async ({ exitCode, signal }) => fn(extra.exit ? await extra.exit(exitCode, signal ?? 0) : { code: exitCode, signal: signal ?? 0 })) },
-    redraw: extra.redraw,
-    scroll: extra.scroll,
     pause: () => p.pause(),
     resume: () => p.resume(),
     close: () => hangup(p),
   }
-  return link
 }
 
 /** A Link that gives pictures of one that can't, by reading its output through a headless xterm.js first, so a viewer
  *  who joins gets the screen as it is (for backends whose client only sends what changed). */
-export async function mirrored(link: Link, scrollback = limits.scrollback()): Promise<Link> {
+export async function mirrored(link: RawLink, scrollback = limits.scrollback()): Promise<Link> {
   const { createRequire } = await import("node:module")
   const require = createRequire(import.meta.url)
   const { Terminal } = require("@xterm/headless") as typeof import("@xterm/headless")
@@ -339,231 +331,133 @@ export async function mirrored(link: Link, scrollback = limits.scrollback()): Pr
     onData: (fn) => { data.add(fn) },
     onExit: (fn) => link.onExit(fn),
     snapshot: (fn) => term.write("", () => fn(ser.serialize({ scrollback }))),
-    scroll: link.scroll,
     pause: link.pause && (() => link.pause!()),
     resume: link.resume && (() => link.resume!()),
     close: () => link.close(),
   }
 }
 
-// ---------- pty: the server's own children (they end with it)
+// ---------- the terminal server's client (termd/protocol.ts): over its socket, or in this process (local)
 
-export function plainBackend(): Backend {
-  type Shell = { p: IPty; name: string; created: number; activity: number; out: Tail; attached: number; paste: boolean; data: Set<(d: string) => void>
-    status: ReturnType<typeof watcher> }
-  const shells = new Map<string, Shell>()
-  const heard = new Set<(id: string, said: Said) => void>()
-  const get = (id: string) => {
-    const s = shells.get(id)
-    if (!s) throw new Error(`there's no shell '${id}'`)
-    return s
-  }
-  return {
-    name: "pty", label: "This server", redraws: false,
-    ready: async () => true,
-    has: async (id) => shells.has(id),
-    list: async () => [...shells].map(([id, s]) => {
-      let process = ""
-      // (Linux: /bin/bash; Windows' node-pty doesn't know: the shell started)
-      try { process = WIN ? s.name : path.basename(s.p.process) } catch { /* ended */ }
-      return { id, pid: s.p.pid, process, created: s.created, activity: s.activity, attached: s.attached, said: s.status.records.said() }
-    }),
-    async create(id, spec) {
-      const lib = await loadPty(), l = launch(spec)
-      const p = lib.spawn(l.file, l.args, { name: "xterm-256color", cols: spec.cols, rows: spec.rows, cwd: l.cwd, env: l.env })
-      // (the probe answered as it's read: before a page answers the primary DA that follows it)
-      const status = watcher(() => { try { p.write(REPLY) } catch { /* ended */ } })
-      const s: Shell = { p, name: shellName(spec.shell), created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0, paste: false, data: new Set(), status }
-      p.onData((raw) => {
-        s.activity = Date.now()
-        const { out: d, changed } = status.feed(raw)
-        if (changed) for (const fn of heard) fn(id, status.records.said())
-        if (!d) return
-        s.out.push(d)
-        s.paste = pasteMode(d, s.paste)
-        for (const fn of s.data) fn(d)
-      })
-      p.onExit(() => { if (shells.get(id) === s) shells.delete(id) })
-      shells.set(id, s)
-    },
-    async attach(id) {
-      const s = get(id)
-      s.attached++
-      const mine = new Set<(d: string) => void>()
-      const link = ptyLink(s.p, { onData: (fn) => { mine.add(fn); s.data.add(fn) } })
-      // Letting go of it here is ending it: it's this process's child.
-      let closed = false
-      const close = () => { if (!closed) { closed = true; s.attached--; for (const fn of mine) s.data.delete(fn) } }
-      link.close = close
-      link.onExit(close)
-      return link
-    },
-    kill: async (id) => { const s = shells.get(id); if (s) hangup(s.p) },
-    screen: async (id, lines) => plain(get(id).out.text()).replace(/\s+$/, "").split("\n").slice(-lines).join("\n"),
-    async send(id, text, enter, o) {
-      const s = get(id)
-      if (text) s.p.write(o?.paste && s.paste ? bracketed(text) : text)
-      if (enter) { if (text) await new Promise((r) => setTimeout(r, settle(text))); s.p.write("\r") }
-    },
-    status: {
-      follow: (fn) => { heard.add(fn) },
-      drop: async (id) => { const s = shells.get(id); if (s?.status.records.drop()) for (const fn of heard) fn(id, s.status.records.said()) },
-    },
-  }
-}
+type Msg = Record<string, unknown>
+/** Messages to and from a terminal server: over a socket, or to one in this process. */
+type Pipe = { write(m: Msg): void; onMessage(fn: (m: Msg) => void): void; onClose(fn: () => void): void; close(): void; pause(): void; resume(): void }
 
-// ---------- vaultite: the keeper (ptyd.ts)
-
-/** One connection to the keeper: requests with answers, and the messages of a shell it shows. */
+/** One connection to a terminal server: requests with answers, and the messages it sends unasked. */
 class Wire {
-  sock: net.Socket
+  pipe: Pipe
   seq = 0
-  waiting = new Map<number, { ok: (v: Record<string, unknown>) => void; fail: (e: Error) => void }>()
-  listeners = new Set<(m: Record<string, unknown>) => void>()
+  waiting = new Map<number, { ok: (v: Msg) => void; fail: (e: Error) => void }>()
+  listeners = new Set<(m: Msg) => void>()
   closed = false
   onClose: (() => void) | null = null
-  constructor(sock: net.Socket) {
-    this.sock = sock
-    sock.setEncoding("utf8")
-    sock.on("data", lineReader((line) => {
-      let m: Record<string, unknown>
-      try { m = JSON.parse(line) } catch { return }
-      if (typeof m.re === "number" && this.waiting.has(m.re)) {
-        const w = this.waiting.get(m.re)!
-        this.waiting.delete(m.re)
-        if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m)
-      } else for (const fn of this.listeners) fn(m)
-    }))
-    const end = () => {
+  constructor(pipe: Pipe) {
+    this.pipe = pipe
+    // (what hears a message never ends the server by throwing: it's logged)
+    pipe.onMessage((m) => {
+      try {
+        if (typeof m.re === "number" && this.waiting.has(m.re)) {
+          const w = this.waiting.get(m.re)!
+          this.waiting.delete(m.re)
+          if (typeof m.error === "string") w.fail(new Error(m.error)); else w.ok(m)
+        } else for (const fn of this.listeners) fn(m)
+      } catch (e) { console.error("terminal: a message from the terminal server:", e) }
+    })
+    pipe.onClose(() => {
       if (this.closed) return
       this.closed = true
-      for (const w of this.waiting.values()) w.fail(new Error("the terminal's keeper went away"))
+      for (const w of this.waiting.values()) w.fail(new Error("the terminal server went away"))
       this.waiting.clear()
       this.onClose?.()
-    }
-    sock.on("close", end)
-    sock.on("error", end)
+    })
   }
-  send(op: string, params: Record<string, unknown> = {}) {
-    if (!this.closed) this.sock.write(JSON.stringify({ op, ...params }) + "\n")
+  send(op: string, params: Msg = {}) {
+    if (!this.closed) this.pipe.write({ op, ...params })
   }
   /** A request whose answer `fn` gets as it arrives, between the messages around it (a promise's would come after the
    *  next ones in the same chunk). */
-  call(op: string, params: Record<string, unknown>, fn: (m: Record<string, unknown>) => void) {
+  call(op: string, params: Msg, fn: (m: Msg) => void) {
     if (this.closed) return
     const re = ++this.seq
     this.waiting.set(re, { ok: fn, fail: () => {} })
-    this.sock.write(JSON.stringify({ op, re, ...params }) + "\n")
+    this.pipe.write({ op, re, ...params })
   }
-  request(op: string, params: Record<string, unknown> = {}, ms = 5000): Promise<Record<string, unknown>> {
-    if (this.closed) return Promise.reject(new Error("the terminal's keeper went away"))
+  request(op: string, params: Msg = {}, ms = 5000): Promise<Msg> {
+    if (this.closed) return Promise.reject(new Error("the terminal server went away"))
     const re = ++this.seq
     return new Promise((ok, fail) => {
-      const timer = setTimeout(() => { this.waiting.delete(re); fail(new Error(`the terminal's keeper didn't answer ${op}`)) }, ms)
+      const timer = setTimeout(() => { this.waiting.delete(re); fail(new Error(`the terminal server didn't answer ${op}`)) }, ms)
       this.waiting.set(re, { ok: (v) => { clearTimeout(timer); ok(v) }, fail: (e) => { clearTimeout(timer); fail(e) } })
-      this.sock.write(JSON.stringify({ op, re, ...params }) + "\n")
+      this.pipe.write({ op, re, ...params })
     })
   }
-  close() { this.sock.destroy() }
+  close() { this.pipe.close() }
 }
 
+/** A socket's messages: newline JSON. */
 const connectTo = (socket: string) => new Promise<Wire>((ok, fail) => {
   const sock = net.connect(socket)
-  sock.once("connect", () => { sock.removeAllListeners("error"); ok(new Wire(sock)) })
+  sock.once("connect", () => {
+    sock.removeAllListeners("error")
+    sock.setEncoding("utf8")
+    const closers: (() => void)[] = []
+    const closed = () => { for (const fn of closers.splice(0)) fn() }
+    sock.on("close", closed)
+    sock.on("error", closed)
+    ok(new Wire({
+      write: (m) => { if (!sock.destroyed) sock.write(JSON.stringify(m) + "\n") },
+      onMessage: (fn) => { sock.on("data", lineReader((line) => { let m: Msg; try { m = JSON.parse(line) } catch { return } fn(m) })) },
+      onClose: (fn) => { closers.push(fn) },
+      close: () => sock.destroy(),
+      pause: () => sock.pause(),
+      resume: () => sock.resume(),
+    }))
+  })
   sock.once("error", fail)
 })
 
-/** The keeper's protocol version, in its socket's name: a server that speaks another starts its own (the shells in an
- *  older one then stay where they are until it has none: plugin.ts reads only the current one). */
-const PROTOCOL = 1
-
-/** The keeper's and tmux server's name for a server on `port`: `vaultite` on 8793, else `vaultite-<port>` (a QA one's); an
- *  app serving nothing (port 0: a test's, npm run check's) its own, never reaching a live server's shells. */
+/** The terminal server's name for a server on `port`: `vaultite` on 8793, else `vaultite-<port>` (a QA one's); an app
+ *  serving nothing (port 0: a test's, npm run check's) its own, never reaching a live server's terminals. */
 export const backendName = (port: number, pid = process.pid) => (port === 8793 ? "vaultite" : `vaultite-${port || `x${pid}`}`)
 
-/** The keeper at `name` (backendName, as the tmux server is named). */
-export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string; files: string; access(dir: string): Promise<Access | null> } {
-  // Its .log and .pid beside `files`; the socket is that path, or on Windows a named pipe of this user's.
-  const files = path.join(runtimeDir(), `vaultite-ptyd${PROTOCOL}-${name}.sock`)
-  const socket = WIN ? `\\\\.\\pipe\\vaultite-ptyd${PROTOCOL}-${name}-${userTag()}` : files
-  // (what says one runs, without opening it: a pipe opened to look would take one of its instances)
-  const mark = WIN ? `${files}.pid` : socket
-  let ctl: Promise<Wire> | null = null
-  const heard = new Set<(id: string, said: Said) => void>()
+const WIN_PIPE = (name: string, v: number) => `\\\\.\\pipe\\vaultite-${v === 1 ? "ptyd" : "termd"}${v}-${name}-${userTag()}`
+/** Where the terminal server for `name` (backendName) answers, and where its .log and .pid go: protocol `v`'s (1, the
+ *  keeper before it: ptyd). */
+export function serverFiles(name: string, v = PROTOCOL) {
+  const files = path.join(runtimeDir(), `vaultite-${v === 1 ? "ptyd" : "termd"}${v}-${name}.sock`)
+  return { files, socket: WIN ? WIN_PIPE(name, v) : files }
+}
 
-  /** Starts the keeper: detached (its own session and process group) and, under systemd, in a scope of its own, so
-   *  nothing that ends the server ends it. The desktop app's server runs on Electron as Node (ELECTRON_RUN_AS_NODE). */
-  function startKeeper(plain = false) {
-    let out: number | "ignore" = "ignore"
-    try { out = fs.openSync(`${files}.log`, "a") } catch { /* no log */ }
-    const [cmd, args] = plain ? [process.execPath, [o.daemon, socket, files]] : outliving(process.execPath, [o.daemon, socket, files], `ptyd-${name}`)
-    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
-    // systemd-run that couldn't make the scope (no user bus) fails at once: start it as before.
-    if (cmd !== process.execPath) child.once("exit", (code) => { if (code) startKeeper(true) })
-    child.unref()
-    if (typeof out === "number") fs.closeSync(out)
-  }
+/** A backend's view of the terminal server's answers: its Info as listed. */
+function listed(x: Info): Listed {
+  return { id: x.id, pid: x.pid || undefined, process: x.process, created: x.created, activity: x.activity, attached: x.clients, title: x.title, cwd: x.cwd || undefined,
+    command: x.command || undefined, cols: x.cols, rows: x.rows, meta: x.meta, said: x.said, ...(x.exit ? { exit: x.exit } : {}), ...(x.spare ? { spare: true } : {}) }
+}
 
-  /** A connection, starting the keeper when none answers. */
-  async function open(): Promise<Wire> {
-    try { return await connectTo(socket) } catch { /* not running */ }
-    startKeeper()
-    for (let i = 0; i < 60; i++) {
-      await new Promise((r) => setTimeout(r, 50))
-      try { return await connectTo(socket) } catch { /* not yet */ }
-    }
-    throw new Error(`the terminal's keeper didn't start (see ${files}.log)`)
-  }
-
-  function control(): Promise<Wire> {
-    if (!ctl) {
-      // (a connection that closes clears only itself: a retired keeper's can close after the next one's is made)
-      const p: Promise<Wire> = open().then((w) => {
-        w.onClose = () => { if (ctl === p) ctl = null }
-        // Its shells' OSC 7501 records as they change (a keeper from an older build doesn't know the op: nothing comes).
-        w.listeners.add((m) => { if (m.t === "status" && typeof m.id === "string") for (const fn of heard) fn(m.id, { seen: !!m.seen, status: (m.status ?? null) as Said["status"] }) })
-        w.send("status")
-        return w
-      })
-      ctl = p
-      p.catch(() => { if (ctl === p) ctl = null })
-    }
-    return ctl
-  }
-  /** Only when it's already running: listing shells shouldn't start it. */
-  async function running(): Promise<Wire | null> {
-    if (ctl) return ctl.catch(() => null)
-    try { await new Promise<void>((ok, fail) => fs.stat(mark, (e) => (e ? fail(e) : ok()))) } catch { return null }
-    return control().catch(() => null)
-  }
-  const ask = async (op: string, params: Record<string, unknown> = {}) => (await control()).request(op, params)
-
-  return {
-    name: "vaultite", label: "Vaultite", redraws: false, spares: true, socket, files,
-    ready: async () => !!(await control().catch(() => null)),
-    async has(id) { return (await this.list()).some((s) => s.id === id) },
-    async list() {
-      const w = await running()
+/** What either kind of terminal server answers with, given how to reach it. `control`: the connection for requests and
+ *  events (made when first asked), `running`: it only if the server already runs, `open`: a new one for an attach. */
+function termdClient(o: { name: string; label: string; control: () => Promise<Wire>; running: () => Promise<Wire | null>; open: () => Promise<Wire> }) {
+  const heard = new Set<(ev: BackendEvent) => void>()
+  const ask = async (op: string, params: Msg = {}, ms?: number) => (await o.control()).request(op, params, ms)
+  const backend = {
+    name: o.name, label: o.label, spares: true,
+    ready: async () => !!(await o.control().catch(() => null)),
+    async list(q?: { ended?: boolean }): Promise<Listed[]> {
+      const w = await o.running()
       if (!w) return []
-      try { return ((await w.request("list")).sessions as Listed[]) ?? [] } catch { return [] }
+      try {
+        const r = await w.request("list", q?.ended ? { ended: true } : {})
+        return [...(r.sessions as Info[] ?? []), ...(r.ended as Info[] ?? [])].map(listed)
+      } catch { return [] }
     },
-    async create(id, spec, c) {
+    async create(id: string, spec: Spec, c?: Made) {
       const l = launch(spec)
-      const params = { id, file: l.file, args: l.args, cwd: l.cwd, env: l.env, name: shellName(spec.shell), cols: spec.cols, rows: spec.rows,
-        scrollback: spec.scrollback, spare: !!c?.spare }
-      try { await ask("create", params) } catch (e) {
-        // A keeper whose files are gone (its checkout moved: ptyd.ts, stale) can't start shells, and makes way when it
-        // holds none: once it's gone, the next one starts from this server's files.
-        if (!/^RETIRING\b/.test((e as Error).message)) throw e
-        o.log?.("terminal: the keeper's files were gone, so it retired: starting a new one")
-        for (let i = 0; i < 40 && fs.existsSync(mark); i++) await new Promise((r) => setTimeout(r, 50))
-        ctl = null
-        await ask("create", params)
-      }
+      await ask("create", { id, file: l.file, args: l.args, cwd: l.cwd, env: l.env, shell: shellName(spec.shell), cols: spec.cols, rows: spec.rows,
+        scrollback: spec.scrollback, spare: !!c?.spare, ...(c?.command ? { command: c.command } : {}), ...(c?.meta ? { meta: c.meta } : {}) })
     },
-    async attach(id, cols, rows) {
-      await control()
-      const w = await open()
+    async attach(id: string, cols: number, rows: number): Promise<Link> {
+      await o.control()
+      const w = await o.open()
       let size = { cols, rows }
       const data = new Set<(d: string) => void>(), exits = new Set<(e: Exit) => void>()
       let exit: Exit | undefined
@@ -572,7 +466,7 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
         else if (m.t === "size") size = { cols: Number(m.cols), rows: Number(m.rows) }
         else if (m.t === "exit") { exit = { code: Number(m.code) || 0, signal: Number(m.signal) || 0 }; w.close() }
       })
-      // Ended, or the keeper went away (its shells with it: there's nothing to reattach to then either).
+      // Ended, or the server went away (its terminals with it: there's nothing to reattach to then either).
       w.onClose = () => { for (const fn of exits) fn(exit ?? null) }
       try {
         const a = await w.request("attach", { id })
@@ -587,38 +481,166 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
         onData: (fn) => { data.add(fn) },
         onExit: (fn) => { exits.add(fn) },
         snapshot: (fn) => w.call("snapshot", {}, (m) => fn(String(m.data ?? ""))),
-        // (its connection stops being read: the keeper holds the pty once that's full, ptyd.ts)
-        pause: () => w.sock.pause(),
-        resume: () => w.sock.resume(),
+        // (its connection stops being read: the server holds the pty once that's full)
+        pause: () => w.pipe.pause(),
+        resume: () => w.pipe.resume(),
         close: () => { exits.clear(); w.close() },
       }
     },
-    kill: async (id) => { await ask("kill", { id }) },
-    rename: async (from, to) => { await ask("rename", { id: from, to }) },
-    /** Whether the keeper running now can read `dir`; null when none runs (one isn't started for this). */
-    async access(dir) {
+    kill: async (id: string, signal?: string) => { await ask("kill", { id, ...(signal ? { signal } : {}) }) },
+    rename: async (from: string, to: string, c?: Made) => { await ask("rename", { id: from, to, ...(c?.command ? { command: c.command } : {}), ...(c?.meta ? { meta: c.meta } : {}) }) },
+    setMeta: async (id: string, patch: Record<string, string | null>) => { await ask("set", { id, meta: patch }) },
+    async capture(id: string, c: { format: CaptureFormat; lines?: number | null }) {
+      const r = await ask("capture", { id, format: c.format, ...(c.lines === undefined ? {} : { lines: c.lines ?? "all" }) }, 15000)
+      return { text: String(r.text ?? ""), cols: Number(r.cols), rows: Number(r.rows), cursor: r.cursor as Capture["cursor"], alternate: !!r.alternate,
+        ...(r.input ? { input: r.input as Capture["input"] } : {}), ...(r.ended ? { ended: true } : {}) }
+    },
+    async send(id: string, input: Input) {
+      if ("keys" in input) await ask("keys", { id, keys: input.keys })
+      // (the server brackets a paste when its program asked for that: it has the screen's modes)
+      else if (input.text) await ask("input", { id, b64: Buffer.from(input.text).toString("base64"), ...(input.paste ? { paste: true } : {}) })
+    },
+    // (the connection that hears them is made when the server runs: now, or with its first terminal)
+    events: (fn: (ev: BackendEvent) => void) => { heard.add(fn); void o.running() },
+    dropStatus: async (id: string) => { await (await o.running())?.request("status-drop", { id }).catch(() => {}) },
+  } satisfies Backend
+  /** The control connection's events, to whoever hears them (a server from an older build gives none). */
+  const follow = (w: Wire) => {
+    w.listeners.add((m) => {
+      if (m.t !== "event" || typeof m.id !== "string" || typeof m.type !== "string") return
+      const ev = (m.type === "started" && m.info ? { ...m, info: listed(m.info as Info) } : m) as unknown as BackendEvent
+      for (const fn of heard) fn(ev)
+    })
+    w.send("subscribe")
+  }
+  return { backend, follow, ask }
+}
+
+/** The terminal server at `name` (backendName). Older ones' terminals (the keeper before it, ptyd) are taken over by it
+ *  (termd/adopt.ts) once it runs, so none is left unseen after an upgrade. */
+export function termdBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void; oldServers?: string[] }) {
+  const { files, socket } = serverFiles(name)
+  // (what says one runs, without opening it: a pipe opened to look would take one of its instances)
+  const mark = WIN ? `${files}.pid` : socket
+  let ctl: Promise<Wire> | null = null
+
+  /** Starts it: detached (its own session and process group) and, under systemd, in a scope of its own, so nothing that
+   *  ends the app's server ends it. The desktop app's server runs on Electron as Node (ELECTRON_RUN_AS_NODE). */
+  function startServer(plain = false) {
+    let out: number | "ignore" = "ignore"
+    try { out = fs.openSync(`${files}.log`, "a") } catch { /* no log */ }
+    const [cmd, args] = plain ? [process.execPath, [o.daemon, socket, files]] : outliving(process.execPath, [o.daemon, socket, files], `termd-${name}`)
+    const child = spawn(cmd, args, { detached: true, stdio: ["ignore", out, out], cwd: os.homedir(), env: process.env, windowsHide: true })
+    // systemd-run that couldn't make the scope (no user bus) fails at once: start it as before.
+    if (cmd !== process.execPath) child.once("exit", (code) => { if (code) startServer(true) })
+    child.unref()
+    if (typeof out === "number") fs.closeSync(out)
+  }
+
+  /** A connection, starting the server when none answers. */
+  async function open(): Promise<Wire> {
+    try { return await connectTo(socket) } catch { /* not running */ }
+    startServer()
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 50))
+      try { return await connectTo(socket) } catch { /* not yet */ }
+    }
+    throw new Error(`the terminal server didn't start (see ${files}.log)`)
+  }
+
+  function control(): Promise<Wire> {
+    if (!ctl) {
+      // (a connection that closes clears only itself: a retired server's can close after the next one's is made)
+      const p: Promise<Wire> = open().then(async (w) => {
+        w.onClose = () => { if (ctl === p) ctl = null }
+        client.follow(w)
+        // An older server's terminals, taken over before anything is listed (they're the user's live shells).
+        for (const old of o.oldServers ?? []) {
+          const r = await w.request("adopt", { socket: old, scrollback: limits.scrollback() }, 60_000).catch((e: Error) => ({ error: e.message }) as Msg)
+          if (Array.isArray(r.adopted) && r.adopted.length) o.log?.(`terminal: took over ${r.adopted.length} terminals from the older server at ${old}`)
+          else if (r.error) o.log?.(`terminal: couldn't take over the terminals at ${old}: ${r.error}`)
+        }
+        return w
+      })
+      ctl = p
+      p.catch(() => { if (ctl === p) ctl = null })
+    }
+    return ctl
+  }
+  /** Only when it's already running (or an older one with terminals to take over is): listing shouldn't start it. */
+  async function running(): Promise<Wire | null> {
+    if (ctl) return ctl.catch(() => null)
+    const there = (f: string) => new Promise<boolean>((ok) => fs.stat(f, (e) => ok(!e)))
+    if (!(await there(mark)) && !(await Promise.all((o.oldServers ?? []).map(there))).some(Boolean)) return null
+    return control().catch(() => null)
+  }
+  const client = termdClient({ name: "vaultite", label: "Vaultite", control, running, open })
+  const b = client.backend
+  return {
+    ...b, socket, files,
+    async create(id: string, spec: Spec, c?: Made) {
+      try { await b.create(id, spec, c) } catch (e) {
+        // A server whose files are gone (its checkout moved: termd.ts, stale) can't start terminals, and makes way when
+        // it holds none: once it's gone, the next one starts from this server's files.
+        if (!/^RETIRING\b/.test((e as Error).message)) throw e
+        o.log?.("terminal: the terminal server's files were gone, so it retired: starting a new one")
+        for (let i = 0; i < 40 && fs.existsSync(mark); i++) await new Promise((r) => setTimeout(r, 50))
+        ctl = null
+        await b.create(id, spec, c)
+      }
+    },
+    /** Whether the terminal server running now can read `dir`; null when none runs (one isn't started for this). */
+    async access(dir: string): Promise<Access | null> {
       const w = await running()
       if (!w) return null
-      let r: Record<string, unknown>
-      try { r = await w.request("access", { path: dir }) } catch (e) {
-        if (/unknown op/.test((e as Error).message)) return { ok: null, why: "its keeper is from an older build, which can't tell" }
-        return { ok: null, why: (e as Error).message }
-      }
-      return accessOf(r.ok ? "" : String(r.code || "EIO"))
+      try {
+        const r = await w.request("access", { path: dir })
+        return accessOf(r.ok ? "" : String(r.code || "EIO"))
+      } catch (e) { return { ok: null, why: (e as Error).message } }
     },
-    screen: async (id, lines) => String((await ask("screen", { id, lines })).text ?? ""),
-    status: {
-      // (the connection that hears them is made when the keeper runs: now, or with its first shell)
-      follow: (fn) => { heard.add(fn); void running() },
-      drop: async (id) => { await (await running())?.request("status-drop", { id }).catch(() => {}) },
-    },
-    async send(id, text, enter, o) {
-      // (the keeper brackets a paste when its program asked for that: it has the screen's modes)
-      if (text) await ask("input", { id, b64: Buffer.from(text).toString("base64"), ...(o?.paste ? { paste: true } : {}) }).catch(() => {})
-      if (enter) {
-        if (text) await new Promise((r) => setTimeout(r, settle(text)))
-        await ask("input", { id, b64: Buffer.from("\r").toString("base64") }).catch(() => {})
-      }
-    },
+    /** The server's own answer to `op` (tests, and what only it knows). */
+    ask: client.ask,
   }
+}
+
+/** Terminals held in this process (when the terminal server can't start): the same server's core (termd/host.ts),
+ *  so they're listed, captured and waited for alike, but end with this server. */
+export function localBackend(o: { log?: (...a: unknown[]) => void } = {}): Backend {
+  let made: Promise<import("./termd/host.ts").Host> | null = null
+  const hostNow = () => (made ??= import("./termd/host.ts").then(({ host }) => host({ log: o.log ?? (() => {}), pid: process.pid, file: "this server" })))
+  /** An in-process pipe: each message goes on in order, a turn later (as a socket's would), held while paused. */
+  async function open(): Promise<Wire> {
+    const h = await hostNow()
+    let paused = false, closed = false
+    const held: Msg[] = [], toClient = new Set<(m: Msg) => void>(), closers: (() => void)[] = []
+    let queued = 0
+    const deliver = (m: Msg) => { for (const fn of toClient) fn(m) }
+    const conn = h.connect({
+      session: null, ready: false,
+      send: (m) => {
+        if (closed) return
+        if (paused) { held.push(m as Msg); queued += String((m as Msg).d ?? "").length; return }
+        queueMicrotask(() => { if (!closed) deliver(m as Msg) })
+      },
+      backlog: () => queued,
+    })
+    const w = new Wire({
+      write: (m) => queueMicrotask(() => { if (!closed) conn.take(m) }),
+      onMessage: (fn) => { toClient.add(fn) },
+      onClose: (fn) => { closers.push(fn) },
+      close: () => { if (closed) return; closed = true; conn.gone(); for (const fn of closers.splice(0)) fn() },
+      pause: () => { paused = true },
+      resume: () => {
+        paused = false
+        for (const m of held.splice(0)) deliver(m)
+        queued = 0
+        conn.drained()
+      },
+    })
+    return w
+  }
+  let ctl: Promise<Wire> | null = null
+  const control = () => (ctl ??= open().then((w) => { client.follow(w); return w }))
+  const client = termdClient({ name: "pty", label: "This server", control, running: async () => (made ? control() : null), open })
+  return { ...client.backend, spares: false }
 }

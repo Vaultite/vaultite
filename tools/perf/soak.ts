@@ -257,7 +257,7 @@ async function terminal(i: number) {
     body: JSON.stringify({ text: "for i in $(seq 1 3000); do echo line $i of the soak output; done", enter: true }) }).catch(() => {})
   await wait(4000)
   terminalsTried++
-  if (/line 3000 of/.test(JSON.stringify(await op("terminal.screen", { id: sid, lines: 5 }).catch(() => "")))) terminals++
+  if (/line 3000 of/.test(JSON.stringify(await op("terminal.capture", { id: sid, lines: 5 }).catch(() => "")))) terminals++
   await command("tab:close")
   await fetch(`${BASE()}api/terminals/${sid}`, { method: "DELETE", headers: CLI }).catch(() => {})
 }

@@ -34,7 +34,7 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** What the server keeps of a run: the note a session was started on (its tab opens by that note's), and a way to tell
  *  the app's lists now, so a tab opened right after knows it. */
-type Keep = { startedOn: (id: string, rel: string) => void; listNow: () => Promise<void> }
+type Keep = { startedOn: (id: string, rel: string) => Promise<void>; listNow: () => Promise<void> }
 
 export function runOps(plugin: Plugin, keep: Keep) {
   /** The machine `id` names when it isn't this one (Machines), else null. */
@@ -192,7 +192,7 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
         r = await p
       }
       if (!m) {
-        keep.startedOn(r.id, rel)
+        await keep.startedOn(r.id, rel)
         await keep.listNow().catch(() => {})
       }
       let shown = false
@@ -205,7 +205,7 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
         ...(m ? { machine: m.id } : {}), ...(account ? { account } : {}) }
     },
     text: (r) => `${r.running ? "Already running:" : "Started"} ${r.path} ${r.agent ? `with ${r.agent}` : "in a shell"}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""} in ${r.id}${r.shown ? "" : ` (${r.handed
-      ? "in the background: its report comes to the inbox" : "no tab open"}; vau terminal screen ${r.machine ? `${r.id.split("@")[0]} on that machine` : r.id})`}.`,
+      ? "in the background: its report comes to the inbox" : "no tab open"}; vau terminal capture ${r.id})`}.`,
     did: ({ path: rel, agent, command }) => ({ action: "run", text: `Handed ${rel} to ${command ? "a shell command" : agent || "claude"}` }),
   })
 
@@ -264,7 +264,7 @@ machine's copies are there. title: the prompt's first words, until the agent nam
       }
       return { id, agent, title: askTitle(said), shown, ...(m ? { machine: m.id } : {}), ...(account ? { account } : {}) }
     },
-    text: (r) => `Asked ${r.agent}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""}: "${r.title}", in ${r.id}${r.shown ? "" : ` (in the background: vau terminal screen ${r.machine ? `${r.id.split("@")[0]} on that machine` : r.id})`}.`,
+    text: (r) => `Asked ${r.agent}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""}: "${r.title}", in ${r.id}${r.shown ? "" : ` (in the background: vau terminal capture ${r.id})`}.`,
     did: ({ prompt, agent }) => ({ action: "run", text: `Asked ${agent} ${quoted(prompt, 60)}` }),
   })
 }

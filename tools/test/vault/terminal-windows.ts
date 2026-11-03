@@ -10,7 +10,7 @@ const ROOT = path.resolve(import.meta.dirname, "../../..")
 
 export default async ($: VaultTest) => {
   const { api, check, tmp } = $
-  const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
+  const { termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
   const { defaultShell, shellsHere } = await import("../../../plugins/core/terminal/shells.ts")
   const { distros } = await import("../../../core/wsl.ts")
   const stopKeeper = (files: string) => { try { process.kill(Number(fs.readFileSync(`${files}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
@@ -20,11 +20,11 @@ export default async ($: VaultTest) => {
   check("windows: the shells offered are PowerShell's, Command Prompt and WSL's distros, PowerShell the default",
     /pwsh|powershell/i.test(defaultShell()) && shells.some((x) => x.label === "Command Prompt") && shells.some((x) => x.label === "Windows PowerShell"), shells)
 
-  // The keeper on a named pipe: a server (another process) starts a shell and goes away; this one finds it and reattaches.
+  // The terminal server on a named pipe: a server (another process) starts a shell and goes away; this one finds it and reattaches.
   {
-    const name = `testwin-${process.pid}`, keeper = ptydBackend(name, { daemon: path.join(ROOT, "plugins/core/terminal/ptyd.ts") })
-    const starter = `import { ptydBackend } from ${JSON.stringify(new URL("../../../plugins/core/terminal/backend.ts", import.meta.url).href)}
-const k = ptydBackend(${JSON.stringify(name)}, { daemon: ${JSON.stringify(path.join(ROOT, "plugins/core/terminal/ptyd.ts"))} })
+    const name = `testwin-${process.pid}`, keeper = termdBackend(name, { daemon: path.join(ROOT, "plugins/core/terminal/termd/termd.ts") })
+    const starter = `import { termdBackend } from ${JSON.stringify(new URL("../../../plugins/core/terminal/backend.ts", import.meta.url).href)}
+const k = termdBackend(${JSON.stringify(name)}, { daemon: ${JSON.stringify(path.join(ROOT, "plugins/core/terminal/termd/termd.ts"))} })
 await k.create("pipe1", { shell: ${JSON.stringify(defaultShell())}, run: null, cwd: ${JSON.stringify(tmp)}, env: process.env, ctx: {}, cols: 100, rows: 30, scrollback: 500 })
 console.log("made")
 process.exit(0)`
@@ -39,9 +39,9 @@ process.exit(0)`
     let listed: Any = null, screen = ""
     try {
       listed = (await keeper.list()).find((x) => x.id === "pipe1") ?? null
-      await waitFor(async () => (await keeper.screen("pipe1", 10)).includes(">"), 20_000, 200)
-      await keeper.send("pipe1", "Write-Output ('sum=' + (2+3))", true)
-      await waitFor(async () => (screen = await keeper.screen("pipe1", 20)).includes("sum=5"), 15_000, 200)
+      await waitFor(async () => (await keeper.capture("pipe1", { format: "text", lines: 10 })).text.includes(">"), 20_000, 200)
+      await keeper.send("pipe1", { text: "Write-Output ('sum=' + (2+3))\r" })
+      await waitFor(async () => (screen = (await keeper.capture("pipe1", { format: "text", lines: 20 })).text).includes("sum=5"), 15_000, 200)
       const link = await keeper.attach("pipe1", 100, 30)
       let seen = ""
       link.onData((d) => { seen += d })
@@ -52,7 +52,7 @@ process.exit(0)`
       await keeper.kill("pipe1")
       await waitFor(async () => !(await keeper.list()).length, 10_000, 200)
     } finally { stopKeeper(keeper.files) }
-    check("windows: the keeper, on a named pipe, keeps a shell its server left and lets another reattach to it", made.endsWith("made") && !!listed &&
+    check("windows: the terminal server, on a named pipe, keeps a shell its server left and lets another reattach to it", made.endsWith("made") && !!listed &&
       listed.process.match(/pwsh|powershell/) && screen.includes("sum=5") && screen.includes("again=16") && keeper.socket.startsWith("\\\\.\\pipe\\"),
       [made, listed, screen.slice(-800), keeper.socket])
   }
@@ -74,7 +74,7 @@ process.exit(0)`
   await new Promise<void>((ok) => listener.listen(0, "127.0.0.1", ok))
   const portWas = process.env.PORT
   process.env.PORT = String((listener.address() as { port: number }).port)
-  const screenOf = async (id: string) => { const [, r] = await api("GET", `terminals/${id}/screen?lines=60`); return ((r?.lines ?? []) as string[]).join("\n") }
+  const screenOf = async (id: string) => { const [, r] = await api("GET", `terminals/${id}/capture?lines=60`); return String(r?.text ?? "") }
   const run = async (id: string, shell: string, text: string, want: RegExp) => {
     term.patchSettings({ shell })
     let code: number, r: Any

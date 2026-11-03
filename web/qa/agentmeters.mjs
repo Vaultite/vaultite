@@ -42,7 +42,7 @@ try {
   await page.goto(`${B}#view/terminal%2F${term}`)
   const listed = await until(async () => (await api("terminals/sessions")).sessions?.some((x) => x.id === term), 10000)
   await send(term, "echo QA-PID-$$")
-  const pid = Number(await until(async () => /QA-PID-(\d+)/.exec(((await api(`terminals/${encodeURIComponent(term)}/screen`)).lines ?? []).join("\n"))?.[1], 10000)) || 0
+  const pid = Number(await until(async () => /QA-PID-(\d+)/.exec(((await api(`terminals/${encodeURIComponent(term)}/capture?lines=50`)).text ?? ""))?.[1], 10000)) || 0
   check("the terminal's shell runs", listed && pid > 0, pid)
   // Its session: Claude Code's file for the process (the shell, which the stand-in runs under), and its transcript.
   request(150)

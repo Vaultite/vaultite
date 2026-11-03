@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { WebSocket } from "ws"
 import { type Any, check, sleep, skip, section, summary, waitFor } from "./test/lib.ts"
 import { BASE, LIVE, PORT, api, REPO, TMP, VAULT, agentPath, endAndCheck, fakesPath, hideFake, makeVault, mcpTools, rand, run, screenHas, serverLog,
-  setBackend, setEnv, shellFake, startServer, stopBackends, stopServer, term, which } from "./test/agentkit.ts"
+  setEnv, shellFake, startServer, stopBackends, stopServer, term, which } from "./test/agentkit.ts"
 
 const t0 = Date.now()
 const AGENTS = ["claude", "codex"]
@@ -53,20 +53,13 @@ async function fixturePart() {
   await terminalsPart("vaultite")
   await stopServer()
   stopBackends()
-  if (["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"].some((p) => fs.existsSync(p))) {
-    await startServer()
-    await setBackend("tmux")
-    await terminalsPart("tmux")
-    await stopServer()
-    stopBackends()
-  } else skip("terminals in tmux", "tmux isn't installed")
 }
 
 /** The fake agents in terminals of one backend: started in the vault's folder, listed, surviving a server restart,
  *  ended with nothing left; text sent whole; a missing binary. */
 async function terminalsPart(backend: string) {
-  section(`fixtures: terminals (${backend === "vaultite" ? "the keeper" : backend})`)
-  const tag = backend === "vaultite" ? "keeper" : backend
+  section(`fixtures: terminals (${backend === "vaultite" ? "the terminal server" : backend})`)
+  const tag = backend === "vaultite" ? "termd" : backend
   const ids = Object.fromEntries(AGENTS.map((a) => [a, `${a}-${rand()}`]))
   for (const [agent, id] of Object.entries(ids)) {
     const [c, r] = await term.start(id)
@@ -133,7 +126,6 @@ async function livePart() {
   section("live: the real agents")
   setEnv(agentPath())
   await startServer()
-  await setBackend("vaultite")
   for (const agent of AGENTS) {
     if (!which(agent, agentPath())) { skip(`live ${agent}`, "not installed"); continue }
     const id = `${agent}-${rand()}`

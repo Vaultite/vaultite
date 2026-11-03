@@ -1638,8 +1638,8 @@ export async function pickIn(ctx: Pick<OpCtx, "api">, e: InboxEvent, picks: stri
   const choices = picks === "chat" ? picks : qs.map((q, i) => choiceOf(q, picks[i], typed[i]))
   const t = `terminals/${encodeURIComponent(e.terminal)}`
   const squash = (s: string) => s.replace(/\s+/g, "")
-  const { lines } = await ctx.api("GET", `${t}/screen?lines=40`).catch(() => ({ lines: [] })) as { lines: string[] }
-  if (!squash(lines.join("")).includes(squash(qs[0].question).slice(0, 80))) throw new OpError("its terminal doesn't show that question any more", 409)
+  const { text } = await ctx.api("GET", `${t}/capture?lines=40`).catch(() => ({ text: "" })) as { text: string }
+  if (!squash(text).includes(squash(qs[0].question).slice(0, 80))) throw new OpError("its terminal doesn't show that question any more", 409)
   for (const [i, k] of (pick(qs, choices) as string[]).entries()) {
     if (i) await new Promise((r) => setTimeout(r, 200))
     await ctx.api("POST", `${t}/send`, { text: k, enter: false })
@@ -2092,7 +2092,7 @@ export async function submit(ctx: Pick<OpCtx, "api">, id: string, text: string, 
     return false
   }
   // (shown: its end in the lines that changed, spaces aside as the agent wraps it, or a long one as a paste's marker)
-  const screen = async () => ((await ctx.api("GET", `terminals/${t}/screen?lines=200`)) as { lines: string[] }).lines
+  const screen = async () => String(((await ctx.api("GET", `terminals/${t}/capture?lines=200`)) as { text: string }).text).split("\n")
   const squash = (s: string) => s.replace(/\s+/g, "")
   const end = squash(text).slice(-24)
   const before = new Set(await screen())

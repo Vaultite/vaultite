@@ -9,7 +9,7 @@ const api = (p, o) => fetch(new URL(`/api/${p}`, B), o).then((r) => r.json())
 const id = `qa${Date.now().toString(36)}`
 
 const page = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }))
-const screenText = async (sid) => (await api(`terminals/${sid}/screen?lines=40`)).lines?.join("\n") ?? ""
+const screenText = async (sid) => (await api(`terminals/${sid}/capture?lines=40`)).text ?? ""
 await page.goto(B); await wait(2000)
 await page.evaluate((s) => { location.hash = `#view/terminal%2F${s}` }, id); await wait(1500)
 await page.keyboard.type("for i in $(seq 1 6000); do echo row-$i; done\n")

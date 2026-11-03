@@ -64,14 +64,13 @@ export async function stopServer() {
   await waitFor(async () => !(await portOpen()), 10000, 200)
 }
 
-/** The keeper and tmux server this port's terminals run in (they outlive the server on purpose). */
+/** The terminal server this port's terminals run in (it outlives the server on purpose). */
 export function stopBackends() {
   // (core/runtime.ts: $TMPDIR on a Mac; Linux's $XDG_RUNTIME_DIR/vaultite, else $TMPDIR/vaultite-<uid> as in a bare env)
   for (const dir of [os.tmpdir(), process.env.XDG_RUNTIME_DIR && path.join(process.env.XDG_RUNTIME_DIR, "vaultite"), path.join(os.tmpdir(), `vaultite-${process.getuid?.()}`), `/tmp/vaultite-${process.getuid?.()}`]) {
     if (!dir) continue
-    try { process.kill(Number(fs.readFileSync(path.join(dir, `vaultite-ptyd1-vaultite-${PORT}.sock.pid`), "utf8").trim()), "SIGTERM") } catch { /* none */ }
+    try { process.kill(Number(fs.readFileSync(path.join(dir, `vaultite-termd2-vaultite-${PORT}.sock.pid`), "utf8").trim()), "SIGTERM") } catch { /* none */ }
   }
-  try { execFileSync("tmux", ["-L", `vaultite-${PORT}`, "kill-server"], { stdio: "ignore" }) } catch { /* none */ }
 }
 
 // ---------- processes (each one's environment: VAULTITE_TERMINAL names its terminal, MARK this run)
@@ -138,8 +137,8 @@ function killAll(ps: { pid: number; pgid: number }[]) {
 export const term = {
   start: (id: string, prompt?: string) => api("POST", `terminals/${encodeURIComponent(id)}`, prompt ? { prompt } : {}),
   screen: async (id: string, lines = 300) => {
-    const [c, b] = await api("GET", `terminals/${encodeURIComponent(id)}/screen?lines=${lines}`)
-    return c === 200 ? (b.lines as string[]).join("\n") : ""
+    const [c, b] = await api("GET", `terminals/${encodeURIComponent(id)}/capture?lines=${lines}`)
+    return c === 200 ? String(b.text) : ""
   },
   send: (id: string, text: string, enter = true) => api("POST", `terminals/${encodeURIComponent(id)}/send`, { text, enter }),
   end: (id: string) => api("DELETE", `terminals/${encodeURIComponent(id)}`),
@@ -268,11 +267,6 @@ export async function makeVault(on: string[] = []) {
   fs.writeFileSync(pj, JSON.stringify(conf, null, 2))
   fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", "machines"), { recursive: true })
   fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", "machines", "data.json"), JSON.stringify({ machines: [] }))
-}
-/** Where new shells run, set on the running server (a `local` setting: this machine's, never the vault's). */
-export async function setBackend(name: "vaultite" | "tmux") {
-  const [c, b] = await api("PATCH", "config/plugin/terminal", { backend: name })
-  if (c !== 200) throw new Error(`the terminal backend wasn't set: ${c} ${JSON.stringify(b)}`)
 }
 
 /** A fake agent in BIN; what it was run with goes in the fake log (`fakeLog`), as `{bin, args, cwd}` lines. It runs

@@ -1,6 +1,6 @@
 // The tests' shared kit: check, skip, sections (timed; one that throws ends there, not the run), the summary, the
 // record of runs (tools/.runs/test-runs.jsonl).
-import { type ChildProcess, spawn, spawnSync, type SpawnOptions } from "node:child_process"
+import { type ChildProcess, spawn, type SpawnOptions } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
@@ -73,11 +73,10 @@ export function testServer(o: SpawnOptions = {}): ChildProcess {
   return s
 }
 
-/** Ends the terminals of a test server on `port`: its keeper and tmux outlive it on purpose (CLAUDE.md, Running and
- *  verifying), the keeper's pid where the server keeps it (Linux: $XDG_RUNTIME_DIR/vaultite, not $TMPDIR). */
+/** Ends the terminals of a test server on `port`: its terminal server outlives it on purpose (CLAUDE.md, Running and
+ *  verifying), its pid where the server keeps it (Linux: $XDG_RUNTIME_DIR/vaultite, not $TMPDIR). */
 export function stopTerminals(port: number | string) {
-  try { process.kill(Number(fs.readFileSync(path.join(runtimeDir(), `vaultite-ptyd1-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* none */ }
-  spawnSync("tmux", ["-L", `vaultite-${port}`, "kill-server"], { stdio: "ignore" })
+  try { process.kill(Number(fs.readFileSync(path.join(runtimeDir(), `vaultite-termd2-vaultite-${port}.sock.pid`), "utf8"))) } catch { /* none */ }
 }
 
 // A test that hangs fails where it is, rather than holding its CI job until the job's timeout: nothing checked for this

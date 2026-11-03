@@ -695,7 +695,7 @@ export class App {
   }
 
   /** /api/ops: GET the catalog or one entry, POST runs one (`?as=text`: its answer as Markdown; `?as=answer`: that and
-   *  its picture, for `vau mcp`). */
+   *  its picture, for `vau mcp`; `?as=both`: the answer and its Markdown, for vau to read an exit code from). */
   private async opsRoute(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<unknown> {
     if (method === "GET" && parts.length === 0) {
       if (query.as === "text") return new Text(this.opsDoc() + "\n")
@@ -718,6 +718,7 @@ export class App {
     // (server.ts synced the vault for it: unlocked() above; callOp holds it for a write)
     const { result, text, image } = await this.callOp(parts[0], given, undefined, { synced: true, http, input: raw ? http : undefined })
     if (query.as === "answer") return { text, ...(image ? { image } : {}) }
+    if (query.as === "both") return { result: result ?? null, text }
     return query.as !== "text" ? result ?? null : new Text(text)
   }
 

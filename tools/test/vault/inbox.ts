@@ -296,7 +296,7 @@ export default async ($: VaultTest) => {
       {
         const { pickIn } = await import("../../../plugins/core/inbox/plugin.ts")
         const sent: string[][] = [[]]
-        const ctx = { api: async (method: string, _route: string, body?: Any) => (method === "POST" ? (sent.at(-1)!.push(body.text), {}) : { lines: ["How should it", "sign builds?", "❯ 1. Local cert"] }) }
+        const ctx = { api: async (method: string, _route: string, body?: Any) => (method === "POST" ? (sent.at(-1)!.push(body.text), {}) : { text: ["How should it", "sign builds?", "❯ 1. Local cert"].join("\n") }) }
         const keys = async (picks: string[] | "chat", typed?: string[], ev: Any = r[0]) => { sent.push([]); await pickIn(ctx, { ...ev }, picks, typed); return sent.at(-1)!.join("|") }
         const k = [await keys(["2"]), await keys(["Use the M4's"]), await keys([""], ["Use the M4's"]), await keys("chat")]
         check("pick in its terminal: a session's thread (kind session), by an option, typed as its own (a reply's or its row's), or Chat about this",
@@ -536,9 +536,9 @@ export default async ($: VaultTest) => {
         const sent: string[] = []
         const api = async (method: string, route: string, body?: unknown) => {
           if (method === "POST") { sent.push(JSON.stringify(body)); return {} }
-          if (route.includes("/screen")) {
+          if (route.includes("/capture")) {
             const prompt = shows && sent.length ? "❯ Ship it" : "❯ yes, ship it"
-            return { lines: ["Want me to ship it?", "────", prompt, "────"] }
+            return { text: ["Want me to ship it?", "────", prompt, "────"].join("\n") }
           }
           return { sessions: [{ id: "claude-k3j2h1g0", state: works(sent) ? "working" : "idle" }] }
         }

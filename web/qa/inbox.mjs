@@ -128,9 +128,9 @@ await page.locator("[data-sonner-toast]", { hasText: "What should I echo" }).get
 await until(() => sheet.locator("[data-reply]").count())
 await sheet.locator("[data-reply]").fill("echo qa-replied")
 await sheet.getByRole("button", { name: "Send" }).click()
-const typed = await until(async () => ((await api("GET", `terminals/${term}/screen`))?.lines ?? []).join("\n").includes("qa-replied"), 10000)
+const typed = await until(async () => ((await api("GET", `terminals/${term}/capture?lines=50`))?.text ?? "").includes("qa-replied"), 10000)
 check("Send: the reply typed into its terminal, and its thread working on it", !!typed && !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === termRow?.id)?.state === "working")),
-  (await api("GET", `terminals/${term}/screen`).catch(() => ({})))?.lines?.slice(-5))
+  String((await api("GET", `terminals/${term}/capture?lines=5`).catch(() => ({})))?.text ?? ""))
 // A row naming a plain shell (anyone who writes the vault can name one): its box says a new session gets the reply,
 // never the shell, which would run it.
 const shell = `qd${Date.now().toString(36)}`

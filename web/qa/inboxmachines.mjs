@@ -16,7 +16,7 @@ const term = `qm${Date.now().toString(36)}`
 await there("POST", `terminals/${term}`)
 await wait(1500)
 await there("POST", `terminals/${term}/send`, { text: "printf 'Do you want to proceed?\\n'", enter: true })
-const screen = async () => ((await there("GET", `terminals/${term}/screen`))?.lines ?? []).join("\n")
+const screen = async () => ((await there("GET", `terminals/${term}/capture?lines=50`))?.text ?? "")
 await until(async () => (await screen()).includes("Do you want to proceed?"))
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })

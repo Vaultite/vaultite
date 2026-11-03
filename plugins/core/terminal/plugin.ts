@@ -11,15 +11,14 @@ import {
   type Request, type Access, accessOf, NOT_THE_USER, userSurface, whoOf,
 } from "../../../core/plugins.ts"
 import {
-  asPaste, backendName, launch, limits, loadPty, mirrored, plain, plainBackend, psQuote, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, wslPath,
-  type AgentRun, type Backend, type Link, type Listed as Shell,
+  asPaste, backendName, type BackendEvent, type CaptureFormat, type Ended, launch, limits, loadPty, localBackend, mirrored, plain, psQuote, ptyLink, runScript, serverFiles, SHELL_DIR,
+  shellArgs, shellFiles, termdBackend, unmarked, wslPath, type AgentRun, type Backend, type Link, type Listed as Shell, type Made, type Spec,
 } from "./backend.ts"
 import { defaultShell, gitBash, kindOf, progName, shellsHere, type ShellKind } from "./shells.ts"
 import { shown, type Kind, type Said, type SessionState } from "./osc7501.ts"
 import { runOps } from "./run.ts"
 import type { Job } from "./starter.ts"
 import { terminalOps } from "./ops.ts"
-import { tmuxBackend } from "./tmux.ts"
 export const plugin = new Plugin(import.meta.url)
 
 /** How much output a terminal client may be behind before it's dropped (it reconnects and gets the replay). */
@@ -81,7 +80,6 @@ type Session = {
   id: string; backend: Backend; link: Link; clients: Set<WebSocket>; started: number
   ended: boolean // ended by us (a tab's close, End session): reported as SIGHUP, like a shell killed directly
   kept?: boolean // ended by us, its tabs kept (end's `keep`)
-  out: Tail // its last `scrollback` lines of output (a backend without pictures)
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
   opened?: string // how its start went, for its first tab's span: "spare 12ms", "new 95ms"
   blocked?: boolean // macOS keeps its shell from the folder its agent runs in: its tabs say so
@@ -141,38 +139,69 @@ const STATES = path.join(TMP, "states")
 const UPLOADS_KEPT = 30 * 86_400_000
 const SPARE = "vauspare-" // a shell kept ready (below)
 
-const keeper = ptydBackend(NAME, { daemon: path.join(plugin.dir, "ptyd.ts"), log: console.error })
-const tmuxShells = tmuxBackend(NAME, { conf: path.join(plugin.dir, "tmux.conf"), env })
-const fallback = plainBackend()
-/** Another plugin's backend, while it's on (the service "terminal:backend": herdr's), or null. */
+// The terminal server (termd/), which takes over the keeper's terminals from before it (ptyd, protocol 1) once it runs.
+const keeper = termdBackend(NAME, { daemon: path.join(plugin.dir, "termd", "termd.ts"), log: console.error, oldServers: [serverFiles(NAME, 1).socket] })
+const fallback = localBackend({ log: (...a) => console.error("terminal (in this server):", ...a) })
+/** Another plugin's backend, while it's on (the service "terminal:backend": herdr's, Rex's), or null. One made for the
+ *  Backend before this one (no capture) isn't used: its plugin needs an update. */
+let oldBackend = ""
 function pluginBackend(): Backend | null {
   const fn = plugin.service("terminal:backend")
-  try { return typeof fn === "function" ? (fn() as Backend | null) ?? null : null } catch { return null }
+  let b: Backend | null = null
+  try { b = typeof fn === "function" ? (fn() as Backend | null) ?? null : null } catch { return null }
+  if (b && typeof b.capture !== "function") {
+    if (oldBackend !== b.name) { oldBackend = b.name; console.error(`terminal: the backend ${b.name} is made for an older Terminal (it has no capture): not used until its plugin is updated`) }
+    return null
+  }
+  if (b && b.events && !heard.has(b)) { heard.add(b); b.events((ev) => onEvent(b!, ev)) }
+  return b
 }
+const heard = new WeakSet<Backend>()
 /** What a plugin's backend may use (it implements Backend, backend.ts, through plugin.peer("terminal").exports): */
 plugin.exports.backendKit = { launch, loadPty, ptyLink, mirrored, runScript, shellArgs, plain }
-/** Where this server keeps its shells: the keeper's socket (or pipe) and the tmux server's name. */
+/** Where this server keeps its terminals: the terminal server's socket (or pipe) and files. */
 plugin.exports.kept = { name: NAME, socket: keeper.socket, files: keeper.files }
 /** Every backend, in the order a session's id is looked for. */
-const backends = (): Backend[] => [keeper, ...(tmuxShells ? [tmuxShells] : []), fallback, ...[pluginBackend()].filter((b): b is Backend => !!b)]
+const backends = (): Backend[] => [keeper, fallback, ...[pluginBackend()].filter((b): b is Backend => !!b)]
 
-/** Where a new shell starts: a plugin's backend that asks for them (and answers), else the settings' `backend`
- *  (vaultite, the default, or tmux when it's installed), else this server's own children if the keeper can't start. */
+/** The terminals another plugin's backend holds (herdr's panes), as last seen, kept on this machine: a tab of one waits
+ *  for that backend when it's away rather than starting a shell under its id. The last 2000. */
+let owners: Record<string, { backend: string; label: string }> | null = null
+const ownersFile = () => path.join(plugin.localDir(), "backends.json")
+function ownerOf(id: string) {
+  if (!owners) { try { owners = JSON.parse(fs.readFileSync(ownersFile(), "utf8")) } catch { owners = {} } }
+  return owners![id] ?? null
+}
+let ownersWrite: ReturnType<typeof setTimeout> | null = null
+function ownedBy(id: string, b: Backend) {
+  if (ownerOf(id)?.backend === b.name) return
+  const all = owners!
+  delete all[id]
+  all[id] = { backend: b.name, label: b.label }
+  const ids = Object.keys(all)
+  for (const old of ids.slice(0, Math.max(0, ids.length - 2000))) delete all[old]
+  ownersWrite ??= setTimeout(() => { ownersWrite = null; try { fs.writeFileSync(ownersFile(), JSON.stringify(owners)) } catch { /* next time */ } }, 1000)
+}
+const ours = (b: Backend) => b === keeper || b === fallback
+
+/** Where a new terminal starts: a plugin's backend that asks for them (and answers), else the terminal server, else
+ *  this server itself if that can't start. */
 async function backendForNew(): Promise<Backend> {
   const other = pluginBackend()
   if (other?.preferred && (await other.ready().catch(() => false))) return other
-  if (plugin.settings().backend === "tmux" && tmuxShells) return tmuxShells
   if (await keeper.ready().catch(() => false)) return keeper
   return fallback
 }
 
-/** The backend running the shell `id`, or null. */
+/** The backend running terminal `id` (and how it lists it), or null. */
+async function findShell(id: string): Promise<{ b: Backend; x: Shell } | null> {
+  // (all asked at once: a plugin's answer may be a process of its own, which a busy machine is slow to start)
+  const all = backends(), lists = await Promise.all(all.map((b) => b.list().catch(() => [] as Shell[])))
+  for (const [i, l] of lists.entries()) { const x = l.find((y) => y.id === id); if (x) return { b: all[i], x } }
+  return null
+}
 async function backendOf(id: string): Promise<Backend | null> {
-  const s = sessions.get(id)
-  if (s) return s.backend
-  // (all asked at once: tmux's answer is a process of its own, which a busy machine is slow to start)
-  const all = backends(), has = await Promise.all(all.map((b) => b.has(id).catch(() => false)))
-  return all[has.indexOf(true)] ?? null
+  return sessions.get(id)?.backend ?? (await findShell(id))?.b ?? null
 }
 /** A shell with this id runs here (in any backend). */
 const runsHere = async (id: string) => !!(await backendOf(id))
@@ -182,7 +211,6 @@ const runsHere = async (id: string) => !!(await backendOf(id))
 async function access(dir: string): Promise<Access> {
   const other = pluginBackend()
   if (other?.preferred && (await other.ready().catch(() => false))) return { ok: null, why: `terminals run in ${other.label}, which can't tell` }
-  if (plugin.settings().backend === "tmux" && tmuxShells) return { ok: null, why: "terminals run in tmux, which can't tell" }
   return (await keeper.access(dir)) ?? fs.promises.readdir(dir).then((): Access => ({ ok: true }), (e: NodeJS.ErrnoException) => accessOf(e.code ?? "EIO"))
 }
 plugin.provide("terminal:access", access)
@@ -318,6 +346,17 @@ function agentContext() {
   return [text, ...lines].filter(Boolean).join("\n")
 }
 
+/** The vault's events hear `type` (plugin.emit), once the app runs this plugin's operations: what the terminal server
+ *  tells as it's first reached (an end while the server was away) can come while the plugin still loads. */
+const early: [string, Record<string, unknown>][] = []
+const hostUp = () => { try { return !!plugin.host } catch { return false } }
+function tell(type: string, data: Record<string, unknown>) {
+  if (hostUp()) return void plugin.emit(type, data)
+  if (early.push([type, data]) > 1) return
+  const t = setInterval(() => { if (!hostUp()) return; clearInterval(t); for (const [k, d] of early.splice(0)) plugin.emit(k, d) }, 200)
+  t.unref?.()
+}
+
 /** Which agent a terminal id runs, and the session it resumes. */
 export function agentOf(id: string): { name: string; resume: string | null; profile: string | null } | null {
   const t = parseTerminal(id)
@@ -380,28 +419,36 @@ function ownState(id: string): Now | null {
 
 /** What was said last about each terminal (`state` null: nothing after something), and a change waiting its turn. */
 const told = new Map<string, { now: Now; at: number; timer?: ReturnType<typeof setTimeout> }>()
+/** What hears each state as it's told (terminal.wait). */
+const stateHeard = new Set<(id: string, now: Now) => void>()
 /** How soon after the last a change is told: a program can change state as fast as it writes, and what it causes
  *  outside the terminal is rate-limited (a new state at most 4 times a second, a new message every 2 s). */
 const STATE_GAP = 250, MSG_GAP = 2000
 
-/** The note a session was started on (terminal.run: Dispatch), kept beside its state, so its tab opens by that note's. */
-const noteFile = (id: string) => `${stateFile(id)}.note`
-const notes = new Map<string, string | null>()
-function noteOf(id: string) {
-  if (!notes.has(id)) { let n: string | null = null; try { n = fs.readFileSync(noteFile(id), "utf8") || null } catch { /* none */ } notes.set(id, n) }
-  return notes.get(id) ?? undefined
+/** The app's meta kept with each terminal by its backend (through restarts): its `name` (terminal.rename) and the `note`
+ *  it was started on (terminal.run: its tab opens beside it). A backend without setMeta has it kept here till a restart. */
+const metas = new Map<string, Record<string, string>>()
+const metaOf = (id: string) => metas.get(id) ?? {}
+const noteOf = (id: string) => metaOf(id).note as string | undefined
+const nameOf = (id: string) => metaOf(id).name as string | undefined
+async function setMeta(id: string, patch: Record<string, string | null>) {
+  const next = { ...metaOf(id) }
+  for (const [k, v] of Object.entries(patch)) if (v) next[k] = v; else delete next[k]
+  metas.set(id, next)
+  const b = await backendOf(id)
+  if (b?.setMeta) await b.setMeta(id, patch)
+  listChanged()
 }
-function startedOn(id: string, rel: string) {
-  notes.set(id, rel)
-  try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(noteFile(id), rel) } catch { /* only this run knows */ }
-}
-
-/** The name the user gave a session (terminal.rename), kept beside its state: it goes before what its program titles it. */
-const nameFile = (id: string) => `${stateFile(id)}.name`
-const names = new Map<string, string | null>()
-function nameOf(id: string) {
-  if (!names.has(id)) { let n: string | null = null; try { n = fs.readFileSync(nameFile(id), "utf8") || null } catch { /* none */ } names.set(id, n) }
-  return names.get(id) ?? undefined
+const startedOn = (id: string, rel: string) => setMeta(id, { note: rel }).catch(() => {})
+/** Where a terminal's name and note were kept before the terminal server kept them: moved there once it lists it. */
+const oldMetaFiles = (id: string) => ({ name: `${stateFile(id)}.name`, note: `${stateFile(id)}.note` })
+function oldMeta(b: Backend, x: Shell) {
+  if (!b.setMeta || x.meta?.name || x.meta?.note) return
+  const files = oldMetaFiles(x.id), patch: Record<string, string> = {}
+  for (const [k, f] of Object.entries(files)) try { const v = fs.readFileSync(f, "utf8"); if (v) patch[k] = v } catch { /* none */ }
+  if (!Object.keys(patch).length) return
+  x.meta = { ...x.meta, ...patch }
+  void b.setMeta(x.id, patch).then(() => { for (const f of Object.values(files)) fs.rmSync(f, { force: true }) }, () => {})
 }
 
 /** Terminal `id`'s state may have changed: the list hears it, and the Inbox ("inbox:state") does once it has. */
@@ -422,6 +469,9 @@ function stateChanged(id: string) {
   told.set(id, { now, at: Date.now() })
   const change: StateChange = { terminal: id, ...now, at: Date.now() }
   for (const k of ["kind", "msg"] as const) if (change[k] === undefined) delete change[k]
+  // (terminal.wait and `vau events --type terminal` hear it too)
+  tell("terminal.state", { id, agent: now.agent, state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}), from: now.from })
+  for (const fn of stateHeard) fn(id, now)
   try { void Promise.resolve(plugin.service("inbox:state")?.(change)).catch((e) => console.error("terminal: inbox:state:", e)) } catch (e) { console.error("terminal: inbox:state:", e) }
 }
 
@@ -452,8 +502,8 @@ async function askShown(id: string, agent: string) {
 
 /** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */
 function forgetState(id: string) {
-  for (const f of [stateFile(id), oscMark(id), noteFile(id), nameFile(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
-  osc.delete(id); asking.delete(id); notes.delete(id); names.delete(id); waits.delete(id)
+  for (const f of [stateFile(id), oscMark(id), ...Object.values(oldMetaFiles(id))]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
+  osc.delete(id); asking.delete(id); metas.delete(id); waits.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
 }
@@ -473,10 +523,10 @@ function agentReady(id: string, agent: string) {
 
 const asksOf = (agent: string) => plugin.ask<AgentAsk[]>(`agent-asks:${agent}`, []).catch(() => [] as AgentAsk[])
 /** Which of `asks` terminal `id` shows at its bottom now, if any (each looked for in its last `lines`). */
-export async function askOn(b: Pick<Backend, "screen">, id: string, asks: AgentAsk[]) {
+export async function askOn(b: Pick<Backend, "capture">, id: string, asks: AgentAsk[]) {
   if (!asks.length) return null
   const most = Math.max(...asks.map((a) => a.lines ?? 12))
-  const all = (await b.screen(id, most).catch(() => "")).replace(/\s+$/, "").split("\n")
+  const all = (await screenOf(b, id, most)).replace(/\s+$/, "").split("\n")
   return asks.find((a) => a.match.test(all.slice(-(a.lines ?? 12)).join("\n"))) ?? null
 }
 
@@ -521,14 +571,15 @@ plugin.provide("terminal:agent-waits", (id: string, kind: Kind | null) => {
   else waits.delete(id)
   stateChanged(id)
 })
+/** A terminal's last `lines` lines as text ("" when it can't be read). */
+const screenOf = (b: Pick<Backend, "capture">, id: string, lines: number) => b.capture(id, { format: "text", lines }).then((c) => c.text, () => "")
 /** Terminal `id`'s last `lines` lines as text, or "" when it isn't running here. */
 plugin.provide("terminal:screen", async (id: string, lines = 40) => {
   const b = TERMINAL_ID.test(id) ? await backendOf(id) : null
-  return b ? b.screen(id, Math.min(Math.max(1, Math.trunc(lines) || 40), 200)).catch(() => "") : ""
+  return b ? screenOf(b, id, Math.min(Math.max(1, Math.trunc(lines) || 40), 200)) : ""
 })
 
-// The backends that read OSC 7501 tell each shell's records as they change; the hooks' state files are watched.
-for (const b of [keeper, fallback]) b.status?.follow(oscSaid)
+// The backends tell each terminal's OSC 7501 records as they change (onEvent); the hooks' state files are watched.
 let hooksWatch: fs.FSWatcher | null = null
 try {
   fs.mkdirSync(STATES, { recursive: true })
@@ -550,7 +601,7 @@ export function markMissing(command: string, file: string, sh = shell()) {
  *  plugin that started it hears "terminal.agent-missing". */
 function agentMissing(id: string, agent: string) {
   const name = agentName(agent) ?? agent
-  plugin.emit("terminal.agent-missing", { id, agent })
+  tell("terminal.agent-missing", { id, agent })
   void plugin.runOp("ui.notify", { text: `${name} isn't installed on this machine: install it, then start it again`, error: true, terminal: id }).catch(() => {})
 }
 
@@ -657,31 +708,26 @@ const refill = (from: From) => setTimeout(() => makeSpare(from), 1500).unref?.()
  *  get now (one made before the server's PATH changed would miss what's on it). */
 const spareKey = (b: Backend, from: From, sh: string) => `${b.name}:${from.remote}:${from.client}:${sh}:${process.env[PATH] ?? ""}`
 
-/** The ready shell of backend `b`, renamed to session `id` (the agent's command started in it): false when there's none. */
-async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | null, sh: string) {
+/** The ready shell of backend `b`, renamed to session `id` (the agent's command started in it, which clears its screen
+ *  and history: runScript): false when there's none. */
+async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | null, sh: string, made: Made) {
   const key = spareKey(b, from, sh)
   const spare = spares.get(key)
   if (!spare || !b.rename) return false
   spares.delete(key)
   if (!(await spare.ready)) return false
-  try { await b.rename(spare.name, id) } catch { return false }
+  try { await b.rename(spare.name, id, made) } catch { return false }
   if (run) {
     fs.mkdirSync(TMP, { recursive: true })
     // (with its Enter: a shell at its prompt reads it as typed, so no pause before it)
-    await b.send(id, `${runScript(path.join(TMP, `run-${id}.sh`), id, run, kindOf(sh))}\r`, false)
-    // Once the agent runs, the line typed (and the prompt before it) leave the history too (the script's `clear` does
-    // that in the keeper; tmux keeps its own): scrolling up from it shows nothing it didn't print.
-    if (b.clearHistory) void (async () => {
-      for (let i = 0; i < 50 && SHELLS.has(path.basename((await b.list()).find((x) => x.id === id)?.process ?? "")); i++) await new Promise((r) => setTimeout(r, 100))
-      await b.clearHistory!(id)
-    })()
+    await b.send(id, { text: `${runScript(path.join(TMP, `run-${id}.sh`), id, run, kindOf(sh))}\r` })
   }
   return true
 }
 
 /** Starts a session (in the backend new ones go to), or reattaches to its shell if one runs (`fresh` says which). */
 async function start(id: string, cols: number, rows: number, from = LOCAL, prompt: string | null = null, dark: boolean | null = null,
-  how: AgentHow = {}): Promise<{ s: Session; fresh: boolean }> {
+  how: AgentHow = {}, o: { command?: string; name?: string } = {}): Promise<{ s: Session; fresh: boolean }> {
   const agent = agentOf(id), timing = span("terminal.start", { agent: agent?.name ?? "shell", how: "running" })
   let b = await backendOf(id)
   timing.mark("find")
@@ -690,35 +736,40 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   if (!b) {
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
-    const sh = shell(), run = await agentRun(id, prompt, dark, how, sh)
+    const sh = shell(), command = o.command ? { command: o.command, cwd: how.cwd || null } : null
+    const run = command ?? await agentRun(id, prompt, dark, how, sh)
     if (agent) timing.mark("agent")
-    const spec = { shell: sh, run, cwd: vaultDir(), env: env(), ctx: context(id, from, sh), cols, rows, scrollback: scrollback() }
+    const spec: Spec = { shell: sh, run, only: !!command, cwd: how.cwd || vaultDir(), env: env(), ctx: context(id, from, sh), cols, rows, scrollback: scrollback() }
     if (run) cwd = run.cwd || spec.cwd
+    // (what its list says it runs, and the name it's given)
+    const made: Made = { command: o.command ?? agent?.name ?? progName(sh), ...(o.name ? { meta: { name: o.name } } : {}) }
     timing.tags.how = "spare"
-    if (!(b.spares && (await takeSpare(b, id, from, run, sh)))) {
+    if (command || !(b.spares && (await takeSpare(b, id, from, run, sh, made)))) {
       timing.tags.how = "new"
-      try { await b.create(id, spec) } catch (e) {
+      try { await b.create(id, spec, made) } catch (e) {
         // (out of ptys, the server couldn't start one either: the keeper's message says why)
         if (b !== keeper || /no pseudo-terminal left/.test((e as Error).message)) throw e
         console.error("terminal: the keeper couldn't start a shell, so this server holds it:", e)
         b = fallback
-        await b.create(id, spec)
+        await b.create(id, spec, made)
         // Said out loud: a restart (a deploy) ends this one, and nothing else would show it until then.
         void plugin.runOp("ui.notify", { text: `This terminal runs in the server, not Vaultite's keeper, so restarting the server ends it (the keeper: ${(e as Error).message})`,
           error: true, terminal: id }).catch(() => {})
       }
     }
     if (b.spares) refill(from)
+    if (!ours(b)) ownedBy(id, b)
+    // (a backend that keeps no meta: kept here)
+    if (!b.setMeta && made.meta) metas.set(id, made.meta)
     timing.mark("shell")
-    if (agent && run) agentReady(id, agent.name)
+    if (agent && run && !command) agentReady(id, agent.name)
   }
   const backend = b
   const link = await backend.attach(id, cols, rows)
   timing.mark("attach")
-  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: new Tail(scrollback()), pending: new Set(), ended: false,
+  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), pending: new Set(), ended: false,
     opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "", owed: new Map(), acks: new Set(), held: false }
   link.onData((data) => {
-    if (!link.snapshot) s.out.push(data)
     // (a burst comes as many messages in one read: the microtask runs once that read's are all in)
     if (!s.queued) queueMicrotask(() => flush(s))
     s.queued += data
@@ -728,19 +779,15 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     flush(s)
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
-    // Only our hold on it ended (the server's tmux client was killed): the clients reconnect, which reattaches.
-    if (!exit && !s.ended && (await backend.has(id).catch(() => false))) {
+    // Only our hold on it ended (a plugin backend's attach client was killed): the clients reconnect, which reattaches.
+    if (!exit && !s.ended && (await backend.list().catch(() => [] as Shell[])).some((x) => x.id === id && !x.exit)) {
       for (const ws of s.clients) ws.close(1012, "reattach")
       return
     }
     // Ended by us: a SIGHUP, as when a shell is killed directly.
     const { code, signal } = s.ended ? { code: 0, signal: 1 } : exit ?? { code: 0, signal: 0 }
-    // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
-    // agent's session that died keeps its tabs, saying so, with Restart.
-    if (!code && !signal) markEnded(id)
-    forgetState(id)
-    // (onPurpose: the user ended it, End session or vau terminal end: the Inbox takes its row as dealt with)
-    plugin.emit("terminal.ended", { id, code, signal, ...(s.ended && !s.kept ? { onPurpose: true } : {}) })
+    // (a backend that tells its terminals' ends tells this one: onEvent)
+    if (!backend.events) exited(id, { code, signal })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
       ws.send(JSON.stringify({ t: "exit", code, signal, ...(s.ended && !s.kept ? { ended: true } : {}) }))
@@ -769,20 +816,66 @@ function markEnded(id: string) {
   if (endedOnPurpose.size > 500) endedOnPurpose.delete(endedOnPurpose.values().next().value!)
 }
 
-/** Ended on purpose while this server held no session for it (after a restart): no exit tells it, so this does. */
-function endedHere(id: string) {
-  markEnded(id)
-  plugin.emit("terminal.ended", { id, code: 0, signal: 1, onPurpose: true })
+/** The terminals ended on purpose (End session, x, vau terminal end) whose end isn't told yet; `keep`: their tabs stay,
+ *  saying it ended (an agent's handed session after its report). */
+const purposeful = new Map<string, { keep: boolean }>()
+/** The terminals whose end was told (by id, till one starts again with it). */
+const toldEnded = new Set<string>()
+
+/** Terminal `id` ended (its backend tells, else its link here): the Inbox and the rest hear "terminal.ended", once. */
+function exited(id: string, exit: { code: number; signal: number }) {
+  if (toldEnded.has(id)) return
+  toldEnded.add(id)
+  if (toldEnded.size > 500) toldEnded.delete(toldEnded.values().next().value!)
+  const p = purposeful.get(id)
+  purposeful.delete(id)
+  // Ended by us: a SIGHUP, as when a shell is killed directly.
+  const { code, signal } = p ? { code: 0, signal: 1 } : exit
+  // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
+  // agent's session that died keeps its tabs, saying so, with Restart.
+  if (!code && !signal) markEnded(id)
+  forgetState(id)
+  // (onPurpose: the user ended it, End session or vau terminal end: the Inbox takes its row as dealt with)
+  tell("terminal.ended", { id, code, signal, ...(p && !p.keep ? { onPurpose: true } : {}) })
+  exits.set(id, { ...exit, at: Date.now() })
+  if (exits.size > 200) exits.delete(exits.keys().next().value!)
+  for (const fn of exitHeard) fn(id)
+  listChanged()
 }
 
-/** Ends a session for good: its shell, not just this server's hold on it. `keep`: its tabs stay, saying it ended (an
- *  agent's handed session after its report). */
+/** Ends a session for good: its shell, not just this server's hold on it. `keep`: see purposeful. */
 function end(s: Session, keep = false) {
   s.ended = true
+  s.kept = keep
+  purposeful.set(s.id, { keep })
   if (!keep) markEnded(s.id)
-  else s.kept = true
   void s.backend.kill(s.id).catch(() => {})
 }
+/** The same, for one this server holds no session of (a tab closed after a restart, vau terminal end). */
+async function endHere(b: Backend, id: string, keep = false) {
+  purposeful.set(id, { keep })
+  if (!keep) markEnded(id)
+  await b.kill(id)
+  if (!b.events) exited(id, { code: 0, signal: 1 })
+}
+
+/** What a backend tells as it happens: its programs' OSC 7501, terminals starting and ending, their meta. (A title is
+ *  read with the next list: an agent's spinner retitles it many times a second.) */
+function onEvent(b: Backend, ev: BackendEvent) {
+  if (!TERMINAL_ID.test(ev.id) || ev.id.startsWith(SPARE)) return
+  if (ev.type === "status") return oscSaid(ev.id, ev.said)
+  if (ev.type === "exited") return exited(ev.id, ev.exit)
+  if (ev.type === "title") return
+  if (ev.type === "started") {
+    toldEnded.delete(ev.id)
+    exits.delete(ev.id)
+    const meta = ev.info?.meta ?? {}
+    tell("terminal.started", { id: ev.id, agent: agentOf(ev.id)?.name ?? null, ...(ev.info?.command ? { command: ev.info.command } : {}), ...(meta.name ? { name: meta.name } : {}) })
+  }
+  if (ev.type === "meta" && b.setMeta) metas.set(ev.id, ev.meta)
+  listChanged()
+}
+for (const b of [keeper, fallback]) b.events?.((ev) => onEvent(b, ev))
 
 /** One shell, one size: the last device to send its own wins. Every device hears it, so one that's used again and
  * doesn't fit (the phone shrank it) sends its size back (Terminal.tsx: claim) and the program redraws for it. */
@@ -797,31 +890,26 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
   flush(s) // (what came before it is in its picture or replay)
   s.clients.add(ws)
   listChanged()
-  ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws, scrollback: scrollback(), ...(fresh ? { started: s.opened } : {}) }))
+  ws.send(JSON.stringify({ t: "attached", fresh, scrollback: scrollback(), ...(fresh ? { started: s.opened } : {}) }))
   ws.send(JSON.stringify({ t: "size", cols: s.link.cols, rows: s.link.rows }))
   if (s.blocked) ws.send(BLOCKED)
-  if (s.link.snapshot) {
-    // The screen and its history as they are now, then what it prints from there on.
-    s.pending.add(ws)
-    s.link.snapshot((picture) => {
-      flush(s) // (what came before the picture is in it: not for this page)
-      s.pending.delete(ws)
-      if (!picture || ws.readyState !== ws.OPEN) return
-      const bytes = Buffer.from(picture, "utf8")
-      ws.send(bytes)
-      sent(s, ws, bytes.length)
-    })
-  } else {
-    const replay = fresh ? "" : s.out.text()
-    if (replay) { const bytes = Buffer.from(replay, "utf8"); ws.send(bytes); sent(s, ws, bytes.length) }
-    // The backend draws its screen again (the replay can end mid-screen).
-    if (!fresh) s.link.redraw?.()
-  }
+  // The screen and its history as they are now, then what it prints from there on.
+  s.pending.add(ws)
+  s.link.snapshot((picture) => {
+    flush(s) // (what came before the picture is in it: not for this page)
+    s.pending.delete(ws)
+    if (!picture || ws.readyState !== ws.OPEN) return
+    const bytes = Buffer.from(picture, "utf8")
+    ws.send(bytes)
+    sent(s, ws, bytes.length)
+  })
   const uploads = new Map<string, string>()
   ws.on("message", (data: RawData, binary: boolean) => {
     const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data)
     if (binary) {
       s.link.write(buf)
+      // (a page's own answers to its terminal's questions aren't typing: a focus report, a DA)
+      if (!buf.includes(27) || buf.length === 1) lastInput.set(s.id, Date.now())
       // Enter may have started a program (claude, vim): tabs show its name soon, not at the next poll.
       if (buf.includes(13)) setTimeout(listChanged, 400)
       return
@@ -835,7 +923,6 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
       pace(s)
     }
     else if (msg.t === "close") end(s)
-    else if (msg.t === "scroll") { if (Number.isInteger(msg.lines) && msg.lines) s.link.scroll?.(msg.lines!) }
     else if (msg.t === "upload") {
       let file: string | null = null
       try { file = upload(s.id, uploads, msg) } catch (e) { console.error("terminal upload:", e); return }
@@ -942,7 +1029,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   if (query.end) {
     const s = sessions.get(id)
     if (s) end(s)
-    else { endedHere(id); await (await backendOf(id))?.kill(id).catch(() => {}) } // a tab closed while its session had no client here (after a restart)
+    else { const b = await backendOf(id); if (b) await endHere(b, id).catch(() => {}) } // a tab closed while its session had no client here (after a restart)
     return ws.close(EXITED, "ended")
   }
   const cols = clamp(query.cols, 2, 1000, 80), rows = clamp(query.rows, 1, 500, 24)
@@ -957,6 +1044,18 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   if (query.attach && (ended || (agent && !agent.resume)) && !starting.has(id) && !(await runsHere(id))) {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone", ...(ended ? { ended: true } : {}) }))
     return ws.close(GONE, "gone")
+  }
+  // One another plugin's backend held (herdr's pane) is that backend's: while it's away its tab waits for it, never
+  // starting a shell of its own under that id; gone from it, it's gone.
+  const owned = ownerOf(id)
+  if (owned && !starting.has(id) && !(await runsHere(id))) {
+    const b = pluginBackend()
+    if (b?.name === owned.backend && (await b.ready().catch(() => false))) {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "gone" }))
+      return ws.close(GONE, "gone")
+    }
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "unreachable", backend: owned.backend, label: owned.label, reason: "isn't running here (or its plugin is off)" }))
+    return ws.close(1013, "unavailable")
   }
   const first = !starting.has(id)
   // Through Tailscale Serve (allowed() checked who), or from the iPhone app: the shell may say so.
@@ -993,6 +1092,8 @@ type Listed = { id: string; agent: string | null; process: string; busy: boolean
   /** Its agent isn't installed here (the shell found no such program). */
   missing?: true
   machine?: string; machineLabel?: string; backend?: string; external?: boolean
+  /** The folder it started in, what it was started to run ("claude", "npm test", "zsh"), its size and last activity. */
+  cwd?: string; command?: string; cols?: number; rows?: number; activity?: number
   /** Its agent's own session id (what it resumes), when the agent says (its service "agent-meters:<name>"). */
   session?: string
   /** Its agent's context and prompt cache, with Agent meters on (the service "terminal:meters"). */
@@ -1029,8 +1130,11 @@ async function readList(): Promise<Listed[]> {
   for (const [i, b] of all.entries()) {
     for (const x of lists[i].map(byName)) {
       if (x.spare || x.id.startsWith(SPARE) || out.has(x.id)) continue
+      oldMeta(b, x)
+      if (b.setMeta) metas.set(x.id, x.meta ?? {})
+      if (!ours(b)) ownedBy(x.id, b)
       const s = sessions.get(x.id)
-      // Who's watching: the app's sockets plus holds besides this server's own (tmux attach in a real terminal), so a session
+      // Who's watching: the app's sockets plus holds besides this server's own (another server's), so a session
       // no tab shows reads as detached.
       const clients = s ? s.clients.size + Math.max(0, x.attached - 1) : x.attached
       // (a backend's word on what its program said, kept till it tells a change: after a restart, its first)
@@ -1045,13 +1149,14 @@ async function readList(): Promise<Listed[]> {
       if (agent && front !== null && !watching.has(x.id) && !osc.get(x.id)?.status && !fs.existsSync(stateFile(x.id))) void watchAsks(x.id, agent)
       // Its program ended (the shell is at its prompt again): what it was working on or blocked on is over.
       const said = osc.get(x.id)?.status?.state
-      if (front === null && (said === "working" || said === "blocked")) void b.status?.drop(x.id)
+      if (front === null && (said === "working" || said === "blocked")) void b.dropStatus?.(x.id)
       // (Windows' backends name only the shell: what runs in front says)
       const now = stateNow(x.id), shows = WIN ? front !== null : !SHELLS.has(x.process)
       const state = stateOf(x.id) === MISSING ? null : now?.state ?? (x.state === "working" || x.state === "idle" ? x.state : x.state === "waiting" ? "blocked" : null)
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
+        ...(x.cwd ? { cwd: x.cwd } : {}), ...(x.command ? { command: x.command } : {}), ...(x.cols ? { cols: x.cols, rows: x.rows } : {}), ...(x.activity ? { activity: x.activity } : {}),
         ...(state && shows ? { state, ...(now?.kind ? { kind: now.kind } : {}), ...(now?.msg ? { msg: now.msg } : {}) } : {}),
         ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
         ...(nameOf(x.id) ? { name: nameOf(x.id) } : {}),
@@ -1176,6 +1281,124 @@ plugin.onUnload(() => { if (poll) clearInterval(poll); if (listTimer) clearTimeo
 terminalOps(plugin) // vau terminal ...: terminal.list, open, resume, screen, send, end, tidy (ops.ts), through these routes
 runOps(plugin, { startedOn, listNow: () => { lastLocal = null; return sendList() } }) // vau terminal run: a file handed to an agent or a command, here or on another machine (run.ts)
 
+/** A name for a terminal as kept: one line, at most 80 characters. */
+const cleanName = (s: string) => s.replace(/[\s\p{Cc}]+/gu, " ").trim().slice(0, 80)
+
+/** When each terminal was last typed into (a page, vau terminal send): a state told before that is an older turn's. */
+const lastInput = new Map<string, number>()
+/** What was sent into each terminal from outside its tabs (vau terminal send and key, the inbox), by whom: the last 20. */
+type Sent = { at: number; by: string; text?: string; keys?: string[] }
+const inputs = new Map<string, Sent[]>()
+function typed(id: string, sent?: Omit<Sent, "at">) {
+  lastInput.set(id, Date.now())
+  if (sent) {
+    const log = inputs.get(id) ?? []
+    log.push({ at: Date.now(), ...sent, ...(sent.text ? { text: sent.text.length > 500 ? `${sent.text.slice(0, 500)}…` : sent.text } : {}) })
+    inputs.set(id, log.slice(-20))
+  }
+  // Enter may have started a program (claude, vim): tabs show its name soon, not at the next poll.
+  setTimeout(listChanged, 400)
+}
+/** How long typed text needs before its Enter: an agent takes a long text as a paste, and an Enter inside that is a new line. */
+const settle = (text: string) => Math.min(1000, 150 + Math.floor(text.length / 4))
+/** Types `text` into terminal `id` as typed (a long one as a paste: asPaste), then Enter apart from it. */
+async function sendText(b: Backend, id: string, text: string, enter: boolean, by = "app") {
+  if (text) await b.send(id, { text, paste: asPaste(text) })
+  if (enter) {
+    if (text) await new Promise((r) => setTimeout(r, settle(text)))
+    await b.send(id, { keys: ["Enter"] })
+  }
+  typed(id, { by, ...(text ? { text } : {}), ...(enter ? { keys: ["Enter"] } : {}) })
+}
+
+/** What terminal.wait waits for: the terminal's end, one of its program's states, or its output going quiet. */
+const WAITS = new Set(["exit", "idle", "working", "blocked", "done", "error", "quiet"])
+const MAX_WAIT = 3600
+
+/** How the terminals that ended lately ended, as told here (exited), for a wait that comes after. */
+const exits = new Map<string, { code: number; signal: number; at: number }>()
+
+/** The terminals that ended lately, as their backends keep them (the terminal server: an hour), newest last. */
+async function endedList() {
+  const all = await Promise.all(backends().map(async (b) => (await b.list({ ended: true }).catch(() => [] as Shell[])).filter((x) => x.exit).map((x) => ({ b, x }))))
+  return all.flat().sort((a, b) => a.x.exit!.at - b.x.exit!.at).map(({ b, x }) => ({ id: x.id, backend: b.name, command: x.command ?? "", ...(x.meta?.name ? { name: x.meta.name } : {}),
+    ...(x.meta?.note ? { note: x.meta.note } : {}), started: x.created, exit: x.exit! }))
+}
+/** Terminal `id` if it ended lately: its backend and how. */
+async function endedOf(id: string): Promise<{ b: Backend; exit: Ended } | null> {
+  for (const b of backends()) {
+    const x = (await b.list({ ended: true }).catch(() => [] as Shell[])).find((y) => y.id === id && y.exit)
+    if (x) return { b, exit: x.exit! }
+  }
+  const e = exits.get(id)
+  return e ? { b: fallback, exit: e } : null
+}
+
+/** The wait itself (see the route): what it met (null: the time ran out), the state now, and how it ended if it did. */
+async function waitFor(id: string, wants: string[], o: { ms: number; quiet: number; abort: AbortSignal; match?: RegExp; hold?: number }) {
+  // (left out: an agent's turn over, as herdr has it, else its end; a pattern alone: only it)
+  const want = new Set(wants.length ? wants : o.match ? [] : agentOf(id) || stateNow(id) ? ["idle", "blocked", "done", "error"] : ["exit"])
+  if (o.match) want.add("match")
+  // An agent at rest for a moment between steps of one turn isn't done: idle and done count once they've held.
+  const hold = o.hold ?? 1500
+  const since = Date.now()
+  const result = (met: string | null, exit?: { code: number; signal: number } | null, matched?: string) => {
+    const now = stateNow(id)
+    return { met, ...(matched !== undefined ? { matched } : {}), timedOut: met === null && !o.abort.aborted, waited: Math.round((Date.now() - since) / 100) / 10, for: [...want],
+      ...(now ? { state: now.state, ...(now.kind ? { kind: now.kind } : {}), ...(now.msg ? { msg: now.msg } : {}) } : {}), ...(exit ? { exit } : {}) }
+  }
+  const gone = async () => {
+    // (told here first: its session here may still be letting go of it)
+    const told = exits.get(id)
+    if (told) return { code: told.code, signal: told.signal }
+    if (await backendOf(id)) return null
+    const e = await endedOf(id)
+    return e ? { code: e.exit.code, signal: e.exit.signal } : { code: -1, signal: 0 }
+  }
+  const stateMet = () => {
+    const now = stateNow(id), at = told.get(id)?.at ?? 0
+    if (!now || !want.has(now.state) || at < (lastInput.get(id) ?? 0)) return null
+    return (now.state === "idle" || now.state === "done") && Date.now() - at < hold ? null : now.state
+  }
+  if (!(await backendOf(id)) && !(await endedOf(id))) throw new HTTPError(404, `there's no terminal '${id}' (vau terminal lists them)`)
+  return await new Promise<ReturnType<typeof result>>((resolve) => {
+    let over = false
+    const finish = (r: ReturnType<typeof result>) => {
+      if (over) return
+      over = true
+      clearTimeout(timer); clearInterval(poll); stateHeard.delete(heard); exitHeard.delete(onExit); o.abort.removeEventListener("abort", stop)
+      resolve(r)
+    }
+    const check = async () => {
+      const exit = await gone()
+      if (exit) return finish(result(want.has("exit") ? "exit" : null, exit))
+      const s = stateMet()
+      if (s) return finish(result(s))
+      if (o.match) {
+        const b = await backendOf(id), text = b ? await screenOf(b, id, 200) : ""
+        const hit = o.match.exec(text)
+        if (hit) return finish(result("match", null, hit[0].slice(0, 500)))
+      }
+      if (want.has("quiet")) {
+        const x = (await findShell(id))?.x, last = Math.max(x?.activity ?? 0, lastInput.get(id) ?? 0, since)
+        if (Date.now() - last >= o.quiet) finish(result("quiet"))
+      }
+    }
+    const heard = (x: string) => { if (x === id) void check() }
+    const onExit = (x: string) => { if (x === id) void check() }
+    const stop = () => finish(result(null))
+    const timer = setTimeout(stop, o.ms)
+    // (each second too: output going quiet, a backend that tells nothing)
+    const poll = setInterval(() => void check(), want.has("quiet") ? Math.min(1000, o.quiet / 2) : o.match || hold < 1000 ? 500 : 1000)
+    stateHeard.add(heard)
+    exitHeard.add(onExit)
+    o.abort.addEventListener("abort", stop)
+    void check()
+  })
+}
+/** What hears each terminal's end as it's told (terminal.wait). */
+const exitHeard = new Set<(id: string) => void>()
+
 async function owner(req: Request) {
   await plugin.ownerOnly(req, "the terminal")
 }
@@ -1204,12 +1427,6 @@ plugin.route("POST", "terminals/*/state", async (req) => {
   return {}
 }, { lock: false, sync: false })
 
-/** Where new shells can run here, as the setting `backend` offers them: tmux only where it's installed (never Windows). */
-plugin.route("GET", "terminals/backends", async (req) => {
-  await owner(req)
-  return { choices: [{ value: "vaultite", label: "Vaultite" }, ...(tmuxShells ? [{ value: "tmux", label: "tmux" }] : [])] }
-})
-
 /** The shells a terminal can start here, as the setting `shell` offers them: "" its default (the login shell, on
  *  Windows PowerShell), then each by the name its users know (Windows Terminal's). */
 plugin.route("GET", "terminals/shells", async (req) => {
@@ -1222,18 +1439,24 @@ plugin.route("GET", "terminals/shells", async (req) => {
 // What a coding agent started here is told, exactly (Show what agents are told; vau terminal instructions).
 plugin.route("GET", "terminals/instructions", () => ({ text: agentContext() }))
 
+/** This machine's terminals; `ended=1`: the ones that ended lately too (kept a while by their backend, with how). */
 plugin.route("GET", "terminals/sessions", async (req) => {
   await owner(req)
-  return { sessions: await localList(), backend: (await backendForNew()).name, tmux: !!tmuxShells }
+  return { sessions: await localList(), backend: (await backendForNew()).name, ...(req.query.ended ? { ended: await endedList() } : {}) }
 })
 
-plugin.route("GET", "terminals/*/screen", async (req) => {
+/** What a terminal shows: its last `lines` lines (its screen and the history above it; `all`: all it keeps), as text
+ *  (wrapped lines joined), vt (its own sequences: colors, the cursor) or html. One that ended lately too. */
+plugin.route("GET", "terminals/*/capture", async (req) => {
   await owner(req)
   const id = localId(req)
-  const lines = clamp(req.query.lines, 1, scrollback(), 50)
-  // The visible screen plus `lines` above it, wrapped lines joined, trailing blank lines left out.
-  const all = (await (await mustRun(id)).screen(id, lines)).replace(/\s+$/, "").split("\n")
-  return { id, lines: all.slice(-lines) }
+  const format: CaptureFormat = req.query.format === "vt" || req.query.format === "html" ? req.query.format : "text"
+  // (none given: its screen)
+  const lines = req.query.lines === "all" ? null : req.query.lines ? clamp(req.query.lines, 1, scrollback() + 500, 50) : undefined
+  const b = (await backendOf(id)) ?? (await endedOf(id))?.b
+  if (!b) throw new HTTPError(404, `there's no terminal '${id}' (vau terminal lists them)`)
+  const c = await b.capture(id, { format, lines }).catch((e: Error) => { throw new HTTPError(409, e.message) })
+  return { id, format, ...c }
 })
 
 plugin.route("POST", "terminals/*", async (req) => {
@@ -1246,7 +1469,13 @@ plugin.route("POST", "terminals/*", async (req) => {
   const mode = PERMISSION_MODES.find((m) => m === req.body?.mode) ?? null
   const cwd = typeof req.body?.cwd === "string" && path.isAbsolute(req.body.cwd) ? req.body.cwd : null
   if (cwd && !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new HTTPError(404, `there's no folder ${cwd}`)
-  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort), mode, cwd })
+  // (a command alone, as the terminal's program: it ends with it; a name for its list and tabs)
+  const command = typeof req.body?.command === "string" && req.body.command.trim() ? req.body.command.trim() : undefined
+  const name = typeof req.body?.name === "string" ? cleanName(req.body.name) : ""
+  if (command && agentOf(id)) throw new HTTPError(400, "a terminal runs an agent or a command, not both")
+  const cols = clamp(req.body?.cols, 2, 1000, 120), rows = clamp(req.body?.rows, 1, 500, 40)
+  if (!starting.has(id)) starting.set(id, start(id, cols, rows, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort), mode, cwd },
+    { command, ...(name ? { name } : {}) })
     .finally(() => starting.delete(id)))
   await starting.get(id)!
   return { id, started: true, agent: agentOf(id)?.name ?? null }
@@ -1258,12 +1487,8 @@ plugin.route("POST", "terminals/*/name", async (req) => {
   await owner(req)
   const id = localId(req)
   await mustRun(id)
-  const name = typeof req.body?.name === "string" ? req.body.name.replace(/[\s\p{Cc}]+/gu, " ").trim().slice(0, 80) : ""
-  fs.mkdirSync(STATES, { recursive: true })
-  if (name) fs.writeFileSync(nameFile(id), name)
-  else fs.rmSync(nameFile(id), { force: true })
-  names.set(id, name || null)
-  listChanged()
+  const name = typeof req.body?.name === "string" ? cleanName(req.body.name) : ""
+  await setMeta(id, { name: name || null })
   return { id, name: name || null }
 }, { lock: false })
 
@@ -1281,22 +1506,76 @@ plugin.route("POST", "terminals/*/answer", async (req) => {
   if (!b || !hit) throw new HTTPError(409, "its terminal isn't asking anything now")
   for (const [i, k] of hit[answer].entries()) {
     if (i) await new Promise((r) => setTimeout(r, 150))
-    await b.send(id, k, false)
+    await b.send(id, { text: k })
   }
-  setTimeout(listChanged, 400)
+  typed(id, { by: "the user", text: `${answer} (${hit.id})` })
   return { id, ask: hit.id, answer }
 }, { lock: false })
 
+/** What was sent into a terminal from outside its tabs lately, and by whom (typed, the last 20). */
+plugin.route("GET", "terminals/*/inputs", async (req) => {
+  await owner(req)
+  const id = localId(req)
+  return { id, inputs: inputs.get(id) ?? [] }
+})
+
+/** Type `text` (then Enter, unless `enter` is false), or press `keys` by name (keys.ts: Enter, C-c, Up, M-x...). */
 plugin.route("POST", "terminals/*/send", async (req) => {
   await owner(req)
   const id = localId(req)
   const b = await mustRun(id)
+  const keys = Array.isArray(req.body?.keys) ? req.body.keys.map(String).filter(Boolean) as string[] : []
+  const by = typeof req.http?.headers["x-vaultite-agent"] === "string" ? req.http.headers["x-vaultite-agent"] : String(req.http?.headers["x-vaultite-client"] ?? "app")
+  if (keys.length) {
+    // (named wrong: the terminal server says which)
+    await b.send(id, { keys }).catch((e: Error) => { throw new HTTPError(400, e.message) })
+    typed(id, { by, keys })
+    return { id, keys }
+  }
   const text = typeof req.body?.text === "string" ? unmarked(req.body.text) : ""
   const enter = req.body?.enter !== false
   if (!text && !enter) throw new HTTPError(400, "send needs a text (or enter)")
-  await b.send(id, text, enter, { paste: asPaste(text) })
-  setTimeout(listChanged, 400)
-  return { id, sent: text.length, enter }
+  const before = stateNow(id), since = Date.now()
+  await sendText(b, id, text, enter, by)
+  // (`confirm`: say whether an agent took it, as terminal.send does; the Inbox's reply checks in its own way)
+  return { id, sent: text.length, enter, ...(req.body?.confirm && enter && text && (agentOf(id) || before) ? await submitted(b, id, text, before, since) : {}) }
+}, { lock: false })
+
+/** Whether a text sent with its Enter reached an agent as a message: it started working on it (a state told after it),
+ *  else why not, as far as its screen says: the text still in its input (vim mode, a survey, a dialog took the Enter). */
+async function submitted(b: Backend, id: string, text: string, before: Now | null, since: number): Promise<{ submitted: boolean | null; why?: string }> {
+  if (before?.state === "blocked") return { submitted: false, why: `it was waiting on the user${before.kind ? ` (${before.kind}${before.msg ? `: ${before.msg}` : ""})` : ""}: what you typed went to that` }
+  for (const until = Date.now() + 6000; Date.now() < until; await new Promise((r) => setTimeout(r, 200))) {
+    const now = stateNow(id), at = told.get(id)?.at ?? 0
+    if (now && at >= since && now.state !== "idle") return { submitted: true }
+  }
+  const c = await b.capture(id, { format: "text", lines: 8 }).catch(() => null)
+  const squash = (s: string) => s.replace(/\s+/g, "")
+  if (c && squash(c.input?.typed ?? c.text.split("\n").slice(-4).join("")).includes(squash(text).slice(-24))) {
+    return { submitted: false, why: "its input still shows the text: the Enter didn't take (vim mode, a survey or a dialog over it?): look with vau terminal capture" }
+  }
+  return { submitted: null, why: "it didn't say it started working on it (vau terminal capture shows its screen)" }
+}
+
+/** Waits until terminal `id` ends (`for` exit), is in a state `for` names (told after its last input: waitFor), or prints
+ *  nothing for `quiet` seconds (quiet); at most `timeout` seconds. */
+plugin.route("POST", "terminals/*/wait", async (req) => {
+  await owner(req)
+  const id = localId(req)
+  const wants = (Array.isArray(req.body?.for) ? req.body.for : String(req.body?.for ?? "").split(",")).map((x: unknown) => String(x).trim()).filter(Boolean) as string[]
+  const bad = wants.find((w) => !WAITS.has(w))
+  if (bad) throw new HTTPError(400, `\`for\` is exit, ${[...WAITS].filter((w) => w !== "exit").join(", ")}: not '${bad}'`)
+  const timeout = Math.max(0, Math.min(MAX_WAIT, Number(req.body?.timeout ?? 300) || 0))
+  const quiet = Math.max(0.2, Math.min(600, Number(req.body?.quiet ?? 2) || 2))
+  let match: RegExp | undefined
+  if (typeof req.body?.match === "string" && req.body.match) {
+    try { match = new RegExp(req.body.match, "m") } catch (e) { throw new HTTPError(400, `\`match\` isn't a pattern: ${(e as Error).message}`) }
+  }
+  const hold = req.body?.hold === undefined ? undefined : Math.max(0, Math.min(60, Number(req.body.hold) || 0)) * 1000
+  // (the caller gone: its socket closed)
+  const abort = new AbortController(), sock = req.http?.socket, gone = () => abort.abort()
+  sock?.once("close", gone)
+  try { return { id, ...await waitFor(id, wants, { ms: timeout * 1000, quiet: quiet * 1000, abort: abort.signal, match, hold }) } } finally { sock?.off("close", gone) }
 }, { lock: false })
 
 plugin.route("DELETE", "terminals/*", async (req) => {
@@ -1306,7 +1585,7 @@ plugin.route("DELETE", "terminals/*", async (req) => {
   // (?keep=1: its tabs stay, saying it ended)
   const s = sessions.get(id), keep = req.query.keep === "1"
   if (s) end(s, keep)
-  else { if (!keep) endedHere(id); await b.kill(id) }
+  else await endHere(b, id, keep)
   listChanged()
   return { id, ended: true }
 }, { lock: false })
@@ -1320,12 +1599,9 @@ const shellPids = () => plugin.memo(1, async function shellPids() {
   return map
 })
 
-/** The terminal session a process runs in, or null: by Claude Code's tmux pane `hint` when it has one, else by walking
- *  the process's parents up to a terminal's shell. */
-plugin.provide("terminal:of", async (pid: number, hint = ""): Promise<string | null> => {
+/** The terminal session a process runs in, or null: walking the process's parents up to a terminal's shell. */
+plugin.provide("terminal:of", async (pid: number): Promise<string | null> => {
   const shells = await shellPids()
-  const named = /^vau-([\w-]+):/.exec(hint)?.[1]
-  if (named && [...shells.values()].some((x) => x.id === named)) return named
   const up = await processTable()
   for (let p = pid, n = 0; p > 1 && n < 30; p = up.get(p)?.ppid ?? 0, n++) {
     const id = shells.get(p)?.id

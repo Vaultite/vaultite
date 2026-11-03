@@ -2,10 +2,11 @@
 A shell in a tab (desktop), started in the vault's folder on the machine the server runs on, to run a coding agent on
 the vault: "Open Claude Code", "Open Codex" and the like (the Terminals panel's + too) start one, for each plugin that
 brings an agent and is on. It keeps nothing in the vault but its settings (below).
-- Shells keep running when the server restarts or the app quits: they live in Vaultite's own keeper (or in tmux, the
-  setting `backend`, or in herdr with that plugin's `newTerminals`), and a tab put back gets its screen and history
-  again. Only the tab that opened an agent starts it: a tab put back (a reload, the app reopened, another device)
-  reattaches, and if that agent's session is gone it says so and offers a new one rather than starting it by itself.
+- Shells keep running when the server restarts or the app quits: they live in Vaultite's terminal server, a process
+  of their own (or in herdr with that plugin's `newTerminals`), with their name, what they run, their state and how
+  they ended, and a tab put back gets its screen and history again. Only the tab that opened an agent starts it: a
+  tab put back (a reload, the app reopened, another device) reattaches, and if that agent's session is gone it says so
+  and offers a new one rather than starting it by itself.
 - A shell open on two devices has the size of the last one used: going back to one (focusing its tab or window, a
   click, a key) gives it its size again.
 - The sidebar's Terminals panel (also a tab, `view:terminals`) lists every running shell: click to open it, x to end
@@ -25,9 +26,19 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
 - Its shells have `VAULTITE=1`, `VAULTITE_URL`, `VAULTITE_VAULT`, `VAULTITE_CLIENT` (`desktop`, `iphone` or `web`),
   `VAULTITE_TERMINAL` (its id, for an agent started in it) and this app's `vau` first on PATH; an agent started from it
   is told it runs inside Vaultite where it takes that (Claude Code, OpenCode; the others read this file).
-- `vau terminal` lists this machine's sessions (with an agent's own session id, when it says) and the tabs showing
-  them, and opens, resumes (a Claude Code session by its title too), reads (`screen`), types into (`send`) and ends
-  them; `vau terminal tidy` closes the tabs of agents' sessions that are gone.
+- `vau terminal` lists this machine's sessions (with an agent's own session id, when it says; `--machine all` every
+  machine's, `--ended` the ones that ended in the last hour) and the tabs showing them. A terminal is named by its id,
+  its name or the end of its id, `<id>@<machine>` for another machine's (the op runs there). `vau terminal start` starts
+  one in the background (a command alone, which ends it with its exit code; an agent with its prompt; a shell) and
+  answers its id (`--wait`: a command's exit code and last lines; an agent's `--model`, `--effort`, `--mode`, `--cwd`);
+  `open` does it in a tab; `get` tells one's state, folder, command, size and what was sent into it lately (no id: the
+  one you run in, `VAULTITE_TERMINAL`); `capture` reads its screen and history (`--lines`, `--all`; `--format vt` or
+  `html` with colors; `--json`: the cursor's line, a grey suggested reply apart from typed text); `wait` waits for it to
+  end (vau exits with its code), for its agent's turn to end (idle held a moment), a pattern on its screen (`--match`)
+  or its output to go quiet; `send` types into it and says whether an agent took it (`--wait`: and its turn), `key`
+  presses keys (C-c, Enter, Up); `rename`, `resume` (a Claude Code session by its title too) and `end`; `vau terminal attach <terminal>` shows one in the terminal you run it in (⌃\
+  detaches, leaving it running). `vau terminal tidy` closes the tabs of agents' sessions that are gone. Its events:
+  `terminal.started`, `terminal.state`, `terminal.ended` (`vau events --type terminal`).
 - A session can be named (Rename tab… on its tab, `vau terminal rename <id> "<name>"`: terminal.rename; without an id,
   the one you run in): its tabs on every device, its Terminals row and `vau terminal` show the name before what its
   program titles it, until it's cleared (an empty name) or the session ends.

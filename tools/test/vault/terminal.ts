@@ -13,7 +13,10 @@ export default async ($: VaultTest) => {
     const tabs = [["t1", "claude-live1"], ["t2", "claude-gone1"], ["t3", "k3j2h1g0"], ["t4", "claude-far@m1"]].map(([id, t]) => ({ id, to: `view:terminal/${t}` }))
     const termApi = async (m: string, r: string, b?: unknown) => {
       calls.push(`${m} ${r}${b === undefined ? "" : ` ${JSON.stringify(b)}`}`)
-      if (r === "terminals/sessions") return { status: 200, body: { sessions: [{ id: "claude-live1", agent: "claude", process: "claude", clients: 1, started: Date.now() - 120000, title: "Fixing the build", state: "working" }] } }
+      if (r.startsWith("terminals/sessions")) return { status: 200, body: { sessions: [{ id: "claude-live1", agent: "claude", process: "claude", clients: 1, started: Date.now() - 120000, title: "Fixing the build", state: "working" },
+        { id: "a8f3k2m1", agent: null, process: "zsh", clients: 0, started: Date.now() - 60000, name: "Release notes" }], ...(r.includes("ended=1") ? { ended: [{ id: "q9w8e7r6", backend: "vaultite", command: "npm test", started: Date.now() - 90000, exit: { code: 3, signal: 0, at: Date.now() - 30000 } }] } : {}) } }
+      if (r.includes("/capture?")) return { status: 200, body: { id: r.split("/")[1], format: "text", text: "line 1\nline 2" } }
+      if (m === "POST" && r.endsWith("/wait")) return { status: 200, body: { met: "exit", timedOut: false, waited: 1.5, for: ["exit"], exit: { code: 3, signal: 0 } } }
       if (r === "workspaces") return { status: 200, body: { workspaces: [{ layout: { root: { id: "g0", tabs, active: "t1" }, focus: "g0" } }] } }
       if (r === "workspaces/close") return { status: 200, body: { closed: [{ workspace: 1, id: "t2", to: (b as Any).path }] } }
       if (r === "claude-code?days=30") return { status: 200, body: { sessions: [{ id: "3f2a9c1e-5b7d-4e2a-9c1f-0a2b3c4d5e6f", title: "Left sidebar scrollbar" }, { id: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b", title: "Sidebar tweaks" }] } }
@@ -41,7 +44,7 @@ export default async ($: VaultTest) => {
     }
     let tr = await term("list")
     check("vau terminal: the sessions, what runs in them and their tabs; then the tabs whose session is gone (another machine's aren't)",
-      tr.code === 0 && tr.out.includes('claude-live1  claude (working)  "Fixing the build"  2m ago, tab in workspace 1') &&
+      tr.code === 0 && tr.out.includes('claude-live1  claude (working)  "Fixing the build"  2m ago, tab in workspace 1') && tr.out.includes('a8f3k2m1  zsh  named "Release notes"') &&
       tr.out.includes("claude-gone1  gone, tab in workspace 1 (an agent's") && tr.out.includes("k3j2h1g0  gone, tab in workspace 1 (a new shell") && !tr.out.includes("claude-far"), tr)
     calls.length = 0
     tr = await term("tidy")
@@ -61,6 +64,15 @@ export default async ($: VaultTest) => {
     check("vau terminal open from an agent: starts with its prompt, its tab behind the user's, a toast to show it", tr.code === 0 && !!behind &&
       behind[2] === '{"prompt":"Fix the failing test"}' && calls[1] === `POST ui {"action":"open","path":"view:terminal/${behind[1]}","background":true}` &&
       calls[2] === `POST ui {"action":"notify","text":"Claude Code started a session","button":{"label":"Show","open":"view:terminal/${behind[1]}"}}`, [tr, calls])
+    calls.length = 0
+    tr = await term("open", { agent: "claude", model: "opus", effort: "xhigh", mode: "auto", cwd: "/tmp" })
+    const how = /^POST terminals\/(claude-[a-z0-9]{8}) (.*)$/.exec(calls.find((c) => c.startsWith("POST terminals/")) ?? "")
+    check("vau terminal open: an agent's model, effort, mode and folder go with it", tr.code === 0 && how?.[2] === JSON.stringify({ model: "opus", effort: "xhigh", mode: "auto", cwd: "/tmp" }), [tr, calls])
+    const uiWas = termCtx.ui
+    termCtx.ui = async () => { throw new OpErr("no app window is open", 409) }
+    tr = await term("open", { agent: "claude" })
+    termCtx.ui = uiWas
+    check("vau terminal open: no window open isn't an error (the session runs), it says so", tr.code === 0 && tr.out.includes("no app window is open, so no tab"), tr)
     tr = await term("open", { prompt: "hi" })
     check("vau terminal open: a prompt with no agent is refused", tr.code === 1 && tr.err.includes("a prompt is an agent's"), tr)
     calls.length = 0
@@ -98,22 +110,63 @@ export default async ($: VaultTest) => {
     check("vau terminal resume: words in several titles list them", tr.code === 1 && tr.err.includes("2 sessions"), tr)
     calls.length = 0
     tr = await term("send", { id: "k3j2h1g0", text: "npm test" })
-    check("vau terminal send: the text, then Enter", tr.code === 0 && calls[0] === 'POST terminals/k3j2h1g0/send {"text":"npm test","enter":true}', [tr, calls])
+    check("vau terminal send: the text, then Enter", tr.code === 0 && calls.at(-1) === 'POST terminals/k3j2h1g0/send {"text":"npm test","enter":true,"confirm":true}', [tr, calls])
+    // A terminal by its name, or the end of its id (one only: several are listed), or one that ended lately.
+    const sent = async (id: string) => { calls.length = 0; const x = await term("send", { id, text: "hi" }); return [x, calls.find((c) => c.endsWith("/send {\"text\":\"hi\",\"enter\":true,\"confirm\":true}"))] as const }
+    const [byName, toName] = await sent("release notes"), [bySuffix, toSuffix] = await sent("m1"), [, toEnd] = await sent("k2m1")
+    check("vau terminal: a terminal by its name (any case) or the end of its id", byName.code === 0 && toName?.startsWith("POST terminals/a8f3k2m1/") &&
+      bySuffix.code === 1 && bySuffix.err.includes("'m1'") && toEnd?.startsWith("POST terminals/a8f3k2m1/") && !toSuffix, [byName, toName, bySuffix, toEnd])
+    tr = await term("send", { id: "live", text: "hi" })
+    check("vau terminal: a name or end that names none says so", tr.code === 1 && tr.err.includes("no terminal 'live'"), tr)
+    calls.length = 0
+    tr = await term("key", { id: "Release notes", keys: ["C-c", "Up", "Enter"] })
+    check("vau terminal key: the keys by name, in order", tr.code === 0 && calls.at(-1) === 'POST terminals/a8f3k2m1/send {"keys":["C-c","Up","Enter"]}' && tr.out === "Pressed C-c Up Enter in a8f3k2m1.", [tr, calls])
+    tr = await term("capture", { id: "k3j2h1g0", lines: 20, format: "vt" })
+    check("vau terminal capture: its lines as given", tr.code === 0 && tr.out === "line 1\nline 2" && calls.includes("GET terminals/k3j2h1g0/capture?format=vt&lines=20"), [tr, calls.slice(-1)])
+    calls.length = 0
+    tr = await term("wait", { id: "q9w8e7r6", for: ["exit"], timeout: 30 })
+    check("vau terminal wait: one that ended lately counts, and its end says how", tr.code === 0 && tr.out === "q9w8e7r6 ended (exit code 3) after 1.5 s." &&
+      calls.some((c) => c.startsWith("GET terminals/sessions?ended=1")) && calls.at(-1) === 'POST terminals/q9w8e7r6/wait {"for":["exit"],"timeout":30,"quiet":2}', [tr, calls])
+    calls.length = 0
+    tr = await term("send", { id: "Release notes", text: "Summarize it", wait: true, timeout: 60 })
+    check("vau terminal send --wait: types, then waits for its turn to end (wait's default)", tr.code === 0 && calls.at(-1) === 'POST terminals/a8f3k2m1/wait {"timeout":60}' &&
+      tr.out.endsWith("(Enter). a8f3k2m1 ended (exit code 3) after 1.5 s."), [tr, calls])
+    tr = await term("list", { ended: true })
+    check("vau terminal --ended: the ones that ended lately, with how", tr.code === 0 && /q9w8e7r6 {2}npm test {2}ended just now \(exit code 3\)/.test(tr.out), tr)
+    tr = await term("start", { command: "npm test", agent: "claude" })
+    check("vau terminal start: a command or an agent, not both", tr.code === 1 && tr.err.includes("not both"), tr)
+    calls.length = 0
+    tr = await term("start", { command: "npm test", name: "tests", cwd: "/tmp" })
+    const started = /^POST terminals\/([a-z0-9]{8}) (.*)$/.exec(calls.find((c) => c.startsWith("POST terminals/")) ?? "")
+    check("vau terminal start: a command alone in a new terminal, no tab, its id answered", tr.code === 0 && !!started &&
+      started[2] === JSON.stringify({ command: "npm test", name: "tests", cwd: "/tmp" }) && !calls.some((c) => c.startsWith("POST ui")) && tr.out.startsWith(`Started ${started[1]} running "npm test"`), [tr, calls])
     calls.length = 0
     tr = await term("end", { id: "claude-live1" })
-    check("vau terminal end: ends it and closes its tabs", tr.code === 0 && calls[0] === "DELETE terminals/claude-live1" &&
-      calls[1] === 'POST workspaces/close {"path":"view:terminal/claude-live1"}' && tr.out.includes("closed its tab"), [tr, calls])
+    check("vau terminal end: ends it and closes its tabs", tr.code === 0 && calls.includes("DELETE terminals/claude-live1") &&
+      calls.at(-1) === 'POST workspaces/close {"path":"view:terminal/claude-live1"}' && tr.out.includes("closed its tab"), [tr, calls])
     tr = await term("end")
     check("vau terminal end: without an id (no VAULTITE_TERMINAL) asks which", tr.code === 1 && tr.err.includes("which terminal"), tr)
-    tr = await term("screen", { id: "claude-far@m1" })
-    check("vau terminal: another machine's id goes to that machine", tr.code === 1 && tr.err.includes("another machine's"), tr)
+    tr = await term("capture", { id: "claude-far@m1" })
+    check("vau terminal: another machine's id goes to that machine", tr.code === 1 && /machine 'm1'/.test(tr.err), tr)
     // From the command line (the real routes: a session that isn't there is said, nothing starts): its words as the op's.
-    tr = await vau("terminal", "send", "nosuch1", "npm", "test")
-    check("vau terminal send: the id, then the rest of the words as the text", tr.code === 1 && tr.err.includes("no terminal session 'nosuch1'"), tr)
+    tr = await vau("terminal", "send", "nosuch12", "npm", "test")
+    check("vau terminal send: the id, then the rest of the words as the text", tr.code === 1 && tr.err.includes("no terminal session 'nosuch12'"), tr)
     tr = await execute(["terminal", "end"], { api: cliApi, env: { VAULTITE_TERMINAL: "nosuch2" }, stdin: async () => "" })
-    check("vau terminal end: without an id, the terminal it runs in (VAULTITE_TERMINAL)", tr.code === 1 && tr.err.includes("no terminal session 'nosuch2'"), tr)
-    tr = await vau("terminal", "screen", "claude-far@m1")
-    check("vau terminal screen: another machine's id, from the command line", tr.code === 1 && tr.err.includes("another machine's"), tr)
+    check("vau terminal end: without an id, the terminal it runs in (VAULTITE_TERMINAL)", tr.code === 1 && tr.err.includes("no terminal 'nosuch2'"), tr)
+    tr = await vau("terminal", "capture", "claude-far@m1")
+    check("vau terminal capture: another machine's id, from the command line", tr.code === 1 && /machine 'm1'/.test(tr.err), tr)
+    // vau terminal wait's exit code: the terminal's when it waited for its end, 124 when the time ran out.
+    const { cli: termCli } = await import("../../../plugins/core/terminal/cli.ts")
+    const code = termCli.ops!["terminal.wait"].code!
+    check("vau terminal wait: exits with the terminal's code, 128 + a signal, 124 on a timeout, 1 when it ended first",
+      code({ met: "exit", exit: { code: 3, signal: 0 } }) === 3 && code({ met: "exit", exit: { code: 0, signal: 15 } }) === 143 && code({ met: null, timedOut: true }) === 124 &&
+      code({ met: null, timedOut: false, exit: { code: 0, signal: 0 } }) === 1 && code({ met: "idle" }) === 0)
+    // vau's --no-<switch> turns a switch off (vau terminal send --no-enter).
+    const { entryOf } = await import("../../../core/ops.ts")
+    let sentAs: Any = null
+    const sendNo = await execute(["terminal", "send", "nosuch12", "hi", "--no-enter"], { env: {}, stdin: async () => "",
+      api: async (_m: string, r: string, b?: unknown) => (r.startsWith("ops?") ? { status: 200, body: termPlugin.ops.map((o) => entryOf(o, "terminal")) } : (sentAs = b, { status: 200, body: "ok" })) })
+    check("vau: --no-<switch> is the switch off", sendNo.code === 0 && sentAs?.enter === "false" && sentAs.text === "hi", [sendNo, sentAs])
   }
 
   // vau finds the server when VAULTITE_URL doesn't say: the desktop app's (vaults.json: a port per vault) for the vault
@@ -143,7 +196,7 @@ export default async ($: VaultTest) => {
     // An agent's questions on its screen: Claude Code's folder trust (before its hooks run) and permission, by their last lines.
     const cc = await import("../../../plugins/core/claude-code/plugin.ts")
     const asks = cc.plugin.services["agent-asks:claude"]()
-    const showing = (text: string) => ({ screen: async () => text })
+    const showing = (text: string) => ({ capture: async () => ({ text, cols: 80, rows: 24, cursor: { x: 0, y: 0 }, alternate: false }) })
     const trust = await term.askOn(showing("Accessing workspace:\n\n /Users/sam/Notes\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n\n"), "t", asks)
     check("terminal: Claude Code's folder trust is a question, approved by choosing Yes (its default is No)", trust?.id === "trust" &&
       JSON.stringify(trust.approve) === JSON.stringify(["\x1b[B", "\r"]) && JSON.stringify(trust.deny) === JSON.stringify(["\x1b"]), trust)
@@ -178,15 +231,12 @@ export default async ($: VaultTest) => {
       check("terminal: its agent's word that it waits blocks it, and no longer once it doesn't", before === null && blocked?.state === "blocked" &&
         blocked.kind === "question" && blocked.from === "agent" && blocked.agent === "claude" && state(id) === null, [before, blocked, state(id)])
     }
-    // What a page gets back from a backend without pictures: the last `scrollback` lines, whole chunks, and a line
-    // redrawn without end (a progress bar) held to its share.
-    const { Tail } = await import("../../../plugins/core/terminal/backend.ts")
-    const tail = new Tail(100)
-    for (let i = 0; i < 500; i++) tail.push(`line ${i}\r\n`)
-    const kept = tail.text().split("\r\n").filter(Boolean)
-    check("terminal: the replay is the last scrollback lines", kept.length === 100 && kept[0] === "line 400" && kept.at(-1) === "line 499", kept.length)
-    for (let i = 0; i < 2000; i++) tail.push(`\r${"#".repeat(50)} ${i}%`)
-    check("terminal: output with no line breaks is held to about 200 characters a line", tail.text().length <= 100 * 200 + 60, tail.text().length)
+    // Keys by name, as a terminal sends them (keys.ts).
+    const { keyBytes, keysBytes } = await import("../../../plugins/core/terminal/keys.ts")
+    check("terminal keys: tmux's names, modifiers, arrows in application cursor mode", keyBytes("Enter") === "\r" && keyBytes("C-c") === "\x03" && keyBytes("M-x") === "\x1bx" &&
+      keyBytes("Up") === "\x1b[A" && keyBytes("Up", { appCursor: true }) === "\x1bOA" && keyBytes("C-Up") === "\x1b[1;5A" && keyBytes("S-Tab") === "\x1b[Z" &&
+      keyBytes("F5") === "\x1b[15~" && keyBytes("F1") === "\x1bOP" && keyBytes("PageDown") === "\x1b[6~" && keyBytes("C-Space") === "\x00" && keyBytes("x") === "x" &&
+      keyBytes("nope") === null && keysBytes(["Escape", "C-[", "BSpace"]) === "\x1b\x1b\x7f")
     // Vaultite's vau first on PATH after the user's startup files put another vau first (as Homebrew's shellenv does),
     // then QA's stand-in agents (VAULTITE_AGENT_BIN) before the user's own.
     const { execFileSync } = await import("node:child_process")
@@ -227,13 +277,13 @@ export default async ($: VaultTest) => {
       kept.socket.includes(`-vaultite-x${process.pid}`), kept)
   }
 
-  // The keeper lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper running for
-  // days took the machine's ptys, and new terminals and tmux failed). (Windows: terminal-windows.ts.)
+  // The terminal server lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper
+  // running for days took the machine's ptys, and new terminals and tmux failed). (Windows: terminal-windows.ts.)
   if (process.platform !== "win32") {
-    const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { execFileSync } = await import("node:child_process")
     const { waitFor } = await import("../lib.ts")
-    const keeper = ptydBackend(`test-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/ptyd.ts") })
+    const keeper = termdBackend(`test-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/termd/termd.ts") })
     const ptys = (pid: number) => process.platform === "linux"
       ? fs.readdirSync(`/proc/${pid}/fd`).filter((f) => { try { return /^\/dev\/(ptmx|pts\/)/.test(fs.readlinkSync(`/proc/${pid}/fd/${f}`)) } catch { return false } }).length
       : execFileSync("lsof", ["-p", String(pid)]).toString().split("\n").filter((l) => /\/dev\/(ptmx|ttys)|\(revoked\)/.test(l)).length
@@ -241,7 +291,7 @@ export default async ($: VaultTest) => {
     // One at a time (a machine short of ptys still runs it), ended each way: killed, exiting, a spare taken then killed.
     const ways: [string, (id: string) => Promise<unknown>][] = [
       ["leak-kill", (id) => keeper.kill(id)],
-      ["leak-exit", (id) => keeper.send(id, "exit", true)],
+      ["leak-exit", (id) => keeper.send(id, { text: "exit\r" })],
       ["leak-spare", async (id) => { await keeper.rename!(id, `${id}-taken`); await keeper.kill(`${id}-taken`) }],
     ]
     const seen: Record<string, unknown>[] = []
@@ -254,7 +304,7 @@ export default async ($: VaultTest) => {
         const pid = Number(fs.readFileSync(`${keeper.files}.pid`, "utf8"))
         const open = ptys(pid)
         // Ended only once its prompt is up: a hangup sent while the shell still starts could be lost on a slow machine.
-        const ready = await waitFor(async () => (await keeper.screen(id, 5)).trim() !== "", 10_000, 50)
+        const ready = await waitFor(async () => (await keeper.capture(id, { format: "text", lines: 5 })).text.trim() !== "", 10_000, 50)
         await end(id)
         const ended = await waitFor(async () => (await keeper.list()).length === 0, 15_000, 100)
         const left = (await waitFor(() => ptys(pid) === 0, 5_000, 100)) ? 0 : ptys(pid)
@@ -262,10 +312,111 @@ export default async ($: VaultTest) => {
       }
       access.push(await keeper.access(tmp), await keeper.access(path.join(tmp, "no-such-folder")))
     } finally { stop() }
-    check("terminal: the keeper lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ready && s.ended && s.left === 0), seen)
-    // (Settings > Permissions: whether the keeper itself may read the vault, which macOS can refuse it and not the app)
-    check("terminal: the keeper says whether it can read a folder, and never starts for that", JSON.stringify(access) ===
+    check("terminal: the terminal server lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ready && s.ended && s.left === 0), seen)
+    // (Settings > Permissions: whether the terminal server itself may read the vault, which macOS can refuse it and not the app)
+    check("terminal: the terminal server says whether it can read a folder, and never starts for that", JSON.stringify(access) ===
       JSON.stringify([null, { ok: true }, { ok: false, why: "the folder isn't there" }]), access)
+  }
+
+  // The terminal server's core (host.ts) in this process: what it keeps of each terminal (meta, command, cwd), captures as
+  // text, vt and html, keys by name, its events, and an ended one kept with how it ended.
+  if (process.platform !== "win32") {
+    const { localBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { waitFor } = await import("../lib.ts")
+    const b = localBackend()
+    const evs: { type: string; id: string; [k: string]: unknown }[] = []
+    b.events!((ev) => evs.push(ev as never))
+    const spec = { shell: "/bin/sh", run: { command: "printf 'one\\n\\033[31mred\\033[0m\\n'; read x; echo \"got $x\"; exit 4" }, only: true, cwd: tmp,
+      env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 40, rows: 6, scrollback: 50 }
+    await b.create("cap1", spec, { command: "the test", meta: { name: "Capture test" } })
+    await waitFor(async () => (await b.capture("cap1", { format: "text" })).text.includes("red"), 10_000, 50)
+    const text = await b.capture("cap1", { format: "text" }), vt = await b.capture("cap1", { format: "vt" }), html = await b.capture("cap1", { format: "html" })
+    const listed = (await b.list()).find((x) => x.id === "cap1")
+    await b.setMeta!("cap1", { note: "Notes/Idea.md", name: null })
+    const meta = (await b.list()).find((x) => x.id === "cap1")?.meta
+    await b.send("cap1", { text: "hello" })
+    await b.send("cap1", { keys: ["Enter"] })
+    const ended = await waitFor(async () => (await b.list({ ended: true })).find((x) => x.id === "cap1")?.exit, 10_000, 50)
+    const after = await b.capture("cap1", { format: "text", lines: 10 })
+    check("terminal server: a terminal's text, vt (its colors) and html captures, its size and cursor", text.text === "one\nred" && vt.text.includes("\x1b[31mred") &&
+      html.text.includes("color: #cc0000") && text.cols === 40 && text.rows === 6 && text.cursor.y === 2, [text, vt.text, html.text.slice(0, 80)])
+    check("terminal server: it keeps what the app gives it (meta, what it runs, its folder)", listed?.command === "the test" && listed.meta?.name === "Capture test" && listed.cwd === tmp &&
+      JSON.stringify(meta) === JSON.stringify({ note: "Notes/Idea.md" }), [listed, meta])
+    check("terminal server: a command alone ends the terminal, its code kept, its screen still captured", (ended as { code: number })?.code === 4 &&
+      after.ended === true && after.text.includes("got hello") && !(await b.list()).some((x) => x.id === "cap1"), [ended, after])
+    check("terminal server: it tells what happens (started, meta, exited with how)", evs.map((e) => e.type).filter((t) => ["started", "meta", "exited"].includes(t)).join() === "started,meta,exited" &&
+      (evs.find((e) => e.type === "exited")?.exit as { code: number })?.code === 4 && (evs[0].info as { command?: string })?.command === "the test", evs.map((e) => e.type))
+    await b.create("keys1", { ...spec, run: { command: "stty raw -echo; dd bs=1 count=8 2>/dev/null | od -An -c; sleep 5" } })
+    await new Promise((r) => setTimeout(r, 300))
+    await b.send("keys1", { keys: ["C-c", "Up", "Escape", "M-x", "Tab"] })
+    const keyed = await waitFor(async () => { const t = (await b.capture("keys1", { format: "text" })).text; return /\\t/.test(t) ? t : null }, 5_000, 50)
+    await b.kill("keys1")
+    check("terminal server: keys by name go as their bytes", typeof keyed === "string" && /003\s+033\s+\[\s+A\s+033\s+033\s+x\s+\\t/.test(keyed), keyed)
+    let bad = ""
+    await b.create("keys2", { ...spec, run: { command: "sleep 5" } })
+    try { await b.send("keys2", { keys: ["Hyper-Q"] }) } catch (e) { bad = (e as Error).message }
+    await b.kill("keys2")
+    check("terminal server: a key it doesn't know is refused, saying which", bad.includes("'Hyper-Q' isn't a key"), bad)
+    // An end while nobody listened (the app's server away): told to the next to subscribe, once.
+    const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
+    const h = host({ log: () => {}, pid: process.pid, file: "test" })
+    const heard: Record<string, unknown>[][] = [[], []]
+    const conns = heard.map((into) => h.connect({ session: null, ready: false, send: (m) => into.push(m as never), backlog: () => 0 }))
+    conns[0].take({ op: "create", id: "away1", file: "/bin/sh", args: ["-c", "exit 5"], cwd: tmp, env: { PATH: "/usr/bin:/bin" }, re: 1 })
+    await waitFor(() => { conns[0].take({ op: "list", ended: true, re: 2 }); return heard[0].some((m) => m.re === 2 && (m.ended as unknown[])?.length) }, 5_000, 50)
+    conns[0].take({ op: "subscribe" })
+    conns[1].take({ op: "subscribe" })
+    const told = heard.map((l) => l.filter((m) => m.type === "exited").map((m) => (m.exit as { code: number }).code))
+    check("terminal server: an end nobody heard is told to the next to subscribe, once", JSON.stringify(told) === "[[5],[]]", told)
+  }
+
+  // Taking over an older terminal server's terminals (termd/adopt.ts): a stand-in for the keeper before it (protocol 1:
+  // ptyd), whose shell is held through it from then on, screen, input, status and end alike.
+  if (process.platform !== "win32") {
+    const net = await import("node:net")
+    const { host } = await import("../../../plugins/core/terminal/termd/host.ts")
+    const { waitFor } = await import("../lib.ts")
+    const old = path.join(tmp, "old-keeper.sock"), got: string[] = []
+    let conn: import("node:net").Socket | null = null
+    const oldServer = net.createServer((sock) => {
+      sock.setEncoding("utf8")
+      let buf = ""
+      sock.on("data", (d: string) => {
+        buf += d
+        for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+          const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1)
+          const re = (x: object) => sock.write(JSON.stringify({ re: m.re, ...x }) + "\n")
+          if (m.op === "hello") re({ v: 1, pid: 4242 })
+          else if (m.op === "list") re({ sessions: [{ id: "old1", pid: 99, process: "zsh", created: 1000, title: "Old one", cols: 30, rows: 5, said: { seen: true, status: { state: "working" } } },
+            { id: "vauspare-x", spare: true, process: "zsh", created: 1 }] })
+          else if (m.op === "attach") { conn = sock; re({ cols: 30, rows: 5 }); sock.write(JSON.stringify({ t: "data", d: "in the picture already" }) + "\n") }
+          else if (m.op === "snapshot") { re({ data: "old screen\r\n$ " }); sock.write(JSON.stringify({ t: "data", d: "after" }) + "\n") }
+          else if (m.op === "input") got.push(Buffer.from(m.b64, "base64").toString())
+          else if (m.op === "kill") { got.push(`kill ${m.id}`); re({}) }
+          else if (m.re !== undefined) re({})
+        }
+      })
+    })
+    await new Promise<void>((r) => oldServer.listen(old, r))
+    const h = host({ log: () => {}, pid: process.pid, file: "test" })
+    const msgs: Record<string, unknown>[] = []
+    const c = h.connect({ session: null, ready: false, send: (m) => msgs.push(m as never), backlog: () => 0 })
+    c.take({ op: "adopt", socket: old, scrollback: 100, re: 1 })
+    const adopted = await waitFor(() => msgs.find((m) => m.re === 1), 5_000, 20) as { adopted?: string[] } | undefined
+    await new Promise((r) => setTimeout(r, 100))
+    c.take({ op: "capture", id: "old1", re: 2 })
+    const cap = await waitFor(() => msgs.find((m) => m.re === 2), 2_000, 20) as { text?: string } | undefined
+    c.take({ op: "input", id: "old1", b64: Buffer.from("ls\r").toString("base64") })
+    c.take({ op: "list", re: 3 })
+    const info = (msgs.find((m) => m.re === 3) as { sessions: { id: string; via?: number; said: unknown; title: string }[] }).sessions[0]
+    c.take({ op: "subscribe" })
+    conn!.write(JSON.stringify({ t: "exit", code: 2, signal: 0 }) + "\n")
+    const exited = await waitFor(() => msgs.find((m) => m.type === "exited"), 2_000, 20) as { exit?: { code: number } } | undefined
+    oldServer.close()
+    check("terminal server: it takes over an older one's terminals (not its spares, which end), held through it", JSON.stringify(adopted?.adopted) === '["old1"]' &&
+      got.includes("kill vauspare-x") && info.via === 4242 && info.title === "Old one" && JSON.stringify(info.said) === JSON.stringify({ seen: true, status: { state: "working" } }), [adopted, got, info])
+    check("terminal server: an adopted terminal's screen is its picture then what came after, its input goes through, its end is told",
+      cap?.text === "old screen\n$ after" && got.includes("ls\r") && exited?.exit?.code === 2, [cap, got, exited])
   }
 
   // OSC 7501 (osc7501.ts): reports by the spec's rules, taken out of the output however it's cut, records' state; the
@@ -336,12 +487,12 @@ export default async ($: VaultTest) => {
       !(many as unknown as { map: Map<string, unknown> }).map.has("w0"))
     // The keeper answers the probe in its place: the shell reads the answer, then the headless terminal's DA answer.
     if (process.platform !== "win32") await (async () => {
-    const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { termdBackend } = await import("../../../plugins/core/terminal/backend.ts")
     const { waitFor } = await import("../lib.ts")
-    const keeper = ptydBackend(`test7501-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/ptyd.ts") })
+    const keeper = termdBackend(`test7501-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/termd/termd.ts") })
     const got = path.join(tmp, "probe-answer")
     const said: unknown[] = []
-    keeper.status!.follow((id, s) => said.push({ id, ...s }))
+    keeper.events!((ev) => { if (ev.type === "status") said.push({ id: ev.id, ...ev.said }) })
     const script = `stty raw -echo; printf '\\033]7501;?\\033\\\\\\033[c'; dd bs=1 count=${REPLY.length + 7} of=${got} 2>/dev/null; ` +
       `printf '\\033]7501;state=blocked:kind=question:msg=${b64("Which port?")}\\033\\\\'; sleep 30`
     const spec = { shell: "/bin/sh", run: { command: script }, cwd: tmp, env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 80, rows: 24, scrollback: 100 }
@@ -355,9 +506,9 @@ export default async ($: VaultTest) => {
       listed = (await keeper.list()).find((x) => x.id === "probe1")?.said
       await keeper.kill("probe1")
     } finally { stop() }
-    check("osc7501: the keeper answers the probe before the primary DA after it", answer.startsWith(REPLY) && answer.slice(REPLY.length).startsWith("\x1b[?"), JSON.stringify(answer))
+    check("osc7501: the terminal server answers the probe before the primary DA after it", answer.startsWith(REPLY) && answer.slice(REPLY.length).startsWith("\x1b[?"), JSON.stringify(answer))
     const blockedSaid = { seen: true, status: { state: "blocked", kind: "question", msg: "Which port?" } }
-    check("osc7501: the keeper tells the server its records as they change (from the probe on: it speaks it), and lists them",
+    check("osc7501: the terminal server tells the app its records as they change (from the probe on: it speaks it), and lists them",
       JSON.stringify(said.at(-1)) === JSON.stringify({ id: "probe1", ...blockedSaid }) && said.every((x) => (x as { seen: boolean }).seen) &&
       JSON.stringify(listed) === JSON.stringify(blockedSaid), [said, listed])
     // An agent's hooks once it speaks OSC 7501 (its terminal's mark there): they say nothing.

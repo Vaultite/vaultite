@@ -252,16 +252,16 @@ function running(accts: Account[]) {
       try { s = JSON.parse(fs.readFileSync(path.join(d, n), "utf8")) } catch { return [] }
       const pid = Math.trunc(Number(s.pid)), cwd = String(s.cwd || "")
       if (!Number.isFinite(pid) || isAsking(cwd) || !alive(pid, s.procStart)) return []
-      return [{ a, s, pid, cwd, sid: typeof s.sessionId === "string" ? s.sessionId : "", tmux: typeof s.tmux === "string" ? s.tmux : "" }]
+      return [{ a, s, pid, cwd, sid: typeof s.sessionId === "string" ? s.sessionId : "" }]
     })
   })
 }
 
 async function live(accts: Account[]): Promise<Live[]> {
   const ms = (v: unknown) => (typeof v === "number" ? v : null)
-  return running(accts).map(({ a, s, pid, cwd, sid, tmux }) => ({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "",
+  return running(accts).map(({ a, s, pid, cwd, sid }) => ({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "",
     name: a.private ? "" : s.name || "", status: s.status || "", kind: s.kind || "", cwd: a.private ? "" : cwd, started: ms(s.startedAt),
-    since: ms(s.statusUpdatedAt), tmux, account: a.id, ...(a.private ? { project: a.label, private: true } : {}) }))
+    since: ms(s.statusUpdatedAt), account: a.id, ...(a.private ? { project: a.label, private: true } : {}) }))
 }
 
 // ---------- plan limits: asked of Claude Code itself, else the status line's snapshots, else the Claude app's history;
@@ -617,10 +617,10 @@ plugin.provide("agent-pick:claude", (questions: Question[], choices: Choice[] | 
 async function sessionIn(terminal: string) {
   const sid = parseTerminal(terminal)?.resume || ""
   if (sid || !terminal) return sid
-  for (const { a, s, pid, sid: id, tmux } of running(accounts())) {
+  for (const { a, s, pid, sid: id } of running(accounts())) {
     if (!id || a.private) continue
     const key = `${pid}@${s.procStart}`
-    const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+    const t = terminals.get(key) ?? await terminalOf(plugin, pid)
     if (t) terminals.set(key, t)
     if (t === terminal) return id
   }
@@ -660,10 +660,10 @@ export async function tellWaits() {
   const tell = plugin.service("terminal:agent-waits")
   if (!tell) return
   const now = new Map<string, "permission" | "question">()
-  for (const { s, pid, tmux } of running(accounts())) {
+  for (const { s, pid } of running(accounts())) {
     if (s.status !== "waiting") continue
     const key = `${pid}@${s.procStart}`
-    const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+    const t = terminals.get(key) ?? await terminalOf(plugin, pid)
     if (!t) continue
     terminals.set(key, t)
     now.set(t, s.waitingFor === "permission prompt" ? "permission" : "question")
@@ -714,12 +714,12 @@ type Read = { tokens: number; last: number; ttl: number }
 const lastRead = new Map<string, { size: number; meter: Read | null }>()
 plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMeter[]> => {
   const out: AgentMeter[] = []
-  for (const { a, s, pid, sid, tmux } of running(accounts())) {
+  for (const { a, s, pid, sid } of running(accounts())) {
     if (!sid) continue
     const key = `${pid}@${s.procStart}`
     let terminal = terminals.get(key)
     if (!terminal) {
-      terminal = await terminalOf(plugin, pid, tmux) ?? undefined
+      terminal = await terminalOf(plugin, pid) ?? undefined
       if (!terminal) continue
       terminals.set(key, terminal)
     }
@@ -786,11 +786,11 @@ const agent = codingAgent(plugin, {
 const chat = chats(plugin, {
   accounts, sessionFile, models, modelName,
   async tuiOf(id) {
-    for (const { a, s, pid, sid, tmux } of running(accounts())) {
+    for (const { a, s, pid, sid } of running(accounts())) {
       // (one the SDK runs is the chat keeper's, followed again in a moment after a restart)
       if (sid !== id || chat.hosted(id) || String(s.entrypoint ?? "").startsWith("sdk")) continue
       const key = `${pid}@${s.procStart}`
-      const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+      const t = terminals.get(key) ?? await terminalOf(plugin, pid)
       if (t) terminals.set(key, t)
       return a.private ? "" : t ?? ""
     }

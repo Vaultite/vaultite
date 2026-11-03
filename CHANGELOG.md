@@ -10,6 +10,20 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **The status bar splits along your panes**: split, the focused note's items sit right under its pane, and each other
   note's word count under its own (fainter; click it to focus that pane). A chat's or terminal's foot is left alone, so
   the bar no longer covers a chat's input. A narrow pane keeps at least its word count.
+- **Terminals live in a terminal server that keeps everything about them**: a server restart keeps each terminal's
+  screen, history, name, note and state, and the ones from before this update are taken over as they run. Agents and
+  scripts drive them as a multiplexer's: `vau terminal start` runs a command or an agent in the background and answers
+  its id, `capture` reads the screen and history (text, or vt and html with colors), `wait` waits for a terminal to end
+  (exiting with its code), an agent's turn to end or the output to go quiet, `key` presses keys by name, `get` tells
+  one's state, and `vau terminal attach` opens one in any terminal (⌃\ detaches). A terminal is named by its id, its
+  name or the end of its id, `@machine` for another machine's; `vau events --type terminal` follows them starting,
+  changing state and ending; `vau terminal send` says whether an agent took what it typed (or why not: a question
+  open, the text left in its input), and `--wait` waits for its turn; `capture --json` tells a grey suggested reply
+  from typed text; `start` and `open` take an agent's model, effort, mode and folder, and no open window isn't an error;
+  `vau terminal get` with no id is your own terminal, with what was sent into it lately; `--no-<switch>` works for any
+  op's switch. A tab of a herdr pane waits for herdr rather than starting a shell of its own. The tmux backend
+  is gone (attach does what it was for), `vau terminal screen` is `capture`, and a plugin's terminal backend
+  (`terminal:backend`) implements the new `Backend` (capture, keys, events, meta): one made for the old one isn't used.
 - **Snooze is a button on a session's row and sheet**: beside Settle on hover, in the Inbox panel, and by Pin in its
   sheet, as results have it.
 - **An agent's question has every choice its picker has**, in the inbox and the chat tab: its options numbered, Type

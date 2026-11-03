@@ -998,7 +998,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `limitRows(windows)`: A plan's limits, one line each: how much is used and when it renews.
 - `Limits`: A plan's limits as an agent reads them: where from, when, and each window.
 - `limitWindow(id, label, minutes, used, resets, now)`: A plan limit's window at `now` (epoch s; `resets` too): one that renewed since it was read is unused.
-- `Live`: A session open now as its process tells (times in epoch ms; `tmux`, its pane): codingAgent adds what the usage knows of it (cost, tokens, project, model) and the app's terminal it runs in.
+- `Live`: A session open now as its process tells (times in epoch ms): codingAgent adds what the usage knows of it (cost, tokens, project, model) and the app's terminal it runs in.
 - `MODEL_NAME`: A model's or an effort's name as an agent takes it: sonnet[1m], gpt-6.1-sol, opencode/deepseek-v4.1-flash-free.
 - `newTerminalId(agent?)`: A new terminal's id: 8 letters and digits, after `agent` (a name, or a name and account: TERMINAL_AGENT) when it runs one.
 - `notOnThisMachine(agent, id)`: A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell.
@@ -1028,7 +1028,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `startAgent(ctx, id, prompt?, how?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
 - `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
 - `TERMINAL_AGENT`: An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal").
-- `terminalOf(plugin, pid, hint?)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.
+- `terminalOf(plugin, pid)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.
 - `Tool`: A conversation's entries (a session's view tab): a tool call, what was said, and its head.
 - `toolSummary(input, keys, where?)`: One line saying what a tool call did: the first of `keys` it has ("git status", "src/app.ts"), else its first text; a search as "<pattern> in <the first of `where`>".
 - `Transcript`: A JSONL transcript read so far, read on from where it stopped when it grows.
