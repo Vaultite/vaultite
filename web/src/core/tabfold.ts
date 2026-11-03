@@ -1,7 +1,9 @@
 // Tabs move as a browser's: a group folds by its tabs shrinking into its chip and opens by them growing out; new tabs
 // grow in (springing), closed ones shrink away. Only what the user does moves: an agent's fold or a workspace just shows.
-import { useLayoutEffect, type RefObject } from "react"
-import { closeTab, groupOfTab, groups, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
+import { useLayoutEffect, useRef, type RefObject } from "react"
+import { closeTab, groupOfTab, groups, layoutQuiet, onWorkspaceChange, replacingWorkspace } from "@/core/workspace"
+import { getDrag } from "@/core/drag"
+import type { Group } from "../../../core/layout.ts"
 import { foldSet, handOverFrom, setById } from "@/core/tabsets"
 import { moves, timing, type Pace } from "@/core/animation"
 
@@ -183,4 +185,55 @@ export function closeTabMoving(id: string, el: HTMLElement | null) {
   a.addEventListener("cancel", () => { el.style.pointerEvents = "" })
   // (closed, React takes it away whenever it draws: left shrunk till then; still open, its view asking first: put back)
   a.finished.then(() => { closeTab(id); if (groupOfTab(id)) a.cancel() }, () => {})
+}
+
+// ---------- tabs moving among themselves ----------
+
+/** A pane's tabs' order and groups (not folds: those move by foldSetMoving). */
+const drawnAs = (g: Group | undefined) => g ? `${g.tabs.map((t) => `${t.id}:${t.set ?? ""}`).join(",")}|${(g.sets ?? []).map((s) => s.id).join(",")}` : ""
+const sameTabs = (a: Group, b: string) => a.tabs.map((t) => t.id).sort().join() === b.split("|")[0].split(",").map((x) => x.split(":")[0]).sort().join()
+
+/** A pane's tabs (`box`'s `[data-slide]` items: the tab bar's, the Tabs panel's rows) moved among themselves, not opened
+ *  or closed (grouped, ungrouped, moved by a menu or a drop) slide from where they were drawn to their new places. */
+export function useReflow(box: RefObject<HTMLElement | null>, g: Group) {
+  const shown = useRef(drawnAs(g)), was = useRef<Map<string, DOMRect> | null>(null)
+  useLayoutEffect(() => onWorkspaceChange(() => {
+    // (measured as the change is told, before React draws it: where each is on screen, a drag's preview included)
+    const now = groups().find((x) => x.id === g.id), root = box.current
+    was.current = null
+    if (!now || !root || still() || replacingWorkspace() || layoutQuiet()) return
+    if (drawnAs(now) === shown.current || !sameTabs(now, shown.current)) return
+    was.current = new Map([...root.querySelectorAll<HTMLElement>("[data-slide]")].map((e) => [e.dataset.slide!, e.getBoundingClientRect()]))
+  }), [box, g.id])
+  useLayoutEffect(() => {
+    shown.current = drawnAs(g)
+    const from = was.current, root = box.current
+    was.current = null
+    if (!from || !root) return
+    for (const e of root.querySelectorAll<HTMLElement>("[data-slide]")) {
+      const a = from.get(e.dataset.slide!), b = e.getBoundingClientRect()
+      if (!a || !b.width) continue
+      const dx = a.left - b.left, dy = a.top - b.top
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
+      for (const x of e.getAnimations()) if ((x as CSSAnimation).id === "reflow") x.cancel()
+      const anim = e.animate([{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], timing("spring"))
+      anim.id = "reflow"
+    }
+  })
+}
+
+/** A tab's piece of its group's line, gone while the tab stays (ungrouped, taken out of the group): it fades where it
+ *  was rather than going at once. Not while a drag's preview draws them. */
+export function usePieceOut(ref: RefObject<HTMLElement | null>, tab: string) {
+  useLayoutEffect(() => {
+    const el = ref.current
+    return () => {
+      const parent = el?.parentElement
+      if (!el || !parent?.isConnected || still() || getDrag() || replacingWorkspace() || !groupOfTab(tab)) return
+      const copy = el.cloneNode(true) as HTMLElement
+      parent.append(copy)
+      copy.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing("base"), fill: "forwards" }).finished.then(() => copy.remove(), () => copy.remove())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref])
 }

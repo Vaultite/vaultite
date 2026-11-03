@@ -238,11 +238,12 @@ if (typeof window !== "undefined") {
 }
 
 // ---------- tab bars: one Tab stop, the arrows between tabs (a tab list's way) ----------
-const TAB = "[role=tablist] [role=tab]"
+// (a tab group's chip among them, as in a browser: Enter or Space folds it, the menu key or ⇧F10 has its menu)
+const TAB = "[role=tablist] :is([role=tab], [data-set-chip])"
 const currentTab = () => { const a = document.activeElement; return a instanceof HTMLElement && a.matches(TAB) ? a : null }
 const barOf = (t: HTMLElement) => t.closest<HTMLElement>("[role=tablist]")!
-const tabsIn = (bar: HTMLElement) => [...bar.querySelectorAll<HTMLElement>("[role=tab]")].filter((t) => barOf(t) === bar && t.getClientRects().length > 0 && !t.closest("[inert]"))
-const ofTabs = (bar: HTMLElement) => (el: HTMLElement) => el.matches("[role=tab]") && barOf(el) === bar
+const tabsIn = (bar: HTMLElement) => [...bar.querySelectorAll<HTMLElement>("[role=tab], [data-set-chip]")].filter((t) => barOf(t) === bar && t.getClientRects().length > 0 && !t.closest("[inert]"))
+const ofTabs = (bar: HTMLElement) => (el: HTMLElement) => el.matches("[role=tab], [data-set-chip]") && barOf(el) === bar
 
 /** Move the keyboard to another tab of its bar: `by` along (round from the end), or to the first or last. */
 function moveInTabs(by: 1 | -1 | "first" | "last") {

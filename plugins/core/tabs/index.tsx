@@ -3,7 +3,7 @@ import { Archive, ChevronDown, Layers2, MonitorSmartphone, Pin, Plus, X } from "
 import {
   edgeScroller, canDropTab, closeTab, closeTabMoving, cn, colorVar, commandItems, definePlugin, DEVICE, dragTab, dropTab, fmtAgo, foldSetMoving, HeadingButton, isPopout, menuFor, openNewTab,
   isViewOpen, notifyError, openView, panesOf, useArchivedTabs, pastEnd, put, rowMenu, RowKeys, selectClick, selectedAttr, selectTab, setMenu, setName, SetLabel, SidebarHeading,
-  SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, useSetIn, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
+  SidebarRow, startDrag, tabMenuOf, tabPreview, tabPreviewOrder, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useGrowIn, usePieceOut, useReflow, useSetIn, useShrinkOut, useSelectable, useSelected, useSlide, useTabLabels, useTabLayout,
   INCOMING, setsAsDrawn,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
@@ -24,8 +24,12 @@ const othersItem = (shown: boolean) => ({
 /** A tab group's line down the panel's left: out from under its chip (joined whatever its shape), past its tabs (set in
  *  from it), ending rounded by its last. Each row draws its piece (a drag's preview redraws them). */
 type Rail = { color: string; last?: boolean }
-function RailPiece({ rail, head }: { rail: Rail; head?: boolean }) {
-  return <span aria-hidden data-set-rail={head ? "head" : ""} className={cn("pointer-events-none absolute left-[9px] w-[2px]",
+function RailPiece({ rail, head, tab }: { rail: Rail; head?: boolean
+  /** A tab's row's: it fades where it was when the tab leaves the group. */
+  tab?: string }) {
+  const el = useRef<HTMLSpanElement>(null)
+  usePieceOut(el, tab ?? "")
+  return <span ref={el} aria-hidden data-set-rail={head ? "head" : ""} className={cn("pointer-events-none absolute left-[9px] w-[2px]",
     head ? "top-1/2 -bottom-px" : rail.last ? "-top-px bottom-2 rounded-b-full" : "-inset-y-px")} style={{ background: rail.color }} />
 }
 
@@ -52,7 +56,7 @@ function Row({ t, g, i, only, rail }: { t: Tab; g: TabGroup; i: TabInfo; only: b
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); close() }} />
         )}
       </SidebarRow>
-      {rail && <RailPiece rail={rail} />}
+      {rail && <RailPiece rail={rail} tab={t.id} />}
     </div>
   )
 }
@@ -122,6 +126,8 @@ function PaneRows({ g, n, panes, focused, info, hit }: { g: TabGroup; n: number;
   const box = useRef<HTMLDivElement>(null)
   const preview = item ? tabPreview(g, item, hit) : null
   useSlide(box, preview && tabPreviewOrder(g, preview), "y")
+  // (after useSlide: a drop's preview is taken off first, so they slide from where it drew them)
+  useReflow(box, g)
   const shown = preview?.tabs ?? g.tabs
   const drawn = setsAsDrawn(shown)
   const railOf = (id: string): Rail | undefined => {

@@ -125,6 +125,50 @@ try {
     await ctx.close()
   }
 
+  // ---------- the chip by pointer and keyboard; tabs sliding as they're regrouped; ungrouping fading ----------
+  {
+    const { ctx, page } = await open()
+    const halo = () => page.$eval("[data-set-chip='sA'] > [data-set-label]", (e) => getComputedStyle(e).boxShadow)
+    const off = await halo()
+    await page.hover("[data-set-chip='sA']"); await wait(350)
+    check("a chip under the pointer shows a halo of its colour", off === "none" && (await halo()) !== "none", [off, await halo()])
+    await page.mouse.move(640, 500)
+    await page.locator("[data-tab-id='a2'] [role=tab]").focus()
+    await page.keyboard.press("ArrowRight"); await page.keyboard.press("ArrowRight")
+    const on = await page.evaluate(() => { const a = document.activeElement, l = a?.querySelector("[data-set-label]"); return { chip: a?.dataset.setChip, ring: l && getComputedStyle(l).outlineStyle } })
+    check("the arrows reach a chip as they do the tabs, its ring showing", on.chip === "sC" && on.ring === "solid", on)
+    const expanded = () => page.$eval("[data-set-chip='sC']", (e) => e.getAttribute("aria-expanded"))
+    await page.keyboard.press("Enter"); await wait(500)
+    const folded = await expanded()
+    await page.keyboard.press(" "); await wait(500)
+    check("Enter folds it, Space opens it, the keyboard staying on it", folded === "false" && (await expanded()) === "true" && await page.evaluate(() => document.activeElement?.dataset.setChip === "sC"), [folded, await expanded()])
+    await page.keyboard.press("Shift+F10"); await wait(300)
+    check("⇧F10 opens its editor", (await page.locator("[role=menu] [data-menu-field] input").count()) === 1)
+    await page.keyboard.press("Escape"); await wait(200)
+    // Regrouped (the blank tab added to Lighthouse by its menu): what's between slides over rather than jumping.
+    const xs = (id) => page.evaluate((id) => { const out = window.__xs = [], end = performance.now() + 600, e = () => document.querySelector(`[data-tab-id="${id}"]`)
+      const tick = () => { out.push(e()?.getBoundingClientRect().left ?? null); if (performance.now() < end) requestAnimationFrame(tick) }; requestAnimationFrame(tick) }, id)
+    const left = () => page.$eval("[data-tab-id='c1']", (e) => e.getBoundingClientRect().left)
+    const x0 = await left()
+    await page.click("[data-tab-id='x']", { button: "right" }); await wait(200)
+    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Add to group", exact: true }).hover(); await wait(200)
+    await xs("c1")
+    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Lighthouse", exact: true }).click(); await wait(700)
+    const path1 = (await page.evaluate(() => window.__xs)).filter((x) => x !== null), x1 = await left()
+    check("a tab added to a group: the tabs it passes slide over to make room, no jump", x1 > x0 + 20 && path1.some((x) => x > x0 + 2 && x < x1 - 2), [x0, x1, path1.map(Math.round)])
+    // Ungrouped: its chip shrinks away and its line fades, not cut at once.
+    await xs("c1")
+    await page.evaluate(() => { const out = window.__ug = [], end = performance.now() + 1000
+      const tick = () => { const ps = [...document.querySelectorAll("[data-tab-id='c1'] [data-set-piece], [data-tab-id='c2'] [data-set-piece]")], chip = [...document.querySelectorAll("[data-tab-bar] [data-set-label]")].find((l) => l.style.background.includes("purple"))
+        out.push({ line: ps.length ? Math.max(...ps.map((p) => +getComputedStyle(p).opacity)) : 0, chip: chip ? chip.parentElement.getBoundingClientRect().width : 0 })
+        if (performance.now() < end) requestAnimationFrame(tick) }; requestAnimationFrame(tick) })
+    await page.click("[data-set-chip='sC']", { button: "right" }); await wait(200)
+    await page.locator("[role=menu]").last().getByRole("menuitem", { name: "Ungroup", exact: true }).click(); await wait(900)
+    const ug = await page.evaluate(() => window.__ug)
+    check("ungrouped: its chip shrinks away and its line fades out", ug.some((x) => x.line > 0.1 && x.line < 0.9) && ug.some((x) => x.chip > 1 && x.chip < 13) && ug.at(-1).line === 0 && ug.at(-1).chip === 0, ug.map((x) => [x.line.toFixed(2), Math.round(x.chip)]))
+    await ctx.close()
+  }
+
   // ---------- which tab shows after a close (Chrome's) ----------
   {
     const { ctx, page } = await open()

@@ -17,6 +17,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Tab groups fold and close as in Chrome**: a group's count, line and tabs fold and open together, smoothly, and a
   second click turns it round mid-way; closing a grouped tab shows another of its group, then the nearest tab not folded
   away, never opening a folded group. The group's line runs crisp from its chip to its last tab, in the bar and the panel.
+  Its chip lights up under the pointer and takes the keyboard (the arrows, Enter, the menu key); tabs grouped or moved
+  slide into place, and an ungrouped group's chip and line fade away.
 - **A site's empty error page says so**: a page that answers an HTTP error with nothing in it (a firewall's 403) shows
   why in words, naming the site, with Try again, rather than a white tab; an error page with content still shows. Each
   page's load (status, server address, cache, Cloudflare ray) goes into a bug report's timeline.

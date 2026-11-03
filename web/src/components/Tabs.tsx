@@ -16,7 +16,7 @@ import { leaves, vaultPath, type Group, type Tab, type TabSet } from "../../../c
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { openNewTab } from "@/core/launcher"
 import { addToSet, allSets, closeSet, colorSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet } from "@/core/tabsets"
-import { foldSetMoving, useGrowIn, useSetIn, useShrinkOut } from "@/core/tabfold"
+import { foldSetMoving, useGrowIn, usePieceOut, useReflow, useSetIn, useShrinkOut } from "@/core/tabfold"
 import { canRenameTab, renameTab } from "@/core/tabnames"
 import { dotIcon } from "@/components/ColorDot"
 import { PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
@@ -160,18 +160,18 @@ export function editSet(id: string) {
   requestAnimationFrame(look)
 }
 
-/** A tab group's chip in the tab bar, before its tabs: a click folds it (folded, its count shows), right-click has its
- *  editor, dragging it moves the whole group. */
+/** A tab group's chip in the tab bar, before its tabs: a click (Enter, Space) folds it, right-click (the menu key,
+ *  ⇧F10) has its editor, dragging it moves the whole group. The arrows reach it as they do the tabs (core/keylist.ts). */
 function SetChip({ s, n, target }: { s: TabSet; n: number
   /** A tab dragged onto it (folded) would join it. */
   target: boolean }) {
   const item = useDragItem()
   const c = colorVar(s.color)
-  const el = useRef<HTMLDivElement>(null)
+  const el = useRef<HTMLButtonElement>(null)
   useSetIn(el, s.id)
   useShrinkOut(el, { set: s.id })
   return (
-    <div ref={el} data-set-chip={s.id} data-slide={`set:${s.id}`} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
+    <button type="button" ref={el} tabIndex={-1} data-set-chip={s.id} data-slide={`set:${s.id}`} aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
       onPointerDown={(e) => startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) })}
       onClick={() => foldSetMoving(s.id)}
       data-tip={item ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
@@ -181,7 +181,7 @@ function SetChip({ s, n, target }: { s: TabSet; n: number
       <SetLabel s={s} n={n} target={target} className="max-w-40" />
       {/* The line under the group's tabs starts here (each tab carries it on); folded, it's gone (index.css). */}
       <span aria-hidden data-set-line={s.id} data-set-piece="first" style={{ background: c }} />
-    </div>
+    </button>
   )
 }
 
@@ -518,9 +518,16 @@ function TabItem({ tab, group, info, active, focused, only, icons, menu, width, 
       {away && <Undo2 aria-hidden data-tab-return className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground" strokeWidth={2} />}
       {/* (along the top: a tab group's line runs under) */}
       {info.color && !(dragging && hole) && <span aria-hidden data-tab-color className="pointer-events-none absolute inset-x-2 top-0 h-[2px] rounded-b-full transition-colors duration-(--motion)" style={{ background: info.color }} />}
-      {line && <span aria-hidden data-set-piece={line.last ? "last" : ""} style={{ background: line.color }} />}
+      {line && <SetPiece tab={tab.id} line={line} />}
     </div>
   )
+}
+
+/** A tab's piece of its group's line (index.css), fading where it was when the tab leaves the group. */
+function SetPiece({ tab, line }: { tab: string; line: { color: string; last: boolean } }) {
+  const el = useRef<HTMLSpanElement>(null)
+  usePieceOut(el, tab)
+  return <span ref={el} aria-hidden data-set-piece={line.last ? "last" : ""} style={{ background: line.color }} />
 }
 
 /** What a tab shows: its label and icon. A view's can follow live data (a terminal's session name): drawn again when
@@ -613,6 +620,8 @@ export function TabBar({ group, focused, info, alone, extra }: { group: Group; f
   const label = tabs.length > 1 ? `${info(shown).label} and ${tabs.length - 1} more` : info(shown).label
   const row = useRef<HTMLDivElement>(null)
   useSlide(row, preview && [...previewOrder(group, preview), "new"], "x")
+  // (after useSlide: a drop's preview is taken off first, so they slide from where it drew them)
+  useReflow(row, group)
   useEffect(() => {
     const r = row.current
     if (!r) return

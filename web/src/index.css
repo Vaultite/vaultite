@@ -505,6 +505,10 @@ html[data-dragging] [data-tab-bar] [data-slide] { transition-duration: var(--mot
 [data-set-piece~=first] { left: 0; border-radius: 1px 0 0 1px; }
 [data-set-piece~=last] { right: 0; border-radius: 0 1px 1px 0; }
 [data-set-rail] { transition: background-color var(--motion) var(--ease-out); }
+/* Its chip answers the pointer and the keyboard as a browser's does: a halo of its colour on hover, the ring on focus. */
+html:not([data-dragging]) [data-set-chip]:hover > [data-set-label] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tint) 35%, transparent); }
+[data-set-chip]:focus-visible { outline: none; }
+[data-set-chip]:focus-visible > [data-set-label] { outline: 2px solid var(--ring); outline-offset: 2px; }
 /* Folded, its chip shows its count (a square without a name grows into a pill around it) and its line goes. All at
    once as a click folds it, moving while its tabs do (`data-set-moving`, core/tabfold.ts); an agent's fold just shows. */
 [data-set-label][data-bare] { height: calc(var(--spacing) * 3.5); min-width: calc(var(--spacing) * 3.5); border-radius: 4px; }

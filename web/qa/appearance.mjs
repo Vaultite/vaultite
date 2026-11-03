@@ -57,7 +57,9 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     check("phone: the scheme strip flush under its label, Style under Theme", Math.abs(fit.flush) <= 1 && fit.wrapped, fit)
   }
   if (w === 1440 && !dark) {
-    check("no font size setting", !(await page.getByText("Font size", { exact: true }).count()) && !(await page.locator('input[type="range"]').count()))
+    // (sliders there are Glass's transparency: none sets a size)
+    const sliders = await page.locator('input[type="range"]').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? ""))
+    check("no font size setting", !(await page.getByText("Font size", { exact: true }).count()) && !sliders.some((l) => /font|size|text/i.test(l)), sliders)
     const appearance = page.locator('[data-settings-section="appearance"]')
     check("CSS snippets are inside Appearance", (await appearance.locator('section[aria-label="CSS snippets"]').count()) === 1)
     check("no CSS snippets panel of its own", !(await page.getByRole("heading", { name: "CSS snippets" }).count()))
