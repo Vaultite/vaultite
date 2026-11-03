@@ -2,6 +2,7 @@
   "id": "claude-code",
   "icon": "claude",
   "category": "ai-apps",
+  "ai": true,
   "group": "coding-agents",
   "essential": true,
   "name": "Claude Code",

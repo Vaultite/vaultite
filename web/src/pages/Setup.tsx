@@ -3,7 +3,7 @@
 import { Bot, Code, Compass, FileType, HeartPulse, PenLine, Puzzle, Settings2, Shapes, Sparkles, Sprout, Store as StoreIcon, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { openSetup, type SetupTab } from "@/core/apppages"
-import { byCategory, categoryTint, switchedOn, usePlugins } from "@/core/plugins"
+import { byCategory, categoryTint, offWithAi, switchedOn, usePlugins } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { replaceTabTarget } from "@/core/workspace"
 import { DenseRows, PageHeader, Segmented, SheetHead } from "@/components/kit"
@@ -61,7 +61,7 @@ function jumpTo(cat: string) {
  *  with how many there are). */
 function SetupMenu({ tab, pick }: { tab: Tab; pick: (id: string) => void }) {
   const all = usePlugins(), prefs = usePrefs()
-  const mine = all.filter((p) => !p.alwaysOn && !p.switchIn)
+  const mine = all.filter((p) => !p.alwaysOn && !p.switchIn && !offWithAi(p, prefs))
   const on = mine.filter((p) => switchedOn(p, prefs)).length
   // (the attributes the narrow layout's tabs have, so either is found the same way)
   const items: RailItem[] = [

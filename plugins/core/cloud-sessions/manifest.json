@@ -2,6 +2,7 @@
   "id": "cloud-sessions",
   "icon": "cloud",
   "category": "agents",
+  "ai": true,
   "essential": true,
   "desktopApp": true,
   "name": "Cloud sessions",

@@ -47,7 +47,7 @@ export default definePlugin({
     [CONNECTION_DETAIL]: { title: (_s, [id]) => connectionTitle(id), render: (_s, [id]) => <ConnectionSheet id={id} /> },
   },
   settingsPages: {
-    apps: { label: "AI apps", icon: Bot, render: () => <AiApps /> },
+    apps: { label: "Connect the Claude or ChatGPT app", icon: Bot, sub: "They can read and write your notes.", in: "ai", render: () => <AiApps bare /> },
     remote: { label: "Remote access", icon: Globe, sub: "Your vault from your phone, any browser and AI apps on the web", render: () => <RemoteAccess /> },
   },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },

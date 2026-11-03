@@ -1,7 +1,7 @@
 // Settings: sections beside the one shown (a sheet each where narrow), headed by Setup. Plugins' pages: the app's
 // own beside its sections, the rest under Features (folded) with the app's plugins' options; others' a gear away in Setup.
 import { useMemo, useState, useEffect, type ReactNode } from "react"
-import { ChevronRight, CircleArrowDown, Keyboard, Palette, PenLine, ShieldCheck, SlidersHorizontal, type LucideIcon } from "lucide-react"
+import { ChevronRight, CircleArrowDown, Keyboard, Palette, PenLine, ShieldCheck, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -22,6 +22,8 @@ import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
 import { PermissionsPanel } from "@/components/Permissions"
+import { aiParts, AiPanel } from "@/components/AiSettings"
+import { aiOn } from "@/core/ai"
 import { Catch } from "@/components/Guard"
 import { notifyError } from "@/core/notify"
 import { APP_VERSION } from "../../../core/version.ts"
@@ -97,17 +99,21 @@ const CORE: Sec[] = [
   headed("appearance", "Appearance", Palette, "var(--blue)", () => <AppearancePanel />),
   headed("editor", "Editor", PenLine, "var(--orange)", (store) => <EditorPanel store={store} />),
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, tint: "var(--gray)", render: () => <HotkeysSheet /> },
+  // (first of the setup's own: the app's plugins' pages follow it)
+  headed("ai", "AI", Sparkles, "var(--purple)", (store) => <AiPanel store={store} />),
   // (macOS's: the desktop app on a Mac only)
   ...(desktopApp?.permission ? [headed("permissions", "Permissions", ShieldCheck, "var(--blue)", () => <PermissionsPanel />, "What macOS lets Vaultite do on this Mac")] : []),
   headed("updates", "Updates", CircleArrowDown, "var(--green)", () => <Updates />),
 ]
-/** The app's sections with something of a plugin's between them: Permissions and Updates go last. */
-const LAST = ["permissions", "updates"]
+/** The app's sections with something of a plugin's between them: AI heads the app's plugins' pages, Permissions and
+ *  Updates go last. */
+const AFTER = ["ai"], LAST = ["permissions", "updates"]
 
-/** The pages plugins that are on add (MCP's AI apps; Apple Health), in plugin order. */
+/** The pages plugins that are on add (MCP's Remote access; Apple Health), in plugin order; not those drawn in the AI
+ *  section (AiSettings.tsx). */
 function pluginPages(disabled: string[]): (Sec & { plugin: Plugin })[] {
   return PLUGINS.filter((p) => p.settingsPages && isEnabled(p.id, disabled)).flatMap((p) =>
-    Object.entries(p.settingsPages!).map(([k, d]) => ({ ...headed(`${p.id}:${k}`, d.label, d.icon, tileTint(p.id), (store) => d.render({ store }), d.sub), plugin: p })))
+    Object.entries(p.settingsPages!).filter(([, d]) => !d.in).map(([k, d]) => ({ ...headed(`${p.id}:${k}`, d.label, d.icon, tileTint(p.id), (store) => d.render({ store }), d.sub), plugin: p })))
 }
 
 const pluginSec = (id: string): Sec | null => {
@@ -140,8 +146,8 @@ function menu(store: Store, disabled: string[], fold: RailItem["fold"]): RailIte
   const item = (s: Sec, more: Partial<RailItem> = {}): RailItem => ({ id: s.id, label: s.label, icon: s.icon, tint: s.tint, attrs: { "data-settings-nav": s.id }, ...more })
   const last = CORE.filter((s) => LAST.includes(s.id))
   return [
-    ...CORE.filter((s) => !LAST.includes(s.id)).map((s) => item(s)),
-    ...pages.filter((s) => s.plugin.alwaysOn).map((s, i) => item(s, { gap: i === 0 })),
+    ...CORE.filter((s) => !LAST.includes(s.id) && !AFTER.includes(s.id)).map((s) => item(s)),
+    ...[...CORE.filter((s) => AFTER.includes(s.id)), ...pages.filter((s) => s.plugin.alwaysOn)].map((s, i) => item(s, { gap: i === 0 })),
     ...last.map((s, i) => item(s, { gap: i === 0 })),
     ...features.map((s, i) => item(s, i === 0 ? { heading: "Features", fold } : {})),
   ]
@@ -170,6 +176,11 @@ function findable(store: Store, disabled: string[], show: Show): Found[] {
     ({ id, label, sub, where, words: "", run: () => show(where.toLowerCase(), selector) })
   const app: Found[] = [
     ...pluginPages(disabled).map((s) => ({ id: `page-${s.id}`, label: s.label, where: "Settings", words: "", run: () => show(s.id) })),
+    // (the AI section's parts, while it's on)
+    ...(aiOn() ? [
+      { ...row("coding-agents", "Coding agents", "AI", "[data-ai-agents]", "Which run in Vaultite's terminals, and your companion"), words: "claude code codex cursor opencode openclaw hermes companion terminal" },
+      ...aiParts(disabled).map((s) => ({ id: `page-${s.id}`, label: s.label, sub: s.sub, where: "AI", words: "", run: () => show("ai", `[data-ai-part="${s.id}"]`) })),
+    ] : []),
     // (Setup's tabs, a page of their own)
     { ...row("layout", "Layout", "Appearance", "[data-layout-picker]", "Standard, Zen, Browser or yours"), words: "bundle setup zen browser standard save share restore" },
     { id: "plugins", label: "Plugins", sub: "Turn plugins on and off", where: "Setup", words: "extensions install", run: () => openSetup("plugins") },

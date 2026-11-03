@@ -20,6 +20,8 @@ export type PluginInfo = PluginDir & { name: string; description: string; requir
   optIn: boolean
   /** Part of the app (`alwaysOn`): no switch. */
   alwaysOn?: boolean
+  /** For AI (`ai`): off while AI is (plugins.json `ai: false`). */
+  ai?: boolean
   /** A vault plugin that's on but waits for this machine's owner to allow it (core/trust.ts). */
   waiting?: boolean
   /** A vault plugin whose edits run without asking on this machine (core/trust.ts). */
@@ -44,23 +46,23 @@ function scheduledOf(app: App) {
 /** Every plugin: the app's built-in ones, then the vault's own (loaded or not). */
 export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
-    description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits }))
+    description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits, ...(v.ai === true ? { ai: true } : {}) }))
   return [...app.app.map((p): PluginInfo => ({ id: p.id, tier: p.tier, dir: p.dir, name: String(p.manifest.name ?? p.id),
     description: String(p.manifest.description ?? ""), requires: strings(p.manifest.requires), optIn: p.manifest.offByDefault === true,
-    ...(p.manifest.alwaysOn === true ? { alwaysOn: true } : {}) })), ...own]
+    ...(p.manifest.alwaysOn === true ? { alwaysOn: true } : {}), ...(p.manifest.ai === true ? { ai: true } : {}) })), ...own]
 }
 
-/** Which plugins are on: the app's unless in `disabled`, the vault's (and the app's `offByDefault` ones) only when in
- *  `enabled`, and everything each requires on too (web/src/core/plugins.ts isEnabled). `own`: switched on itself. */
+/** Which plugins are on (web/src/core/plugins.ts isEnabled): by plugins.json's lists, none of the `ai` ones while AI is
+ *  off, and everything each requires on too. `own`: switched on itself. */
 export function onOff(list: PluginInfo[], conf: Any) {
-  const disabled = strings(conf.disabled), enabled = strings(conf.enabled)
+  const disabled = strings(conf.disabled), enabled = strings(conf.enabled), aiOff = conf.ai === false
   const by = new Map(list.map((p) => [p.id, p]))
   const own = (p: PluginInfo) => (p.alwaysOn || (p.optIn ? enabled.includes(p.id) : !disabled.includes(p.id)))
   const on = (id: string, seen: string[] = []): boolean => {
     const p = by.get(id)
-    return !!p && !seen.includes(id) && own(p) && p.requires.every((r) => on(r, [...seen, id]))
+    return !!p && !seen.includes(id) && !(aiOff && p.ai) && own(p) && p.requires.every((r) => on(r, [...seen, id]))
   }
-  return { own, on }
+  return { own, on, aiOff }
 }
 
 function findPlugin(list: PluginInfo[], q: string) {
@@ -130,11 +132,12 @@ export function pluginOps(app: App): Op[] {
     const { sections } = readNewTab(app.vault.config("newtab"))
     const join = want && sections ? sectionsOf(p).filter((d) => !d.hidden && !sections.includes(d.key)).map((d) => d.key) : []
     if (join.length) app.vault.patchConfig("newtab", { sections: [...sections!, ...join] })
-    const { on } = onOff(ps, conf)
+    const { on, aiOff } = onOff(ps, conf)
     const waiting = want && p.tier === "vault" && !allowed && !app.vaultPlugins.trust.approved(p.id, app.vaultPlugins.found.get(p.id)?.digest.content ?? "")
-    return { id: p.id, name: p.name, on: on(p.id), switched: want, blockedBy: want && !on(p.id) ? p.requires.filter((r) => !on(r)) : [], waiting }
+    return { id: p.id, name: p.name, on: on(p.id), switched: want, blockedBy: want && !on(p.id) ? p.requires.filter((r) => !on(r)) : [], waiting,
+      ...(want && aiOff && p.ai ? { needsAi: true } : {}) }
   }
-  const turned = (r: Any) => `${r.name} is ${r.switched ? "on" : "off"}.${r.blockedBy.length ? ` It stays off until ${r.blockedBy.join(", ")} is on.` : ""}` +
+  const turned = (r: Any) => `${r.name} is ${r.switched ? "on" : "off"}.${r.needsAi ? " It stays off while AI is off: vau ai on." : r.blockedBy.length ? ` It stays off until ${r.blockedBy.join(", ")} is on.` : ""}` +
     (r.waiting ? ` It waits for this machine's owner to allow it: vau plugin allow ${r.id}` : "")
 
   return [{
@@ -150,13 +153,13 @@ off until turned on (they run code). Those marked "app" are part of the app: alw
     kind: "read",
     run: () => {
       const ps = pluginList(app)
-      const { own, on } = onOff(ps, app.vault.config("plugins"))
+      const { own, on, aiOff } = onOff(ps, app.vault.config("plugins"))
       return ps.map((p) => ({ id: p.id, name: p.name, tier: p.tier, on: on(p.id) && !p.waiting, switchedOn: own(p), requires: p.requires, description: p.description,
-        ...(p.alwaysOn ? { alwaysOn: true } : {}), ...(p.waiting ? { waiting: true } : {}), ...(p.edits ? { edits: true } : {}) }))
+        ...(p.alwaysOn ? { alwaysOn: true } : {}), ...(p.ai ? { ai: true } : {}), ...(p.ai && aiOff ? { aiOff: true } : {}), ...(p.waiting ? { waiting: true } : {}), ...(p.edits ? { edits: true } : {}) }))
     },
     // (the "core" tier is the app's built-in plugins: "core" alone is the app itself)
     text: (rows: Any[]) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.alwaysOn ? "app" : p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +
-      (p.waiting ? `  (waits to be allowed on this machine: vau plugin allow ${p.id})` : p.switchedOn && !p.on ? `  (needs ${p.requires.join(", ")})` : "")).join("\n"),
+      (p.waiting ? `  (waits to be allowed on this machine: vau plugin allow ${p.id})` : p.switchedOn && p.aiOff ? "  (AI is off: vau ai on)" : p.switchedOn && !p.on ? `  (needs ${p.requires.join(", ")})` : "")).join("\n"),
   }, {
     id: "plugin.check",
     cli: "plugins check",

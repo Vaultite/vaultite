@@ -5,7 +5,7 @@ import { flushSync } from "react-dom"
 import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
 import { useSwitches } from "@/core/switches"
 import { commandIcon } from "@/core/pages"
-import { isEnabled, names, pluginById, setSwitch, switchedOn, usePlugins, type Plugin } from "@/core/plugins"
+import { isEnabled, names, offWithAi, pluginById, setSwitch, switchedOn, usePlugins, type Plugin } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { fuzzy, hasWords } from "@/core/fuzzy"
@@ -62,7 +62,7 @@ function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   const say = off ? TURN_OFF : TURN_ON
   return all.flatMap((p) => {
     // (one switched in a Settings section is a switch there, as it's named: Vim keys)
-    if (p.alwaysOn || p.switchIn || isEnabled(p.id, disabled) !== off) return []
+    if (p.alwaysOn || p.switchIn || offWithAi(p) || isEnabled(p.id, disabled) !== off) return []
     // Only where the name has the words as typed (a fuzzy hit across a long name would offer every plugin).
     const m = q ? hasWords(q, p.name) && fuzzy(q, p.name) : { score: 0, marks: [] }
     if (!m) return []

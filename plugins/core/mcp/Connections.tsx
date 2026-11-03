@@ -2,7 +2,7 @@
 // (access, activity, rename, disconnect); RemoteAccess is Vaultite Cloud and the addresses. Polls, faster while connecting.
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
-import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
+import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, removals, Row, Section, Segmented, SettingRow, SheetHead, Switch, useAi, useChosen, useEnabled, useKeptCount, useLive } from "@vaultite"
 
 type Access = "read" | "write"
 /** `actor`: the name Activity gives what it does. */
@@ -306,8 +306,8 @@ const small = "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounde
 
 /** A blank tab's section until an app is connected: the cards, small. */
 export function ConnectSection() {
-  const { data } = useConnections()
-  if (!data || data.connections.length) return null
+  const { data } = useConnections(), ai = useAi()
+  if (!data || data.connections.length || !ai) return null
   return (
     <div className="flex flex-col gap-1.5 pb-2" data-newtab-connect>
       <div className="pl-1.5 text-[12px] font-semibold text-muted-foreground">Connect your AI</div>
@@ -361,13 +361,13 @@ function Waiting({ data, onDone }: { data: State; onDone: () => void }) {
   )
 }
 
-/** Everything about AI apps: a sign-in waiting for its code, then a row per app (connected: its page; else its steps),
- *  any other app connected, and the generic setup. */
-export function AiApps() {
+/** Everything about AI apps: a sign-in waiting, a row per app (connected: its page; else its steps), any other app
+ *  connected, and the generic setup. `bare`: without its intro (Settings' AI section says what they're for). */
+export function AiApps({ bare }: { bare?: boolean }) {
   const { data, error, leaving, reload } = useConnections()
   const rows = useKeptCount("mcp:connections", data ? APPS.length + 1 + Math.max(0, data.connections.length - 1) : undefined)
   if (error && !data) return <Loading error={error} />
-  const intro = <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
+  const intro = bare ? null : <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
   if (!data) return <div aria-busy>{intro}<div className="rounded-[10px] bg-foreground/[0.04] px-3"><LoadingRows count={rows || APPS.length + 1} lead={<span className="skeleton size-8 shrink-0 rounded-[8px]" />} /></div></div>
   // Each known app takes the first connection with its name; the rest are listed by theirs.
   const taken = new Set<string>()

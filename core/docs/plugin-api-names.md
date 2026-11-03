@@ -38,6 +38,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentUsage`
 - `AgentUsageBlock({ src, options, fm })`: Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`).
 - `AgentWindow`
+- `aiOn()`: Whether AI is on (the default).
 - `AmbientButton({ icon, text, tip, tint, onClick, className })`
 - `AmbientItem`: Drawn in the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
 - `announce(text, opts?)`: Say `text` to a screen reader: politely, after what it's reading, or `assertive` (an error) at once.
@@ -554,6 +555,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `selectItem(list, key)`: Phones (no keys): "Select" in a row's menu starts selecting with it.
 - `selectTab(id)`: Show a tab (false: there's none).
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
+- `setAi(on)`: Turn AI on or off: the plugins for AI follow at once, their own switches untouched.
 - `setArchiveAfter(ms)`
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
@@ -669,6 +671,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
+- `useAi()`
 - `useArchivedTabs()`
 - `useBaseLayouts()`: The registered layouts, followed: a component using it draws again as plugins add theirs.
 - `useBusy()`: A slow action of a button's: `busy` while it runs (`<Button busy>`: it shows it and takes no second press).

@@ -16,7 +16,7 @@ export type FileAction = ReturnType<typeof actionsFor<Entry>>[number]
 let catalog: Entry[] = [], loadedFor = ""
 /** Read the catalog again when the plugins on have changed since (menus are drawn at once: they show it next time). */
 export function loadActions() {
-  const p = getPrefs(), key = `${p.disabled.join()}|${p.enabled.join()}`
+  const p = getPrefs(), key = `${p.disabled.join()}|${p.enabled.join()}|${p.ai}`
   if (key === loadedFor) return
   loadedFor = key
   get<Entry[]>("ops?actions=1").then((c) => { catalog = c }, () => { loadedFor = "" })

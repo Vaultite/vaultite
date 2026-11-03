@@ -2,7 +2,7 @@
 // each narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, ListFilter, Search, Settings2, X } from "lucide-react"
-import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
+import { allowPlugin, byCategory, hostOf, isEnabled, names, offWithAi, pluginById, setSwitch, standInOf, switchedOn, tileTint, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { official } from "../../../core/updates.ts"
@@ -254,7 +254,8 @@ export function Plugins({ store, view, onView, above }: { store: Store; view?: T
   const paired = new Set([...originals.values()].map((p) => p.id))
   const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}\n${groupWords(p)}`.toLowerCase()
   // (one whose switch is in a Settings section isn't here: Vim keys, in Editor)
-  const every = all.filter((p) => !paired.has(p.id) && !p.alwaysOn && !p.switchIn).sort((a, b) => byName.compare(a.name, b.name))
+  // (nor, while AI is off, those for AI: Settings > AI brings them back)
+  const every = all.filter((p) => !paired.has(p.id) && !p.alwaysOn && !p.switchIn && !offWithAi(p, prefs)).sort((a, b) => byName.compare(a.name, b.name))
   const sections = byCategory(every).filter((s) => s.plugins.length)
   // On as its switch shows it: switched on (it, or the original it stands in for) and nothing it needs off. A group's
   // row is on when any of its plugins is.

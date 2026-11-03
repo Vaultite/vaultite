@@ -28,6 +28,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   you changed keeps your changes, and switching back brings them back; Reset applies it clean. Saving asks for a name
   and suggests "My Zen" from the layout in use. "Back to Standard layout" in the palette (`vau bundle standard`) is the
   way back from a layout that hides everything. Packs (Life OS, Agents) and looks apply over your layout, which stays the one in use.
+- **Use AI, one switch**: Settings > AI's Use AI (or `vau ai off`) takes out everything for AI, the companion, coding
+  agents' buttons, commands and keys, AI items in the status bar and AI plugins on the Plugins page, while ops, MCP and
+  vau still work; on again, each plugin is as it was. A bundle that needs agents turns it back on, and says so.
+- **Settings > AI lists your coding agents plainly**: the ones on this computer, each with its switch (its path on
+  hover), which is your companion, one line naming the others it works with, and Connect the Claude or ChatGPT app.
 
 - **Phones: a tab drags out of its group**: in a group's tabs, hold a lifted card on All tabs at the top (it lights up)
   and all tabs come back with the card still held, to be put anywhere, onto a tab to make a group, or onto another group;

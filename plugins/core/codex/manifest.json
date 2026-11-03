@@ -2,6 +2,7 @@
   "id": "codex",
   "icon": "openai",
   "category": "ai-apps",
+  "ai": true,
   "group": "coding-agents",
   "offByDefault": true,
   "name": "Codex",

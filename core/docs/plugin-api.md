@@ -83,6 +83,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `enhances`: Uses these when they're on (optional).
 - `runsOnServer`: Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it.
 - `desktopApp`: Works only in the desktop app on a Mac (other apps' windows, the Dock): elsewhere it's listed and does nothing, and the web demo keeps it off.
+- `ai`: It's for AI (a coding agent, the companion, AI usage): off while Use AI is off (plugins.json `ai: false`), whatever its own switch says, which comes back as it was. Ops, MCP and the CLI aren't AI's: those stay with it off.
 - `tint`: Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages, files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else.
 - `category`: Its category on Setup's Plugins tab and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools: core/categories.ts); none or unknown: Other.
 - `blocks`: Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs.
@@ -146,7 +147,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `fileRows`: Rows of the file tree it draws into itself, by path (see FileRow); call `fileRowsChanged()` when they change. Keep a row's object the same while it says the same: only rows whose object changed are drawn again.
 - `home`: Where a device's first tab goes and where a phone with nowhere to be goes: a tab target, or null. The first plugin that's on and answers wins; with none, a new tab.
 - `newTab`: Sections it adds to a blank tab's page, by name ("<plugin id>:<name>", arranged in newtab.json).
-- `settingsPages`: Its pages in Settings' list, by name, beside the app's own (Connections' AI apps): for setting the app up, not a plugin's options (those are its settings).
+- `settingsPages`: Its pages in Settings' list, beside the app's own: for setting the app up, not its options. `in: "ai"`: a part of Settings' AI section instead (Connections' apps), under its label and `sub`, drawn only while AI is on.
 - `settingsPanel`: Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Drawn after its declared settings (a short option above a list that grows), unless `settingsPanelFirst`.
 - `settingsPanelFirst`: Its settingsPanel above its declared settings: when the panel is what the sheet is for (Import, Connect).
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).

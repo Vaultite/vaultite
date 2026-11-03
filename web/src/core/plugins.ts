@@ -152,17 +152,20 @@ export function turnPluginsBackOn() {
   location.reload()
 }
 
-/** On: not switched off (opt-in: switched on, and nothing wrong with it), and everything it requires is on too.
- *  `!<id>` in `disabled` draws an opt-in one as on (its preview while it's off). */
+/** On: not switched off (opt-in: switched on, and nothing wrong with it), not for AI while AI is off (core/ai.ts), and
+ *  everything it requires is on too. `!<id>` in `disabled` draws an opt-in one as on (its preview while it's off). */
 export function isEnabled(id: string, disabled: string[], seen: string[] = []): boolean {
   if (share) return share.plugins.includes(id) && !!pluginById(id) // (a guest's app: only theirs, core/share.ts)
   const p = pluginById(id)
-  if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted"))) return false
+  if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted")) || (p.ai && !getPrefs().ai)) return false
   const own = p.tier === "hosted" ? hostedOwn(p, disabled, seen)
     : p.alwaysOn ? true
     : optIn(p) ? (getPrefs().enabled.includes(id) || disabled.includes(`!${id}`)) && !p.problems?.length && !p.meta?.approval : !disabled.includes(id)
   return own && (p.requires ?? []).every((r) => isEnabled(r, disabled, [...seen, id]))
 }
+
+/** Off because AI is (its manifest's `ai`, core/ai.ts): lists of plugins to switch leave it out meanwhile. */
+export const offWithAi = (p: Plugin, prefs = getPrefs()) => !!p.ai && !prefs.ai
 
 /** Its own switch (not what it requires): the app's plugins are on unless in `disabled` (`alwaysOn` ones always), opt-in
  *  ones (the vault's, `offByDefault`) are off unless in `enabled`. */

@@ -12,6 +12,9 @@
   Formats go in the plugin's `AGENTS.md` (`vau docs <id>`).
 - Ask for a service (`plugin.provide` / `plugin.ask`), never for a plugin's id. Whether a plugin is off:
   `plugin.isOff()` / `vault.switchedOff()`.
+- A plugin for AI (an agent, the companion, AI usage; vault plugins' too) says `"ai": true` in its manifest: it's off
+  while Use AI is (plugins.json `ai: false`), its own switch kept. What serves agents only through ops (MCP, inbox,
+  review) doesn't: an agent the user runs must still reach the vault. An always-on plugin's AI parts check `aiOn()`.
 - A new app plugin: decide whether each built-in bundle turns it on (`bundles/CLAUDE.md`).
 - Moving one out to Vaultite/plugins: its folder goes there (tagged), out of here in the same change, and into
   `MOVED` (`core/migrations.ts`): vaults that had it on install it once; bundles name it with `install`.

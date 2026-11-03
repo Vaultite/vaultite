@@ -1,6 +1,7 @@
 // On/off settings, declared once (a plugin's: a boolean in its manifest): Settings, its search, the palette, menus and
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
-import { ArrowDownUp, Archive, Blend, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, LayoutPanelLeft, ListOrdered, ListTree, MousePointer2, PanelLeft, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, Blend, Sparkles, BookOpenText, Brackets, Eye, Heading, Heading1, Layers2, LayoutPanelLeft, ListOrdered, ListTree, MousePointer2, PanelLeft, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
+import { setAi } from "@/core/ai"
 import { canTranslucent, getTranslucency, onTranslucency } from "@/core/appearance"
 import type { Command } from "@/core/commands"
 import { reload } from "@/core/data"
@@ -34,7 +35,7 @@ export type SwitchDef = {
 }
 
 /** The app's Settings sections that have switches, by id, as their list names them. */
-const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", sidebars: "Sidebars" }
+const SECTIONS: Record<string, string> = { appearance: "Appearance", editor: "Editor", sidebars: "Sidebars", ai: "AI" }
 
 type Flag = { [K in keyof Prefs]: Prefs[K] extends boolean ? K : never }[keyof Prefs]
 const pref = (k: Flag) => ({ get: () => getPrefs()[k], set: (on: boolean) => setPrefs({ [k]: on }) })
@@ -58,6 +59,8 @@ function translucentSub() {
 
 // (`id` and `name` first, literal: the server lists commands from the source, core/appsource.ts.)
 const CORE: SwitchDef[] = [
+  { id: "setting:ai", name: "Use AI", section: "ai", icon: Sparkles, sub: () => "Agents, the companion and AI apps. Vaultite works fully without them.",
+    words: "artificial intelligence agents claude codex companion chatgpt llm no ai", get: () => getPrefs().ai, set: setAi },
   { id: "setting:file-icons", name: "File icons", section: "appearance", icon: Shapes, ...pref("fileIcons") },
   { id: "setting:tab-bar", name: "Tab bar", section: "appearance", icon: PanelTop, words: "tabs", ...pref("tabBar") },
   { id: "setting:pane-titles", name: "Pane titles", section: "appearance", icon: Heading1, sub: () => "With the tab bar off, what's open shows above each pane", words: "tab bar title zen", ...pref("paneTitles") },

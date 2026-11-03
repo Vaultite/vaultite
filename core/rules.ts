@@ -84,6 +84,7 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
     out.push(`${where}: category must be a slug, like "life" (core/categories.ts)`)
   }
   if (m.desktopApp !== undefined && m.desktopApp !== true) out.push(`${where}: desktopApp is true (it works only in the desktop app) or left out`)
+  if (m.ai !== undefined && m.ai !== true) out.push(`${where}: ai is true (it's for AI: off while Use AI is) or left out`)
   if (m.icon !== undefined && (typeof m.icon !== "string" || !(ICON_NAME.test(m.icon) || ICON_FILE.test(m.icon)))) {
     out.push(`${where}: icon is a name ("heart-pulse": Lucide's) or an SVG file in its folder ("icon.svg")`)
   }

@@ -1,6 +1,7 @@
 // The core's operations (core/ops.ts), by area, each a function of the App; the bigger areas are in core/coreops/.
 // A new op goes here when it's the core's (files, docs, settings, plugins, the window), else in its plugin.
 import type { App } from "./app.ts"
+import { aiOps } from "./coreops/ai.ts"
 import { bundleOps } from "./coreops/bundles.ts"
 import { contextOps } from "./coreops/context.ts"
 import { devOps } from "./coreops/dev.ts"
@@ -26,7 +27,7 @@ import { type Op, OpError, quoted } from "./ops.ts"
 
 /** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
 export function coreOps(app: App): Op[] {
-  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...keptOps(app), ...itemOps(app),
+  return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...aiOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...keptOps(app), ...itemOps(app),
     ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...versionOps(), ...opsOps(app)]
 }
 

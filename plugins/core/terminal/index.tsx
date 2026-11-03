@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Search, Server, SquareTerminal, SquareX } from "lucide-react"
-import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
-  PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
+import { agentOfTerminal, aiOn, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView, severalMachines,
+  PageHeader, Panel, SettingRow, useAi, useLive, viewsChanged } from "@vaultite"
 import { agentIn, autoLabel, current, dotOf, endForGood, getSessions, iconOf, labelOf, nameSession, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
@@ -51,9 +51,9 @@ const openTab = (to: string) => openView(to, { newTab: !isViewOpen(to) })
 /** The status bar's agents at work and the ones that need the user (as Terminals says: blocked, or an Inbox row unread):
  *  a click goes to the first that needs them, else Terminals. */
 function AgentsAtWork() {
-  const list = useSessions().list ?? []
+  const list = useSessions().list ?? [], ai = useAi()
   const working = list.filter((s) => agentIn(s) && s.state === "working"), needs = list.filter((s) => needsYou(s))
-  if (!working.length && !needs.length) return null
+  if (!ai || (!working.length && !needs.length)) return null
   const tip = [working.length && `${working.length} working`, needs.length && `${needs.length} need you`].filter(Boolean).join(", ")
   return <AmbientButton icon={Bot} text={needs.length ? `${working.length} · ${needs.length} need you` : working.length} tip={`Agents: ${tip}`}
     tint={needs.length ? "var(--yellow)" : undefined} onClick={() => openTab(needs.length ? `view:terminal/${needs[0].id}` : "view:terminals")} />
@@ -79,6 +79,16 @@ function terminalHere() {
   const at = document.activeElement?.closest("[data-terminal-view]")
   if (at) return at
   return document.querySelector("dialog[open]") ? null : document.querySelector("#main-scroll [data-terminal-view]")
+}
+
+/** Its settings: what agents are told, while AI is on (plain terminals have nothing to set). */
+function AgentsTold() {
+  if (!useAi()) return null
+  return (
+    <Group>
+      <SettingRow label="What agents are told" sub="Added to a coding agent's instructions when it starts in a terminal here" onClick={showInstructions} />
+    </Group>
+  )
 }
 
 export default definePlugin({
@@ -123,11 +133,7 @@ export default definePlugin({
     terminals: { icon: SquareTerminal, title: () => "Terminals", render: () => <TerminalsView /> },
     "terminal-instructions": { icon: FileText, title: () => "What agents are told", render: () => <Instructions /> },
   },
-  settingsPanel: () => (
-    <Group>
-      <SettingRow label="What agents are told" sub="Added to a coding agent's instructions when it starts in a terminal here" onClick={showInstructions} />
-    </Group>
-  ),
+  settingsPanel: () => <AgentsTold />,
   // Its text size, apart from the app's zoom (⌘+scroll over a terminal, the commands, Settings > Appearance).
   textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns" } },
   background: () => <><SessionNames /><AskBox /></>,
@@ -137,11 +143,11 @@ export default definePlugin({
     { id: "terminal:open-here", name: "Open terminal on this machine", words: "new", keys: ["Ctrl+`"], run: () => void openTerminal({ machine: "" }), icon: SquareTerminal },
     { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", words: "new", run: () => void openTerminal({ split: true }) },
     // A question for an agent that answers in the background (Dictate's ⌘J opens it and dictates into it).
-    { id: "terminal:ask", name: "Ask an agent in the background…", when: canRunAgents, run: openAsk, icon: MessageSquareText, label: "Ask" },
+    { id: "terminal:ask", name: "Ask an agent in the background…", when: () => aiOn() && canRunAgents(), run: openAsk, icon: MessageSquareText, label: "Ask" },
     { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", when: severalMachines, run: () => void choosePlace(), icon: Server },
     { id: "terminal:home", name: "Choose where terminals and agents open in this workspace…", when: severalMachines, run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },
-    { id: "terminal:instructions", name: "Show what agents in terminals are told", run: showInstructions, icon: FileText },
+    { id: "terminal:instructions", name: "Show what agents in terminals are told", when: aiOn, run: showInstructions, icon: FileText },
     // Off a Mac ⌃F is the shell's (forward a character): ⌃⇧F, as terminals there have it.
     { id: "terminal:find", name: "Find in terminal", keys: isMac ? ["Mod+F"] : ["Ctrl+Shift+F"], when: () => !!terminalHere(),
       run: () => { const v = terminalHere(); if (v) return preload().then((m) => m.openFind(v)) }, icon: Search },

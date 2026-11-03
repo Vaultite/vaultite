@@ -317,12 +317,12 @@ export function problems(files: Files): string[] {
 /** The app's plugins, and the vault's (loaded or not), by id: whether it's opt-in (`enabled`, else on unless
  *  `disabled`) and its settings' declarations. */
 function known(host: Host) {
-  const out = new Map<string, { name: string; optIn: boolean; vault: boolean; settings: SettingDecls }>()
+  const out = new Map<string, { name: string; optIn: boolean; vault: boolean; settings: SettingDecls; ai?: boolean }>()
   for (const p of host.plugins()) {
-    out.set(p.id, { name: String(p.manifest.name ?? p.id), optIn: p.tier === "vault" || !!p.manifest.offByDefault, vault: p.tier === "vault", settings: settingsOf(p.manifest) })
+    out.set(p.id, { name: String(p.manifest.name ?? p.id), optIn: p.tier === "vault" || !!p.manifest.offByDefault, vault: p.tier === "vault", settings: settingsOf(p.manifest), ai: p.manifest.ai === true })
   }
   for (const v of host.vaultPlugins()) {
-    if (!out.has(v.id)) out.set(v.id, { name: String(v.name ?? v.id), optIn: true, vault: true, settings: isObj(v.settings) ? v.settings as SettingDecls : {} })
+    if (!out.has(v.id)) out.set(v.id, { name: String(v.name ?? v.id), optIn: true, vault: true, settings: isObj(v.settings) ? v.settings as SettingDecls : {}, ai: v.ai === true })
   }
   return out
 }
@@ -414,7 +414,7 @@ export type Plan = {
   newtab: Change[]
   /** Vault files it adds (and plugin dashboards it brings back), and the ones already there (left as they are). */
   files: { add: string[]; kept: string[] }
-  /** Every change it makes, by id: install:<plugin>, plugin:<plugin> (on or off), setting:<plugin>.<key>, panels,
+  /** Every change it makes, by id: install:<plugin>, plugin:<plugin> (on or off), ai (AI on), setting:<plugin>.<key>, panels,
    *  file:<vault path>, pin:<vault path> (pinned or unpinned), pins:order, appearance:<key>, editor:<key>, hotkey:<command>, newtab:<key>. */
   changes: PlanChange[]
   /** The changes left out as asked (skip), by id. */
@@ -484,6 +484,8 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
   // Turning Workspaces on, the window goes to a workspace whose own panels and pins would show instead of its: that one
   // is the one it changes (the device's pick, else the first in use, as the app picks: plugins/core/workspaces/state.ts).
   if (!n && on.includes("workspaces")) n = landing ?? await firstWorkspace(host)
+  // A plugin for AI it turns on while AI is off: it turns AI on too, and says so (core/coreops/ai.ts).
+  if (conf.ai === false && [...targets ?? []].some(([id, want]) => want && kinds.get(id)?.ai)) take({ id: "ai", part: "plugin", label: "Turn on AI, which its agents need" })
   const missing = [...new Set([...strs(pj?.disabled), ...strs(pj?.enabled)])].filter((id) => !kinds.has(id) && !code.includes(id) && !installs.some((x) => x.id === id))
   // settings
   const set: Plan["settings"] = [], skipped: Plan["skipped"] = []
@@ -812,6 +814,7 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   // (a list left empty goes, as on a new vault)
   const lists = (o: Item) => Object.fromEntries(Object.entries(o).filter(([, l]) => Array.isArray(l) && l.length))
   await patch("plugins", patchOf(lists({ disabled: conf.disabled, enabled: conf.enabled }), lists({ disabled, enabled })))
+  if (p.changes.some((c) => c.id === "ai")) await patch("plugins", { ai: null })
   await host.syncPlugins()
   // The plugins it turns on write their pages, as turning one on does (pinned here, the pins below make the list the
   // bundle's); the ones already on wrote theirs then, or chose not to: Standard over a new vault adds none.

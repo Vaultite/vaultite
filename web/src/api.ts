@@ -133,6 +133,7 @@ export type { Sidebars } from "@/core/plugins"
 // Views' tab titles and icons that follow live data (a terminal's session name): tell the tabs it changed.
 export { useViewsVersion, viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
+export { aiOn, setAi, useAi } from "@/core/ai"
 // A value module state keeps, that hooks and subscribers follow (safe while a module loads).
 export { cell, type Cell } from "@/core/signal"
 /** Taps answered at once: rows taken off a list before the write is done, a button's slow action, a value just chosen. */

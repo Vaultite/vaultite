@@ -35,6 +35,9 @@ export type Manifest = {
   /** Works only in the desktop app on a Mac (other apps' windows, the Dock): elsewhere it's listed and does nothing, and
    *  the web demo keeps it off. */
   desktopApp?: boolean
+  /** It's for AI (a coding agent, the companion, AI usage): off while Use AI is off (plugins.json `ai: false`), whatever
+   *  its own switch says, which comes back as it was. Ops, MCP and the CLI aren't AI's: those stay with it off. */
+  ai?: boolean
   /** Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages,
    *  files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else. */
   tint?: string
@@ -731,9 +734,9 @@ export type PluginDef = {
   home?: (store: Store) => string | null
   /** Sections it adds to a blank tab's page, by name ("<plugin id>:<name>", arranged in newtab.json). */
   newTab?: Record<string, NewTabSection>
-  /** Its pages in Settings' list, by name, beside the app's own (Connections' AI apps): for setting the app up, not a
-   *  plugin's options (those are its settings). */
-  settingsPages?: Record<string, { label: string; icon: LucideIcon; sub?: string; render: (ctx: { store: Store }) => ReactNode }>
+  /** Its pages in Settings' list, beside the app's own: for setting the app up, not its options. `in: "ai"`: a part of
+   *  Settings' AI section instead (Connections' apps), under its label and `sub`, drawn only while AI is on. */
+  settingsPages?: Record<string, { label: string; icon: LucideIcon; sub?: string; in?: "ai"; render: (ctx: { store: Store }) => ReactNode }>
   /** Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s.
    *  Drawn after its declared settings (a short option above a list that grows), unless `settingsPanelFirst`. */
   settingsPanel?: (ctx: { store: Store }) => ReactNode

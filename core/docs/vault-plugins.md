@@ -6,7 +6,7 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
 
 **`manifest.json`**: `{"id" (= the folder's name, not one the app has), "name", "description", "icon", "version": "1.0.0",
 "author", "repo": "owner/name", "fundingUrl", "disclosures", "requires": [plugin ids it can't work without],
-"enhances", "exports", "runsOnServer", "desktopApp", "tint": "green", "category": "life", "group", "apiVersion": 4,
+"enhances", "exports", "runsOnServer", "desktopApp", "ai", "tint": "green", "category": "life", "group", "apiVersion": 4,
 "minAppVersion": "0.1.0", "forAgents", "blocks", "settings", "replaces", "userFiles", "marks", "writes"}`. A folder with
 only settings (`data.json`, `<name>.json`) is settings, not a plugin.
 - `exports`: modules in its folder that plugins requiring it may import (`["types", "lib/format"]`, without extension):
@@ -28,6 +28,8 @@ only settings (`data.json`, `<name>.json`) is settings, not a plugin.
   doesn't make it so.
 - `desktopApp`: it works only in the desktop app on a Mac (`appWindows`, `dockIcon`): its sheet says so, the web demo
   keeps it off.
+- `ai`: `true` for a plugin that's for AI (a coding agent, an AI chat, AI usage): off while the user's Use AI switch is
+  (plugins.json `ai: false`), its own switch kept for when it's back on. Not for what only serves agents through ops.
 - `icon`: how it looks wherever it's listed, and in the directory before anyone installs it: a Lucide name
   (`"heart-pulse"`, lucide.dev/icons) or one the app adds (`"claude"`, `"github"`), or a brand's mark as an SVG file in
   its folder (`"icon.svg"`, at most 16 kB): one colour, drawn in the text's colour. None: a puzzle piece.

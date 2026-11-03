@@ -370,17 +370,32 @@ export class VaultPlugins {
   heard(ev: VaultEvent) {
     // (plugins.json as the last sync read it: one just turned off hears nothing, though it's unloaded only at the next
     // request)
-    const e = this.vault.config("plugins").enabled
-    const on = new Set(Array.isArray(e) ? e : [])
+    const on = this.onIn(this.vault.config("plugins"))
     this.hooks.heard(ev, [...this.found.values()].filter((v) => v.plugin && on.has(v.id)))
   }
 
   /** The ones turned on, read from plugins.json as it is now: this runs before the request's sync, when vault.config()
    *  may be a request late. Unreadable (mid-sync): what was read last. */
   enabled() {
-    let e: unknown
-    try { e = (this.vault.readConfig("plugins") ?? {}).enabled } catch { e = this.vault.config("plugins").enabled }
-    return new Set<string>(Array.isArray(e) ? e.filter((x) => typeof x === "string") : [])
+    let conf: Item
+    try { conf = this.vault.readConfig("plugins") ?? {} } catch { conf = this.vault.config("plugins") }
+    return this.onIn(conf)
+  }
+
+  /** plugins.json's `enabled`, but those whose manifest says `ai` while AI is off (`ai: false`; Vault.switchedOff). */
+  private onIn(conf: Item) {
+    const e: unknown = conf.enabled
+    const on = new Set<string>(Array.isArray(e) ? e.filter((x) => typeof x === "string") : [])
+    if (conf.ai === false) for (const id of on) if (this.aiOf(id)) on.delete(id)
+    return on
+  }
+
+  /** Whether plugin `id`'s manifest says it's for AI (`ai: true`): as last read, else from its folder (not read yet). */
+  private aiOf(id: string) {
+    const m = this.found.get(id)?.manifest
+    if (m) return m.ai === true
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) return false
+    try { return JSON.parse(readText(this.vault.abs(`${DIR}/${id}/manifest.json`))).ai === true } catch { return false }
   }
 
   /** Let plugin `id` run on this machine as its files are now (core/trust.ts), remembered as `version` or its manifest's,
@@ -574,7 +589,7 @@ export class VaultPlugins {
       return {
         id: vp.id, name: typeof m.name === "string" && m.name ? m.name : vp.id, description: typeof m.description === "string" ? m.description : "",
         requires: Array.isArray(m.requires) ? m.requires : [], enhances: Array.isArray(m.enhances) ? m.enhances : [], runsOnServer: !!m.runsOnServer,
-        ...(m.desktopApp === true ? { desktopApp: true } : {}),
+        ...(m.desktopApp === true ? { desktopApp: true } : {}), ...(m.ai === true ? { ai: true } : {}),
         minAppVersion: typeof m.minAppVersion === "string" ? m.minAppVersion : null, apiVersion: typeof m.apiVersion === "number" ? m.apiVersion : null,
         ...(typeof m.tint === "string" ? { tint: m.tint } : {}),
         ...(vp.icon ? { icon: vp.icon } : {}),

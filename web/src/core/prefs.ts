@@ -40,6 +40,8 @@ export type Prefs = {
   snippets: string[]
   /** Opt-in plugins turned on: the vault's (off until then: they run code) and the app's `offByDefault` ones (Vim, Finance). */
   enabled: string[]
+  /** Use AI (core/ai.ts): off, the plugins for AI (manifest `ai`) are off whatever their own switches say. */
+  ai: boolean
   /** The open sidebar's width (px; drag its edge). */
   sidebarWidth: number
   /** The right sidebar (when panels are there): open, or folded to its icon rail; its open width. This device's. */
@@ -116,11 +118,11 @@ export type Prefs = {
 
 const KEY = "vaultite.prefs"
 const DEFAULTS: Prefs = {
-  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], fileSort: "name", folderView: "list", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  ...LOOK, sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], ai: true, fileSort: "name", folderView: "list", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null, opens: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
-  appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderView", "folderLimit", "autoReveal", "showHidden", "showArchived"],
+  appearance: LOOK_KEYS, plugins: ["disabled", "enabled", "ai", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderView", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
 /** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */
@@ -151,12 +153,17 @@ let prefs = load()
 const changed = signal()
 
 function commit(next: Prefs) {
+  // (AI on or off changes which plugins are on: a new `disabled`, which what's memoized on that goes by)
+  if (next.ai !== prefs.ai && next.disabled === prefs.disabled) next = { ...next, disabled: [...next.disabled] }
   prefs = next
   try { localStorage.setItem(KEY, JSON.stringify(prefs)) } catch { /* private mode */ }
   changed.notify()
 }
 
-const pick = (file: File, keys: readonly string[] = FILES[file]) => Object.fromEntries(FILES[file].filter((k) => keys.includes(k)).map((k) => [k, prefs[k]]))
+/** Keys whose default is written as no key at all (null removes it), so a vault keeps only what was chosen. */
+const UNSET_AT_DEFAULT: readonly (keyof Prefs)[] = ["ai"]
+const pick = (file: File, keys: readonly string[] = FILES[file]) => Object.fromEntries(FILES[file].filter((k) => keys.includes(k))
+  .map((k) => [k, UNSET_AT_DEFAULT.includes(k) && prefs[k] === DEFAULTS[k] ? null : prefs[k]]))
 
 /** Write these prefs' keys to their file, and only them (PATCH): the file's other keys stay as they are on disk, so one
  *  changed meanwhile (by an AI, another device) isn't put back. */
