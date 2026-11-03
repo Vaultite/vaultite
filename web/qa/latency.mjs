@@ -337,8 +337,8 @@ async function run(n) {
     // The left sidebar hidden, then shown again.
     const sb = []
     for (let k = 0; k < 2; k++) {
-      sb.push(await step(s, "sidebar", () => s.page.keyboard.press("ControlOrMeta+\\"), () => !document.querySelector("aside [role=tree]")))
-      sb.push(await step(s, "sidebar", () => s.page.keyboard.press("ControlOrMeta+\\"), () => !!document.querySelector("aside [role=tree]")))
+      sb.push(await step(s, "sidebar", () => s.page.keyboard.press("ControlOrMeta+\\"), () => !document.querySelector("aside [data-sidebar-body] [role=tree]")))
+      sb.push(await step(s, "sidebar", () => s.page.keyboard.press("ControlOrMeta+\\"), () => !!document.querySelector("aside [data-sidebar-body] [role=tree]")))
     }
     r.sidebar = combine(sb)
 

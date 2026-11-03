@@ -100,13 +100,15 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
   // (the panels again: its body is new, this component isn't)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const fades = useMemo(modeJustSwitched, [mode])
+  // Once shown, its panels stay drawn while it's a rail, hidden (display: none, so nothing finds them on screen):
+  // showing it again mounted ~1,500 elements anew.
+  const [kept, setKept] = useState(ctx.open)
+  if (ctx.open && !kept && !ctx.phone) setKept(true)
   const alone = side === "left" && ctx.open && !ctx.phone ? sidebarPanels(disabled).find((p) => p.key === mode) : undefined
   if (alone) return <SidebarSide.Provider value={side}><SidebarMode of={alone} ctx={ctx} /></SidebarSide.Provider>
 
-  if (!ctx.open) {
-    return (
-      <SidebarSide.Provider value={side}>
-        <div ref={box} data-rail className="edge-fade-y relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
+  const rail = !ctx.open && (
+        <div data-rail className="edge-fade-y relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-width:none]">
           {head && <div data-rail-section className="flex shrink-0 flex-col">{head}</div>}
           {panels.map(({ key, panel }) => (
             <div key={key} data-panel={key} data-rail-section className="flex shrink-0 flex-col" onContextMenu={menuFor(() => panelMenu(key, side))}>
@@ -116,16 +118,17 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
             </div>
           ))}
         </div>
-      </SidebarSide.Provider>
-    )
-  }
+  )
+  if (rail && !kept) return <SidebarSide.Provider value={side}>{rail}</SidebarSide.Provider>
+  const shown = ctx.open ? ctx : { ...ctx, open: true }
 
   return (
     // One rhythm for every panel, whatever it draws: 1 unit under each (folded or not) and its heading's 2 above, so 3
     // units between any two panels; and the last one ends 2 units above the vault's bar.
     <SidebarSide.Provider value={side}>
-    <div ref={box} data-sidebar-body={side} data-mode-fade={fades || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
-      className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
+    {rail}
+    <div ref={box} data-sidebar-body={ctx.open ? side : undefined} data-sidebar-kept={ctx.open ? undefined : side} inert={!ctx.open} data-mode-fade={fades || undefined} data-scroll={own ? "panels" : "sidebar"} onDoubleClick={(e) => { const key = emptyRoomOf(e.target, box.current); panels.find((p) => p.key === key)?.panel.emptyDoubleClick?.() }}
+      className={cn("edge-fade-b relative flex min-h-0 flex-1 flex-col pb-1", !ctx.open && "hidden", own ? "overflow-x-hidden overflow-y-auto [scrollbar-width:thin]" : "overflow-y-auto overscroll-contain [scrollbar-width:thin]",
         making && "[&>:not([data-slide])]:invisible")}>
       {panels.length ? panels.map((p, i) => {
         const { key, panel } = p
@@ -153,8 +156,8 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
             <div data-panel-scroll className={cn("flex min-h-0 flex-col", own && !folded && "edge-fade-b overflow-y-auto [scrollbar-width:thin]")}>
               <div data-panel-content className="flex shrink-0 flex-col">
                 <PanelFold.Provider value={{ collapsed: folded, toggle: () => foldPanel(box.current, key, () => togglePanelCollapsed(key)) }}>
-                  {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...ctx, panel: key })}</SidebarHeading>}
-                  <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...ctx, panel: key })} /></Guard>
+                  {panel.heading !== false && <SidebarHeading title={panel.heading ?? panel.title} open>{panel.actions?.({ ...shown, panel: key })}</SidebarHeading>}
+                  <Guard what={`The ${panel.title} panel`}><Drawn draw={() => panel.render({ ...shown, panel: key })} /></Guard>
                 </PanelFold.Provider>
               </div>
             </div>

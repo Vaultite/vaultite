@@ -64,7 +64,7 @@ try {
     !!document.querySelector('aside[data-side=right] [data-tree-path="ME.md"]')?.offsetParent && document.querySelector("aside[data-side=right]").getBoundingClientRect().width > 100))))
 
   // The menu moves it back; with nothing left, the right sidebar goes.
-  await page.click("aside[data-side=right] [data-panel='files:files'] [data-panel-handle]", { button: "right" })
+  await page.click("aside[data-side=right] [data-panel='files:files'] [data-panel-handle]:not([data-sidebar-kept] *)", { button: "right" })
   await page.getByRole("menuitem", { name: "Move to left sidebar" }).click()
   check("Move to left sidebar: back on the left", !!(await until(async () => (await panelsIn("left")).includes("files:files"))), await panelsIn("left"))
   check("...and the right sidebar is gone", !!(await until(async () => !(await right()))))

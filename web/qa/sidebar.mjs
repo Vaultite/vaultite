@@ -177,8 +177,9 @@ try {
   // The rail: pages keep their icons, the tree and the Terminals heading hide.
   await page.keyboard.press("ControlOrMeta+Backslash")
   await wait(400)
-  check("rail: terminals right under the pages, past a line", (await y("aside [data-session]")) - (await page.$$eval("aside [data-pin]", (els) => els[els.length - 1].getBoundingClientRect().y)) < 50)
-  check("rail: no headings, a line between panels", !(await page.$("aside [data-panel-handle]")) &&
+  // (the panels it showed stay drawn behind the rail, hidden: data-sidebar-kept)
+  check("rail: terminals right under the pages, past a line", (await y("aside [data-rail] [data-session]")) - (await page.$$eval("aside [data-rail] [data-pin]", (els) => els[els.length - 1].getBoundingClientRect().y)) < 50)
+  check("rail: no headings, a line between panels", !(await page.$("aside [data-panel-handle]:not([data-sidebar-kept] *)")) &&
     (await page.$$eval("aside [data-rail-section]", (els) => els.filter((e) => getComputedStyle(e, "::before").content !== "none").length)) >= 3)
   // ...and none above the first icons: with the Inbox panel in the sidebar, the header's Inbox button draws nothing,
   // and its empty place is no group.

@@ -27,7 +27,8 @@ await fetch(new URL("/api/config/appearance", B), { method: "PATCH", headers: { 
 const page = watch(await browser.newPage({ viewport: { width: 1440, height: 900 } }))
 const L = "aside[data-side=left]", R = "aside[data-side=right]"
 /** A sidebar's panels, top to bottom. */
-const shown = (side = "left") => page.$$eval(`aside[data-side=${side}] [data-panel]`, (els) => els.map((e) => e.dataset.panel))
+// (what a rail hides behind it, kept drawn, doesn't count: data-sidebar-kept)
+const shown = (side = "left") => page.$$eval(`aside[data-side=${side}] [data-panel]:not([data-sidebar-kept] *)`, (els) => els.map((e) => e.dataset.panel))
 const menuItems = () => page.$$eval("[role=menu] [role^=menuitem]", (els) => els.map((e) => e.textContent.trim()))
 const box = async (sel) => (await page.$(sel)).boundingBox()
 const mid = (b) => [b.x + b.width / 2, b.y + b.height / 2]
@@ -419,7 +420,7 @@ try {
   const rail = await shown()
   check("the rail: every panel, folded or not, in order", rail.join() === "search:search,pages:pages,terminal:sessions,outline:outline,files:files", rail)
   check("...folded Pinned still shows its icons", await visible(`${L} [data-panel='pages:pages'] [data-pin]`))
-  check("...no headings", !(await page.$(`${L} [data-panel-handle]`)))
+  check("...no headings", !(await page.$(`${L} [data-panel-handle]:not([data-sidebar-kept] *)`)))
   await page.screenshot({ path: `${OUT}5-rail.png` })
   await page.click("[data-sidebar-toggle='']"); await wait(400)
 } catch (e) {
