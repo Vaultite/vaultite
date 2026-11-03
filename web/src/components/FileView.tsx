@@ -4,18 +4,18 @@ import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect
 import { createPortal } from "react-dom"
 import { AlertTriangle, BookOpen, Folder, FolderInput, Smile, Trash2, type LucideIcon } from "lucide-react"
 import { menuFor, menuOnCard } from "@/components/ContextMenu"
-import { copyToVault, copyToVaultItem, revealItem } from "@/components/FileActions"
+import { copyToVault, copyToVaultItem, folderMenu, revealItem } from "@/components/FileActions"
 import { mediaItems } from "@/components/EmbedMenu"
 import { typingIn, useCommandKeys, useCommands } from "@/core/commands"
 import { dropActiveFile, setActiveFile, type ActiveFile } from "@/core/active"
-import { askMove, revealInTree } from "@/components/FileTree"
+import { askMove } from "@/components/FileTree"
 import { fmtAgo, type Store } from "@/core/data"
 import { isOutside } from "@/core/desktop"
 import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { openLinkMenu } from "@/components/LinkMenu"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
-import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
+import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, openFolder, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { takeRename } from "@/core/workspace"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
@@ -198,8 +198,8 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, views, settle
           const at = folders.slice(0, i + 1).join("/")
           return (
             <Fragment key={at}>
-              <button type="button" onClick={() => revealInTree(at, { open: true, scroll: true, flash: true })}
-                data-tip="Show in the file tree" data-tip-cut={`${f}\nShow in the file tree`} className={cn(crumb, "shrink-[1000] text-muted-foreground hover:text-foreground",
+              <button type="button" onClick={() => openFolder(at)} onContextMenu={menuFor(() => folderMenu(at))}
+                data-tip="Open folder" data-tip-cut={`${f}\nOpen folder`} className={cn(crumb, "shrink-[1000] text-muted-foreground hover:text-foreground",
                   // (squeezed, a letter and its ellipsis stay, never a clipped sliver; a name of two fits anyway)
                   f.length > 2 && "min-w-[2.5em]")}>{f}</button>
               <span aria-hidden className="shrink-0 px-px text-tertiary">/</span>

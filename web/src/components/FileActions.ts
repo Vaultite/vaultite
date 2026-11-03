@@ -1,11 +1,11 @@
 // What the file menus do (the tree's, a tab's, the phone's), in one place so they say and do the same thing.
-import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
+import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
 import { actionIcon, fileActions, runAction } from "@/core/actions"
 import { getStore } from "@/core/data"
 import { kindOf } from "@/core/filekinds"
 import { post } from "@/core/http"
 import { newNoteFolder, saveAttachments } from "@/core/conventions"
-import { copyFile, deleteFile, fileOf, folderList, inTrash, isHidden, isMd, isProtected, isReadOnly, openFile, openNew, restoreFile, shownName, stem } from "@/core/files"
+import { copyFile, deleteFile, fileOf, folderList, folderTarget, inTrash, isHidden, isMd, isProtected, isReadOnly, openFile, openFolder, openNew, restoreFile, shownName, stem } from "@/core/files"
 import { askRename, isPopout } from "@/core/workspace"
 import { setProperty } from "@/core/frontmatter"
 import { shortestLink } from "@/core/links"
@@ -71,6 +71,15 @@ export function copyPathItem(path: string, opts: { folder?: boolean; sep?: boole
 export function openItem(newTab: () => void, right?: () => void): MenuItem {
   const tab: MenuItem = { label: "Open in new tab", icon: SquareArrowOutUpRight, run: newTab }
   return right ? { ...tab, split: true, items: [tab, { label: "Open to the right", icon: Columns2, run: right }] } : tab
+}
+
+/** "Open" for a folder (its page), with Open in new tab and, on a computer, Open to the right in its submenu. */
+export function openFolderItem(folder: string, opts: { pane?: string } = {}): MenuItem {
+  const open: MenuItem = { label: "Open", icon: FolderOpen, run: () => openFolder(folder, { pane: opts.pane }) }
+  return { ...open, split: true, items: [open,
+    { label: "Open in new tab", icon: SquareArrowOutUpRight, run: () => openFolder(folder, { newTab: true, pane: opts.pane }) },
+    ...(isDesktop() ? [{ label: "Open to the right", icon: Columns2, run: () => openInSplit(folderTarget(folder), "right") }] : []),
+  ] }
 }
 
 /** "Rename", with Change icon in its submenu for a Markdown file in the vault. */
@@ -221,13 +230,15 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
 export const rowFileMenu = (path: string): MenuItem[] => fileMenu(path, { phone: !isDesktop(), top: [[
   openItem(() => openFile(path, { newTab: true }), isDesktop() ? () => openInSplit(`file:${path}`, "right") : undefined)]] })
 
-/** A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its
- *  path and Reveal in file tree, Archive and Delete. Renaming and New folder are the tree's, where the name is typed in place. */
-export function folderMenu(folder: string, opts: { skip?: string } = {}): MenuItem[] {
+/** A folder's menu away from the tree (a pinned one, a folder's page): Open (`open` false: not), New, Rename (`rename`, where
+ *  it's typed in place) and Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Archive, Delete. */
+export function folderMenu(folder: string, opts: { skip?: string; open?: boolean; pane?: string; rename?: () => void; newFolder?: () => void } = {}): MenuItem[] {
   const locked = isProtected(folder) || inTrash(folder)
   const plug = pluginFileGroups(folder, opts.skip, true)
   return grouped([
-    locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, { label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }],
+    opts.open === false || inTrash(folder) ? [] : [openFolderItem(folder, { pane: opts.pane })],
+    locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, ...(opts.newFolder ? [{ label: "New folder", icon: FolderPlus, run: opts.newFolder }] : [])],
+    locked ? [] : [...(opts.rename ? [renameItem(folder, opts.rename)] : []), { label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }],
     plug.navigate,
     ...plug.rest,
     [

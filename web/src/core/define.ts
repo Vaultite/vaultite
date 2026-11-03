@@ -250,7 +250,11 @@ export type ViewDef = {
   /** The arg is the view's own state (a search's query), changed with `ctx.setArg`: the view isn't drawn afresh when it
    *  changes, and the tab keeps it (it's in the workspace's layout, so it survives a reload and shows on other devices). */
   argState?: boolean
+  /** The arg is a vault path (a folder's page): its tabs, and their history, follow it when it's moved or renamed. */
+  pathArg?: boolean
   render: (ctx: ViewCtx) => ReactNode
+  /** What its tab's bar (desktop) shows instead of its title (a folder's path, as crumbs), and its buttons at the right. */
+  bar?: (ctx: ViewCtx) => { title?: ReactNode; right?: ReactNode }
   /** Draw edge to edge, filling the pane below the tab bar (no path bar, no page margins): a terminal. */
   full?: boolean
   /** It can be what a new tab opens (newtab.json `opens`: `view:<name>`), named so where that's chosen ("Web page");

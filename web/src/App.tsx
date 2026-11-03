@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Columns3, LayoutPanelLeft, MoveDown, MoveHorizontal, MoveLeft, MoveRight, MoveUp, MoveVertical, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, SquareX, Sun, SunMoon, Sparkles, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, Search, Type } from "lucide-react"
 import { cell } from "@/core/signal"
-import { getStore, onState, reload, useStore, type Store } from "@/core/data"
+import { getStore, onState, reload, useStore, vaultName as vaultNameOf, type Store } from "@/core/data"
 import { share } from "@/core/share"
 import { setOpenWidth, setRoom } from "@/core/room"
 import { SharedWith } from "@/components/SharedWith"
@@ -335,7 +335,7 @@ export default function App() {
   // The quick switcher (⌘O), the command palette (⌘P) or Search tabs (⌘⇧A); their commands are below.
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
-  const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
+  const vaultName = vaultNameOf(store)
   const vaultMenu = (e: React.MouseEvent) => menuBelow(e, VAULT_MENU())
   // The app's commands (⌘P lists them); file commands act on the active tab's file, in the vault only (not "file:/…").
   // The file the user means: the editor's (a sheet's over the page too), else the focused tab's.

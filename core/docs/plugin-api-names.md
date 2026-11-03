@@ -229,8 +229,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
-- `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Archive and Delete.
+- `folderBar(path)`: The desktop bar's crumbs (the vault, then each folder down to this one) and its buttons: Show as, Sort, More.
+- `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned one, a folder's page): Open (`open` false: not), New, Rename (`rename`, where it's typed in place) and Move, the plugins' groups (but `skip`'s), its…
+- `folderName(path)`: A folder's name as its tab says it; the vault's own for its top.
 - `folderOf(path)`
+- `FolderPage({ store, path })`: A folder's page: its header, then what it holds as a list or a grid, or a calm line when it's empty or gone.
+- `folderTabMenu()`: Show as ▸ List, Grid (every folder's page the same) and Sort by ▸ (the file tree's order): its tab's menu.
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `foldSet(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
 - `foldSetMoving(id)`: Fold or open a tab group as the user does it (its chip or row clicked): its tabs shrink into it, then it folds; or they grow out of it.
@@ -399,6 +403,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `OpenEditor`
 - `openFile(path, opts?)`: Open a file in a tab (go), on phones too; Back returns.
 - `OpenFile`: The file a status item is drawn for: its head, and its whole text, frontmatter included ("" for a file that isn't text: an image), as typed (each change redraws it, a moment after the keystroke).
+- `openFolder(path, opts?)`: Open a folder's page, as openFile opens a file: in the current tab when it shows a folder, else beside it.
 - `openingSoon(path, now?)`
 - `openInList(newTab?)`: Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab).
 - `openInSet(to, name, here?)`: `to` in a new tab, shown, at the end of the tab group named `name` (an agent's: "<agent>/<task>"), the focus staying; no such group: beside the focused pane (`here`: in it, after its tab), in a…
@@ -655,7 +660,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `touchTabsSeen()`: The tabs on screen are being looked at (the window is in view): stamped as seen now.
 - `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.
 - `TraceEvent`
-- `treeShownItems()`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse).
+- `treeShownItems({ reveal }?)`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse);…
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
 - `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).

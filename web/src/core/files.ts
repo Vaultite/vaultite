@@ -134,10 +134,23 @@ export function openFile(path: string, opts: { newTab?: boolean; pane?: string }
 }
 setFileOpener((path) => openFile(path))
 
+/** A folder's page as a tab's target (the Files plugin's view; "" the vault's top). */
+export const folderTarget = (path: string) => (path ? `view:folder/${path}` : "view:folder")
+/** Open a folder's page, as openFile opens a file: in the current tab when it shows a folder, else beside it. */
+export function openFolder(path: string, opts: { newTab?: boolean; pane?: string } = {}) {
+  const to = folderTarget(path)
+  if (!isDesktop() && route().detail) return afterSheets(() => go(to, opts.newTab))
+  if (opts.pane && isDesktop()) focusGroup(opts.pane)
+  go(to, opts.newTab)
+}
+
 // An agent's `vau open <path>` / `vau command <id>` / `vau notify <text>` (server.ts /api/ui), in the window the user
 // was in last.
 function openAsked(path: string, split?: "right" | "down" | null, newTab = false, background = false) {
   if (/^https?:\/\//i.test(path)) path = `view:web/${path}`
+  // (a folder: its page)
+  const t = getStore()?.files
+  if (t && !path.startsWith("view:") && isFolder(t, path.replace(/^file:/, ""))) path = folderTarget(path.replace(/^file:/, ""))
   const view = path.startsWith("view:")
   const to = view ? path : `file:${path.replace(/^file:/, "")}`
   // (behind the user's tab: agents never take the focus; one open already is left as it is)

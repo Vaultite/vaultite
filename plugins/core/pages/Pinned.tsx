@@ -3,8 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
-  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
-  openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings, showInTree,
+  coarse, edgeScroller, checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile, openFolder,
+  openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings,
   INCOMING, openItem, openView, pastEnd, PIN_SEARCH, reorder, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, slotAt, startDrag, stem, useDrag,
   useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useSlide, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem,
   type SidebarCtx,
@@ -42,6 +42,8 @@ function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
   if (e.kind === "view") return openView(e.target, { newTab: opts.newTab })
   openView(`search/${e.query}`, { newTab: opts.newTab })
 }
+/** A folder's tile (a new tab's, the drawer's, the sidebar's tiles and its rail): its page. */
+const openTile = (folder: string, newTab: boolean) => openFolder(folder, { newTab })
 /** Where a drop lands: before a page (null: the end; `known`: already pinned, so only its place changes), or `out` of
  *  the list, elsewhere in the sidebar; and the pages' `order` that leaves, which the list makes way for (core/slide.ts). */
 type PinDrop = ({ before: string | null; known: boolean } | { out: true }) & { order: string[] }
@@ -200,8 +202,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane, flyout, tiles
     const href = folder ? undefined : `#${file ? `file/${encodeURIComponent(file)}` : `view/${encodeURIComponent(to!.slice(5))}`}`
     const click = (e: React.MouseEvent) => {
       if (selectClick(e, SELECT, id, entry.kind === "file" && id === current ? id : null)) return
-      // (the rail and a tile have no room to open it in: the file tree shows it)
-      if (folder) return inPlace ? pinnedFoldersOpen.toggle(id) : void showInTree(id)
+      // (the rail and a tile have no room to open it in: its page, or the file tree)
+      if (folder) return inPlace ? pinnedFoldersOpen.toggle(id) : openTile(id, e.metaKey || e.ctrlKey || e.button === 1)
       openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane })
     }
     return (

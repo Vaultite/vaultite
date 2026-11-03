@@ -225,6 +225,9 @@ function sortOf(to: string) {
 let keeps: (to: string) => boolean = () => false
 export const setTabKeeper = (fn: (to: string) => boolean) => { keeps = fn }
 export const keepsTab = (to: string) => keeps(to)
+/** Whether a view's arg is a vault path (ViewDef.pathArg: a folder's page), which retarget follows. Set by the app. */
+let pathView: (to: string) => boolean = () => false
+export const setPathView = (fn: (to: string) => boolean) => { pathView = fn }
 /** The tab a new tab of `to` opens beside (ViewDef.opensBeside: a session dispatched from a note, by that note's), or
  *  null for the current one. Set by the app, which knows the views. */
 let besideOf: (to: string) => string | null = () => null
@@ -782,10 +785,12 @@ export function retarget(from: string, to: string) {
   const map = (p: string) => (p === from ? to : p.startsWith(`${from}/`) ? to + p.slice(from.length) : null)
   let changed = false
   const one = (to: string) => {
-    const m = isFile(to) ? map(to.slice(5)) : null
+    // (a view of a path: view:<name>/<path>, its arg mapped as a file's path is)
+    const view = !isFile(to) && to.includes("/") && pathView(to) ? to.slice(0, to.indexOf("/") + 1) : ""
+    const m = isFile(to) ? map(to.slice(5)) : view ? map(to.slice(view.length)) : null
     if (m === null) return to
     changed = true
-    return `file:${m}`
+    return view ? view + m : `file:${m}`
   }
   const next = everyTab((t) => ({ ...t, to: one(t.to), back: t.back?.map(one), fwd: t.fwd?.map(one) }))
   const moved = changed
@@ -795,7 +800,7 @@ export function retarget(from: string, to: string) {
   if (!moved) return
   set(next)
   const cur = activeTab()
-  if (isFile(cur.to)) history.replaceState(history.state, "", `#${hashOf(cur.to)}`)
+  if (isFile(cur.to) || pathView(cur.to)) history.replaceState(history.state, "", `#${hashOf(cur.to)}`)
   hashChanged()
 }
 

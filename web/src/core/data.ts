@@ -293,6 +293,8 @@ const listeners = new Set<() => void>()
 const publish = (next: Partial<Loaded>) => { loaded = { ...loaded, ...next }; listeners.forEach((f) => f()) }
 /** The store as it is now (for code outside React). */
 export const getStore = () => loaded.store
+/** The vault's name as the app shows it: its folder's, Playground for a sandbox. */
+export const vaultName = (s: Store | null | undefined) => (s ? (s.vault.sandbox ? "Playground" : s.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault")
 /** Call `fn` whenever the store changes (for code outside React); returns how to stop. */
 export const onStore = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } }
 /** Change the store optimistically, after a write: f returns a new store, with new objects where it changed (never

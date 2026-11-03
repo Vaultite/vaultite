@@ -6,7 +6,7 @@ import { pageHash } from "./subjects.mjs"
 const B = process.env.QA_BASE ?? process.argv[2]
 if (!B) { console.error("usage: node web/qa/scrollers.mjs <base url of a throwaway server>"); process.exit(2) }
 const today = await pageHash(B, "Today")
-const routes = ["", today, await pageHash(B, "People"), await pageHash(B, "Health"), await pageHash(B, "Learning"), "view/files", "plugins", "settings", "bundles"]
+const routes = ["", today, await pageHash(B, "People"), await pageHash(B, "Health"), await pageHash(B, "Learning"), "view/files", "view/folder", "plugins", "settings", "bundles"]
 const browser = await chromium.launch({ executablePath: (await import("./lib/qa.mjs")).CHROME })
 const bad = new Map(), fixed = new Map(), clipped = new Map(), errs = []
 

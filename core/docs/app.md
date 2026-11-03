@@ -63,7 +63,9 @@ go (a folder, `/` the top, `./` beside the note, `./name` a folder beside it; un
 else `Attachments`); `excluded`, files left out of search, the graph and unlinked mentions and listed last in the quick
 switcher, still files you open (each a path they start with, `Archive/`, or a `/regex/`; unset: Obsidian's
 `userIgnoreFilters`; `[]` none); `samples`, folders of examples, not the user's data (`["Examples"]`): their files
-have no kind, and tasks, Dataview and query blocks leave them out unless the query is in a file in that folder.
+have no kind, and tasks, Dataview and query blocks leave them out unless the query is in a file in that folder;
+`folderView`, how a folder's page (a folder opened as a tab: `vau open <folder>`) shows what it holds, `list` (default)
+or `grid` (cards: a note's first lines, an image's picture), the same for every folder; it sorts by `fileSort`, the tree's.
 
 **Folders**, `.vaultite/folders.json`: where new files of a kind go, by its name in the API (`{"people": "Personal/People",
 "days": "Journal", "dashboards": "Pages"}`); one unset goes where most of that kind's files are (daily notes: Obsidian's

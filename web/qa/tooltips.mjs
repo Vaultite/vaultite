@@ -65,7 +65,7 @@ try {
   check("a path bar folder is cut off", i >= 0, squeezed)
   if (i >= 0) {
     const t = await tipOf(`${crumbs} >> nth=${i}`)
-    check("a cut-off folder: its whole name", t === `${deep[i]}\nShow in the file tree`, t)
+    check("a cut-off folder: its whole name", t === `${deep[i]}\nOpen folder`, t)
   }
 } catch (e) {
   check("ran through", false, String(e))

@@ -30,8 +30,9 @@ hand, or by an older app) is taken in and leaves the file.
   it to the app.
 - `layout`: `root` is a group `{id, tabs: [{id, to}], active}` or a split `{id, dir: row | col, kids, sizes}`; a group's
   tab groups are its `sets` and each tab's `set` (`vau docs tabs`); a tab's `name` is the user's (`vau docs tabs`). A tab's
-  `to` is `file:<vault path>`, `view:terminal/<session id>`, a panel as a tab (`view:files`, `view:terminals`,
-  `view:pages`, `view:search/<query>`, `view:links`, `view:local-graph`) or `new` (blank); left out, one blank tab.
+  `to` is `file:<vault path>`, `view:folder/<vault path>` (a folder's page), `view:terminal/<session id>`, a panel as a
+  tab (`view:files`, `view:terminals`, `view:pages`, `view:search/<query>`, `view:links`, `view:local-graph`) or `new`
+  (blank); left out, one blank tab.
   `active` and `focus` are only where a device starts. With the Machines plugin on, a terminal tab is saved as
   `view:terminal/<id>@<machine>` so every machine opens that shell; write a new one as `view:terminal/<id>` (this
   machine's) or with `@<machine>`.

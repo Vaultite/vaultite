@@ -15,6 +15,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Phones: a tab group is renamed from inside it**: tap its name, top right, to type a new one there; hold it for its menu.
 - **Phones: a pinned folder's tile shows it**: on a new tab or in the drawer, tapping it opens Files (the drawer's, or a
   Files tab) at the folder, open and flashed, rather than nothing; Reveal in file tree scrolls the drawer to it too.
+- **A folder opens as a page**: Open in its menu, its pinned tile (a new tab's, the drawer's, the sidebar's), a folder in a note's
+  path bar, one dragged onto a pane or a tab bar, or `vau open <folder>` shows what it holds in a tab of its own, as
+  the sidebar's rows or as cards (a note's first lines, an image's picture): Show as, one setting for every folder. A
+  folder in it opens in the same tab and Back comes out, as in the Files app; its crumbs go up.
 - **Bundles show skeleton cards while they load**: Get bundles and Your bundles draw shimmering cards, as many as
   last time, instead of a blank page until the list comes.
   Files tab) at the folder, open and flashed, rather than nothing.

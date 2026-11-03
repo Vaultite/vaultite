@@ -44,6 +44,13 @@ export default async ($: VaultTest) => {
     && tr.folders.includes("Notes"), tr.files.filter((x: Any) => x.path === "Notes/Linker.md"))
   const [, ll] = await api("GET", "file/linked?path=Notes/Renamed.md")
   check("file/linked: each file linking here with the line its link is on", ll.path === "Notes/Renamed.md" && ll.linked.some((l: Any) => l.path === "Notes/Linker.md" && l.line === seeLine), ll)
+  write("Notes/Shown/Card.md", "---\ntags: [x]\n---\nFirst lines.\n\n```block-clock\nzone: UTC\n```\n")
+  write("Notes/Shown/Deeper/Not.md", "Inside.\n")
+  await $.vault.sync()
+  const [, pv] = await api("GET", "files/previews?folder=Notes/Shown")
+  check("files/previews: a folder's own notes' text, without frontmatter or blocks", pv.previews["Notes/Shown/Card.md"] === "First lines." && !("Notes/Shown/Deeper/Not.md" in pv.previews), pv)
+  fs.rmSync(path.join(VAULT, "Notes/Shown"), { recursive: true })
+  await $.vault.sync()
   const [, lo] = await api("GET", "file/linked?path=Notes/Linker.md")
   check("file/linked: a file's own links as written", lo.links.includes("Renamed") && !lo.linked.length, lo)
   // An edit adds and drops links by delta: the file linking here, then not, then again.

@@ -13,6 +13,7 @@ import { highlighter, matches, type Node, parse, type SearchDoc, SearchError } f
 import { merge3 } from "./textedit.ts"
 import { applyEdit, editOf, textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
+import { prose } from "./frontmatter.ts"
 import { fenced, linkResolver } from "./links.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard, notHereYet } from "./writegate.ts"
@@ -326,6 +327,18 @@ async function info(vault: Vault, rel: string) {
   const out: Item = { path: rel, kind, size: Number(st.size), mtime: ms(st.mtimeNs), ctime: statFrom(st).born }
   if (kind === "pdf") out.pages = await pdfPages(vault.abs(rel)).catch(() => null)
   return out
+}
+
+/** The start of each note right in a folder ("" the top): its body without frontmatter or blocks, cut short (a folder
+ *  page's cards). */
+function previews(vault: Vault, folder: string) {
+  const out: Record<string, string> = {}
+  for (const [rel, e] of vault.entries) {
+    if (rel.slice(0, Math.max(0, rel.lastIndexOf("/"))) !== folder) continue
+    const text = prose(e.body).trim()
+    if (text) out[rel] = chars(text, 400)
+  }
+  return { folder, previews: out }
 }
 
 /** Drop a moved or trashed folder's files from the index (a missing top-level folder alone doesn't count as deleted:
@@ -792,6 +805,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       only: query.only !== undefined ? new Set(query.only.split("\n")) : undefined, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
     return query.total === "1" ? found : found.results
   }
+  if (route === "files/previews" && method === "GET") return previews(vault, query.folder ? clean(query.folder, false, vault, true) : "")
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
   if (route === "file/linked" && method === "GET") return linkedTo(vault, clean(query.path, false, vault, true))
   if (route === "file") {

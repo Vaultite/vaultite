@@ -9,7 +9,7 @@ import { getStore, reload, type Store } from "@/core/data"
 import { edgeScroller, getDrag, startDrag, useDragItem, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { isMac, isDesktop } from "@/core/platform"
-import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
+import { cleanName, createFile, createFolder, folderList, folderOf, folderTarget, freeName, inArchive, inTrash, isDoc, isFolder, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { leaves, type Workspace } from "../../../core/layout.ts"
 import { useVirtual } from "@/core/virtual"
@@ -24,7 +24,7 @@ import type { FileIcon, FileMark, FileRow, FileRowPart, NewFile } from "@/core/d
 import { fileIcons, fileMarks, fileViewFor, formatFor, pluginNewFiles, revealPanel, useFileRows } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs, type FileSort } from "@/core/prefs"
 import { commandItems, menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
-import { changeIcon, copyPathItem, duplicate, duplicateItem, filesMenu, grouped, iconChangeable, moreItem, noGroups, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
+import { changeIcon, copyPathItem, duplicate, duplicateItem, filesMenu, grouped, iconChangeable, moreItem, noGroups, openFolderItem, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
 import { registerCommands } from "@/core/commands"
 import { currentRow } from "@/core/keylist"
 import { pickFolder } from "@/components/FolderPicker"
@@ -174,23 +174,23 @@ const FILES_PANEL = "files:files"
 
 // ---------- moving ----------
 /** Can't be moved by dragging or Move to…, nor take things in: the trash and what's in it, the app's own folders. */
-const fixed = (p: string) => p === ".trash" || inTrash(p) || isProtected(p)
+export const fixed = (p: string) => p === ".trash" || inTrash(p) || isProtected(p)
 /** Whether moving `from` into `folder` ("" = the top level) would do anything: not its own folder, not itself or inside it. */
-const canMoveInto = (from: string, folder: string) =>
+export const canMoveInto = (from: string, folder: string) =>
   folder !== folderOf(from) && folder !== from && !folder.startsWith(`${from}/`) && !(folder && fixed(folder))
 
 /** An archive folder, or in one (People/.archive): hidden in the tree unless archived files are shown. */
 const archives = (p: string) => inArchive(p) || p === ARCHIVE_DIR || p.endsWith(`/${ARCHIVE_DIR}`)
 
 /** The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and
- *  revealing the open file (the heading's buttons have the rest: new, sort, collapse). */
-export function treeShownItems(): MenuItem[] {
+ *  revealing the open file (the heading's buttons have the rest: new, sort, collapse); `reveal` false: not that. */
+export function treeShownItems({ reveal = true } = {}): MenuItem[] {
   const store = getStore(), { showArchived } = getPrefs()
   const anyArchive = showArchived || (!!store && folderList(store.files).some(archives))
   // (its switches, as Settings names them: core/switches.ts)
   return [
     ...commandItems("setting:show-hidden", ...(anyArchive ? ["setting:show-archived"] : [])),
-    ...commandItems("setting:auto-reveal").map((it) => ({ ...it, sep: true })),
+    ...(reveal ? commandItems("setting:auto-reveal").map((it) => ({ ...it, sep: true })) : []),
   ]
 }
 
@@ -393,6 +393,34 @@ function build(files: FileTreeFiles, sort: FileSort, open: string[] = [], showAr
 }
 const sorts = new WeakMap<Node, FileSort>() // (each tree drawn, by its sort: another's order isn't kept)
 
+/** A file or folder in a folder, as the tree has it. */
+export type FolderItem = Node
+/** What a folder holds as the tree shows it, in its order (archive folders only when shown, or inside one), and how many
+ *  things each folder among them holds: a folder's page (pages/Folder.tsx). Null when there's no such folder. */
+export function folderItems(files: FileTreeFiles, folder: string, sort: FileSort, showArchived: boolean): { items: Node[]; counts: Map<string, number> } | null {
+  const all = folderList(files)
+  if (folder && !isFolder(files, folder)) return null
+  const shown = (p: string) => showArchived || !archives(p) || archives(folder)
+  const items: Node[] = [], counts = new Map<string, number>()
+  const count = (p: string) => { const up = folderOf(p); if (up && folderOf(up) === folder && shown(p)) counts.set(up, (counts.get(up) ?? 0) + 1) }
+  for (const f of all) {
+    count(f)
+    if (f && folderOf(f) === folder && shown(f)) items.push({ path: f, name: f.split("/").pop()!, folder: true, mtime: 0, ctime: 0, children: [] })
+  }
+  for (const f of files.files) { count(f.path); if (folderOf(f.path) === folder && shown(f.path)) items.push(fileNode(f)) }
+  for (const o of files.others) {
+    count(o.path)
+    if (folderOf(o.path) === folder && shown(o.path)) items.push({ path: o.path, name: shownName(o.path), folder: false, other: !isDoc(o.path), mtime: o.mtime, ctime: o.ctime ?? o.mtime, children: [] })
+  }
+  return { items: items.sort(compare(sort)), counts }
+}
+
+/** A folder's icon as the tree draws it: a plugin's, the trash's, an archive's, else a folder (`open`: an open one). */
+export function folderIcon(path: string, open = false): { icon: LucideIcon; tint?: string } {
+  const s = getStore(), given = drawn(s ? fileIcons(s, getPrefs().disabled)[path] : undefined)
+  return path === ".trash" ? { icon: Trash2 } : given ?? { icon: path.split("/").pop() === ARCHIVE_DIR ? Archive : open ? FolderOpen : Folder }
+}
+
 /** `kids` in the order `had` has them, the new ones put in their places: the same as sorting, with only those compared. */
 function resorted(kids: Node[], had: Node[], cmp: (a: Node, b: Node) => number) {
   const at = new Map(had.map((c, i) => [c.folder ? `/${c.path}` : c.path, i]))
@@ -558,7 +586,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     return grouped([
       file ? [
         openItem(() => openFile(n.path, { newTab: true, pane }), compact ? () => openInSplit(`file:${n.path}`, "right") : undefined),
-      ] : [],
+      ] : n.path ? [openFolderItem(n.path, { pane })] : [],
       [
         // The plugins' other kinds in New note ▸, named by what they make (Canvas, Database, Base...).
         { label: "New note", icon: FilePlus, run: () => newNote(here),
@@ -602,7 +630,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     const keys = selectionFor(SELECT, n.path, false)?.filter((p) => !fixed(p))
     const item: DragItem = keys && keys.length > 1
       ? { from: "tree", path: n.path, paths: keys, folder: n.folder || undefined, to: n.folder ? undefined : `file:${n.path}`, label: `${keys.length} items` }
-      : n.folder ? { from: "tree", path: n.path, folder: true } : { from: "tree", path: n.path, to: `file:${n.path}` }
+      : n.folder ? { from: "tree", path: n.path, folder: true, to: folderTarget(n.path) } : { from: "tree", path: n.path, to: `file:${n.path}` }
     startDrag(e, item, { touch: true })
   }
   const hover = useRef<{ path: string; timer: number } | null>(null)

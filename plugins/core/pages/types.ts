@@ -91,11 +91,13 @@ export function relabel(key: string, label: string) {
   void post("pins/label", { path: key, label }).catch(() => {})
 }
 
-/** What pinning a view's tab pins (its key and name), or null: a search tab its search ("search:<query>"), any other
- *  view as it says (pinOfView). */
+/** What pinning a view's tab pins (its key and name), or null: a search tab its search ("search:<query>"), a folder's
+ *  page the folder, any other view as it says (pinOfView). */
 export function viewPin(target: string): { key: string; label: string } | null {
   const search = /^view:search(?:\/(.*))?$/s.exec(target)
   if (search) { const q = search[1]?.trim(); return q ? { key: PIN_SEARCH + q, label: q } : null }
+  const folder = /^view:folder(?:\/(.*))?$/s.exec(target)
+  if (folder) return folder[1] ? { key: folder[1], label: folder[1].split("/").pop()! } : null
   return pinOfView(target)
 }
 

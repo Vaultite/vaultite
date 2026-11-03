@@ -376,6 +376,7 @@ export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) 
     if (formatReader(plugins, on, rel)) return `# ${stemOf(rel).replace(/\.[^.]+$/, "")}\n\n${otherText(vault, rel, plugins, on)}\n`
   }
   const e = vault.entries.get(rel)
+  if (!e && vault.folders.includes(rel)) throw new HTTPError(404, `'${rel}' is a folder: vau files ${rel} lists what's in it`)
   if (!e) throw new HTTPError(404, `no file '${rel}'`)
   let raw: string
   try {

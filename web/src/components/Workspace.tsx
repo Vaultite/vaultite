@@ -6,7 +6,7 @@ import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
 import { useHeldHeight } from "@/core/heights"
-import { closeTab, focusGroup, groups, quietly, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
+import { closeTab, focusGroup, groups, quietly, replaceTabTarget, selectTab, setArchivable, setCloseGuard, setOpenElsewhere, setOpener, setOwnHistory, setPageTest, setPathView, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
 import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
 import { dockPane, evenOut, placeFloat, resize, zoomPane } from "@/core/splits"
 import { paneBoxes, paneGap, usePaneMotion } from "@/core/panemotion"
@@ -40,6 +40,7 @@ setTabCloser((to, tab, last, moved) => {
 })
 setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
+setPathView((to) => !!viewFor(to, getPrefs().disabled)?.def.pathArg)
 setGroupNamer((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.groupName?.(v.arg)) || null })
 setOpener((to) => { const v = viewFor(to, getPrefs().disabled); return (v?.on && v.def.opensBeside?.(v.arg)) || null })
 setOwnHistory((t, dir) => { const v = viewFor(t.to, getPrefs().disabled); return (v?.on && v.def.history?.(v.arg, t.id, dir)) || null })
@@ -412,13 +413,14 @@ const PageHeading = memo(function PageHeading({ label }: { label: string }) {
 
 /** A plugin's view in tab `tab` (`to`: view:<name>/<arg>): its title and what it draws, or the note saying why it can't
  *  (no plugin draws it, or its plugin is off). The desktop's panes and the phone's tabs. */
-export function viewBody(store: Store, tab: Tab, to: string, view: ReturnType<typeof viewFor>, focused: boolean) {
+export function viewBody(store: Store, tab: Tab, to: string, view: ReturnType<typeof viewFor>, focused: boolean):
+  { title: string; drawn: ReactNode; note: string | null; bar?: { title?: ReactNode; right?: ReactNode } } {
   if (!view) return { title: to.slice(5), drawn: null, note: "No plugin draws this tab." }
   const title = view.def.title(view.arg)
   if (!view.on) return { title, drawn: null, note: `${offText(view.plugin)}.${switchedOn(view.plugin) ? "" : " Turn it on in Plugins to open this tab."}` }
   const name = to.slice(5).split("/")[0]
   const ctx = { store, arg: view.arg, focused, close: () => closeTab(tab.id, true), setArg: (arg: string) => replaceTabTarget(tab.id, `view:${name}${arg ? `/${arg}` : ""}`) }
-  return { title, drawn: <Drawn draw={() => view.def.render(ctx)} />, note: null }
+  return { title, drawn: <Drawn draw={() => view.def.render(ctx)} />, note: null, bar: view.def.bar?.(ctx) }
 }
 
 /** A view tab's page, held at the height it had last time until nothing in it is loading: what can't draw its room
@@ -443,7 +445,7 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   else if (tab && to.startsWith("view:")) {
     const v = viewBody(p.store, tab, to, view, focused)
     body = v.drawn && full ? <div className="absolute inset-0">{v.drawn}</div>
-      : padded(false, <ViewBar>{v.title}</ViewBar>, v.drawn ? <HeldView to={to} view={view}>{v.drawn}</HeldView> : <p className="mt-6 text-[15px] text-muted-foreground">{v.note}</p>)
+      : padded(false, <ViewBar right={v.bar?.right}>{v.bar?.title ?? v.title}</ViewBar>, v.drawn ? <HeldView to={to} view={view}>{v.drawn}</HeldView> : <p className="mt-6 text-[15px] text-muted-foreground">{v.note}</p>)
   } else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
   else {
     const page = p.page(to)

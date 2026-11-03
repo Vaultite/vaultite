@@ -101,10 +101,11 @@ const before = JSON.stringify(await panes())
 o = await drag(row("Qa drag/Three.md"), await spot(g0, "left"), { drop: false })
 check("Escape cancels a tree drag", o.zone === "left" && JSON.stringify(await panes()) === before, o)
 
-// A folder isn't a tab.
+// A folder opens its page there.
 o = await drag(row("Qa drag/Sub"), await spot(g0, "center"))
-check("a folder over a pane: nothing offered", o.zone === null && o.dim, o)
-check("...and nothing opened", JSON.stringify(await panes()) === before)
+ps = await panes()
+check("a folder over a pane: its middle offered", o.zone === "center", o)
+check("...dropped: its page in that pane", ps.find((p) => p.id === g0)?.active === "Sub", ps)
 
 // Within the tree it still moves.
 o = await drag(row("Qa drag/Three.md"), await center(row("Qa drag/Sub")))

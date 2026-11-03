@@ -404,3 +404,13 @@ export function slide(dir: -1 | 1, dragged = 0, reset?: () => void) {
     st.setProperty("--mfrom", `${(dir < 0 ? -1 : 1) * w * 0.3 * (1 - left)}px`)
   })
 }
+
+/** A place opened in the same tab, inside this one (1: a folder's subfolder) or above it (-1: a crumb): the page moves
+ *  as Forward or Back would, though the history takes a new step rather than walking its own. */
+export function step(dir: -1 | 1, change: () => void) {
+  run(dir < 0 ? "back" : "forward", change, () => {
+    const st = document.documentElement.style, w = innerWidth
+    st.setProperty("--mto", `${dir < 0 ? w : -w}px`)
+    st.setProperty("--mfrom", `${(dir < 0 ? -1 : 1) * w * 0.3}px`)
+  })
+}

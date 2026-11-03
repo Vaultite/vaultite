@@ -14,9 +14,11 @@ import type { SettingDecl } from "../../../core/blocks.ts"
 const sorts = SORTS.flat()
 // (its switches are core/switches.ts', which Settings' search finds by themselves; read late: that module imports this)
 const switchOf = (row: string) => coreSwitch(`setting:${row}`)
-const DECLS: Record<"fileSort" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
+const DECLS: Record<"fileSort" | "folderView" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
   fileSort: { type: "enum", default: "name", label: "Sort order", values: sorts.map((s) => s.value),
     labels: Object.fromEntries(sorts.map((s) => [s.value, s.label])), description: "folders stay first, by name" },
+  folderView: { type: "enum", default: "list", label: "Show folders as", values: ["list", "grid"], labels: { list: "List", grid: "Grid" },
+    description: "how a folder opened as a tab shows what it holds, every folder the same" },
   folderLimit: { type: "number", default: 0, min: 0, label: "Files per folder",
     description: "how many of a folder's files show before a Show more row (in the sort order; its folders always show); 0 shows them all" },
   attachmentFolder: { type: "string", default: "Attachments", label: "Attachment folder",
@@ -51,6 +53,7 @@ export function FilesSettings() {
       <SwitchRow s={switchOf("show-hidden")} />
       <SwitchRow s={switchOf("show-archived")} />
       <Field k="fileSort" d={DECLS.fileSort} value={prefs.fileSort} set={(v) => void setPrefs({ fileSort: (v ?? "name") as FileSort })} />
+      <Field k="folderView" d={DECLS.folderView} value={prefs.folderView} set={(v) => void setPrefs({ folderView: v === "grid" ? "grid" : "list" })} />
       <Field k="folderLimit" d={DECLS.folderLimit} value={prefs.folderLimit}
         set={(v) => void setPrefs({ folderLimit: typeof v === "number" && v >= 0 ? Math.floor(v) : 0 })} />
       <SwitchRow s={switchOf("auto-reveal")} />

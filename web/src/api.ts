@@ -28,7 +28,7 @@ export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conven
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
-export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isFolder, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, shownName, splitFm, stem } from "@/core/files"
+export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isFolder, isHidden, isViewOpen, markNew, openFile, openFolder, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, shownName, splitFm, stem } from "@/core/files"
 /** A folder of the vault, picked in the palette (one typed that isn't there is made). */
 export { chooseFolder } from "@/components/FolderPicker"
 export { seenArea } from "@/components/FileTree"
@@ -226,8 +226,9 @@ export { coarse, haptic, type Haptic } from "@/core/haptics"
 export { KeyBar, keyboardUp, useVisibleArea, type BarKey } from "@/components/KeyBar"
 export { FilesPanel, LoadingSidebarRows, PanelFold, panelMenu, RowKeys, SidebarHeading, SidebarRow, SidebarSearch, SidebarTile } from "@/components/Sidebar"
 export { ActionButtons, AddButton } from "@/components/NewTab"
-// The core's pages that panels open as tabs: the file tree (view:files) and the search page.
+// The core's pages that panels open as tabs: the file tree (view:files), a folder's page and the search page.
 export { Files as FilesPage } from "@/pages/Files"
+export { folderBar, folderName, FolderPage, folderTabMenu } from "@/pages/Folder"
 export { FilesSettings, filesSettingsSearch } from "@/components/FilesSettings"
 // A plugin's settings sheet (components/PluginSettings.tsx), and one setting drawn as its form row.
 export { hasSettings, openPluginSettings, pluginSettings, settingsFile } from "@/core/pluginSettings"

@@ -21,6 +21,7 @@ const day = check?.date ?? new Date().toISOString().slice(0, 10)
 const same = (...rs) => rs.map((r) => [r, r])
 const all = [["today", at("Today")], ["health", at("Health")], ["learning", at("Learning")], ["people", at("People")], ["people-map", at("People")],
   ...same("view/files", `view/files/${file(linked.idea.id)}`, `view/files/${file(linked.note.id)}`),
+  ["view/folder", "view/folder"], ["view/folder/sub", (() => { const f = v.tree.folders.find((x) => !x.includes("/") && !x.startsWith(".")); return f ? `view/${enc(`folder/${f}`)}` : null })()],
   people[0], ["projects", at("Projects")], ...people.slice(1, 3),
   ["health/workout", at("Health", log("workouts"))], ["learning/study", at("Learning", log("study"))],
   [`today/routine/${routine}`, at("Today", `routine/${routine}`)], [`today/routine/${routine}/${day}`, at("Today", `routine/${routine}/${day}`)],

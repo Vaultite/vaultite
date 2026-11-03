@@ -107,18 +107,19 @@ function uiOps(app: App): Op[] {
     cli: "open",
     mcp: "open",
     summary: "Open a file (or a view) in the user's app window, optionally in a split.",
-    help: `Shows something in the app the user has open: a file in a tab, a view ("view:terminal/<id>", "view:graph") or a
-web address in a web tab.
+    help: `Shows something in the app the user has open: a file in a tab, a folder as its page (a list or a grid of what
+it holds), a view ("view:terminal/<id>", "view:graph") or a web address in a web tab.
 Only the window the user was in last acts. split right|down opens it in a pane beside or below; newTab keeps the
 current tab. On a phone it opens in the sheet. For something the user should look at now (a file you wrote).
 
   vau open Dashboards/People.md
   vau open "People/Alice Park.md" --split right
+  vau open People
   vau open Notes/Idea.md --new-tab
   vau open https://example.com`,
     kind: "write",
     params: {
-      path: { type: "string", format: "path", required: true, description: "the vault path (Notes/Idea.md, or as the user says it: Today), a view (view:graph) or a web address" },
+      path: { type: "string", format: "path", required: true, description: "the vault path (Notes/Idea.md, or as the user says it: Today), a folder, a view (view:graph) or a web address" },
       split: { type: "string", enum: ["right", "down"], description: "open it in a pane beside (right) or below (down) the current one" },
       newTab: { type: "boolean", description: "in a new tab, keeping the current one" },
     },
